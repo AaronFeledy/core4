@@ -17,6 +17,7 @@ import { LandofileServiceLive } from "../../../landofile/service.ts";
 import { ScratchRegistryLive } from "../../../scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../../scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../../scratch-app/service.ts";
+import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { makeProviderBootstrapLayer } from "./provider.ts";
@@ -24,10 +25,12 @@ import { makeProviderBootstrapLayer } from "./provider.ts";
 export const makeScratchBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const providerBase = makeProviderBootstrapLayer(inputs);
   const plannerLive = AppPlannerLive.pipe(Layer.provide(providerBase));
+  const buildOrchestratorLive = BuildOrchestratorLive.pipe(Layer.provide(providerBase));
   const scratchDeps = Layer.mergeAll(
     providerBase,
     LandofileServiceLive,
     plannerLive,
+    buildOrchestratorLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
   );
@@ -35,6 +38,7 @@ export const makeScratchBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     providerBase,
     LandofileServiceLive,
     plannerLive,
+    buildOrchestratorLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
     ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),

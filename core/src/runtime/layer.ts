@@ -21,6 +21,7 @@ import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, EmbeddingPluginPolicy, ProviderId } from "@lando/sdk/schema";
 import type {
   AppPlanner,
+  BuildOrchestrator,
   CacheService,
   CommandRegistry,
   ConfigService,
@@ -160,7 +161,12 @@ type ProviderRuntimeServices =
   | DataMover
   | GlobalAppService;
 type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner;
-type ScratchRuntimeServices = ProviderRuntimeServices | LandofileService | AppPlanner | ScratchAppService;
+type ScratchRuntimeServices =
+  | ProviderRuntimeServices
+  | LandofileService
+  | AppPlanner
+  | BuildOrchestrator
+  | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService

@@ -73,6 +73,8 @@ export interface ProviderVersions {
 export interface ArtifactBuildSpec {
   readonly app: AppId;
   readonly service: ServiceName;
+  readonly plan: AppPlan;
+  readonly buildKey: string;
 }
 
 export interface ArtifactRef {

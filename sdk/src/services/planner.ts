@@ -28,7 +28,7 @@ export class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrato
     readonly build: (
       plan: AppPlan,
     ) => Effect.Effect<
-      void,
+      AppPlan,
       EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
     >;
   }

@@ -3,6 +3,7 @@ import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
@@ -480,6 +481,7 @@ export const dockerCapabilitiesForHost = (
 ): ProviderCapabilities =>
   buildProviderCapabilities({
     bindMounts: true,
+    artifactBuild: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
     volumeSnapshot: "copy",
     serviceFileCopy: "native",
@@ -1404,7 +1406,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0" }),
-        buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
+        buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: dockerApi }),
         pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>

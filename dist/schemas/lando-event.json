@@ -4653,6 +4653,87 @@
       "properties": {
         "_tag": {
           "enum": [
+            "build-step-skip"
+          ],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": [
+                "scratch",
+                "user"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "id"
+          ],
+          "type": "object"
+        },
+        "buildKey": {
+          "type": "string"
+        },
+        "cached": {
+          "enum": [
+            true
+          ],
+          "type": "boolean"
+        },
+        "eventName": {
+          "enum": [
+            "build-step-skip"
+          ],
+          "type": "string"
+        },
+        "phase": {
+          "enum": [
+            "artifact",
+            "app"
+          ],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": [
+            "up-to-date"
+          ],
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "serviceName",
+        "providerId",
+        "phase",
+        "buildKey",
+        "cached",
+        "reason",
+        "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
             "pre-managed-file-write"
           ],
           "type": "string"

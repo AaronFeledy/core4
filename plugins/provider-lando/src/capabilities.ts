@@ -172,6 +172,7 @@ export const providerLandoCapabilitiesForPlatform = (
 ): ProviderCapabilities => {
   return buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
+    artifactBuild: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     volumeSnapshot: "native",
     serviceFileCopy: "native",

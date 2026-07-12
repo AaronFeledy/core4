@@ -46,6 +46,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 ## Runtime layer service wiring
 
 - Adding a service `Live` to a generated bootstrap layer (`core/src/runtime/generated/layers/*.ts`) is two edits: the generator (`scripts/build-bootstrap-layers.ts` `renderApp()`/etc., then `bun run codegen:bootstrap-layers`) AND the hand-maintained runtime-service type union in `core/src/runtime/layer.ts` (e.g. `AppRuntimeServices`). Skip the type union and a command whose `R` now needs the service typechecks in the OCLIF path but fails compiled `run.ts` dispatch (`runCompiledCommand` requires the effect's `R` to be a subtype of that union).
+- `BuildOrchestrator.build(plan)` returns the plan with produced or cached artifact refs stamped into its services; callers must apply the returned plan, and artifact cache hits require a persisted ref.
 - Interactive, inherited-stdio host shells are launched through `ShellRunner.interactive` (`core/src/services/shell-runner.ts`, `Bun.spawn` stdio "inherit", kills the child on interrupt/abort and creates the `HISTFILE` parent dir), never `child_process.spawn` in a command body. `ShellRunnerLive` is wired into the `app` bootstrap layer.
 - `check:deprecations` (in `bun run lint`) rejects a `BUILT_IN_COMMAND_DEPRECATIONS` notice whose `since` is not a released/pending version (`4.0.0`/`4.1.0`/`4.2.0`/`5.0.0`) or is >12 months old without a future-major/minor `removeIn`; use the most recent pending version (`4.2.0`) as `since` for a new default-flip notice.
 

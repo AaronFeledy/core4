@@ -7,6 +7,7 @@ import {
   LandofileShape,
   type ProviderCapabilities,
   ProviderId,
+  ServiceName,
   StreamFrame,
 } from "@lando/core/schema";
 import {
@@ -46,6 +47,7 @@ import { type RedactionService, RedactionServiceLive } from "../../src/redaction
 import { ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive, readScratchLandofile } from "../../src/scratch-app/service.ts";
+import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -108,6 +110,8 @@ interface Recorded {
 }
 
 interface HarnessOptions {
+  readonly buildCalls?: string[];
+  readonly artifactBuild?: boolean;
   readonly execExitCode?: number;
   readonly execStdout?: string;
   readonly execStderr?: string;
@@ -124,13 +128,21 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     displayName: "Scratch Run Test Provider",
     version: "0.0.0",
     platform: "linux",
-    capabilities,
+    capabilities: { ...capabilities, artifactBuild: options.artifactBuild ?? capabilities.artifactBuild },
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
-    buildArtifact: () => die("buildArtifact"),
-    pullArtifact: () => die("pullArtifact"),
+    buildArtifact: (spec) =>
+      Effect.sync(() => {
+        options.buildCalls?.push(String(spec.service));
+        return { providerId, ref: `${spec.service}:built` };
+      }),
+    pullArtifact: (spec) =>
+      Effect.sync(() => {
+        options.buildCalls?.push(spec.ref);
+        return { providerId, ref: spec.ref };
+      }),
     removeArtifact: () => Effect.void,
     apply: (plan) =>
       Effect.sync(() => {
@@ -185,9 +197,10 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   );
   const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
   const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
+  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
+    capabilities: Effect.succeed(provider.capabilities),
     select: () => Effect.succeed(provider),
   });
   const scratchDeps = Layer.mergeAll(
@@ -196,22 +209,21 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     plannerLive,
     registryLive,
     eventLive,
+    pathsLive,
     redactionLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
     DataMoverLive.pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          StateStoreLive,
-          Layer.succeed(PathsService, makeLandoPaths()),
-          Layer.succeed(RuntimeProvider, provider),
-        ),
-      ),
+      Layer.provide(Layer.mergeAll(StateStoreLive, pathsLive, Layer.succeed(RuntimeProvider, provider))),
     ),
+  );
+  const buildOrchestratorLive = BuildOrchestratorLive.pipe(
+    Layer.provide(Layer.mergeAll(eventLive, pathsLive, registryLive, StateStoreLive)),
   );
   return Layer.mergeAll(
     scratchDeps,
-    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+    buildOrchestratorLive,
+    ScratchAppServiceLive.pipe(Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive))),
     options.configLayer ?? ConfigServiceLive,
   );
 };
@@ -460,6 +472,45 @@ describe("scratchRun", () => {
       const service = plan.services[Object.keys(plan.services)[0] as keyof typeof plan.services];
       expect(service?.appMount?.source === dir).toBe(false);
       expect(service?.mounts.some((mount) => mount.type === "bind" && mount.source === dir)).toBe(false);
+    });
+  });
+
+  test("applies the artifact refs returned by the scratch build orchestrator", async () => {
+    await withTempProject(async (dir) => {
+      await writeFile(join(dir, "Dockerfile"), "FROM alpine\n");
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: scratch-build",
+          "services:",
+          "  web:",
+          "    type: compose",
+          "    primary: true",
+          "    composeBuild:",
+          "      context: .",
+          "      dockerfile: Dockerfile",
+          "",
+        ].join("\n"),
+      );
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const buildCalls: string[] = [];
+
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.flatMap(ScratchAppService, (scratch) =>
+            scratch.acquire({ source: { kind: "fork" }, detached: false, isolate: "cwd" }),
+          ),
+        ).pipe(
+          Effect.provide(makeHarnessLayer(recorded, { artifactBuild: true, buildCalls })),
+          Effect.provide(testSupportLayer()),
+        ),
+      );
+
+      expect(buildCalls).toEqual(["web"]);
+      expect(recorded.appliedPlans[0]?.services[ServiceName.make("web")]?.artifact).toEqual({
+        kind: "ref",
+        ref: "web:built",
+      });
     });
   });
 
@@ -828,6 +879,32 @@ describe("scratch run cleanup and warm repeats", () => {
       );
       expect(afterKeep.map((entry) => entry.id)).toEqual([kept.scratchId]);
       expect(afterKeep[0]?.status).toBe("detached");
+    });
+  });
+
+  test("repeated toolbox runs reuse cached build results while preserving fresh scratch isolation", async () => {
+    await withTempProject(async () => {
+      const buildCalls: string[] = [];
+      const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
+      const layer = makeHarnessLayer(recorded, { buildCalls, execStdout: "ok\n" });
+      const supportLayer = layer.pipe(Layer.provide(testSupportLayer()));
+      await Effect.runPromise(
+        Effect.gen(function* () {
+          const options = { command: ["echo", "ok"], mount: true, keep: false, answers: {}, issues: [] };
+          const first = yield* scratchRun(options);
+          const second = yield* scratchRun(options);
+          expect(first.scratchId).not.toBe(second.scratchId);
+        }).pipe(Effect.provide(supportLayer)),
+      );
+
+      expect(buildCalls).toEqual([]);
+      expect(recorded.appliedPlans).toHaveLength(2);
+      expect(String(recorded.appliedPlans[0]?.id)).not.toBe(String(recorded.appliedPlans[1]?.id));
+      expect(recorded.appliedPlans[0]?.root).not.toBe(recorded.appliedPlans[1]?.root);
+      expect(recorded.execCalls).toHaveLength(2);
+      expect(recorded.destroyCalls).toHaveLength(2);
+      const afterRuns = await Effect.runPromise(scratchList().pipe(Effect.provide(supportLayer)));
+      expect(afterRuns).toEqual([]);
     });
   });
 });

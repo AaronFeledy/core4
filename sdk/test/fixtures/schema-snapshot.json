@@ -15268,6 +15268,15 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Build Step Skip Event.",
+      "docsPath": "docs/reference/schemas/build-step-skip-event.mdx",
+      "id": "BuildStepSkipEvent",
+      "jsonSchemaPath": "dist/schemas/build-step-skip-event.json",
+      "packageExport": "@lando/sdk/schema#BuildStepSkipEvent",
+      "title": "Build Step Skip Event"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Pre Managed File Write Event.",
       "docsPath": "docs/reference/schemas/pre-managed-file-write-event.mdx",
       "id": "PreManagedFileWriteEvent",
@@ -16088,6 +16097,7 @@
       "PostServiceStopEvent",
       "PreBuildEvent",
       "PostBuildEvent",
+      "BuildStepSkipEvent",
       "PreManagedFileWriteEvent",
       "PostManagedFileWriteEvent",
       "ManagedFileConflictDetectedEvent",
@@ -17299,6 +17309,77 @@
         }
       },
       "required": ["id", "service", "phase", "kind", "dependsOn", "buildKey"],
+      "type": "object"
+    },
+    "BuildStepSkipEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["build-step-skip"],
+          "type": "string"
+        },
+        "appRef": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": ["scratch", "user"],
+              "type": "string"
+            }
+          },
+          "required": ["kind", "id"],
+          "type": "object"
+        },
+        "buildKey": {
+          "type": "string"
+        },
+        "cached": {
+          "enum": [true],
+          "type": "boolean"
+        },
+        "eventName": {
+          "enum": ["build-step-skip"],
+          "type": "string"
+        },
+        "phase": {
+          "enum": ["artifact", "app"],
+          "type": "string"
+        },
+        "providerId": {
+          "type": "string"
+        },
+        "reason": {
+          "enum": ["up-to-date"],
+          "type": "string"
+        },
+        "serviceName": {
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": [
+        "_tag",
+        "eventName",
+        "appRef",
+        "serviceName",
+        "providerId",
+        "phase",
+        "buildKey",
+        "cached",
+        "reason",
+        "timestamp"
+      ],
       "type": "object"
     },
     "CertificatePlan": {
@@ -25307,6 +25388,70 @@
             }
           },
           "required": ["_tag", "eventName", "appRef", "providerId", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["build-step-skip"],
+              "type": "string"
+            },
+            "appRef": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "enum": ["scratch", "user"],
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "id"],
+              "type": "object"
+            },
+            "buildKey": {
+              "type": "string"
+            },
+            "cached": {
+              "enum": [true],
+              "type": "boolean"
+            },
+            "eventName": {
+              "enum": ["build-step-skip"],
+              "type": "string"
+            },
+            "phase": {
+              "enum": ["artifact", "app"],
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "reason": {
+              "enum": ["up-to-date"],
+              "type": "string"
+            },
+            "serviceName": {
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "eventName",
+            "appRef",
+            "serviceName",
+            "providerId",
+            "phase",
+            "buildKey",
+            "cached",
+            "reason",
+            "timestamp"
+          ],
           "type": "object"
         },
         {

@@ -4,6 +4,11 @@ import { AppRef } from "../schema/networking.ts";
 import { ProviderId, ServiceName } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
+const BuildStepSkipAppRef = Schema.Struct({
+  kind: Schema.Literal("scratch", "user"),
+  id: Schema.String,
+});
+
 export const PreAppStartEvent = Schema.TaggedStruct("pre-app-start", {
   eventName: Schema.Literal("pre-app-start"),
   appRef: AppRef,
@@ -89,3 +94,16 @@ export const PostBuildEvent = Schema.TaggedStruct("post-build", {
   timestamp: Timestamp,
 });
 export type PostBuildEvent = typeof PostBuildEvent.Type;
+
+export const BuildStepSkipEvent = Schema.TaggedStruct("build-step-skip", {
+  eventName: Schema.Literal("build-step-skip"),
+  appRef: BuildStepSkipAppRef,
+  serviceName: ServiceName,
+  providerId: ProviderId,
+  phase: Schema.Literal("artifact", "app"),
+  buildKey: Schema.String,
+  cached: Schema.Literal(true),
+  reason: Schema.Literal("up-to-date"),
+  timestamp: Timestamp,
+});
+export type BuildStepSkipEvent = typeof BuildStepSkipEvent.Type;

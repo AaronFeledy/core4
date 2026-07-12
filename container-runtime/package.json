@@ -22,6 +22,7 @@
     "./transport": "./src/transport.ts",
     "./streams": "./src/streams.ts",
     "./plan": "./src/plan.ts",
+    "./image-build": "./src/image-build.ts",
     "./log-file-access": "./src/log-file-access.ts",
     "./log-file-helper-payloads": "./src/log-file-helper-payloads.ts",
     "./data-plane": "./src/data-plane.ts",

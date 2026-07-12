@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Cause, type Context, Effect, Layer, Schema, type Scope } from "effect";
+import { Cause, type Context, Effect, Layer, Option, Schema, type Scope } from "effect";
 
 import {
   ScratchAppError,
@@ -25,6 +25,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  BuildOrchestrator,
   DataMover,
   FileSystem,
   LandofileService,
@@ -368,7 +369,8 @@ const ownerPidIsDead = (entry: ScratchRegistryEntry): boolean => {
     process.kill(entry.ownerPid, 0);
     return false;
   } catch (cause) {
-    return (cause as { readonly code?: unknown }).code === "ESRCH";
+    const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
+    return code === "ESRCH";
   }
 };
 
@@ -452,6 +454,7 @@ const makeScratchAppService = (
   scratchRegistry: Context.Tag.Service<typeof ScratchRegistry>,
   scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
   dataMover: Context.Tag.Service<typeof DataMover>,
+  buildOrchestrator: Option.Option<Context.Tag.Service<typeof BuildOrchestrator>>,
 ): Context.Tag.Service<typeof ScratchAppService> => {
   const root = Effect.sync(() => AbsolutePath.make(makeLandoPaths().scratchDir));
 
@@ -617,7 +620,18 @@ const makeScratchAppService = (
         ),
       );
       yield* writeCachedPlan(planCache, markedPlan);
-      yield* Effect.scoped(provider.apply(markedPlan, { reconcile: false })).pipe(
+      const builtPlan = yield* Option.match(buildOrchestrator, {
+        onNone: () => Effect.succeed(markedPlan),
+        onSome: (orchestrator) =>
+          orchestrator
+            .build(markedPlan)
+            .pipe(
+              Effect.mapError((cause) =>
+                scratchAppError("start", `Unable to build scratch app ${scratchId}.`, cause),
+              ),
+            ),
+      });
+      yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false })).pipe(
         // A failed start can leave a materialized dir and partial provider state; the scope
         // finalizer only covers a successful start, so reclaim on the failure path too.
         Effect.tapError(() => destroyScratchResources),
@@ -981,6 +995,7 @@ export const ScratchAppServiceLive = Layer.effect(
     const scratchRegistry = yield* ScratchRegistry;
     const scanner = yield* ScratchResourceScanner;
     const dataMover = yield* DataMover;
+    const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
     return makeScratchAppService(
       fileSystem,
       landofileService,
@@ -989,6 +1004,7 @@ export const ScratchAppServiceLive = Layer.effect(
       scratchRegistry,
       scanner,
       dataMover,
+      buildOrchestrator,
     );
   }),
 );
