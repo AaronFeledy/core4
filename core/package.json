@@ -118,9 +118,10 @@
     }
   },
   "scripts": {
-    "build": "bun run build:manifest && bun run build:host-proxy-shim && bun run build:compile",
+    "build": "bun run build:manifest && bun run build:host-proxy-shim && bun run build:log-file-helper && bun run build:compile",
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
     "build:host-proxy-shim": "bun build ./src/subsystems/host-proxy/shim-bin.ts --compile --target=bun-linux-x64 --outfile ./dist/host-proxy/linux-x64/lando-shim && bun build ./src/subsystems/host-proxy/shim-bin.ts --compile --target=bun-linux-arm64 --outfile ./dist/host-proxy/linux-arm64/lando-shim",
+    "build:log-file-helper": "bun build ../container-runtime/src/log-file-helper-bin.ts --compile --target=bun-linux-x64-musl --outfile ./dist/log-file-access/linux-x64/lando-log-file-helper && bun build ../container-runtime/src/log-file-helper-bin.ts --compile --target=bun-linux-arm64-musl --outfile ./dist/log-file-access/linux-arm64/lando-log-file-helper",
     "build:manifest": "bun run ../scripts/build-oclif-manifest.ts",
     "build:compile": "bun build ./bin/lando.ts --compile --bytecode --outfile ./dist/lando --sourcemap=external && bun run ../scripts/sanitize-compiled-binary.ts ./dist/lando",
     "clean": "rm -rf dist oclif.manifest.json .tsbuildinfo",

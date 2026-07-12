@@ -22,6 +22,8 @@
     "./transport": "./src/transport.ts",
     "./streams": "./src/streams.ts",
     "./plan": "./src/plan.ts",
+    "./log-file-access": "./src/log-file-access.ts",
+    "./log-file-helper-payloads": "./src/log-file-helper-payloads.ts",
     "./data-plane": "./src/data-plane.ts",
     "./capabilities": "./src/capabilities.ts"
   },
@@ -32,7 +34,8 @@
     "effect": "^3.21.2"
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && bun run build:log-file-helper",
+    "build:log-file-helper": "bun build ./src/log-file-helper-bin.ts --compile --target=bun-linux-x64-musl --outfile ./dist/log-file-access/linux-x64/lando-log-file-helper && bun build ./src/log-file-helper-bin.ts --compile --target=bun-linux-arm64-musl --outfile ./dist/log-file-access/linux-arm64/lando-log-file-helper",
     "clean": "rm -rf dist .tsbuildinfo",
     "typecheck": "tsc -b"
   }

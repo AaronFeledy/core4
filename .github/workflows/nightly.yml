@@ -454,6 +454,8 @@ jobs:
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
+          bun run --filter='@lando/core' build:log-file-helper
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --sourcemap=external
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --sourcemap=external
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --sourcemap=external

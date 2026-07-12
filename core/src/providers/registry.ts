@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import type { LogFileHelperPayloads } from "@lando/container-runtime/log-file-helper-payloads";
 import { type Context, Effect, Layer } from "effect";
 
 import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provider-docker";
@@ -30,6 +31,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import { loadLogFileHelperPayloads } from "./log-file-helper-payloads.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -117,6 +119,7 @@ const makeRuntimeProviderRegistry = (
   eventService: EventPublisher | undefined,
   downloader: Context.Tag.Service<typeof Downloader>,
   landoPaths: Context.Tag.Service<typeof PathsService>,
+  logFileHelperPayloads: LogFileHelperPayloads,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const artifactDownload = makeArtifactDownload(downloader);
 
@@ -160,13 +163,17 @@ const makeRuntimeProviderRegistry = (
               providerPidPath: landoPaths.providerPidPath,
               ...(eventService === undefined ? {} : { eventService }),
               artifactDownload,
+              logFileHelperPayloads,
             }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
           : providerIdText === "docker"
-            ? yield* makeDockerRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability))
+            ? yield* makeDockerRuntimeProvider({ logFileHelperPayloads }).pipe(
+                Effect.mapError(toProviderUnavailableFromCapability),
+              )
             : providerIdText === "podman"
               ? yield* makePodmanRuntimeProvider({
                   stateDir: `${userDataRoot}/providers`,
                   ...(eventService === undefined ? {} : { eventService }),
+                  logFileHelperPayloads,
                 }).pipe(Effect.mapError(toProviderUnavailableFromCapability))
               : providers[providerIdText];
 
@@ -200,21 +207,29 @@ export const RuntimeProviderRegistryLive = Layer.effect(
     const eventService = yield* Effect.serviceOption(EventService);
     const downloader = yield* Downloader;
     const landoPaths = yield* PathsService;
+    const logFileHelperPayloads = yield* loadLogFileHelperPayloads();
     return makeRuntimeProviderRegistry(
       configService,
       pluginRegistry,
       eventService._tag === "Some" ? eventService.value : undefined,
       downloader,
       landoPaths,
+      logFileHelperPayloads,
     );
   }),
 );
 
 export const LandoRuntimeProviderLive = Layer.effect(
   RuntimeProvider,
-  makeLandoRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability)),
+  loadLogFileHelperPayloads().pipe(
+    Effect.flatMap((logFileHelperPayloads) => makeLandoRuntimeProvider({ logFileHelperPayloads })),
+    Effect.mapError(toProviderUnavailableFromCapability),
+  ),
 );
 export const DockerRuntimeProviderLive = Layer.effect(
   RuntimeProvider,
-  makeDockerRuntimeProvider().pipe(Effect.mapError(toProviderUnavailableFromCapability)),
+  loadLogFileHelperPayloads().pipe(
+    Effect.flatMap((logFileHelperPayloads) => makeDockerRuntimeProvider({ logFileHelperPayloads })),
+    Effect.mapError(toProviderUnavailableFromCapability),
+  ),
 );

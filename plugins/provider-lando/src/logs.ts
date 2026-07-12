@@ -52,6 +52,14 @@ const parseLine = (service: ServicePlan, streamName: "stdout" | "stderr", line: 
 const makeLogsDecoder = (service: ServicePlan) =>
   makeRuntimeLogDecoder({ parseLine: (streamName, line) => parseLine(service, streamName, line) });
 
+const fileSourceSince = (value: string | undefined): number | undefined => {
+  if (value === undefined) return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? undefined : Math.floor(timestamp / 1000);
+};
+
 export const logs = (
   plan: AppPlan,
   target: LogTarget,
@@ -82,7 +90,7 @@ export const logs = (
   const podmanApi = runtime.podmanApi;
   const logFileAccess = runtime.logFileAccess;
   const logSources = options.sources ?? service.logSources ?? [];
-  const since = options.since === undefined ? undefined : Number(options.since);
+  const since = fileSourceSince(options.since);
 
   return Stream.suspend(() => {
     const fileStream =

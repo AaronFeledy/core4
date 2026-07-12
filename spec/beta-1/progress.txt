@@ -23,6 +23,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Runtime-bundle verification must exercise network create/remove and a published-port container through the managed Podman root/runroot/config shape. Version checks and a ready API socket do not prove that bundled networking helpers are selected or complete.
 - Runtime-bundle host keys and release artifact ids are different domains. Runtime bundles publish only `linux-x64`, `linux-arm64`, `darwin-arm64`, and `win32-x64`; CLI/release artifacts can still include Intel Mac or differently named Windows targets.
 - Log-follow lifecycle semantics live in the provider-neutral SDK engine. It owns handle close via explicit close plus `Stream.ensuring`, byte-level UTF-8-safe framing, tail/since/copytruncate/rotation diagnostics, and planner-owned capability degradation. Do not reintroduce scoped file handles that close before streams run.
+- Effect finalizers must be lazy: a method passed to `Effect.ensuring` must not start promises or mutate resource state while the Effect graph is being constructed. Start cleanup inside the returned Effect so the protected operation runs first.
 - Log-source availability is a planning truth, not a mid-stream surprise. Required follow sources fail planning when `serviceLogSources` is unavailable; optional follow sources are recorded as unavailable; redirect sources ride console and are never followed.
 - Truth hierarchy is spec > PRD > progress. Progress can summarize and explain, but it must not preserve stale unreleased behavior over the spec or mark pending stories complete.
 
@@ -341,4 +342,20 @@ Open closure categories:
 - Post-fix Bugbot reported two medium findings; both deferred as out of scope for this verify fix and not reproduced as blockers in the compiled-binary sandbox scenario.
 - Rejected: stopApp ensuring host-proxy cleanup even when provider.destroy fails is the existing lifecycle ownership contract (prefer dead mounts over orphan workers); a failed destroy leaving containers up is a provider failure path, not a transport regression.
 - Rejected: single `stdin.write` of worker payload without backpressure is pre-existing spawn plumbing; toolbox and focused worker tests complete readiness successfully, and enlarging the IPC framing is a follow-up hardening item rather than a US-433 acceptance gap.
+---
+
+## 2026-07-12 01:57 CDT - Babysit
+- PR: #573 https://github.com/AaronFeledy/core4/pull/573
+- CI outcome: pass
+- Review feedback: fixed (compiled worker argv for $bunfs; package host-proxy shims in CI artifacts; Windows build reuses Linux shims instead of cross-extracting bun-linux)
+- Merge: merged (squash)
+---
+
+## 2026-07-12 05:04 CDT - US-434
+- Real Docker-compatible providers now follow declared in-container log files through a provider-owned archive-and-exec helper seam. The implementation supports bounded file reads and preserves the provider-neutral snapshot/follow contract across missing files, tail/since, copytruncate, rename-create rotation, truncation, oversized or binary lines, UTF-8 boundaries, and final partial lines without routing diagnostics into service output.
+- Provider capabilities become truthful only when packaged helper payloads are available, and CI/nightly/provider jobs build the helper payloads before provider tests. Helper sessions close on normal completion, interruption, dropped streams, and provider failure; cleanup is effect-lazy so finalizers cannot race ahead of the protected request.
+- Verification: typecheck, lint, redaction boundary, full monorepo build, 159 focused unit/contract/workflow tests, and the real provider-lando container-file integration scenario passed against Podman 6 in `lando4-dev`; teardown confirmed the container was removed and no helper process remained.
+- **Learnings for future iterations:**
+  - Docker-compatible exec output differs by provider: Docker multiplexes stdout/stderr attach frames while Podman may return raw upgraded bytes, so the helper decoder must detect both without corrupting split UTF-8 frames.
+  - Build helper binaries for both `@lando/container-runtime` and `@lando/core` consumers before provider tests; capability advertising must remain false when payload resolution fails.
 ---

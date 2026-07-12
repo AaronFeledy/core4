@@ -330,6 +330,32 @@ describe("provider-podman RuntimeProvider layer", () => {
     expect(provider.capabilities.serviceLogSources).toBe(true);
   });
 
+  test("advertises service log source following when a helper payload matches Podman info architecture", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
+        logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      }),
+    );
+
+    expect(provider.capabilities.serviceLogSources).toBe(true);
+  });
+
+  test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({
+        platform: "linux",
+        env: {},
+        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }) },
+        logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+      }),
+    );
+
+    expect(provider.capabilities.serviceLogSources).toBe(false);
+  });
+
   test("constructs the Podman API client through the resolved socket path", async () => {
     const createdHosts: Array<string> = [];
     await Effect.runPromise(

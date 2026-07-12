@@ -138,19 +138,20 @@ const renderBuildNeeds = (platform: CiPlatform): string =>
 
 const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
   platform.id === "windows-x64"
-    ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('host-proxy-shims/host-proxy', 'dist/host-proxy', { recursive: true });"`
+    ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"`
     : `          bun run --filter='@lando/core' build:host-proxy-shim
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"`;
+          bun run --filter='@lando/core' build:log-file-helper
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"`;
 
 const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
   platform.id === "windows-x64"
     ? `
 
-      - name: Download host-proxy shims from Linux artifact
+      - name: Download Linux sidecars from Linux artifact
         uses: actions/download-artifact@v4
         with:
           name: lando-linux-x64
-          path: host-proxy-shims`
+          path: linux-sidecars`
     : "";
 
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
@@ -186,6 +187,7 @@ ${renderSmokeCommands(platform)}
           path: |
             dist/${platform.binaryName}
             dist/host-proxy/**
+            dist/log-file-access/**
           if-no-files-found: ignore
           retention-days: 14
 
