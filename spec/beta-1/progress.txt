@@ -366,3 +366,9 @@ Open closure categories:
 - Verification: typecheck and lint passed; focused adapter/helper/transport, SDK follower, and provider capability spot checks passed; guide generation, lint, coverage, and public transcript gates passed; the rebuilt helper passed the real provider-lando container-file integration scenario against Podman 6 in `lando4-dev` with clean teardown.
 - **Learnings for future iterations:** A helper uploaded into a container crosses an adversarial filesystem boundary: use a per-session unpredictable path, parse every protocol scalar at the host boundary, and make cleanup both narrowly scoped and unable to block stream finalization.
 ---
+
+## 2026-07-12 06:04 CDT - US-434 Verify
+- Compiled binary + sandboxed `lando setup --provider=podman` succeeded. Real app with declared follow sources proved finite snapshot, source labels, per-source `--tail`, unknown-source failure, merged multi-source output, and interruptible `--follow` against in-container files via the provider-owned helper; adjacent info/exec/console-logs/destroy stayed green with no leftover containers.
+- Fixed log-file helper ABI: ship glibc (`bun-linux-x64`/`arm64`) helpers so default Debian service images (`node:22`, etc.) can execute the uploaded binary; the prior musl target only ran in Alpine and failed real-world `lando logs --source` with "session ended before responding".
+- **Learnings for future iterations:** Container-uploaded helpers must target the libc of default service base images (glibc for official `node`/`php`/etc.), not Alpine-only musl; live integration fixtures should use the same image family as `type: node:22` or dual-ship helpers.
+---
