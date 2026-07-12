@@ -65,7 +65,7 @@ const service = (appRoot: string): ServicePlan => ({
   type: "node",
   provider: providerId,
   primary: true,
-  artifact: { kind: "ref", ref: "node:22-alpine" },
+  artifact: { kind: "ref", ref: "node:22" },
   command: [
     "node",
     "-e",
