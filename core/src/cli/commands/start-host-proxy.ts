@@ -25,36 +25,31 @@ const HOST_PROXY_HOST_GATEWAY_CAPABILITY = "ProviderCapabilities.hostProxy.tcpHo
 
 const targetKey = (target: HostProxyShimTarget): string => `${target.os}-${target.arch}`;
 
+const missingContainerTargetError = () =>
+  new HostProxyTransportUnavailableError({
+    message: "Host-proxy requires a provider-declared eligible Linux container target.",
+    socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
+    remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
+  });
+
 const hostProxyShimTargetFor = (
   capabilities: ProviderCapabilities,
 ): Effect.Effect<HostProxyShimTarget, HostProxyTransportUnavailableError> => {
   const providerTargets = capabilities.hostProxy?.containerTargets ?? [];
   if (providerTargets.length === 0) {
-    return Effect.fail(
-      new HostProxyTransportUnavailableError({
-        message: "Host-proxy requires a provider-declared eligible Linux container target.",
-        socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
-        remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
-      }),
-    );
+    return Effect.fail(missingContainerTargetError());
   }
-  const uniqueProviderTargets = new Map(providerTargets.map((target) => [targetKey(target), target]));
-  if (uniqueProviderTargets.size > 1) {
+  const [target, ...remainingTargets] = providerTargets;
+  if (target === undefined) {
+    return Effect.fail(missingContainerTargetError());
+  }
+  const selectedTargetKey = targetKey(target);
+  if (remainingTargets.some((candidate) => targetKey(candidate) !== selectedTargetKey)) {
     return Effect.fail(
       new HostProxyTransportUnavailableError({
         message: "Provider declared conflicting host-proxy container targets.",
         socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
         remediation: "Select a provider that advertises exactly one host-proxy Linux container target.",
-      }),
-    );
-  }
-  const target = uniqueProviderTargets.values().next().value;
-  if (target === undefined) {
-    return Effect.fail(
-      new HostProxyTransportUnavailableError({
-        message: "Host-proxy requires a provider-declared eligible Linux container target.",
-        socketPath: HOST_PROXY_CONTAINER_TARGET_CAPABILITY,
-        remediation: "Select a provider that advertises one Linux x64 or arm64 host-proxy container target.",
       }),
     );
   }
