@@ -2,6 +2,7 @@ import { request } from "node:http";
 
 import { cwd, env, exit, stderr, stdout } from "node:process";
 import { ensureHostProxyNoProxy } from "./proxy-bypass.ts";
+import { isHostProxyRunLandoEnvName } from "./session-env.ts";
 
 const forwardedEnvNames: ReadonlyArray<string> = ["LANG", "TERM"];
 const agentEnvNames: ReadonlyArray<string> = [
@@ -32,9 +33,10 @@ type ShimRequest = {
 };
 
 const shouldForwardEnv = (name: string): boolean =>
-  forwardedEnvPrefixes.some((prefix) => name.startsWith(prefix)) ||
-  forwardedEnvNames.includes(name) ||
-  agentEnvNames.includes(name);
+  !isHostProxyRunLandoEnvName(name) &&
+  (forwardedEnvPrefixes.some((prefix) => name.startsWith(prefix)) ||
+    forwardedEnvNames.includes(name) ||
+    agentEnvNames.includes(name));
 
 const filteredEnv = (): Record<string, string> => {
   const output: Record<string, string> = {};
