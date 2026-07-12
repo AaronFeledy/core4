@@ -414,3 +414,9 @@ Open closure categories:
   - For `/libpod/volumes/prune`, named-volume intent belongs in the top-level `all=true` query parameter. Putting `all` inside the filter map can bypass label scoping on Podman 6.
   - Env-gated integration tests need a machine-readable skip kind and an observable reason in reporter output; an opaque `skipIf` does not preserve acceptance evidence.
 ---
+
+## 2026-07-12 15:25 CDT - US-436 Review
+- Preserved planned image digests when pull-capable providers return an unpinned artifact, and restricted OOM doctor failures to died events carrying both app and service ownership correlation so unrelated Podman containers cannot create false Lando diagnostics.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account had exhausted its monthly model quota; no Bugbot findings were treated as approval evidence.
+- Verification: typecheck and lint passed; focused build-orchestrator and doctor-OOM spot checks passed; strict TypeScript diagnostics and no-excuse audit passed.
+---
