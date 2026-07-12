@@ -13,6 +13,7 @@ import {
   PathsService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  StateStore,
 } from "@lando/core/services";
 import {
   AbsolutePath,
@@ -26,7 +27,9 @@ import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
+import { buildKeyForService } from "../../src/services/build-key.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
+import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
 
@@ -241,6 +244,121 @@ describe("BuildOrchestratorLive", () => {
     expect(error).toBe(failure);
   });
 
+  test("pulls ref-only artifacts when the provider advertises artifactPull", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } },
+      },
+    };
+    const pulls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: { readonly ref: string }) =>
+        Effect.sync(() => {
+          pulls.push(spec.ref);
+          return { providerId, ref: spec.ref };
+        }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(pulls).toEqual(["debian:12.11-slim"]);
+    expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+  });
+
+  test("keeps planned artifact digest when artifactPull returns no digest", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: {
+          ...web,
+          artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+        },
+      },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: { readonly ref: string }) => Effect.succeed({ providerId, ref: spec.ref }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(builtPlan.services[web.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "debian:12.11-slim",
+      digest: "sha256:planned",
+    });
+  });
+
+  test("uses provider-returned artifact digest over planned digest", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: {
+          ...web,
+          artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+        },
+      },
+    };
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: { readonly ref: string }) =>
+        Effect.succeed({ providerId, ref: spec.ref, digest: "sha256:provider" }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(builtPlan.services[web.name]?.artifact).toEqual({
+      kind: "ref",
+      ref: "debian:12.11-slim",
+      digest: "sha256:provider",
+    });
+  });
+
+  test("keeps ref-only artifacts local when the provider cannot pull artifacts", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } },
+      },
+    };
+    const pulls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: false },
+      pullArtifact: (spec: { readonly ref: string }) =>
+        Effect.sync(() => {
+          pulls.push(spec.ref);
+          return { providerId, ref: spec.ref };
+        }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(pulls).toEqual([]);
+    expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+  });
+
   test("redacts build event free-text fields while preserving DateTime timestamps", async () => {
     const secretProviderId = ProviderId.make("test-topsecret");
     const secretService = {
@@ -406,6 +524,7 @@ describe("BuildOrchestratorLive", () => {
       const pullCalls: string[] = [];
       const provider = {
         ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
         pullArtifact: (spec: { readonly ref: string }) =>
           Effect.sync(() => {
             pullCalls.push(spec.ref);
@@ -438,10 +557,149 @@ describe("BuildOrchestratorLive", () => {
           serviceName: ServiceName.make("web"),
         }),
       ]);
-      expect(pullCalls).toEqual([]);
+      expect(pullCalls).toEqual(["debian:12.11-slim"]);
       expect(JSON.stringify(skipEvents)).not.toContain("/tmp/topsecret");
       expect(JSON.stringify(skipEvents)).not.toContain("PASSWORD");
       expect(JSON.stringify(skipEvents)).not.toContain("topsecret");
+    });
+  });
+
+  test("keeps artifact digest on warm scratch artifact cache hits", async () => {
+    await withTempUserRoots(async () => {
+      const artifactPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-digest-first"),
+        slug: "scratch-digest-first",
+        root: AbsolutePath.make("/tmp/scratch-digest-first/root"),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+          },
+        },
+      };
+      const repeatPlan: AppPlan = {
+        ...artifactPlan,
+        id: AppId.make("scratch-digest-second"),
+        slug: "scratch-digest-second",
+        root: AbsolutePath.make("/tmp/scratch-digest-second/root"),
+      };
+      const pullCalls: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: { readonly ref: string }) =>
+          Effect.sync(() => {
+            pullCalls.push(spec.ref);
+            return { providerId, ref: spec.ref };
+          }),
+      };
+
+      const builtRepeat = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(artifactPlan);
+            return yield* orchestrator.build(repeatPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(builtRepeat.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "debian:12.11-slim",
+        digest: "sha256:planned",
+      });
+      expect(pullCalls).toEqual(["debian:12.11-slim"]);
+    });
+  });
+
+  test("falls back to planned digest for legacy warm scratch cache hits with the same artifact ref", async () => {
+    await withTempUserRoots(async () => {
+      const artifactPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-legacy-digest"),
+        slug: "scratch-legacy-digest",
+        root: AbsolutePath.make("/tmp/scratch-legacy-digest/root"),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+          },
+        },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        pullArtifact: () => Effect.die("legacy cache hit should not pull artifacts"),
+      };
+
+      const builtPlan = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const buildKey = yield* buildKeyForService(provider, artifactPlan.services[web.name] ?? web);
+          const bucket = yield* openScratchBuildResults(stateStore);
+          yield* recordBuildResult(bucket, {
+            buildKey,
+            service: web.name,
+            phase: "artifact",
+            outcome: "complete",
+            exitCode: 0,
+            durationMs: 1,
+            artifactRef: "debian:12.11-slim",
+            transcriptPath: AbsolutePath.make("/tmp/legacy-scratch-build.log"),
+          });
+          const orchestrator = yield* BuildOrchestrator;
+          return yield* orchestrator.build(artifactPlan);
+        }).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(builtPlan.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "debian:12.11-slim",
+        digest: "sha256:planned",
+      });
+    });
+  });
+
+  test("does not attach planned digest to legacy warm scratch cache hits for a different artifact ref", async () => {
+    await withTempUserRoots(async () => {
+      const artifactPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-legacy-different-ref"),
+        slug: "scratch-legacy-different-ref",
+        root: AbsolutePath.make("/tmp/scratch-legacy-different-ref/root"),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+          },
+        },
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        pullArtifact: () => Effect.die("legacy cache hit should not pull artifacts"),
+      };
+
+      const builtPlan = await Effect.runPromise(
+        Effect.gen(function* () {
+          const stateStore = yield* StateStore;
+          const buildKey = yield* buildKeyForService(provider, artifactPlan.services[web.name] ?? web);
+          const bucket = yield* openScratchBuildResults(stateStore);
+          yield* recordBuildResult(bucket, {
+            buildKey,
+            service: web.name,
+            phase: "artifact",
+            outcome: "complete",
+            exitCode: 0,
+            durationMs: 1,
+            artifactRef: "ubuntu:24.04",
+            transcriptPath: AbsolutePath.make("/tmp/legacy-scratch-different-ref-build.log"),
+          });
+          const orchestrator = yield* BuildOrchestrator;
+          return yield* orchestrator.build(artifactPlan);
+        }).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "ubuntu:24.04" });
     });
   });
 

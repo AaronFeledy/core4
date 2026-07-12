@@ -51,6 +51,22 @@ describe("provider-lando capabilities", () => {
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux" }))),
     );
     expect(runtimeProvider.capabilities.artifactBuild).toBe(false);
+    expect(runtimeProvider.capabilities.artifactPull).toBe(false);
+  });
+
+  test("advertises artifact pull only when a Podman API client is wired", async () => {
+    const runtimeProvider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
+          }),
+        ),
+      ),
+    );
+
+    expect(runtimeProvider.capabilities.artifactPull).toBe(true);
   });
 
   test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
@@ -135,6 +151,7 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities).toEqual({
       ...mvpProviderCapabilities("win32", "arm64"),
       artifactBuild: false,
+      artifactPull: false,
       serviceLogSources: false,
     });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);

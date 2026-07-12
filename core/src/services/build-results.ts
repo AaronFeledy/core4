@@ -16,6 +16,7 @@ export const BuildResultEntry = Schema.Struct({
   exitCode: Schema.Number,
   durationMs: Schema.Number,
   artifactRef: Schema.optional(Schema.String),
+  artifactDigest: Schema.optional(Schema.String),
   transcriptPath: AbsolutePath,
   completedAt: Schema.DateTimeUtc,
 });

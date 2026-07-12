@@ -20,9 +20,9 @@ export interface DiedEventCorrelation {
 /**
  * Structural classification of a Podman container died-event payload.
  *
- * - `oom`       — a container died event with the Podman 6 `OOMKilled` attribute set.
+ * - `oom`       — an owned container died event with the Podman 6 `OOMKilled` attribute set.
  * - `died`      — a container died event without `OOMKilled` set ("if set" semantics).
- * - `unrelated` — a recognizable event that is not a container died event.
+ * - `unrelated` — a recognizable event that is not a container died event or is an unowned OOM event.
  * - `malformed` — a payload that cannot be recognized as a Podman event at all.
  */
 export type DiedEventClassification =
@@ -105,6 +105,9 @@ const buildCorrelation = (event: Record<string, unknown>): DiedEventCorrelation 
   };
 };
 
+const hasOwnerCorrelation = (correlation: DiedEventCorrelation): boolean =>
+  correlation.app !== undefined && correlation.service !== undefined;
+
 /**
  * Classify a raw Podman container died-event payload. Pure and total: never
  * throws; redaction happens in {@link buildOomDoctorCheck} at the doctor-check boundary.
@@ -115,9 +118,10 @@ export const classifyDiedEvent = (payload: unknown): DiedEventClassification => 
   if (!isRecognizableEvent(event)) return { kind: "malformed" };
   if (!isContainerDiedEvent(event)) return { kind: "unrelated" };
   const correlation = buildCorrelation(event);
-  return readOomKilled(event, asRecord(asRecord(event.Actor)?.Attributes) ?? asRecord(event.Attributes))
-    ? { kind: "oom", correlation }
-    : { kind: "died", correlation };
+  if (!readOomKilled(event, asRecord(asRecord(event.Actor)?.Attributes) ?? asRecord(event.Attributes))) {
+    return { kind: "died", correlation };
+  }
+  return hasOwnerCorrelation(correlation) ? { kind: "oom", correlation } : { kind: "unrelated" };
 };
 
 export interface OomDoctorContext {

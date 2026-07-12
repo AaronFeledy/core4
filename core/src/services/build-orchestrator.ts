@@ -111,6 +111,11 @@ const runProviderBuild = (
   Effect.gen(function* () {
     const artifact = step.service.artifact;
     if (artifact?.kind === "ref" && buildStepsFor(step.service).length === 0) {
+      if (provider.capabilities.artifactPull) {
+        const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
+        if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;
+        return { ...pulled, digest: artifact.digest };
+      }
       return {
         providerId: plan.provider,
         ref: artifact.ref,
@@ -176,7 +181,16 @@ const buildService = (input: {
       });
       if (complete?.artifactRef !== undefined) {
         yield* publishBuildStepSkip(events, context, step);
-        return serviceWithArtifact(service, { providerId: plan.provider, ref: complete.artifactRef });
+        const digest =
+          complete.artifactDigest ??
+          (service.artifact?.kind === "ref" && service.artifact.ref === complete.artifactRef
+            ? service.artifact.digest
+            : undefined);
+        return serviceWithArtifact(service, {
+          providerId: plan.provider,
+          ref: complete.artifactRef,
+          ...(digest === undefined ? {} : { digest }),
+        });
       }
     }
 
@@ -214,6 +228,7 @@ const buildService = (input: {
         exitCode: 0,
         durationMs: performance.now() - started,
         artifactRef: artifact.ref,
+        ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
         transcriptPath,
       }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
     }

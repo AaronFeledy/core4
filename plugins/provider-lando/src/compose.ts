@@ -12,6 +12,8 @@ import {
 } from "@lando/sdk/schema";
 import { FileSystem } from "@lando/sdk/services";
 
+import { volumeSelectorValue } from "./volume-prune.ts";
+
 const networkNamesForPlan = landoNetworkNames;
 const serviceNetworkAliases = landoServiceNetworkAliases;
 const sharedNetworkName = landoSharedNetworkName;
@@ -206,8 +208,14 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
       (store): [string, { readonly driver?: string; readonly labels?: Readonly<Record<string, string>> }] => {
         const labels = {
           "dev.lando.app": plan.id,
+          "dev.lando.provider": plan.provider,
           "dev.lando.store": store.name,
           "dev.lando.scope": store.scope,
+          "dev.lando.volume-selector": volumeSelectorValue({
+            providerId: plan.provider,
+            appId: plan.id,
+            volumeClass: store.kind === "cache" ? "cache" : "data",
+          }),
           ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
         };
         return [

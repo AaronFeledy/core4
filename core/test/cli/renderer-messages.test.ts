@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import {
+  ImagePullProgressEvent,
+  MessageErrorEvent,
+  MessageInfoEvent,
+  MessageWarnEvent,
+} from "@lando/sdk/events";
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
@@ -35,6 +40,16 @@ const errorEventWithRemediation = Schema.decodeUnknownSync(MessageErrorEvent)({
 const errorEventWithoutRemediation = Schema.decodeUnknownSync(MessageErrorEvent)({
   _tag: "message.error",
   body: "Plugin trust check failed",
+  timestamp: fixedTimestamp,
+});
+
+const imagePullProgressEvent = Schema.decodeUnknownSync(ImagePullProgressEvent)({
+  _tag: "image-pull-progress",
+  eventName: "image-pull-progress",
+  reference: "registry.example.invalid/team/app:latest",
+  stream: "Downloading layer",
+  current: 2,
+  total: 4,
   timestamp: fixedTimestamp,
 });
 
@@ -122,6 +137,29 @@ describe("json renderer: message events", () => {
     expect(payload._tag).toBe("message.error");
     expect(payload.body).toBe("Plugin trust check failed");
     expect(Object.hasOwn(payload, "remediation")).toBe(false);
+  });
+});
+
+describe("renderer: image pull progress", () => {
+  test("renders redacted pull progress in plain output", () => {
+    expect(renderPlainLine(imagePullProgressEvent)).toBe(
+      "↓ Pulling registry.example.invalid/team/app:latest: Downloading layer (2/4)",
+    );
+  });
+
+  test("renders pull progress as a stable JSON event", () => {
+    const line = renderJsonLine(imagePullProgressEvent);
+    expect(line).not.toBeNull();
+    if (line === null) throw new Error("expected JSON line");
+    const frame = decodeEventFrame(line);
+    expect(frame.event).toBe("image-pull-progress");
+    expect(frame.payload).toMatchObject({
+      _tag: "image-pull-progress",
+      reference: "registry.example.invalid/team/app:latest",
+      stream: "Downloading layer",
+      current: 2,
+      total: 4,
+    });
   });
 });
 

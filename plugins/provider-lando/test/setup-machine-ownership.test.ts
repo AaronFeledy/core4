@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -27,6 +27,7 @@ const machineRunner = (status: PodmanMachineStatus, calls: string[]): PodmanMach
   stop: Effect.sync(() => calls.push("stop")).pipe(Effect.asVoid),
   upgrade: Effect.sync(() => calls.push("upgrade")).pipe(Effect.asVoid),
   teardown: Effect.sync(() => calls.push("teardown")).pipe(Effect.asVoid),
+  syncTrust: Effect.sync(() => calls.push("syncTrust")).pipe(Effect.asVoid),
 });
 
 const podmanCommand = (output: string): PodmanCommandRunner => ({
@@ -131,6 +132,62 @@ describe("provider-lando machine ownership recording", () => {
 
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("setup syncs trust for an existing running machine previously created by Lando", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-trust-owned-"));
+    try {
+      await mkdir(join(stateDir, "provider-lando"), { recursive: true });
+      await writeFile(
+        providerStatePath(stateDir),
+        JSON.stringify({ podmanVersion: "6.0.2", machine: { name: "lando", createdByLando: true } }),
+      );
+      const calls: string[] = [];
+
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          podmanMachine: machineRunner("running", calls),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      expect(calls).toEqual(["inspect", "syncTrust"]);
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.machine).toEqual({ name: "lando", createdByLando: true });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  test("setup does not sync trust for an existing user-owned machine", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-trust-user-"));
+    try {
+      await mkdir(join(stateDir, "provider-lando"), { recursive: true });
+      await writeFile(
+        providerStatePath(stateDir),
+        JSON.stringify({ podmanVersion: "6.0.2", machine: { name: "lando", createdByLando: false } }),
+      );
+      const calls: string[] = [];
+
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          podmanMachine: machineRunner("running", calls),
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      expect(calls).toEqual(["inspect"]);
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.machine).toEqual({ name: "lando", createdByLando: false });
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

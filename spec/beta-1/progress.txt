@@ -404,3 +404,19 @@ Open closure categories:
 - Review feedback: fixed (export BuildStepSkipEvent on public schema; Guide-Coverage-Skip for internal buildKey cache; reran flaky live Podman bringUp)
 - Merge: merged (squash)
 ---
+
+## 2026-07-12 14:55 CDT - US-436
+- Live-wired the remaining Podman 6 seams: artifact pulls now dispatch through real providers with redacted progress rendering and typed failures; OOM died events feed doctor correlation/remediation; managed-machine trust sync remains ownership-gated with Windows elevation left manual.
+- Volume cleanup now uses ownership-complete app/provider/class selectors, keeps named-volume intent explicit, and verifies ownership before direct deletion. Real Podman 6 pull, prune, and OOM scenarios passed with clean teardown; unsupported native machine hosts produce structured skip reasons instead of passes.
+- Verification: typecheck and lint passed; 243 focused tests and six boundary gates passed; sandboxed live provider scenarios and 80-column terminal rendering passed; strict completion and dual TUI reviewers approved without blockers.
+- **Learnings for future iterations:**
+  - Podman combines repeated label values broadly; encode ownership dimensions into one selector value rather than assuming multiple label values are ANDed.
+  - For `/libpod/volumes/prune`, named-volume intent belongs in the top-level `all=true` query parameter. Putting `all` inside the filter map can bypass label scoping on Podman 6.
+  - Env-gated integration tests need a machine-readable skip kind and an observable reason in reporter output; an opaque `skipIf` does not preserve acceptance evidence.
+---
+
+## 2026-07-12 15:25 CDT - US-436 Review
+- Preserved planned image digests through provider pulls and current or legacy warm scratch-cache hits, restricted OOM doctor failures to died events carrying both app and service ownership correlation, and redacted nested Podman transport causes so encoded registry credentials cannot leak through typed pull failures.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account had exhausted its monthly model quota; no Bugbot findings were treated as approval evidence.
+- Verification: typecheck and lint passed; focused build-result, build-orchestrator, image-pull/capability, and doctor-OOM spot checks passed; strict TypeScript diagnostics passed. The no-excuse audit found only two pre-existing assertions in provider-lando capabilities outside the changed lines.
+---

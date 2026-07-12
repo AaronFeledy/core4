@@ -14,9 +14,13 @@ const isMessageEvent = (event: LandoEvent): boolean =>
   event._tag === "message.info" || event._tag === "message.warn" || event._tag === "message.error";
 
 const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
+const isImagePullProgressEvent = (event: LandoEvent): boolean => event._tag === "image-pull-progress";
 
 const isRenderableEvent = (event: LandoEvent): boolean =>
-  isTaskTreeEvent(event) || isMessageEvent(event) || isPaintBannerEvent(event);
+  isTaskTreeEvent(event) ||
+  isMessageEvent(event) ||
+  isPaintBannerEvent(event) ||
+  isImagePullProgressEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
@@ -86,6 +90,15 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
     case "paint.banner": {
       return null;
     }
+    case "image-pull-progress": {
+      const reference = asString(event.reference) ?? "image";
+      const stream = asString(event.stream);
+      const current = asNumber(event.current);
+      const total = asNumber(event.total);
+      const message = stream === undefined ? "" : `: ${stream}`;
+      const progress = current === undefined ? "" : ` (${current}${total === undefined ? "" : `/${total}`})`;
+      return `↓ Pulling ${reference}${message}${progress}`;
+    }
     default:
       return null;
   }
@@ -103,7 +116,10 @@ const orderedKeys: ReadonlyArray<string> = [
   "label",
   "children",
   "mode",
+  "reference",
   "stream",
+  "current",
+  "total",
   "line",
   "body",
   "banner",

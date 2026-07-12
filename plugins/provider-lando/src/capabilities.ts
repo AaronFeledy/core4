@@ -105,7 +105,7 @@ const podmanApiFailure = (
         message: "Failed to call the Podman API.",
         details: redactDetails({ method: request.method, path: request.path }),
         remediation: TRANSPORT_REMEDIATION,
-        cause,
+        cause: redactDetails(cause),
       });
 
 async function* streamPodmanRequest(
@@ -173,6 +173,7 @@ export const providerLandoCapabilitiesForPlatform = (
   return buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     artifactBuild: true,
+    artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     volumeSnapshot: "native",
     serviceFileCopy: "native",

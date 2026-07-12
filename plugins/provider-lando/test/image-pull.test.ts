@@ -1,17 +1,66 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { inspect } from "node:util";
 import { DateTime, Effect, Exit, Schema, Stream } from "effect";
 
+import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type ImagePullProgressEvent, LandoEvent } from "@lando/sdk/events";
+import { type ImagePullProgressEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 
-import { buildImagePullRequest, parseImagePullFrame, pullImage } from "@lando/provider-lando";
+import {
+  buildImagePullRequest,
+  makePodmanApiClient,
+  makeProviderLayer,
+  parseImagePullFrame,
+  pullImage,
+} from "@lando/provider-lando";
 import type { PodmanApiClient } from "@lando/provider-lando";
+import { type EventService, RuntimeProvider } from "@lando/sdk/services";
+import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const FIXED = DateTime.unsafeMake("2026-07-08T03:30:00Z");
 const now = (): DateTime.Utc => FIXED;
+const imagePullLive = liveIntegrationEligibility([
+  {
+    available: process.env.LANDO_TEST_IMAGE_PULL === "1",
+    reason: "LANDO_TEST_IMAGE_PULL=1 is required",
+  },
+  { available: resolveLiveProviderSocket() !== undefined, reason: "a live Podman socket is required" },
+]);
 
 const encoder = new TextEncoder();
 const bytes = (text: string): Uint8Array => encoder.encode(text);
+const unsafeText = "s3cr3tPass";
+const encodedUnsafeText = encodeURIComponent(unsafeText);
+type PublishedEvent = Parameters<typeof EventService.Service.publish>[0];
+const isImagePullProgressEvent = (event: PublishedEvent): event is ImagePullProgressEvent =>
+  event._tag === "image-pull-progress" && "eventName" in event && event.eventName === "image-pull-progress";
+const captureImagePullProgress = (events: ImagePullProgressEvent[], event: PublishedEvent): void => {
+  if (isImagePullProgressEvent(event)) events.push(event);
+};
+
+const withClosingSocket = async <T>(run: (socketPath: string) => Promise<T>): Promise<T> => {
+  const dir = await mkdtemp(join(tmpdir(), "lando-provider-lando-pull-"));
+  const socketPath = join(dir, "podman.sock");
+  const server = createServer((socket) => {
+    socket.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  try {
+    return await run(socketPath);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error === undefined ? resolve() : reject(error)));
+    });
+    await rm(dir, { recursive: true, force: true });
+  }
+};
 
 interface CapturedPull {
   readonly events: ReadonlyArray<ImagePullProgressEvent>;
@@ -97,7 +146,7 @@ describe("pullImage", () => {
     ]);
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(events).toHaveLength(2);
-    const isLandoEvent = Schema.is(LandoEvent);
+    const isLandoEvent = Schema.is(LandoEventSchema);
     for (const event of events) {
       expect(event._tag).toBe("image-pull-progress");
       expect(isLandoEvent(event)).toBe(true);
@@ -179,6 +228,26 @@ describe("pullImage", () => {
     expect((value as ProviderUnavailableError).operation).toBe("podman-api");
   });
 
+  test("redacts credentials from unknown Podman stream transport failures", async () => {
+    const reference = `https://user:${unsafeText}@registry.internal/team/img:1.0`;
+    const value = await withClosingSocket((socketPath) =>
+      Effect.runPromise(
+        pullImage(makePodmanApiClient(socketPath), reference, { publish: () => Effect.void, now }).pipe(
+          Effect.flip,
+        ),
+      ),
+    );
+
+    expect(value).toBeInstanceOf(ProviderUnavailableError);
+    if (!(value instanceof ProviderUnavailableError)) throw new Error("expected ProviderUnavailableError");
+    const serialized = JSON.stringify({ message: value.message, details: value.details, cause: value.cause });
+    const inspected = inspect({ message: value.message, details: value.details, cause: value.cause });
+    for (const text of [serialized, inspected]) {
+      expect(text).not.toContain(unsafeText);
+      expect(text).not.toContain(encodedUnsafeText);
+    }
+  });
+
   test("fails with ProviderInternalError when the client cannot stream", async () => {
     const value = await Effect.runPromise(
       pullImage(
@@ -234,4 +303,110 @@ describe("pullImage", () => {
     }
     expect(calls).toHaveLength(0);
   });
+});
+
+describe("provider pullArtifact", () => {
+  test("pulls an artifact ref through the provider and publishes progress events", async () => {
+    const events: ImagePullProgressEvent[] = [];
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            podmanApi: {
+              info: Effect.succeed({ host: { arch: "x64" } }),
+              ping: Effect.succeed(undefined),
+              stream: () =>
+                Stream.fromIterable([
+                  bytes('{"stream":"Trying to pull docker.io/library/alpine:3.20.3..."}\n'),
+                  bytes('{"status":"Downloading","progressDetail":{"current":100,"total":200}}\n'),
+                ]),
+            },
+            eventService: {
+              publish: (event) =>
+                Effect.sync(() => {
+                  captureImagePullProgress(events, event);
+                }),
+            },
+          }),
+        ),
+      ),
+    );
+
+    const artifact = await Effect.runPromise(
+      provider.pullArtifact({ ref: "docker.io/library/alpine:3.20.3" }),
+    );
+
+    expect(String(artifact.providerId)).toBe("lando");
+    expect(artifact.ref).toBe("docker.io/library/alpine:3.20.3");
+    expect(events).toHaveLength(2);
+    expect(events[1]?.current).toBe(100);
+    expect(events[1]?.total).toBe(200);
+  });
+
+  test("provider pullArtifact redacts registry credentials from progress events", async () => {
+    const reference = "https://user:s3cr3tPass@registry.internal/team/img:1.0";
+    const events: ImagePullProgressEvent[] = [];
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            podmanApi: {
+              info: Effect.succeed({ host: { arch: "x64" } }),
+              ping: Effect.succeed(undefined),
+              stream: () => Stream.fromIterable([bytes(`{"stream":"Trying to pull ${reference}..."}\n`)]),
+            },
+            eventService: {
+              publish: (event) =>
+                Effect.sync(() => {
+                  captureImagePullProgress(events, event);
+                }),
+            },
+          }),
+        ),
+      ),
+    );
+
+    await Effect.runPromise(provider.pullArtifact({ ref: reference }));
+
+    const serialized = JSON.stringify(events);
+    expect(serialized).not.toContain("s3cr3tPass");
+    expect(serialized).toContain("[redacted]");
+  });
+
+  test.skipIf(!imagePullLive.available)(
+    liveIntegrationTestName(
+      "pulls a live image through the Podman socket when explicitly enabled",
+      imagePullLive,
+    ),
+    async () => {
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
+      expect(socketPath).toBeTruthy();
+      const events: ImagePullProgressEvent[] = [];
+      const provider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              platform: "linux",
+              podmanApi: makePodmanApiClient(socketPath ?? ""),
+              eventService: {
+                publish: (event) =>
+                  Effect.sync(() => {
+                    captureImagePullProgress(events, event);
+                  }),
+              },
+            }),
+          ),
+        ),
+      );
+
+      const artifact = await Effect.runPromise(
+        provider.pullArtifact({ ref: "docker.io/library/alpine:3.20.3" }),
+      );
+
+      expect(artifact.ref).toBe("docker.io/library/alpine:3.20.3");
+      expect(events.length).toBeGreaterThan(0);
+    },
+  );
 });

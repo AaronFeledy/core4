@@ -47,6 +47,14 @@ describe("provider-lando system machine runner argv", () => {
       expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
     });
 
+    test(`${platform} syncTrust imports native CA trust for an existing Lando-owned machine`, async () => {
+      const { spawn, calls } = capturingSpawn();
+      const runner = runnerFor(platform, spawn);
+      expect(runner.syncTrust).toBeDefined();
+      await Effect.runPromise(runner.syncTrust ?? Effect.void);
+      expect(calls).toEqual([["podman", "machine", "set", "--import-native-ca", "lando"]]);
+    });
+
     test(`${platform} stop argv is unchanged`, async () => {
       const { spawn, calls } = capturingSpawn();
       await Effect.runPromise(runnerFor(platform, spawn).stop);

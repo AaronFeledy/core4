@@ -30,6 +30,31 @@ const nodeCommand = [
   "-e",
   "require('http').createServer((_,res)=>res.end('lando-bringup-ok')).listen(31080)",
 ];
+const liveProbeDelayMs = 250;
+const liveProbeAttempts = 40;
+
+const sleep = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const waitForHttpBody = async (url: string, expectedBody: string): Promise<string> => {
+  let lastError: Error | undefined;
+  for (let attempt = 1; attempt <= liveProbeAttempts; attempt += 1) {
+    try {
+      const response = await fetch(url);
+      const body = await response.text();
+      if (body === expectedBody) return body;
+      lastError = new Error(`Expected ${expectedBody} from ${url}, received ${body}`);
+    } catch (error) {
+      if (error instanceof Error) {
+        lastError = error;
+      } else {
+        throw error;
+      }
+    }
+    if (attempt < liveProbeAttempts) await sleep(liveProbeDelayMs);
+  }
+  throw lastError ?? new Error(`Timed out waiting for ${url}`);
+};
 
 const servicePlan = (name: "node" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
@@ -357,9 +382,11 @@ describe("provider-lando bringUp", () => {
       Name: "lando-cache-npm",
       Labels: {
         "dev.lando.app": appId,
+        "dev.lando.provider": "lando",
         "dev.lando.scope": "global",
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
+        "dev.lando.volume-selector": "lando:bringupapp:cache",
       },
     });
     const nodeCreate = fake.calls.find(
@@ -694,8 +721,7 @@ describe("provider-lando bringUp", () => {
           expect(response.body).toContain('"Running":true');
         }
 
-        const httpResponse = await fetch("http://127.0.0.1:31080");
-        const responseBody = await httpResponse.text();
+        const responseBody = await waitForHttpBody("http://127.0.0.1:31080", "lando-bringup-ok");
         expect(responseBody).toBe("lando-bringup-ok");
         const socket = await Bun.connect({
           hostname: "127.0.0.1",

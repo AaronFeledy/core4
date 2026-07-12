@@ -1,8 +1,8 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect } from "effect";
+import { DateTime, Effect, Stream } from "effect";
 
-import type { ContainerBuildHttpRequest } from "@lando/container-runtime/image-build";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   AppId,
@@ -60,13 +60,13 @@ const plan: AppPlan = {
 };
 
 test("provider-podman buildArtifact uses the Podman build API seam", async () => {
-  const requests: ContainerBuildHttpRequest[] = [];
+  const requests: string[] = [];
   const podmanApi: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
-        requests.push(request);
+        requests.push(`${request.method} ${request.path}`);
         return { status: 200, body: "" };
       }),
   };
@@ -84,6 +84,56 @@ test("provider-podman buildArtifact uses the Podman build API seam", async () =>
   );
 
   expect(artifact).toEqual({ providerId, ref: "lando-build-podman-web-podman-key" });
-  expect(requests[0]?.method).toBe("POST");
-  expect(requests[0]?.path).toContain("/build?t=lando-build-podman-web-podman-key");
+  expect(requests[0]).toStartWith("POST ");
+  expect(requests[0]).toContain("/build?t=lando-build-podman-web-podman-key");
+});
+
+test("provider-podman pullArtifact uses the Podman pull stream seam", async () => {
+  const encoder = new TextEncoder();
+  const paths: string[] = [];
+  const podmanApi: PodmanApiClient = {
+    info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
+    ping: Effect.succeed(undefined),
+    stream: (request) => {
+      paths.push(request.path);
+      return Stream.fromIterable([encoder.encode('{"stream":"Trying to pull alpine..."}\n')]);
+    },
+  };
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({
+      podmanApi,
+      platform: "linux",
+      env: {},
+      conflictDetector: () => Effect.void,
+    }),
+  );
+
+  const artifact = await Effect.runPromise(provider.pullArtifact({ ref: "docker.io/library/alpine:3.20.3" }));
+
+  expect(artifact).toEqual({ providerId, ref: "docker.io/library/alpine:3.20.3" });
+  expect(paths[0]).toContain("/libpod/images/pull");
+  expect(paths[0]).toContain("pullProgress=true");
+});
+
+test("provider-podman pullArtifact failures report providerId podman", async () => {
+  const podmanApi: PodmanApiClient = {
+    info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
+    ping: Effect.succeed(undefined),
+    stream: () => Stream.fromIterable([new TextEncoder().encode('{"error":"manifest unknown"}\n')]),
+  };
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({
+      podmanApi,
+      platform: "linux",
+      env: {},
+      conflictDetector: () => Effect.void,
+    }),
+  );
+
+  const error = await Effect.runPromise(
+    provider.pullArtifact({ ref: "docker.io/library/missing:latest" }).pipe(Effect.flip),
+  );
+
+  expect(error).toBeInstanceOf(ProviderUnavailableError);
+  expect(error.providerId).toBe("podman");
 });
