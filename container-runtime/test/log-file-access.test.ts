@@ -62,9 +62,25 @@ const objectField = (value: unknown, key: string): unknown =>
     ? Object.entries(value).find(([name]) => name === key)?.[1]
     : undefined;
 
+const tarEntryNames = (archive: Uint8Array): ReadonlyArray<string> => {
+  const names: string[] = [];
+  for (let offset = 0; offset + 512 <= archive.byteLength; offset += 512) {
+    const header = archive.slice(offset, offset + 512);
+    if (header.every((byte) => byte === 0)) break;
+    const nameEnd = header.indexOf(0);
+    const name = text(header.slice(0, nameEnd < 0 ? 100 : nameEnd));
+    const sizeText = text(header.slice(124, 136)).replaceAll("\0", "").trim();
+    const size = Number.parseInt(sizeText, 8);
+    names.push(name);
+    offset += Math.ceil(size / 512) * 512;
+  }
+  return names;
+};
+
 interface FakeExec {
   readonly id: string;
   readonly command: ReadonlyArray<string>;
+  readonly user?: string;
 }
 
 const makeFakeApi = () => {
@@ -100,7 +116,8 @@ const makeFakeApi = () => {
             typeof body === "object" && body !== null && "Cmd" in body && Array.isArray(body.Cmd)
               ? body.Cmd.filter((item): item is string => typeof item === "string")
               : [];
-          execs.push({ id, command });
+          const user = objectField(body, "User");
+          execs.push({ id, command, ...(typeof user === "string" ? { user } : {}) });
           return { status: 201, body: JSON.stringify({ Id: id }) };
         }
         return { status: 500, body: JSON.stringify({ message: "unexpected request" }) };
@@ -216,6 +233,73 @@ const makeReadEchoApi = (): DataPlaneApiClient => ({
     ),
 });
 
+const makeCleanupHangApi = () => {
+  let abortSession = () => {};
+  const aborted = new Promise<"aborted">((resolve) => {
+    abortSession = () => resolve("aborted");
+  });
+  const api: DataPlaneApiClient = {
+    request: (request) =>
+      request.path === "/containers/service/exec"
+        ? Effect.succeed({ status: 201, body: JSON.stringify({ Id: "cleanup-hang" }) })
+        : Effect.succeed({ status: 200, body: "{}" }),
+    stream: (request) =>
+      Stream.fromAsyncIterable(
+        (async function* () {
+          request.signal?.addEventListener("abort", abortSession, { once: true });
+          for await (const line of inputLines(request.stdin)) {
+            const op = parsedOp(line);
+            if (op === "open") yield helperLine({ ok: true, stat: { dev: "1", ino: "2", size: "0" } });
+            if (op === "cleanup") continue;
+            if (op === "close") yield helperLine({ ok: true });
+          }
+        })(),
+        (cause) =>
+          new ProviderInternalError({
+            providerId: "test",
+            operation: "log-file-access.test",
+            message: "fake stream failed",
+            cause,
+          }),
+      ),
+  };
+  return { aborted, api };
+};
+
+const makeStartupFailureApi = () => {
+  const requests: DataPlaneHttpRequest[] = [];
+  const execs: FakeExec[] = [];
+  let uploaded: Uint8Array<ArrayBufferLike> = new Uint8Array();
+  const api: DataPlaneApiClient = {
+    request: (request) =>
+      Effect.promise(async () => {
+        requests.push(request);
+        if (request.method === "PUT" && request.path.startsWith("/containers/service/archive?")) {
+          uploaded = await collectAsyncBytes(request.stdin);
+          return { status: 200, body: "{}" };
+        }
+        if (request.method === "POST" && request.path === "/containers/service/exec") {
+          const body = request.body;
+          const command =
+            typeof body === "object" && body !== null && "Cmd" in body && Array.isArray(body.Cmd)
+              ? body.Cmd.filter((item): item is string => typeof item === "string")
+              : [];
+          const user = objectField(body, "User");
+          execs.push({ id: `exec-${execs.length}`, command, ...(typeof user === "string" ? { user } : {}) });
+          return command.includes("cleanup")
+            ? { status: 201, body: JSON.stringify({ Id: "cleanup" }) }
+            : { status: 500, body: JSON.stringify({ message: "create failed" }) };
+        }
+        return { status: 200, body: "{}" };
+      }),
+    stream: () => Stream.empty,
+  };
+  return { api, execs, requests, state: () => ({ uploaded }) };
+};
+
+const withTimeout = async <T>(promise: Promise<T>, timeout: T): Promise<T> =>
+  Promise.race([promise, new Promise<T>((resolve) => setTimeout(() => resolve(timeout), 250))]);
+
 describe("Docker-compatible log file access", () => {
   test("installs a static helper and keeps reads bounded on an open exec session", async () => {
     const fake = makeFakeApi();
@@ -242,7 +326,48 @@ describe("Docker-compatible log file access", () => {
     expect(
       fake.requests.some((request) => request.method === "GET" && request.path.includes("/archive")),
     ).toBe(false);
-    expect(fake.execs[0]?.command).toEqual(["/tmp/lando-log-file-helper"]);
+    const command = fake.execs[0]?.command[0];
+    expect(command).toMatch(/^\/tmp\/lando-log-file-helper-[0-9a-f]{32}\/lando-log-file-helper$/);
+    expect(fake.execs[0]?.user).toBeUndefined();
+    expect(fake.execs[1]?.user).toBe("0");
+    expect(fake.execs[1]?.command).toEqual([
+      command,
+      "cleanup",
+      command?.slice(0, -"/lando-log-file-helper".length),
+    ]);
+  });
+
+  test("installs distinct helper paths with directory and executable tar entries per session", async () => {
+    const fake = makeFakeApi();
+    const access = makeDockerLogFileAccess({
+      providerId: "test",
+      api: fake.api,
+      container: "service",
+      helperPayload: bytes("helper binary"),
+    });
+
+    await Effect.runPromise(access.stat("/var/log/one.log"));
+    await Effect.runPromise(access.stat("/var/log/two.log"));
+
+    const commands = fake.execs
+      .filter((exec) => exec.user === undefined)
+      .map((exec) => exec.command[0])
+      .filter((command): command is string => command !== undefined);
+    expect(commands).toHaveLength(2);
+    expect(commands[0]).not.toBe(commands[1]);
+    expect(
+      commands.every((command) =>
+        /^\/tmp\/lando-log-file-helper-[0-9a-f]{32}\/lando-log-file-helper$/.test(command),
+      ),
+    ).toBe(true);
+    const names = tarEntryNames(fake.state().uploaded);
+    expect(names).toEqual([
+      `${commands[1]?.slice("/tmp/".length, -"/lando-log-file-helper".length)}/`,
+      commands[1]?.slice("/tmp/".length),
+    ]);
+    const cleanupCommands = fake.execs.filter((exec) => exec.user === "0").map((exec) => exec.command);
+    expect(cleanupCommands[0]?.[0]).not.toBe(cleanupCommands[1]?.[0]);
+    expect(cleanupCommands.every((command) => command[1] === "cleanup")).toBe(true);
   });
 
   test("decodes helper frames split across UTF-8 byte boundaries", async () => {
@@ -344,6 +469,84 @@ describe("Docker-compatible log file access", () => {
 
     expect(read.bytes.byteLength).toBe(65_536);
     expect(read.nextOffset).toBe(65_536n);
+  });
+
+  test("closes and aborts the helper session when cleanup does not respond", async () => {
+    const fake = makeCleanupHangApi();
+    const access = makeDockerLogFileAccess({
+      providerId: "test",
+      api: fake.api,
+      container: "service",
+      helperPayload: bytes("helper"),
+    });
+    const handle = await Effect.runPromise(access.open("/var/log/app.log"));
+
+    const result = await withTimeout(
+      Effect.runPromise(handle.close).then(() => "closed"),
+      "timeout",
+    );
+    const abortResult = await withTimeout(fake.aborted, "timeout");
+
+    expect(result).toBe("closed");
+    expect(abortResult).toBe("aborted");
+  });
+
+  test("attempts root cleanup when startup fails after helper upload", async () => {
+    const fake = makeStartupFailureApi();
+    const access = makeDockerLogFileAccess({
+      providerId: "test",
+      api: fake.api,
+      container: "service",
+      helperPayload: bytes("helper"),
+    });
+
+    const exit = await Effect.runPromiseExit(access.stat("/var/log/app.log"));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(fake.state().uploaded.byteLength).toBeGreaterThan(bytes("helper").byteLength);
+    expect(fake.execs).toHaveLength(2);
+    expect(fake.execs[0]?.user).toBeUndefined();
+    expect(fake.execs[1]?.user).toBe("0");
+    expect(fake.execs[1]?.command[1]).toBe("cleanup");
+    expect(fake.execs[1]?.command[2]).toMatch(/^\/tmp\/lando-log-file-helper-[0-9a-f]{32}$/);
+  });
+
+  test("rejects malformed unsigned decimal stat sizes from helper", async () => {
+    const api = makeProtocolApi(helperLine({ ok: true, stat: { dev: "1", ino: "2", size: "01" } }));
+    const access = makeDockerLogFileAccess({
+      providerId: "test",
+      api,
+      container: "service",
+      helperPayload: bytes("helper"),
+    });
+
+    const exit = await Effect.runPromiseExit(access.stat("/var/log/app.log"));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
+    }
+  });
+
+  test("rejects malformed unsigned decimal read offsets from helper", async () => {
+    const access = makeDockerLogFileAccess({
+      providerId: "test",
+      api: makeChunkedProtocolApi([
+        helperLine({ ok: true, stat: { dev: "1", ino: "2", size: "0" } }),
+        helperLine({ ok: true, bytes: "", nextOffset: "1n", eof: true }),
+      ]),
+      container: "service",
+      helperPayload: bytes("helper"),
+    });
+    const handle = await Effect.runPromise(access.open("/var/log/app.log"));
+
+    const exit = await Effect.runPromiseExit(handle.read(0n, 1));
+    await Effect.runPromise(handle.close);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(ProviderInternalError);
+    }
   });
 
   test("maps missing stat responses to Option.none", async () => {

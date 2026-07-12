@@ -6,10 +6,11 @@ import type { ProviderError } from "@lando/sdk/services";
 
 import type { DataPlaneApiClient, DataPlaneHttpRequest, DataPlaneHttpResponse } from "./data-plane.ts";
 import { archiveLogFileHelper } from "./log-file-archive.ts";
+import { cleanupLogFileHelper, makeLogFileHelperPaths } from "./log-file-helper-cleanup.ts";
 import { HelperSession } from "./log-file-session.ts";
 
-const helperPath = "/tmp/lando-log-file-helper";
 const maxReadBytes = 65_536;
+const unsignedDecimalPattern = /^(0|[1-9][0-9]*)$/;
 
 export interface DockerLogFileAccessOptions {
   readonly providerId: string;
@@ -19,6 +20,11 @@ export interface DockerLogFileAccessOptions {
 }
 
 type HelperObject = object & Record<"ok", unknown>;
+
+interface HelperLease {
+  readonly session: HelperSession;
+  readonly close: Effect.Effect<void>;
+}
 
 const internal = (providerId: string, message: string, details?: unknown, cause?: unknown) =>
   new ProviderInternalError({
@@ -63,15 +69,29 @@ const ensure2xx = (response: DataPlaneHttpResponse, providerId: string, details:
         unavailable(providerId, `Docker-compatible API returned HTTP ${response.status}.`, details),
       );
 
+const parseUnsignedDecimalBigInt = (
+  value: string,
+  providerId: string,
+  field: string,
+): Effect.Effect<bigint, ProviderInternalError> =>
+  unsignedDecimalPattern.test(value)
+    ? Effect.succeed(BigInt(value))
+    : Effect.fail(internal(providerId, `Invalid unsigned decimal helper ${field}.`, value));
+
 const statFrom = (value: unknown, providerId: string): Effect.Effect<LogFileStat, ProviderInternalError> => {
   if (typeof value !== "object" || value === null)
     return Effect.fail(internal(providerId, "Invalid helper stat frame.", value));
   if (!("dev" in value) || !("ino" in value) || !("size" in value)) {
     return Effect.fail(internal(providerId, "Incomplete helper stat frame.", value));
   }
-  return typeof value.dev === "string" && typeof value.ino === "string" && typeof value.size === "string"
-    ? Effect.succeed({ dev: value.dev, ino: value.ino, size: BigInt(value.size) })
-    : Effect.fail(internal(providerId, "Invalid helper stat field types.", value));
+  if (typeof value.dev !== "string" || typeof value.ino !== "string" || typeof value.size !== "string") {
+    return Effect.fail(internal(providerId, "Invalid helper stat field types.", value));
+  }
+  const dev = value.dev;
+  const ino = value.ino;
+  return parseUnsignedDecimalBigInt(value.size, providerId, "stat size").pipe(
+    Effect.map((size) => ({ dev, ino, size })),
+  );
 };
 
 const decodeBase64 = (value: string): Uint8Array => Uint8Array.from(Buffer.from(value, "base64"));
@@ -88,7 +108,6 @@ const parseResponse = (value: unknown, providerId: string): Effect.Effect<Helper
 export const makeDockerLogFileAccess = (
   options: DockerLogFileAccessOptions,
 ): LogFileAccess<ProviderError> => {
-  let installed = false;
   const request = (input: DataPlaneHttpRequest) =>
     options.api.request === undefined
       ? Effect.fail(unavailable(options.providerId, "Provider API request client is missing."))
@@ -97,57 +116,62 @@ export const makeDockerLogFileAccess = (
     options.api.stream === undefined
       ? Stream.fail(unavailable(options.providerId, "Provider API stream client is missing."))
       : options.api.stream(input);
-  const install = () =>
-    installed
-      ? Effect.void
-      : request({
-          method: "PUT",
-          path: `/containers/${encodeURIComponent(options.container)}/archive?path=/tmp`,
-          headers: { "Content-Type": "application/x-tar" },
-          stdin: oneChunk(archiveLogFileHelper(options.helperPayload)),
-        }).pipe(
-          Effect.tap((response) => ensure2xx(response, options.providerId, "install helper")),
-          Effect.tap(() =>
-            Effect.sync(() => {
-              installed = true;
-            }),
-          ),
-          Effect.asVoid,
-        );
+  const install = (directoryName: string) =>
+    request({
+      method: "PUT",
+      path: `/containers/${encodeURIComponent(options.container)}/archive?path=/tmp`,
+      headers: { "Content-Type": "application/x-tar" },
+      stdin: oneChunk(archiveLogFileHelper(options.helperPayload, directoryName)),
+    }).pipe(
+      Effect.tap((response) => ensure2xx(response, options.providerId, "install helper")),
+      Effect.asVoid,
+    );
+  const cleanup = (paths: ReturnType<typeof makeLogFileHelperPaths>) => cleanupLogFileHelper(options, paths);
   const startSession = () =>
-    install().pipe(
-      Effect.zipRight(
-        request({
-          method: "POST",
-          path: `/containers/${encodeURIComponent(options.container)}/exec`,
-          body: {
-            Cmd: [helperPath],
-            AttachStdin: true,
-            AttachStdout: true,
-            AttachStderr: false,
-            OpenStdin: true,
-            Tty: false,
-          },
-        }),
-      ),
-      Effect.tap((response) => ensure2xx(response, options.providerId, "create helper exec")),
-      Effect.flatMap((response) => parseExecId(response.body, options.providerId)),
-      Effect.map(
-        (id) =>
-          new HelperSession(options.providerId, (stdin, signal) =>
-            stream({
+    Effect.sync(makeLogFileHelperPaths).pipe(
+      Effect.flatMap((paths) =>
+        install(paths.directoryName).pipe(
+          Effect.zipRight(
+            request({
               method: "POST",
-              path: `/exec/${encodeURIComponent(id)}/start`,
-              headers: { Connection: "Upgrade", Upgrade: "tcp" },
-              body: { Detach: false, Tty: false },
-              stdin,
-              signal,
+              path: `/containers/${encodeURIComponent(options.container)}/exec`,
+              body: {
+                Cmd: [paths.helperPath],
+                AttachStdin: true,
+                AttachStdout: true,
+                AttachStderr: false,
+                OpenStdin: true,
+                Tty: false,
+              },
             }),
           ),
+          Effect.tap((response) => ensure2xx(response, options.providerId, "create helper exec")),
+          Effect.flatMap((response) => parseExecId(response.body, options.providerId)),
+          Effect.map((id): HelperLease => {
+            const session = new HelperSession(options.providerId, (stdin, signal) =>
+              stream({
+                method: "POST",
+                path: `/exec/${encodeURIComponent(id)}/start`,
+                headers: { Connection: "Upgrade", Upgrade: "tcp" },
+                body: { Detach: false, Tty: false },
+                stdin,
+                signal,
+              }),
+            );
+            let closed = false;
+            const close = Effect.suspend(() => {
+              if (closed) return Effect.void;
+              closed = true;
+              return session.close().pipe(Effect.zipRight(cleanup(paths)));
+            });
+            return { session, close };
+          }),
+          Effect.catchAll((cause) => cleanup(paths).pipe(Effect.zipRight(Effect.fail(cause)))),
+        ),
       ),
     );
-  const stat = (session: HelperSession, path: string) =>
-    session.send({ op: "stat", path }).pipe(
+  const stat = (lease: HelperLease, path: string) =>
+    lease.session.send({ op: "stat", path }).pipe(
       Effect.flatMap((response) => parseResponse(response, options.providerId)),
       Effect.flatMap((response) =>
         "missing" in response && response.missing === true
@@ -156,14 +180,14 @@ export const makeDockerLogFileAccess = (
             ? statFrom(response.stat, options.providerId).pipe(Effect.map(Option.some))
             : Effect.fail(internal(options.providerId, "Stat response omitted stat.", response)),
       ),
-      Effect.ensuring(session.close()),
+      Effect.ensuring(lease.close),
     );
   return {
-    stat: (path) => startSession().pipe(Effect.flatMap((session) => stat(session, path))),
+    stat: (path) => startSession().pipe(Effect.flatMap((lease) => stat(lease, path))),
     open: (path) =>
       startSession().pipe(
-        Effect.flatMap((session) =>
-          session.send({ op: "open", path }).pipe(
+        Effect.flatMap((lease) =>
+          lease.session.send({ op: "open", path }).pipe(
             Effect.flatMap((response) => parseResponse(response, options.providerId)),
             Effect.flatMap((response) =>
               "stat" in response
@@ -172,7 +196,7 @@ export const makeDockerLogFileAccess = (
             ),
             Effect.map(
               (): LogFileHandle<ProviderError> => ({
-                stat: session.send({ op: "fstat" }).pipe(
+                stat: lease.session.send({ op: "fstat" }).pipe(
                   Effect.flatMap((response) => parseResponse(response, options.providerId)),
                   Effect.flatMap((response) =>
                     "stat" in response
@@ -181,7 +205,7 @@ export const makeDockerLogFileAccess = (
                   ),
                 ),
                 read: (offset, maxBytes): Effect.Effect<LogFileRead, ProviderError> =>
-                  session
+                  lease.session
                     .send({ op: "read", offset: String(offset), maxBytes: Math.min(maxBytes, maxReadBytes) })
                     .pipe(
                       Effect.flatMap((response) => parseResponse(response, options.providerId)),
@@ -202,18 +226,19 @@ export const makeDockerLogFileAccess = (
                               response,
                             ),
                           );
+                        const eof = response.eof;
                         const bytes = decodeBase64(response.bytes).slice(0, maxBytes);
-                        return Effect.succeed({
-                          bytes,
-                          nextOffset: BigInt(response.nextOffset),
-                          eof: response.eof,
-                        });
+                        return parseUnsignedDecimalBigInt(
+                          response.nextOffset,
+                          options.providerId,
+                          "read nextOffset",
+                        ).pipe(Effect.map((nextOffset) => ({ bytes, nextOffset, eof })));
                       }),
                     ),
-                close: Effect.suspend(() => session.close()),
+                close: lease.close,
               }),
             ),
-            Effect.catchAll((cause) => session.close().pipe(Effect.zipRight(Effect.fail(cause)))),
+            Effect.catchAll((cause) => lease.close.pipe(Effect.zipRight(Effect.fail(cause)))),
           ),
         ),
       ),
