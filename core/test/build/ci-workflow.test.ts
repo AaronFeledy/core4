@@ -436,10 +436,17 @@ describe("ci workflow", () => {
     const buildWindows = findIndentedBlock(jobs, "build-windows-x64", 2);
 
     expect(buildWindows).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]",
     );
     expect(buildWindows).toContain("    runs-on: windows-2022");
+    expect(buildWindows).toContain("      - name: Download host-proxy shims from Linux artifact");
+    expect(buildWindows).toContain("          name: lando-linux-x64");
+    expect(buildWindows).toContain("          path: host-proxy-shims");
     expect(buildWindows).toContain("        run: bun run --filter='@lando/core' build:manifest");
+    expect(buildWindows).not.toContain("          bun run --filter='@lando/core' build:host-proxy-shim");
+    expect(buildWindows).toContain(
+      "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('host-proxy-shims/host-proxy', 'dist/host-proxy', { recursive: true });\"",
+    );
     expect(buildWindows).toContain(
       "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external",
     );
@@ -463,6 +470,9 @@ describe("ci workflow", () => {
     expect(buildWindows).toContain("          if-no-files-found: ignore");
     expect(buildWindows).toContain("          retention-days: 14");
 
+    expect(buildWindows.indexOf("path: host-proxy-shims")).toBeLessThan(
+      buildWindows.indexOf("run: bun run --filter='@lando/core' build:manifest"),
+    );
     expect(buildWindows.indexOf("--outfile ./dist/lando-windows-x64.exe")).toBeLessThan(
       buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
     );

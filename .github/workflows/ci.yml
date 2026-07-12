@@ -985,7 +985,7 @@ jobs:
           echo "::notice title=ci-timing::build-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
   build-windows-x64:
-    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]
+    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
@@ -1002,14 +1002,19 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Download host-proxy shims from Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: host-proxy-shims
+
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build windows-x64 binary
         run: |
           mkdir -p dist
-          bun run --filter='@lando/core' build:host-proxy-shim
-          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('host-proxy-shims/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
 
