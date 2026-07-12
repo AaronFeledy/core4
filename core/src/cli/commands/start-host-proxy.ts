@@ -151,17 +151,15 @@ export const withStartedHostProxy = <A, E, R>(
           .use(applyPlan)
           .pipe(
             Effect.tap(() =>
-              session === undefined
-                ? Ref.set(keepSession, true)
-                : Ref.set(keepSession, true).pipe(
-                    Effect.zipRight(
-                      options.managed === undefined
-                        ? Effect.void
-                        : Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
-                            Effect.provideService(Scope.Scope, options.managed.scope),
-                          ),
-                    ),
-                  ),
+              Ref.set(keepSession, true).pipe(
+                Effect.zipRight(
+                  session === undefined || options.managed === undefined
+                    ? Effect.void
+                    : Effect.addFinalizer(() => Effect.promise(() => session.close())).pipe(
+                        Effect.provideService(Scope.Scope, options.managed.scope),
+                      ),
+                ),
+              ),
             ),
           );
       },
