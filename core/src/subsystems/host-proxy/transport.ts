@@ -117,9 +117,7 @@ export const createHostProxyRunLandoSession = (
       resolveClosed = resolveClosedPromise;
     });
     const close = async () => {
-      closePromise ??= (async () => {
-        await closeHostProxyServer(server, paths, inFlight);
-      })().finally(resolveClosed);
+      closePromise ??= closeHostProxyServer(server, paths, inFlight).finally(resolveClosed);
       await closePromise;
     };
     shutdownRef.current = close;
