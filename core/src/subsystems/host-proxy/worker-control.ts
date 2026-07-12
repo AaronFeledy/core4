@@ -114,8 +114,9 @@ const shutdownWorker = (record: HostProxyControlRecord) =>
 const defaultTerminateProcess = async (pid: number, signal: NodeJS.Signals): Promise<void> => {
   try {
     process.kill(pid, signal);
-  } catch {
-    return;
+  } catch (cause) {
+    if (cause instanceof Error) return;
+    throw cause;
   }
 };
 
