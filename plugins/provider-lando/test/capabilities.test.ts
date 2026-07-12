@@ -101,14 +101,14 @@ describe("provider-lando capabilities", () => {
 
     expect(runtimeProvider.platform).toBe("win32");
     expect(runtimeProvider.capabilities).toEqual({
-      ...mvpProviderCapabilities("win32"),
+      ...mvpProviderCapabilities("win32", "arm64"),
       serviceLogSources: false,
     });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);
     expect(runtimeProvider.capabilities.bindMountPerformance).toBe("slow");
     expect(runtimeProvider.capabilities.providerExtensions).toEqual([]);
     expect(runtimeProvider.capabilities.hostProxy).toEqual({
-      containerTargets: [],
+      containerTargets: [{ os: "linux", arch: "arm64" }],
       tcpHostGateway: "host.containers.internal",
     });
   });

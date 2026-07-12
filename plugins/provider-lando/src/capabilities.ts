@@ -189,8 +189,8 @@ export const providerLandoCapabilitiesForPlatform = (
 export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("linux");
 export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("darwin");
 export const windowsMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("win32");
-export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
-  providerLandoCapabilitiesForPlatform(platform);
+export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): ProviderCapabilities =>
+  providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTarget(arch));
 
 const collectRequestStdin = async (
   stdin: AsyncIterable<Uint8Array> | undefined,
