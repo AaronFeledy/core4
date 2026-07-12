@@ -255,12 +255,17 @@ describe("provider-podman Podman Desktop discovery", () => {
 });
 
 describe("provider-podman RuntimeProvider layer", () => {
+  const responsiveApi = { ping: Effect.void } as const;
+
   test("introspects platform-specific capabilities", async () => {
     const linuxProvider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
+        },
       }),
     );
     const macosProvider = await Effect.runPromise(
@@ -268,7 +273,10 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "darwin",
         arch: "arm64",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }),
+        },
       }),
     );
     const windowsProvider = await Effect.runPromise(
@@ -276,7 +284,10 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "win32",
         arch: "arm64",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }),
+        },
       }),
     );
 
@@ -298,7 +309,10 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "win32",
         arch: "x64",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }),
+        },
       }),
     );
 
@@ -311,7 +325,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "win32",
         arch: "arm64",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: {} }) },
+        podmanApi: { ...responsiveApi, info: Effect.succeed({ version: { Version: "6.0.2" }, host: {} }) },
       }),
     );
 
@@ -324,7 +338,10 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
+        },
         logFileAccess: fs.access,
       }),
     );
@@ -337,7 +354,10 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
+        },
         logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
       }),
     );
@@ -350,7 +370,10 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }),
+        },
         logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
       }),
     );
@@ -366,7 +389,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         env: { XDG_RUNTIME_DIR: "/run/user/1000" },
         podmanApiFactory: (socketPath) => {
           createdHosts.push(socketPath);
-          return { info: Effect.succeed({ version: { Version: "6.0.2" } }) };
+          return { ...responsiveApi, info: Effect.succeed({ version: { Version: "6.0.2" } }) };
         },
       }),
     );
@@ -381,7 +404,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         env: {},
         podmanApiFactory: (socketPath) => {
           createdHosts.push(socketPath);
-          return { info: Effect.succeed({ version: { Version: "6.0.2" } }) };
+          return { ...responsiveApi, info: Effect.succeed({ version: { Version: "6.0.2" } }) };
         },
       }),
     );
@@ -396,7 +419,10 @@ describe("provider-podman RuntimeProvider layer", () => {
           XDG_RUNTIME_DIR: "/run/user/1000",
           LANDO_PODMAN_MACHINE: "bad;name",
         },
-        podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }) },
+        podmanApi: {
+          ...responsiveApi,
+          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
+        },
       }),
     );
 

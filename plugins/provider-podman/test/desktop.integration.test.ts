@@ -84,6 +84,7 @@ const makeFakeApi = () => {
 
   const api: PodmanApiClient = {
     info: Effect.succeed({ host: { os: "darwin" }, version: { Version: "6.0.2" } }),
+    ping: Effect.void,
     request: (request) =>
       Effect.sync((): PodmanHttpResponse => {
         calls.push(request);
@@ -190,7 +191,7 @@ describe.each([
     const fake = makeFakeApi();
     const provider = await buildProvider(stateDir, platform, fake.api);
 
-    await Effect.runPromise(provider.apply(plan, { reconcile: true }));
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
     expect(fake.calls.some((call) => call.path === "/networks/create")).toBe(true);
     expect(
@@ -202,17 +203,17 @@ describe.each([
   test("inspect returns a snapshot with providerId=podman", async () => {
     const fake = makeFakeApi();
     const provider = await buildProvider(stateDir, platform, fake.api);
-    await Effect.runPromise(provider.apply(plan, { reconcile: true }));
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
     const snapshot = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
-    expect(snapshot.providerId).toBe("podman");
+    expect(String(snapshot.providerId)).toBe("podman");
     expect(snapshot.state).toBeTruthy();
   });
 
   test("exec routes through the Podman REST API", async () => {
     const fake = makeFakeApi();
     const provider = await buildProvider(stateDir, platform, fake.api);
-    await Effect.runPromise(provider.apply(plan, { reconcile: true }));
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
     const result = await Effect.runPromise(
       provider.exec({ app: appId, service: serviceName }, { command: ["echo", "ok"] }),
@@ -225,7 +226,7 @@ describe.each([
   test("logs streams through the Podman REST API", async () => {
     const fake = makeFakeApi();
     const provider = await buildProvider(stateDir, platform, fake.api);
-    await Effect.runPromise(provider.apply(plan, { reconcile: true }));
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
     const chunks = await Effect.runPromise(
       Stream.runCollect(provider.logs({ app: appId, service: serviceName }, { follow: false })),
@@ -238,7 +239,7 @@ describe.each([
   test("destroy brings down the service and the network", async () => {
     const fake = makeFakeApi();
     const provider = await buildProvider(stateDir, platform, fake.api);
-    await Effect.runPromise(provider.apply(plan, { reconcile: true }));
+    await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
 
     await Effect.runPromise(provider.destroy({ app: appId }, { volumes: true }));
 
@@ -258,7 +259,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       operation: "podman-api",
       message: "ENOENT: socket missing",
     });
-    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure) };
+    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
     const exit = await Effect.runPromiseExit(
       RuntimeProvider.pipe(
@@ -292,7 +293,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       operation: "podman-api",
       message: "Named pipe not found",
     });
-    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure) };
+    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
     const exit = await Effect.runPromiseExit(
       RuntimeProvider.pipe(
@@ -324,7 +325,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       operation: "podman-api",
       message: "Named pipe not found",
     });
-    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure) };
+    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
     const original = process.env.LANDO_PODMAN_MACHINE;
 
     process.env.LANDO_PODMAN_MACHINE = "custom-machine";
@@ -366,7 +367,7 @@ describe("provider-podman Podman Desktop machine-not-running remediation", () =>
       operation: "podman-api",
       message: "Connection refused",
     });
-    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure) };
+    const fakeApi: PodmanApiClient = { info: Effect.fail(socketFailure), ping: Effect.void };
 
     const exit = await Effect.runPromiseExit(
       RuntimeProvider.pipe(
