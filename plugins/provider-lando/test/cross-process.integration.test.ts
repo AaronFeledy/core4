@@ -205,6 +205,14 @@ const makeFakePodmanState = () => {
   const existing = new Set<string>();
   const networks = new Set<string>();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
+  const volumeLabels = new Map(
+    plan.stores.map((store) => [
+      store.name,
+      {
+        "dev.lando.volume-selector": `lando:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
+      },
+    ]),
+  );
   const calls: PodmanHttpRequest[] = [];
 
   const api: PodmanApiClient = {
@@ -223,10 +231,15 @@ const makeFakePodmanState = () => {
           return { status: 201, body: "{}" };
         }
         if (request.path === "/volumes/create") {
-          const requested = (request.body as { Name?: string }).Name ?? "";
+          const body = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
+          const requested = body.Name ?? "";
           const existed = volumes.has(requested);
           volumes.add(requested);
+          if (!existed && body.Labels !== undefined) volumeLabels.set(requested, body.Labels);
           return { status: existed ? 409 : 201, body: "{}" };
+        }
+        if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
+          return { status: 200, body: "[]" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
           const network = decodeURIComponent(request.path.slice("/networks/".length));
@@ -268,9 +281,17 @@ const makeFakePodmanState = () => {
           running.delete(name);
           return { status: deleted ? 204 : 404, body: "" };
         }
+        if (request.method === "GET" && request.path.startsWith("/volumes/")) {
+          const volume = decodeURIComponent(request.path.slice("/volumes/".length));
+          return {
+            status: volumes.has(volume) ? 200 : 404,
+            body: JSON.stringify({ Labels: volumeLabels.get(volume) ?? {} }),
+          };
+        }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
           const volume = decodeURIComponent(request.path.slice("/volumes/".length));
           const deleted = volumes.delete(volume);
+          volumeLabels.delete(volume);
           return { status: deleted ? 204 : 404, body: "" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };

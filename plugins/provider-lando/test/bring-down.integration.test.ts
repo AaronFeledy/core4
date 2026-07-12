@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
+import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const providerId = ProviderId.make("lando");
 const appId = AppId.make("bringdownapp");
@@ -24,6 +25,13 @@ const metadata = {
   source: "bring-down.integration.test",
   runtime: 4 as const,
 };
+const volumePruneLive = liveIntegrationEligibility([
+  {
+    available: process.env.LANDO_TEST_VOLUME_PRUNE === "1",
+    reason: "LANDO_TEST_VOLUME_PRUNE=1 is required",
+  },
+  { available: resolveLiveProviderSocket() !== undefined, reason: "a live Podman socket is required" },
+]);
 
 const servicePlan = (name: "node" | "database"): ServicePlan => ({
   name: ServiceName.make(name),
@@ -79,9 +87,10 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [
-    { name: "bringdownapp_database_data", scope: "app" },
+    { name: "bringdownapp_database_data", scope: "app", kind: "data" },
     { name: "lando-cache-npm", scope: "global", kind: "cache", key: "npm" },
   ],
+  fileSync: [],
   metadata,
   extensions: {},
 };
@@ -91,6 +100,14 @@ const makeFakeApi = () => {
   const existing = new Set<string>();
   const networks = new Set<string>();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
+  const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
+    plan.stores.map((store) => [
+      store.name,
+      {
+        "dev.lando.volume-selector": `lando:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
+      },
+    ]),
+  );
   const calls: PodmanHttpRequest[] = [];
   const api: PodmanApiClient = {
     info: Effect.succeed({}),
@@ -108,9 +125,11 @@ const makeFakeApi = () => {
           return { status: 201, body: "{}" };
         }
         if (request.path === "/volumes/create") {
-          const requestedName = (request.body as { Name?: string }).Name ?? "";
+          const body = request.body as { Name?: string; Labels?: Readonly<Record<string, string>> };
+          const requestedName = body.Name ?? "";
           const existed = volumes.has(requestedName);
           volumes.add(requestedName);
+          if (!existed && body.Labels !== undefined) volumeLabels.set(requestedName, body.Labels);
           return { status: existed ? 409 : 201, body: "{}" };
         }
         if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
@@ -155,12 +174,19 @@ const makeFakeApi = () => {
         }
         if (request.method === "GET" && request.path.startsWith("/volumes/")) {
           const volume = decodeURIComponent(request.path.slice("/volumes/".length).replace(/\/json$/u, ""));
-          return { status: volumes.has(volume) ? 200 : 404, body: "{}" };
+          return {
+            status: volumes.has(volume) ? 200 : 404,
+            body: JSON.stringify({ Labels: volumeLabels.get(volume) ?? {} }),
+          };
         }
         if (request.method === "DELETE" && request.path.startsWith("/volumes/")) {
           const volume = decodeURIComponent(request.path.slice("/volumes/".length));
           const deleted = volumes.delete(volume);
+          volumeLabels.delete(volume);
           return { status: deleted ? 204 : 404, body: "" };
+        }
+        if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
+          return { status: 200, body: "[]" };
         }
         return { status: 500, body: `unexpected ${request.method} ${request.path}` };
       }),
@@ -209,6 +235,108 @@ describe("provider-lando bringDown", () => {
 
     expect(fake.volumes.has("bringdownapp_database_data")).toBe(true);
     expect(fake.volumes.has("lando-cache-npm")).toBe(false);
+  });
+
+  test("does not directly delete a planned volume owned by another app", async () => {
+    const foreignPlan: AppPlan = {
+      ...plan,
+      services: {},
+      stores: [{ name: "foreign-data", scope: "app", kind: "data" }],
+    };
+    const calls: PodmanHttpRequest[] = [];
+    const api: PodmanApiClient = {
+      info: Effect.succeed({}),
+      ping: Effect.succeed(undefined),
+      request: (request) =>
+        Effect.sync(() => {
+          calls.push(request);
+          if (request.method === "DELETE" && request.path.startsWith("/networks/")) {
+            return { status: 404, body: "" };
+          }
+          if (request.method === "GET" && request.path === "/volumes/foreign-data") {
+            return {
+              status: 200,
+              body: JSON.stringify({ Labels: { "dev.lando.volume-selector": "lando:otherapp:data" } }),
+            };
+          }
+          if (request.method === "DELETE" && request.path === "/volumes/foreign-data") {
+            return { status: 204, body: "" };
+          }
+          if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
+            return { status: 200, body: "[]" };
+          }
+          return { status: 500, body: `unexpected ${request.method} ${request.path}` };
+        }),
+    };
+
+    await Effect.runPromise(bringDown(foreignPlan, { podmanApi: api, volumes: true }));
+
+    expect(calls).toContainEqual({ method: "GET", path: "/volumes/foreign-data" });
+    expect(calls).not.toContainEqual({ method: "DELETE", path: "/volumes/foreign-data" });
+  });
+
+  test("purgeCaches-only prune is cache-label positive and cannot match ordinary app volumes", async () => {
+    const fake = makeFakeApi();
+
+    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, purgeCaches: true }));
+
+    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
+    expect(prune).toBeDefined();
+    const filters = JSON.parse(
+      decodeURIComponent(new URL(`http://localhost${prune?.path ?? ""}`).searchParams.get("filters") ?? "{}"),
+    ) as Record<string, readonly string[]>;
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:bringdownapp:cache"]);
+    expect(filters["label!"]).toBeUndefined();
+    expect(filters.all).toBeUndefined();
+  });
+
+  test("volumes cleanup prunes only current app/provider-scoped volumes with named-volume intent", async () => {
+    const fake = makeFakeApi();
+
+    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, volumes: true }));
+
+    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
+    expect(prune).toBeDefined();
+    const pruneUrl = new URL(`http://localhost${prune?.path ?? ""}`);
+    const filters = JSON.parse(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}")) as Record<
+      string,
+      readonly string[]
+    >;
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:bringdownapp:data"]);
+    expect(filters.all).toBeUndefined();
+    expect(pruneUrl.searchParams.get("all")).toBe("true");
+  });
+
+  test("volumes cleanup with purgeCaches ORs only fully ownership-scoped cache and data selectors", async () => {
+    const fake = makeFakeApi();
+
+    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api, volumes: true, purgeCaches: true }));
+
+    const prune = fake.calls.find((call) => call.path.startsWith("/libpod/volumes/prune"));
+    expect(prune).toBeDefined();
+    const pruneUrl = new URL(`http://localhost${prune?.path ?? ""}`);
+    const filters = JSON.parse(decodeURIComponent(pruneUrl.searchParams.get("filters") ?? "{}")) as Record<
+      string,
+      readonly string[]
+    >;
+    expect(filters.label).toEqual([
+      "dev.lando.volume-selector=lando:bringdownapp:cache",
+      "dev.lando.volume-selector=lando:bringdownapp:data",
+    ]);
+    expect(filters.all).toBeUndefined();
+    expect(pruneUrl.searchParams.get("all")).toBe("true");
+  });
+
+  test("default cleanup does not prune named volumes without explicit destructive intent", async () => {
+    const fake = makeFakeApi();
+
+    await Effect.runPromise(bringUp(plan, { podmanApi: fake.api }));
+    await Effect.runPromise(bringDown(plan, { podmanApi: fake.api }));
+
+    expect(fake.calls.some((call) => call.path.startsWith("/libpod/volumes/prune"))).toBe(false);
   });
 
   test.skipIf(resolveLiveProviderSocket() === undefined)(
@@ -273,5 +401,64 @@ describe("provider-lando bringDown", () => {
       }
     },
     60_000,
+  );
+
+  test.skipIf(!volumePruneLive.available)(
+    liveIntegrationTestName(
+      "prunes only explicitly created current-app/provider volumes when enabled",
+      volumePruneLive,
+    ),
+    async () => {
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
+      expect(socketPath).toBeTruthy();
+      const api = makePodmanApiClient(socketPath ?? "");
+      const liveRequest = api.request;
+      if (liveRequest === undefined) throw new Error("missing request client");
+      const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const owned = `us436-prune-owned-${suffix}`;
+      const other = `us436-prune-other-${suffix}`;
+
+      try {
+        await Effect.runPromise(
+          liveRequest({
+            method: "POST",
+            path: "/volumes/create",
+            body: {
+              Name: owned,
+              Labels: {
+                "dev.lando.app": "bringdownapp",
+                "dev.lando.provider": "lando",
+                "dev.lando.volume-selector": "lando:bringdownapp:data",
+              },
+            },
+          }),
+        );
+        await Effect.runPromise(
+          liveRequest({
+            method: "POST",
+            path: "/volumes/create",
+            body: {
+              Name: other,
+              Labels: {
+                "dev.lando.app": "other",
+                "dev.lando.provider": "lando",
+                "dev.lando.volume-selector": "lando:other:data",
+              },
+            },
+          }),
+        );
+
+        await Effect.runPromise(bringDown(plan, { podmanApi: api, volumes: true }));
+
+        const ownedAfter = await Effect.runPromise(liveRequest({ method: "GET", path: `/volumes/${owned}` }));
+        const otherAfter = await Effect.runPromise(liveRequest({ method: "GET", path: `/volumes/${other}` }));
+        expect(ownedAfter.status).toBe(404);
+        expect(otherAfter.status).toBe(200);
+      } finally {
+        for (const name of [owned, other]) {
+          await Effect.runPromise(Effect.either(liveRequest({ method: "DELETE", path: `/volumes/${name}` })));
+        }
+      }
+    },
   );
 });

@@ -241,6 +241,62 @@ describe("BuildOrchestratorLive", () => {
     expect(error).toBe(failure);
   });
 
+  test("pulls ref-only artifacts when the provider advertises artifactPull", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } },
+      },
+    };
+    const pulls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+      pullArtifact: (spec: { readonly ref: string }) =>
+        Effect.sync(() => {
+          pulls.push(spec.ref);
+          return { providerId, ref: spec.ref };
+        }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(pulls).toEqual(["debian:12.11-slim"]);
+    expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+  });
+
+  test("keeps ref-only artifacts local when the provider cannot pull artifacts", async () => {
+    const artifactPlan: AppPlan = {
+      ...plan,
+      services: {
+        [web.name]: { ...web, artifact: { kind: "ref", ref: "debian:12.11-slim" } },
+      },
+    };
+    const pulls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: false },
+      pullArtifact: (spec: { readonly ref: string }) =>
+        Effect.sync(() => {
+          pulls.push(spec.ref);
+          return { providerId, ref: spec.ref };
+        }),
+    };
+
+    const builtPlan = await Effect.runPromise(
+      Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(artifactPlan)).pipe(
+        Effect.provide(layer(provider)),
+      ),
+    );
+
+    expect(pulls).toEqual([]);
+    expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+  });
+
   test("redacts build event free-text fields while preserving DateTime timestamps", async () => {
     const secretProviderId = ProviderId.make("test-topsecret");
     const secretService = {
@@ -406,6 +462,7 @@ describe("BuildOrchestratorLive", () => {
       const pullCalls: string[] = [];
       const provider = {
         ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
         pullArtifact: (spec: { readonly ref: string }) =>
           Effect.sync(() => {
             pullCalls.push(spec.ref);
@@ -438,7 +495,7 @@ describe("BuildOrchestratorLive", () => {
           serviceName: ServiceName.make("web"),
         }),
       ]);
-      expect(pullCalls).toEqual([]);
+      expect(pullCalls).toEqual(["debian:12.11-slim"]);
       expect(JSON.stringify(skipEvents)).not.toContain("/tmp/topsecret");
       expect(JSON.stringify(skipEvents)).not.toContain("PASSWORD");
       expect(JSON.stringify(skipEvents)).not.toContain("topsecret");

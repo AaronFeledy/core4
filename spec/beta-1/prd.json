@@ -1170,7 +1170,7 @@
         "Lint passes"
       ],
       "priority": 65,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Consolidates remaining live/e2e Podman 6 seam evidence for pull, prune, OOM doctor, and trust/remediation behavior."
     },
     {

@@ -19,7 +19,12 @@ import type { EventService } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
-import { buildManagedMachineInitArgs, windowsHyperVPrepRemediation } from "./machine-trust.ts";
+import {
+  buildManagedMachineInitArgs,
+  buildManagedMachineTrustSyncArgs,
+  resolveMachineTrustImport,
+  windowsHyperVPrepRemediation,
+} from "./machine-trust.ts";
 
 export { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
 import { type ArtifactDownload, ProviderBundleChecksumError } from "./runtime-bundle.ts";
@@ -132,6 +137,7 @@ export type PodmanMachineStatus = "missing" | "stopped" | "running";
 export interface PodmanMachineRunner {
   readonly inspect: Effect.Effect<PodmanMachineStatus, ProviderUnavailableError>;
   readonly create: Effect.Effect<void, ProviderUnavailableError>;
+  readonly syncTrust?: Effect.Effect<void, ProviderUnavailableError>;
   readonly start: Effect.Effect<void, ProviderUnavailableError>;
   readonly stop: Effect.Effect<void, ProviderUnavailableError>;
   readonly upgrade: Effect.Effect<void, ProviderUnavailableError>;
@@ -376,6 +382,13 @@ export const makeSystemPodmanMachineRunner = (
     "create",
     platform,
   ).pipe(Effect.asVoid),
+  syncTrust: runMachineCommand(
+    spawn,
+    command,
+    buildManagedMachineTrustSyncArgs(machineName),
+    "syncTrust",
+    platform,
+  ).pipe(Effect.asVoid),
   start: runMachineCommand(
     spawn,
     command,
@@ -457,6 +470,7 @@ const resolveSetupMachineRunner = (
 
 export const ensureMacOSPodmanMachine = (
   machine: PodmanMachineRunner,
+  recordedOwnership?: RecordedMachineOwnership,
 ): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
@@ -464,6 +478,14 @@ export const ensureMacOSPodmanMachine = (
       yield* machine.create;
       yield* machine.start;
       return { createdByLando: true };
+    }
+    const trust =
+      recordedOwnership === undefined
+        ? resolveMachineTrustImport({ status })
+        : resolveMachineTrustImport({ status, recordedOwnership });
+    if (trust.kind === "import" && trust.mode === "manage") {
+      const syncTrust = machine.syncTrust ?? Effect.void;
+      yield* syncTrust;
     }
     if (status === "stopped") {
       yield* machine.start;
@@ -485,6 +507,7 @@ export const teardownMacOSPodmanMachine = (
 
 export const ensureWindowsPodmanMachine = (
   machine: PodmanMachineRunner,
+  recordedOwnership?: RecordedMachineOwnership,
 ): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
@@ -492,6 +515,14 @@ export const ensureWindowsPodmanMachine = (
       yield* machine.create;
       yield* machine.start;
       return { createdByLando: true };
+    }
+    const trust =
+      recordedOwnership === undefined
+        ? resolveMachineTrustImport({ status })
+        : resolveMachineTrustImport({ status, recordedOwnership });
+    if (trust.kind === "import" && trust.mode === "manage") {
+      const syncTrust = machine.syncTrust ?? Effect.void;
+      yield* syncTrust;
     }
     if (status === "stopped") {
       yield* machine.start;
@@ -708,6 +739,10 @@ export const setupProviderLando = (
       const runtimeBinDir = options.runtimeBinDir;
       const runtimeConfigDir = options.runtimeConfigDir;
       let machineOwnership: RecordedMachineOwnership | undefined;
+      const existingMachineOwnership =
+        options.stateDir === undefined || (platform !== "darwin" && platform !== "win32")
+          ? undefined
+          : yield* readExistingMachineOwnership(options.stateDir);
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -753,7 +788,9 @@ export const setupProviderLando = (
           options.eventService,
           machineStep,
           counter,
-          resolveSetupMachineRunner("darwin", options).pipe(Effect.flatMap(ensureMacOSPodmanMachine)),
+          resolveSetupMachineRunner("darwin", options).pipe(
+            Effect.flatMap((runner) => ensureMacOSPodmanMachine(runner, existingMachineOwnership)),
+          ),
         );
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
@@ -763,7 +800,9 @@ export const setupProviderLando = (
           options.eventService,
           machineStep,
           counter,
-          resolveSetupMachineRunner("win32", options).pipe(Effect.flatMap(ensureWindowsPodmanMachine)),
+          resolveSetupMachineRunner("win32", options).pipe(
+            Effect.flatMap((runner) => ensureWindowsPodmanMachine(runner, existingMachineOwnership)),
+          ),
         );
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }

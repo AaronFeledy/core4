@@ -76,20 +76,21 @@ export const parseImagePullFrame = (line: string): ImagePullFrame => {
 
 export interface PullImageDeps {
   readonly publish: (event: ImagePullProgressEvent) => Effect.Effect<void>;
+  readonly providerId?: string;
   readonly now?: () => DateTime.Utc;
 }
 
-const missingStream = (): ProviderInternalError =>
+const missingStream = (providerId: string): ProviderInternalError =>
   new ProviderInternalError({
-    providerId: PROVIDER_ID,
+    providerId,
     operation: "pullImage",
     message: "The Podman API client does not support streaming responses required for image pull.",
     remediation: PULL_REMEDIATION,
   });
 
-const pullFailure = (reference: string, message: string): ProviderUnavailableError =>
+const pullFailure = (providerId: string, reference: string, message: string): ProviderUnavailableError =>
   new ProviderUnavailableError({
-    providerId: PROVIDER_ID,
+    providerId,
     operation: "pullImage",
     message: redactString(`Podman image pull failed: ${message}`),
     details: redactDetails({ reference, error: message }),
@@ -110,7 +111,8 @@ export const pullImage = (
 ): Effect.Effect<void, ProviderUnavailableError | ProviderInternalError> =>
   Effect.gen(function* () {
     const streamFn = api.stream;
-    if (streamFn === undefined) return yield* Effect.fail(missingStream());
+    const providerId = deps.providerId ?? PROVIDER_ID;
+    if (streamFn === undefined) return yield* Effect.fail(missingStream(providerId));
 
     const now = deps.now ?? (() => DateTime.unsafeMake(Date.now()));
     const redactedReference = redactString(reference);
@@ -120,7 +122,7 @@ export const pullImage = (
     const emitFrame = (line: string): Effect.Effect<void, ProviderUnavailableError> => {
       const frame = parseImagePullFrame(line);
       if (frame.kind === "ignore") return Effect.void;
-      if (frame.kind === "error") return Effect.fail(pullFailure(reference, frame.message));
+      if (frame.kind === "error") return Effect.fail(pullFailure(providerId, reference, frame.message));
       return deps.publish(
         ImagePullProgressEvent.make({
           eventName: "image-pull-progress" as const,

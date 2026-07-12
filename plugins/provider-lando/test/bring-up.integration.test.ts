@@ -357,9 +357,11 @@ describe("provider-lando bringUp", () => {
       Name: "lando-cache-npm",
       Labels: {
         "dev.lando.app": appId,
+        "dev.lando.provider": "lando",
         "dev.lando.scope": "global",
         "dev.lando.storage-kind": "cache",
         "dev.lando.store": "lando-cache-npm",
+        "dev.lando.volume-selector": "lando:bringupapp:cache",
       },
     });
     const nodeCreate = fake.calls.find(

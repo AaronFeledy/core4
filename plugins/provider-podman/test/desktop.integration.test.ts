@@ -89,6 +89,9 @@ const makeFakeApi = () => {
         calls.push(request);
 
         if (request.path === "/networks/create") return { status: 201, body: "{}" };
+        if (request.method === "POST" && request.path.startsWith("/libpod/volumes/prune")) {
+          return { status: 200, body: "[]" };
+        }
         if (request.path.startsWith("/networks/") && request.method === "DELETE") {
           return { status: 204, body: "" };
         }

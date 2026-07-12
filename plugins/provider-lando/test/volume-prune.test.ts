@@ -35,41 +35,60 @@ const requestClient = (response: { status: number; body: string }): PodmanApiCli
 };
 
 describe("buildLandoVolumeFilters", () => {
-  test("scopes to the app label so prune cannot reach other apps", () => {
-    const filters = buildLandoVolumeFilters("myapp");
-    expect(filters.label).toContain("dev.lando.app=myapp");
+  test("uses a single ownership-complete data selector so Podman label OR cannot broaden prune", () => {
+    const filters = buildLandoVolumeFilters("myapp", { providerId: "lando", volumeClasses: ["data"] });
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data"]);
   });
 
-  test("adds scope narrowing and negated cache exclusion when requested", () => {
-    const filters = buildLandoVolumeFilters("myapp", { scope: "app", excludeCaches: true });
-    expect(filters.label).toContain("dev.lando.app=myapp");
-    expect(filters.label).toContain("dev.lando.scope=app");
-    expect(filters["label!"]).toContain("dev.lando.storage-kind=cache");
+  test("can include scope inside the ownership-complete selector when needed", () => {
+    const filters = buildLandoVolumeFilters("myapp", {
+      providerId: "lando",
+      volumeClasses: ["data"],
+      scope: "app",
+    });
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data:app"]);
+    expect(filters["label!"]).toBeUndefined();
+  });
+
+  test("adds a positive cache label for cache-only prune filters", () => {
+    const filters = buildLandoVolumeFilters("myapp", { providerId: "lando", volumeClasses: ["cache"] });
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:cache"]);
+    expect(filters["label!"]).toBeUndefined();
+  });
+
+  test("ORs only fully ownership-scoped selectors when pruning cache and data together", () => {
+    const filters = buildLandoVolumeFilters("myapp", {
+      providerId: "lando",
+      volumeClasses: ["cache", "data"],
+    });
+    expect(filters.label).toEqual([
+      "dev.lando.volume-selector=lando:myapp:cache",
+      "dev.lando.volume-selector=lando:myapp:data",
+    ]);
   });
 });
 
 describe("volumeMatchesFilters", () => {
-  const filters: VolumeFilterMap = {
-    label: ["dev.lando.app=myapp"],
-    "label!": ["dev.lando.storage-kind=cache"],
-  };
+  const filters: VolumeFilterMap = { label: ["dev.lando.volume-selector=lando:myapp:data"] };
 
   test("matches a volume owned by the current app", () => {
-    expect(volumeMatchesFilters({ "dev.lando.app": "myapp", "dev.lando.store": "data" }, filters)).toBe(true);
+    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:myapp:data" }, filters)).toBe(true);
   });
 
   test("rejects a volume owned by another app (AND label semantics)", () => {
-    expect(volumeMatchesFilters({ "dev.lando.app": "otherapp" }, filters)).toBe(false);
+    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:otherapp:data" }, filters)).toBe(false);
   });
 
   test("rejects an unlabeled volume so global/unrelated volumes are never selected", () => {
     expect(volumeMatchesFilters({}, filters)).toBe(false);
   });
 
+  test("rejects a current-app volume without the provider ownership label", () => {
+    expect(volumeMatchesFilters({ "dev.lando.app": "myapp" }, buildLandoVolumeFilters("myapp"))).toBe(false);
+  });
+
   test("rejects a cache volume of the same app via label! negation", () => {
-    expect(
-      volumeMatchesFilters({ "dev.lando.app": "myapp", "dev.lando.storage-kind": "cache" }, filters),
-    ).toBe(false);
+    expect(volumeMatchesFilters({ "dev.lando.volume-selector": "lando:myapp:cache" }, filters)).toBe(false);
   });
 
   test("supports bare label key presence and exact key=value equality", () => {
@@ -88,14 +107,15 @@ describe("buildVolumePruneRequest", () => {
     expect(request.path).not.toContain("dryrun=true");
     const filters = decodeFilters(request.path);
     expect(filters.all).toBeUndefined();
-    expect(filters.label).toContain("dev.lando.app=myapp");
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data"]);
   });
 
   test("opts into named-volume cleanup only when all=true is explicitly requested", () => {
     const request = buildVolumePruneRequest({ filters: buildLandoVolumeFilters("myapp"), all: true });
     const filters = decodeFilters(request.path);
-    expect(filters.all).toEqual(["true"]);
-    expect(filters.label).toContain("dev.lando.app=myapp");
+    expect(request.path).toContain("all=true");
+    expect(filters.all).toBeUndefined();
+    expect(filters.label).toEqual(["dev.lando.volume-selector=lando:myapp:data"]);
   });
 
   test("marks the request as a dry run so destructive deletion is previewable", () => {
@@ -104,8 +124,9 @@ describe("buildVolumePruneRequest", () => {
       all: true,
       dryRun: true,
     });
+    expect(request.path).toContain("all=true");
     expect(request.path).toContain("dryrun=true");
-    expect(decodeFilters(request.path).all).toEqual(["true"]);
+    expect(decodeFilters(request.path).all).toBeUndefined();
   });
 });
 

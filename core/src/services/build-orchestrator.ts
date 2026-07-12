@@ -111,6 +111,9 @@ const runProviderBuild = (
   Effect.gen(function* () {
     const artifact = step.service.artifact;
     if (artifact?.kind === "ref" && buildStepsFor(step.service).length === 0) {
+      if (provider.capabilities.artifactPull) {
+        return yield* provider.pullArtifact({ ref: artifact.ref });
+      }
       return {
         providerId: plan.provider,
         ref: artifact.ref,

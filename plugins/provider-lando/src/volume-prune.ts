@@ -13,24 +13,45 @@ const PRUNE_REMEDIATION =
 
 /** Podman libpod filter map: filter key -> list of values, ANDed across entries. */
 export type VolumeFilterMap = Readonly<Record<string, ReadonlyArray<string>>>;
+export type VolumeSelectorClass = "cache" | "data";
 
 export interface LandoVolumeFilterOptions {
+  readonly providerId?: string;
+  readonly volumeClasses?: ReadonlyArray<VolumeSelectorClass>;
   /** Narrow to a single store scope (e.g. `"app"`) in addition to the app label. */
   readonly scope?: AppPlan["stores"][number]["scope"];
-  /** Exclude cache-kind stores via a `label!` negation so caches survive prune. */
-  readonly excludeCaches?: boolean;
 }
 
-/** Lando-scoped volume filters; always includes `dev.lando.app=<appId>` so prune cannot cross apps. */
+export const volumeSelectorValue = (args: {
+  readonly providerId: string;
+  readonly appId: string;
+  readonly volumeClass: VolumeSelectorClass;
+  readonly scope?: AppPlan["stores"][number]["scope"];
+}): string =>
+  args.scope === undefined
+    ? `${args.providerId}:${args.appId}:${args.volumeClass}`
+    : `${args.providerId}:${args.appId}:${args.volumeClass}:${args.scope}`;
+
+export const volumeSelectorLabel = (value: string): string => `dev.lando.volume-selector=${value}`;
+
+/** Lando-scoped volume filters use ownership-complete selector values because Podman ORs values for one key. */
 export const buildLandoVolumeFilters = (
   appId: string,
   options: LandoVolumeFilterOptions = {},
 ): VolumeFilterMap => {
-  const label = [`dev.lando.app=${appId}`];
-  if (options.scope !== undefined) label.push(`dev.lando.scope=${options.scope}`);
+  const providerId = options.providerId ?? PROVIDER_ID;
+  const volumeClasses = options.volumeClasses ?? (["data"] as const);
   return {
-    label,
-    ...(options.excludeCaches === true ? { "label!": ["dev.lando.storage-kind=cache"] } : {}),
+    label: volumeClasses.map((volumeClass) =>
+      volumeSelectorLabel(
+        volumeSelectorValue({
+          providerId,
+          appId,
+          volumeClass,
+          ...(options.scope === undefined ? {} : { scope: options.scope }),
+        }),
+      ),
+    ),
   };
 };
 
@@ -70,11 +91,10 @@ export interface VolumePruneOptions {
 
 /** Build `POST /libpod/volumes/prune` with JSON-encoded `filters` and optional `dryrun`. */
 export const buildVolumePruneRequest = (options: VolumePruneOptions): PodmanHttpRequest => {
-  const filters: Record<string, ReadonlyArray<string>> = { ...options.filters };
-  if (options.all === true) filters.all = ["true"];
-  const query = `filters=${encodeURIComponent(JSON.stringify(filters))}`;
+  const query = `filters=${encodeURIComponent(JSON.stringify(options.filters))}`;
+  const all = options.all === true ? "&all=true" : "";
   const dryRun = options.dryRun === true ? "&dryrun=true" : "";
-  return { method: "POST", path: `/libpod/volumes/prune?${query}${dryRun}` };
+  return { method: "POST", path: `/libpod/volumes/prune?${query}${all}${dryRun}` };
 };
 
 export interface PrunedVolume {

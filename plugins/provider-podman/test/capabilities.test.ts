@@ -38,6 +38,7 @@ describe("provider-podman capabilities", () => {
     expect(linuxPodmanCapabilities.bindMountPerformance).toBe("native");
     expect(linuxPodmanCapabilities.bindMounts).toBe(true);
     expect(linuxPodmanCapabilities.artifactBuild).toBe(true);
+    expect(linuxPodmanCapabilities.artifactPull).toBe(true);
     expect(linuxPodmanCapabilities.rootless).toBe(true);
   });
 

@@ -7,6 +7,12 @@ import type { EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
+import {
+  type VolumeSelectorClass,
+  buildLandoVolumeFilters,
+  pruneVolumes,
+  volumeMatchesFilters,
+} from "./volume-prune.ts";
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
@@ -141,23 +147,64 @@ const removeNetwork = (api: PodmanApiClient, plan: AppPlan): Effect.Effect<boole
   );
 };
 
-const removeVolume = (api: PodmanApiClient, name: string): Effect.Effect<boolean, BringDownError> =>
-  request(api, { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` }).pipe(
-    Effect.flatMap((response) => {
-      if (response.status === 200 || response.status === 204) {
-        return Effect.succeed(true);
-      }
-      if (response.status === 404) {
-        return Effect.succeed(false);
-      }
-      return Effect.fail(
-        podmanFailure("bringDown.volume", `Podman volume remove failed with HTTP ${response.status}.`, {
-          name,
-          body: response.body,
-        }),
+const parseVolumeLabels = (body: string): Readonly<Record<string, string>> | undefined => {
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const value = Reflect.get(parsed, "Labels");
+    if (typeof value !== "object" || value === null) return undefined;
+    const labels: Record<string, string> = {};
+    for (const [key, label] of Object.entries(value)) {
+      if (typeof label === "string") labels[key] = label;
+    }
+    return labels;
+  } catch {
+    return undefined;
+  }
+};
+
+const removeVolume = (
+  api: PodmanApiClient,
+  plan: AppPlan,
+  store: AppPlan["stores"][number],
+): Effect.Effect<boolean, BringDownError> =>
+  Effect.gen(function* () {
+    const name = store.name;
+    const inspected = yield* request(api, { method: "GET", path: `/volumes/${encodeURIComponent(name)}` });
+    if (inspected.status === 404) return false;
+    if (inspected.status !== 200) {
+      return yield* Effect.fail(
+        podmanFailure(
+          "bringDown.volume.inspect",
+          `Podman volume inspect failed with HTTP ${inspected.status}.`,
+          {
+            name,
+            body: inspected.body,
+          },
+        ),
       );
-    }),
-  );
+    }
+    const labels = parseVolumeLabels(inspected.body);
+    const volumeClass: VolumeSelectorClass = store.kind === "cache" ? "cache" : "data";
+    if (
+      labels === undefined ||
+      !volumeMatchesFilters(
+        labels,
+        buildLandoVolumeFilters(plan.id, { providerId: plan.provider, volumeClasses: [volumeClass] }),
+      )
+    ) {
+      return false;
+    }
+    const response = yield* request(api, { method: "DELETE", path: `/volumes/${encodeURIComponent(name)}` });
+    if (response.status === 200 || response.status === 204) return true;
+    if (response.status === 404) return false;
+    return yield* Effect.fail(
+      podmanFailure("bringDown.volume", `Podman volume remove failed with HTTP ${response.status}.`, {
+        name,
+        body: response.body,
+      }),
+    );
+  });
 
 const removeAppScopedVolumes = (
   api: PodmanApiClient,
@@ -172,11 +219,29 @@ const removeAppScopedVolumes = (
       } else if (store.scope === "global" || options.volumes !== true) {
         continue;
       }
-      const removed = yield* removeVolume(api, store.name);
+      const removed = yield* removeVolume(api, plan, store);
       changed = changed || removed;
     }
     return changed;
   });
+
+const pruneVolumeClasses = (options: BringDownOptions): ReadonlyArray<VolumeSelectorClass> => {
+  if (options.volumes === true && options.purgeCaches === true) return ["cache", "data"];
+  return options.purgeCaches === true ? ["cache"] : ["data"];
+};
+
+const pruneAppScopedVolumes = (
+  api: PodmanApiClient,
+  plan: AppPlan,
+  options: BringDownOptions,
+): Effect.Effect<boolean, BringDownError> =>
+  pruneVolumes(api, {
+    filters: buildLandoVolumeFilters(plan.id, {
+      providerId: plan.provider,
+      volumeClasses: pruneVolumeClasses(options),
+    }),
+    all: options.volumes === true,
+  }).pipe(Effect.map((report) => report.pruned.length > 0 || report.errors.length > 0));
 
 const stopService = (
   api: PodmanApiClient,
@@ -236,7 +301,9 @@ export const bringDown = (
     const networkRemoved = yield* removeNetwork(api, plan);
     const volumesRemoved =
       options.volumes === true || options.purgeCaches === true
-        ? yield* removeAppScopedVolumes(api, plan, options)
+        ? yield* removeAppScopedVolumes(api, plan, options).pipe(
+            Effect.zipWith(pruneAppScopedVolumes(api, plan, options), (removed, pruned) => removed || pruned),
+          )
         : false;
 
     return { changed: changed || networkRemoved || volumesRemoved };

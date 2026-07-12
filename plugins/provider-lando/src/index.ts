@@ -15,7 +15,7 @@ import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import type { RetryPolicy } from "@lando/sdk/probe";
-import { type AppId, type AppPlan, type HostPlatform, PluginManifest } from "@lando/sdk/schema";
+import { type AppId, type AppPlan, type HostPlatform, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
@@ -27,8 +27,10 @@ import {
   makePodmanApiClient,
   mvpProviderCapabilities,
 } from "./capabilities.ts";
+import { getContainerDiedEvents } from "./container-events.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
+import { pullImage } from "./image-pull.ts";
 import { inspect } from "./inspect.ts";
 import { logs } from "./logs.ts";
 import {
@@ -61,6 +63,8 @@ export {
 } from "./applied-state.ts";
 export { composePath, emitCompose, renderCompose } from "./compose.ts";
 export { withApiReason } from "./redact.ts";
+export { getContainerDiedEvents, parseContainerEventPayloads } from "./container-events.ts";
+export type { ContainerDiedEventsOptions } from "./container-events.ts";
 export {
   buildImagePullRequest,
   parseImagePullFrame,
@@ -294,9 +298,13 @@ interface RuntimeProviderServiceControls {
 }
 
 type RuntimeProviderWithServiceControls = RuntimeProviderShape & RuntimeProviderServiceControls;
+type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
+  readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
+};
 
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
+  const providerId = ProviderId.make("lando");
   const externalSocketPath = options.socketPath;
   const managedSocketPath = options.providerSocketPath;
   const socketPath = externalSocketPath ?? managedSocketPath;
@@ -424,6 +432,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         capabilities: {
           ...resolved,
           artifactBuild: podmanApi !== undefined && resolved.artifactBuild,
+          artifactPull: podmanApi !== undefined && resolved.artifactPull,
           serviceLogSources:
             options.logFileAccess !== undefined ||
             logFileHelperPayloadForTargets(
@@ -480,7 +489,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           }
         : undefined;
 
-    const provider: RuntimeProviderWithServiceControls = {
+    const provider: RuntimeProviderWithContainerEvents = {
       id: "lando",
       displayName: "Lando Runtime Provider",
       version: "0.0.0",
@@ -530,6 +539,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               })),
             ),
       getRuntimeServiceStatus: runtimeServiceStatus,
+      getContainerDiedEvents:
+        podmanApi === undefined ? Effect.succeed([]) : getContainerDiedEvents(podmanApi),
       teardownRuntimeService:
         managedRuntimeServicePaths === undefined
           ? Effect.succeed({ terminated: false })
@@ -543,7 +554,16 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         podmanApi === undefined
           ? () => Effect.fail(makeUnavailable("buildArtifact"))
           : (spec) => buildContainerArtifact(spec, { providerId: "lando", api: podmanApi }),
-      pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
+      pullArtifact:
+        podmanApi === undefined
+          ? () => Effect.fail(makeUnavailable("pullArtifact"))
+          : (spec) =>
+              pullImage(podmanApi, spec.ref, {
+                providerId: "lando",
+                publish: (event) =>
+                  options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ??
+                  Effect.void,
+              }).pipe(Effect.as({ providerId, ref: spec.ref })),
       removeArtifact: () => Effect.void,
       apply: (plan, applyOptions) =>
         Effect.gen(function* () {

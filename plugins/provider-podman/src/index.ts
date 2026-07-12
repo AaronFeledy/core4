@@ -8,12 +8,8 @@
  *
  * Wire format reuses the Podman REST API client and lifecycle ops from
  * `@lando/provider-lando` (apply / inspect / exec / logs / destroy speak the
- * same Podman API). The error `providerId` for lifecycle failures still
- * reads `"lando"` because those errors are constructed deep inside the
- * shared helpers; rewriting them would require duplicating the full
- * lifecycle. Provider-podman therefore overrides only the surface fields
- * (id, displayName, capabilities, inspect snapshot providerId) and the
- * fail-closed conflict-detection path.
+ * same Podman API). Provider-podman overrides provider identity at the public
+ * provider surface and shared helper seams it exposes directly.
  */
 import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 
@@ -35,11 +31,13 @@ import {
   bringUp,
   exec,
   execStream,
+  getContainerDiedEvents,
   inspect,
   logs,
   makePodmanApiClient as makeUnixPodmanApiClient,
   podmanVersionMeetsFloor,
   providerStatePath as providerLandoStatePath,
+  pullImage,
 } from "@lando/provider-lando";
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
@@ -60,6 +58,12 @@ export const PLUGIN_NAME = "@lando/provider-podman" as const;
 
 const PROVIDER_ID = "podman";
 const providerIdBranded = ProviderId.make(PROVIDER_ID);
+
+export { getContainerDiedEvents } from "@lando/provider-lando";
+
+type RuntimeProviderWithContainerEvents = RuntimeProviderShape & {
+  readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
+};
 
 /**
  * Tagged subclass of `ProviderUnavailableError` raised when this provider
@@ -306,6 +310,7 @@ export const podmanCapabilitiesForPlatform = (
   buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     artifactBuild: true,
+    artifactPull: true,
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     volumeSnapshot: "copy",
     serviceFileCopy: "native",
@@ -552,13 +557,6 @@ export interface ProviderLayerOptions {
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
 }
 
-const makeUnavailable = (operation: string) =>
-  new ProviderUnavailableError({
-    providerId: PROVIDER_ID,
-    operation,
-    message: `provider-podman does not implement ${operation} yet.`,
-  });
-
 const makeNoPlanError = (appId: AppId, operation: string) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
@@ -749,7 +747,7 @@ export const makeRuntimeProvider = (
         serverVersion,
         capabilities: resolvedCapabilities,
         logFileHelperPayload,
-      }): RuntimeProviderShape => ({
+      }): RuntimeProviderWithContainerEvents => ({
         id: PROVIDER_ID,
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
@@ -762,8 +760,14 @@ export const makeRuntimeProvider = (
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),
+        getContainerDiedEvents: getContainerDiedEvents(podmanApi, { providerId: PROVIDER_ID }),
         buildArtifact: (spec) => buildContainerArtifact(spec, { providerId: PROVIDER_ID, api: podmanApi }),
-        pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
+        pullArtifact: (spec) =>
+          pullImage(podmanApi, spec.ref, {
+            providerId: PROVIDER_ID,
+            publish: (event) =>
+              options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ?? Effect.void,
+          }).pipe(Effect.as({ providerId: providerIdBranded, ref: spec.ref })),
         removeArtifact: () => Effect.void,
         apply: (plan, applyOptions) =>
           bringUp(plan, {
