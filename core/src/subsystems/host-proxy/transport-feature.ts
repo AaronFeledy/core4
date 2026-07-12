@@ -2,7 +2,7 @@ import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema"
 
 import { isHostProxyRunLandoEnvName } from "./session-env.ts";
 import type { HostProxyRunLandoConnectionSession } from "./transport-protocol.ts";
-import type { HostProxyTransportKind } from "./transport.ts";
+import type { HostProxyTransportKind } from "./transport-session.ts";
 
 export { HOST_PROXY_RUN_LANDO_ENV_NAMES, isHostProxyRunLandoEnvName } from "./session-env.ts";
 
