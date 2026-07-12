@@ -168,7 +168,7 @@ test("buildArtifact applies build steps after a context build", async () => {
     expect(requests[1]?.path).toContain("t=lando-build-docker-web-derived-key");
     expect(requests[1]?.path).not.toContain("target=runtime");
     expect(bodies[1]).toContain("FROM lando-build-docker-web-derived-key-base");
-    expect(bodies[1]).toContain("RUN ln -sf /dev/stdout /logs/access.log");
+    expect(bodies[1]).toContain('RUN ["ln","-sf","/dev/stdout","/logs/access.log"]');
   } finally {
     await rm(context, { recursive: true, force: true });
   }
@@ -208,5 +208,5 @@ test("buildArtifact derives a Dockerfile for ref builds with build steps", async
   );
 
   expect(requestBody).toContain("FROM debian:12.11-slim");
-  expect(requestBody).toContain("RUN ln -sf /dev/stdout /logs/access.log");
+  expect(requestBody).toContain('RUN ["ln","-sf","/dev/stdout","/logs/access.log"]');
 });

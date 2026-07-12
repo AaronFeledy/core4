@@ -1,10 +1,12 @@
-import { readFile, readdir, stat } from "node:fs/promises";
-import { join, relative, sep } from "node:path";
 import { Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
+
+import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
+
+export { buildContextContentDigest, packBuildContext } from "./build-context.ts";
 
 export interface ContainerBuildHttpRequest {
   readonly method: "POST";
@@ -30,33 +32,59 @@ export interface ContainerBuildOptions {
 }
 
 interface BuildStep {
-  readonly command: ReadonlyArray<string>;
+  readonly command: string | ReadonlyArray<string>;
 }
 
-const textEncoder = new TextEncoder();
-const zeroBlock = new Uint8Array(512);
+const isControlCharacterCode = (code: number): boolean => code < 32 || code === 127;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const shellQuote = (value: string): string => {
-  if (/^[A-Za-z0-9_./:-]+$/u.test(value)) return value;
-  return `'${value.replaceAll("'", "'\\''")}'`;
-};
+const hasControlCharacters = (value: string): boolean =>
+  Array.from(value).some((char) => isControlCharacterCode(char.charCodeAt(0)));
 
-const dockerfileForDerivedBuild = (baseRef: string, steps: ReadonlyArray<BuildStep>): string => {
-  return [
-    `FROM ${baseRef}`,
-    ...steps.map((step) => `RUN ${step.command.map(shellQuote).join(" ")}`),
-    "",
-  ].join("\n");
-};
+const validateDockerfileToken = (value: string, field: string, providerId: string) =>
+  hasControlCharacters(value)
+    ? Effect.fail(
+        new ProviderInternalError({
+          providerId,
+          operation: "buildArtifact",
+          message: `${field} cannot contain CR, LF, or control characters.`,
+        }),
+      )
+    : Effect.void;
+
+const runInstruction = (step: BuildStep, providerId: string) =>
+  typeof step.command === "string"
+    ? validateDockerfileToken(step.command, "Build step shell command", providerId).pipe(
+        Effect.as(`RUN ${step.command}`),
+      )
+    : Effect.forEach(
+        step.command,
+        (part) => validateDockerfileToken(part, "Build step argv token", providerId),
+        {
+          discard: true,
+        },
+      ).pipe(Effect.as(`RUN ${JSON.stringify(step.command)}`));
+
+const dockerfileForDerivedBuild = (
+  providerId: string,
+  baseRef: string,
+  steps: ReadonlyArray<BuildStep>,
+): Effect.Effect<string, ProviderInternalError> =>
+  Effect.gen(function* () {
+    yield* validateDockerfileToken(baseRef, "Base image reference", providerId);
+    const runs = yield* Effect.forEach(steps, (step) => runInstruction(step, providerId));
+    return [`FROM ${baseRef}`, ...runs, ""].join("\n");
+  });
 
 const serviceBuildSteps = (service: ServicePlan): ReadonlyArray<BuildStep> => {
   const extension = service.extensions["@lando/core/service-features"];
   if (!isRecord(extension) || !Array.isArray(extension.buildSteps)) return [];
-  return extension.buildSteps.flatMap((step) => {
-    if (!isRecord(step) || !Array.isArray(step.command)) return [];
+  return extension.buildSteps.flatMap((step): ReadonlyArray<BuildStep> => {
+    if (!isRecord(step)) return [];
+    if (typeof step.command === "string") return [{ command: step.command }];
+    if (!Array.isArray(step.command)) return [];
     const command = step.command.filter((part): part is string => typeof part === "string");
     return command.length === step.command.length ? [{ command }] : [];
   });
@@ -67,64 +95,6 @@ const deterministicRef = (input: ArtifactBuildSpec): string =>
     /[^a-zA-Z0-9_.-]/gu,
     "-",
   );
-
-const writeOctal = (header: Uint8Array, offset: number, length: number, value: number): void => {
-  const encoded = value
-    .toString(8)
-    .padStart(length - 1, "0")
-    .slice(-(length - 1));
-  header.set(textEncoder.encode(encoded), offset);
-  header[offset + length - 1] = 0;
-};
-
-const writeString = (header: Uint8Array, offset: number, length: number, value: string): void => {
-  header.set(textEncoder.encode(value.slice(0, length)), offset);
-};
-
-const tarEntry = (name: string, content: Uint8Array, mode = 0o644): Uint8Array => {
-  const header = new Uint8Array(512);
-  writeString(header, 0, 100, name);
-  writeOctal(header, 100, 8, mode);
-  writeOctal(header, 108, 8, 0);
-  writeOctal(header, 116, 8, 0);
-  writeOctal(header, 124, 12, content.byteLength);
-  writeOctal(header, 136, 12, 0);
-  header.fill(32, 148, 156);
-  header[156] = "0".charCodeAt(0);
-  writeString(header, 257, 6, "ustar");
-  writeString(header, 263, 2, "00");
-  const checksum = header.reduce((sum, byte) => sum + byte, 0);
-  writeOctal(header, 148, 8, checksum);
-  const padding = (512 - (content.byteLength % 512)) % 512;
-  const entry = new Uint8Array(512 + content.byteLength + padding);
-  entry.set(header, 0);
-  entry.set(content, 512);
-  return entry;
-};
-
-async function* tarStream(entries: ReadonlyArray<readonly [string, Uint8Array]>): AsyncGenerator<Uint8Array> {
-  for (const [name, content] of entries) yield tarEntry(name, content);
-  yield zeroBlock;
-  yield zeroBlock;
-}
-
-const contextEntries = async (root: string): Promise<ReadonlyArray<readonly [string, Uint8Array]>> => {
-  const walk = async (dir: string): Promise<ReadonlyArray<readonly [string, Uint8Array]>> => {
-    const dirents = await readdir(dir, { withFileTypes: true });
-    const nested = await Promise.all(
-      dirents.map(async (dirent) => {
-        const path = join(dir, dirent.name);
-        if (dirent.isDirectory()) return walk(path);
-        if (!dirent.isFile()) return [];
-        const name = relative(root, path).split(sep).join("/");
-        return [[name, await readFile(path)] as const];
-      }),
-    );
-    return nested.flat();
-  };
-  await stat(root);
-  return walk(root);
-};
 
 const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/${string}` => {
   const params = new URLSearchParams({ t: tag });
@@ -139,21 +109,48 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
   return `/build?${params.toString()}`;
 };
 
+const redactBuildQuery = (value: string): string =>
+  value.replace(/(buildargs=)(?:[^&\s]+)/giu, "$1[redacted]");
+
+const sanitizeBuildErrorValue = (value: unknown): unknown => {
+  if (typeof value === "string") return redactBuildQuery(value);
+  if (Array.isArray(value)) return value.map(sanitizeBuildErrorValue);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry)]),
+  );
+};
+
+const sanitizeProviderError = (
+  cause: ProviderUnavailableError | ProviderInternalError,
+): ProviderUnavailableError | ProviderInternalError => {
+  const input = {
+    providerId: cause.providerId,
+    operation: cause.operation,
+    message: redactBuildQuery(cause.message),
+    details: cause.details === undefined ? undefined : sanitizeBuildErrorValue(cause.details),
+    remediation: cause.remediation,
+  };
+  return cause instanceof ProviderInternalError
+    ? new ProviderInternalError(input)
+    : new ProviderUnavailableError(input);
+};
+
 const requestBuild = (
   request: NonNullable<ContainerBuildHttpApi["request"]>,
   options: ContainerBuildOptions,
   path: `/${string}`,
-  entries: ReadonlyArray<readonly [string, Uint8Array]>,
+  stdin: AsyncIterable<Uint8Array>,
 ): Effect.Effect<ContainerBuildHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
   request({
     method: "POST",
     path,
     headers: { "Content-Type": "application/x-tar" },
-    stdin: tarStream(entries),
+    stdin,
   }).pipe(
     Effect.mapError((cause) =>
       cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
-        ? cause
+        ? sanitizeProviderError(cause)
         : new ProviderUnavailableError({
             providerId: options.providerId,
             operation: "buildArtifact",
@@ -219,8 +216,8 @@ export const buildContainerArtifact = (
     const tag = deterministicRef(input);
     let response: ContainerBuildHttpResponse;
     if (artifact?.kind === "build") {
-      const entries = yield* Effect.tryPromise({
-        try: () => contextEntries(artifact.context),
+      const packed = yield* Effect.tryPromise({
+        try: () => packBuildContext(artifact.context),
         catch: (cause) =>
           new ProviderInternalError({
             providerId: options.providerId,
@@ -230,16 +227,20 @@ export const buildContainerArtifact = (
           }),
       });
       const baseTag = steps.length === 0 ? tag : `${tag}-base`;
-      response = yield* requestBuild(request, options, buildPath(input, baseTag, false), entries);
+      response = yield* requestBuild(request, options, buildPath(input, baseTag, false), packed.tar);
       if (steps.length > 0) {
-        response = yield* requestBuild(request, options, buildPath(input, tag, true), [
-          ["Dockerfile", textEncoder.encode(dockerfileForDerivedBuild(baseTag, steps))],
-        ]);
+        const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, baseTag, steps);
+        const entries: ReadonlyArray<BuildContextEntry> = [
+          { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
+        ];
+        response = yield* requestBuild(request, options, buildPath(input, tag, true), tarStream(entries));
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
-      response = yield* requestBuild(request, options, buildPath(input, tag, true), [
-        ["Dockerfile", textEncoder.encode(dockerfileForDerivedBuild(artifact.ref, steps))],
-      ]);
+      const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, artifact.ref, steps);
+      const entries: ReadonlyArray<BuildContextEntry> = [
+        { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
+      ];
+      response = yield* requestBuild(request, options, buildPath(input, tag, true), tarStream(entries));
     } else {
       return yield* Effect.fail(
         new ProviderInternalError({
