@@ -46,8 +46,9 @@ export const statusFor = (failure: unknown): number => {
 export const requestPathname = (request: IncomingMessage): string => {
   try {
     return new URL(request.url ?? "", "http://host-proxy.invalid").pathname;
-  } catch {
-    return "";
+  } catch (cause) {
+    if (cause instanceof TypeError) return "";
+    throw cause;
   }
 };
 

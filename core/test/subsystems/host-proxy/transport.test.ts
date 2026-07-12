@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
+import type { IncomingMessage } from "node:http";
 import { request as httpRequest } from "node:http";
 import { createConnection } from "node:net";
 import { tmpdir } from "node:os";
@@ -22,6 +23,7 @@ import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
 } from "../../../src/subsystems/host-proxy/dispatch.ts";
+import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
 import {
   defaultHostProxyShimArtifactPath,
   resolveHostProxyShimArtifactPath,
@@ -194,6 +196,10 @@ const waitForMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("host-proxy runLando physical transport", () => {
+  test("treats malformed request URLs as an empty route pathname", () => {
+    expect(requestPathname({ url: "http://[" } as IncomingMessage)).toBe("");
+  });
+
   test("selects deterministic compiled shim sidecars for supported container targets", () => {
     const distRoot = "/opt/lando/core/dist";
 
