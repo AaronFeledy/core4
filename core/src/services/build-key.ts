@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
 
+import { buildContextContentDigest } from "@lando/container-runtime/image-build";
+import { Effect } from "effect";
+
+import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
@@ -25,6 +29,11 @@ interface StableBuildInput {
     readonly mounts: ReadonlyArray<unknown>;
     readonly buildSteps: ReadonlyArray<unknown>;
   };
+}
+
+interface StableArtifactBuildInput {
+  readonly artifact: unknown;
+  readonly contentDigest: string | undefined;
 }
 
 const SECRET_REFERENCE_PATTERN = /^\$\{secret:([^}]+)\}$/u;
@@ -72,7 +81,10 @@ const providerEnvironment = (
   return stableStringRecord(declared);
 };
 
-const artifactBuildInput = (artifact: ServicePlan["artifact"]): unknown => {
+const artifactBuildInput = (
+  artifact: ServicePlan["artifact"],
+  contentDigest: string | undefined,
+): unknown => {
   if (artifact?.kind === "ref") return { kind: artifact.kind, ref: artifact.ref, digest: artifact.digest };
   if (artifact?.kind !== "build") return artifact;
   return {
@@ -80,9 +92,30 @@ const artifactBuildInput = (artifact: ServicePlan["artifact"]): unknown => {
     spec: artifact.spec,
     args: artifact.args === undefined ? undefined : stableStringRecord(artifact.args),
     target: artifact.target,
-    contentHash: artifact.contentHash,
-    context: artifact.contentHash === undefined ? artifact.context : undefined,
+    contentDigest,
   };
+};
+
+const stableArtifactBuildInput = (
+  service: ServicePlan,
+  provider: RuntimeProviderShape,
+): Effect.Effect<StableArtifactBuildInput, ProviderInternalError> => {
+  const artifact = service.artifact;
+  if (artifact?.kind !== "build") {
+    return Effect.succeed({ artifact: artifactBuildInput(artifact, undefined), contentDigest: undefined });
+  }
+  return Effect.tryPromise({
+    try: () => buildContextContentDigest(artifact.context),
+    catch: (cause) =>
+      new ProviderInternalError({
+        providerId: provider.id,
+        operation: "buildKeyForService",
+        message: "Unable to hash the artifact build context.",
+        cause,
+      }),
+  }).pipe(
+    Effect.map((contentDigest) => ({ artifact: artifactBuildInput(artifact, contentDigest), contentDigest })),
+  );
 };
 
 const mountBuildInput = (mount: ServicePlan["mounts"][number]): unknown => ({
@@ -99,32 +132,42 @@ export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   return Array.isArray(buildSteps) ? buildSteps.map(stableValue) : [];
 };
 
-const stableBuildInput = (provider: RuntimeProviderShape, service: ServicePlan): StableBuildInput => ({
-  landoVersion: CORE_VERSION,
-  provider: { id: provider.id, version: provider.version, platform: provider.platform },
-  service: {
-    name: String(service.name),
-    type: service.type,
-    artifact: artifactBuildInput(service.artifact),
-    command: service.command,
-    entrypoint: service.entrypoint,
-    environment: providerEnvironment(service.environment),
-    user: service.user,
-    workingDirectory: service.workingDirectory === undefined ? undefined : String(service.workingDirectory),
-    appMount:
-      service.appMount === undefined
-        ? undefined
-        : {
-            target: service.appMount.target,
-            readOnly: service.appMount.readOnly,
-            excludes: service.appMount.excludes,
-            includes: service.appMount.includes,
-            realization: service.appMount.realization,
-          },
-    mounts: service.mounts.map(mountBuildInput),
-    buildSteps: buildStepsFor(service),
-  },
-});
+const stableBuildInput = (
+  provider: RuntimeProviderShape,
+  service: ServicePlan,
+): Effect.Effect<StableBuildInput, ProviderInternalError> =>
+  stableArtifactBuildInput(service, provider).pipe(
+    Effect.map(({ artifact }) => ({
+      landoVersion: CORE_VERSION,
+      provider: { id: provider.id, version: provider.version, platform: provider.platform },
+      service: {
+        name: String(service.name),
+        type: service.type,
+        artifact,
+        command: service.command,
+        entrypoint: service.entrypoint,
+        environment: providerEnvironment(service.environment),
+        user: service.user,
+        workingDirectory:
+          service.workingDirectory === undefined ? undefined : String(service.workingDirectory),
+        appMount:
+          service.appMount === undefined
+            ? undefined
+            : {
+                target: service.appMount.target,
+                readOnly: service.appMount.readOnly,
+                excludes: service.appMount.excludes,
+                includes: service.appMount.includes,
+                realization: service.appMount.realization,
+              },
+        mounts: service.mounts.map(mountBuildInput),
+        buildSteps: buildStepsFor(service),
+      },
+    })),
+  );
 
-export const buildKeyForService = (provider: RuntimeProviderShape, service: ServicePlan): string =>
-  stableHash(stableBuildInput(provider, service));
+export const buildKeyForService = (
+  provider: RuntimeProviderShape,
+  service: ServicePlan,
+): Effect.Effect<string, ProviderInternalError> =>
+  stableBuildInput(provider, service).pipe(Effect.map(stableHash));

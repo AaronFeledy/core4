@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -448,6 +448,8 @@ describe("BuildOrchestratorLive", () => {
   test("skips an identical warm scratch redirect artifact build", async () => {
     await withTempUserRoots(async () => {
       const calls: string[] = [];
+      const context = await mkdtemp(join(tmpdir(), "lando-build-orchestrator-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
       const planWithRedirect: AppPlan = {
         ...plan,
         id: AppId.make("scratch-toolbox-redirect-first"),
@@ -458,7 +460,7 @@ describe("BuildOrchestratorLive", () => {
             ...web,
             artifact: {
               kind: "build",
-              context: AbsolutePath.make("/tmp/context-a"),
+              context: AbsolutePath.make(context),
               contentHash: "sha256:context-a",
             },
             extensions: {
@@ -509,6 +511,8 @@ describe("BuildOrchestratorLive", () => {
   test("rebuilds when redirect build inputs change and retries cached failures", async () => {
     await withTempUserRoots(async () => {
       const calls: string[] = [];
+      const context = await mkdtemp(join(tmpdir(), "lando-build-orchestrator-context-"));
+      await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
       const planWithRedirect = (commandPath: string): AppPlan => ({
         ...plan,
         id: AppId.make(`scratch-toolbox-${commandPath.replace(/[^a-z0-9]/gi, "-")}`),
@@ -519,7 +523,7 @@ describe("BuildOrchestratorLive", () => {
             ...web,
             artifact: {
               kind: "build",
-              context: AbsolutePath.make(`/tmp/context-${commandPath.replace(/[^a-z0-9]/gi, "-")}`),
+              context: AbsolutePath.make(context),
               contentHash: "sha256:redirect-context",
             },
             extensions: {

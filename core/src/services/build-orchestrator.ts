@@ -48,11 +48,17 @@ interface RedactedBuildContext {
   readonly providerId: string;
 }
 
-const buildStepFor = (provider: RuntimeProviderShape, service: ServicePlan): BuildStep => ({
-  phase: "artifact",
-  service,
-  buildKey: buildKeyForService(provider, service),
-});
+const buildStepFor = (
+  provider: RuntimeProviderShape,
+  service: ServicePlan,
+): Effect.Effect<BuildStep, ProviderInternalError> =>
+  buildKeyForService(provider, service).pipe(
+    Effect.map((buildKey) => ({
+      phase: "artifact" as const,
+      service,
+      buildKey,
+    })),
+  );
 
 const mapBuildCacheError = (providerId: string, cause: unknown) =>
   new ProviderInternalError({
@@ -152,7 +158,7 @@ const buildService = (input: {
         ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
         : identityRedactor;
     const context = redactedBuildContext(redactor, plan, service);
-    const step = buildStepFor(provider, service);
+    const step = yield* buildStepFor(provider, service);
     const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
     const bucket = isScratchPlan(plan)
       ? yield* openScratchBuildResults(stateStore).pipe(
