@@ -272,8 +272,15 @@ const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
 const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
   (commandSpecForId(commandId) as { readonly landoSpec?: LandoCommandSpec } | undefined)?.landoSpec;
 
-const flagDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifFlagDefinition>> =>
-  (command as { flags?: Readonly<Record<string, OclifFlagDefinition>> }).flags ?? {};
+const flagDefinitionsForCommand = (
+  command: CompiledCommand,
+): Readonly<Record<string, OclifFlagDefinition>> => {
+  const definitions = command as {
+    readonly baseFlags?: Readonly<Record<string, OclifFlagDefinition>>;
+    readonly flags?: Readonly<Record<string, OclifFlagDefinition>>;
+  };
+  return { ...(definitions.baseFlags ?? {}), ...(definitions.flags ?? {}) };
+};
 
 const argDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifArgDefinition>> =>
   (command as { args?: Readonly<Record<string, OclifArgDefinition>> }).args ?? {};

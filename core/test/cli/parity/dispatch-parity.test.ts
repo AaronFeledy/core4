@@ -591,6 +591,15 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       await expectHelpParity("app:includes:update", ["[SOURCE...]", "--no-network"]);
     }, 30_000);
 
+    test("meta:global:rebuild help exposes inherited universal format flags on both paths", async () => {
+      await expectHelpParity("meta:global:rebuild", [
+        "Rebuild the host-level global Lando app.",
+        "USAGE",
+        "--format",
+        "--json",
+      ]);
+    }, 30_000);
+
     test("meta:setup representative validation failure matches on both paths", async () => {
       const source = await runSourceCli(["meta:setup", "--host-proxy=bad"]);
       const compiled = await runCompiledCli(["meta:setup", "--host-proxy=bad"]);
