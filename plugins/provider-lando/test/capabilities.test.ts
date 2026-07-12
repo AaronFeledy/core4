@@ -147,16 +147,24 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.hostProxy).toBeUndefined();
   });
 
-  test("introspects managed providerSocketPath API architecture for registry construction", async () => {
+  test("uses injected architecture without probing a cold managed runtime during registry construction", async () => {
+    const calls: string[] = [];
     const runtimeProvider = await Effect.runPromise(
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
             platform: "linux",
+            arch: "arm64",
             providerSocketPath: "/tmp/lando-managed-podman.sock",
             podmanApiFactory: (socketPath) => {
               expect(socketPath).toBe("/tmp/lando-managed-podman.sock");
-              return { info: Effect.succeed({ host: { arch: "aarch64" } }), ping: Effect.succeed(undefined) };
+              return {
+                info: Effect.sync(() => {
+                  calls.push("info");
+                  return { host: { arch: "x86_64" } };
+                }),
+                ping: Effect.succeed(undefined),
+              };
             },
           }),
         ),
@@ -166,9 +174,10 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.hostProxy?.containerTargets).toEqual([
       { os: "linux", arch: "arm64" },
     ]);
+    expect(calls).toEqual([]);
   });
 
-  test("ensures managed providerSocketPath runtime before capability introspection", async () => {
+  test("does not launch a managed runtime while resolving provider capabilities", async () => {
     const calls: string[] = [];
     let ready = false;
     const provider = await Effect.runPromise(
@@ -176,6 +185,7 @@ describe("provider-lando capabilities", () => {
         Effect.provide(
           makeProviderLayer({
             platform: "linux",
+            arch: "arm64",
             providerSocketPath: "/tmp/lando-managed-cold.sock",
             providerPidPath: "/tmp/lando-managed-cold.pid",
             runtimeStorageDir: "/tmp/lando-managed-storage",
@@ -225,8 +235,7 @@ describe("provider-lando capabilities", () => {
       ),
     );
 
-    expect(calls.indexOf("launch")).toBeGreaterThan(-1);
-    expect(calls.indexOf("info")).toBeGreaterThan(calls.indexOf("launch"));
+    expect(calls).toEqual([]);
     expect(provider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "arm64" }]);
   });
 

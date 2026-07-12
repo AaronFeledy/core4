@@ -304,7 +304,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   if (platform === undefined) {
     return Effect.fail(unsupportedHostPlatformError());
   }
-  const arch = options.arch;
+  const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
   const podmanBin =
     runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const serviceRunner = options.podmanService ?? makeSystemPodmanServiceRunner();
@@ -407,12 +407,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       Duration.infinity,
     );
     const ensureOnce = cachedEnsure.pipe(Effect.tapError(() => invalidateEnsure));
+    const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
     const capabilities =
-      podmanApi === undefined
-        ? Effect.succeed(mvpProviderCapabilities(platform))
-        : shouldManageRuntime
-          ? ensureOnce.pipe(Effect.zipRight(introspectProviderCapabilities(podmanApi, platform)))
-          : introspectProviderCapabilities(podmanApi, platform);
+      shouldProbeCapabilities && podmanApi !== undefined
+        ? introspectProviderCapabilities(podmanApi, platform)
+        : Effect.succeed(mvpProviderCapabilities(platform, arch));
     const resolvedCapabilities = yield* capabilities.pipe(
       Effect.map((resolved) => ({
         ...resolved,
