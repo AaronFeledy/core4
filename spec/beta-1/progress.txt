@@ -336,3 +336,9 @@ Open closure categories:
 - Fixed production host-proxy dispatch: keep the worker's Effect runtime Layer scope open for the full session (scoped EventService/PubSub was torn down after ready), ignore detached-worker stderr, and sink stdio after readiness so parent-pipe close cannot hang or SIGPIPE request handling.
 - **Learnings for future iterations:** Detached long-lived workers that `Effect.provide` a Layer with `Layer.scoped` services must keep that effect open for the worker lifetime; capturing `Effect.context` after scope finalization leaves a dead EventService. Detached Bun spawns must not leave stdout/stderr piped to a parent that exits.
 ---
+
+## 2026-07-11 21:28 CDT - US-433 Verify Bugbot
+- Post-fix Bugbot reported two medium findings; both deferred as out of scope for this verify fix and not reproduced as blockers in the compiled-binary sandbox scenario.
+- Rejected: stopApp ensuring host-proxy cleanup even when provider.destroy fails is the existing lifecycle ownership contract (prefer dead mounts over orphan workers); a failed destroy leaving containers up is a provider failure path, not a transport regression.
+- Rejected: single `stdin.write` of worker payload without backpressure is pre-existing spawn plumbing; toolbox and focused worker tests complete readiness successfully, and enlarging the IPC framing is a follow-up hardening item rather than a US-433 acceptance gap.
+---
