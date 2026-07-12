@@ -561,6 +561,55 @@ describe("BuildOrchestratorLive", () => {
     });
   });
 
+  test("keeps artifact digest on warm scratch artifact cache hits", async () => {
+    await withTempUserRoots(async () => {
+      const artifactPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-digest-first"),
+        slug: "scratch-digest-first",
+        root: AbsolutePath.make("/tmp/scratch-digest-first/root"),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: { kind: "ref", ref: "debian:12.11-slim", digest: "sha256:planned" },
+          },
+        },
+      };
+      const repeatPlan: AppPlan = {
+        ...artifactPlan,
+        id: AppId.make("scratch-digest-second"),
+        slug: "scratch-digest-second",
+        root: AbsolutePath.make("/tmp/scratch-digest-second/root"),
+      };
+      const pullCalls: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: { readonly ref: string }) =>
+          Effect.sync(() => {
+            pullCalls.push(spec.ref);
+            return { providerId, ref: spec.ref };
+          }),
+      };
+
+      const builtRepeat = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(artifactPlan);
+            return yield* orchestrator.build(repeatPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(builtRepeat.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "debian:12.11-slim",
+        digest: "sha256:planned",
+      });
+      expect(pullCalls).toEqual(["debian:12.11-slim"]);
+    });
+  });
+
   test("skips an identical warm scratch redirect artifact build", async () => {
     await withTempUserRoots(async () => {
       const calls: string[] = [];

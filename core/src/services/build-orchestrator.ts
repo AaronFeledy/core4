@@ -181,7 +181,11 @@ const buildService = (input: {
       });
       if (complete?.artifactRef !== undefined) {
         yield* publishBuildStepSkip(events, context, step);
-        return serviceWithArtifact(service, { providerId: plan.provider, ref: complete.artifactRef });
+        return serviceWithArtifact(service, {
+          providerId: plan.provider,
+          ref: complete.artifactRef,
+          ...(complete.artifactDigest === undefined ? {} : { digest: complete.artifactDigest }),
+        });
       }
     }
 
@@ -219,6 +223,7 @@ const buildService = (input: {
         exitCode: 0,
         durationMs: performance.now() - started,
         artifactRef: artifact.ref,
+        ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
         transcriptPath,
       }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
     }
