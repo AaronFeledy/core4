@@ -32,9 +32,8 @@ import { filterHostProxyEnv } from "./shim.ts";
  * for every request (including rejected ones). The result is the same
  * `CommandResultEnvelope` + exit code the host-side command produces.
  *
- * This is the logical round-trip; the physical Unix-socket transport, token
- * auth, concurrency cap, and recursion guard belong to the broader host-proxy
- * transport wave.
+ * This module is the logical round-trip only. Socket/TCP transport, token auth,
+ * concurrency admission, and recursion guards live in the transport modules.
  */
 
 export interface HostProxyRunLandoExecutorInput {
