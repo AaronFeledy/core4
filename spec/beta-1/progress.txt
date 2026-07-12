@@ -397,3 +397,10 @@ Open closure categories:
 - Rejected/deferred outcomes: stale external image pruning is rejected because `RuntimeProvider` has no artifact-existence contract and adding one is outside this focused story; service-plugin version provenance is deferred because `ServicePlan` lacks contributor metadata and actual generated build-step content is hashed; scratch-namespaced or per-scratch cache locations are rejected because they either violate scratch cleanup invariants or break warm repeats across fresh ids; Cursor Bugbot was unavailable due account usage limit.
 - Verification passed: focused container-runtime/core/SDK/provider tests, `bun run codegen:schema-snapshot`, `bun run typecheck`, `bun run lint`, `bun run check:state-store-boundary`, `bun run check:redaction-boundary`, and the TypeScript no-excuse checker.
 ---
+
+## 2026-07-12 13:20 CDT - Babysit
+- PR: #575 https://github.com/AaronFeledy/core4/pull/575
+- CI outcome: pass
+- Review feedback: fixed (export BuildStepSkipEvent on public schema; Guide-Coverage-Skip for internal buildKey cache; reran flaky live Podman bringUp)
+- Merge: merged (squash)
+---
