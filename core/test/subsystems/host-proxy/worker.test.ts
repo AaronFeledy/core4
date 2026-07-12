@@ -16,6 +16,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
+import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/subsystems/host-proxy/session-env.ts";
+import { defaultSpawnWorker } from "../../../src/subsystems/host-proxy/worker-process.ts";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
@@ -227,6 +229,46 @@ describe("detached host-proxy worker manager", () => {
       expect(record).not.toContain("secret-token");
       expect(hostProxyWorkerArgv({ appId: "demo" })).toEqual(expect.arrayContaining(["--app-id", "demo"]));
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("spawns the worker with inherited non-session env and without host-proxy session env", async () => {
+    const root = await tempRoot();
+    const preservedEnvName = "LANDO_HOST_PROXY_WORKER_TEST_PRESERVE";
+    const priorEnv = Object.fromEntries(
+      [preservedEnvName, ...HOST_PROXY_RUN_LANDO_ENV_NAMES].map((name) => [name, process.env[name]]),
+    );
+    try {
+      for (const name of HOST_PROXY_RUN_LANDO_ENV_NAMES) process.env[name] = `leaked-${name}`;
+      process.env[preservedEnvName] = "preserved-value";
+      const scriptPath = join(root, "env-worker.ts");
+      await writeFile(
+        scriptPath,
+        `const denied = ${JSON.stringify(HOST_PROXY_RUN_LANDO_ENV_NAMES)};
+const leaked = denied.filter((name) => process.env[name] !== undefined);
+console.log(JSON.stringify({
+  _tag: "ready",
+  appId: "demo",
+  sessionId: "session-env",
+  token: JSON.stringify(leaked),
+  controlToken: process.env[${JSON.stringify(preservedEnvName)}] ?? "",
+  socketPath: ${JSON.stringify(join(root, "host-proxy.sock"))},
+  shimPath: ${JSON.stringify(join(root, "lando"))}
+}));
+`,
+      );
+
+      const worker = defaultSpawnWorker({ argv: [process.execPath, scriptPath] });
+      const ready = await worker.readReady();
+
+      expect(JSON.parse(ready.token)).toEqual([]);
+      expect(ready.controlToken).toBe("preserved-value");
+    } finally {
+      for (const [name, value] of Object.entries(priorEnv)) {
+        if (value === undefined) delete process.env[name];
+        else process.env[name] = value;
+      }
       await rm(root, { recursive: true, force: true });
     }
   });

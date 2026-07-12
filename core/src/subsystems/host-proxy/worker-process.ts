@@ -2,6 +2,8 @@ import { basename, extname } from "node:path";
 import { stdin } from "node:process";
 import { Schema } from "effect";
 
+import { isHostProxyRunLandoEnvName } from "./session-env.ts";
+
 export const HOST_PROXY_WORKER_COMMAND = "__internal:host-proxy-worker";
 
 export const WorkerReady = Schema.TaggedStruct("ready", {
@@ -33,6 +35,14 @@ export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostPro
 
 const READY_TIMEOUT_MS = 15_000;
 const TERMINATE_GRACE_MS = 5_000;
+
+export const hostProxyWorkerEnv = (): Record<string, string> => {
+  const env: Record<string, string> = {};
+  for (const [name, value] of Object.entries(process.env)) {
+    if (value !== undefined && !isHostProxyRunLandoEnvName(name)) env[name] = value;
+  }
+  return env;
+};
 
 export const hostProxyWorkerArgv = (
   input: { readonly entryPath?: string | undefined; readonly appId?: string | undefined } = {},
@@ -99,6 +109,7 @@ export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
     stdout: "pipe",
     stderr: "pipe",
     detached: true,
+    env: hostProxyWorkerEnv(),
   });
   proc.unref?.();
   return {
