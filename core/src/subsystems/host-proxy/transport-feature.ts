@@ -1,7 +1,10 @@
 import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
 
+import { isHostProxyRunLandoEnvName } from "./session-env.ts";
 import type { HostProxyRunLandoConnectionSession } from "./transport-protocol.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
+
+export { HOST_PROXY_RUN_LANDO_ENV_NAMES, isHostProxyRunLandoEnvName } from "./session-env.ts";
 
 export const HOST_PROXY_CONTAINER_SOCKET = "/run/lando/host-proxy.sock";
 export const HOST_PROXY_CONTAINER_SHIM = "/usr/local/lib/lando/host-proxy-client";
@@ -64,25 +67,6 @@ export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSessio
     });
   },
 });
-
-/**
- * Env names the runLando feature injects into eligible services. These carry
- * per-session authentication and transport material, so they are stripped
- * from persisted plans and never forwarded back into host command env.
- */
-export const HOST_PROXY_RUN_LANDO_ENV_NAMES: ReadonlyArray<string> = [
-  "LANDO_HOST_PROXY_TRANSPORT",
-  "LANDO_HOST_PROXY_SOCKET",
-  "LANDO_HOST_PROXY_URL",
-  "LANDO_HOST_PROXY_TOKEN",
-  "LANDO_HOST_PROXY_SESSION",
-  "LANDO_HOST_PROXY_APP",
-  "LANDO_HOST_PROXY_DEPTH",
-  "LANDO_HOST_PROXY_SHIM",
-];
-
-export const isHostProxyRunLandoEnvName = (name: string): boolean =>
-  HOST_PROXY_RUN_LANDO_ENV_NAMES.includes(name);
 
 const HOST_PROXY_MOUNT_TARGETS: ReadonlySet<string> = new Set([
   HOST_PROXY_CONTAINER_SOCKET,

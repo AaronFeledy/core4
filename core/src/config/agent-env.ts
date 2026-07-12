@@ -1,4 +1,4 @@
-import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/transport-feature.ts";
+import { isHostProxyRunLandoEnvName } from "../subsystems/host-proxy/session-env.ts";
 
 export const AGENT_CONTEXT_ENV_ALLOWLIST: ReadonlyArray<string> = [
   "CLAUDECODE",
