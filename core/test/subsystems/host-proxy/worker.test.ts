@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -252,6 +253,26 @@ describe("detached host-proxy worker manager", () => {
 
       expect(result).toBe("terminated");
       expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("removes stale run directory when owned worker record is absent", async () => {
+    const root = await tempRoot();
+    const runDir = dirname(workerStatePath(app, { userDataRoot: root }));
+    try {
+      await mkdir(join(runDir, "mounts"), { recursive: true });
+      await writeFile(join(runDir, "host-proxy.sock"), "stale socket");
+      await writeFile(join(runDir, "lando"), "stale shim");
+      await writeFile(join(runDir, "mounts", "appserver.json"), "{}");
+
+      const result = await Effect.runPromise(
+        terminateOwnedHostProxyWorker(app, { paths: { userDataRoot: root } }),
+      );
+
+      expect(result).toBe("absent");
+      expect(existsSync(runDir)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -269,7 +269,7 @@ export const terminateOwnedHostProxyWorker = (
     options.paths,
     readWorkerRecord(app, options.paths).pipe(
       Effect.flatMap((record): Effect.Effect<TerminateOwnershipResult> => {
-        if (record === undefined) return Effect.succeed("absent");
+        if (record === undefined) return removeRunDir(app, options.paths).pipe(Effect.as("absent" as const));
         return replaceExistingHostProxyWorker(app, options).pipe(
           Effect.as("terminated" as const),
           Effect.catchAll(() => Effect.succeed("absent" as const)),
