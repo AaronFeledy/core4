@@ -416,7 +416,7 @@ Open closure categories:
 ---
 
 ## 2026-07-12 15:25 CDT - US-436 Review
-- Preserved planned image digests when pull-capable providers return an unpinned artifact, and restricted OOM doctor failures to died events carrying both app and service ownership correlation so unrelated Podman containers cannot create false Lando diagnostics.
+- Preserved planned image digests through provider pulls and current or legacy warm scratch-cache hits, restricted OOM doctor failures to died events carrying both app and service ownership correlation, and redacted nested Podman transport causes so encoded registry credentials cannot leak through typed pull failures.
 - Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account had exhausted its monthly model quota; no Bugbot findings were treated as approval evidence.
-- Verification: typecheck and lint passed; focused build-orchestrator and doctor-OOM spot checks passed; strict TypeScript diagnostics and no-excuse audit passed.
+- Verification: typecheck and lint passed; focused build-result, build-orchestrator, image-pull/capability, and doctor-OOM spot checks passed; strict TypeScript diagnostics passed. The no-excuse audit found only two pre-existing assertions in provider-lando capabilities outside the changed lines.
 ---
