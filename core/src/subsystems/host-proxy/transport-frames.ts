@@ -24,6 +24,7 @@ const NdjsonFrame = Schema.Union(
     remediation: Schema.optional(Schema.String),
   }),
 );
+type NdjsonErrorFrame = Extract<typeof NdjsonFrame.Type, { kind: "error" }>;
 
 export const encodeNdjsonFrame = (response: WireResponse): string => {
   if (response._tag === "ok") {
@@ -38,14 +39,7 @@ export const encodeNdjsonFrame = (response: WireResponse): string => {
   })}\n`;
 };
 
-const decodeErrorResponse = (frame: typeof NdjsonFrame.Type): never => {
-  if (frame.kind !== "error") {
-    throw new HostProxyTransportUnavailableError({
-      message: "Host-proxy response frame was not an error frame.",
-      socketPath: "unknown",
-      remediation: "Inspect the host-proxy transport failure.",
-    });
-  }
+const decodeErrorResponse = (frame: NdjsonErrorFrame): never => {
   switch (frame.code) {
     case "HostProxyAuthenticationError":
       throw new HostProxyAuthenticationError({

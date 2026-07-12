@@ -112,6 +112,6 @@ const detachHostProxyWorkerStdio = (): void => {
     stdout.write = sink;
     process.stderr.write = sink;
   } catch {
-    // ignore non-writable stdio
+    return;
   }
 };

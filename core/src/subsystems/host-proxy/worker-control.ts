@@ -132,17 +132,6 @@ const awaitWorkerDisconnect = (record: HostProxyControlRecord): Effect.Effect<bo
     Effect.catchAll(() => Effect.succeed(false)),
   );
 
-const forceTerminateIdentifiedWorker = (
-  record: HostProxyControlRecord,
-  options: WorkerControlTerminationOptions,
-) =>
-  Effect.promise(async () => {
-    const terminate = options.terminateProcess ?? defaultTerminateProcess;
-    await terminate(record.pid, "SIGTERM");
-    await new Promise((resolve) => setTimeout(resolve, KILL_GRACE_MS));
-    await terminate(record.pid, "SIGKILL");
-  });
-
 export const terminateControlRecord = (
   record: HostProxyControlRecord,
   options: WorkerControlTerminationOptions,
@@ -155,7 +144,14 @@ export const terminateControlRecord = (
         : shutdownWorker(record).pipe(
             Effect.zipRight(awaitWorkerDisconnect(record)),
             Effect.flatMap((stopped) =>
-              stopped ? Effect.void : forceTerminateIdentifiedWorker(record, options),
+              stopped
+                ? Effect.void
+                : Effect.promise(async () => {
+                    const terminate = options.terminateProcess ?? defaultTerminateProcess;
+                    await terminate(record.pid, "SIGTERM");
+                    await new Promise((resolve) => setTimeout(resolve, KILL_GRACE_MS));
+                    await terminate(record.pid, "SIGKILL");
+                  }),
             ),
             Effect.zipRight(removeDir),
           ),
