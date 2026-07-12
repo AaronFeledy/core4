@@ -435,3 +435,9 @@ Open closure categories:
   - Compiled handlers must validate their remaining argv before running a no-flag command; parsing into an unused input silently accepts unknown flags and breaks source/compiled exit-code parity.
   - Global rebuild must apply the plan returned by BuildOrchestrator, because produced or cached artifact refs are stamped into that returned plan rather than the originally loaded plan.
 ---
+
+## 2026-07-12 18:26 CDT - US-437 Review
+- Fixed compiled help projection so inherited universal `--format` and `--json` flags appear alongside command-specific flags, with semantic source/compiled help parity locked for global rebuild.
+- Review notes (deferred/rejected): rejected byte-identical OCLIF/compiled help typography because the established parity contract is semantic; rejected skipping global dist regeneration for a cleared layer because spec §20.3 requires rebuild to regenerate from contribution enablement state; build/apply-specific failure tests were not added because the existing post-destroy inspect failure already proves the required partial-rebuild failure contract. Cursor Bugbot was unavailable because the account had reached its monthly usage limit, so it was not treated as approval.
+- Verification: typecheck and lint passed; focused global lifecycle, SDK event/schema, deferred-command, dual-dispatch, and compiled behavioral parity tests passed.
+---
