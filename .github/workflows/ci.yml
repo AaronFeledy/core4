@@ -800,6 +800,8 @@ jobs:
       - name: Build darwin-arm64 binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
@@ -815,7 +817,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lando-darwin-arm64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 
@@ -848,6 +852,8 @@ jobs:
       - name: Build darwin-x64 binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
@@ -863,7 +869,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lando-darwin-x64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 
@@ -896,6 +904,8 @@ jobs:
       - name: Build linux-arm64 binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
@@ -911,7 +921,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lando-linux-arm64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 
@@ -944,6 +956,8 @@ jobs:
       - name: Build linux-x64 binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
@@ -959,7 +973,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lando-linux-x64
-          path: dist/lando
+          path: |
+            dist/lando
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 
@@ -992,6 +1008,8 @@ jobs:
       - name: Build windows-x64 binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
 
@@ -1004,7 +1022,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: lando-windows-x64
-          path: dist/lando-windows-x64.exe
+          path: |
+            dist/lando-windows-x64.exe
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 

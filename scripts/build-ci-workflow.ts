@@ -148,6 +148,8 @@ ${setupBunSteps}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
+          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"
           bun build ./core/bin/lando.ts --compile --bytecode --target=${platform.bunTarget} --outfile ./dist/${platform.binaryName} --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
@@ -160,7 +162,9 @@ ${renderSmokeCommands(platform)}
         uses: actions/upload-artifact@v4
         with:
           name: lando-${platform.id}
-          path: dist/${platform.binaryName}
+          path: |
+            dist/${platform.binaryName}
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 
