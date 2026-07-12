@@ -1,9 +1,11 @@
-import { type FileHandle, open, stat as statPath } from "node:fs/promises";
-import { stdin, stdout } from "node:process";
+import { type FileHandle, open, rm, stat as statPath } from "node:fs/promises";
+import { argv, stdin, stdout } from "node:process";
 import { createInterface } from "node:readline/promises";
 
 const maxReadBytes = 65_536;
 const maxSafeOffset = BigInt(Number.MAX_SAFE_INTEGER);
+const helperDirectoryPattern = /^\/tmp\/lando-log-file-helper-[0-9a-f]{32}$/;
+const unsignedDecimalPattern = /^(0|[1-9][0-9]*)$/;
 
 type Command =
   | { readonly op: "stat"; readonly path: string }
@@ -30,6 +32,10 @@ const fileStat = (stat: Awaited<ReturnType<FileHandle["stat"]>>) => ({
   size: String(stat.size),
 });
 
+const isUnsignedDecimal = (value: string): boolean => unsignedDecimalPattern.test(value);
+
+const isSafeReadLength = (value: number): boolean => Number.isSafeInteger(value) && value >= 0;
+
 const pathStat = async (path: string): Promise<void> => {
   try {
     write({ ok: true, stat: fileStat(await statPath(path)) });
@@ -53,7 +59,9 @@ const decodeCommand = (input: unknown): Command | undefined => {
     return "offset" in input &&
       "maxBytes" in input &&
       typeof input.offset === "string" &&
-      typeof input.maxBytes === "number"
+      typeof input.maxBytes === "number" &&
+      isUnsignedDecimal(input.offset) &&
+      isSafeReadLength(input.maxBytes)
       ? { op: "read", offset: input.offset, maxBytes: input.maxBytes }
       : undefined;
   }
@@ -66,6 +74,15 @@ const closeHandle = async (): Promise<void> => {
   const current = handle;
   handle = undefined;
   if (current !== undefined) await current.close();
+  write({ ok: true });
+};
+
+const cleanupHelper = async (path: string): Promise<void> => {
+  if (!helperDirectoryPattern.test(path)) {
+    write({ ok: false, code: "EPROTO", message: "invalid helper cleanup path" });
+    return;
+  }
+  await rm(path, { recursive: true, force: true });
   write({ ok: true });
 };
 
@@ -97,7 +114,7 @@ const run = async (command: Command): Promise<void> => {
     return;
   }
   const position = BigInt(command.offset);
-  if (position < 0n || position > maxSafeOffset) {
+  if (position > maxSafeOffset) {
     write({ ok: false, code: "ERANGE", message: "read offset is outside the safe positional-read range" });
     return;
   }
@@ -112,15 +129,21 @@ const run = async (command: Command): Promise<void> => {
   });
 };
 
-const lines = createInterface({ input: stdin });
-for await (const line of lines) {
-  try {
-    const command = decodeCommand(JSON.parse(line));
-    if (command === undefined) write({ ok: false, code: "EPROTO", message: "invalid helper command" });
-    else await run(command);
-  } catch (cause) {
-    if (!(cause instanceof Error) && errorCode(cause) === undefined) throw cause;
-    write({ ok: false, code: errorCode(cause) ?? "EIO", message: errorMessage(cause) });
+const cleanupArgIndex = argv.indexOf("cleanup");
+if (cleanupArgIndex >= 0) {
+  const path = argv[cleanupArgIndex + 1];
+  await cleanupHelper(typeof path === "string" ? path : "");
+} else {
+  const lines = createInterface({ input: stdin });
+  for await (const line of lines) {
+    try {
+      const command = decodeCommand(JSON.parse(line));
+      if (command === undefined) write({ ok: false, code: "EPROTO", message: "invalid helper command" });
+      else await run(command);
+    } catch (cause) {
+      if (!(cause instanceof Error) && errorCode(cause) === undefined) throw cause;
+      write({ ok: false, code: errorCode(cause) ?? "EIO", message: errorMessage(cause) });
+    }
   }
+  if (handle !== undefined) await closeHandle();
 }
-if (handle !== undefined) await closeHandle();
