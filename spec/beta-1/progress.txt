@@ -359,3 +359,10 @@ Open closure categories:
   - Docker-compatible exec output differs by provider: Docker multiplexes stdout/stderr attach frames while Podman may return raw upgraded bytes, so the helper decoder must detect both without corrupting split UTF-8 frames.
   - Build helper binaries for both `@lando/container-runtime` and `@lando/core` consumers before provider tests; capability advertising must remain false when payload resolution fails.
 ---
+
+## 2026-07-12 05:43 CDT - US-434 Review
+- Hardened the provider-owned helper boundary: every file-access session now installs into an unguessable private path instead of reusing a mutable `/tmp` executable, cleanup is helper-owned and bounded, and malformed numeric protocol fields become typed provider failures rather than Effect defects. Added the shipped service-log guide covering declared sources, source selection, capability degradation, lifecycle, and redaction behavior.
+- Review notes (deferred/rejected): duplicate Docker and user-Podman live suites were rejected because all three providers share the exercised Docker-compatible adapter and retain provider-specific capability/framing tests; duplicate Ctrl+C/service-stop scenarios were rejected because interruption cleanup is owned and proven by the shared SDK follower plus adapter close/abort tests. Cursor Bugbot was unavailable because the local account had exhausted its model quota, so it was recorded as unavailable rather than treated as approval.
+- Verification: typecheck and lint passed; focused adapter/helper/transport, SDK follower, and provider capability spot checks passed; guide generation, lint, coverage, and public transcript gates passed; the rebuilt helper passed the real provider-lando container-file integration scenario against Podman 6 in `lando4-dev` with clean teardown.
+- **Learnings for future iterations:** A helper uploaded into a container crosses an adversarial filesystem boundary: use a per-session unpredictable path, parse every protocol scalar at the host boundary, and make cleanup both narrowly scoped and unable to block stream finalization.
+---
