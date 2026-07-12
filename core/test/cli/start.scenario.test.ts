@@ -1107,6 +1107,7 @@ describe("lando start", () => {
       expect(harness.applyPlans).toHaveLength(0);
       await Effect.runPromise(Fiber.interrupt(fiber));
 
+      expect(harness.destroyCalls).toEqual([]);
       await expectMissingPath(hostProxyDir);
     });
   });

@@ -6,7 +6,7 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect, Schema } from "effect";
+import { DateTime, Effect, Ref, Schema } from "effect";
 
 import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
@@ -127,6 +127,7 @@ export const startApp = (
       }));
     const provider = yield* registry.select(plan);
     const ref = target?.app ?? appRef(plan);
+    const applyStarted = yield* Ref.make(false);
 
     const neededGlobalServices = requiredGlobalServicesForPlan(plan);
     if (neededGlobalServices.length > 0) {
@@ -182,6 +183,7 @@ export const startApp = (
           }
 
           const applyAndInspect = Effect.gen(function* () {
+            yield* Ref.set(applyStarted, true);
             yield* Effect.scoped(
               provider.apply(applyPlan, {
                 reconcile: options.reconcile ?? false,
@@ -255,5 +257,11 @@ export const startApp = (
 
           return { app: plan.name, servicesStarted };
         }),
-    }).pipe(Effect.onInterrupt(() => rollbackAppliedApp(provider, plan)));
+    }).pipe(
+      Effect.onInterrupt(() =>
+        Ref.get(applyStarted).pipe(
+          Effect.flatMap((started) => (started ? rollbackAppliedApp(provider, plan) : Effect.void)),
+        ),
+      ),
+    );
   });
