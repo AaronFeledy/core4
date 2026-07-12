@@ -148,7 +148,7 @@ The scope is deliberately narrow. The common infrastructure case is already cove
 
 | Surface | Guide | Status |
 | --- | --- | --- |
-| `lando logs` with declared file sources and `--source` | `docs/guides/cli/service-logs.mdx` | Planned (new guide, this PRD) |
+| `lando logs` with declared file sources and `--source` | `docs/guides/cli/service-logs.mdx` | Shipped |
 | Declaring `services.<name>.logs:` in a Landofile | owned by the Landofile services guide surface | Update and re-run drift gate |
 | Provider `logs` source-follow contract | owned by the provider contract-suite guide surface | Update and re-run drift gate |
 

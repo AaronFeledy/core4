@@ -1,0 +1,64 @@
+---
+id: service-logs
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, cli, logs]
+---
+
+<Guide>
+  <Scenario id="landofile-declared-sources" render={false} reason="Landofile log-source parsing and planning are covered by planner and schema tests; guide generation documents the user-facing shape without starting a provider">
+    <Step name="declare-file-logs">
+      <Variable name="surface" value="services.<name>.logs" display="Declare extra in-container log files under the service that owns them" />
+      <Variable name="example" value="logs: [{ path: /var/log/myapp/error.log, stream: stderr, label: myapp error log }]" display="A user-declared source needs a path; id, label, stream, and timestamp behavior can be tuned when needed" />
+      <Variable name="defaultStrategy" value="follow" display="Landofile-declared sources resolve to provider-owned follow sources; user config does not choose the collection architecture" />
+      <Variable name="console" value="console" display="The implicit container stdout/stderr source is always available and is selected with --source console when users want only engine logs" />
+    </Step>
+    <Step name="strategy-boundaries">
+      <Variable name="redirect" value="redirect" display="Service types can declare redirect sources for Lando-built images so daemon log files flow through stdout/stderr with no runtime follower" />
+      <Variable name="follow" value="follow" display="BYO images and non-redirectable logs are followed by the active runtime provider inside RuntimeProvider.logs" />
+      <Variable name="ownership" value="provider-owned follower" display="Core does not shell out to tail -F; the provider owns file access, rotation handling, framing, and follower cleanup" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="logs-cli-source-controls" render={false} reason="The logs command source, follow, tail, and since behavior is covered by command and provider contract tests; this scenario keeps the supported CLI surface reader-visible">
+    <Step name="default-stream">
+      <Variable name="command" value="lando logs --service appserver" display="Show a finite snapshot for the selected service, merging console and available declared sources with source labels" />
+      <Variable name="labeling" value="appserver stderr [myapp-error]: line" display="File-source lines are labeled with their source id so interleaved output remains attributable" />
+      <Variable name="consoleLabel" value="appserver stdout: line" display="Console lines omit a source label; absence of source means the implicit console source" />
+    </Step>
+    <Step name="narrowing-and-following">
+      <Variable name="source" value="lando logs --service appserver --source myapp-error" display="--source restricts output to one declared source id; --source console restricts output to container stdout/stderr" />
+      <Variable name="follow" value="lando logs --service appserver --source myapp-error --follow" display="--follow backfills the source tail and then streams appended lines until interrupted" />
+      <Variable name="tail" value="lando logs --service appserver --tail 50" display="--tail applies per source, not as a single global total across merged sources" />
+      <Variable name="since" value="lando logs --service appserver --since 15m" display="--since accepts durations such as 30s, 15m, 2h, 7d or an RFC3339 timestamp" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="capability-degradation" render={false} reason="Capability degradation is asserted by provider capability and logs command tests; guide generation records the user-visible fallback contract without swapping live providers">
+    <Step name="provider-capabilities">
+      <Variable name="serviceLogs" value="serviceLogs" display="A provider that cannot stream service logs fails before planning with a tagged capability error and remediation" />
+      <Variable name="serviceLogSources" value="serviceLogSources" display="A provider must advertise serviceLogSources before follow sources can be read from container files" />
+      <Variable name="redirectAvailable" value="redirect still works" display="Redirect sources remain available without serviceLogSources because they flow through the existing console stream" />
+    </Step>
+    <Step name="degraded-sources">
+      <Variable name="required" value="required follow source" display="A required follow source fails up front when the provider cannot follow service files" />
+      <Variable name="optional" value="optional follow source" display="A non-required unavailable follow source is surfaced as unavailable and skipped instead of being silently dropped" />
+      <Variable name="unknown" value="logs: unknown log source" display="Requesting an undeclared --source fails with the known source ids, including console" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="follow-contract-and-redaction" render={false} reason="Provider-owned file following, rotation, redaction, and StreamFrame source fields are covered by focused provider and renderer tests; this guide does not require live container files">
+    <Step name="follower-semantics">
+      <Variable name="finite" value="follow=false" display="Without --follow, a file source emits a bounded snapshot and reaches EOF instead of waiting for a missing future file" />
+      <Variable name="rotation" value="rename+create and copytruncate" display="Provider followers survive common log rotation patterns while preserving per-source order" />
+      <Variable name="framing" value="complete UTF-8 lines" display="Redaction and rendering happen after provider framing, so multibyte characters and partial final lines are handled consistently" />
+      <Variable name="cleanup" value="Scope cleanup on Ctrl-C" display="Interrupting lando logs releases every provider follower through the logs stream scope" />
+    </Step>
+    <Step name="redaction-and-machine-output">
+      <Variable name="rawProvider" value="raw LogChunk stream" display="Providers and library callers see raw log lines; the on-disk service file remains under the app's control" />
+      <Variable name="redactedCli" value="renderer and --format json boundary" display="CLI rendering, stream frames, events, and transcripts pass lines through RedactionService exactly once" />
+      <Variable name="sourceField" value="StreamFrame.source" display="Machine-readable output preserves the source id so agents can distinguish console, redirect, and followed file lines" />
+    </Step>
+  </Scenario>
+</Guide>

@@ -277,7 +277,7 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 | --- | --- | --- |
 | Published runtime bundle and zero-override setup | setup/release runbook surfaces | Update when US-430 lands |
 | Production runLando host-proxy transport | host-proxy subsystem guide | Update when US-433 lands |
-| Log source follow semantics | service logs guide | Update when US-434 lands |
+| Log source follow semantics | `docs/guides/cli/service-logs.mdx` | Shipped for US-434 |
 | Host shell REPL | shell/CLI guide | Update when US-439 lands |
 | MCP config read projection and stdio hardening | MCP guide | Update when US-438/US-440 land |
 | Tooling-router dispatch | tooling guide | Update when US-443 lands |
