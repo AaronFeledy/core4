@@ -17,10 +17,10 @@ describe("log file helper payloads", () => {
 
     expect(packageJson).toContain('"build:log-file-helper"');
     expect(packageJson).toContain(
-      "--target=bun-linux-x64-musl --outfile ./dist/log-file-access/linux-x64/lando-log-file-helper",
+      "--target=bun-linux-x64 --outfile ./dist/log-file-access/linux-x64/lando-log-file-helper",
     );
     expect(packageJson).toContain(
-      "--target=bun-linux-arm64-musl --outfile ./dist/log-file-access/linux-arm64/lando-log-file-helper",
+      "--target=bun-linux-arm64 --outfile ./dist/log-file-access/linux-arm64/lando-log-file-helper",
     );
   });
 
