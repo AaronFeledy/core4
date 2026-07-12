@@ -372,3 +372,9 @@ Open closure categories:
 - Fixed log-file helper ABI: ship glibc (`bun-linux-x64`/`arm64`) helpers so default Debian service images (`node:22`, etc.) can execute the uploaded binary; the prior musl target only ran in Alpine and failed real-world `lando logs --source` with "session ended before responding".
 - **Learnings for future iterations:** Container-uploaded helpers must target the libc of default service base images (glibc for official `node`/`php`/etc.), not Alpine-only musl; live integration fixtures should use the same image family as `type: node:22` or dual-ship helpers.
 ---
+## 2026-07-12 09:16 CDT - Babysit
+- PR: #574 https://github.com/AaronFeledy/core4/pull/574
+- CI outcome: pass
+- Review feedback: fixed (guide-coverage skip; advertise serviceLogSources when helpers present; load live-test helpers from dist/; pre-pull node:22; defer registry helper payload load for hot-path budget)
+- Merge: merged (squash)
+---
