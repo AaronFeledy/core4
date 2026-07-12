@@ -197,18 +197,19 @@ export const runOpenForHostProxy = (
         ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
         : yield* Effect.gen(function* () {
             const outcome = yield* Effect.exit(openForPlan(plan, parsed.options));
-            return Exit.isSuccess(outcome)
-              ? { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 }
-              : {
-                  outcome: {
-                    _tag: "failure" as const,
-                    error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
-                      _tag: "HostProxyDispatchError",
-                      message: Cause.pretty(outcome.cause),
-                    })),
-                  },
-                  exitCode: 1,
-                };
+            if (Exit.isSuccess(outcome)) {
+              return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
+            }
+            return {
+              outcome: {
+                _tag: "failure" as const,
+                error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
+                  _tag: "HostProxyDispatchError",
+                  message: Cause.pretty(outcome.cause),
+                })),
+              },
+              exitCode: 1,
+            };
           });
     const envelope = yield* buildCommandResultEnvelope({
       command: OPEN_COMMAND,
