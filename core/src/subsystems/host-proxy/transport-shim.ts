@@ -1,6 +1,5 @@
-import { chmod, copyFile, mkdir, stat } from "node:fs/promises";
-import { basename } from "node:path";
-import { dirname } from "node:path";
+import { chmod, copyFile, mkdir } from "node:fs/promises";
+import { basename, dirname } from "node:path";
 import { Effect } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
@@ -57,7 +56,6 @@ export const installHostProxyShim = (
   Effect.tryPromise({
     try: async () => {
       await mkdir(dirname(output), { recursive: true });
-      await stat(artifact);
       await copyFile(artifact, output);
       await chmod(output, 0o755);
     },
