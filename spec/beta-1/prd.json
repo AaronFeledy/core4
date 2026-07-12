@@ -1134,7 +1134,7 @@
         "Lint passes"
       ],
       "priority": 63,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Extends PRD-12 follow semantics to real provider/container file access and rotation/truncation cleanup evidence."
     },
     {

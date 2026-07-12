@@ -182,6 +182,8 @@ ${bunSetupStep}
       - name: Compile all platform binaries
         run: |
           mkdir -p dist/bundle
+          bun run --filter='@lando/core' build:log-file-helper
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
 ${distributionCompileLines}
 ${distributionSanitizeLines}
           ${distributionLinuxSmokePath} --version

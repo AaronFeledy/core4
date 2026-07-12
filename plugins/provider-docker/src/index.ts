@@ -3,6 +3,11 @@ import { connect as createTlsConnection } from "node:tls";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
+import {
+  type LogFileHelperPayloads,
+  logFileHelperPayloadForTargets,
+} from "@lando/container-runtime/log-file-helper-payloads";
 import {
   commonContainerLabels,
   containerCreateBodyFragment,
@@ -129,6 +134,7 @@ export interface ProviderLayerOptions {
   readonly platform?: HostPlatform;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly logFileAccess?: LogFileAccess;
+  readonly logFileHelperPayloads?: LogFileHelperPayloads;
 }
 
 export interface ResolveDockerHostOptions {
@@ -1264,6 +1270,14 @@ const parseLogLine = (service: ServicePlan, streamName: "stdout" | "stderr", lin
 const makeLogsDecoder = (service: ServicePlan) =>
   makeRuntimeLogDecoder({ parseLine: (streamName, line) => parseLogLine(service, streamName, line) });
 
+const fileSourceSince = (value: string | undefined): number | undefined => {
+  if (value === undefined) return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric;
+  const timestamp = new Date(value).getTime();
+  return Number.isNaN(timestamp) ? undefined : Math.floor(timestamp / 1000);
+};
+
 interface LogsRuntime {
   readonly api: DockerApiClient;
   readonly logFileAccess?: LogFileAccess;
@@ -1293,7 +1307,7 @@ const logs = (
   }
   const logSources = options.sources ?? service.logSources ?? [];
   const logFileAccess = runtime.logFileAccess;
-  const since = options.since === undefined ? undefined : Number(options.since);
+  const since = fileSourceSince(options.since);
 
   return Stream.suspend(() => {
     const fileStream =
@@ -1349,8 +1363,20 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   );
   const runtimeCapabilities = capabilities.pipe(
     Effect.map((resolved) => ({
-      ...resolved,
-      serviceLogSources: options.logFileAccess !== undefined && resolved.serviceLogSources,
+      capabilities: {
+        ...resolved,
+        serviceLogSources:
+          (options.logFileAccess !== undefined ||
+            logFileHelperPayloadForTargets(
+              options.logFileHelperPayloads,
+              resolved.hostProxy?.containerTargets,
+            ) !== undefined) &&
+          resolved.serviceLogSources,
+      },
+      logFileHelperPayload: logFileHelperPayloadForTargets(
+        options.logFileHelperPayloads,
+        resolved.hostProxy?.containerTargets,
+      ),
     })),
   );
   const dataPlane = makeProviderDataPlane({
@@ -1365,7 +1391,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
 
   return runtimeCapabilities.pipe(
     Effect.map(
-      (resolvedCapabilities): RuntimeProviderShape => ({
+      ({ capabilities: resolvedCapabilities, logFileHelperPayload }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
         displayName: "Docker Runtime Provider",
         version: "0.0.0",
@@ -1415,12 +1441,22 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         runStream: dataPlane.runStream,
         logs: (target, logOptions) => {
           const plan = resolvePlan(target);
-          return plan === undefined
-            ? Stream.fail(makeUnavailable("logs"))
-            : logs(plan, target, logOptions, {
-                api: dockerApi,
-                ...(options.logFileAccess === undefined ? {} : { logFileAccess: options.logFileAccess }),
-              });
+          if (plan === undefined) return Stream.fail(makeUnavailable("logs"));
+          const service = plan.services[target.service];
+          const logFileAccess =
+            options.logFileAccess ??
+            (service === undefined || logFileHelperPayload === undefined
+              ? undefined
+              : makeDockerLogFileAccess({
+                  providerId: PROVIDER_ID,
+                  api: dockerApi,
+                  container: containerName(plan, service),
+                  helperPayload: logFileHelperPayload,
+                }));
+          return logs(plan, target, logOptions, {
+            api: dockerApi,
+            ...(logFileAccess === undefined ? {} : { logFileAccess }),
+          });
         },
         inspect: (target) => {
           const plan = resolvePlan(target);

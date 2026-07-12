@@ -4,6 +4,11 @@
 import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
+import {
+  type LogFileHelperPayloads,
+  logFileHelperPayloadForTargets,
+} from "@lando/container-runtime/log-file-helper-payloads";
 import { stripHostProxyRunLando } from "@lando/core/host-proxy-transport";
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
@@ -279,6 +284,7 @@ export interface ProviderLayerOptions {
   readonly readinessPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
+  readonly logFileHelperPayloads?: LogFileHelperPayloads;
 }
 
 interface RuntimeProviderServiceControls {
@@ -412,10 +418,21 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       shouldProbeCapabilities && podmanApi !== undefined
         ? introspectProviderCapabilities(podmanApi, platform)
         : Effect.succeed(mvpProviderCapabilities(platform, arch));
-    const resolvedCapabilities = yield* capabilities.pipe(
+    const { capabilities: resolvedCapabilities, logFileHelperPayload } = yield* capabilities.pipe(
       Effect.map((resolved) => ({
-        ...resolved,
-        serviceLogSources: options.logFileAccess !== undefined && resolved.serviceLogSources,
+        capabilities: {
+          ...resolved,
+          serviceLogSources:
+            options.logFileAccess !== undefined ||
+            logFileHelperPayloadForTargets(
+              options.logFileHelperPayloads,
+              resolved.hostProxy?.containerTargets,
+            ) !== undefined,
+        },
+        logFileHelperPayload: logFileHelperPayloadForTargets(
+          options.logFileHelperPayloads,
+          resolved.hostProxy?.containerTargets,
+        ),
       })),
     );
     const managedRuntimeStatusDeps =
@@ -589,9 +606,22 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                     Effect.as(
                       logs(plan, target, logOptions, {
                         ...(podmanApi === undefined ? {} : { podmanApi }),
-                        ...(options.logFileAccess === undefined
-                          ? {}
-                          : { logFileAccess: options.logFileAccess }),
+                        ...(() => {
+                          const logFileAccess =
+                            options.logFileAccess ??
+                            (podmanApi === undefined || logFileHelperPayload === undefined
+                              ? undefined
+                              : makeDockerLogFileAccess({
+                                  providerId: "lando",
+                                  api: podmanApi,
+                                  container: `lando-${plan.slug}-${target.service}`.replace(
+                                    /[^a-zA-Z0-9_.-]/gu,
+                                    "-",
+                                  ),
+                                  helperPayload: logFileHelperPayload,
+                                }));
+                          return logFileAccess === undefined ? {} : { logFileAccess };
+                        })(),
                       }),
                     ),
                   ),

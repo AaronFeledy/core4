@@ -77,6 +77,28 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
   });
 
+  test("advertises service log source following when a helper payload matches Podman info architecture", async () => {
+    const layer = makeProviderLayer({
+      platform: "linux",
+      podmanApi: { info: Effect.succeed({ host: { arch: "x86_64" } }), ping: Effect.succeed(undefined) },
+      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+    });
+    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+
+    expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
+  });
+
+  test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
+    const layer = makeProviderLayer({
+      platform: "linux",
+      podmanApi: { info: Effect.succeed({ host: { arch: "aarch64" } }), ping: Effect.succeed(undefined) },
+      logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
+    });
+    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+
+    expect(runtimeProvider.capabilities.serviceLogSources).toBe(false);
+  });
+
   test("declares macOS support with slow bind mount performance", async () => {
     const layer = makeProviderLayer({
       platform: "darwin",

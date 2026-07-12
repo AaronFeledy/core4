@@ -253,6 +253,40 @@ describe("provider-docker capabilities", () => {
     expect(provider.capabilities.serviceLogSources).toBe(true);
   });
 
+  test("advertises service log source following when a helper payload matches Docker info architecture", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ Architecture: "aarch64" }) },
+            logFileHelperPayloads: { "linux-arm64": new Uint8Array([1, 2, 3]) },
+          }),
+        ),
+      ),
+    );
+
+    expect(provider.capabilities.serviceLogSources).toBe(true);
+  });
+
+  test("does not advertise service log source following when Docker info architecture has no helper payload", async () => {
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            platform: "linux",
+            env: {},
+            dockerApi: { info: Effect.succeed({ Architecture: "x86_64" }) },
+            logFileHelperPayloads: { "linux-arm64": new Uint8Array([1, 2, 3]) },
+          }),
+        ),
+      ),
+    );
+
+    expect(provider.capabilities.serviceLogSources).toBe(false);
+  });
+
   test("uses resolved Docker hosts for API creation and capabilities", async () => {
     const createdHosts: Array<string> = [];
     const provider = await Effect.runPromise(

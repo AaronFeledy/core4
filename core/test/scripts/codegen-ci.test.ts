@@ -198,6 +198,10 @@ describe("ci workflow codegen", () => {
       expect(firstWorkflow).toContain("setup: managed-lando");
       expect(firstWorkflow).toContain("setup: homebrew-podman");
       expect(firstWorkflow).toContain("Build Linux x64 binary for managed Lando provider");
+      expect(firstWorkflow).toContain("bun run --filter='@lando/core' build:log-file-helper");
+      expect(firstWorkflow).toContain(
+        "await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });",
+      );
       expect(firstWorkflow).toContain("Prepare managed Lando provider from committed manifest");
       expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
       expect(firstWorkflow).toContain('test -z "${LANDO_RUNTIME_BUNDLE_URL:-}"');

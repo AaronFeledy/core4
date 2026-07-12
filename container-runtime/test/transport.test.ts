@@ -38,10 +38,38 @@ class FakeConnection implements SocketHttpConnection {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const waitFor = async (predicate: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await sleep(1);
+  }
+  throw new Error("condition timed out");
+};
+
 class WaitingConnection extends FakeConnection {
   async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
     yield bytes("HTTP/1.1 200 OK\r\n\r\n");
     while (!this.destroyed) await sleep(1);
+  }
+}
+
+class DelayedUpgradeConnection implements SocketHttpConnection {
+  readonly writes: Array<string> = [];
+  destroyed = false;
+
+  write(data: string | Uint8Array): void {
+    const text = typeof data === "string" ? data : decoder.decode(data);
+    this.writes.push(text);
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<Bytes> {
+    await waitFor(() => this.writes.length > 0);
+    await sleep(5);
+    yield bytes("HTTP/1.1 101 UPGRADED\r\nConnection: Upgrade\r\nUpgrade: tcp\r\n\r\ndone");
   }
 }
 
@@ -107,6 +135,36 @@ describe("socket HTTP transport", () => {
 
     expect(chunks).toEqual([bytes("done")]);
     expect(connection.writes[0]).toContain("POST /v1.43/exec/abc/start HTTP/1.1\r\n");
+    expect(connection.writes.at(-1)).toBe("typed\n");
+  });
+
+  test("buffers delayed stdin until upgraded response headers are available", async () => {
+    const connection = new DelayedUpgradeConnection();
+    const client = makeSocketHttpClient({ apiPrefix: "/v1.43", connect: async () => connection });
+    let release: ((chunk: Bytes) => void) | undefined;
+    async function* delayedStdin(): AsyncGenerator<Bytes> {
+      yield await new Promise<Bytes>((resolve) => {
+        release = resolve;
+      });
+    }
+
+    const streamed = Array.fromAsync(
+      client.stream({
+        method: "POST",
+        path: "/exec/abc/start",
+        headers: { Connection: "Upgrade", Upgrade: "tcp" },
+        body: { Detach: false, Tty: false },
+        stdin: delayedStdin(),
+      }),
+    );
+    await waitFor(() => release !== undefined);
+    release?.(bytes("typed\n"));
+    const chunks = await Promise.race([
+      streamed,
+      new Promise<never>((_, reject) => setTimeout(() => reject(new Error("stream timed out")), 1_000)),
+    ]);
+
+    expect(chunks).toEqual([bytes("done")]);
     expect(connection.writes.at(-1)).toBe("typed\n");
   });
 

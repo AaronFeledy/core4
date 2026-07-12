@@ -19,6 +19,11 @@ import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
+import {
+  type LogFileHelperPayloads,
+  logFileHelperPayloadForTargets,
+} from "@lando/container-runtime/log-file-helper-payloads";
 import { Effect, Layer, Schema, Stream } from "effect";
 
 import {
@@ -542,6 +547,7 @@ export interface ProviderLayerOptions {
   ) => Effect.Effect<void, ProviderLandoConflictError | ProviderLandoStateError>;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
+  readonly logFileHelperPayloads?: LogFileHelperPayloads;
 }
 
 const makeUnavailable = (operation: string) =>
@@ -664,12 +670,25 @@ export const makeRuntimeProvider = (
       enforceServerVersionFloor(info).pipe(
         Effect.map((serverVersion) => {
           const containerArch = podmanInfoArchitecture(info);
+          const capabilities = podmanCapabilitiesForPlatform(
+            platform,
+            hostProxyContainerTarget(containerArch),
+          );
           return {
             serverVersion,
             capabilities: {
-              ...podmanCapabilitiesForPlatform(platform, hostProxyContainerTarget(containerArch)),
-              serviceLogSources: options.logFileAccess !== undefined,
+              ...capabilities,
+              serviceLogSources:
+                options.logFileAccess !== undefined ||
+                logFileHelperPayloadForTargets(
+                  options.logFileHelperPayloads,
+                  capabilities.hostProxy?.containerTargets,
+                ) !== undefined,
             },
+            logFileHelperPayload: logFileHelperPayloadForTargets(
+              options.logFileHelperPayloads,
+              capabilities.hostProxy?.containerTargets,
+            ),
           };
         }),
       ),
@@ -724,7 +743,11 @@ export const makeRuntimeProvider = (
   return conflictCheck.pipe(
     Effect.flatMap(() => gatedRuntime),
     Effect.map(
-      ({ serverVersion, capabilities: resolvedCapabilities }): RuntimeProviderShape => ({
+      ({
+        serverVersion,
+        capabilities: resolvedCapabilities,
+        logFileHelperPayload,
+      }): RuntimeProviderShape => ({
         id: PROVIDER_ID,
         displayName: "Podman Runtime Provider (user-installed)",
         version: "0.0.0",
@@ -790,9 +813,22 @@ export const makeRuntimeProvider = (
                   ? Stream.fail(makeNoPlanError(target.app, "logs"))
                   : logs(plan, target, logOptions, {
                       podmanApi,
-                      ...(options.logFileAccess === undefined
-                        ? {}
-                        : { logFileAccess: options.logFileAccess }),
+                      ...(() => {
+                        const logFileAccess =
+                          options.logFileAccess ??
+                          (logFileHelperPayload === undefined
+                            ? undefined
+                            : makeDockerLogFileAccess({
+                                providerId: PROVIDER_ID,
+                                api: podmanApi,
+                                container: `lando-${plan.slug}-${target.service}`.replace(
+                                  /[^a-zA-Z0-9_.-]/gu,
+                                  "-",
+                                ),
+                                helperPayload: logFileHelperPayload,
+                              }));
+                        return logFileAccess === undefined ? {} : { logFileAccess };
+                      })(),
                     }),
               ),
             ),

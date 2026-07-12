@@ -146,10 +146,13 @@ export const socketHttpRequestText = (
   body = requestBody(request),
   rawBodyLength?: number,
 ): string => {
+  const explicitConnection = Object.keys(request.headers ?? {}).some(
+    (key) => key.toLowerCase() === "connection",
+  );
   const headers = [
     `${request.method} ${options.apiPrefix}${request.path} HTTP/1.1`,
     `Host: ${options.hostHeader ?? "localhost"}`,
-    "Connection: close",
+    ...(explicitConnection ? [] : ["Connection: close"]),
     ...Object.entries(options.defaultHeaders ?? {}).map(([key, value]) => `${key}: ${value}`),
     ...Object.entries(request.headers ?? {}).map(([key, value]) => `${key}: ${value}`),
   ];
@@ -352,8 +355,18 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
     writeRequest(connection, input, options);
     let stdinPump: Promise<void> | undefined;
     let stdinIterator: AsyncIterator<Bytes> | undefined;
+    let stdinReady = false;
+    const pendingStdin: Bytes[] = [];
     const abort = () => connection.destroy();
     input.signal?.addEventListener("abort", abort, { once: true });
+    const writeStdin = (chunk: Bytes): void => {
+      if (stdinReady) connection.write(chunk);
+      else pendingStdin.push(chunk);
+    };
+    const flushStdin = (): void => {
+      stdinReady = true;
+      for (const chunk of pendingStdin.splice(0)) connection.write(chunk);
+    };
     const startStdinPump = () => {
       if (input.stdin === undefined || stdinPump !== undefined) return;
       stdinIterator = input.stdin[Symbol.asyncIterator]();
@@ -361,13 +374,13 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
         while (true) {
           const next = await stdinIterator?.next();
           if (next === undefined || next.done === true) return;
-          const chunk = next.value;
-          connection.write(chunk);
+          writeStdin(next.value);
         }
       })();
       stdinPump.catch(() => connection.destroy());
     };
     try {
+      startStdinPump();
       const initialChunks: Bytes[] = [];
       let parsed: ParsedHttpHead | undefined;
       let chunkedBody = false;
@@ -379,8 +392,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
           const merged = concatBytes(initialChunks);
           if (indexOfBytes(merged, headerSeparator) === -1) continue;
           parsed = parseHttpHead(merged, operation);
-          startStdinPump();
-          if (parsed.status < 200 || parsed.status >= 300) {
+          if (parsed.status !== 101 && (parsed.status < 200 || parsed.status >= 300)) {
             throw fail(
               "http",
               operation,
@@ -388,6 +400,7 @@ export const makeSocketHttpClient = (options: SocketHttpClientOptions): SocketHt
               { method: input.method, path: input.path, status: parsed.status },
             );
           }
+          flushStdin();
           chunkedBody = parsed.headers.get("transfer-encoding")?.toLowerCase() === "chunked";
           if (chunkedBody) {
             bodyBuffer = parsed.bodyStart;
