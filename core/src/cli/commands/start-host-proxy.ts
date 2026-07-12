@@ -68,7 +68,6 @@ export const withHostProxyRunLando = (plan: AppPlan, session: HostProxyRunLandoS
       if (!serviceHasHostProxyFeature(service)) return [service.name, service];
       const environment = Object.entries(service.environment);
       const mounts: Array<ServicePlan["mounts"][number]> = [...service.mounts];
-      const extensions = { ...service.extensions };
       feature.apply({
         addEnv: (name, value) => {
           environment.push([name, value]);
@@ -76,11 +75,8 @@ export const withHostProxyRunLando = (plan: AppPlan, session: HostProxyRunLandoS
         addMount: (mount) => {
           mounts.push(mount);
         },
-        addExtension: (name, value) => {
-          extensions[name] = value;
-        },
       });
-      return [service.name, { ...service, environment: Object.fromEntries(environment), mounts, extensions }];
+      return [service.name, { ...service, environment: Object.fromEntries(environment), mounts }];
     }),
   );
   return { ...plan, services };

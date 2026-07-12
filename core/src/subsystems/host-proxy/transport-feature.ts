@@ -26,7 +26,6 @@ interface HostProxyRunLandoFeatureMutators {
     readonly readOnly: boolean;
     readonly realization: "passthrough";
   }): void;
-  addExtension?(name: string, value: unknown): void;
 }
 
 export const hostProxyRunLandoFeature = (session: HostProxyRunLandoFeatureSession) => ({
