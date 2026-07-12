@@ -47,9 +47,29 @@ describe("classifyDiedEvent", () => {
 
   test("OOMKilled present as string 'true' classifies as oom", () => {
     const result = classifyDiedEvent(
-      diedEvent({ Actor: { Attributes: { name: "lando-x-db", OOMKilled: "true" } } }),
+      diedEvent({
+        Actor: {
+          Attributes: {
+            name: "lando-x-db",
+            OOMKilled: "true",
+            "dev.lando.app": "x",
+            "dev.lando.service": "db",
+          },
+        },
+      }),
     );
     expect(result.kind).toBe("oom");
+  });
+
+  test("unowned OOMKilled died event classifies as unrelated", () => {
+    const result = classifyDiedEvent(
+      diedEvent({
+        OOMKilled: true,
+        Actor: { Attributes: { name: "external-db", image: "docker.io/library/postgres:16" } },
+      }),
+    );
+
+    expect(result.kind).toBe("unrelated");
   });
 
   test("OOMKilled absent classifies as died (not oom) — preserves 'if set' semantics", () => {
@@ -103,15 +123,13 @@ describe("classifyDiedEvent", () => {
   });
 
   test("accepts Podman podman_event_name / Status spellings for died", () => {
-    expect(classifyDiedEvent({ Type: "container", Status: "died", OOMKilled: true }).kind).toBe("oom");
-    expect(classifyDiedEvent({ Type: "container", podman_event_name: "died", OOMKilled: true }).kind).toBe(
-      "oom",
-    );
+    expect(classifyDiedEvent(diedEvent({ Status: "died", OOMKilled: true })).kind).toBe("oom");
+    expect(classifyDiedEvent(diedEvent({ podman_event_name: "died", OOMKilled: true })).kind).toBe("oom");
   });
 
   test("accepts libpod die action spellings for container death events", () => {
-    expect(classifyDiedEvent({ Type: "container", Action: "die", OOMKilled: true }).kind).toBe("oom");
-    expect(classifyDiedEvent({ Type: "container", status: "die", OOMKilled: true }).kind).toBe("oom");
+    expect(classifyDiedEvent(diedEvent({ Action: "die", OOMKilled: true })).kind).toBe("oom");
+    expect(classifyDiedEvent(diedEvent({ status: "die", OOMKilled: true })).kind).toBe("oom");
   });
 
   test("correlates app/service from compose labels when lando labels absent", () => {
@@ -160,6 +178,17 @@ describe("buildOomDoctorCheck", () => {
   test("non-oom classifications return undefined (no false diagnostic)", () => {
     expect(buildOomDoctorCheck(classifyDiedEvent(diedEvent()), CONTEXT)).toBeUndefined();
     expect(
+      buildOomDoctorCheck(
+        classifyDiedEvent(
+          diedEvent({
+            OOMKilled: true,
+            Actor: { Attributes: { name: "external-db", image: "docker.io/library/postgres:16" } },
+          }),
+        ),
+        CONTEXT,
+      ),
+    ).toBeUndefined();
+    expect(
       buildOomDoctorCheck(classifyDiedEvent({ Type: "image", Action: "died" }), CONTEXT),
     ).toBeUndefined();
     expect(buildOomDoctorCheck(classifyDiedEvent(null), CONTEXT)).toBeUndefined();
@@ -196,6 +225,7 @@ describe("buildOomDoctorCheck", () => {
             name: "lando-secret-web",
             image: "oci://user:s3cr3t@registry.example.com/team/app:latest",
             "dev.lando.app": "https://user:pw@app.example.com",
+            "dev.lando.service": "web",
           },
         },
       }),
@@ -217,7 +247,16 @@ describe("collectOomDoctorChecks", () => {
         diedEvent(),
         diedEvent({ Action: "start" }),
         null,
-        diedEvent({ OOMKilled: true, Actor: { Attributes: { name: "lando-x-db" } } }),
+        diedEvent({
+          OOMKilled: true,
+          Actor: {
+            Attributes: {
+              name: "proj_db_1",
+              "com.docker.compose.project": "proj",
+              "com.docker.compose.service": "db",
+            },
+          },
+        }),
       ],
       CONTEXT,
     );
@@ -232,7 +271,14 @@ describe("doctor rendering of oom checks", () => {
       classifyDiedEvent(
         diedEvent({
           OOMKilled: true,
-          Actor: { Attributes: { name: "lando-x-web", image: "oci://user:s3cr3t@r.example.com/a" } },
+          Actor: {
+            Attributes: {
+              name: "lando-x-web",
+              image: "oci://user:s3cr3t@r.example.com/a",
+              "dev.lando.app": "x",
+              "dev.lando.service": "web",
+            },
+          },
         }),
       ),
       CONTEXT,
@@ -249,7 +295,14 @@ describe("doctor rendering of oom checks", () => {
       classifyDiedEvent(
         diedEvent({
           OOMKilled: true,
-          Actor: { Attributes: { name: "lando-x-web", image: "oci://user:s3cr3t@r.example.com/a" } },
+          Actor: {
+            Attributes: {
+              name: "lando-x-web",
+              image: "oci://user:s3cr3t@r.example.com/a",
+              "dev.lando.app": "x",
+              "dev.lando.service": "web",
+            },
+          },
         }),
       ),
       CONTEXT,
