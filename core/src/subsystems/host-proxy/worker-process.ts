@@ -45,21 +45,27 @@ export const hostProxyWorkerEnv = (): Record<string, string> => {
 };
 
 export const hostProxyWorkerArgv = (
-  input: { readonly entryPath?: string | undefined; readonly appId?: string | undefined } = {},
+  input: {
+    readonly entryPath?: string | undefined;
+    readonly execPath?: string | undefined;
+    readonly appId?: string | undefined;
+  } = {},
 ): ReadonlyArray<string> => {
+  const execPath = input.execPath ?? process.execPath;
   const entryPath = input.entryPath ?? process.argv[1];
   const ownerArgs = input.appId === undefined ? [] : ["--app-id", input.appId];
+  if (entryPath?.includes("$bunfs") === true) return [execPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
   if (entryPath !== undefined && extname(entryPath) === ".ts" && entryPath.endsWith("bin/lando.ts"))
-    return [process.execPath, entryPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
-  if (basename(process.execPath).startsWith("bun")) {
+    return [execPath, entryPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
+  if (basename(execPath).startsWith("bun")) {
     return [
-      process.execPath,
+      execPath,
       new URL("../../../bin/lando.ts", import.meta.url).pathname,
       HOST_PROXY_WORKER_COMMAND,
       ...ownerArgs,
     ];
   }
-  return [process.execPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
+  return [execPath, HOST_PROXY_WORKER_COMMAND, ...ownerArgs];
 };
 
 const textFromStreamUntilLine = async (

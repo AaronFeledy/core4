@@ -263,6 +263,16 @@ describe("detached host-proxy worker manager", () => {
     }
   });
 
+  test("spawns compiled host-proxy workers through the compiled executable", () => {
+    const argv = hostProxyWorkerArgv({
+      entryPath: "/$bunfs/root/core/bin/lando.ts",
+      execPath: "/usr/local/bin/lando",
+      appId: "demo",
+    });
+
+    expect(argv).toEqual(["/usr/local/bin/lando", "__internal:host-proxy-worker", "--app-id", "demo"]);
+  });
+
   test("isolates worker state for the same app id in different app roots", async () => {
     const root = await tempRoot();
     const firstApp = { ...app, root: AbsolutePath.make("/srv/apps/first/demo") };
