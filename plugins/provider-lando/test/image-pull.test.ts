@@ -3,7 +3,7 @@ import { DateTime, Effect, Exit, Schema, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
-import { type ImagePullProgressEvent, LandoEvent } from "@lando/sdk/events";
+import { type ImagePullProgressEvent, LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 
 import {
   buildImagePullRequest,
@@ -13,7 +13,7 @@ import {
   pullImage,
 } from "@lando/provider-lando";
 import type { PodmanApiClient } from "@lando/provider-lando";
-import { RuntimeProvider } from "@lando/sdk/services";
+import { type EventService, RuntimeProvider } from "@lando/sdk/services";
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
 
 const FIXED = DateTime.unsafeMake("2026-07-08T03:30:00Z");
@@ -28,6 +28,12 @@ const imagePullLive = liveIntegrationEligibility([
 
 const encoder = new TextEncoder();
 const bytes = (text: string): Uint8Array => encoder.encode(text);
+type PublishedEvent = Parameters<typeof EventService.Service.publish>[0];
+const isImagePullProgressEvent = (event: PublishedEvent): event is ImagePullProgressEvent =>
+  event._tag === "image-pull-progress" && "eventName" in event && event.eventName === "image-pull-progress";
+const captureImagePullProgress = (events: ImagePullProgressEvent[], event: PublishedEvent): void => {
+  if (isImagePullProgressEvent(event)) events.push(event);
+};
 
 interface CapturedPull {
   readonly events: ReadonlyArray<ImagePullProgressEvent>;
@@ -113,7 +119,7 @@ describe("pullImage", () => {
     ]);
     expect(Exit.isSuccess(exit)).toBe(true);
     expect(events).toHaveLength(2);
-    const isLandoEvent = Schema.is(LandoEvent);
+    const isLandoEvent = Schema.is(LandoEventSchema);
     for (const event of events) {
       expect(event._tag).toBe("image-pull-progress");
       expect(isLandoEvent(event)).toBe(true);
@@ -272,7 +278,7 @@ describe("provider pullArtifact", () => {
             eventService: {
               publish: (event) =>
                 Effect.sync(() => {
-                  if (event._tag === "image-pull-progress") events.push(event);
+                  captureImagePullProgress(events, event);
                 }),
             },
           }),
@@ -284,7 +290,8 @@ describe("provider pullArtifact", () => {
       provider.pullArtifact({ ref: "docker.io/library/alpine:3.20.3" }),
     );
 
-    expect(artifact).toEqual({ providerId: "lando", ref: "docker.io/library/alpine:3.20.3" });
+    expect(String(artifact.providerId)).toBe("lando");
+    expect(artifact.ref).toBe("docker.io/library/alpine:3.20.3");
     expect(events).toHaveLength(2);
     expect(events[1]?.current).toBe(100);
     expect(events[1]?.total).toBe(200);
@@ -306,7 +313,7 @@ describe("provider pullArtifact", () => {
             eventService: {
               publish: (event) =>
                 Effect.sync(() => {
-                  if (event._tag === "image-pull-progress") events.push(event);
+                  captureImagePullProgress(events, event);
                 }),
             },
           }),
@@ -339,7 +346,7 @@ describe("provider pullArtifact", () => {
               eventService: {
                 publish: (event) =>
                   Effect.sync(() => {
-                    if (event._tag === "image-pull-progress") events.push(event);
+                    captureImagePullProgress(events, event);
                   }),
               },
             }),
