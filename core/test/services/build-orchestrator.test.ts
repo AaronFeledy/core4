@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { type Context, DateTime, Effect, Fiber, Layer, Stream } from "effect";
 
@@ -7,7 +10,9 @@ import {
   type ArtifactBuildSpec,
   BuildOrchestrator,
   EventService,
+  PathsService,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
 } from "@lando/core/services";
 import {
   AbsolutePath,
@@ -19,9 +24,11 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { makeLandoPaths } from "../../src/config/paths.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
+import { StateStoreLive } from "../../src/state/service.ts";
 
 const providerId = ProviderId.make("test");
 const appId = AppId.make("myapp");
@@ -62,8 +69,31 @@ const plan: AppPlan = {
   routes: [],
   networks: [],
   stores: [],
+  fileSync: [],
   metadata,
   extensions: {},
+};
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const buildLifecycleEntry = (event: unknown): readonly [unknown, unknown] | undefined => {
+  if (!isRecord(event)) return undefined;
+  if (event._tag !== "pre-build" && event._tag !== "post-build") return undefined;
+  return [event._tag, event.serviceName];
+};
+
+const buildLifecycleDetails = (event: unknown) => {
+  if (!isRecord(event)) return undefined;
+  if (event._tag !== "pre-build" && event._tag !== "post-build") return undefined;
+  const appRef = isRecord(event.appRef) ? event.appRef : undefined;
+  return {
+    appId: appRef?.id,
+    appRoot: appRef?.root,
+    serviceName: event.serviceName,
+    providerId: event.providerId,
+    timestamp: event.timestamp,
+  };
 };
 
 const registryLayer = (provider = TestRuntimeProvider) =>
@@ -73,15 +103,63 @@ const registryLayer = (provider = TestRuntimeProvider) =>
     select: () => Effect.succeed(provider),
   });
 
-const layer = (provider = TestRuntimeProvider) =>
-  BuildOrchestratorLive.pipe(
-    Layer.provideMerge(EventServiceLive),
-    Layer.provideMerge(registryLayer(provider)),
+const layer = (provider = TestRuntimeProvider) => {
+  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
+  const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), StateStoreLive);
+  return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
+};
+
+const layerWithRedaction = (provider: RuntimeProviderShape, redaction: Layer.Layer<RedactionService>) => {
+  const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
+  const dependencies = Layer.mergeAll(
+    EventServiceLive,
+    pathsLive,
+    registryLayer(provider),
+    StateStoreLive,
+    redaction,
   );
+  return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
+};
 
 const redactionLayer = Layer.succeed(RedactionService, {
   forProfile: () => Effect.succeed(createRedactor("secrets", { values: ["topsecret"] })),
 });
+
+const withTempUserRoots = async <T>(run: () => Promise<T>): Promise<T> => {
+  const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-build-orchestrator-cache-")));
+  const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+  const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+  try {
+    process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+    process.env.LANDO_USER_DATA_ROOT = cacheRoot;
+    return await run();
+  } finally {
+    if (previousCacheRoot === undefined) {
+      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+      delete process.env.LANDO_USER_CACHE_ROOT;
+    } else {
+      process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+    }
+    if (previousDataRoot === undefined) {
+      // biome-ignore lint/performance/noDelete: env delete avoids Bun coercing undefined to "undefined".
+      delete process.env.LANDO_USER_DATA_ROOT;
+    } else {
+      process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+    }
+    await rm(cacheRoot, { recursive: true, force: true });
+  }
+};
+
+const serviceFeatureExtension = (service: ServicePlan) =>
+  service.extensions["@lando/core/service-features"] as
+    | {
+        readonly buildSteps?: ReadonlyArray<{
+          readonly id: string;
+          readonly phase: string;
+          readonly command: ReadonlyArray<string>;
+        }>;
+      }
+    | undefined;
 
 describe("BuildOrchestratorLive", () => {
   test("builds every service sequentially and publishes build events in order", async () => {
@@ -92,6 +170,9 @@ describe("BuildOrchestratorLive", () => {
       ...TestRuntimeProvider,
       buildArtifact: (spec: ArtifactBuildSpec) =>
         Effect.gen(function* () {
+          expect(spec.app).toBe(plan.id);
+          expect(spec.plan).toBe(plan);
+          expect(spec.buildKey).toBeString();
           active += 1;
           maxActive = Math.max(maxActive, active);
           calls.push(String(spec.service));
@@ -108,7 +189,12 @@ describe("BuildOrchestratorLive", () => {
             .subscribe("*")
             .pipe(Stream.take(4), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
-          yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(plan));
+          yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+            Effect.map(orchestrator.build(plan), (builtPlan) => {
+              expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "web:test" });
+              expect(builtPlan.services[db.name]?.artifact).toEqual({ kind: "ref", ref: "db:test" });
+            }),
+          );
           return yield* Fiber.join(subscriber);
         }),
       ).pipe(Effect.provide(layer(provider))),
@@ -116,7 +202,11 @@ describe("BuildOrchestratorLive", () => {
 
     expect(calls).toEqual(["web", "db"]);
     expect(maxActive).toBe(1);
-    expect(Array.from(events).map((event) => [event._tag, event.serviceName])).toEqual([
+    expect(
+      Array.from(events)
+        .map(buildLifecycleEntry)
+        .filter((entry) => entry !== undefined),
+    ).toEqual([
       ["pre-build", ServiceName.make("web")],
       ["post-build", ServiceName.make("web")],
       ["pre-build", ServiceName.make("db")],
@@ -181,23 +271,17 @@ describe("BuildOrchestratorLive", () => {
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
           return yield* Fiber.join(subscriber);
         }),
-      ).pipe(
-        Effect.provide(
-          BuildOrchestratorLive.pipe(
-            Layer.provideMerge(EventServiceLive),
-            Layer.provideMerge(registryLayer(provider)),
-            Layer.provideMerge(redactionLayer),
-          ),
-        ),
-      ),
+      ).pipe(Effect.provide(layerWithRedaction(provider, redactionLayer))),
     );
 
     expect(Array.from(events)).toHaveLength(2);
-    for (const event of events) {
-      expect(event.appRef.id).not.toContain("topsecret");
-      expect(event.appRef.id).toContain("[redacted]");
-      expect(event.appRef.root).not.toContain("topsecret");
-      expect(event.appRef.root).toContain("[redacted]");
+    for (const event of Array.from(events)
+      .map(buildLifecycleDetails)
+      .filter((entry) => entry !== undefined)) {
+      expect(String(event.appId)).not.toContain("topsecret");
+      expect(String(event.appId)).toContain("[redacted]");
+      expect(String(event.appRoot)).not.toContain("topsecret");
+      expect(String(event.appRoot)).toContain("[redacted]");
       expect(String(event.serviceName)).not.toContain("topsecret");
       expect(String(event.serviceName)).toContain("[redacted]");
       expect(String(event.providerId)).not.toContain("topsecret");
@@ -242,15 +326,7 @@ describe("BuildOrchestratorLive", () => {
             yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
             return yield* Fiber.join(subscriber);
           }),
-        ).pipe(
-          Effect.provide(
-            BuildOrchestratorLive.pipe(
-              Layer.provideMerge(EventServiceLive),
-              Layer.provideMerge(registryLayer(provider)),
-              Layer.provideMerge(envRedactionLayer),
-            ),
-          ),
-        ),
+        ).pipe(Effect.provide(layerWithRedaction(provider, envRedactionLayer))),
       );
 
       expect(JSON.stringify(Array.from(events))).not.toContain("envbuildsecret");
@@ -299,18 +375,216 @@ describe("BuildOrchestratorLive", () => {
           yield* orchestrator.build(secretPlan);
           return yield* Fiber.join(subscriber);
         }),
-      ).pipe(
-        Effect.provide(
-          BuildOrchestratorLive.pipe(
-            Layer.provideMerge(EventServiceLive),
-            Layer.provideMerge(registryLayer(provider)),
-            Layer.provideMerge(lazyRedactionLayer),
-          ),
-        ),
-      ),
+      ).pipe(Effect.provide(layerWithRedaction(provider, lazyRedactionLayer))),
     );
 
-    expect(profileReads).toBe(3);
+    expect(profileReads).toBe(1);
     expect(JSON.stringify(Array.from(events))).not.toContain("latersecret");
+  });
+
+  test("skips a warm scratch artifact result without re-running provider work", async () => {
+    await withTempUserRoots(async () => {
+      const artifactPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-toolbox-first"),
+        slug: "scratch-toolbox-first",
+        root: AbsolutePath.make("/tmp/topsecret/scratch-toolbox-first/root"),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: { kind: "ref", ref: "debian:12.11-slim" },
+            environment: { PASSWORD: "topsecret" },
+          },
+        },
+      };
+      const repeatPlan: AppPlan = {
+        ...artifactPlan,
+        id: AppId.make("scratch-toolbox-second"),
+        slug: "scratch-toolbox-second",
+        root: AbsolutePath.make("/tmp/topsecret/scratch-toolbox-second/root"),
+      };
+      const pullCalls: string[] = [];
+      const provider = {
+        ...TestRuntimeProvider,
+        pullArtifact: (spec: { readonly ref: string }) =>
+          Effect.sync(() => {
+            pullCalls.push(spec.ref);
+            return { providerId, ref: spec.ref };
+          }),
+      };
+
+      const events = await Effect.runPromise(
+        Effect.flatMap(EventService, (eventService) =>
+          Effect.gen(function* () {
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(artifactPlan);
+            const builtRepeat = yield* orchestrator.build(repeatPlan);
+            expect(builtRepeat.services[web.name]?.artifact).toEqual({
+              kind: "ref",
+              ref: "debian:12.11-slim",
+            });
+            return yield* eventService.query("build-step-skip");
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      const skipEvents = Array.from(events);
+      expect(skipEvents).toEqual([
+        expect.objectContaining({
+          _tag: "build-step-skip",
+          eventName: "build-step-skip",
+          reason: "up-to-date",
+          cached: true,
+          serviceName: ServiceName.make("web"),
+        }),
+      ]);
+      expect(pullCalls).toEqual([]);
+      expect(JSON.stringify(skipEvents)).not.toContain("/tmp/topsecret");
+      expect(JSON.stringify(skipEvents)).not.toContain("PASSWORD");
+      expect(JSON.stringify(skipEvents)).not.toContain("topsecret");
+    });
+  });
+
+  test("skips an identical warm scratch redirect artifact build", async () => {
+    await withTempUserRoots(async () => {
+      const calls: string[] = [];
+      const planWithRedirect: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-toolbox-redirect-first"),
+        slug: "scratch-toolbox-redirect-first",
+        root: AbsolutePath.make("/tmp/scratch-toolbox-redirect-first/root"),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make("/tmp/context-a"),
+              contentHash: "sha256:context-a",
+            },
+            extensions: {
+              "@lando/core/service-features": {
+                buildSteps: [
+                  {
+                    id: "lando-log-redirect:access",
+                    phase: "build",
+                    command: ["ln", "-sf", "/dev/stdout", "/logs/access.log"],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      };
+      const repeatPlan: AppPlan = {
+        ...planWithRedirect,
+        id: AppId.make("scratch-toolbox-redirect-second"),
+        slug: "scratch-toolbox-redirect-second",
+        root: AbsolutePath.make("/tmp/scratch-toolbox-redirect-second/root"),
+      };
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.sync(() => {
+            calls.push(String(spec.service));
+            return { providerId, ref: `${spec.service}:test` };
+          }),
+      };
+
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(planWithRedirect);
+            yield* orchestrator.build(repeatPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(calls).toEqual(["web"]);
+      expect(
+        serviceFeatureExtension(Object.values(planWithRedirect.services)[0] ?? web)?.buildSteps,
+      ).toHaveLength(1);
+    });
+  });
+
+  test("rebuilds when redirect build inputs change and retries cached failures", async () => {
+    await withTempUserRoots(async () => {
+      const calls: string[] = [];
+      const planWithRedirect = (commandPath: string): AppPlan => ({
+        ...plan,
+        id: AppId.make(`scratch-toolbox-${commandPath.replace(/[^a-z0-9]/gi, "-")}`),
+        slug: `scratch-toolbox-${commandPath.replace(/[^a-z0-9]/gi, "-")}`,
+        root: AbsolutePath.make(`/tmp/scratch-toolbox-${commandPath.replace(/[^a-z0-9]/gi, "-")}/root`),
+        services: {
+          [web.name]: {
+            ...web,
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(`/tmp/context-${commandPath.replace(/[^a-z0-9]/gi, "-")}`),
+              contentHash: "sha256:redirect-context",
+            },
+            extensions: {
+              "@lando/core/service-features": {
+                buildSteps: [
+                  {
+                    id: "lando-log-redirect:access",
+                    phase: "build",
+                    command: ["ln", "-sf", "/dev/stdout", commandPath],
+                  },
+                ],
+              },
+            },
+          },
+        },
+      });
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.sync(() => {
+            calls.push(String(spec.service));
+            return { providerId, ref: `${spec.service}:test` };
+          }),
+      };
+
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(planWithRedirect("/logs/access.log"));
+            yield* orchestrator.build(planWithRedirect("/logs/other.log"));
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      expect(calls).toEqual(["web", "web"]);
+
+      const failure = new ProviderInternalError({
+        providerId: "test",
+        operation: "pullArtifact",
+        message: "pull failed",
+      });
+      const retryCalls: string[] = [];
+      const failingProvider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) => {
+          retryCalls.push(String(spec.service));
+          return retryCalls.length === 1
+            ? Effect.fail(failure)
+            : Effect.succeed({ providerId, ref: `${spec.service}:test` });
+        },
+      };
+      await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* Effect.either(orchestrator.build(planWithRedirect("/logs/failure.log")));
+            yield* orchestrator.build(planWithRedirect("/logs/failure.log"));
+          }),
+        ).pipe(Effect.provide(layer(failingProvider))),
+      );
+
+      expect(retryCalls).toEqual(["web", "web"]);
+      expect(
+        serviceFeatureExtension(Object.values(planWithRedirect("/logs/failure.log").services)[0] ?? web)
+          ?.buildSteps,
+      ).toHaveLength(1);
+    });
   });
 });

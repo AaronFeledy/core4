@@ -4,6 +4,7 @@
 import { Duration, Effect, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
+import { buildContainerArtifact } from "@lando/container-runtime/image-build";
 import { makeDockerLogFileAccess } from "@lando/container-runtime/log-file-access";
 import {
   type LogFileHelperPayloads,
@@ -422,6 +423,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       Effect.map((resolved) => ({
         capabilities: {
           ...resolved,
+          artifactBuild: podmanApi !== undefined && resolved.artifactBuild,
           serviceLogSources:
             options.logFileAccess !== undefined ||
             logFileHelperPayloadForTargets(
@@ -537,7 +539,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         ...(runtimeVersion === undefined ? {} : { runtime: runtimeVersion }),
         ...(bundleVersion === undefined ? {} : { bundle: bundleVersion }),
       })),
-      buildArtifact: () => Effect.fail(makeUnavailable("buildArtifact")),
+      buildArtifact:
+        podmanApi === undefined
+          ? () => Effect.fail(makeUnavailable("buildArtifact"))
+          : (spec) => buildContainerArtifact(spec, { providerId: "lando", api: podmanApi }),
       pullArtifact: () => Effect.fail(makeUnavailable("pullArtifact")),
       removeArtifact: () => Effect.void,
       apply: (plan, applyOptions) =>

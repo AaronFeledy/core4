@@ -35,12 +35,22 @@ describe("provider-lando capabilities", () => {
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
+    expect(linux.artifactBuild).toBe(true);
+    expect(macos.artifactBuild).toBe(true);
+    expect(windows.artifactBuild).toBe(true);
   });
 
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
     expect(linuxMvpCapabilities.hostProxy).toBeUndefined();
     expect(macosMvpCapabilities.hostProxy).toBeUndefined();
     expect(mvpProviderCapabilities("win32").hostProxy?.containerTargets).toEqual([]);
+  });
+
+  test("does not advertise artifact builds without a Podman API client", async () => {
+    const runtimeProvider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux" }))),
+    );
+    expect(runtimeProvider.capabilities.artifactBuild).toBe(false);
   });
 
   test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
@@ -124,6 +134,7 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.platform).toBe("win32");
     expect(runtimeProvider.capabilities).toEqual({
       ...mvpProviderCapabilities("win32", "arm64"),
+      artifactBuild: false,
       serviceLogSources: false,
     });
     expect(runtimeProvider.capabilities.bindMounts).toBe(true);

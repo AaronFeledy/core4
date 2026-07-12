@@ -378,3 +378,13 @@ Open closure categories:
 - Review feedback: fixed (guide-coverage skip; advertise serviceLogSources when helpers present; load live-test helpers from dist/; pre-pull node:22; defer registry helper payload load for hot-path budget)
 - Merge: merged (squash)
 ---
+
+## 2026-07-12 11:39 CDT - US-435
+- Disposable toolbox builds now persist content-addressed results and return provider-built or cached artifact refs into the plan that is actually applied. Identical runs keep fresh scratch identities and cleanup scopes while skipping current artifact work; recipe, redirect, base-image, build-arg, provider, and provider-visible environment changes invalidate the key.
+- Docker, Podman, and managed Lando providers now build deterministic artifacts through their container APIs. Context builds with generated redirect steps use a derived second image so the original target and the redirect commands are both preserved; structured skip events omit host roots and secret-bearing inputs.
+- Verification: typecheck, lint, boundary gates, focused SDK/core/provider tests, real Podman 6 derived-image execution, and two sandboxed `lando run` invocations passed; reviewer gate returned unconditional approval.
+- **Learnings for future iterations:**
+  - Artifact orchestration must apply the returned stamped plan; recording a provider ref without replacing the service artifact leaves cache hits unusable.
+  - A context build plus generated build steps is a two-stage image operation: build the requested context/target first, then derive the final deterministic image from that ref.
+  - Build-result lookup is newest-first, and an artifact-phase cache hit is valid only when it carries an artifact ref.
+---

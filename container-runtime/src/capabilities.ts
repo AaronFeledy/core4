@@ -8,6 +8,7 @@ export interface ProviderCapabilityConstants {
   readonly bindMountPerformance: ProviderCapabilitiesShape["bindMountPerformance"];
   readonly volumeSnapshot?: ProviderCapabilitiesShape["volumeSnapshot"];
   readonly serviceFileCopy?: ProviderCapabilitiesShape["serviceFileCopy"];
+  readonly artifactBuild?: ProviderCapabilitiesShape["artifactBuild"];
   readonly artifactExport?: ProviderCapabilitiesShape["artifactExport"];
   readonly artifactImport?: ProviderCapabilitiesShape["artifactImport"];
   readonly ephemeralMounts?: ProviderCapabilitiesShape["ephemeralMounts"];
@@ -22,7 +23,7 @@ export const buildProviderCapabilities = (
   constants: ProviderCapabilityConstants,
 ): ProviderCapabilitiesShape =>
   Schema.decodeSync(ProviderCapabilities)({
-    artifactBuild: false,
+    artifactBuild: constants.artifactBuild ?? false,
     artifactPull: false,
     buildSecrets: false,
     buildSsh: false,

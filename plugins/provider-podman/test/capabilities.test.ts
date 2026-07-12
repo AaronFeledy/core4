@@ -37,6 +37,7 @@ describe("provider-podman capabilities", () => {
   test("declares native bind-mount performance on Linux", () => {
     expect(linuxPodmanCapabilities.bindMountPerformance).toBe("native");
     expect(linuxPodmanCapabilities.bindMounts).toBe(true);
+    expect(linuxPodmanCapabilities.artifactBuild).toBe(true);
     expect(linuxPodmanCapabilities.rootless).toBe(true);
   });
 
