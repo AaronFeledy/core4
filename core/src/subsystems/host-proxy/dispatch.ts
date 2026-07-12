@@ -39,7 +39,6 @@ import { filterHostProxyEnv } from "./shim.ts";
 export interface HostProxyRunLandoExecutorInput {
   readonly commandId: string;
   readonly argv: ReadonlyArray<string>;
-  /** Remapped host-side cwd. */
   readonly cwd: string;
   readonly tty: boolean;
   readonly env: Readonly<Record<string, string>>;
@@ -61,7 +60,6 @@ export type HostProxyRunLandoExecutor = (
 
 export interface DispatchRunLandoDeps {
   readonly executor: HostProxyRunLandoExecutor;
-  /** Effective host-proxy runLando allowlist (canonical ids). */
   readonly allowlist: ReadonlyArray<string>;
   readonly mountInfo: HostProxyMountInfo;
   readonly callerService: string;
@@ -72,7 +70,6 @@ export interface DispatchRunLandoDeps {
   readonly callId?: string;
 }
 
-/** Canonicalize the first argv token to a command id (mirrors `runOpen`). */
 const commandIdFromArgv = (argv: ReadonlyArray<string>): string => {
   const head = argv[0] ?? "";
   if (head === "open" || head === "app:open") return "app:open";
