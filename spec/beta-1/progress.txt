@@ -388,3 +388,12 @@ Open closure categories:
   - A context build plus generated build steps is a two-stage image operation: build the requested context/target first, then derive the final deterministic image from that ref.
   - Build-result lookup is newest-first, and an artifact-phase cache hit is valid only when it carries an artifact ref.
 ---
+
+## 2026-07-12 12:10 CDT - US-435 Review
+- Review fixes landed for deterministic realized build contexts: context packing now honors ordered `.dockerignore` comments, directory rules, negations, deterministic ordering, executable modes, and symlink tar entries; `buildKey` hashes the packed bytes through the shared `@lando/container-runtime/image-build` digest helper so same-path content changes invalidate and identical content at different roots shares a key.
+- Derived Dockerfiles now preserve both `CommandSpec` forms: string build steps emit shell-form `RUN`, while `string[]` steps emit Docker JSON exec-form `RUN`; base refs and argv/shell text reject CR/LF/control-character injection with typed provider errors instead of silently dropping unsafe content.
+- Provider build failures now redact raw and URL-encoded `buildargs` at the shared build request boundary. Scratch build-result state remains in the shared root-level cache so warm repeats survive fresh scratch ids without leaving artifacts inside per-run scratch cleanup paths.
+- `BuildStepSkipEvent` is now schema-backed in SDK events/union/schema registry and core continues publishing the typed redacted skip shape. Schema snapshot/codegen refreshed the public schema artifacts.
+- Rejected/deferred outcomes: stale external image pruning is rejected because `RuntimeProvider` has no artifact-existence contract and adding one is outside this focused story; service-plugin version provenance is deferred because `ServicePlan` lacks contributor metadata and actual generated build-step content is hashed; scratch-namespaced or per-scratch cache locations are rejected because they either violate scratch cleanup invariants or break warm repeats across fresh ids; Cursor Bugbot was unavailable due account usage limit.
+- Verification passed: focused container-runtime/core/SDK/provider tests, `bun run codegen:schema-snapshot`, `bun run typecheck`, `bun run lint`, `bun run check:state-store-boundary`, `bun run check:redaction-boundary`, and the TypeScript no-excuse checker.
+---
