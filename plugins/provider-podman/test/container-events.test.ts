@@ -46,7 +46,6 @@ describe("provider-podman container died event collection", () => {
       }),
     );
 
-    if (!("getContainerDiedEvents" in provider)) throw new Error("missing died-event provider extension");
     const payloads = await Effect.runPromise(provider.getContainerDiedEvents);
 
     expect(payloads).toEqual([diedEvent]);

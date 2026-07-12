@@ -625,7 +625,7 @@ const enforceServerVersionFloor = (
  */
 export const makeRuntimeProvider = (
   options: ProviderLayerOptions = {},
-): Effect.Effect<RuntimeProviderShape, ProviderCapabilityError | ProviderUnavailableError> => {
+): Effect.Effect<RuntimeProviderWithContainerEvents, ProviderCapabilityError | ProviderUnavailableError> => {
   const plans = new Map<string, AppPlan>();
   const platform = options.platform ?? platformFromProcess();
   const effectiveEnv = options.env ?? process.env;
