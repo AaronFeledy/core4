@@ -330,3 +330,9 @@ Open closure categories:
 - Verification: typecheck and lint passed; 106 focused lifecycle/host-proxy tests passed with one platform-gated live-provider skip; 36 SDK compatibility/export tests passed; post-fix Oracle review passed.
 - **Learnings for future iterations:** Detached-worker ownership must bind the authenticated control identity to app id, protocol, PID, and transport before fallback signals. App-scoped runtime artifacts need an app-root fingerprint even when user-visible app ids remain name-based, and persisted state format changes need a narrow cleanup path for prior records.
 ---
+
+## 2026-07-11 21:25 CDT - US-433 Verify
+- Compiled binary + sandboxed `lando setup --provider=podman` succeeded; toolbox app start installed a 0600 Unix socket, compiled shim mounts, session env, and detached worker. In-container shim proved allowlist, stale/cross-app auth, recursion rejection, and `open --print` envelope/exit-code parity; stop/destroy cleaned run state and workers. Adjacent info/exec/host-open smoke stayed green.
+- Fixed production host-proxy dispatch: keep the worker's Effect runtime Layer scope open for the full session (scoped EventService/PubSub was torn down after ready), ignore detached-worker stderr, and sink stdio after readiness so parent-pipe close cannot hang or SIGPIPE request handling.
+- **Learnings for future iterations:** Detached long-lived workers that `Effect.provide` a Layer with `Layer.scoped` services must keep that effect open for the worker lifetime; capturing `Effect.context` after scope finalization leaves a dead EventService. Detached Bun spawns must not leave stdout/stderr piped to a parent that exits.
+---
