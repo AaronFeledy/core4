@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { chmod, mkdir, mkdtemp, realpath, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -258,6 +258,16 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
   return { layer, events, publishedEvents, destroyCalls, volumes };
 };
 
+const expectMissingPath = async (path: string): Promise<void> => {
+  try {
+    await stat(path);
+  } catch (cause) {
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return;
+    throw cause;
+  }
+  throw new Error(`Expected ${path} to be removed.`);
+};
+
 describe("lando destroy", () => {
   test("plans the app, destroys without removing volumes by default, and emits destroy events", async () => {
     const harness = makeDestroyLayer();
@@ -288,6 +298,30 @@ describe("lando destroy", () => {
     expect(harness.publishedEvents.find((event) => event._tag === "post-destroy")).toMatchObject({
       app: scratchRef,
     });
+  });
+
+  test("cleans host-proxy artifacts under the resolved PathsService roots", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-destroy-host-proxy-paths-")));
+    const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    try {
+      process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
+      const dataRoot = join(root, "service-data");
+      const hostProxyDir = makeLandoPaths({
+        userDataRoot: dataRoot,
+        env: {},
+        platform: "linux",
+      }).hostProxyRunDir(plan.id, plan.root);
+      await mkdir(hostProxyDir, { recursive: true });
+      const harness = makeDestroyLayer({ userDataRoot: dataRoot });
+
+      await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
+
+      await expectMissingPath(hostProxyDir);
+    } finally {
+      if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("removes app-scoped volumes when volumes: true is requested", async () => {

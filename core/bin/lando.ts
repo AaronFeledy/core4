@@ -19,15 +19,20 @@
 import { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { CORE_VERSION } from "../src/version.ts";
+import { ensureHostProxyNoProxy } from "../src/subsystems/host-proxy/proxy-bypass.ts";
+
+ensureHostProxyNoProxy("127.0.0.1");
+ensureHostProxyNoProxy("localhost");
 
 const argv = Bun.argv.slice(2);
-if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
-  console.log(CORE_VERSION);
-  process.exit(0);
-}
 
 const main = async (): Promise<void> => {
+  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
+    const { CORE_VERSION } = await import("../src/version.ts");
+    console.log(CORE_VERSION);
+    process.exit(0);
+  }
+
   if (argv.length === 1 && argv[0] === "shellenv") {
     const { renderShellenv } = await import("../src/cli/commands/shellenv.ts");
     console.log(renderShellenv("posix"));

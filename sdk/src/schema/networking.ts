@@ -2,6 +2,8 @@ import { Schema } from "effect";
 
 import { AbsolutePath, CommandSpec, PortablePath, ServiceName } from "./primitives.ts";
 
+const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
+
 /**
  * Endpoint — a service listener.
  */
@@ -161,6 +163,59 @@ export type NetworkingPlan = typeof NetworkingPlan.Type;
 
 // Provider capabilities — the typed manifest of what a provider can do.
 
+export const HostProxyContainerTarget = Schema.Union(
+  Schema.Struct({
+    os: Schema.propertySignature(Schema.Literal("linux")).annotations({
+      description: "Container operating system.",
+    }),
+    arch: Schema.propertySignature(Schema.Literal("x64")).annotations({
+      description: "x64 container CPU architecture.",
+    }),
+  }),
+  Schema.Struct({
+    os: Schema.propertySignature(Schema.Literal("linux")).annotations({
+      description: "Container operating system.",
+    }),
+    arch: Schema.propertySignature(Schema.Literal("arm64")).annotations({
+      description: "arm64 container CPU architecture.",
+    }),
+  }),
+).annotations({
+  identifier: "HostProxyContainerTarget",
+  title: "Host Proxy Container Target",
+  description: "Linux container architecture eligible for the host-proxy shim.",
+});
+export type HostProxyContainerTarget = typeof HostProxyContainerTarget.Type;
+
+export const HostProxyGatewayHostname = Schema.String.pipe(
+  Schema.pattern(HOST_PROXY_GATEWAY_HOSTNAME_PATTERN, {
+    message: () => "Expected a non-empty hostname without scheme, port, or path.",
+  }),
+).annotations({
+  identifier: "HostProxyGatewayHostname",
+  title: "Host Proxy Gateway Hostname",
+  description: "Provider DNS hostname that Linux containers use to reach the host TCP gateway.",
+});
+export type HostProxyGatewayHostname = typeof HostProxyGatewayHostname.Type;
+
+export const HostProxyProviderCapabilities = Schema.Struct({
+  /** Linux container targets eligible for the host-proxy shim. */
+  containerTargets: Schema.Array(HostProxyContainerTarget).annotations({
+    title: "Host Proxy Container Targets",
+    description: "Linux container targets the provider can run for host-proxy shim dispatch.",
+  }),
+  /** Hostname for TCP host-gateway transport from Linux containers on VM-backed hosts. */
+  tcpHostGateway: Schema.optional(HostProxyGatewayHostname).annotations({
+    title: "Host Proxy TCP Host Gateway",
+    description: "Provider DNS hostname used for host-proxy TCP host-gateway transport.",
+  }),
+}).annotations({
+  identifier: "HostProxyProviderCapabilities",
+  title: "Host Proxy Provider Capabilities",
+  description: "Structured host-proxy transport capabilities declared by a runtime provider.",
+});
+export type HostProxyProviderCapabilities = typeof HostProxyProviderCapabilities.Type;
+
 export const ProviderCapabilities = Schema.Struct({
   artifactBuild: Schema.Boolean,
   artifactPull: Schema.Boolean,
@@ -190,6 +245,11 @@ export const ProviderCapabilities = Schema.Struct({
   privilegedServices: Schema.Boolean,
   composeSpec: Schema.Literal("none", "portable", "native"),
   providerExtensions: Schema.Array(Schema.String),
+  /** Structured host-proxy transport support declared by the provider. */
+  hostProxy: Schema.optional(HostProxyProviderCapabilities).annotations({
+    title: "Host Proxy",
+    description: "Structured provider-declared host-proxy transport capabilities.",
+  }),
 });
 export type ProviderCapabilities = typeof ProviderCapabilities.Type;
 

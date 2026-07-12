@@ -366,6 +366,10 @@ describe("ci workflow", () => {
     );
     expect(buildLinux).toContain("    runs-on: ubuntu-24.04");
     expect(buildLinux).toContain("        run: bun run --filter='@lando/core' build:manifest");
+    expect(buildLinux).toContain("          bun run --filter='@lando/core' build:host-proxy-shim");
+    expect(buildLinux).toContain(
+      "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });\"",
+    );
     expect(buildLinux).toContain(
       "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external",
     );
@@ -377,7 +381,9 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("        uses: actions/upload-artifact@v4");
     expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
-    expect(buildLinux).toContain("          path: dist/lando");
+    expect(buildLinux).toContain("          path: |");
+    expect(buildLinux).toContain("            dist/lando");
+    expect(buildLinux).toContain("            dist/host-proxy/**");
     expect(buildLinux).toContain("          if-no-files-found: ignore");
     expect(buildLinux).toContain("          retention-days: 14");
 
@@ -410,7 +416,9 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("        uses: actions/upload-artifact@v4");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-arm64");
-    expect(buildDarwin).toContain("          path: dist/lando");
+    expect(buildDarwin).toContain("          path: |");
+    expect(buildDarwin).toContain("            dist/lando");
+    expect(buildDarwin).toContain("            dist/host-proxy/**");
     expect(buildDarwin).toContain("          if-no-files-found: ignore");
     expect(buildDarwin).toContain("          retention-days: 14");
 
@@ -428,10 +436,17 @@ describe("ci workflow", () => {
     const buildWindows = findIndentedBlock(jobs, "build-windows-x64", 2);
 
     expect(buildWindows).toContain(
-      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
+      "    needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]",
     );
     expect(buildWindows).toContain("    runs-on: windows-2022");
+    expect(buildWindows).toContain("      - name: Download host-proxy shims from Linux artifact");
+    expect(buildWindows).toContain("          name: lando-linux-x64");
+    expect(buildWindows).toContain("          path: host-proxy-shims");
     expect(buildWindows).toContain("        run: bun run --filter='@lando/core' build:manifest");
+    expect(buildWindows).not.toContain("          bun run --filter='@lando/core' build:host-proxy-shim");
+    expect(buildWindows).toContain(
+      "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('host-proxy-shims/host-proxy', 'dist/host-proxy', { recursive: true });\"",
+    );
     expect(buildWindows).toContain(
       "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external",
     );
@@ -449,10 +464,15 @@ describe("ci workflow", () => {
     expect(buildWindows).toContain("        uses: actions/upload-artifact@v4");
     expect(buildWindows).toContain("        if: always()");
     expect(buildWindows).toContain("          name: lando-windows-x64");
-    expect(buildWindows).toContain("          path: dist/lando-windows-x64.exe");
+    expect(buildWindows).toContain("          path: |");
+    expect(buildWindows).toContain("            dist/lando-windows-x64.exe");
+    expect(buildWindows).toContain("            dist/host-proxy/**");
     expect(buildWindows).toContain("          if-no-files-found: ignore");
     expect(buildWindows).toContain("          retention-days: 14");
 
+    expect(buildWindows.indexOf("path: host-proxy-shims")).toBeLessThan(
+      buildWindows.indexOf("run: bun run --filter='@lando/core' build:manifest"),
+    );
     expect(buildWindows.indexOf("--outfile ./dist/lando-windows-x64.exe")).toBeLessThan(
       buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
     );
@@ -482,7 +502,9 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("        uses: actions/upload-artifact@v4");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-x64");
-    expect(buildDarwin).toContain("          path: dist/lando");
+    expect(buildDarwin).toContain("          path: |");
+    expect(buildDarwin).toContain("            dist/lando");
+    expect(buildDarwin).toContain("            dist/host-proxy/**");
     expect(buildDarwin).toContain("          if-no-files-found: ignore");
     expect(buildDarwin).toContain("          retention-days: 14");
 
@@ -515,7 +537,9 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v4");
     expect(buildLinuxArm).toContain("        if: always()");
     expect(buildLinuxArm).toContain("          name: lando-linux-arm64");
-    expect(buildLinuxArm).toContain("          path: dist/lando");
+    expect(buildLinuxArm).toContain("          path: |");
+    expect(buildLinuxArm).toContain("            dist/lando");
+    expect(buildLinuxArm).toContain("            dist/host-proxy/**");
     expect(buildLinuxArm).toContain("          if-no-files-found: ignore");
     expect(buildLinuxArm).toContain("          retention-days: 14");
 

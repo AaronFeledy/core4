@@ -183,14 +183,18 @@ const makeInfoLayer = (
   options?: {
     readonly landofile?: { readonly agentEnv?: boolean };
     readonly config?: Layer.Layer<ConfigService>;
+    readonly plannedApp?: AppPlan;
+    readonly providerCapabilities?: ProviderCapabilities;
   },
 ) => {
+  const plannedApp = options?.plannedApp ?? plan;
+  const providerCapabilities = options?.providerCapabilities ?? capabilities;
   const provider: RuntimeProviderShape = {
     id: "lando",
     displayName: "Lando Runtime Provider",
     version: "0.0.0",
     platform: "linux",
-    capabilities,
+    capabilities: providerCapabilities,
     isAvailable: Effect.succeed(true),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true }),
@@ -224,12 +228,12 @@ const makeInfoLayer = (
     logs: () => Stream.die("not used"),
     inspect: (target) =>
       Effect.succeed({
-        app: plan.id,
+        app: plannedApp.id,
         service: target.service,
         providerId,
         status: state,
         state,
-        endpoints: state === "running" ? (plan.services[target.service]?.endpoints ?? []) : [],
+        endpoints: state === "running" ? (plannedApp.services[target.service]?.endpoints ?? []) : [],
       }),
     list: () => Effect.succeed([]),
     snapshotVolume: () => Effect.die("not used"),
@@ -246,10 +250,10 @@ const makeInfoLayer = (
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "test-info", services: {}, ...options?.landofile }),
     }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
-      capabilities: Effect.succeed(capabilities),
+      capabilities: Effect.succeed(providerCapabilities),
       select: () => Effect.succeed(provider),
     }),
     options?.config ?? emptyConfigServiceLayer,
@@ -277,6 +281,37 @@ describe("lando info", () => {
     expect(output).toMatch(/memcached\s+stopped\s+no endpoints/);
     expect(output).toMatch(/valkey\s+stopped\s+no endpoints/);
     expect(output).not.toContain("localhost");
+  });
+
+  test("prints a visible host-proxy unavailable notice from the plan extension", async () => {
+    const plannedApp: AppPlan = {
+      ...plan,
+      extensions: {
+        ...plan.extensions,
+        "@lando/core/host-proxy": {
+          runLando: {
+            availability: "unavailable",
+            reason: "Provider hostReachability is none; host-proxy runLando is disabled.",
+          },
+        },
+      },
+    };
+
+    const result = await Effect.runPromise(
+      infoApp().pipe(
+        Effect.provide(
+          makeInfoLayer("running", {
+            plannedApp,
+            providerCapabilities: { ...capabilities, hostReachability: "none" },
+          }),
+        ),
+      ),
+    );
+    const output = renderInfoAppResult(result);
+
+    expect(output).toContain("host-proxy");
+    expect(output).toContain("unavailable");
+    expect(output).toContain("hostReachability");
   });
 
   test("fails outside an app directory with init remediation", async () => {

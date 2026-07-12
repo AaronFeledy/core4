@@ -15,8 +15,16 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanner,
+  EventService,
+  LandofileService,
+  PathsService,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
+
+import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -185,6 +193,7 @@ const makeRestartLayer = () => {
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-restart", services: {} }) }),
+    Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),

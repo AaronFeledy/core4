@@ -23,6 +23,8 @@ import type {
   FileSyncStartError,
   FileSyncStopError,
   GlobalAutoStartError,
+  HostProxySocketStaleError,
+  HostProxyTransportUnavailableError,
   LandoCommandError,
   LandofileIncludeError,
   LandofileLockMismatchError,
@@ -79,6 +81,7 @@ import type {
   LandofileService,
   Logger,
   ManagedFileService,
+  PathsService,
   PluginRegistry,
   PluginTrustStore,
   PrivilegeService,
@@ -108,6 +111,7 @@ export type LandoRuntimeServices =
   | FileSystem
   | CacheService
   | ManagedFileService
+  | PathsService
   | PluginTrustStore
   | PrivilegeService
   | ProcessRunner
@@ -182,6 +186,8 @@ export type StartAppError =
   | NotImplementedError
   | CapabilityError
   | GlobalAutoStartError
+  | HostProxySocketStaleError
+  | HostProxyTransportUnavailableError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError

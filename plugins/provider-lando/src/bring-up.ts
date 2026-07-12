@@ -29,6 +29,7 @@ const sharedNetworkName = landoSharedNetworkName;
 
 const PROVIDER_ID = "lando";
 const providerId = ProviderId.make(PROVIDER_ID);
+
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
   const scratch = plan.extensions["@lando/core/scratch"] as { readonly id?: string } | undefined;
   return scratch?.id === plan.id ? { "dev.lando.scratch": "TRUE", "dev.lando.scratch-id": scratch.id } : {};
@@ -158,14 +159,15 @@ const inspectContainer = (
     return { exists: true, running: inspect.State?.Running === true || inspect.State?.Status === "running" };
   });
 
-const hostConfig = (plan: AppPlan, service: ServicePlan) =>
-  containerHostConfigFragment(plan, service, {
+const hostConfig = (plan: AppPlan, service: ServicePlan) => {
+  return containerHostConfigFragment(plan, service, {
     onMissingBindMountSource: (mount) => {
       throw podmanFailure(service, "bringUp.mount", "provider-lando bind mounts require a source.", {
         mount,
       });
     },
   });
+};
 
 const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) =>
   containerCreateBodyFragment(plan, service, {

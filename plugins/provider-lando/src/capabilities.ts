@@ -26,6 +26,42 @@ const bindMountPerformanceForPlatform = (
   return "none";
 };
 
+type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
+type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
+  platform === "win32" ? "host.containers.internal" : undefined;
+
+const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
+  if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
+    return [{ os: "linux", arch: "x64" }];
+  }
+  if (arch === "arm64" || arch === "aarch64") return [{ os: "linux", arch: "arm64" }];
+  return [];
+};
+
+const hostProxyCapabilities = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
+): HostProxyCapabilities | undefined => {
+  const tcpHostGateway = hostProxyTcpHostGateway(platform);
+  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
+  return {
+    containerTargets,
+    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
+  };
+};
+
+const podmanInfoArchitecture = (info: unknown): string | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  const host = "host" in info ? info.host : undefined;
+  if (typeof host === "object" && host !== null && "arch" in host && typeof host.arch === "string") {
+    return host.arch;
+  }
+  if ("Architecture" in info && typeof info.Architecture === "string") return info.Architecture;
+  return undefined;
+};
+
 export interface PodmanApiRequest {
   readonly command: "curl";
   readonly args: ReadonlyArray<string>;
@@ -130,8 +166,11 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
-export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
-  buildProviderCapabilities({
+export const providerLandoCapabilitiesForPlatform = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
+): ProviderCapabilities => {
+  return buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
     volumeSnapshot: "native",
@@ -143,12 +182,15 @@ export const providerLandoCapabilitiesForPlatform = (platform: HostPlatform): Pr
     rootless: true,
     composeSpec: "portable",
     providerExtensions: [],
+    hostProxy: hostProxyCapabilities(platform, containerTargets),
   });
+};
 
 export const linuxMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("linux");
 export const macosMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("darwin");
-export const mvpProviderCapabilities = (platform: HostPlatform): ProviderCapabilities =>
-  providerLandoCapabilitiesForPlatform(platform);
+export const windowsMvpCapabilities: ProviderCapabilities = providerLandoCapabilitiesForPlatform("win32");
+export const mvpProviderCapabilities = (platform: HostPlatform, arch?: string): ProviderCapabilities =>
+  providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTarget(arch));
 
 const collectRequestStdin = async (
   stdin: AsyncIterable<Uint8Array> | undefined,
@@ -359,4 +401,9 @@ export const introspectProviderCapabilities = (
       ? "linux"
       : "win32",
 ): Effect.Effect<ProviderCapabilities, ProviderCapabilityError | ProviderUnavailableError> =>
-  api.info.pipe(Effect.map(() => mvpProviderCapabilities(platform)));
+  api.info.pipe(
+    Effect.map((info) => {
+      const containerArch = podmanInfoArchitecture(info);
+      return providerLandoCapabilitiesForPlatform(platform, hostProxyContainerTarget(containerArch));
+    }),
+  );

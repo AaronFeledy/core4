@@ -5,6 +5,11 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
+import {
+  HOST_PROXY_CONTAINER_LANDO,
+  HOST_PROXY_CONTAINER_SHIM,
+  HOST_PROXY_CONTAINER_SOCKET,
+} from "@lando/core/host-proxy-transport";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -75,6 +80,48 @@ const plan: AppPlan = {
   fileSync: [],
   metadata,
   extensions: {},
+};
+
+const hostProxyPlan: AppPlan = {
+  ...plan,
+  services: {
+    ...plan.services,
+    [web.name]: {
+      ...web,
+      environment: {
+        LANDO_APP_NAME: "demo",
+        LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
+        LANDO_HOST_PROXY_SOCKET: HOST_PROXY_CONTAINER_SOCKET,
+        LANDO_HOST_PROXY_TOKEN: "secret-token",
+        LANDO_HOST_PROXY_SESSION: "session-id",
+        LANDO_HOST_PROXY_APP: "crossprocessapp",
+        LANDO_HOST_PROXY_DEPTH: "0",
+      },
+      mounts: [
+        {
+          type: "bind",
+          source: "/tmp/host-proxy.sock",
+          target: PortablePath.make(HOST_PROXY_CONTAINER_SOCKET),
+          readOnly: true,
+          realization: "passthrough",
+        },
+        {
+          type: "bind",
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(HOST_PROXY_CONTAINER_SHIM),
+          readOnly: true,
+          realization: "passthrough",
+        },
+        {
+          type: "bind",
+          source: "/tmp/lando-shim",
+          target: PortablePath.make(HOST_PROXY_CONTAINER_LANDO),
+          readOnly: true,
+          realization: "passthrough",
+        },
+      ],
+    },
+  },
 };
 
 const fileExists = async (path: string): Promise<boolean> => {
@@ -245,6 +292,33 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 const runOnce = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
 
 describe("provider-lando cross-process state", () => {
+  test("persists a host-proxy-sanitized applied plan while applying the runtime plan", async () => {
+    await withStateDir(async (stateDir) => {
+      const fake = makeFakePodmanState();
+
+      const provider = await runOnce(
+        RuntimeProvider.pipe(
+          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+        ),
+      );
+      await runOnce(provider.apply(hostProxyPlan, { reconcile: false }).pipe(Effect.scoped));
+
+      const persisted = await readFile(appliedPlanPath(stateDir, hostProxyPlan.id), "utf8");
+      expect(persisted).not.toContain("LANDO_HOST_PROXY_TOKEN");
+      expect(persisted).not.toContain("LANDO_HOST_PROXY_SESSION");
+      expect(persisted).not.toContain("LANDO_HOST_PROXY_SOCKET");
+      expect(persisted).not.toContain("LANDO_HOST_PROXY_DEPTH");
+      expect(persisted).not.toContain("host-proxy.sock");
+      expect(persisted).not.toContain(HOST_PROXY_CONTAINER_SHIM);
+      expect(persisted).not.toContain(HOST_PROXY_CONTAINER_LANDO);
+
+      const createdBodies = fake.calls
+        .filter((call) => call.method === "POST" && call.path.startsWith("/containers/create"))
+        .map((call) => JSON.stringify(call.body));
+      expect(createdBodies.join("\n")).toContain("LANDO_HOST_PROXY_TOKEN");
+    });
+  });
+
   test("a fresh provider layer can inspect and destroy an app applied by an earlier layer", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakePodmanState();

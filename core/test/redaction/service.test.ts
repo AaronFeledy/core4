@@ -126,6 +126,18 @@ describe("RedactionServiceLive", () => {
     expect(redacted).toBe("provider leaked [redacted]");
   });
 
+  test("masks host-proxy token source env values", async () => {
+    const secret = "host-proxy-session-token";
+    const redactor = await runWithStore(
+      Effect.flatMap(RedactionService, (service) =>
+        service.forProfile("secrets", { sourceEnv: { LANDO_HOST_PROXY_TOKEN: secret } }),
+      ),
+      {},
+    );
+
+    expect(redactor.redactString(`provider leaked ${secret}`)).toBe("provider leaked [redacted]");
+  });
+
   test("standalone redactor masks source env values for secret-bearing keys", () => {
     const secret = "us374-standalone-secret";
     const redactor = createStandaloneRedactor("secrets", {

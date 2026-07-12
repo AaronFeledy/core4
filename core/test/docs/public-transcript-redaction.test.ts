@@ -192,6 +192,14 @@ describe("public transcript redaction (US-249)", () => {
     expect(out).toContain("-t [redacted]");
   });
 
+  test("redacts host-proxy token env assignments in public transcripts", () => {
+    const token = "host-proxy-transcript-token";
+    const out = redactPublicTranscriptText(`LANDO_HOST_PROXY_TOKEN=${token} lando open`, posixEnv);
+
+    expect(out).not.toContain(token);
+    expect(out).toContain("LANDO_HOST_PROXY_TOKEN=[redacted]");
+  });
+
   test("redacts library-mode displayText and commandDisplay containing paths/secrets", () => {
     const frame = {
       kind: "inline" as const,

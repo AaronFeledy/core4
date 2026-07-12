@@ -4,7 +4,7 @@ import { remapContainerCwd } from "../../../src/subsystems/host-proxy/cwd-remap.
 import { buildRunLandoRequest, filterHostProxyEnv } from "../../../src/subsystems/host-proxy/shim.ts";
 
 describe("filterHostProxyEnv", () => {
-  test("keeps host-proxy and agent-context env names", () => {
+  test("keeps safe host-proxy and agent-context env names", () => {
     const filtered = filterHostProxyEnv({
       LANDO_APP: "demo",
       LANDO_HOST_PROXY_DEPTH: "1",
@@ -19,7 +19,6 @@ describe("filterHostProxyEnv", () => {
     });
     expect(filtered).toEqual({
       LANDO_APP: "demo",
-      LANDO_HOST_PROXY_DEPTH: "1",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",

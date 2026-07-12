@@ -113,19 +113,29 @@ yield* Effect.promise(() =>
     "name: embedded-app\nruntime: 4\nprovider: test\nservices:\n  cache:\n    type: redis\n    primary: true\n",
   ),
 );
+const previousShimArtifact = process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT;
+const shimArtifact = join(context.testDir, "lando-shim");
+yield* Effect.promise(() => Bun.write(shimArtifact, "#!/usr/bin/env sh\nexit 0\n"));
 
-const lifecycle = yield* LandoCore.openLandoRuntime({
-  cwd: context.testDir,
-  plugins: { policy: "bundled-only", layers: providerLayers },
-}).pipe(
-  Effect.flatMap((runtime) => runtime.app()),
-  Effect.flatMap((app) =>
-    app.start().pipe(
-      Effect.flatMap((started) => app.info().pipe(Effect.map((info) => ({ started, info })))),
-      Effect.flatMap((acc) => app.stop().pipe(Effect.map((stopped) => ({ ...acc, stopped })))),
+let lifecycle;
+try {
+  process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = shimArtifact;
+  lifecycle = yield* LandoCore.openLandoRuntime({
+    cwd: context.testDir,
+    plugins: { policy: "bundled-only", layers: providerLayers },
+  }).pipe(
+    Effect.flatMap((runtime) => runtime.app()),
+    Effect.flatMap((app) =>
+      app.start().pipe(
+        Effect.flatMap((started) => app.info().pipe(Effect.map((info) => ({ started, info })))),
+        Effect.flatMap((acc) => app.stop().pipe(Effect.map((stopped) => ({ ...acc, stopped })))),
+      ),
     ),
-  ),
-);
+  );
+} finally {
+  if (previousShimArtifact === undefined) Reflect.deleteProperty(process.env, "LANDO_HOST_PROXY_SHIM_ARTIFACT");
+  else process.env.LANDO_HOST_PROXY_SHIM_ARTIFACT = previousShimArtifact;
+}
 
 expect(lifecycle.info.app).toBe("embedded-app");
 expect(lifecycle.started.servicesStarted.map((service) => service.name)).toContain("cache");

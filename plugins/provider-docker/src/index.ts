@@ -435,7 +435,43 @@ const isVmMediatedDockerHost = (platform: HostPlatform, dockerHost: string): boo
   );
 };
 
-export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: string): ProviderCapabilities =>
+type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
+type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
+  if (arch === "x86_64" || arch === "x64" || arch === "amd64") {
+    return [{ os: "linux", arch: "x64" }];
+  }
+  if (arch === "aarch64" || arch === "arm64") return [{ os: "linux", arch: "arm64" }];
+  return [];
+};
+
+const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
+  platform === "win32" ? "host.docker.internal" : undefined;
+
+const hostProxyCapabilities = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
+): HostProxyCapabilities | undefined => {
+  const tcpHostGateway = hostProxyTcpHostGateway(platform);
+  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
+  return {
+    containerTargets,
+    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
+  };
+};
+
+const dockerInfoArchitecture = (info: unknown): string | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  if ("Architecture" in info && typeof info.Architecture === "string") return info.Architecture;
+  return undefined;
+};
+
+export const dockerCapabilitiesForHost = (
+  platform: HostPlatform,
+  dockerHost: string,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
+): ProviderCapabilities =>
   buildProviderCapabilities({
     bindMounts: true,
     bindMountPerformance: isVmMediatedDockerHost(platform, dockerHost) ? "slow" : "native",
@@ -448,6 +484,7 @@ export const dockerCapabilitiesForHost = (platform: HostPlatform, dockerHost: st
     rootless: false,
     composeSpec: "portable",
     providerExtensions: [],
+    hostProxy: hostProxyCapabilities(platform, containerTargets),
   });
 
 export const dockerCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
@@ -492,7 +529,10 @@ export const introspectProviderCapabilities = (
           })
         : cause,
     ),
-    Effect.map(() => dockerCapabilitiesForHost(platform, dockerHost)),
+    Effect.map((info) => {
+      const engineArch = dockerInfoArchitecture(info);
+      return dockerCapabilitiesForHost(platform, dockerHost, hostProxyContainerTarget(engineArch));
+    }),
   );
 
 const makeUnixDockerApiClient = (socketPath: string): DockerApiClient => ({
@@ -1298,10 +1338,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   });
   const dockerApi =
     options.dockerApi ?? (options.dockerApiFactory ?? makeDockerApiClient)(resolvedDockerHost);
-  const capabilities =
-    options.dockerApi === undefined && options.dockerApiFactory === undefined
-      ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
-      : introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost);
+  const defaultFactoryConstruction =
+    options.dockerApi === undefined && options.dockerApiFactory === undefined;
+  const capabilities = introspectProviderCapabilities(dockerApi, platform, resolvedDockerHost).pipe(
+    Effect.catchAll((failure) =>
+      defaultFactoryConstruction
+        ? Effect.succeed(dockerCapabilitiesForHost(platform, resolvedDockerHost))
+        : Effect.fail(failure),
+    ),
+  );
   const runtimeCapabilities = capabilities.pipe(
     Effect.map((resolved) => ({
       ...resolved,

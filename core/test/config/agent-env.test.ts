@@ -178,10 +178,17 @@ describe("resolveAgentEnvAllowlist — built-ins + allow − deny with disable s
 });
 
 describe("filterHostProxyEnv — shim filter with agent-context append", () => {
-  test("keeps LANDO_*, LC_*, LANG, TERM and appends the agent-context allowlist", () => {
+  test("keeps safe LANDO_*, LC_*, LANG, TERM and appends the agent-context allowlist", () => {
     const filtered = filterHostProxyEnv({
       LANDO_APP_NAME: "demo",
       LANDO_HOST_PROXY_TOKEN: "tok",
+      LANDO_HOST_PROXY_SESSION: "session",
+      LANDO_HOST_PROXY_SOCKET: "/run/lando/host-proxy.sock",
+      LANDO_HOST_PROXY_URL: "http://127.0.0.1:1234",
+      LANDO_HOST_PROXY_APP: "demo",
+      LANDO_HOST_PROXY_TRANSPORT: "unix-socket",
+      LANDO_HOST_PROXY_SHIM: "/usr/local/bin/lando",
+      LANDO_HOST_PROXY_DEPTH: "7",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",
@@ -193,7 +200,6 @@ describe("filterHostProxyEnv — shim filter with agent-context append", () => {
     });
     expect(filtered).toEqual({
       LANDO_APP_NAME: "demo",
-      LANDO_HOST_PROXY_TOKEN: "tok",
       LC_ALL: "en_US.UTF-8",
       LANG: "en_US.UTF-8",
       TERM: "xterm-256color",

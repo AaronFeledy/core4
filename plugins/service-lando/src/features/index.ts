@@ -24,6 +24,7 @@ import { valkeyServiceFeature } from "../services/valkey.ts";
 import { landoAppMountFeature } from "./app-mount.ts";
 import { landoEnvFeature } from "./env.ts";
 import { landoHealthcheckFeature } from "./healthcheck.ts";
+import { landoHostProxyFeature } from "./host-proxy.ts";
 import { landoStorageFeature } from "./storage.ts";
 import { landoUserIdFeature } from "./user-id.ts";
 import { landoUserFeature } from "./user.ts";
@@ -31,6 +32,7 @@ import { landoUserFeature } from "./user.ts";
 export { landoAppMountFeature } from "./app-mount.ts";
 export { landoEnvFeature } from "./env.ts";
 export { landoHealthcheckFeature } from "./healthcheck.ts";
+export { landoHostProxyFeature } from "./host-proxy.ts";
 export { landoStorageFeature } from "./storage.ts";
 export { landoUserFeature } from "./user.ts";
 export { landoUserIdFeature } from "./user-id.ts";
@@ -41,6 +43,7 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   landoEnvFeature,
   landoAppMountFeature,
   landoHealthcheckFeature,
+  landoHostProxyFeature,
   landoUserFeature,
   apacheServiceFeature,
   composeServiceFeature,

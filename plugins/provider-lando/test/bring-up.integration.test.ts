@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createServer as createHttpServer } from "node:http";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -80,10 +81,79 @@ const plan: AppPlan = {
   extensions: {},
 };
 
+const makeAliasProbePlan = (): AppPlan => ({
+  id: AppId.make("windows-host-alias-lando"),
+  name: "Windows Host Alias Lando",
+  slug: "windows-host-alias-lando",
+  root: AbsolutePath.make("/tmp/lando-windows-host-alias-lando"),
+  provider: providerId,
+  services: {
+    [node.name]: {
+      name: node.name,
+      type: "node",
+      provider: providerId,
+      primary: true,
+      artifact: { kind: "ref", ref: "node:22-alpine" },
+      command: ["node", "-e", "setInterval(() => {}, 1000)"],
+      environment: {},
+      mounts: [],
+      storage: [],
+      endpoints: [],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata,
+      extensions: {},
+    },
+  },
+  routes: [],
+  networks: [],
+  stores: [],
+  fileSync: [],
+  metadata,
+  extensions: {},
+});
+
+const startLoopbackAuthServer = async (expectedToken: string) => {
+  let observedAuthorization = "";
+  const server = createHttpServer((request, response) => {
+    observedAuthorization = request.headers.authorization ?? "";
+    response.writeHead(observedAuthorization === `Bearer ${expectedToken}` ? 200 : 401);
+    response.end(observedAuthorization === `Bearer ${expectedToken}` ? "alias-ok" : "alias-denied");
+  });
+  const port = await new Promise<number>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      if (address === null || typeof address === "string") reject(new Error("expected TCP listener"));
+      else resolve(address.port);
+    });
+  });
+  return {
+    port,
+    authorization: () => observedAuthorization,
+    close: () => new Promise<void>((resolve) => server.close(() => resolve())),
+  };
+};
+
+const aliasProbeScript = `
+const response = await fetch(process.env.LANDO_ALIAS_PROBE_URL, {
+  headers: { authorization: \`Bearer \${process.env.LANDO_ALIAS_PROBE_TOKEN}\` },
+});
+const body = await response.text();
+if (response.status !== 200 || body !== "alias-ok") {
+  console.error(\`unexpected alias response \${response.status}: \${body}\`);
+  process.exit(1);
+}
+console.log(body);
+`;
+
 interface CreateContainerBody {
   readonly Cmd?: ReadonlyArray<string>;
+  readonly Env?: ReadonlyArray<string>;
   readonly HostConfig?: {
     readonly Binds?: ReadonlyArray<string>;
+    readonly ExtraHosts?: ReadonlyArray<string>;
   };
   readonly NetworkingConfig?: {
     readonly EndpointsConfig?: Readonly<Record<string, { readonly Aliases?: ReadonlyArray<string> }>>;
@@ -658,5 +728,49 @@ describe("provider-lando bringUp", () => {
     // default 5s test timeout; allow enough headroom for image-resident
     // services (Node + Postgres) plus stop/delete cleanup.
     60_000,
+  );
+
+  test.skipIf(process.platform !== "win32" || resolveLiveProviderSocket() === undefined)(
+    "live: Windows provider-lando container reaches host loopback through host.containers.internal",
+    async () => {
+      const socketPath = resolveLiveProviderSocket()?.socketPath;
+      expect(socketPath).toBeTruthy();
+      const token = "lando-alias-token";
+      const server = await startLoopbackAuthServer(token);
+      const provider = await Effect.runPromise(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              podmanApi: makePodmanApiClient(socketPath ?? ""),
+              platform: "win32",
+            }),
+          ),
+        ),
+      );
+      const aliasPlan = makeAliasProbePlan();
+
+      try {
+        await Effect.runPromise(Effect.scoped(provider.apply(aliasPlan, { reconcile: true })));
+        const result = await Effect.runPromise(
+          provider.exec(
+            { app: aliasPlan.id, service: node.name },
+            {
+              command: ["node", "-e", aliasProbeScript],
+              env: {
+                LANDO_ALIAS_PROBE_URL: `http://host.containers.internal:${server.port}/probe`,
+                LANDO_ALIAS_PROBE_TOKEN: token,
+              },
+            },
+          ),
+        );
+
+        expect(result).toEqual({ exitCode: 0, stdout: "alias-ok\n", stderr: "" });
+        expect(server.authorization()).toBe(`Bearer ${token}`);
+      } finally {
+        await Effect.runPromise(Effect.either(provider.destroy({ app: aliasPlan.id }, { volumes: true })));
+        await server.close();
+      }
+    },
+    120_000,
   );
 });

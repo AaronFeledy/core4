@@ -88,6 +88,7 @@ describe("composeService", () => {
     expect(plan.mounts.every((mount) => mount.realization === "passthrough")).toBe(true);
     expect(plan.extensions).toEqual({
       "@lando/core/service-features": {
+        featureIds: ["feature.plan-intent"],
         buildSteps: [{ id: "install", phase: "build", command: ["bun", "install"], dependsOn: ["prepare"] }],
       },
     });
@@ -112,6 +113,7 @@ describe("composeService", () => {
 
     expect(plan.extensions["lando-service-php"]).toEqual({ framework: "drupal" });
     expect(plan.extensions["@lando/core/service-features"]).toEqual({
+      featureIds: ["feature.extension-intent"],
       buildSteps: [{ id: "install-php-extension", phase: "build", command: ["install-php-extension"] }],
     });
   });

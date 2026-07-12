@@ -165,6 +165,7 @@
             "lando.env",
             "lando.app-mount",
             "lando.healthcheck",
+            "lando.host-proxy",
             "lando.user",
             "service-lando.apache",
             "service-lando.compose",
@@ -5394,6 +5395,27 @@
         },
         "app": {
           "type": "string"
+        },
+        "hostProxy": {
+          "additionalProperties": false,
+          "properties": {
+            "runLando": {
+              "additionalProperties": false,
+              "properties": {
+                "availability": {
+                  "enum": ["available", "unavailable"],
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["availability"],
+              "type": "object"
+            }
+          },
+          "required": ["runLando"],
+          "type": "object"
         },
         "services": {
           "items": {
@@ -12481,6 +12503,27 @@
         },
         "app": {
           "type": "string"
+        },
+        "hostProxy": {
+          "additionalProperties": false,
+          "properties": {
+            "runLando": {
+              "additionalProperties": false,
+              "properties": {
+                "availability": {
+                  "enum": ["available", "unavailable"],
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              },
+              "required": ["availability"],
+              "type": "object"
+            }
+          },
+          "required": ["runLando"],
+          "type": "object"
         },
         "services": {
           "items": {
@@ -35952,6 +35995,80 @@
       "type": "object"
     },
     "ProviderCapabilities": {
+      "$defs": {
+        "HostProxyContainerTarget": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "arch": {
+                  "description": "x64 container CPU architecture.",
+                  "enum": ["x64"],
+                  "type": "string"
+                },
+                "os": {
+                  "description": "Container operating system.",
+                  "enum": ["linux"],
+                  "type": "string"
+                }
+              },
+              "required": ["os", "arch"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "arch": {
+                  "description": "arm64 container CPU architecture.",
+                  "enum": ["arm64"],
+                  "type": "string"
+                },
+                "os": {
+                  "description": "Container operating system.",
+                  "enum": ["linux"],
+                  "type": "string"
+                }
+              },
+              "required": ["os", "arch"],
+              "type": "object"
+            }
+          ],
+          "description": "Linux container architecture eligible for the host-proxy shim.",
+          "title": "Host Proxy Container Target"
+        },
+        "HostProxyGatewayHostname": {
+          "description": "Provider DNS hostname that Linux containers use to reach the host TCP gateway.",
+          "pattern": "^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$",
+          "title": "Host Proxy Gateway Hostname",
+          "type": "string"
+        },
+        "HostProxyProviderCapabilities": {
+          "additionalProperties": false,
+          "description": "Structured host-proxy transport capabilities declared by a runtime provider.",
+          "properties": {
+            "containerTargets": {
+              "description": "Linux container targets the provider can run for host-proxy shim dispatch.",
+              "items": {
+                "$ref": "#/$defs/HostProxyContainerTarget"
+              },
+              "title": "Host Proxy Container Targets",
+              "type": "array"
+            },
+            "tcpHostGateway": {
+              "allOf": [
+                {
+                  "$ref": "#/$defs/HostProxyGatewayHostname"
+                }
+              ],
+              "description": "Provider DNS hostname used for host-proxy TCP host-gateway transport.",
+              "title": "Host Proxy TCP Host Gateway"
+            }
+          },
+          "required": ["containerTargets"],
+          "title": "Host Proxy Provider Capabilities",
+          "type": "object"
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
@@ -35996,6 +36113,15 @@
         "hostPortPublish": {
           "enum": ["native", "proxy", "manual", "none"],
           "type": "string"
+        },
+        "hostProxy": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/HostProxyProviderCapabilities"
+            }
+          ],
+          "description": "Structured provider-declared host-proxy transport capabilities.",
+          "title": "Host Proxy"
         },
         "hostReachability": {
           "enum": ["native", "emulated", "none"],

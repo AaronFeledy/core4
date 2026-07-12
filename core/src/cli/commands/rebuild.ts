@@ -12,10 +12,13 @@ import type {
   FileSystem,
   GlobalAppService,
   LandofileService,
+  PathsService,
   PluginRegistry,
   RuntimeProviderRegistry,
+  ShellRunner,
 } from "@lando/sdk/services";
 
+import type { RedactionService } from "../../redaction/service.ts";
 import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopApp } from "./stop.ts";
@@ -34,8 +37,11 @@ type RebuildAppServices =
   | FileSystem
   | GlobalAppService
   | LandofileService
+  | PathsService
   | PluginRegistry
-  | RuntimeProviderRegistry;
+  | RedactionService
+  | RuntimeProviderRegistry
+  | ShellRunner;
 
 export const renderRebuildAppResult = (result: RebuildAppResult): string => {
   const services = result.servicesStarted

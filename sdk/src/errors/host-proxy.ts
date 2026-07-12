@@ -1,11 +1,6 @@
 import { Schema } from "effect";
 
 /**
- * Errors raised by the host-proxy `runLando` dispatch path. Both are tagged,
- * carry a machine `_tag` and command id, and surface a human remediation string.
- */
-
-/**
  * Raised when a container forwards a `runLando` request whose canonical command
  * id is not on the generated host-proxy allowlist (`hostProxyAllowed: true`).
  * The effective allowlist is included so a machine consumer can see what is
@@ -15,9 +10,7 @@ export class HostProxyCommandNotAllowedError extends Schema.TaggedError<HostProx
   "HostProxyCommandNotAllowedError",
   {
     message: Schema.String,
-    /** Canonical command id the rejected `runLando` request targeted. */
     commandId: Schema.String,
-    /** The effective host-proxy allowlist the request was evaluated against. */
     effectiveAllowlist: Schema.Array(Schema.String),
     remediation: Schema.String,
   },
@@ -33,8 +26,52 @@ export class HostProxyAllowlistConflictError extends Schema.TaggedError<HostProx
   "HostProxyAllowlistConflictError",
   {
     message: Schema.String,
-    /** Canonical command id that illegally self-allowed. */
     commandId: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyAuthenticationError extends Schema.TaggedError<HostProxyAuthenticationError>()(
+  "HostProxyAuthenticationError",
+  {
+    message: Schema.String,
+    reason: Schema.Literal("missing", "stale", "cross-app"),
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyRecursionError extends Schema.TaggedError<HostProxyRecursionError>()(
+  "HostProxyRecursionError",
+  {
+    message: Schema.String,
+    depth: Schema.Number,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyBackpressureError extends Schema.TaggedError<HostProxyBackpressureError>()(
+  "HostProxyBackpressureError",
+  {
+    message: Schema.String,
+    concurrency: Schema.Number,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxyTransportUnavailableError extends Schema.TaggedError<HostProxyTransportUnavailableError>()(
+  "HostProxyTransportUnavailableError",
+  {
+    message: Schema.String,
+    socketPath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
+export class HostProxySocketStaleError extends Schema.TaggedError<HostProxySocketStaleError>()(
+  "HostProxySocketStaleError",
+  {
+    message: Schema.String,
+    socketPath: Schema.String,
     remediation: Schema.String,
   },
 ) {}

@@ -33,3 +33,14 @@ export type {
 export { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../../cli/oclif/generated/host-proxy-allowlist.ts";
 export { type HostProxyMountInfo, remapContainerCwd } from "./cwd-remap.ts";
 export { buildRunLandoRequest, filterHostProxyEnv } from "./shim.ts";
+export {
+  HOST_PROXY_CONTAINER_SHIM,
+  HOST_PROXY_CONTAINER_SOCKET,
+  HOST_PROXY_SHIM_SOURCE,
+  connectHostProxyRunLando,
+  createHostProxyRunLandoSession,
+  hostProxyRunLandoFeature,
+  scopedHostProxyRunLandoSession,
+  sendHostProxyRunLando,
+} from "./transport.ts";
+export type { HostProxyRunLandoSession, HostProxyRunLandoSessionOptions } from "./transport.ts";

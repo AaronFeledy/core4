@@ -32,15 +32,13 @@ import { filterHostProxyEnv } from "./shim.ts";
  * for every request (including rejected ones). The result is the same
  * `CommandResultEnvelope` + exit code the host-side command produces.
  *
- * This is the logical round-trip; the physical Unix-socket transport, token
- * auth, concurrency cap, and recursion guard belong to the broader host-proxy
- * transport wave.
+ * This module is the logical round-trip only. Socket/TCP transport, token auth,
+ * concurrency admission, and recursion guards live in the transport modules.
  */
 
 export interface HostProxyRunLandoExecutorInput {
   readonly commandId: string;
   readonly argv: ReadonlyArray<string>;
-  /** Remapped host-side cwd. */
   readonly cwd: string;
   readonly tty: boolean;
   readonly env: Readonly<Record<string, string>>;
@@ -62,7 +60,6 @@ export type HostProxyRunLandoExecutor = (
 
 export interface DispatchRunLandoDeps {
   readonly executor: HostProxyRunLandoExecutor;
-  /** Effective host-proxy runLando allowlist (canonical ids). */
   readonly allowlist: ReadonlyArray<string>;
   readonly mountInfo: HostProxyMountInfo;
   readonly callerService: string;
@@ -73,7 +70,6 @@ export interface DispatchRunLandoDeps {
   readonly callId?: string;
 }
 
-/** Canonicalize the first argv token to a command id (mirrors `runOpen`). */
 const commandIdFromArgv = (argv: ReadonlyArray<string>): string => {
   const head = argv[0] ?? "";
   if (head === "open" || head === "app:open") return "app:open";
@@ -96,6 +92,14 @@ const redactedRequestSummary = (
 
 const resultSummaryFor = (result: HostProxyRunLandoResult, redactor: Redactor): string =>
   redactor.redactString(`exit=${result.exitCode} ok=${result.envelope.ok}`);
+
+const forwardedEnvFor = (
+  request: HostProxyRunLandoRequest,
+  depth: number,
+): Readonly<Record<string, string>> => ({
+  ...(request.env === undefined ? {} : filterHostProxyEnv(request.env)),
+  LANDO_HOST_PROXY_DEPTH: String(depth + 1),
+});
 
 export const dispatchRunLando = (
   request: HostProxyRunLandoRequest,
@@ -155,7 +159,7 @@ export const dispatchRunLando = (
       argv: request.argv,
       cwd: hostCwd,
       tty: request.tty,
-      env: request.env === undefined ? {} : filterHostProxyEnv(request.env),
+      env: forwardedEnvFor(request, deps.depth),
     });
 
     yield* events.publish(
@@ -193,18 +197,19 @@ export const runOpenForHostProxy = (
         ? { outcome: { _tag: "failure" as const, error: parsed.error }, exitCode: parsed.error.exitCode ?? 2 }
         : yield* Effect.gen(function* () {
             const outcome = yield* Effect.exit(openForPlan(plan, parsed.options));
-            return Exit.isSuccess(outcome)
-              ? { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 }
-              : {
-                  outcome: {
-                    _tag: "failure" as const,
-                    error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
-                      _tag: "HostProxyDispatchError",
-                      message: Cause.pretty(outcome.cause),
-                    })),
-                  },
-                  exitCode: 1,
-                };
+            if (Exit.isSuccess(outcome)) {
+              return { outcome: { _tag: "success" as const, value: outcome.value }, exitCode: 0 };
+            }
+            return {
+              outcome: {
+                _tag: "failure" as const,
+                error: Option.getOrElse(Cause.failureOption(outcome.cause), () => ({
+                  _tag: "HostProxyDispatchError",
+                  message: Cause.pretty(outcome.cause),
+                })),
+              },
+              exitCode: 1,
+            };
           });
     const envelope = yield* buildCommandResultEnvelope({
       command: OPEN_COMMAND,

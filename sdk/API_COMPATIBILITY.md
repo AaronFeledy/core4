@@ -8,6 +8,7 @@
 - `@lando/sdk/schema` also exports type-only schema registry contracts: `JsonSchemaName`, `PublicSchema`, `PublicSchemaAnnotationIssue`, `PublicSchemaMetadata`, and `PublicSchemaReferencePage`. These do not appear in the runtime export list below, which is checked with `Object.keys()`.
 - `GuideFrontmatter.defaultLayer` and `ScenarioProps.layer` accept `"e2e"` in addition to `"scenario"`; e2e guide scenarios are generated behind an explicit live-provider gate rather than rejected at decode time.
 - `FileFormat` (and therefore `ManagedFile.format`) accepts `"javascript"` and `"typescript"` in addition to the prior members; both encode/decode verbatim like `text` and carry a `//` ownership marker so scaffolded code files stay valid. Widening the literal is additive — prior values still decode.
+- `ProviderCapabilities` additively gains optional `hostProxy` structured capabilities with `containerTargets` and optional `tcpHostGateway`, replacing private pre-ship host-proxy provider-extension prefix conventions with Schema-validated fields.
 - `ProviderCapabilities` adds the data-plane capability fields `volumeSnapshot`, `serviceFileCopy`, `artifactExport`, `artifactImport`, and `ephemeralMounts`; `EphemeralRunSpec` adds mount/stdin/stdout/env/remove options; `RuntimeProviderShape` adds `runStream`, the eight data-plane methods, and optional `removeVolumeSnapshot` cleanup. These are additive provider-contract extensions for the §10.11 data plane.
 - `@lando/sdk/renderer` is a type/contract-only subpath (like `@lando/sdk/expressions`). It exports the terminal-renderer contracts `RendererIO` and `RendererContribution`. The bundled `@lando/renderer-lando` plugin now owns the default `lando` renderer implementation (task-tree painter, keybindings, formatters, event routing) and exports it as a finished `RendererContribution`; core resolves that contribution through its bundled-renderer registry. The prior core-injected dependency-injection seam is removed: the `TaskTreePainterOptions`, `TaskTreePainterHandle`, `RendererRuntimePrimitives`, and `RendererContributionFactory` types are dropped (pre-ship, no runtime consumers). It exports no runtime values and so does not appear in the `Object.keys()` runtime export checks.
 - `@lando/sdk/verified-stream` is the shared stream → SHA-256 → temp-file → atomic-rename helper used by verified artifact consumers. It exports runtime helpers like `@lando/sdk/landofile`, but no Live layers, service tags, OCLIF imports, or core runtime dependencies.
@@ -30,6 +31,7 @@
 - `McpConfig` is a new public schema export and `GlobalConfig.mcp` is a new additive optional global-config field for MCP allow/deny/tooling policy.
 - `AgentEnvConfig` is a new public schema export; `GlobalConfig.agentEnv` and the top-level `LandofileShape.agentEnv` are new additive optional fields for host agent-context env forwarding policy. `@lando/sdk/errors` additively gains the `AgentEnvPatternError` tagged error raised at config validation when `agentEnv.allow`/`deny` contain wildcard/pattern names.
 - `@lando/sdk` publishes an additive MCP (Model Context Protocol) contract surface (§10.14, §8.3): the `McpToolDescriptor`, `McpCatalog`, `McpCatalogOptions`, and `McpServeOptions` public schemas (each registered in the JSON Schema registry and snapshot), plus the `McpToolNotAllowedError`, `McpToolInputError`, `McpTransportError`, and `McpAllowlistConflictError` tagged errors on `@lando/sdk/errors`. These are additive contracts; the MCP service dispatch and `lando mcp` command land in later stories.
+- `LandoPaths.hostProxyRunDir(appId, appRoot)` now fingerprints the app root in the run directory name so two apps with the same id in different roots do not share host-proxy worker state. `LandoRuntimeServices` additively includes `PathsService`, matching the app-tier runtime layer provided by core.
 
 ## Additive Alpha schema exports
 
@@ -125,7 +127,10 @@
 - `HiddenProps`
 - `HostAliasPlan`
 - `HostArchitecture`
+- `HostProxyContainerTarget`
 - `HostProxyErrorCode`
+- `HostProxyGatewayHostname`
+- `HostProxyProviderCapabilities`
 - `HostProxyRequest`
 - `HostProxyResponse`
 - `HostProxyRunLandoRequest`
@@ -426,6 +431,11 @@
 - `AppFeatureCycleError`
 - `ServiceTypeCollisionError`
 - `StateStoreError`
+- `HostProxyAuthenticationError`
+- `HostProxyBackpressureError`
+- `HostProxyRecursionError`
+- `HostProxySocketStaleError`
+- `HostProxyTransportUnavailableError`
 - `ToolManifestError`
 - `ToolExtractError`
 - `ToolInstallPathError`

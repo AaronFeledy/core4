@@ -131,8 +131,30 @@ const renderSmokeCommands = (platform: CiPlatform): string =>
           ./dist/${platform.binaryName} --help
           ./dist/${platform.binaryName} shellenv`;
 
+const renderBuildNeeds = (platform: CiPlatform): string =>
+  platform.id === "windows-x64"
+    ? "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests, build-linux-x64]"
+    : buildNeeds;
+
+const renderHostProxyShimBuildCommands = (platform: CiPlatform): string =>
+  platform.id === "windows-x64"
+    ? `          bun -e "const fs = await import('node:fs/promises'); await fs.cp('host-proxy-shims/host-proxy', 'dist/host-proxy', { recursive: true });"`
+    : `          bun run --filter='@lando/core' build:host-proxy-shim
+          bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true });"`;
+
+const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
+  platform.id === "windows-x64"
+    ? `
+
+      - name: Download host-proxy shims from Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: lando-linux-x64
+          path: host-proxy-shims`
+    : "";
+
 const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}:
-    needs: ${buildNeeds}
+    needs: ${renderBuildNeeds(platform)}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
@@ -140,7 +162,7 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
 
 ${timingStartStep}
 
-${setupBunSteps}
+${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
 
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -148,6 +170,7 @@ ${setupBunSteps}
       - name: Build ${platform.id} binary
         run: |
           mkdir -p dist
+${renderHostProxyShimBuildCommands(platform)}
           bun build ./core/bin/lando.ts --compile --bytecode --target=${platform.bunTarget} --outfile ./dist/${platform.binaryName} --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
@@ -160,7 +183,9 @@ ${renderSmokeCommands(platform)}
         uses: actions/upload-artifact@v4
         with:
           name: lando-${platform.id}
-          path: dist/${platform.binaryName}
+          path: |
+            dist/${platform.binaryName}
+            dist/host-proxy/**
           if-no-files-found: ignore
           retention-days: 14
 

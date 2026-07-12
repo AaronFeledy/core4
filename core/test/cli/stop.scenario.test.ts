@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { DateTime, Effect, Layer, Stream } from "effect";
@@ -22,6 +22,7 @@ import {
   EventService,
   FileSyncEngine,
   LandofileService,
+  PathsService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type {
@@ -30,6 +31,7 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
+import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -151,7 +153,10 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeStopLayer = (plannedApp: AppPlan = plan) => {
+const makeStopLayer = (
+  plannedApp: AppPlan = plan,
+  options: { readonly pathsService?: ReturnType<typeof makeLandoPaths> } = {},
+) => {
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
@@ -211,6 +216,7 @@ const makeStopLayer = (plannedApp: AppPlan = plan) => {
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+    Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -232,6 +238,16 @@ const makeStopLayer = (plannedApp: AppPlan = plan) => {
   );
 
   return { layer, events, publishedEvents, destroyCalls, volumes };
+};
+
+const expectMissingPath = async (path: string): Promise<void> => {
+  try {
+    await stat(path);
+  } catch (cause) {
+    if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") return;
+    throw cause;
+  }
+  throw new Error(`Expected ${path} to be removed.`);
 };
 
 describe("lando stop", () => {
@@ -269,6 +285,30 @@ describe("lando stop", () => {
     expect(harness.publishedEvents.find((event) => event._tag === "post-app-stop")).toMatchObject({
       appRef: scratchRef,
     });
+  });
+
+  test("cleans host-proxy artifacts under the resolved PathsService roots", async () => {
+    const root = await realpath(await mkdtemp(join(tmpdir(), "lando-stop-host-proxy-paths-")));
+    const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    try {
+      process.env.LANDO_USER_DATA_ROOT = join(root, "leaked-default-data");
+      const pathsService = makeLandoPaths({
+        userDataRoot: join(root, "service-data"),
+        env: {},
+        platform: "linux",
+      });
+      const hostProxyDir = pathsService.hostProxyRunDir(plan.id, plan.root);
+      await mkdir(hostProxyDir, { recursive: true });
+      const harness = makeStopLayer(plan, { pathsService });
+
+      await Effect.runPromise(stopApp().pipe(Effect.provide(harness.layer)));
+
+      await expectMissingPath(hostProxyDir);
+    } finally {
+      if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("succeeds when the app is already stopped", async () => {
@@ -385,6 +425,7 @@ describe("lando stop", () => {
     };
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
@@ -611,6 +652,7 @@ describe("lando stop", () => {
     };
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
+      Layer.succeed(PathsService, makeLandoPaths()),
       Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),

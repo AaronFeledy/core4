@@ -98,6 +98,7 @@ export class InvalidPodmanMachineNameError extends ProviderUnavailableError {
 export interface ResolvePodmanSocketOptions {
   readonly socketPath?: string;
   readonly platform?: HostPlatform;
+  readonly arch?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -248,6 +249,42 @@ const bindMountPerformanceForPlatform = (
   return "none";
 };
 
+type HostProxyCapabilities = NonNullable<ProviderCapabilities["hostProxy"]>;
+type HostProxyContainerTarget = HostProxyCapabilities["containerTargets"][number];
+
+const hostProxyTcpHostGateway = (platform: HostPlatform): string | undefined =>
+  platform === "win32" ? "host.containers.internal" : undefined;
+
+const hostProxyContainerTarget = (arch?: string): ReadonlyArray<HostProxyContainerTarget> => {
+  if (arch === "x64" || arch === "amd64" || arch === "x86_64") {
+    return [{ os: "linux", arch: "x64" }];
+  }
+  if (arch === "arm64" || arch === "aarch64") return [{ os: "linux", arch: "arm64" }];
+  return [];
+};
+
+const hostProxyCapabilities = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget>,
+): HostProxyCapabilities | undefined => {
+  const tcpHostGateway = hostProxyTcpHostGateway(platform);
+  if (containerTargets.length === 0 && tcpHostGateway === undefined) return undefined;
+  return {
+    containerTargets,
+    ...(tcpHostGateway === undefined ? {} : { tcpHostGateway }),
+  };
+};
+
+const podmanInfoArchitecture = (info: unknown): string | undefined => {
+  if (typeof info !== "object" || info === null) return undefined;
+  const host = "host" in info ? info.host : undefined;
+  if (typeof host === "object" && host !== null && "arch" in host && typeof host.arch === "string") {
+    return host.arch;
+  }
+  if ("Architecture" in info && typeof info.Architecture === "string") return info.Architecture;
+  return undefined;
+};
+
 /**
  * Capability matrix for the user-installed Podman provider.
  *
@@ -256,7 +293,10 @@ const bindMountPerformanceForPlatform = (
  * macOS / Windows: `"slow"` because the user's Podman runs inside a managed
  * Podman Desktop VM.
  */
-export const podmanCapabilitiesForPlatform = (platform: HostPlatform): ProviderCapabilities =>
+export const podmanCapabilitiesForPlatform = (
+  platform: HostPlatform,
+  containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
+): ProviderCapabilities =>
   buildProviderCapabilities({
     bindMounts: platform === "linux" || platform === "darwin" || platform === "win32",
     bindMountPerformance: bindMountPerformanceForPlatform(platform),
@@ -269,6 +309,7 @@ export const podmanCapabilitiesForPlatform = (platform: HostPlatform): ProviderC
     rootless: true,
     composeSpec: "portable",
     providerExtensions: [],
+    hostProxy: hostProxyCapabilities(platform, containerTargets),
   });
 
 export const linuxPodmanCapabilities: ProviderCapabilities = podmanCapabilitiesForPlatform("linux");
@@ -485,6 +526,7 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly socketPath?: string;
   readonly platform?: HostPlatform;
+  readonly arch?: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   /**
    * State directory under which `provider-lando/setup-state.json` is read for
@@ -620,13 +662,16 @@ export const makeRuntimeProvider = (
   const gatedRuntime = podmanApi.info.pipe(
     Effect.flatMap((info) =>
       enforceServerVersionFloor(info).pipe(
-        Effect.map((serverVersion) => ({
-          serverVersion,
-          capabilities: {
-            ...podmanCapabilitiesForPlatform(platform),
-            serviceLogSources: options.logFileAccess !== undefined,
-          },
-        })),
+        Effect.map((serverVersion) => {
+          const containerArch = podmanInfoArchitecture(info);
+          return {
+            serverVersion,
+            capabilities: {
+              ...podmanCapabilitiesForPlatform(platform, hostProxyContainerTarget(containerArch)),
+              serviceLogSources: options.logFileAccess !== undefined,
+            },
+          };
+        }),
       ),
     ),
     Effect.mapError((cause) => {

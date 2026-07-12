@@ -6,8 +6,8 @@ import { posix } from "node:path";
  * cwd to the host app root using the active mount info, and any path outside the
  * mount collapses to the host app root as the safe default.
  *
- * `HostProxyMountInfo` is the minimal shape needed here; fuller mount wiring that
- * populates it belongs to the physical host-proxy transport wave.
+ * `HostProxyMountInfo` is the minimal shape needed here; session setup supplies
+ * the mount roots when the transport starts.
  */
 export interface HostProxyMountInfo {
   /** Absolute container-side app root (e.g. `/app`). */

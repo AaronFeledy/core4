@@ -62,6 +62,10 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "../config/version-constraint.ts";
+import {
+  HOST_PROXY_PLAN_EXTENSION_KEY,
+  hostProxyExtensionForCapabilities,
+} from "../subsystems/host-proxy/plan-extension.ts";
 import { CORE_VERSION } from "../version.ts";
 import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
@@ -618,6 +622,12 @@ const serviceFeatureBuildSteps = (extensions: ServicePlan["extensions"]): Servic
   return Array.isArray(buildSteps) ? buildSteps.map((step) => ({ ...(step as ServiceBuildStepIntent) })) : [];
 };
 
+const draftFeatureIds = (draft: DraftServicePlan): ReadonlyArray<string> => {
+  if (!("featureIds" in draft)) return [];
+  const { featureIds } = draft;
+  return Array.isArray(featureIds) ? featureIds.filter((id): id is string => typeof id === "string") : [];
+};
+
 const toAppFeatureDraft = (
   name: string,
   servicePlan: ServicePlan,
@@ -690,18 +700,24 @@ const servicePlanFromDraft = (
   ...(draft.certs === undefined ? {} : { certs: draft.certs }),
   hostAliases: draft.hostAliases.map((alias) => ({ ...alias })),
   metadata,
-  extensions: {
-    ...extensions,
-    ...(draft.buildSteps.length === 0
-      ? {}
-      : {
-          [SERVICE_FEATURES_EXTENSION_KEY]: {
-            ...serviceFeatureExtension(extensions),
-            buildSteps: draft.buildSteps.map((step) => ({ ...step })),
-          },
-        }),
-  },
+  extensions: servicePlanExtensionsFromDraft(draft, extensions),
 });
+
+const servicePlanExtensionsFromDraft = (
+  draft: DraftServicePlan,
+  extensions: ServicePlan["extensions"],
+): ServicePlan["extensions"] => {
+  const featureIds = draftFeatureIds(draft);
+  if (draft.buildSteps.length === 0 && featureIds.length === 0) return extensions;
+  return {
+    ...extensions,
+    [SERVICE_FEATURES_EXTENSION_KEY]: {
+      ...serviceFeatureExtension(extensions),
+      ...(featureIds.length === 0 ? {} : { featureIds: [...featureIds] }),
+      buildSteps: draft.buildSteps.map((step) => ({ ...step })),
+    },
+  };
+};
 
 const resolveHostFacts = (): ServiceTypeHostFacts | undefined => {
   try {
@@ -1225,6 +1241,7 @@ const planApp = (
         })
       : undefined;
 
+    const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);
     const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
@@ -1238,7 +1255,8 @@ const planApp = (
       stores: aggregatedStores,
       fileSync: fileSyncEntries,
       metadata: encodedMetadata,
-      extensions: {},
+      extensions:
+        hostProxyExtension === undefined ? {} : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension },
       ...(() => {
         const requiredGlobalServices = [
           ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
