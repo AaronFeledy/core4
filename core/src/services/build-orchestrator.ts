@@ -181,10 +181,15 @@ const buildService = (input: {
       });
       if (complete?.artifactRef !== undefined) {
         yield* publishBuildStepSkip(events, context, step);
+        const digest =
+          complete.artifactDigest ??
+          (service.artifact?.kind === "ref" && service.artifact.ref === complete.artifactRef
+            ? service.artifact.digest
+            : undefined);
         return serviceWithArtifact(service, {
           providerId: plan.provider,
           ref: complete.artifactRef,
-          ...(complete.artifactDigest === undefined ? {} : { digest: complete.artifactDigest }),
+          ...(digest === undefined ? {} : { digest }),
         });
       }
     }
