@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import {
+  BuildStepSkipEvent,
   PostAppStartEvent,
   PostAppStopEvent,
   PostBuildEvent,
@@ -122,6 +123,7 @@ export const LandoEvent = Schema.Union(
   PostServiceStopEvent,
   PreBuildEvent,
   PostBuildEvent,
+  BuildStepSkipEvent,
   PreManagedFileWriteEvent,
   PostManagedFileWriteEvent,
   ManagedFileConflictDetectedEvent,

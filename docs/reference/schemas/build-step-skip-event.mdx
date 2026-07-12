@@ -1,0 +1,23 @@
+---
+title: Build Step Skip Event
+description: Public Lando schema contract for Build Step Skip Event.
+---
+
+# Build Step Skip Event
+
+Public Lando schema contract for Build Step Skip Event.
+
+[JSON Schema artifact](../../../dist/schemas/build-step-skip-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `build-step-skip` | — | — |
+| `eventName` | Yes | `string` | — | — | `build-step-skip` | — | — |
+| `appRef` | Yes | `object` | — | — | — | — | — |
+| `serviceName` | Yes | `string` | a string | — | — | — | — |
+| `providerId` | Yes | `string` | a string | — | — | — | — |
+| `phase` | Yes | `string` | — | — | `artifact`, `app` | — | — |
+| `buildKey` | Yes | `string` | a string | — | — | — | — |
+| `cached` | Yes | `boolean` | — | — | `true` | — | — |
+| `reason` | Yes | `string` | — | — | `up-to-date` | — | — |
+| `timestamp` | Yes | `string` | — | — | — | — | — |

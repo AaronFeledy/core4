@@ -1774,6 +1774,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Build Step Skip Event.",
+    "docsPath": "docs/reference/schemas/build-step-skip-event.mdx",
+    "id": "BuildStepSkipEvent",
+    "jsonSchemaPath": "dist/schemas/build-step-skip-event.json",
+    "packageExport": "@lando/sdk/schema#BuildStepSkipEvent",
+    "title": "Build Step Skip Event"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Pre Managed File Write Event.",
     "docsPath": "docs/reference/schemas/pre-managed-file-write-event.mdx",
     "id": "PreManagedFileWriteEvent",

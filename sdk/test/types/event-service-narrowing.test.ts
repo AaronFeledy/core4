@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import type { Context, Effect, Stream } from "effect";
 
-import type { DownloadProgressEvent, LandoEvent as KnownLandoEvent } from "@lando/sdk/events";
+import type {
+  BuildStepSkipEvent,
+  DownloadProgressEvent,
+  LandoEvent as KnownLandoEvent,
+} from "@lando/sdk/events";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -25,6 +29,7 @@ type WaitForAnyResult<Names extends readonly string[]> = EffectValue<
 describe("EventService typed narrowing", () => {
   test("subscribe narrows on the tag literal, '*' to the union, dynamic to loose", () => {
     assertType<Equal<SubscribeFor<"download-progress">, DownloadProgressEvent>>(true);
+    assertType<Equal<SubscribeFor<"build-step-skip">, BuildStepSkipEvent>>(true);
     assertType<Equal<SubscribeFor<"*">, KnownLandoEvent>>(true);
     assertType<Equal<SubscribeFor<string>, LandoEvent>>(true);
     expect(true).toBe(true);

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { DateTime, Either, ParseResult, Schema } from "effect";
 
 import {
+  BuildStepSkipEvent,
   PostAppStartEvent,
   PostAppStopEvent,
   PostBuildEvent,
@@ -108,6 +109,28 @@ describe("app lifecycle event payload schemas", () => {
       expect(ParseResult.isParseError(result.left)).toBe(true);
       const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
       expect(issues.some((issue) => issue.path.includes("serviceName"))).toBe(true);
+    }
+  });
+
+  test("decodes build step skip payloads with cache reason fields", () => {
+    const result = Schema.decodeUnknownEither(BuildStepSkipEvent)({
+      _tag: "build-step-skip",
+      eventName: "build-step-skip",
+      appRef: { kind: "scratch", id: "scratch-toolbox" },
+      serviceName: "web",
+      providerId: "lando",
+      phase: "artifact",
+      buildKey: "a".repeat(64),
+      cached: true,
+      reason: "up-to-date",
+      timestamp: DateTime.formatIso(FIXED_TIMESTAMP),
+    });
+
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect(result.right.eventName).toBe("build-step-skip");
+      expect(result.right.appRef.kind).toBe("scratch");
+      expect(result.right.cached).toBe(true);
     }
   });
 });
