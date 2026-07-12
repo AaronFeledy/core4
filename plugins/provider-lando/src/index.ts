@@ -423,12 +423,11 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         capabilities: {
           ...resolved,
           serviceLogSources:
-            (options.logFileAccess !== undefined ||
-              logFileHelperPayloadForTargets(
-                options.logFileHelperPayloads,
-                resolved.hostProxy?.containerTargets,
-              ) !== undefined) &&
-            resolved.serviceLogSources,
+            options.logFileAccess !== undefined ||
+            logFileHelperPayloadForTargets(
+              options.logFileHelperPayloads,
+              resolved.hostProxy?.containerTargets,
+            ) !== undefined,
         },
         logFileHelperPayload: logFileHelperPayloadForTargets(
           options.logFileHelperPayloads,
