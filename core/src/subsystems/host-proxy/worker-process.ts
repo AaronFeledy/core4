@@ -91,23 +91,12 @@ const textFromStreamUntilLine = async (
   }
 };
 
-const textFromStream = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
-  const reader = stream.getReader();
-  const decoder = new TextDecoder();
-  let text = "";
-  while (true) {
-    const chunk = await reader.read();
-    if (chunk.done) break;
-    text += decoder.decode(chunk.value, { stream: true });
-  }
-  return text;
-};
-
 export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
+  // stderr ignored: detached worker outlives parent; piped stderr SIGPIPEs after start.
   const proc = Bun.spawn([...spec.argv], {
     stdin: "pipe",
     stdout: "pipe",
-    stderr: "pipe",
+    stderr: "ignore",
     detached: true,
     env: hostProxyWorkerEnv(),
   });
@@ -120,23 +109,10 @@ export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
       proc.stdin.end();
     },
     readReady: async () => {
-      try {
-        const line = await textFromStreamUntilLine(proc.stdout, READY_TIMEOUT_MS);
-        if (line.length > 0) return Schema.decodeUnknownSync(WorkerReady)(JSON.parse(line));
-        await proc.exited;
-        const stderr = (await textFromStream(proc.stderr)).trim();
-        throw new Error(stderr.length === 0 ? "Detached host-proxy worker exited before readiness." : stderr);
-      } catch (cause) {
-        const exited = await Promise.race([
-          proc.exited.then(() => true),
-          new Promise<false>((resolve) => setTimeout(() => resolve(false), 50)),
-        ]);
-        if (exited) {
-          const stderr = (await textFromStream(proc.stderr).catch(() => "")).trim();
-          if (stderr.length > 0) throw new Error(stderr);
-        }
-        throw cause;
-      }
+      const line = await textFromStreamUntilLine(proc.stdout, READY_TIMEOUT_MS);
+      if (line.length > 0) return Schema.decodeUnknownSync(WorkerReady)(JSON.parse(line));
+      await proc.exited;
+      throw new Error("Detached host-proxy worker exited before readiness.");
     },
     terminate: async () => {
       proc.kill("SIGTERM");
