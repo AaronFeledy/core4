@@ -10,7 +10,7 @@ import {
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 
 import type { HostProxyRunLandoResult } from "./dispatch.ts";
-import type { WireResponse } from "./transport-protocol.ts";
+import type { WireResponse } from "./transport-wire.ts";
 
 const NdjsonFrame = Schema.Union(
   Schema.Struct({ kind: Schema.Literal("stdout"), chunk: Schema.String }),
