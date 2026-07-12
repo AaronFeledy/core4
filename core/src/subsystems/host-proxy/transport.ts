@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { Effect, type Scope } from "effect";
 
@@ -79,15 +78,6 @@ export const createHostProxyRunLandoSession = (
     const shutdownRef: { current?: () => Promise<void> } = {};
 
     yield* installHostProxyShim(shimArtifact, paths.shimPath);
-    yield* Effect.tryPromise({
-      try: () => mkdir(paths.stateDir, { recursive: true }),
-      catch: (cause) =>
-        new HostProxyTransportUnavailableError({
-          message: cause instanceof Error ? cause.message : String(cause),
-          socketPath: paths.socketPath ?? paths.stateDir,
-          remediation: "Ensure the app cache directory is writable.",
-        }),
-    });
     const session = { appId: options.app.id, sessionId, token, controlToken };
     const server = createServer(
       makeHostProxyRunLandoHandler({
