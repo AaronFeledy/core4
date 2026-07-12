@@ -205,8 +205,8 @@ const makeFakePodmanState = () => {
   const existing = new Set<string>();
   const networks = new Set<string>();
   const volumes = new Set<string>(plan.stores.map((store) => store.name));
-  const volumeLabels = new Map(
-    plan.stores.map((store) => [
+  const volumeLabels = new Map<string, Readonly<Record<string, string>>>(
+    plan.stores.map((store): readonly [string, Readonly<Record<string, string>>] => [
       store.name,
       {
         "dev.lando.volume-selector": `lando:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
