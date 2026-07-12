@@ -178,7 +178,10 @@ describe("provider-lando live container-file logs", () => {
       const plan = makePlan(appRoot);
       const socketPath = liveSocket?.socketPath;
       expect(socketPath).toBeTruthy();
-      const logFileHelperPayloads = await Effect.runPromise(loadLogFileHelperPayloads());
+      const logFileHelperPayloads = await Effect.runPromise(
+        loadLogFileHelperPayloads({ distRoot: join(process.cwd(), "dist") }),
+      );
+      expect(Object.keys(logFileHelperPayloads).length).toBeGreaterThan(0);
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
           platform: "linux",
