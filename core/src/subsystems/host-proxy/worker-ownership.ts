@@ -66,7 +66,6 @@ export const removeOwnedHostProxyWorkerState = (
 ): Effect.Effect<void, never> =>
   terminateOwnedHostProxyWorker(app, { ...options, ...(paths === undefined ? {} : { paths }) }).pipe(
     Effect.asVoid,
-    Effect.catchAll(() => Effect.void),
   );
 
 export const terminateOwnedHostProxyWorkersInRoot = (
