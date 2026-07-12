@@ -1,4 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { inspect } from "node:util";
 import { DateTime, Effect, Exit, Schema, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -28,11 +33,33 @@ const imagePullLive = liveIntegrationEligibility([
 
 const encoder = new TextEncoder();
 const bytes = (text: string): Uint8Array => encoder.encode(text);
+const unsafeText = "s3cr3tPass";
+const encodedUnsafeText = encodeURIComponent(unsafeText);
 type PublishedEvent = Parameters<typeof EventService.Service.publish>[0];
 const isImagePullProgressEvent = (event: PublishedEvent): event is ImagePullProgressEvent =>
   event._tag === "image-pull-progress" && "eventName" in event && event.eventName === "image-pull-progress";
 const captureImagePullProgress = (events: ImagePullProgressEvent[], event: PublishedEvent): void => {
   if (isImagePullProgressEvent(event)) events.push(event);
+};
+
+const withClosingSocket = async <T>(run: (socketPath: string) => Promise<T>): Promise<T> => {
+  const dir = await mkdtemp(join(tmpdir(), "lando-provider-lando-pull-"));
+  const socketPath = join(dir, "podman.sock");
+  const server = createServer((socket) => {
+    socket.end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(socketPath, resolve);
+  });
+  try {
+    return await run(socketPath);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error === undefined ? resolve() : reject(error)));
+    });
+    await rm(dir, { recursive: true, force: true });
+  }
 };
 
 interface CapturedPull {
@@ -199,6 +226,26 @@ describe("pullImage", () => {
     );
     expect(value).toBeInstanceOf(ProviderUnavailableError);
     expect((value as ProviderUnavailableError).operation).toBe("podman-api");
+  });
+
+  test("redacts credentials from unknown Podman stream transport failures", async () => {
+    const reference = `https://user:${unsafeText}@registry.internal/team/img:1.0`;
+    const value = await withClosingSocket((socketPath) =>
+      Effect.runPromise(
+        pullImage(makePodmanApiClient(socketPath), reference, { publish: () => Effect.void, now }).pipe(
+          Effect.flip,
+        ),
+      ),
+    );
+
+    expect(value).toBeInstanceOf(ProviderUnavailableError);
+    if (!(value instanceof ProviderUnavailableError)) throw new Error("expected ProviderUnavailableError");
+    const serialized = JSON.stringify({ message: value.message, details: value.details, cause: value.cause });
+    const inspected = inspect({ message: value.message, details: value.details, cause: value.cause });
+    for (const text of [serialized, inspected]) {
+      expect(text).not.toContain(unsafeText);
+      expect(text).not.toContain(encodedUnsafeText);
+    }
   });
 
   test("fails with ProviderInternalError when the client cannot stream", async () => {

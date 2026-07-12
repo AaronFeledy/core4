@@ -105,7 +105,7 @@ const podmanApiFailure = (
         message: "Failed to call the Podman API.",
         details: redactDetails({ method: request.method, path: request.path }),
         remediation: TRANSPORT_REMEDIATION,
-        cause,
+        cause: redactDetails(cause),
       });
 
 async function* streamPodmanRequest(
