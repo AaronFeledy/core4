@@ -337,6 +337,7 @@ ${renderAssertPodman6Step()}
           pull_image docker.io/library/alpine:3.21
           pull_image docker.io/library/node:lts
           pull_image docker.io/library/node:22-alpine
+          pull_image docker.io/library/node:22
           pull_image docker.io/library/postgres:16
           pull_image docker.io/library/postgres:16-alpine
           pull_image docker.io/library/golang:1.22
@@ -349,7 +350,8 @@ ${renderAssertPodman6Step()}
           pull_image docker.io/library/solr:9
           pull_image docker.io/library/traefik:v3.3
           pull_image docker.io/valkey/valkey:8
-          docker_pull_image docker.io/library/node:22-alpine`;
+          docker_pull_image docker.io/library/node:22-alpine
+          docker_pull_image docker.io/library/node:22`;
 
 const landoRuntimeLiveTestSteps = (
   platform: CiPlatform,
