@@ -1,7 +1,6 @@
 import { expect, test } from "bun:test";
 import { DateTime, Effect, Stream } from "effect";
 
-import type { ContainerBuildHttpRequest } from "@lando/container-runtime/image-build";
 import { type PodmanApiClient, makeRuntimeProvider } from "@lando/provider-podman";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -61,13 +60,13 @@ const plan: AppPlan = {
 };
 
 test("provider-podman buildArtifact uses the Podman build API seam", async () => {
-  const requests: ContainerBuildHttpRequest[] = [];
+  const requests: string[] = [];
   const podmanApi: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
     ping: Effect.succeed(undefined),
     request: (request) =>
       Effect.sync(() => {
-        requests.push(request);
+        requests.push(`${request.method} ${request.path}`);
         return { status: 200, body: "" };
       }),
   };
@@ -85,8 +84,8 @@ test("provider-podman buildArtifact uses the Podman build API seam", async () =>
   );
 
   expect(artifact).toEqual({ providerId, ref: "lando-build-podman-web-podman-key" });
-  expect(requests[0]?.method).toBe("POST");
-  expect(requests[0]?.path).toContain("/build?t=lando-build-podman-web-podman-key");
+  expect(requests[0]).toStartWith("POST ");
+  expect(requests[0]).toContain("/build?t=lando-build-podman-web-podman-key");
 });
 
 test("provider-podman pullArtifact uses the Podman pull stream seam", async () => {
