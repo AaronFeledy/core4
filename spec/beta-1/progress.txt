@@ -323,3 +323,10 @@ Open closure categories:
 - Verification: typecheck and lint passed; focused proxy-bypass, compiled shim serialization, env filtering, transport feature, physical transport, and worker cleanup test spot checks passed; the strict TypeScript no-excuse audit passed on new focused files, with two pre-existing worker-test catch violations unchanged.
 - **Learnings for future iterations:** Proxy environment variables are casing-sensitive across clients, so process-entry bypass guards must update both variants together. Compiled sidecars must consume shared pure security predicates; parallel allowlist copies drift and can serialize credentials even when a downstream boundary filters them again.
 ---
+
+## 2026-07-11 20:27 CDT - US-433 Review
+- Fixed configured-root drift across host-proxy startup and lifecycle cleanup, isolated same-name apps by fingerprinting their roots in worker-state paths, and preserved authenticated cleanup of legacy worker records. The host CLI no longer switches into shim mode from leaked transport environment, while the dedicated compiled sidecar remains unchanged. Runtime service typing and restart/rebuild harness wiring now include `PathsService`, and cleanup assertions only accept true missing-path failures.
+- Review notes (deferred/rejected): no findings were deferred; pre-existing scenario-fixture language-server diagnostics were not expanded into unrelated fixture modernization because root typecheck, lint, and the executable scenario suites are green.
+- Verification: typecheck and lint passed; 106 focused lifecycle/host-proxy tests passed with one platform-gated live-provider skip; 36 SDK compatibility/export tests passed; post-fix Oracle review passed.
+- **Learnings for future iterations:** Detached-worker ownership must bind the authenticated control identity to app id, protocol, PID, and transport before fallback signals. App-scoped runtime artifacts need an app-root fingerprint even when user-visible app ids remain name-based, and persisted state format changes need a narrow cleanup path for prior records.
+---
