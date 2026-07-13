@@ -355,12 +355,24 @@ export const shellApp = (
     if (!interactive) return yield* Effect.fail(shellRequiresTtyError());
 
     const cwd = options.cwd ?? String(plan.root);
+    const hostUser = process.env.USER ?? process.env.USERNAME;
+    const hostHome = process.env.HOME ?? process.env.USERPROFILE;
     const env: Record<string, string> = {
       ...filterStringEnv(process.env),
       ...(options.env ?? {}),
-      LANDO: "1",
+      LANDO: "ON",
+      LANDO_DEBUG: process.env.LANDO_DEBUG === "1" ? "1" : "",
+      LANDO_HOST_IP: "127.0.0.1",
+      LANDO_HOST_OS: process.platform,
       LANDO_APP_NAME: plan.name,
+      LANDO_APP_KIND: "user",
       LANDO_APP_ROOT: String(plan.root),
+      LANDO_PROJECT: String(plan.slug),
+      LANDO_PROJECT_MOUNT: String(plan.root),
+      ...(hostUser === undefined ? {} : { LANDO_HOST_USER: hostUser }),
+      ...(process.getuid === undefined ? {} : { LANDO_HOST_UID: String(process.getuid()) }),
+      ...(process.getgid === undefined ? {} : { LANDO_HOST_GID: String(process.getgid()) }),
+      ...(hostHome === undefined ? {} : { LANDO_HOST_HOME: hostHome }),
     };
 
     let historyFile: string | undefined;

@@ -633,10 +633,26 @@ describe("shellApp — shell modes", () => {
 
   test("reserved LANDO_* env wins over caller options.env", async () => {
     const spec = await hostSpec({
-      env: { LANDO_APP_NAME: "spoofed", LANDO_APP_ROOT: "/etc/spoof", MY_CUSTOM: "kept" },
+      env: {
+        LANDO: "spoofed",
+        LANDO_APP_NAME: "spoofed",
+        LANDO_APP_ROOT: "/etc/spoof",
+        LANDO_DEBUG: "spoofed",
+        LANDO_HOST_IP: "203.0.113.1",
+        LANDO_PROJECT: "spoofed",
+        LANDO_PROJECT_MOUNT: "/etc/spoof",
+        MY_CUSTOM: "kept",
+      },
     });
+    expect(spec.env?.LANDO).toBe("ON");
     expect(spec.env?.LANDO_APP_NAME).toBe("shell-scenario");
+    expect(spec.env?.LANDO_APP_KIND).toBe("user");
     expect(spec.env?.LANDO_APP_ROOT).toBe("/tmp/shell-scenario");
+    expect(spec.env?.LANDO_DEBUG).toBe(process.env.LANDO_DEBUG === "1" ? "1" : "");
+    expect(spec.env?.LANDO_HOST_IP).toBe("127.0.0.1");
+    expect(spec.env?.LANDO_HOST_OS).toBe(process.platform);
+    expect(spec.env?.LANDO_PROJECT).toBe("shell-scenario");
+    expect(spec.env?.LANDO_PROJECT_MOUNT).toBe("/tmp/shell-scenario");
     expect(spec.env?.MY_CUSTOM).toBe("kept");
   });
 

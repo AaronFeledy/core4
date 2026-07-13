@@ -98,7 +98,11 @@ const EXPECTED_TAGS = [
   },
   { tag: ProcessRunner, key: "@lando/core/ProcessRunner", methods: ["run", "stream"] },
   { tag: PrivilegeService, key: "@lando/core/PrivilegeService", methods: ["elevate"] },
-  { tag: ShellRunner, key: "@lando/core/ShellRunner", methods: ["exec", "run", "runScript"] },
+  {
+    tag: ShellRunner,
+    key: "@lando/core/ShellRunner",
+    methods: ["exec", "run", "runScript", "interactive"],
+  },
 ] as const;
 
 type FailureOf<T> = T extends Effect.Effect<unknown, infer E, unknown>
@@ -175,7 +179,7 @@ describe("Effect service tags", () => {
       ],
       ["run", "stream"],
       ["elevate"],
-      ["exec", "run", "runScript"],
+      ["exec", "run", "runScript", "interactive"],
     ];
 
     const actualMethods: string[][] = EXPECTED_TAGS.map(({ methods }) => [...methods]);
@@ -194,14 +198,15 @@ describe("Effect service tags", () => {
       publish: (_event: { readonly _tag: string }) => Effect.void,
       subscribe: (_name: string) => Stream.empty,
       subscribeQueue: Effect.never as Context.Tag.Service<typeof EventService>["subscribeQueue"],
-      waitFor: (_name: string) => Effect.succeed({ _tag: "test-event" }),
-      waitForAny: () => Effect.succeed({ _tag: "test-event" }),
+      waitFor: () => Effect.never,
+      waitForAny: () => Effect.never,
       query: () => Effect.succeed([]),
     };
 
     const cacheService: Context.Tag.Service<typeof CacheService> = {
       read: (_key: string) => Effect.succeed(null),
       write: (_key: string, _value: unknown) => Effect.void,
+      writeAtomic: (_path: string, _content: string | Uint8Array) => Effect.void,
       invalidate: (_key: string) => Effect.void,
     };
 
@@ -214,6 +219,7 @@ describe("Effect service tags", () => {
       exec: (_command: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       run: (_command: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       runScript: (_path: string) => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
+      interactive: (_spec) => Effect.succeed({ exitCode: 0 }),
     };
 
     const fileSystem: Context.Tag.Service<typeof FileSystem> = {
@@ -233,7 +239,7 @@ describe("Effect service tags", () => {
     };
 
     const buildOrchestrator: Context.Tag.Service<typeof BuildOrchestrator> = {
-      build: (_plan) => Effect.void,
+      build: (plan) => Effect.succeed(plan),
     };
 
     const appPlan: AppPlan = {
@@ -246,6 +252,7 @@ describe("Effect service tags", () => {
       routes: [],
       networks: [],
       stores: [],
+      fileSync: [],
       metadata: {
         resolvedAt: DateTime.unsafeMake("2026-05-14T00:00:00Z"),
         source: "tags.test",

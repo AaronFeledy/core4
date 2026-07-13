@@ -471,3 +471,10 @@ Open closure categories:
   - Treat `--no-interactive` as a command-wide refusal and reject it before provider selection; a service flag must not bypass the TTY contract.
   - Keep typed command text out of evaluator argv, remove evaluator bootstrap markers from the user environment, and apply resolved-secret redaction before output, events, or history.
 ---
+
+## 2026-07-13 01:55 CDT - US-439 Review
+- Hardened the host REPL boundary: resolved secrets now remain escaped Bun Shell interpolations instead of raw syntax, arbitrary output chunks are redacted statefully before IO/events, cancellation finalizes input and reaps evaluator descendants, concurrent history updates are advisory-locked and bounded, explicit exit statuses normalize portably, and the host receives the applicable reserved LANDO environment. Closed the missing public `ShellRunner.interactive` SDK contract guard.
+- Review notes (deferred/rejected): generic `cli-app:shell-*` lifecycle events remain assigned to US-442 rather than this per-line shell story; privileged host DNS or hosts-file mutation for `host.lando.internal` was rejected in favor of the host-mode `LANDO_HOST_IP` projection. Cursor Bugbot was unavailable because the configured account had exhausted its model usage limit, so it was not treated as approval evidence.
+- Verification: typecheck and lint passed; focused REPL, ShellRunner, shell scenario, SDK compatibility, StateStore, and redaction tests passed; state-store, redaction, renderer, and paths boundary gates passed; sandboxed TTY QA passed.
+- **Learnings for future iterations:** Secret placeholders in shell-shaped programs must cross process boundaries as tagged-template values, never concatenated source, and live redaction must retain candidate secret prefixes across arbitrary stdout/stderr chunk boundaries.
+---
