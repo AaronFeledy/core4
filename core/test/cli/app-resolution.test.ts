@@ -64,8 +64,9 @@ describe("loadUserLandofile includes", () => {
       const result = await Effect.runPromise(
         loadUserLandofile(fakeLandofileService({ name: "myapp", includes: ["./fragment.yml"] })),
       );
+      const actual: unknown = result;
 
-      expect(result).toEqual({ name: "myapp", services: { web: { type: "node" } } });
+      expect(actual).toEqual({ name: "myapp", services: { web: { type: "node" } } });
     } finally {
       process.chdir(previous);
       await rm(dir, { recursive: true, force: true });
@@ -75,13 +76,32 @@ describe("loadUserLandofile includes", () => {
   test("loads includes from an explicit Landofile file path", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-file-"));
     try {
+      await writeFile(join(dir, ".lando.base.yml"), 'lando: ">=999.0.0"\n', "utf8");
       await writeFile(join(dir, ".lando.yml"), "name: discovered\n", "utf8");
       await writeFile(join(dir, "custom.lando.yml"), "name: custom\nincludes:\n  - ./fragment.yml\n", "utf8");
       await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
 
       const result = await Effect.runPromise(loadUserLandofileFile(join(dir, "custom.lando.yml")));
+      const actual: unknown = result;
 
-      expect(result).toEqual({ name: "custom", services: { web: { type: "node" } } });
+      expect(actual).toEqual({ name: "custom", services: { web: { type: "node" } } });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("enforces sibling layer constraints for an explicit normative Landofile path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-layers-"));
+    try {
+      const basePath = join(dir, ".lando.base.yml");
+      await writeFile(basePath, 'lando: ">=999.0.0"\n', "utf8");
+      await writeFile(join(dir, ".lando.yml"), "name: layered\n", "utf8");
+
+      const error = await Effect.runPromise(Effect.flip(loadUserLandofileFile(join(dir, ".lando.yml"))));
+
+      expect(error._tag).toBe("LandofileVersionConstraintError");
+      if (error._tag !== "LandofileVersionConstraintError") throw error;
+      expect(error.constraints).toEqual([{ range: ">=999.0.0", source: basePath, layer: "base", order: 0 }]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

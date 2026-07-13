@@ -11,6 +11,7 @@ import {
   type CapabilityError,
   type ConfigError,
   type DeprecatedSurfaceError,
+  type LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
   type LandofileNotFoundError,
@@ -121,6 +122,7 @@ export type ShellAppError =
   | ConfigError
   | DeprecatedSurfaceError
   | LandofileNotFoundError
+  | LandofileFormConflictError
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError

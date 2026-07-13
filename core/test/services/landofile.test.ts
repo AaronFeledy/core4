@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import {
+  LandofileFormConflictError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileValidationError,
@@ -12,6 +13,8 @@ import {
 } from "@lando/core/errors";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
+import { getVersionConstraintEntries } from "../../src/config/version-constraint.ts";
+import { findAppRoot, findLandofilePath } from "../../src/landofile/discovery.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -40,6 +43,116 @@ const discoverExit = () =>
   );
 
 describe("LandofileServiceLive", () => {
+  test("loads all six normative positions in precedence order and accumulates provenance", async () => {
+    await withTempCwd(async (dir) => {
+      const files = [
+        ".lando.base.yml",
+        ".lando.dist.ts",
+        ".lando.upstream.yml",
+        ".lando.yml",
+        ".lando.local.yml",
+        ".lando.user.yml",
+      ] as const;
+      for (const [order, file] of files.entries()) {
+        await writeFile(
+          join(dir, file),
+          file.endsWith(".ts")
+            ? `export default { name: "layer-${order}", lando: ">=${order}.0.0" };\n`
+            : `name: layer-${order}\nlando: \">=${order}.0.0\"\n`,
+        );
+      }
+      process.chdir(dir);
+
+      const resolved = await discover();
+
+      expect(resolved.name).toBe("layer-5");
+      expect(getVersionConstraintEntries(resolved, "fallback")).toEqual([
+        { range: ">=0.0.0", source: join(dir, files[0]), layer: "base", order: 0 },
+        { range: ">=1.0.0", source: join(dir, files[1]), layer: "dist", order: 1 },
+        { range: ">=2.0.0", source: join(dir, files[2]), layer: "upstream", order: 2 },
+        { range: ">=3.0.0", source: join(dir, files[3]), layer: "canonical", order: 3 },
+        { range: ">=4.0.0", source: join(dir, files[4]), layer: "local", order: 4 },
+        { range: ">=5.0.0", source: join(dir, files[5]), layer: "user", order: 5 },
+      ]);
+    });
+  });
+
+  test("skips missing optional layers", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: canonical\n");
+      process.chdir(dir);
+      expect((await discover()).name).toBe("canonical");
+    });
+  });
+
+  test("discovers an app root from a noncanonical merge layer", async () => {
+    await withTempCwd(async (dir) => {
+      const appRoot = join(dir, "app");
+      const nested = join(appRoot, "src", "nested");
+      const layerPath = join(appRoot, ".lando.dist.yml");
+      await mkdir(nested, { recursive: true });
+      await writeFile(layerPath, "name: dist-only\n");
+      process.chdir(nested);
+
+      expect(await findLandofilePath(nested)).toBe(layerPath);
+      expect(await findAppRoot(nested)).toBe(appRoot);
+      expect((await discover()).name).toBe("dist-only");
+    });
+  });
+
+  test("preserves nested include source while inheriting layer and order", async () => {
+    await withTempCwd(async (dir) => {
+      const fragmentPath = join(dir, "constraints.yml");
+      await writeFile(fragmentPath, 'lando: ">=4.2"\n');
+      await writeFile(
+        join(dir, ".lando.local.yml"),
+        ["includes:", "  - ./constraints.yml", 'lando: "<5"', ""].join("\n"),
+      );
+      await writeFile(join(dir, ".lando.yml"), "name: canonical\n");
+      process.chdir(dir);
+
+      const resolved = await discover();
+
+      expect(getVersionConstraintEntries(resolved, "fallback")).toEqual([
+        { range: ">=4.2", source: fragmentPath, layer: "local", order: 4 },
+        { range: "<5", source: join(dir, ".lando.local.yml"), layer: "local", order: 4 },
+      ]);
+    });
+  });
+
+  test("rejects malformed lando ranges as LandofileParseError during load", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: bad\nlando: definitely-not-semver\n");
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(LandofileParseError);
+      }
+    });
+  });
+
+  test("fails when one layer contains both YAML and TypeScript forms", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: canonical\n");
+      await writeFile(join(dir, ".lando.local.yml"), "name: yaml\n");
+      await writeFile(join(dir, ".lando.local.ts"), 'export default { name: "ts" };\n');
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(LandofileFormConflictError);
+      }
+    });
+  });
   test("discovers and parses a minimal Node and Postgres .lando.yml from a subdirectory", async () => {
     await withTempCwd(async (dir) => {
       await mkdir(join(dir, "apps", "myapp", "src"), { recursive: true });
@@ -142,8 +255,20 @@ describe("LandofileServiceLive", () => {
           expect(error).toBeInstanceOf(LandofileNotFoundError);
           if (error._tag === "LandofileNotFoundError") {
             expect(error.cwd).toBe(join(dir, "nested"));
-            expect(error.message).toContain(join(dir, "nested", ".lando.yml"));
-            expect(error.message).toContain(join(dir, ".lando.yml"));
+            expect(error.message).toStartWith("No .lando.yml or .lando.ts found. Searched:");
+            for (const root of [join(dir, "nested"), dir]) {
+              for (const basename of [
+                ".lando.base",
+                ".lando.dist",
+                ".lando.upstream",
+                ".lando",
+                ".lando.local",
+                ".lando.user",
+              ]) {
+                expect(error.message).toContain(join(root, `${basename}.yml`));
+                expect(error.message).toContain(join(root, `${basename}.ts`));
+              }
+            }
           }
         }
       }
@@ -440,8 +565,9 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     expect(error.remediation).toContain("not supported yet");
   };
 
-  test("allows top-level `includes:` through raw discovery for the include resolver", async () => {
+  test("resolves top-level `includes:` during layered discovery", async () => {
     await withTempCwd(async (dir) => {
+      await writeFile(join(dir, "fragment.yml"), "services:\n  db:\n    image: postgres:16\n");
       await writeFile(
         join(dir, ".lando.yml"),
         [
@@ -458,7 +584,9 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
 
       const exit = await discoverExit();
       expect(Exit.isSuccess(exit)).toBe(true);
-      if (Exit.isSuccess(exit)) expect(exit.value.includes).toEqual(["./fragment.yml"]);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.services?.[ServiceName.make("db")]?.image).toBe("postgres:16");
+      }
     });
   });
 

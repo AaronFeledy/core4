@@ -21,6 +21,7 @@ import { CacheService } from "@lando/core/services";
 import {
   APP_PLAN_CACHE_HEADER_BYTES,
   deriveAppPlanCacheKey,
+  readAppPlanSourceFingerprint,
   readCachedAppPlan,
   writeCachedAppPlan,
 } from "../../src/cache/app-plan.ts";
@@ -103,6 +104,23 @@ const providerCapabilities: ProviderCapabilities = {
 };
 
 describe("CacheServiceLive", () => {
+  test("six-layer source fingerprints are stable and invalidate when any layer changes", async () => {
+    const appRoot = await mkdtemp(join(tmpdir(), "lando-layer-fingerprint-"));
+    await writeFile(join(appRoot, ".lando.yml"), "name: app\n");
+    await writeFile(join(appRoot, ".lando.base.yml"), 'lando: ">=4"\n');
+
+    const first = await Effect.runPromise(readAppPlanSourceFingerprint(appRoot));
+    const identical = await Effect.runPromise(readAppPlanSourceFingerprint(appRoot));
+    await writeFile(join(appRoot, ".lando.base.yml"), 'lando: ">=5"\n');
+    const changed = await Effect.runPromise(readAppPlanSourceFingerprint(appRoot));
+
+    expect(identical).toEqual(first);
+    expect(changed).not.toEqual(first);
+    expect(first.landofileContentHashes.map(({ source }) => source)).toEqual([
+      join(appRoot, ".lando.base.yml"),
+      join(appRoot, ".lando.yml"),
+    ]);
+  });
   test("round-trips cached values through schema decode", async () => {
     const value = await runWithCache(
       Effect.flatMap(CacheService, (cache) =>
@@ -446,7 +464,7 @@ describe("CacheServiceLive", () => {
         appRoot,
         key,
         plan: appPlanFixture,
-        versionConstraints: [{ range: ">=99", source: ".lando.yml" }],
+        versionConstraints: [{ range: ">=99", source: ".lando.yml", layer: "canonical", order: 3 }],
         now: () => 1,
       }),
     );

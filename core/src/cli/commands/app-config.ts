@@ -1,7 +1,10 @@
+import { join } from "node:path";
+
 import { Effect, Either, Schema } from "effect";
 
 import type {
   AppIdReservedError,
+  LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileSandboxError,
@@ -21,7 +24,7 @@ import { LandofileService } from "@lando/sdk/services";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { parseLandofile } from "../../landofile/parser.ts";
-import { findDiscoveredLandofilePath } from "../../landofile/service.ts";
+import { findDiscoveredLandofilePath, loadLandofileLayers } from "../../landofile/service.ts";
 import { detectTemplateDirective, renderLandofileTemplate } from "../../landofile/template-render.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
@@ -76,6 +79,7 @@ export const AppConfigResultSchema = Schema.Struct({
 type AppConfigError =
   | AppIdReservedError
   | LandofileNotFoundError
+  | LandofileFormConflictError
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError
@@ -120,10 +124,6 @@ const typeScriptWriteUnsupportedError = (
       "Programmatic `.lando.ts` Landofiles are author-mode TypeScript modules; edit the file directly, or run `lando app config view --source resolved` to inspect resolved values.",
   });
 
-// Discovers both `.lando.yml` and `.lando.ts` (matching the discovery flow
-// `LandofileService` runs), then rejects `.lando.ts` with a `NotImplementedError`
-// remediation instead of the misleading `LandofileNotFoundError` `findLandofilePath`
-// (.lando.yml-only) produced.
 const resolveLandofilePath = (
   cwd: string,
   subcommand: WritableAppConfigSubcommand,
@@ -132,7 +132,15 @@ const resolveLandofilePath = (
   LandofileNotFoundError | LandofileParseError | NotImplementedError
 > =>
   Effect.tryPromise({
-    try: () => findDiscoveredLandofilePath(cwd),
+    try: async () => {
+      const { appRoot } = await findDiscoveredLandofilePath(cwd);
+      const inputPath = join(appRoot, ".lando.yml");
+      return {
+        inputPath,
+        appRoot,
+        canonicalTypeScriptExists: await Bun.file(join(appRoot, ".lando.ts")).exists(),
+      };
+    },
     catch: (cause) => {
       if (cause instanceof LandofileNotFoundError) return cause;
       if (cause instanceof LandofileParseError) return cause;
@@ -145,27 +153,18 @@ const resolveLandofilePath = (
       });
     },
   }).pipe(
-    Effect.flatMap(({ filePath, appRoot }) =>
-      filePath.endsWith(".ts")
-        ? Effect.fail(typeScriptWriteUnsupportedError(subcommand, filePath))
-        : Effect.succeed({ inputPath: filePath, appRoot }),
+    Effect.flatMap(({ inputPath, appRoot, canonicalTypeScriptExists }) =>
+      subcommand !== "validate" && canonicalTypeScriptExists
+        ? Effect.fail(typeScriptWriteUnsupportedError(subcommand, join(appRoot, ".lando.ts")))
+        : Effect.succeed({ inputPath, appRoot }),
     ),
   );
 
 const readLandofileText = (inputPath: string): Effect.Effect<string, ConfigError> =>
   Effect.tryPromise({
-    try: () => Bun.file(inputPath).text(),
+    try: async () => ((await Bun.file(inputPath).exists()) ? Bun.file(inputPath).text() : ""),
     catch: (cause) => new ConfigError({ message: `Failed to read ${inputPath}`, path: inputPath, cause }),
   });
-
-// Mirrors the `LandofileService`/`app:config:lint` read step so `validate` parses
-// the rendered tree, not raw unrendered template source.
-const readRenderedLandofileText = (
-  inputPath: string,
-): Effect.Effect<string, ConfigError | LandofileParseError> =>
-  readLandofileText(inputPath).pipe(
-    Effect.flatMap((content) => renderLandofileTemplate({ filePath: inputPath, content })),
-  );
 
 const templatedLandofileWriteUnsupportedError = (
   subcommand: WritableAppConfigSubcommand,
@@ -292,12 +291,11 @@ export const appConfigValidate = (
 ): Effect.Effect<AppConfigResult, AppConfigError, never> =>
   Effect.gen(function* () {
     const { inputPath, appRoot } = yield* resolveLandofilePath(options.cwd ?? process.cwd(), "validate");
-    const content = yield* readRenderedLandofileText(inputPath);
-    const tree = yield* parseLandofile({ file: inputPath, content, cwd: appRoot });
-    const issues = decodeIssues(decodeLandofile(tree));
-    if (issues.length > 0) {
-      return yield* Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues }));
-    }
+    yield* loadLandofileLayers(appRoot, inputPath).pipe(
+      Effect.catchTag("LandofileValidationError", (error) =>
+        Effect.fail(writeValidationErrorFromIssues({ file: inputPath, issues: error.issues })),
+      ),
+    );
     return { subcommand: "validate", filePath: inputPath, valid: true, issues: [] };
   });
 

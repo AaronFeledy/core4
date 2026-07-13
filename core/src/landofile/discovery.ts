@@ -1,18 +1,15 @@
-import { stat } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
+
+import { presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 
 export const LANDOFILE_NAME = ".lando.yml";
-
-const isFile = async (path: string): Promise<boolean> => {
-  const s = await stat(path).catch(() => undefined);
-  return s?.isFile() === true;
-};
+export const LANDOFILE_TS_NAME = ".lando.ts";
 
 export const findLandofilePath = async (cwd: string): Promise<string | undefined> => {
   let current = cwd;
   for (;;) {
-    const candidate = join(current, LANDOFILE_NAME);
-    if (await isFile(candidate)) return candidate;
+    const layer = representativeLandofileLayer(await presentLandofileLayers(current));
+    if (layer !== undefined) return layer.filePath;
     const parent = dirname(current);
     if (parent === current) return undefined;
     current = parent;

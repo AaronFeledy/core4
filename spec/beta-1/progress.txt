@@ -511,3 +511,33 @@ Open closure categories:
 - Verification: typecheck and lint passed; 142 post-fix focused MCP/SDK/CLI and source/compiled parity tests passed; the real blocked-pipe Bun probe changed from timeout exit 124 to clean exit 0. The TypeScript no-excuse audit passed for the new/changed transport and test seams; it continues to flag one pre-existing `as unknown` in `McpService` outside the review lines.
 - **Learnings for future iterations:** A deadline around `Effect.promise` does not cancel native Bun stdout I/O; the owning `FileSink` must be scope-finalized. Completion tombstones need an explicit retention cap even when active requests are already bounded.
 ---
+
+## 2026-07-13 06:33 CDT - Babysit
+- PR: #581 https://github.com/AaronFeledy/core4/pull/581
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip for MCP stdio transport hardening with no new user-facing guide workflows; reran guide jobs green)
+- Merge: merged (squash)
+---
+
+## 2026-07-13 08:06 CDT - US-441
+- Version constraints now accumulate across all six ordered Landofile layers and nested include sources, preserving provenance in failures, structured skip warnings, doctor reporting, and cache identity. Landofile discovery rejects conflicting YAML/TypeScript forms per layer and malformed ranges during parsing.
+- Range evaluation now uses full npm-semver grammar, including unions, hyphen ranges, x-ranges, prerelease ordering, and build-metadata semantics. App-plan and tooling caches fingerprint every present layer, invalidate when any source changes, and reuse unchanged cached constraints without reparsing the Landofile.
+- Verification: typecheck, lint, build, schema codegen idempotency, renderer/machine-output boundaries, relevant SDK/core test spot checks, and sandboxed source CLI skip/fail-closed checks passed; high-rigor review returned unconditional approval.
+- **Learnings for future iterations:**
+  - A complete ordered source fingerprint is the hot-cache trust boundary; once it matches, evaluate cached constraint metadata directly rather than reparsing unchanged Landofiles.
+  - The universal machine error envelope remains `_tag`/`message`/`remediation`; put required provenance in the error message and use `CommandWarning.context` for structured skip metadata.
+---
+
+## 2026-07-13 08:19 CDT - US-441 Review
+- Fixed the remaining §7.1 discovery blocker: an app root is now recognized from any of the six YAML/TypeScript merge-layer positions, including projects with no canonical `.lando.yml` or `.lando.ts`; canonical files remain the preferred representative path when present. Scratch forks now route source loading through the shared version-constraint enforcement seam and reject an unsatisfied source before provider capability lookup or planning.
+- Review notes (deferred/rejected): Cursor Bugbot produced no report because the authenticated account was quota-locked on both the default and alternate model; no finding was inferred from the tool failure. The TypeScript-form lint/include-update parser gap is real but predates this story and was rejected as unrelated §7.1.1 form-parity scope; same-layer dual forms already fail through `LandofileFormConflictError`.
+- Verification: typecheck and lint passed; focused Landofile discovery, version-constraint, scratch-fork, cache, command-registry, doctor, result-encoding, SDK compatibility, schema, and machine-output test spot checks passed.
+- **Learnings for future iterations:** Six-layer loading and six-layer discovery are one contract: every root-discovery seam must use the same ordered layer table rather than treating the canonical file as mandatory.
+---
+
+## 2026-07-13 09:47 CDT - US-441 Review
+- Closed four cross-path gaps: environment-dependent TypeScript layers now bypass the source-only tooling hot cache; explicit normative Landofile selectors enforce all six layers; app config writes always target canonical `.lando.yml` while validation reads the merged app; and doctor reports malformed ranges/form conflicts as redacted failures instead of omitting the constraint check. The executable guide now documents full npm-semver grammar.
+- Review notes (deferred/rejected): rejected the double include-resolution finding because resolved layer trees remove `includes` before `loadUserLandofile` receives them. Rejected forbidding TypeScript overlay layers because §7.1.1 explicitly permits TypeScript at every layer and programmatic Landofiles are trusted executable author artifacts; broader TS-loader isolation/purity enforcement predates this story. Cursor Bugbot remained quota-locked and produced no report, so it was not treated as approval evidence.
+- Verification: typecheck and lint passed; 9 focused version-constraint, Landofile, cache, config, doctor, and scratch test files passed; redaction and machine-output boundaries passed; focused executable-guide, guide lint, and guide coverage checks passed; sandboxed source CLI QA proved a dist-only app writes canonical `.lando.yml` without changing `.lando.dist.yml`. Guide drift was unavailable outside PR context.
+- **Learnings for future iterations:** Source-byte freshness cannot prove environment-dependent TypeScript output; bypass that hot cache unless every dynamic input is fingerprinted. Discovery identifies the app root, not an editable layer: writes select canonical explicitly, while reads and validation consume the full merge.
+---

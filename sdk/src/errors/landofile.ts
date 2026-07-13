@@ -16,6 +16,17 @@ export class LandofileParseError extends Schema.TaggedError<LandofileParseError>
   cause: Schema.optional(Schema.Unknown),
 }) {}
 
+export class LandofileFormConflictError extends Schema.TaggedError<LandofileFormConflictError>()(
+  "LandofileFormConflictError",
+  {
+    message: Schema.String,
+    layer: Schema.Literal("base", "dist", "upstream", "canonical", "local", "user"),
+    yamlPath: Schema.String,
+    typescriptPath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 export class LandofileExpressionParseError extends Schema.TaggedError<LandofileExpressionParseError>()(
   "LandofileExpressionParseError",
   {
@@ -60,6 +71,26 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   },
 ) {}
 
+const versionConstraintProvenance = (
+  layer: "base" | "dist" | "upstream" | "canonical" | "local" | "user",
+  order: 0 | 1 | 2 | 3 | 4 | 5,
+) =>
+  Schema.Struct({
+    range: Schema.String,
+    source: Schema.String,
+    layer: Schema.Literal(layer),
+    order: Schema.Literal(order),
+  });
+
+const VersionConstraintProvenance = Schema.Union(
+  versionConstraintProvenance("base", 0),
+  versionConstraintProvenance("dist", 1),
+  versionConstraintProvenance("upstream", 2),
+  versionConstraintProvenance("canonical", 3),
+  versionConstraintProvenance("local", 4),
+  versionConstraintProvenance("user", 5),
+);
+
 /**
  * The running Lando core version does not satisfy the top-level
  * `lando: <semver-range>` constraint. `constraints` carries every unsatisfied
@@ -70,7 +101,7 @@ export class LandofileVersionConstraintError extends Schema.TaggedError<Landofil
   "LandofileVersionConstraintError",
   {
     message: Schema.String,
-    constraints: Schema.Array(Schema.Struct({ range: Schema.String, source: Schema.String })),
+    constraints: Schema.Array(VersionConstraintProvenance),
     runningVersion: Schema.String,
     remediation: Schema.String,
   },

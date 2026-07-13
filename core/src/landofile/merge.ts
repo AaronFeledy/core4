@@ -4,11 +4,10 @@
  * Default load order (low → high precedence):
  *   1. .lando.base.yml
  *   2. .lando.dist.yml
- *   3. .lando.recipe.yml
- *   4. .lando.upstream.yml
- *   5. .lando.yml          (canonical; filename configurable globally)
- *   6. .lando.local.yml
- *   7. .lando.user.yml
+ *   3. .lando.upstream.yml
+ *   4. .lando.yml          (canonical)
+ *   5. .lando.local.yml
+ *   6. .lando.user.yml
  *
  * Rules:
  * - Files load in order; later files override earlier files.
@@ -23,12 +22,7 @@
  *
  */
 
-export const DEFAULT_PRE_LANDOFILES = [
-  ".lando.base.yml",
-  ".lando.dist.yml",
-  ".lando.recipe.yml",
-  ".lando.upstream.yml",
-] as const;
+export const DEFAULT_PRE_LANDOFILES = [".lando.base.yml", ".lando.dist.yml", ".lando.upstream.yml"] as const;
 
 export const DEFAULT_LANDOFILE = ".lando.yml" as const;
 
@@ -69,10 +63,9 @@ const mergeArrays = (left: ReadonlyArray<unknown>, right: ReadonlyArray<unknown>
 };
 
 /**
- * The §7.2 overlay primitive: deep-merge maps, replace scalar arrays, merge
- * object arrays by recognized identity key, right-wins for scalars. Reused for
- * service-type `extends:` resolution overlay (§6.11.1), which the spec defines
- * in terms of these same merge rules.
+ * Landofile overlay merge: deep-merge maps, replace scalar arrays, merge
+ * object arrays by recognized identity key, right-wins for scalars. Also used
+ * when service-type `extends:` overlays parent config onto the child.
  */
 export const mergeValues = (left: unknown, right: unknown): unknown => {
   if (Array.isArray(left) && Array.isArray(right)) return mergeArrays(left, right);

@@ -93,6 +93,67 @@ describe("app config unset", () => {
   });
 });
 
+describe("app config canonical write target", () => {
+  test("set creates canonical YAML and leaves noncanonical YAML and TypeScript layers byte-identical", async () => {
+    await rm(landofilePath(), { force: true });
+    const layers = [
+      [".lando.base.ts", 'export default { name: "base" };\n'],
+      [".lando.dist.yml", "name: dist\nruntime: 4\n"],
+      [".lando.local.ts", 'export default { recipe: "node" };\n'],
+      [".lando.user.yml", "x-user: true\n"],
+    ] as const;
+    for (const [file, content] of layers) await writeFile(join(dir, file), content, "utf8");
+
+    const result = await run(appConfigSet({ subcommand: "set", key: "name", value: "canonical", cwd: dir }));
+
+    expect(result.filePath).toBe(landofilePath());
+    expect(await readLandofile()).toContain("name: canonical");
+    for (const [file, content] of layers) expect(await readFile(join(dir, file), "utf8")).toBe(content);
+  });
+
+  test("unset does not create canonical YAML or mutate a discovered dist layer when the key is absent", async () => {
+    await rm(landofilePath(), { force: true });
+    const distPath = join(dir, ".lando.dist.yml");
+    const distContent = "name: dist\nruntime: 4\n";
+    await writeFile(distPath, distContent, "utf8");
+
+    const result = await run(appConfigUnset({ subcommand: "unset", key: "recipe", cwd: dir }));
+
+    expect(result).toMatchObject({ filePath: landofilePath(), changed: false });
+    expect(await Bun.file(landofilePath()).exists()).toBe(false);
+    expect(await readFile(distPath, "utf8")).toBe(distContent);
+  });
+
+  test("edit creates canonical YAML without mutating the discovered dist layer", async () => {
+    await rm(landofilePath(), { force: true });
+    const distPath = join(dir, ".lando.dist.yml");
+    const distContent = "name: dist\nruntime: 4\n";
+    await writeFile(distPath, distContent, "utf8");
+
+    const result = await run(
+      appConfigEdit({
+        subcommand: "edit",
+        cwd: dir,
+        editorRunner: async () => ({ kind: "edited", content: "name: canonical\nruntime: 4\n" }),
+      }),
+    );
+
+    expect(result.filePath).toBe(landofilePath());
+    expect(await readLandofile()).toContain("name: canonical");
+    expect(await readFile(distPath, "utf8")).toBe(distContent);
+  });
+
+  test("set rejects a canonical TypeScript Landofile", async () => {
+    await rm(landofilePath(), { force: true });
+    await writeFile(join(dir, ".lando.ts"), 'export default { name: "typescript" };\n', "utf8");
+
+    const exit = await runExit(appConfigSet({ subcommand: "set", key: "name", value: "changed", cwd: dir }));
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("NotImplementedError");
+  });
+});
+
 describe("app config reject (S3) leaves file untouched", () => {
   test("malformed path fails with LandofileWriteValidationError", async () => {
     const before = await readLandofile();
@@ -149,6 +210,15 @@ describe("app config validate (S5)", () => {
   test("invalid file fails with issues + remediation", async () => {
     await seed("name: myapp\nruntime: 4\nbogusTopLevel: nope\n");
     const exit = await runExit(appConfigValidate({ subcommand: "validate", cwd: dir }));
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("LandofileWriteValidationError");
+  });
+
+  test("validates the full layered Landofile", async () => {
+    await writeFile(join(dir, ".lando.local.yml"), "bogusTopLevel: nope\n", "utf8");
+
+    const exit = await runExit(appConfigValidate({ subcommand: "validate", cwd: dir }));
+
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit)) expect(exit.cause.toString()).toContain("LandofileWriteValidationError");
   });

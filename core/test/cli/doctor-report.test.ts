@@ -25,6 +25,10 @@ import {
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
+import {
+  appVersionConstraintsForReport,
+  renderAppVersionConstraintResult,
+} from "../../src/cli/commands/doctor-version-constraint.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
@@ -273,7 +277,11 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "fail",
         severity: "error",
-        context: { runningVersion: "0.0.0", unsatisfied: ">=99 (.lando.yml)", skipped: "false" },
+        context: {
+          runningVersion: "0.0.0",
+          unsatisfied: ">=99 (canonical#3: .lando.yml)",
+          skipped: "false",
+        },
       });
       const text = renderDoctorReport(report);
       expect(text).toContain("app-version-constraint: fail");
@@ -304,7 +312,11 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "fail",
         severity: "error",
-        context: { runningVersion: "0.0.0", unsatisfied: ">=99 (.lando.ts)", skipped: "false" },
+        context: {
+          runningVersion: "0.0.0",
+          unsatisfied: ">=99 (canonical#3: .lando.ts)",
+          skipped: "false",
+        },
       });
       expect(renderDoctorReport(report)).toContain("app-version-constraint: fail");
     } finally {
@@ -341,6 +353,86 @@ describe("meta:doctor combined report", () => {
     }
   });
 
+  test("reports a malformed lando range as a redacted version-constraint failure", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-malformed-")));
+    const previousCwd = process.cwd();
+    const previousSecret = process.env.LANDO_SECRET_MALFORMED_RANGE;
+    try {
+      process.chdir(dir);
+      process.env.LANDO_SECRET_MALFORMED_RANGE = "definitely-not-semver-secret";
+      await writeFile(join(dir, ".lando.yml"), "name: doctor-app\nlando: definitely-not-semver-secret\n");
+
+      const report = await Effect.runPromise(appVersionConstraintsForReport());
+
+      expect(report?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: {
+          declared: "(malformed Landofile)",
+        },
+        solutions: [
+          {
+            kind: "manual",
+            description: "Fix the Landofile syntax or `lando:` range, then rerun `lando doctor --app`.",
+          },
+        ],
+      });
+      expect(report?.checks[0]?.context.loadFailure).toContain("not a valid semver range");
+      if (report === undefined) throw new Error("expected version-constraint report");
+      const text = renderAppVersionConstraintResult(report);
+      expect(text).toContain("app-version-constraint: fail");
+      expect(text).toContain("Fix the Landofile syntax or `lando:` range");
+      expect(text).not.toContain("definitely-not-semver-secret");
+      expect(report.checks[0]?.context.loadFailure).not.toContain("definitely-not-semver-secret");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousSecret === undefined) {
+        Reflect.deleteProperty(process.env, "LANDO_SECRET_MALFORMED_RANGE");
+      } else process.env.LANDO_SECRET_MALFORMED_RANGE = previousSecret;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports same-layer YAML and TypeScript forms as a redacted version-constraint failure", async () => {
+    const previousSecret = process.env.LANDO_SECRET_CONFLICT_PATH;
+    process.env.LANDO_SECRET_CONFLICT_PATH = "doctor-form-secret";
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "doctor-form-secret-")));
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      await writeFile(join(dir, ".lando.yml"), "name: doctor-app\n");
+      await writeFile(join(dir, ".lando.local.yml"), "name: local-yaml\n");
+      await writeFile(join(dir, ".lando.local.ts"), 'export default { name: "local-ts" };\n');
+
+      const report = await Effect.runPromise(appVersionConstraintsForReport());
+
+      expect(report?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: {
+          declared: "(conflicting Landofile forms)",
+          layer: "local",
+        },
+      });
+      expect(report?.checks[0]?.context.loadFailure).toContain("are present for the local Landofile layer");
+      expect(report?.checks[0]?.solutions[0]?.description).toContain("each layer accepts exactly one form");
+      if (report === undefined) throw new Error("expected version-constraint report");
+      const text = renderAppVersionConstraintResult(report);
+      expect(text).toContain("app-version-constraint: fail");
+      expect(text).toContain("each layer accepts exactly one form");
+      expect(text).not.toContain("doctor-form-secret");
+      expect(report.checks[0]?.context.loadFailure).not.toContain("doctor-form-secret");
+      expect(report.checks[0]?.solutions[0]?.description).not.toContain("doctor-form-secret");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousSecret === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_CONFLICT_PATH");
+      else process.env.LANDO_SECRET_CONFLICT_PATH = previousSecret;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("doctor --app reports the invocation-scoped version-constraint skip", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-skip-")));
@@ -358,7 +450,7 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "warn",
         severity: "warn",
-        context: { skipped: "true", unsatisfied: ">=99 (.lando.yml)" },
+        context: { skipped: "true", unsatisfied: ">=99 (canonical#3: .lando.yml)" },
       });
       expect(renderDoctorReport(report)).toContain("LANDO_SKIP_VERSION_CONSTRAINT=1 is active");
     } finally {
@@ -376,7 +468,7 @@ describe("meta:doctor combined report", () => {
     const previousSecret = process.env.LANDO_SECRET_VERSION_RANGE;
     try {
       process.chdir(dir);
-      process.env.LANDO_SECRET_VERSION_RANGE = "super-secret-version-range";
+      process.env.LANDO_SECRET_VERSION_RANGE = ">=99.0.0";
       await writeFile(
         join(dir, ".lando.yml"),
         ["template: handlebars", "name: doctor-app", "lando: {{ env.LANDO_SECRET_VERSION_RANGE }}", ""].join(
@@ -391,12 +483,10 @@ describe("meta:doctor combined report", () => {
       const yaml = renderDoctorReportAsYaml(report);
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
 
-      expect(text).not.toContain("super-secret-version-range");
-      expect(yaml).not.toContain("super-secret-version-range");
-      expect(ndjson).not.toContain("super-secret-version-range");
-      expect(report.appVersionConstraints?.checks[0]?.context.invalid).not.toContain(
-        "super-secret-version-range",
-      );
+      expect(text).not.toContain(">=99.0.0");
+      expect(yaml).not.toContain(">=99.0.0");
+      expect(ndjson).not.toContain(">=99.0.0");
+      expect(report.appVersionConstraints?.checks[0]?.context.unsatisfied).not.toContain(">=99.0.0");
     } finally {
       process.chdir(previousCwd);
       if (previousSecret === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_VERSION_RANGE");

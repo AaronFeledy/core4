@@ -4,6 +4,10 @@
 
 ## Compatibility notes
 
+- `CommandWarning` additively accepts structured string context so machine warnings can retain actionable source metadata.
+- US-441 adds `LandofileFormConflictError` and extends each `LandofileVersionConstraintError.constraints` entry with ordered `layer` and `order` provenance.
+- `ScratchAppService.acquire` additively exposes `LandofileVersionConstraintError` when a fork source rejects the running Lando version before planning.
+
 - `StateBucketSpec` additively accepts `mode?: number` so sensitive custom-codec state such as host-shell history preserves exact permissions across atomic replacements.
 - `GlobalConfig.telemetry.enabled` and `TelemetryConfig.enabled` decode omitted values as `true` for CLI global-config defaults; embedding hosts still get library-mode telemetry disabled unless they opt in through runtime construction.
 - `@lando/sdk/schema` also exports type-only schema registry contracts: `JsonSchemaName`, `PublicSchema`, `PublicSchemaAnnotationIssue`, `PublicSchemaMetadata`, and `PublicSchemaReferencePage`. These do not appear in the runtime export list below, which is checked with `Object.keys()`.
@@ -401,6 +405,7 @@
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`
 - `LandofileExpressionParseError`
+- `LandofileFormConflictError`
 - `LandofileIncludeError`
 - `LandofileLockMismatchError`
 - `LandofileVersionConstraintError`

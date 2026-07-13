@@ -40,11 +40,15 @@
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "lando-sdk", "effect"],
   "dependencies": {
-    "effect": "^3.21.2"
+    "effect": "^3.21.2",
+    "semver": "^7.8.5"
   },
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
     "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@types/semver": "^7.7.1"
   }
 }

@@ -26,9 +26,10 @@ import type {
   HostProxySocketStaleError,
   HostProxyTransportUnavailableError,
   LandoCommandError,
+  LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
-  LandofileNotFoundError,
+  LandofileNotFoundError as LandofileMissingError,
   LandofileParseError,
   LandofileSandboxError,
   LandofileTimeoutError,
@@ -50,6 +51,8 @@ import type {
   ToolingExecError,
   TunnelProviderUnavailableError,
 } from "../errors/index.ts";
+
+type LandofileNotFoundError = LandofileMissingError | LandofileFormConflictError;
 import type {
   AbsolutePath,
   AppPlan,
@@ -614,7 +617,8 @@ export interface App {
 export type ScratchAcquireError =
   | ScratchAppError
   | ScratchSourceUnresolvedError
-  | ScratchIsolationConflictError;
+  | ScratchIsolationConflictError
+  | LandofileVersionConstraintError;
 
 /**
  * The object returned by `openLandoRuntime`. Its methods are bound to a single

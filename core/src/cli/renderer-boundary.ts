@@ -7,6 +7,7 @@ import { RedactionService, RedactionServiceLive } from "../redaction/service.ts"
 import { ConfigServiceLive } from "../services/config.ts";
 import { EventServiceLive } from "../services/event-service.ts";
 import { SecretStoreLive } from "../services/secret-store.ts";
+import { CommandWarnings, makeCommandWarnings } from "./command-warnings.ts";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags.ts";
 import {
   type RendererMode,
@@ -304,6 +305,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     isTTY: io.isTTY === true,
   };
   const rendererLayer = makeRendererServiceLiveForMode(options.rendererMode, io);
+  const commandWarnings = makeCommandWarnings(renderContext.format === "json");
+  const commandWarningsLayer = Layer.succeed(CommandWarnings, commandWarnings);
   const failureDiagnosticsLayer = Layer.mergeAll(
     rendererLayer,
     RedactionServiceLive.pipe(Layer.provide(SecretStoreLive)),
@@ -315,7 +318,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   );
   const commandLayer = (
     liveStreaming
-      ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer)
+      ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer, commandWarningsLayer)
       : options.renderEvents === true
         ? Layer.mergeAll(
             options.runtime,
@@ -328,10 +331,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               EventServiceLive,
             ),
             rendererLayer,
+            commandWarningsLayer,
           )
         : streamingJson
-          ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer)
-          : Layer.merge(options.runtime, rendererLayer)
+          ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer, commandWarningsLayer)
+          : Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer)
   ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
     const command = options.command ?? "cli:unknown";
@@ -349,7 +353,8 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     const emitJsonResult = (outcome: Parameters<typeof encodeCommandResult>[0]["outcome"]) =>
       Effect.gen(function* () {
         const redactor = yield* jsonRedactor();
-        const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor });
+        const warnings = yield* commandWarnings.list;
+        const line = yield* encodeCommandResult({ command, resultSchema, outcome, redactor, warnings });
         yield* writeResultLine(line);
       });
     const emitStreamResult = (
@@ -358,7 +363,14 @@ export const runWithRendererHandling = async <A, E, R, RE>(
     ) =>
       Effect.gen(function* () {
         const redactor = yield* jsonRedactor(redactionTokens);
-        const line = yield* encodeStreamResultFrame({ command, resultSchema, outcome, redactor });
+        const warnings = yield* commandWarnings.list;
+        const line = yield* encodeStreamResultFrame({
+          command,
+          resultSchema,
+          outcome,
+          redactor,
+          warnings,
+        });
         yield* writeResultLine(line);
       });
     const emitStreamingSuccess = (value: A) =>

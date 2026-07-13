@@ -130,7 +130,10 @@ interface DestroyCall {
 const makeScratchForkLayer = (
   appliedPlans: AppPlan[],
   destroyCalls: DestroyCall[] = [],
-  options: { readonly failSecondRegistryUpsert?: boolean } = {},
+  options: {
+    readonly failSecondRegistryUpsert?: boolean;
+    readonly onCapabilities?: () => void;
+  } = {},
 ) => {
   const provider: RuntimeProviderShape = {
     id: String(providerId),
@@ -174,7 +177,10 @@ const makeScratchForkLayer = (
   );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
-    capabilities: Effect.succeed(capabilities),
+    capabilities: Effect.sync(() => {
+      options.onCapabilities?.();
+      return capabilities;
+    }),
     select: () => Effect.succeed(provider),
   });
   const scratchRegistryLive = (() => {
@@ -221,6 +227,30 @@ const makeScratchForkLayer = (
 };
 
 describe("ScratchAppServiceLive fork acquire", () => {
+  test("rejects an unsatisfied source constraint before provider capabilities or planning", async () => {
+    await withTempProject(['lando: "<0.0.0"', forkLandofile].join("\n"), async () => {
+      let capabilitiesCalls = 0;
+      const outcome = await Effect.runPromise(
+        Effect.flatMap(ScratchAppService, (service) =>
+          Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true })),
+        ).pipe(
+          Effect.provide(
+            makeScratchForkLayer([], [], {
+              onCapabilities: () => {
+                capabilitiesCalls += 1;
+              },
+            }),
+          ),
+          Effect.either,
+        ),
+      );
+
+      expect(outcome._tag).toBe("Left");
+      if (outcome._tag === "Left") expect(outcome.left._tag).toBe("LandofileVersionConstraintError");
+      expect(capabilitiesCalls).toBe(0);
+    });
+  });
+
   test("re-plans the current app under a fresh scratch identity and applies the fork plan", async () => {
     await withTempProject(forkLandofile, async () => {
       const appliedPlans: AppPlan[] = [];

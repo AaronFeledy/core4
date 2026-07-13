@@ -20,12 +20,13 @@ import {
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
+import { presentLandofileLayers } from "../landofile/layers.ts";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 3n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 4n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -49,7 +50,7 @@ export interface AppPlanCacheKeyInput {
 }
 
 export interface AppPlanSourceFingerprint {
-  readonly landofileContentHash: string | null;
+  readonly landofileContentHashes: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
   readonly includeLockfileHash: string | null;
   readonly includedFragmentShas: ReadonlyArray<string>;
 }
@@ -108,8 +109,14 @@ export const readAppPlanSourceFingerprint = (
   Effect.tryPromise({
     try: async () => {
       const includeLockfilePath = join(appRoot, ".lando.lock.yml");
+      const layers = await presentLandofileLayers(appRoot);
       return {
-        landofileContentHash: await readOptionalHash(join(appRoot, ".lando.yml")),
+        landofileContentHashes: await Promise.all(
+          layers.map(async (layer) => ({
+            source: layer.filePath,
+            hash: (await readOptionalHash(layer.filePath)) ?? "",
+          })),
+        ),
         includeLockfileHash: await readOptionalHash(includeLockfilePath),
         includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
       };

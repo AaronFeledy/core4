@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import {
-  LandofileParseError,
+  LandofileFormConflictError,
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
@@ -384,7 +384,7 @@ describe("LandofileServiceLive — TS form timeout", () => {
 });
 
 describe("LandofileServiceLive — TS form discovery edge cases", () => {
-  test("having both `.lando.yml` and `.lando.ts` in the same directory fails with LandofileParseError", async () => {
+  test("having both `.lando.yml` and `.lando.ts` in the same directory fails with LandofileFormConflictError", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -397,10 +397,12 @@ describe("LandofileServiceLive — TS form discovery edge cases", () => {
       process.chdir(dir);
       const exit = await discoverExit();
       const failure = failureFromExit(exit);
-      expect(failure).toBeInstanceOf(LandofileParseError);
-      if (failure instanceof LandofileParseError) {
-        expect(failure.message).toContain(".lando.yml");
-        expect(failure.message).toContain(".lando.ts");
+      expect(failure).toBeInstanceOf(LandofileFormConflictError);
+      if (failure instanceof LandofileFormConflictError) {
+        expect(failure.layer).toBe("canonical");
+        expect(failure.yamlPath).toBe(join(dir, ".lando.yml"));
+        expect(failure.typescriptPath).toBe(join(dir, ".lando.ts"));
+        expect(failure.remediation).toContain("Remove either");
       }
     });
   });
@@ -510,15 +512,16 @@ describe("LandofileServiceLive — TS form appRoot boundary (PR #106 regression)
 });
 
 describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
-  test("TS export with top-level `includes:` is accepted by raw discovery", async () => {
+  test("TS export with top-level `includes:` resolves its fragments during discovery", async () => {
     await withTempCwd(async (dir) => {
+      await writeFile(join(dir, "fragment.yml"), "services:\n  cache:\n    image: redis:7\n");
       await writeFile(
         join(dir, ".lando.ts"),
         [
           "export default {",
           '  name: "x",',
           '  services: { web: { image: "node:lts" } },',
-          '  includes: ["foo"],',
+          '  includes: ["./fragment.yml"],',
           "};",
           "",
         ].join("\n"),
@@ -526,7 +529,9 @@ describe("LandofileServiceLive — TS form Beta-rejection parity", () => {
       process.chdir(dir);
       const exit = await discoverExit();
       expect(Exit.isSuccess(exit)).toBe(true);
-      if (Exit.isSuccess(exit)) expect(exit.value.includes).toEqual(["foo"]);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.services?.[ServiceName.make("cache")]?.image).toBe("redis:7");
+      }
     });
   });
 

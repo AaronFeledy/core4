@@ -1,4 +1,5 @@
 import { Schema } from "effect";
+import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -335,7 +336,13 @@ const ComposeConfigConfig = Schema.Struct({
 const LandofileShapeBase = Schema.Struct({
   name: Schema.optional(Schema.String),
   runtime: Schema.optional(Schema.Literal(4)),
-  lando: Schema.optional(Schema.String).annotations({
+  lando: Schema.optional(
+    Schema.String.pipe(
+      Schema.filter((range) => range.trim().length > 0 && validRange(range, { loose: false }) !== null, {
+        message: () => 'lando must be a valid npm semver range such as ">=4.1 <5", "^4", or "4.x".',
+      }),
+    ),
+  ).annotations({
     description:
       'Semver range the running Lando core version must satisfy before the app is planned or started (e.g. ">=4.1 <5"). Prereleases are included; unsatisfied constraints fail closed with remediation.',
   }),

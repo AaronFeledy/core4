@@ -33,6 +33,25 @@ describe("CommandResultFormat", () => {
 });
 
 describe("CommandWarning", () => {
+  test("round-trips structured context", () => {
+    const warning = {
+      code: "LANDO_VERSION_CONSTRAINT_SKIPPED",
+      message: "Skipped one unsatisfied constraint.",
+      remediation: "Update Lando or edit the constraint.",
+      context: {
+        range: ">=5",
+        source: ".lando.yml",
+        layer: "canonical",
+        order: "3",
+        runningVersion: "4.2.0",
+      },
+    };
+
+    expect(Schema.decodeUnknownSync(CommandWarning)(Schema.encodeSync(CommandWarning)(warning))).toEqual(
+      warning,
+    );
+  });
+
   test("round-trips with and without remediation", () => {
     const withRemediation = { code: "deprecated", message: "stop", remediation: "use --new" };
     const encoded = Schema.encodeSync(CommandWarning)(withRemediation);

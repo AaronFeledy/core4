@@ -4,24 +4,29 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, Layer, Schema } from "effect";
 
-import type { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService, Renderer } from "@lando/sdk/services";
 
 import { assertLandoVersionConstraint, loadUserLandofile } from "../../src/cli/app-resolution.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
-const landofile = (lando?: string): LandofileShape =>
-  (lando === undefined ? {} : { lando }) as unknown as LandofileShape;
+const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 
-const fakeLandofileService = (shape: LandofileShape): Context.Tag.Service<typeof LandofileService> =>
-  ({ discover: Effect.succeed(shape) }) as Context.Tag.Service<typeof LandofileService>;
+const fakeLandofileService = (shape: LandofileShape): Context.Tag.Service<typeof LandofileService> => ({
+  discover: Effect.succeed(shape),
+});
 
-const capturingRendererLayer = (sink: { warnings: string[] }): Layer.Layer<Renderer> =>
+const capturingRendererLayer = (
+  sink: { warnings: string[]; stderr?: string[] },
+  id = "test",
+): Layer.Layer<Renderer> =>
   Layer.succeed(Renderer, {
-    id: "test",
+    id,
     message: {
       info: () => Effect.void,
       warn: (body: string) =>
@@ -30,7 +35,10 @@ const capturingRendererLayer = (sink: { warnings: string[] }): Layer.Layer<Rende
         }),
       error: () => Effect.void,
     },
-    output: { stdout: () => Effect.void, stderr: () => Effect.void },
+    output: {
+      stdout: () => Effect.void,
+      stderr: (chunk: string) => Effect.sync(() => sink.stderr?.push(chunk)),
+    },
   } as Context.Tag.Service<typeof Renderer>);
 
 describe("assertLandoVersionConstraint", () => {
@@ -56,9 +64,12 @@ describe("assertLandoVersionConstraint", () => {
     expect(error._tag).toBe("LandofileVersionConstraintError");
     if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
     expect(error.runningVersion).toBe("4.0.0");
-    expect(error.constraints).toEqual([{ range: ">=4.1", source: ".lando.yml" }]);
+    expect(error.constraints).toEqual([
+      { range: ">=4.1", source: ".lando.yml", layer: "canonical", order: 3 },
+    ]);
     expect(error.remediation).toContain("lando update");
     expect(error.message).toContain(">=4.1");
+    expect(error.message).toContain("canonical layer, order 3");
   });
 
   test("rejects an unparseable range with LandofileParseError", async () => {
@@ -92,23 +103,60 @@ describe("assertLandoVersionConstraint", () => {
       }),
     );
   });
+
+  test("skip records structured warnings in the machine result envelope", async () => {
+    const io = createBufferedRendererIO();
+
+    await runWithRendererHandling(
+      assertLandoVersionConstraint(landofile(">=5"), {
+        runningVersion: "4.2.0",
+        env: { LANDO_SKIP_VERSION_CONSTRAINT: "1" },
+      }).pipe(Effect.as({ checked: true })),
+      {
+        runtime: Layer.empty,
+        rendererMode: "lando",
+        resultFormat: "json",
+        command: "test:version-constraint",
+        resultSchema: Schema.Struct({ checked: Schema.Boolean }),
+        io,
+        render: () => "",
+        formatError: String,
+      },
+    );
+
+    expect(JSON.parse(io.stdoutLines()[0] ?? "{}")).toMatchObject({
+      warnings: [
+        {
+          code: "LANDO_VERSION_CONSTRAINT_SKIPPED",
+          context: {
+            range: ">=5",
+            source: ".lando.yml",
+            layer: "canonical",
+            order: "3",
+            runningVersion: "4.2.0",
+          },
+        },
+      ],
+    });
+    expect(io.stderr()).toBe("");
+  });
 });
 
 describe("lando: is a distinct surface from runtime: and api:", () => {
   test("runtime: and service api: alone never trigger the version-constraint check", async () => {
-    const shape = {
+    const shape = Schema.decodeUnknownSync(LandofileShape)({
       runtime: 4,
       services: { web: { api: 4, type: "lando" } },
-    } as unknown as LandofileShape;
+    });
     await Effect.runPromise(assertLandoVersionConstraint(shape, { runningVersion: "0.0.1" }));
   });
 
   test("only lando: drives the constraint while runtime:/api: coexist untouched", async () => {
-    const shape = {
+    const shape = Schema.decodeUnknownSync(LandofileShape)({
       runtime: 4,
       lando: ">=99",
       services: { web: { api: 4, type: "lando" } },
-    } as unknown as LandofileShape;
+    });
     const error = await Effect.runPromise(
       Effect.flip(assertLandoVersionConstraint(shape, { runningVersion: "4.0.0" })),
     );
@@ -153,7 +201,9 @@ describe("loadUserLandofile version-constraint enforcement", () => {
       expect(resolved.lando).toBe(">=4.1");
       expect(error._tag).toBe("LandofileVersionConstraintError");
       if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
-      expect(error.constraints).toEqual([{ range: ">=4.5", source: fragmentPath }]);
+      expect(error.constraints).toEqual([
+        { range: ">=4.5", source: fragmentPath, layer: "canonical", order: 3 },
+      ]);
     } finally {
       await rm(appRoot, { recursive: true, force: true });
     }
@@ -175,7 +225,7 @@ describe("loadUserLandofile version-constraint enforcement", () => {
 
       expect(error._tag).toBe("LandofileVersionConstraintError");
       if (error._tag !== "LandofileVersionConstraintError") throw new Error("wrong error tag");
-      expect(error.constraints).toEqual([{ range: ">=99", source: filePath }]);
+      expect(error.constraints).toEqual([{ range: ">=99", source: filePath, layer: "canonical", order: 3 }]);
     } finally {
       process.chdir(previousCwd);
       await rm(appRoot, { recursive: true, force: true });
