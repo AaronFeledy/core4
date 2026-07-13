@@ -206,6 +206,7 @@ export const runBenchmark = async (options: Options, baseline: Baseline): Promis
   const warmRuns = options.runs ?? baseline.warmRuns;
   const coldRuns = options.coldRuns ?? baseline.coldRuns;
   const input = { binary: options.binary, command, cwd: options.cwd };
+  await runOne({ binary: options.binary, command: ["app:cache:refresh"], cwd: options.cwd });
   const coldMs = await runMany(coldRuns, input);
   const warmMs = await runMany(warmRuns, input);
   const maxAllowedWarmP95Ms = baseline.baselineWarmP95Ms * (1 + baseline.allowedRegressionPercent / 100);
