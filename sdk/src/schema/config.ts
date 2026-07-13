@@ -43,6 +43,9 @@ export const McpConfig = Schema.Struct({
   tooling: Schema.optional(Schema.Boolean).annotations({
     description: "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
   }),
+  maxConcurrent: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())).annotations({
+    description: "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
+  }),
 });
 export type McpConfig = typeof McpConfig.Type;
 

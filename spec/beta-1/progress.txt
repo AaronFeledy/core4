@@ -494,3 +494,12 @@ Open closure categories:
 - Review feedback: fixed (added Guide-Coverage-Skip for SDK service surfaces already covered by lando-shell guide; reran guide jobs green)
 - Merge: merged (squash)
 ---
+
+## 2026-07-13 05:22 CDT - US-440
+- MCP serve startup now rejects unusable or TTY stdio and incompatible machine-output mode consistently across source and compiled dispatch, while global `mcp.maxConcurrent` is schema-validated and reaches the retained MCP service.
+- Stdio request framing, outstanding calls, cancellation delivery, queued response/progress bytes, and blocked writes are bounded before JSON parsing or unbounded retention; malformed, partial, oversized, slow-loris, and non-reading clients terminate with tagged transport failures.
+- Verification: typecheck, lint, build, schema codegen/idempotence, machine-output/renderer/redaction boundaries, guide gates, focused MCP/SDK/parity tests, and real source/compiled stdio and startup-refusal CLI checks passed.
+- **Learnings for future iterations:**
+  - Enforce frame and queue limits at the transport boundary before parsing, and serialize protocol output through one bounded writer that awaits flush/backpressure.
+  - Keep serve-startup capability classification shared ahead of catalog/runtime work so source and compiled dispatch fail with the same tagged contract.
+---

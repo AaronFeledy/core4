@@ -118,7 +118,7 @@ const makeService = (
             ).map((entry) => [entry.spec.id, entry]),
           );
           const runtimeContext = yield* Layer.build(config.runtimeLayer);
-          const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, never>>());
+          const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, McpTransportError>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());
           const completed = yield* Ref.make(new Set<string>());
           const notifyFor =
@@ -146,7 +146,10 @@ const makeService = (
             redactorForFrame: Redactor,
           ): Context.Tag.Service<typeof StreamFrameSink> => ({
             emit: (frame: StreamFrameSinkFrame) =>
-              encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify)),
+              encodeProgressFrame(frame, redactorForFrame).pipe(
+                Effect.flatMap(notify),
+                Effect.catchAll(() => Effect.void),
+              ),
           });
           const outcomeFromExit = (
             exit: Exit.Exit<unknown, unknown>,
@@ -204,7 +207,7 @@ const makeService = (
               return [true, next];
             });
 
-          const handleOne = (incoming: McpTransportRequest): Effect.Effect<void> =>
+          const handleOne = (incoming: McpTransportRequest) =>
             dispatchTool(incoming.request, depsFor(incoming)).pipe(
               Effect.matchCauseEffect({
                 onFailure: (cause) => {
@@ -217,7 +220,7 @@ const makeService = (
               }),
             );
 
-          const handleCanceledBeforeStart = (incoming: McpTransportRequest): Effect.Effect<void> =>
+          const handleCanceledBeforeStart = (incoming: McpTransportRequest) =>
             dispatchTool(incoming.request, { ...depsFor(incoming), execute: () => Effect.interrupt }).pipe(
               Effect.ignore,
               Effect.zipRight(replyMcpCanceled(transport, incoming.id)),
@@ -244,7 +247,7 @@ const makeService = (
               yield* Deferred.succeed(start, undefined);
             });
 
-          const cancelRequest = (id: string): Effect.Effect<void> =>
+          const cancelRequest = (id: string) =>
             Ref.get(inFlight).pipe(
               Effect.flatMap((current) => {
                 const fiber = current.get(id);

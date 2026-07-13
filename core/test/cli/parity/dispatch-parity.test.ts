@@ -952,14 +952,57 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiledEnvelope.command).toBe("meta:mcp");
     }, 30_000);
 
-    test("mcp serve without stdin closes on EOF and exits 0 with no protocol frame on both paths", async () => {
+    test("mcp-serve-refuses-missing-stdio identically on both paths", async () => {
+      // Given
       const source = await runSourceCli(["mcp"]);
       const compiled = await runCompiledCli(["mcp"]);
-      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
-      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
-      expect(compiled.stderr).not.toContain("NotImplementedError");
+
+      // When / Then
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(1);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+      expect(errorCodeFromStderr(source.stderr)).toBe("McpTransportError");
+      expect(errorCodeFromStderr(compiled.stderr)).toBe("McpTransportError");
       expect(source.stdout.trim()).toBe("");
       expect(compiled.stdout.trim()).toBe("");
+    }, 30_000);
+
+    test("mcp-serve-refuses-machine-output", async () => {
+      // Given / When
+      const source = await runSourceCli(["mcp", "--format=json"]);
+      const compiled = await runCompiledCli(["mcp", "--format=json"]);
+
+      // Then
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(1);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+      expect(source.stdout).toBe("");
+      expect(compiled.stdout).toBe("");
+      expect(errorCodeFromStderr(source.stderr)).toBe("McpTransportError");
+      expect(errorCodeFromStderr(compiled.stderr)).toBe("McpTransportError");
+    }, 30_000);
+
+    test("mcp --list rejects invalid configured concurrency identically on both paths", async () => {
+      // Given
+      const isolated = makeIsolatedEnv();
+      const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+      mkdirSync(confRoot, { recursive: true });
+      writeFileSync(join(confRoot, "config.yml"), "mcp:\n  maxConcurrent: 0\n");
+
+      try {
+        // When
+        const source = await runSourceCli(["mcp", "--list"], { env: isolated.env });
+        const compiled = await runCompiledCli(["mcp", "--list"], { env: isolated.env });
+
+        // Then
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(1);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        const sourceCode = errorCodeFromStderr(source.stderr);
+        expect(sourceCode).toBe("ConfigError");
+        expect(errorCodeFromStderr(compiled.stderr)).toBe(sourceCode);
+        expect(source.stdout).toBe("");
+        expect(compiled.stdout).toBe("");
+      } finally {
+        isolated.cleanup();
+      }
     }, 30_000);
 
     test("mcp --list rejects an unknown --allow id identically on both paths", async () => {
