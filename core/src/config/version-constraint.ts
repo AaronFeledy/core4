@@ -5,9 +5,8 @@
  * Effect-free by design so it can run on the tooling hot path against the
  * embedded `CORE_VERSION` without provider contact. Range evaluation compares
  * by npm-semver precedence and ignores build metadata. Running prereleases are
- * normalized to their numeric tuple before matching so `4.1.0-beta.2`
- * so a prerelease of a version within the numeric range satisfies the range
- * (`>=4.1` is satisfied by `4.1.0-beta.2`). This keeps constraints useful on
+ * normalized to their numeric tuple before matching, so e.g. `>=4.1` accepts
+ * `4.1.0-beta.2`. This keeps constraints useful on
  * the dev/next channels without forcing prerelease-aware ranges.
  */
 
