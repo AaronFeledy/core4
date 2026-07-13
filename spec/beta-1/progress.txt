@@ -541,3 +541,17 @@ Open closure categories:
 - Verification: typecheck and lint passed; 9 focused version-constraint, Landofile, cache, config, doctor, and scratch test files passed; redaction and machine-output boundaries passed; focused executable-guide, guide lint, and guide coverage checks passed; sandboxed source CLI QA proved a dist-only app writes canonical `.lando.yml` without changing `.lando.dist.yml`. Guide drift was unavailable outside PR context.
 - **Learnings for future iterations:** Source-byte freshness cannot prove environment-dependent TypeScript output; bypass that hot cache unless every dynamic input is fingerprinted. Discovery identifies the app root, not an editable layer: writes select canonical explicitly, while reads and validation consume the full merge.
 ---
+
+## 2026-07-13 10:47 CDT - Babysit
+- PR: #582 https://github.com/AaronFeledy/core4/pull/582
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for non-contract surface touches; trimmed eager semver imports for perf budget; aligned Landofile TS form tests with FormConflictError and includes resolution)
+- Merge: merged (squash)
+---
+
+## 2026-07-13 12:11 CDT - US-442
+- Shipped canonical CLI lifecycle publication across source OCLIF and compiled dispatch. Every resolved command now emits a redacted `cli-<canonical-id>-init` event followed by exactly one `-run` or `-error` event with invocation summaries, timing, exit status, and failure identity; command-specific events remain nested between the generic boundaries.
+- Preserved lifecycle coverage for aliases, tagged failures, defects, graceful interactive interruption, live streams, direct command adapters, and all bootstrap depths while keeping event publication centralized at the renderer/runtime boundary.
+- Verification: typecheck, lint, build, renderer/redaction/machine-output/telemetry boundaries, and relevant SDK schema, event typing, OCLIF, compiled-dispatch, MCP, shell, streaming, and parity test spot checks passed; source and compiled version CLI smoke passed.
+- **Learnings for future iterations:** Command lifecycle events belong around the shared renderer-handling seam after runtime provisioning, not in command bodies or OCLIF hooks. Reuse an already-provided `EventService` so generic boundaries and command-specific events share ordering and scope; create an internal service only for bootstrap-none commands.
+---

@@ -1,6 +1,7 @@
 import { Context, type Duration, type Effect, type Queue, type Scope, type Stream } from "effect";
 
 import type { EventError } from "../errors/index.ts";
+import type { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "../events/cli.ts";
 import type { LandoEvent as KnownLandoEvent } from "../events/union.ts";
 
 export interface LandoEvent {
@@ -18,9 +19,15 @@ export type LandoEventName = KnownLandoEvent["_tag"];
  */
 export type EventFor<Name extends string> = Name extends "*"
   ? KnownLandoEvent
-  : Name extends LandoEventName
-    ? Extract<KnownLandoEvent, { readonly _tag: Name }>
-    : LandoEvent;
+  : Name extends `cli-${string}-init`
+    ? CliCommandInitEvent
+    : Name extends `cli-${string}-run`
+      ? CliCommandRunEvent
+      : Name extends `cli-${string}-error`
+        ? CliCommandErrorEvent
+        : Name extends LandoEventName
+          ? Extract<KnownLandoEvent, { readonly _tag: Name }>
+          : LandoEvent;
 
 export interface EventWaitOptions<Name extends string> {
   readonly filter?: (event: EventFor<Name>) => boolean;

@@ -1,9 +1,15 @@
 import { Args } from "@oclif/core";
-import { Cause, Effect, Exit } from "effect";
+import { Effect, Layer } from "effect";
 
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { runWithRendererHandling } from "../../../renderer-boundary.ts";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  formatCommandError,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];
@@ -39,6 +45,7 @@ export const metaXSpec: LandoCommandSpec<MetaXResult> = {
       if (result.exitCode !== 0) process.exitCode = result.exitCode;
       return result;
     }),
+  successExitCode: (result) => result.exitCode,
   render: (result) => renderMetaXResult(result as MetaXResult),
 };
 
@@ -58,15 +65,21 @@ export default class MetaXCommand extends LandoCommandBase {
     if (spec === undefined) {
       throw new Error("meta:x requires a package spec as the first positional argument.");
     }
-    const exit = await Effect.runPromiseExit(metaX({ spec, argv: args, onBanner: (line) => this.log(line) }));
-    if (Exit.isSuccess(exit)) {
-      if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
-      const rendered = renderMetaXResult(exit.value);
-      if (rendered !== undefined && rendered.length > 0) this.log(rendered);
-      return;
-    }
-    const failure = Cause.failureOption(exit.cause);
-    if (failure._tag === "Some") throw failure.value as Error;
-    throw new Error(Cause.pretty(exit.cause));
+    await runWithRendererHandling(metaX({ spec, argv: args }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      command: metaXSpec.id,
+      invocation: {
+        commandId: metaXSpec.id,
+        argv,
+        args: { spec },
+        flags: {},
+        cwd: process.cwd(),
+      },
+      resultSchema: metaXSpec.resultSchema,
+      render: renderMetaXResult,
+      successExitCode: (result) => result.exitCode,
+      formatError: (error) => formatCommandError({ error, commandId: metaXSpec.id, rendererMode: "plain" }),
+    });
   }
 }

@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit, Layer } from "effect";
+import { Effect, Layer } from "effect";
 
 import { type LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";
@@ -62,7 +62,6 @@ import {
   activeResultFormat,
   commandErrorMessage,
   emitDiagnosticLine,
-  emitResultLine,
   globalRuntimeLayer,
   rejectInvalidInvocation,
   runCompiledCommand,
@@ -87,7 +86,6 @@ import { shellenvShellFromInput } from "../oclif/commands/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "../oclif/commands/meta/uninstall.ts";
 import compiledCommands from "../oclif/compiled-commands.ts";
 import { resolveNonInteractive } from "../prompts/answer-flags.ts";
-import { makeRendererServiceLiveForMode } from "../renderer-boundary.ts";
 
 export const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
@@ -227,6 +225,13 @@ export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
     retainedRuntime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
+    invocation: {
+      commandId: "meta:mcp",
+      argv: input.argv,
+      args: input.args,
+      flags: input.flags,
+      cwd: process.cwd(),
+    },
     formatError: (error) => commandErrorMessage(error, "meta:mcp"),
   });
 };
@@ -241,39 +246,23 @@ export const runMetaGlobalInstall = (argv: ReadonlyArray<string>): Promise<void>
 };
 
 export const runMetaBun = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const exit = await Effect.runPromiseExit(
-    metaBun({ argv: argv.slice() }).pipe(Effect.provide(makeRendererServiceLiveForMode(activeRendererMode))),
-  );
-  if (Exit.isSuccess(exit)) {
-    if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
-    const rendered = renderMetaBunResult(exit.value);
-    if (rendered !== undefined) emitResultLine(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  emitDiagnosticLine(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
+  const input = compiledCommandInputFromArgv("meta:bun", argv);
+  await runCompiledCommand(metaBun({ argv: input.argv }), Layer.empty, renderMetaBunResult, {
+    successExitCode: (result) => result.exitCode,
+  });
 };
 
 export const runMetaX = async (argv: ReadonlyArray<string>): Promise<void> => {
-  const [spec, ...rest] = argv;
+  const input = compiledCommandInputFromArgv("meta:x", argv);
+  const [spec, ...rest] = input.argv;
   if (spec === undefined) {
     emitDiagnosticLine("meta:x requires a package spec as the first positional argument.");
     process.exitCode = 1;
     return;
   }
-  const exit = await Effect.runPromiseExit(
-    metaX({ spec, argv: rest }).pipe(Effect.provide(makeRendererServiceLiveForMode(activeRendererMode))),
-  );
-  if (Exit.isSuccess(exit)) {
-    if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
-    const rendered = renderMetaXResult(exit.value);
-    if (rendered !== undefined) emitResultLine(rendered);
-    return;
-  }
-  const failure = Cause.failureOption(exit.cause);
-  emitDiagnosticLine(failure._tag === "Some" ? commandErrorMessage(failure.value) : Cause.pretty(exit.cause));
-  process.exitCode = 1;
+  await runCompiledCommand(metaX({ spec, argv: rest }), Layer.empty, renderMetaXResult, {
+    successExitCode: (result) => result.exitCode,
+  });
 };
 
 export const runMetaPluginAdd = async (argv: ReadonlyArray<string>): Promise<void> => {

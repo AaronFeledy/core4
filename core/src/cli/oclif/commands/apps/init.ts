@@ -5,7 +5,7 @@
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
@@ -20,8 +20,8 @@ import {
 import {
   makeRendererServiceLiveForMode,
   resolveCliRendererMode,
+  runWithRendererHandling,
   writeDiagnosticLine,
-  writeResultLine,
 } from "../../../renderer-boundary.ts";
 import type { RendererMode } from "../../../renderer-selection.ts";
 import {
@@ -160,36 +160,31 @@ export default class InitCommand extends LandoCommandBase {
 
     const parsed = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
 
-    let result: InitAppResult;
-    try {
-      const options = {
-        ...initOptionsFromInput(parsed),
-        onWarn: (message: string) => {
-          Effect.runSync(
-            writeDiagnosticLine(message).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
-          );
-        },
-      };
-      result = await initApp(options);
-    } catch (error) {
-      const text = formatBugReport({
-        error,
-        context: { commandId: "apps:init" },
-        rendererMode,
-      });
-      if (rendererMode === "json") {
-        await Effect.runPromise(
-          writeDiagnosticLine(text).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
+    const options = {
+      ...initOptionsFromInput(parsed),
+      onWarn: (message: string) => {
+        Effect.runSync(
+          writeDiagnosticLine(message).pipe(Effect.provide(makeRendererServiceLiveForMode(rendererMode))),
         );
-        process.exitCode = 1;
-        return;
-      }
-      throw new Error(text);
-    }
-    await Effect.runPromise(
-      writeResultLine(`Created ${result.appName} at ${result.directory}`).pipe(
-        Effect.provide(makeRendererServiceLiveForMode(rendererMode)),
-      ),
+      },
+    };
+    await runWithRendererHandling(
+      Effect.tryPromise({ try: () => initApp(options), catch: (error) => error }),
+      {
+        runtime: Layer.empty,
+        rendererMode,
+        command: initSpec.id,
+        invocation: {
+          commandId: initSpec.id,
+          argv: this.argv,
+          args: {},
+          flags: Object.fromEntries(Object.entries(parsed.flags)),
+          cwd: process.cwd(),
+        },
+        resultSchema: initSpec.resultSchema,
+        render: (result: InitAppResult) => `Created ${result.appName} at ${result.directory}`,
+        formatError: (error) => formatBugReport({ error, context: { commandId: initSpec.id }, rendererMode }),
+      },
     );
   }
 }

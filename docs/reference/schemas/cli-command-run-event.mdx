@@ -11,6 +11,13 @@ Public Lando schema contract for Cli Command Run Event.
 
 | Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `_tag` | Yes | `string` | — | — | `cli-command-run` | — | — |
-| `commandId` | Yes | `string` | a string | — | — | — | — |
+| `_tag` | Yes | `string` | — | — | — | — | — |
+| `commandId` | Yes | `string` | Canonical command id, independent of the alias used to invoke it. | — | — | — | — |
+| `argv` | Yes | `array` | Command arguments after canonical command resolution. | — | — | — | — |
+| `args` | Yes | `object` | Parsed positional arguments keyed by their command-spec names. | — | — | — | — |
+| `flags` | Yes | `object` | Parsed flags keyed by their canonical command-spec names. | — | — | — | — |
+| `cwd` | Yes | `string` | Working directory at command invocation. | — | — | — | — |
+| `app` | No | `object` | Resolved application binding for the command, when applicable. | — | — | — | — |
 | `timestamp` | Yes | `string` | — | — | — | — | — |
+| `exitCode` | Yes | `number` | Process exit code attributed to the command. | — | — | — | — |
+| `durationMs` | Yes | `number` | Command execution duration in milliseconds. | — | — | — | — |

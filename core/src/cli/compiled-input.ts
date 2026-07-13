@@ -8,7 +8,12 @@ import {
   hasUniversalFormatFlag,
   setParsedFlag,
 } from "./compiled-argv.ts";
-import { type CompiledCommandInput, activeRendererMode, activeResultFormat } from "./compiled-runtime.ts";
+import {
+  type CompiledCommandInput,
+  activeRendererMode,
+  activeResultFormat,
+  setActiveCommandInvocation,
+} from "./compiled-runtime.ts";
 import { type ResultFormat, resolveResultFormat } from "./format-flags.ts";
 
 export const compiledCommandInputFromArgv = (
@@ -30,7 +35,9 @@ export const compiledCommandInputFromArgv = (
     const flags: Record<string, unknown> = {};
     flags.format = effectiveResultFormat;
     if (effectiveResultFormat === "json") flags.json = true;
-    return { argv, flags, args: {}, ...options, resultFormat: effectiveResultFormat };
+    const input = { argv, flags, args: {}, ...options, resultFormat: effectiveResultFormat };
+    setActiveCommandInvocation(commandId, input);
+    return input;
   }
   const argvWithoutUniversalFormat = formatResolution?.remainingArgv ?? argv;
   const normalizedArgv =
@@ -80,5 +87,7 @@ export const compiledCommandInputFromArgv = (
   flags.format = effectiveResultFormat;
   if (effectiveResultFormat === "json") flags.json = true;
 
-  return { argv: normalizedArgv, flags, args, ...options, resultFormat: effectiveResultFormat };
+  const input = { argv: normalizedArgv, flags, args, ...options, resultFormat: effectiveResultFormat };
+  setActiveCommandInvocation(commandId, input);
+  return input;
 };

@@ -18,6 +18,7 @@ import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
+import type { CliInvocationSnapshot } from "./command-lifecycle.ts";
 import {
   argDefinitionsForCommand,
   commandSpecForId,
@@ -49,6 +50,9 @@ export let activeRendererMode: RendererMode = "lando";
 export let activeResultFormat: ResultFormat = DEFAULT_RESULT_FORMAT;
 export let activeDeprecationWarnings = true;
 export let activeCommandId = "cli:unknown";
+let activeCommandInvocation: CliInvocationSnapshot | undefined;
+
+export const getActiveCommandInvocation = (): CliInvocationSnapshot | undefined => activeCommandInvocation;
 
 export const setActiveRendererMode = (mode: RendererMode): void => {
   activeRendererMode = mode;
@@ -64,6 +68,23 @@ export const setActiveDeprecationWarnings = (enabled: boolean): void => {
 
 export const setActiveCommandId = (commandId: string): void => {
   activeCommandId = commandId;
+};
+
+export const setActiveCommandInvocation = (
+  commandId: string,
+  input: Pick<CompiledCommandInput, "argv" | "args" | "flags">,
+): void => {
+  activeCommandInvocation = {
+    commandId,
+    argv: input.argv,
+    args: input.args,
+    flags: input.flags,
+    cwd: process.cwd(),
+  };
+};
+
+export const resetActiveCommandInvocation = (commandId: string, argv: ReadonlyArray<string>): void => {
+  activeCommandInvocation = { commandId, argv, args: {}, flags: {}, cwd: process.cwd() };
 };
 
 export const commandErrorMessage = (error: unknown, commandId: string = activeCommandId): string => {
@@ -172,11 +193,17 @@ export const runCompiledCommand = <A, E, R, RE>(
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const redactionTokens = spec?.redactionTokens;
+  const successExitCode =
+    options.successExitCode ??
+    (spec?.successExitCode === undefined
+      ? undefined
+      : (value: A) => spec.successExitCode?.(value, activeCommandInvocation));
   const rendererOptions = {
     runtime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     command: activeCommandId,
+    ...(activeCommandInvocation === undefined ? {} : { invocation: activeCommandInvocation }),
     resultSchema: spec?.resultSchema ?? EmptyResultSchema,
     ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
     ...(options.streamingMode === undefined ? {} : { streamingMode: options.streamingMode }),
@@ -186,7 +213,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
-    ...(options.successExitCode === undefined ? {} : { successExitCode: options.successExitCode }),
+    ...(successExitCode === undefined ? {} : { successExitCode }),
     render,
     formatError: (error: unknown) => commandErrorMessage(error),
   };

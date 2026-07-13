@@ -180,6 +180,13 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,
       command: setupSpec.id,
+      invocation: {
+        commandId: setupSpec.id,
+        argv: input.argv,
+        args: input.args,
+        flags: input.flags,
+        cwd: process.cwd(),
+      },
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
       renderEvents: process.stdout.isTTY === true,

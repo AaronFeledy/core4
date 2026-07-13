@@ -9,13 +9,71 @@
   "additionalProperties": false,
   "properties": {
     "_tag": {
-      "enum": [
-        "cli-command-init"
-      ],
+      "description": "a template literal",
+      "pattern": "^cli-[\\s\\S]*?-init$",
+      "title": "`cli-${string}-init`",
       "type": "string"
     },
+    "app": {
+      "additionalProperties": false,
+      "description": "Resolved application binding for the command, when applicable.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "user",
+            "global",
+            "scratch"
+          ],
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind",
+        "id",
+        "root"
+      ],
+      "type": "object"
+    },
+    "args": {
+      "additionalProperties": {
+        "$id": "/schemas/unknown",
+        "title": "unknown"
+      },
+      "description": "Parsed positional arguments keyed by their command-spec names.",
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "argv": {
+      "description": "Command arguments after canonical command resolution.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "commandId": {
+      "description": "Canonical command id, independent of the alias used to invoke it.",
       "type": "string"
+    },
+    "cwd": {
+      "description": "Working directory at command invocation.",
+      "type": "string"
+    },
+    "flags": {
+      "additionalProperties": {
+        "$id": "/schemas/unknown",
+        "title": "unknown"
+      },
+      "description": "Parsed flags keyed by their canonical command-spec names.",
+      "properties": {},
+      "required": [],
+      "type": "object"
     },
     "timestamp": {
       "$ref": "#/$defs/DateTimeUtc"
@@ -24,6 +82,10 @@
   "required": [
     "_tag",
     "commandId",
+    "argv",
+    "args",
+    "flags",
+    "cwd",
     "timestamp"
   ],
   "type": "object"

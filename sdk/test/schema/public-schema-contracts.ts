@@ -14,7 +14,7 @@ const ISO_TIMESTAMP = "2026-06-14T00:00:00.000Z";
 const PUBLIC_SCHEMA_CONTRACT_TEST_FILE = "sdk/test/schema/public-schema-contracts.test.ts";
 
 export type PublicSchemaContractFixture = {
-  readonly testFile: `sdk/test/schema/${string}.test.ts`;
+  readonly testFile: `sdk/test/${string}.test.ts`;
 };
 
 export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
@@ -247,9 +247,9 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   PostProviderApplyEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PreProviderExecEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PostProviderExecEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  CliCommandInitEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  CliCommandRunEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  CliCommandErrorEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  CliCommandInitEvent: "sdk/test/events/cli.test.ts",
+  CliCommandRunEvent: "sdk/test/events/cli.test.ts",
+  CliCommandErrorEvent: "sdk/test/events/cli.test.ts",
   DeprecationUsedEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   TaskTreeStartEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   TaskStartEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -386,6 +386,38 @@ const materializeJsonSchemaFixture = (root: JsonSchemaNode, node: JsonSchemaNode
 };
 
 const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
+  CliCommandInitEvent: {
+    _tag: "cli-meta:version-init",
+    commandId: "meta:version",
+    argv: ["version"],
+    args: {},
+    flags: {},
+    cwd: "/tmp/lando-app",
+    timestamp: ISO_TIMESTAMP,
+  },
+  CliCommandRunEvent: {
+    _tag: "cli-meta:version-run",
+    commandId: "meta:version",
+    argv: ["version"],
+    args: {},
+    flags: {},
+    cwd: "/tmp/lando-app",
+    timestamp: ISO_TIMESTAMP,
+    exitCode: 0,
+    durationMs: 1,
+  },
+  CliCommandErrorEvent: {
+    _tag: "cli-meta:version-error",
+    commandId: "meta:version",
+    argv: ["version"],
+    args: {},
+    flags: {},
+    cwd: "/tmp/lando-app",
+    timestamp: ISO_TIMESTAMP,
+    exitCode: 1,
+    durationMs: 1,
+    failureTag: "Defect",
+  },
   UpdateManifestHttpsUrl: "https://example.test/value",
   UpdateManifestSemver: "4.2.0",
   UpdateManifestSha256: "a".repeat(64),
