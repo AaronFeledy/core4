@@ -102,15 +102,18 @@ describe("share command skeleton", () => {
   });
 
   test("compiled dispatcher exposes share routes and renderers", async () => {
-    const source = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const runSource = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const adapterSource = await Bun.file(
+      join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
+    ).text();
     const shareSource = await Bun.file(join(import.meta.dir, "../../src/cli/commands/share.ts")).text();
 
-    expect(source).toContain("renderShareResult(value, compiledFormat(input), ctx)");
-    expect(source).toContain("renderShareListResult(value, options.format, ctx)");
-    expect(source).toContain("renderShareStopResult(value, options.format, ctx)");
-    expect(source).toContain('argv[0] === "share"');
-    expect(source).toContain('argv[0] === "app:share:list"');
-    expect(source).toContain('argv[0] === "share:stop:app"');
+    expect(adapterSource).toContain("renderShareResult(value, compiledFormat(input), ctx)");
+    expect(adapterSource).toContain("renderShareListResult(value, options.format, ctx)");
+    expect(adapterSource).toContain("renderShareStopResult(value, options.format, ctx)");
+    expect(runSource).toContain('argv[0] === "share"');
+    expect(runSource).toContain('argv[0] === "app:share:list"');
+    expect(runSource).toContain('argv[0] === "share:stop:app"');
     expect(shareSource).not.toContain('format === "json"');
     expect(shareSource).not.toContain("JSON.stringify");
   });

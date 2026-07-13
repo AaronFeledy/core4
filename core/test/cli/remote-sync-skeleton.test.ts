@@ -162,18 +162,21 @@ describe("remote sync command skeleton", () => {
   });
 
   test("compiled remote renderers forward RenderContext", async () => {
-    const source = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const runSource = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const adapterSource = await Bun.file(
+      join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
+    ).text();
     const remoteSource = await Bun.file(join(import.meta.dir, "../../src/cli/commands/remote.ts")).text();
 
-    expect(source).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
-    expect(source).toContain("renderRemoteListResult(value, options.format, ctx)");
-    expect(source).toContain('renderRemoteMutationResult(value, "added", options.format, ctx)');
-    expect(source).toContain('renderRemoteMutationResult(value, "removed", options.format, ctx)');
-    expect(source).toContain("renderRemoteTestResult(value, options.format, ctx)");
-    expect(source).toContain("renderRemoteEnvListResult(value, options.format, ctx)");
-    expect(source).toContain('argv[0] === "pull:app"');
-    expect(source).toContain('argv[0] === "remote:list:app"');
-    expect(source).toContain('argv[0] === "remote:list:env:app"');
+    expect(adapterSource).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
+    expect(adapterSource).toContain("renderRemoteListResult(value, options.format, ctx)");
+    expect(adapterSource).toContain('renderRemoteMutationResult(value, "added", options.format, ctx)');
+    expect(adapterSource).toContain('renderRemoteMutationResult(value, "removed", options.format, ctx)');
+    expect(adapterSource).toContain("renderRemoteTestResult(value, options.format, ctx)");
+    expect(adapterSource).toContain("renderRemoteEnvListResult(value, options.format, ctx)");
+    expect(runSource).toContain('argv[0] === "pull:app"');
+    expect(runSource).toContain('argv[0] === "remote:list:app"');
+    expect(runSource).toContain('argv[0] === "remote:list:env:app"');
     expect(remoteSource).not.toContain('ctx?.mode === "json"');
     expect(remoteSource).not.toContain('format === "json"');
   });
