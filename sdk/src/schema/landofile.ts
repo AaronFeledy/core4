@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { validRange } from "semver";
+import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
 import { DeprecationNotice } from "./deprecation.ts";

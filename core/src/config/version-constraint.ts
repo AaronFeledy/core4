@@ -10,7 +10,10 @@
  * the dev/next channels without forcing prerelease-aware ranges.
  */
 
-import { Range, parse, satisfies, validRange } from "semver";
+import Range from "semver/classes/range.js";
+import parse from "semver/functions/parse.js";
+import satisfies from "semver/functions/satisfies.js";
+import validRange from "semver/ranges/valid.js";
 
 /** Env var that downgrades an unsatisfied constraint to a renderer warning. */
 export const VERSION_CONSTRAINT_SKIP_ENV_VAR = "LANDO_SKIP_VERSION_CONSTRAINT";
