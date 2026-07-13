@@ -42,7 +42,7 @@ export default class AppShellCommand extends LandoCommandBase {
       description: "Do not persist host shell history for this session.",
     }),
     "no-interactive": Flags.boolean({
-      description: "Run the host shell without requiring a TTY (agents/CI).",
+      description: "Reject interactive shell startup (use app:exec for automation).",
     }),
   };
   static override landoSpec: LandoCommandSpec = appShellSpec;

@@ -1224,7 +1224,7 @@
         "Lint passes"
       ],
       "priority": 68,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Progress records the full \u00a78.2.3 Bun.$ REPL with per-line redacted history/events as a remaining Beta 1 gap."
     },
     {

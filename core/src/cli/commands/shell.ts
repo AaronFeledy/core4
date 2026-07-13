@@ -2,7 +2,7 @@
  * `lando shell` — host shell at the app root by default, or a service shell with `--service`.
  *
  * Service mode runs `sh -l` in the requested service via provider execStream.
- * Host mode uses `ShellRunner` for interactive or non-interactive execution on the host.
+ * Host mode uses `ShellRunner` for an interactive Bun Shell line REPL.
  */
 import { Chunk, DateTime, Effect, Stream } from "effect";
 
@@ -37,13 +37,13 @@ import {
   LandofileService,
   type ProviderError,
   RuntimeProviderRegistry,
+  SecretStore,
   ShellRunner,
 } from "@lando/sdk/services";
 
 import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../../config/agent-env.ts";
 import { makeLandoPaths } from "../../config/paths.ts";
-import { quoteShellPath } from "../../services/shell-quote.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary.ts";
 
@@ -54,7 +54,6 @@ export interface ShellAppOptions {
   readonly noInteractive?: boolean;
   readonly user?: string;
   readonly signal?: AbortSignal;
-  readonly shellPath?: string;
   readonly args?: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
@@ -143,9 +142,16 @@ export type ShellAppServices =
   | ConfigService
   | LandofileService
   | RuntimeProviderRegistry
+  | SecretStore
   | ShellRunner;
 
 const HOST_FLAG_DEPRECATION_ID = "app:shell --host";
+
+const shellRequiresTtyError = (): ShellRequiresTtyError =>
+  new ShellRequiresTtyError({
+    message: "lando shell requires an interactive terminal (TTY).",
+    remediation: "Run a command non-interactively with `app:exec --interactive --tty -- <command>`.",
+  });
 
 const recordHostFlagDeprecation = (enabled: boolean): Effect.Effect<void, DeprecatedSurfaceError> => {
   if (!enabled) return Effect.void;
@@ -268,6 +274,10 @@ export const shellApp = (
   Effect.gen(function* () {
     yield* recordHostFlagDeprecation(options.host === true);
 
+    if (options.noInteractive === true) {
+      return yield* Effect.fail(shellRequiresTtyError());
+    }
+
     const landofileService = yield* LandofileService;
     const planner = yield* AppPlanner;
     const registry = yield* RuntimeProviderRegistry;
@@ -276,7 +286,7 @@ export const shellApp = (
     const capabilities = yield* registry.capabilities;
     const plan = yield* planner.plan(landofile, capabilities);
 
-    const shell = options.shellPath ?? process.env.SHELL ?? "/bin/sh";
+    const shell = "Bun.$";
     const useServiceMode = options.service !== undefined && options.service.length > 0;
     if (useServiceMode) {
       const io = options.io ?? processShellIO;
@@ -339,17 +349,10 @@ export const shellApp = (
     }
 
     const shellRunner = yield* ShellRunner;
+    const secretStore = yield* SecretStore;
     const interactive =
       options.isInteractive?.() ?? (process.stdin.isTTY === true && process.stdout.isTTY === true);
-    if (options.noInteractive !== true && !interactive) {
-      return yield* Effect.fail(
-        new ShellRequiresTtyError({
-          message: "lando shell requires an interactive terminal (TTY).",
-          remediation:
-            "Re-run with `lando shell --no-interactive` to execute the host shell without a TTY, or run a command non-interactively with `app:exec --interactive --tty -- <command>`.",
-        }),
-      );
-    }
+    if (!interactive) return yield* Effect.fail(shellRequiresTtyError());
 
     const cwd = options.cwd ?? String(plan.root);
     const env: Record<string, string> = {
@@ -361,43 +364,14 @@ export const shellApp = (
     };
 
     let historyFile: string | undefined;
-    if (options.noHistory === true) {
-      env.HISTFILE = "/dev/null";
-      env.HISTSIZE = "0";
-      env.HISTFILESIZE = "0";
-    } else {
+    if (options.noHistory !== true) {
       historyFile = options.historyFile ?? makeLandoPaths().shellHistoryFile(plan.name, String(plan.root));
     }
 
-    if (options.noInteractive === true) {
-      const command = [shell, ...(options.args ?? [])].map(quoteShellPath).join(" ");
-      const result = yield* shellRunner.exec(command, { cwd, env }).pipe(
-        Effect.catchTag("ShellExecError", (error) => {
-          if (typeof error.exitCode === "number") {
-            return Effect.succeed({
-              exitCode: error.exitCode,
-              stdout: error.stdout ?? "",
-              stderr: error.stderr ?? "",
-            });
-          }
-          return Effect.fail(error);
-        }),
-      );
-      yield* Effect.all([emitOptionalStdout(result.stdout), emitOptionalStderr(result.stderr)]);
-      return {
-        mode: "host" as const,
-        app: plan.name,
-        shell,
-        cwd,
-        exitCode: result.exitCode,
-      };
-    }
-
     const launched = yield* shellRunner.interactive({
-      shell,
-      args: options.args ?? [],
       cwd,
       env,
+      resolveSecret: (id) => secretStore.get(id),
       ...(options.signal === undefined ? {} : { signal: options.signal }),
       ...(historyFile === undefined ? {} : { historyFile }),
     });

@@ -2157,7 +2157,7 @@ export const COMPILED_OCLIF_MANIFEST = {
           type: "boolean",
         },
         "no-interactive": {
-          description: "Run the host shell without requiring a TTY (agents/CI).",
+          description: "Reject interactive shell startup (use app:exec for automation).",
           name: "no-interactive",
           allowNo: false,
           type: "boolean",

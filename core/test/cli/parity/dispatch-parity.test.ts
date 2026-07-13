@@ -528,6 +528,17 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.stderr).toContain("Unexpected argument: web");
     }, 30_000);
 
+    test("shell --no-interactive returns ShellRequiresTtyError on both paths", async () => {
+      const source = await runSourceCli(["shell", "--no-interactive", "--format=json"]);
+      const compiled = await runCompiledCli(["shell", "--no-interactive", "--format=json"]);
+
+      expect(source.exitCode).toBe(1);
+      expect(compiled.exitCode).toBe(source.exitCode);
+      expect(source.stdout).toContain("ShellRequiresTtyError");
+      expect(compiled.stdout).toContain("ShellRequiresTtyError");
+      expect(compiled.stdout).toContain("app:exec --interactive --tty -- <command>");
+    }, 30_000);
+
     test("open rejects unknown flags on both paths", async () => {
       await expectUnknownFlagParity(
         ["open", "--definitely-not-an-open-flag"],

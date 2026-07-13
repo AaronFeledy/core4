@@ -45,6 +45,7 @@ import type {
   RuntimeProvider,
   RuntimeProviderRegistry,
   ScratchAppService,
+  SecretStore,
   ShellRunner,
   StateStore,
   Telemetry,
@@ -148,6 +149,7 @@ type MinimalRuntimeServices =
   | PrivilegeService
   | ProcessRunner
   | RedactionService
+  | SecretStore
   | StateStore
   | HttpClient
   | Downloader;

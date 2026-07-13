@@ -463,3 +463,11 @@ Open closure categories:
 - Verification: typecheck and lint passed; 80 focused MCP/app-config tests and direct catalog/dispatch smokes passed during review.
 - **Learnings for future iterations:** MCP reachability is determined by the projected `LandoCommandSpec`, not the broader OCLIF class flags; a mixed CLI command is safe only when its MCP schema is closed and its projected runner cannot select mutation.
 ---
+
+## 2026-07-13 00:51 CDT - US-439
+- Host `lando shell` now runs a per-line Bun Shell REPL through `ShellRunner`, with typed-at-prompt secret resolution, redacted pre/post events and bounded history, line-scoped interruption, correct EOF/exit status, and terminal restoration. Service shells remain provider-backed, while `--no-interactive` now fails before either host or service execution with source/compiled parity.
+- Verification: typecheck and lint passed; focused REPL, ShellRunner, shell scenario, SDK compatibility, redaction, full dispatch-parity, and sandboxed TTY spot checks passed; renderer, redaction, state-store, probe, telemetry, guide lint, and guide coverage gates passed. The public-transcript inventory remained unavailable on the clean build tree because the unrelated generated transcript corpus was absent.
+- **Learnings for future iterations:**
+  - Treat `--no-interactive` as a command-wide refusal and reject it before provider selection; a service flag must not bypass the TTY contract.
+  - Keep typed command text out of evaluator argv, remove evaluator bootstrap markers from the user environment, and apply resolved-secret redaction before output, events, or history.
+---
