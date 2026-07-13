@@ -441,3 +441,10 @@ Open closure categories:
 - Review notes (deferred/rejected): rejected byte-identical OCLIF/compiled help typography because the established parity contract is semantic; rejected skipping global dist regeneration for a cleared layer because spec §20.3 requires rebuild to regenerate from contribution enablement state; build/apply-specific failure tests were not added because the existing post-destroy inspect failure already proves the required partial-rebuild failure contract. Cursor Bugbot was unavailable because the account had reached its monthly usage limit, so it was not treated as approval.
 - Verification: typecheck and lint passed; focused global lifecycle, SDK event/schema, deferred-command, dual-dispatch, and compiled behavioral parity tests passed.
 ---
+
+## 2026-07-12 19:59 CDT - Babysit
+- PR: #577 https://github.com/AaronFeledy/core4/pull/577
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip on PR body for additive global rebuild SDK events)
+- Merge: merged (squash)
+---
