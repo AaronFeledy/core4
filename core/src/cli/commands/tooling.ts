@@ -246,6 +246,7 @@ const runBunShellScript = (
             message: `Script-backed tooling task ${script.id} failed: ${shellError.message}`,
             tool: script.id,
             ...(shellError.exitCode === undefined ? {} : { exitCode: shellError.exitCode }),
+            remediation: `Inspect the tooling task ${script.id} output, fix the script, and rerun the command.`,
             cause: shellError,
           }),
         ),
@@ -316,6 +317,8 @@ export const runTooling = (
         new ToolingCompileError({
           message: `Unknown tooling command: ${options.name}.`,
           tool: options.name,
+          remediation:
+            "Verify the tooling task name, then run `lando app cache refresh` after changing tooling configuration.",
         }),
       );
     }

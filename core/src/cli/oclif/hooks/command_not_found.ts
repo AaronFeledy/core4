@@ -1,15 +1,48 @@
-/**
- * OCLIF `command_not_found` hook — consult tooling registry first.
- *
- * If the unknown command matches a Landofile `tooling:` entry, the hook
- * loads the cached `ToolingProgram` and dispatches via the active
- * `ToolingEngine`. Otherwise, falls through to OCLIF's default not-found
- * handler (which emits friendly suggestions and exit code 127).
- *
- * Status: stub.
- */
 import type { Hook } from "@oclif/core";
+import { Effect } from "effect";
 
-export const commandNotFoundHook: Hook<"command_not_found"> = async (_options) => {
-  // TODO: look up tooling registry; dispatch via ToolingEngine.
+import { runDynamicTooling, runDynamicToolingFailure } from "../../cli-adapters/app-lifecycle.ts";
+import {
+  setActiveDeprecationWarnings,
+  setActiveRendererMode,
+  setActiveResultFormat,
+} from "../../compiled-runtime.ts";
+import { resolveResultFormat } from "../../format-flags.ts";
+import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../renderer-boundary.ts";
+import { resolveToolingRoute, toolingRouteError } from "../../tooling-router.ts";
+
+const normalizeToolingArgv = async (argv: ReadonlyArray<string>): Promise<ReadonlyArray<string>> => {
+  const renderer = await resolveCliRendererMode({ argv, env: process.env });
+  setActiveRendererMode(renderer.mode);
+  const deprecations = resolveCliDeprecationWarnings({
+    argv: renderer.remainingArgv,
+    env: process.env,
+  });
+  setActiveDeprecationWarnings(deprecations.enabled);
+  const format = resolveResultFormat({
+    argv: deprecations.remainingArgv,
+    rendererMode: renderer.mode,
+  });
+  setActiveResultFormat(format.format);
+  return format.remainingArgv;
+};
+
+export const commandNotFoundHook: Hook<"command_not_found"> = async ({ argv = [], context, id }) => {
+  const route = await Effect.runPromise(resolveToolingRoute({ argv: [id, ...argv] }));
+  switch (route._tag) {
+    case "not-tooling":
+      context.error(`command ${id} not found`, { code: "COMMAND_NOT_FOUND", exit: 127 });
+      return;
+    case "cache-miss":
+    case "unknown-tooling":
+      await runDynamicToolingFailure(
+        route.name,
+        await normalizeToolingArgv(route.argv),
+        toolingRouteError(route),
+      );
+      return;
+    case "tooling":
+      await runDynamicTooling([route.name, ...(await normalizeToolingArgv(route.argv))]);
+      return;
+  }
 };

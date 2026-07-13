@@ -174,6 +174,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly suppressInterruptionDiagnostics?: boolean;
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly successExitCode?: (value: A) => number | undefined;
+  readonly failureExitCode?: (error: unknown) => number | undefined;
   readonly formatError: (error: unknown) => string;
   readonly setExitCode?: (code: number) => void;
 }
@@ -401,9 +402,11 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         })
       )(code);
     };
-    const setFailureExitCode = Effect.sync(() => {
-      setExitCode(1);
-    });
+    const setFailureExitCode = (cause: Cause.Cause<unknown>) =>
+      Effect.sync(() => {
+        const failure = Cause.failureOption(cause);
+        setExitCode(failure._tag === "Some" ? (options.failureExitCode?.(failure.value) ?? 1) : 1);
+      });
     const applySuccessExitCode = (value: A) =>
       Effect.sync(() => {
         const code = options.successExitCode?.(value);
@@ -419,7 +422,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           } as const;
           if (options.streaming !== undefined) yield* emitStreamResult(outcome);
           else yield* emitJsonResult(outcome);
-          yield* setFailureExitCode;
+          yield* setFailureExitCode(cause);
           return;
         }
         let message = failure._tag === "Some" ? options.formatError(failure.value) : Cause.pretty(cause);
@@ -429,7 +432,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           message = redactor.redactString(message);
         }
         yield* writeDiagnosticLine(message);
-        yield* setFailureExitCode;
+        yield* setFailureExitCode(cause);
       });
     const executeCommand = Effect.gen(function* () {
       const commandExit =
@@ -438,6 +441,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           : yield* runCommandLifecycle(effect, {
               invocation: options.invocation,
               ...(options.successExitCode === undefined ? {} : { successExitCode: options.successExitCode }),
+              ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
               ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
             });
       if (

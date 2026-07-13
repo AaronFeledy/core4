@@ -23,6 +23,7 @@ export interface CliInvocationSnapshot {
 export interface CommandLifecycleOptions<A> {
   readonly invocation: CliInvocationSnapshot;
   readonly successExitCode?: (value: A) => number | undefined;
+  readonly failureExitCode?: (error: unknown) => number | undefined;
   readonly interruptionExitCode?: number;
 }
 
@@ -108,10 +109,15 @@ export const runCommandLifecycle = <A, E, R>(
           exitCode: options.successExitCode?.(outcome.value) ?? 0,
         });
       } else {
+        const failure = Cause.failureOption(outcome.cause);
         yield* publishRedacted(CliCommandErrorEvent, {
           _tag: `cli-${options.invocation.commandId}-error`,
           ...terminal,
-          exitCode: Cause.isInterruptedOnly(outcome.cause) ? (options.interruptionExitCode ?? 1) : 1,
+          exitCode: Cause.isInterruptedOnly(outcome.cause)
+            ? (options.interruptionExitCode ?? 1)
+            : failure._tag === "Some"
+              ? (options.failureExitCode?.(failure.value) ?? 1)
+              : 1,
           ...failureIdentity(outcome.cause),
         });
       }

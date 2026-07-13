@@ -142,6 +142,7 @@ import {
   runDestroy,
   runDoctor,
   runDynamicTooling,
+  runDynamicToolingFailure,
   runInfo,
   runLogs,
   runOpen,
@@ -162,6 +163,7 @@ import {
   runStart,
   runStop,
 } from "./cli-adapters/app-lifecycle.ts";
+import { resolveToolingRoute, toolingRouteError } from "./tooling-router.ts";
 
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle.ts";
 import { runExec, runShell, runSsh } from "./cli-adapters/exec-shell.ts";
@@ -879,12 +881,18 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   const found = findCommand(argv[0] ?? "");
   if (found === undefined) {
-    if (argv[0] !== undefined && !argv[0].includes(":")) {
-      setActiveCommandId(`app:${argv[0]}`);
-      await runDynamicTooling(argv);
-      return;
+    const route = await Effect.runPromise(resolveToolingRoute({ argv }));
+    switch (route._tag) {
+      case "not-tooling":
+        throw new Error(`Command ${argv[0] ?? ""} not found`);
+      case "cache-miss":
+      case "unknown-tooling":
+        await runDynamicToolingFailure(route.name, route.argv, toolingRouteError(route));
+        return;
+      case "tooling":
+        await runDynamicTooling([route.name, ...route.argv]);
+        return;
     }
-    throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 
   const error = notImplementedErrorForCommand(found[0]);
