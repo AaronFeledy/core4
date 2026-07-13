@@ -17,6 +17,7 @@
  */
 import { resolve } from "node:path";
 
+import { mcpRegistryFromCompiled } from "../core/src/cli/commands/meta/mcp.ts";
 import type { LandoCommandSpec } from "../core/src/cli/oclif/command-base.ts";
 import compiledCommands from "../core/src/cli/oclif/compiled-commands.ts";
 import { computeMcpDefaultAllowlist } from "../core/src/cli/oclif/mcp-allowlist.ts";
@@ -45,9 +46,9 @@ const renderModule = (ids: ReadonlyArray<string>): string => {
 };
 
 const main = async (): Promise<void> => {
-  const specs = Object.values(compiledCommands)
-    .map((commandClass) => (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec)
-    .filter((spec): spec is LandoCommandSpec => spec !== undefined);
+  const specs = mcpRegistryFromCompiled(
+    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
+  ).commandEntries.map((entry) => entry.spec);
   const ids = computeMcpDefaultAllowlist(specs);
   await writeFormattedOutput(OUTPUT, renderModule(ids));
   console.log(`[build-mcp-allowlist] wrote ${OUTPUT} (${ids.length} tools)`);

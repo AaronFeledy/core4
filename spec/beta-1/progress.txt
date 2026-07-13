@@ -448,3 +448,11 @@ Open closure categories:
 - Review feedback: fixed (Guide-Coverage-Skip on PR body for additive global rebuild SDK events)
 - Merge: merged (squash)
 ---
+
+## 2026-07-12 20:38 CDT - US-438
+- MCP now exposes app config through two closed read-only tools: `app:config:get` selects one resolved value and `app:config:view` returns the resolved Landofile, while the mixed umbrella and every separately registered write verb are absent from the MCP registry and rejected from flag/config allowlists.
+- Generated defaults derive from the projected registry, crafted write-shaped inputs fail before command execution, and reads retain the standard non-interactive, redacted CommandResultEnvelope path. Source, compiled, and real stdio MCP surfaces agreed on the catalog, read result, and tagged rejection behavior.
+- Verification: typecheck, lint, build, machine-output and redaction boundaries passed; 80 focused MCP/app-config tests passed; allowlist codegen was idempotent; source and compiled CLI smoke plus a real stdio MCP session passed with clean teardown; high-rigor review passed after closing explicit write-id reachability and get rendering findings.
+- **Learnings for future iterations:**
+  - A mixed umbrella may also have separately registered verb ids in the compiled command registry. Safe MCP projection must remove every write-capable verb id, not only avoid default-allowing the umbrella.
+---

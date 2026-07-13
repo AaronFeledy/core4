@@ -3,6 +3,7 @@ import { Schema } from "effect";
 
 import { McpToolInputError } from "@lando/sdk/errors";
 
+import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
 import { type McpCommandEntry, deriveToolInputSchema, validateToolInput } from "../../src/mcp/registry.ts";
@@ -192,5 +193,24 @@ describe("buildCatalog", () => {
       options: { tooling: true },
     });
     expect(catalog.tools.map((t) => t.toolId)).toEqual(["app:info"]);
+  });
+
+  test("emits constrained app config projections instead of the umbrella", () => {
+    const projected = mcpRegistryFromCompiled({
+      "app:config": { landoSpec: spec("app:config", { summary: "App config" }) },
+    });
+
+    const catalog = buildCatalog({
+      commandEntries: projected.commandEntries,
+      effective: computeEffectiveAllowlist({ defaults: ["app:config:get", "app:config:view"] }),
+    });
+
+    expect(catalog.tools.map((tool) => tool.toolId)).toEqual(["app:config:get", "app:config:view"]);
+    expect(catalog.tools.find((tool) => tool.toolId === "app:config:get")?.inputSchema).toMatchObject({
+      properties: { args: { required: ["key"] }, flags: { properties: {} } },
+    });
+    expect(catalog.tools.find((tool) => tool.toolId === "app:config:view")?.inputSchema).toMatchObject({
+      properties: { args: { properties: {} }, flags: { properties: {} } },
+    });
   });
 });

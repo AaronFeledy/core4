@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Exit, Layer } from "effect";
 
+import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
@@ -13,6 +14,9 @@ import {
   resolveMcpOptions,
   validateMcpAllowlistIds,
 } from "../../../../src/cli/commands/meta/mcp.ts";
+import type { LandoCommandSpec } from "../../../../src/cli/oclif/command-base.ts";
+import compiledCommands from "../../../../src/cli/oclif/compiled-commands.ts";
+import { APP_CONFIG_MCP_UNSAFE_IDS } from "../../../../src/cli/oclif/mcp-allowlist.ts";
 import type { McpCommandEntry } from "../../../../src/mcp/registry.ts";
 
 const entry = (id: string, summary: string): McpCommandEntry => ({
@@ -25,10 +29,14 @@ const configLayer = (mcp: McpConfig | undefined) =>
     get: (key) => Effect.succeed((key === "mcp" ? mcp : undefined) as never),
   });
 
-// app:info is in the generated default allowlist; app:config is not.
 const registry: McpCommandRegistry = {
-  commandEntries: [entry("app:info", "Show app info"), entry("app:config", "App config")],
+  commandEntries: [entry("app:info", "Show app info"), entry("app:config:get", "App config")],
 };
+
+const appConfigUnsafeIds = [...APP_CONFIG_MCP_UNSAFE_IDS];
+
+const fullRegistry = (): McpCommandRegistry =>
+  mcpRegistryFromCompiled(compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>);
 
 describe("resolveMcpOptions", () => {
   test("unions flag + config allow/deny and ORs tooling", () => {
@@ -68,9 +76,11 @@ describe("validateMcpAllowlistIds", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("McpToolInputError");
-      expect(exit.cause.error.path).toBe("flags.allow");
-      expect(exit.cause.error.toolId).toBe("does:not:exist");
+      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
+      if (exit.cause.error instanceof McpToolInputError) {
+        expect(exit.cause.error.path).toBe("flags.allow");
+        expect(exit.cause.error.toolId).toBe("does:not:exist");
+      }
     }
   });
 });
@@ -98,6 +108,25 @@ describe("mcpRegistryFromCompiled", () => {
 
     expect(registry).toEqual({ commandEntries: [{ spec }] });
   });
+
+  test("projects app config as constrained MCP read tools and omits the umbrella", () => {
+    const registry = mcpRegistryFromCompiled({
+      "app:config": { landoSpec: entry("app:config", "App config").spec },
+    });
+
+    expect(registry.commandEntries.map((command) => command.spec.id).sort()).toEqual([
+      "app:config:get",
+      "app:config:view",
+    ]);
+  });
+
+  test("omits every unsafe app config id from the MCP registry", () => {
+    const ids = fullRegistry().commandEntries.map((command) => command.spec.id);
+
+    for (const id of appConfigUnsafeIds) expect(ids).not.toContain(id);
+    expect(ids).toContain("app:config:get");
+    expect(ids).toContain("app:config:view");
+  });
 });
 
 describe("mcpRegistryWithToolingEntries", () => {
@@ -117,21 +146,21 @@ describe("mcpRegistryWithToolingEntries", () => {
 describe("mcpListResult", () => {
   test("projects the effective catalog with per-tool source of allowance", async () => {
     const result = await Effect.runPromise(
-      mcpListResult(registry, { allow: ["app:config"] }).pipe(Effect.provide(configLayer(undefined))),
+      mcpListResult(registry, { allow: ["app:config:get"] }).pipe(Effect.provide(configLayer(undefined))),
     );
     expect(result.tools).toEqual([
-      { id: "app:config", summary: "App config", source: "allow" },
+      { id: "app:config:get", summary: "App config", source: "default+allow" },
       { id: "app:info", summary: "Show app info", source: "default" },
     ]);
   });
 
   test("deny (global config) removes an id from the effective list", async () => {
     const result = await Effect.runPromise(
-      mcpListResult(registry, { allow: ["app:config"] }).pipe(
+      mcpListResult(registry, { allow: ["app:config:get"] }).pipe(
         Effect.provide(configLayer({ deny: ["app:info"] })),
       ),
     );
-    expect(result.tools.map((tool) => tool.id)).toEqual(["app:config"]);
+    expect(result.tools.map((tool) => tool.id)).toEqual(["app:config:get"]);
   });
 
   test("global config tooling exposes registered tooling entries in the list result", async () => {
@@ -152,5 +181,51 @@ describe("mcpListResult", () => {
       mcpListResult(registry, { allow: ["bogus:id"] }).pipe(Effect.provide(configLayer(undefined))),
     );
     expect(Exit.isFailure(exit)).toBe(true);
+  });
+
+  test("fails with McpToolInputError when the app config umbrella is explicitly allowed", async () => {
+    const projected = mcpRegistryFromCompiled({
+      "app:config": { landoSpec: entry("app:config", "App config").spec },
+    });
+
+    const exit = await Effect.runPromiseExit(
+      mcpListResult(projected, { allow: ["app:config"] }).pipe(Effect.provide(configLayer(undefined))),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
+      if (exit.cause.error instanceof McpToolInputError) {
+        expect(exit.cause.error.toolId).toBe("app:config");
+      }
+    }
+  });
+
+  test("fails with McpToolInputError before cataloging when unsafe app config ids are flag-allowed", async () => {
+    for (const id of appConfigUnsafeIds) {
+      const exit = await Effect.runPromiseExit(
+        mcpListResult(fullRegistry(), { allow: [id] }).pipe(Effect.provide(configLayer(undefined))),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
+        if (exit.cause.error instanceof McpToolInputError) expect(exit.cause.error.toolId).toBe(id);
+      }
+    }
+  });
+
+  test("fails with McpToolInputError before cataloging when unsafe app config ids are globally allowed", async () => {
+    for (const id of appConfigUnsafeIds) {
+      const exit = await Effect.runPromiseExit(
+        mcpListResult(fullRegistry(), {}).pipe(Effect.provide(configLayer({ allow: [id] }))),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit) && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
+        if (exit.cause.error instanceof McpToolInputError) expect(exit.cause.error.toolId).toBe(id);
+      }
+    }
   });
 });
