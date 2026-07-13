@@ -83,6 +83,7 @@ import type {
   LandofileSandboxError,
   LandofileTimeoutError,
   LandofileValidationError,
+  LandofileVersionConstraintError,
   ManagedFileError,
   NoProviderInstalledError,
   NotImplementedError,
@@ -329,7 +330,10 @@ export declare class ScratchAppService extends Context.Tag("@lando/core/ScratchA
       input: ScratchAcquireInput,
     ) => Effect.Effect<
       ScratchHandle,
-      ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError,
+      | ScratchSourceUnresolvedError
+      | ScratchIsolationConflictError
+      | ScratchAppError
+      | LandofileVersionConstraintError,
       Scope.Scope
     >;
     readonly resolveById: (

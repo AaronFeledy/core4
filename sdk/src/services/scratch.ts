@@ -1,6 +1,7 @@
 import { Context, type Effect, type Scope } from "effect";
 
 import type {
+  LandofileVersionConstraintError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -149,7 +150,10 @@ export class ScratchAppService extends Context.Tag("@lando/core/ScratchAppServic
       input: ScratchAcquireInput,
     ) => Effect.Effect<
       ScratchHandle,
-      ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError,
+      | ScratchSourceUnresolvedError
+      | ScratchIsolationConflictError
+      | ScratchAppError
+      | LandofileVersionConstraintError,
       Scope.Scope
     >;
     readonly resolveById: (

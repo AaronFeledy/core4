@@ -1,7 +1,11 @@
 import { Effect, Schema } from "effect";
 
 import { ScratchAppError, ScratchAppIdInvalidError, ScratchSourceUnresolvedError } from "@lando/sdk/errors";
-import type { ScratchAppNotFoundError, ScratchIsolationConflictError } from "@lando/sdk/errors";
+import type {
+  LandofileVersionConstraintError,
+  ScratchAppNotFoundError,
+  ScratchIsolationConflictError,
+} from "@lando/sdk/errors";
 import type { IsolateMode } from "@lando/sdk/schema";
 import type {
   ScratchGcOptions,
@@ -143,7 +147,11 @@ export const ScratchLogsResultSchema = Schema.Struct({
 
 export type ScratchListFormat = "json" | "table";
 
-type ScratchStartError = ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError;
+type ScratchStartError =
+  | ScratchSourceUnresolvedError
+  | ScratchIsolationConflictError
+  | ScratchAppError
+  | LandofileVersionConstraintError;
 type ScratchIdCommandError = ScratchAppIdInvalidError | ScratchAppNotFoundError | ScratchAppError;
 
 const flagsFromInput = (input: unknown): Record<string, unknown> => {

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { Cause, type Context, Effect, Layer, Option, Schema, type Scope } from "effect";
 
 import {
+  LandofileVersionConstraintError,
   ScratchAppError,
   ScratchAppNotFoundError,
   ScratchIsolationConflictError,
@@ -42,6 +43,7 @@ import {
   type ScratchSummary,
 } from "@lando/sdk/services";
 
+import { loadUserLandofile } from "../cli/app-resolution.ts";
 import { initApp } from "../cli/commands/init.ts";
 import { makeLandoPaths } from "../config/paths.ts";
 import { parseLandofile } from "../landofile/parser.ts";
@@ -662,8 +664,10 @@ const makeScratchAppService = (
   const acquireFork = (input: ScratchAcquireInput) =>
     Effect.gen(function* () {
       const hostCwd = yield* Effect.sync(() => process.cwd());
-      const landofile = yield* landofileService.discover.pipe(
-        Effect.mapError(() => scratchForkUnresolvedError()),
+      const landofile = yield* loadUserLandofile(landofileService).pipe(
+        Effect.mapError((cause) =>
+          cause instanceof LandofileVersionConstraintError ? cause : scratchForkUnresolvedError(),
+        ),
       );
       const capabilities = yield* providerRegistry.capabilities.pipe(
         Effect.mapError((cause) =>
@@ -1037,7 +1041,10 @@ export const acquireScratchAppWithPlan = (
   input: ScratchAcquireInput,
 ): Effect.Effect<
   { readonly handle: ScratchHandle; readonly plan: AppPlan },
-  ScratchSourceUnresolvedError | ScratchIsolationConflictError | ScratchAppError,
+  | ScratchSourceUnresolvedError
+  | ScratchIsolationConflictError
+  | ScratchAppError
+  | LandofileVersionConstraintError,
   ScratchAppService | FileSystem | Scope.Scope
 > =>
   Effect.gen(function* () {

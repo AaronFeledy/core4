@@ -617,7 +617,8 @@ export interface App {
 export type ScratchAcquireError =
   | ScratchAppError
   | ScratchSourceUnresolvedError
-  | ScratchIsolationConflictError;
+  | ScratchIsolationConflictError
+  | LandofileVersionConstraintError;
 
 /**
  * The object returned by `openLandoRuntime`. Its methods are bound to a single

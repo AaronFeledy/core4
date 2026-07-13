@@ -529,8 +529,8 @@ Open closure categories:
 ---
 
 ## 2026-07-13 08:19 CDT - US-441 Review
-- Fixed the remaining §7.1 discovery blocker: an app root is now recognized from any of the six YAML/TypeScript merge-layer positions, including projects with no canonical `.lando.yml` or `.lando.ts`; canonical files remain the preferred representative path when present.
-- Review notes (deferred/rejected): Cursor Bugbot produced no report because the authenticated account was quota-locked on both the default and alternate model; no finding was inferred from the tool failure.
-- Verification: typecheck and lint passed; focused Landofile discovery, version-constraint, cache, command-registry, doctor, result-encoding, and SDK schema/machine-output test spot checks passed.
+- Fixed the remaining §7.1 discovery blocker: an app root is now recognized from any of the six YAML/TypeScript merge-layer positions, including projects with no canonical `.lando.yml` or `.lando.ts`; canonical files remain the preferred representative path when present. Scratch forks now route source loading through the shared version-constraint enforcement seam and reject an unsatisfied source before provider capability lookup or planning.
+- Review notes (deferred/rejected): Cursor Bugbot produced no report because the authenticated account was quota-locked on both the default and alternate model; no finding was inferred from the tool failure. The TypeScript-form lint/include-update parser gap is real but predates this story and was rejected as unrelated §7.1.1 form-parity scope; same-layer dual forms already fail through `LandofileFormConflictError`.
+- Verification: typecheck and lint passed; focused Landofile discovery, version-constraint, scratch-fork, cache, command-registry, doctor, result-encoding, SDK compatibility, schema, and machine-output test spot checks passed.
 - **Learnings for future iterations:** Six-layer loading and six-layer discovery are one contract: every root-discovery seam must use the same ordered layer table rather than treating the canonical file as mandatory.
 ---
