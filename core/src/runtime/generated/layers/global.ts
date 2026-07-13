@@ -13,11 +13,16 @@
 
 import { Layer } from "effect";
 
+import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { makeProviderBootstrapLayer } from "./provider.ts";
 
 export const makeGlobalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const providerBase = makeProviderBootstrapLayer(inputs);
-  return Layer.mergeAll(providerBase, AppPlannerLive.pipe(Layer.provide(providerBase)));
+  return Layer.mergeAll(
+    providerBase,
+    AppPlannerLive.pipe(Layer.provide(providerBase)),
+    Layer.suspend(() => BuildOrchestratorLive.pipe(Layer.provide(providerBase))),
+  );
 };

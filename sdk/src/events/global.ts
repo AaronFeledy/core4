@@ -57,3 +57,20 @@ export const PostGlobalStopEvent = Schema.TaggedStruct("post-global-stop", {
   timestamp: Timestamp,
 });
 export type PostGlobalStopEvent = typeof PostGlobalStopEvent.Type;
+
+export const PreGlobalRebuildEvent = Schema.TaggedStruct("pre-global-rebuild", {
+  scope: Schema.Literal("global"),
+  app: AppRef,
+  plan: AppPlan,
+  timestamp: Timestamp,
+});
+export type PreGlobalRebuildEvent = typeof PreGlobalRebuildEvent.Type;
+
+export const PostGlobalRebuildEvent = Schema.TaggedStruct("post-global-rebuild", {
+  scope: Schema.Literal("global"),
+  app: AppRef,
+  plan: AppPlan,
+  services: Schema.Array(Schema.String),
+  timestamp: Timestamp,
+});
+export type PostGlobalRebuildEvent = typeof PostGlobalRebuildEvent.Type;

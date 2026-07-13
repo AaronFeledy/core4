@@ -34,6 +34,7 @@
 - `LandoPaths.hostProxyRunDir(appId, appRoot)` now fingerprints the app root in the run directory name so two apps with the same id in different roots do not share host-proxy worker state. `LandoRuntimeServices` additively includes `PathsService`, matching the app-tier runtime layer provided by core.
 - `BuildOrchestrator.build(plan)` now returns the built `AppPlan` with produced or cached artifact refs stamped into each built service. `RuntimeProvider.buildArtifact(spec)` receives the source `plan` and deterministic `buildKey` so providers can produce stable refs without re-deriving orchestration context.
 - `BuildStepSkipEvent` is a schema-backed app event emitted when artifact build orchestration reuses an up-to-date scratch build result. Its app ref intentionally carries only redacted `kind`/`id` fields, matching the core event and avoiding raw scratch roots in cache-hit events.
+- `PreGlobalRebuildEvent` and `PostGlobalRebuildEvent` add the schema-backed global rebuild lifecycle events for `meta:global:rebuild`.
 
 ## Additive Alpha schema exports
 
@@ -144,7 +145,9 @@
 - `HttpStreamResponse`
 - `HttpUploadRequest`
 - `PostHttpCallEvent`
+- `PostGlobalRebuildEvent`
 - `PreHttpCallEvent`
+- `PreGlobalRebuildEvent`
 - `InlineProps`
 - `IncludeEntry`
 - `InspectProps`

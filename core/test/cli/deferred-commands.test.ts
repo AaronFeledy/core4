@@ -105,15 +105,15 @@ const expectDeferredRemediation = (stderr: string, entry: FixtureEntry): void =>
 describe("deferred command remediation contract", () => {
   test("fixture covers every required command surface", () => {
     const ids = new Set(fixture.commands.map((entry) => entry.id));
-    const requiredPrefixes = ["meta:global:"];
     const requiredExactIds = ["meta:plugin:login"];
-    for (const prefix of requiredPrefixes) {
-      const matches = [...ids].filter((id) => id.startsWith(prefix));
-      expect(matches.length, `requires at least one fixture entry for ${prefix}*`).toBeGreaterThan(0);
-    }
     for (const id of requiredExactIds) {
       expect(ids.has(id), `requires fixture entry for ${id}`).toBe(true);
     }
+  });
+
+  test("meta:global:rebuild is implemented, not deferred", () => {
+    expect(deferredCommandPlan("meta:global:rebuild")).toBeUndefined();
+    expect(isMvpCommandId("meta:global:rebuild")).toBe(true);
   });
 
   test("DEFERRED_COMMAND_PLANS covers every fixture entry", () => {
@@ -175,7 +175,6 @@ describe("deferred command remediation contract", () => {
         .replace(/\s+/g, " ");
 
     const parityProbes: ReadonlyArray<FixtureEntry> = [
-      fixture.commands.find((entry) => entry.id === "meta:global:rebuild") as FixtureEntry,
       fixture.commands.find((entry) => entry.id === "meta:plugin:login") as FixtureEntry,
     ];
 

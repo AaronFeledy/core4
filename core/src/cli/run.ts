@@ -12,6 +12,7 @@ import {
 } from "@lando/sdk/errors";
 import type {
   AppPlanner,
+  BuildOrchestrator,
   ConfigService,
   EventService,
   FileSystem,
@@ -60,6 +61,7 @@ import { globalInfo, renderGlobalInfoResult } from "./commands/meta/global-info.
 import { globalInstall, renderGlobalInstallResult } from "./commands/meta/global-install.ts";
 import { DefaultGlobalListLayer, globalList, renderGlobalListResult } from "./commands/meta/global-list.ts";
 import { followGlobalLogs, globalLogs, renderGlobalLogsResult } from "./commands/meta/global-logs.ts";
+import { globalRebuild, renderGlobalRebuildResult } from "./commands/meta/global-rebuild.ts";
 import { globalRestart, renderGlobalRestartResult } from "./commands/meta/global-restart.ts";
 import { globalStart, renderGlobalStartResult } from "./commands/meta/global-start.ts";
 import { globalStatus, renderGlobalStatusResult } from "./commands/meta/global-status.ts";
@@ -270,8 +272,15 @@ const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
 const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
   (commandSpecForId(commandId) as { readonly landoSpec?: LandoCommandSpec } | undefined)?.landoSpec;
 
-const flagDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifFlagDefinition>> =>
-  (command as { flags?: Readonly<Record<string, OclifFlagDefinition>> }).flags ?? {};
+const flagDefinitionsForCommand = (
+  command: CompiledCommand,
+): Readonly<Record<string, OclifFlagDefinition>> => {
+  const definitions = command as {
+    readonly baseFlags?: Readonly<Record<string, OclifFlagDefinition>>;
+    readonly flags?: Readonly<Record<string, OclifFlagDefinition>>;
+  };
+  return { ...(definitions.baseFlags ?? {}), ...(definitions.flags ?? {}) };
+};
 
 const argDefinitionsForCommand = (command: CompiledCommand): Readonly<Record<string, OclifArgDefinition>> =>
   (command as { args?: Readonly<Record<string, OclifArgDefinition>> }).args ?? {};
@@ -1368,7 +1377,13 @@ const globalRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "global", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<
-    GlobalAppService | PluginRegistry | RuntimeProviderRegistry | AppPlanner | FileSystem | EventService,
+    | GlobalAppService
+    | PluginRegistry
+    | RuntimeProviderRegistry
+    | AppPlanner
+    | BuildOrchestrator
+    | FileSystem
+    | EventService,
     LandoRuntimeBootstrapError
   >;
 
@@ -1524,6 +1539,13 @@ const runMetaGlobalRestart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(globalRestart({ signal }), globalRuntimeLayer(), renderGlobalRestartResult),
   );
+
+const runMetaGlobalRebuild = (argv: ReadonlyArray<string>): Promise<void> => {
+  if (rejectInvalidInvocation("meta:global:rebuild", argv)) return Promise.resolve();
+  return runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(globalRebuild({ signal }), globalRuntimeLayer(), renderGlobalRebuildResult),
+  );
+};
 
 const runMetaGlobalDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:global:destroy", argv);
@@ -1984,6 +2006,7 @@ const GLOBAL_COMMAND_VERBS = new Set([
   "install",
   "list",
   "logs",
+  "rebuild",
   "restart",
   "start",
   "status",
@@ -2532,6 +2555,11 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   if (argv[0] === "global:logs" || argv[0] === "meta:global:logs") {
     await runMetaGlobalLogs(argv.slice(1));
+    return;
+  }
+
+  if (argv[0] === "global:rebuild" || argv[0] === "meta:global:rebuild") {
+    await runMetaGlobalRebuild(argv.slice(1));
     return;
   }
 
