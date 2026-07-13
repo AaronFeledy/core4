@@ -668,6 +668,28 @@ test("history files retain private 0600 permissions", async () => {
   }
 });
 
+test("history persists when the per-app parent directory does not exist yet", async () => {
+  // Given — mirrors real makeLandoPaths().shellHistoryFile layout for a new app.
+  const root = await mkdtemp(join(tmpdir(), "lando-host-repl-nested-history-"));
+  const historyFile = join(root, "shell", "app-fingerprint", "history");
+
+  try {
+    // When
+    await Effect.runPromise(
+      runHostShellRepl({
+        historyFile,
+        resolveSecret: () => Effect.die("secret not expected"),
+        io: replIo([{ _tag: "line", line: "printf nested-ok" }, { _tag: "eof" }]),
+      }),
+    );
+
+    // Then
+    expect(await readFile(historyFile, "utf8")).toBe("printf nested-ok\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("an already-aborted line is never sent to the evaluator", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-host-repl-aborted-"));
   const marker = join(root, "sent");
