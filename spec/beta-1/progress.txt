@@ -456,3 +456,10 @@ Open closure categories:
 - **Learnings for future iterations:**
   - A mixed umbrella may also have separately registered verb ids in the compiled command registry. Safe MCP projection must remove every write-capable verb id, not only avoid default-allowing the umbrella.
 ---
+
+## 2026-07-12 20:50 CDT - US-438 Review
+- Reviewed the read-only MCP projection against the source PRD; no additional story blocker required a code change.
+- Review notes (deferred/rejected): rejected the claim that explicitly allowing `app:config:translate` exposes its CLI `--write` mode because MCP derives a closed, flagless schema from its `LandoCommandSpec`, rejects `flags.write`, and can execute only preview mode; Cursor Bugbot was inconclusive because the configured account had reached its monthly usage limit.
+- Verification: typecheck and lint passed; 80 focused MCP/app-config tests and direct catalog/dispatch smokes passed during review.
+- **Learnings for future iterations:** MCP reachability is determined by the projected `LandoCommandSpec`, not the broader OCLIF class flags; a mixed CLI command is safe only when its MCP schema is closed and its projected runner cannot select mutation.
+---
