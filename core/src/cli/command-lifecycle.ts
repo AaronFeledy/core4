@@ -1,10 +1,11 @@
 import { Cause, Clock, Effect, Exit, Option, Schema } from "effect";
 
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
-import { EventService, type LandoEvent } from "@lando/sdk/services";
+import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
 
 import { RedactionService } from "../redaction/service.ts";
 import { EventServiceLive } from "../services/event-service.ts";
+import { summarizeInvocationArgv, summarizeInvocationRecord } from "./invocation-summary.ts";
 
 export interface CliInvocationSnapshot {
   readonly commandId: string;
@@ -36,26 +37,20 @@ export const withCommandEventService = <A, E, R>(
     ),
   );
 
-const failureIdentity = (
-  cause: Cause.Cause<unknown>,
-): { readonly failureTag: string; readonly message?: string } => {
+const failureIdentity = (cause: Cause.Cause<unknown>): { readonly failureTag: string } => {
   if (Cause.isInterruptedOnly(cause)) return { failureTag: "Interrupted" };
   const failure = Cause.failureOption(cause);
   if (failure._tag === "Some") {
     const value = failure.value;
     if (typeof value === "object" && value !== null) {
       const failureTag = "_tag" in value && typeof value._tag === "string" ? value._tag : "Failure";
-      const message = "message" in value && typeof value.message === "string" ? value.message : undefined;
-      return { failureTag, ...(message === undefined ? {} : { message }) };
+      return { failureTag };
     }
-    return { failureTag: "Failure", message: String(value) };
+    return { failureTag: "Failure" };
   }
   const defect = Cause.dieOption(cause);
-  if (defect._tag === "Some") {
-    const message = defect.value instanceof Error ? defect.value.message : String(defect.value);
-    return { failureTag: "Defect", message };
-  }
-  return { failureTag: "Failure", message: Cause.pretty(cause) };
+  if (defect._tag === "Some") return { failureTag: "Defect" };
+  return { failureTag: "Failure" };
 };
 
 const publishRedacted = <A extends LandoEvent, I>(schema: Schema.Schema<A, I>, event: I) =>
@@ -65,7 +60,21 @@ const publishRedacted = <A extends LandoEvent, I>(schema: Schema.Schema<A, I>, e
     const redactor = yield* redaction.forProfile("secrets", { sourceEnv: process.env });
     const decoded = yield* Schema.decodeUnknown(schema)(redactor.redactValue(event));
     yield* events.publish(decoded);
-  }).pipe(Effect.catchAllCause(() => Effect.void));
+  }).pipe(
+    Effect.catchAllCause((cause) =>
+      Effect.serviceOption(Logger).pipe(
+        Effect.flatMap(
+          Option.match({
+            onNone: () => Effect.void,
+            onSome: (logger) =>
+              logger
+                .debug("CLI lifecycle event publication failed.", { cause: Cause.pretty(cause) })
+                .pipe(Effect.catchAll(() => Effect.void)),
+          }),
+        ),
+      ),
+    ),
+  );
 
 export const runCommandLifecycle = <A, E, R>(
   command: Effect.Effect<A, E, R>,
@@ -76,6 +85,9 @@ export const runCommandLifecycle = <A, E, R>(
       const startedAt = yield* Clock.currentTimeMillis;
       const invocation = {
         ...options.invocation,
+        argv: summarizeInvocationArgv(options.invocation.argv),
+        args: summarizeInvocationRecord(options.invocation.args),
+        flags: summarizeInvocationRecord(options.invocation.flags),
         timestamp: new Date(startedAt).toISOString(),
       };
       yield* publishRedacted(CliCommandInitEvent, {

@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import {
   type PluginBuildResult,
   PluginBuildResultSchema,
@@ -15,14 +13,8 @@ export const pluginBuildSpec: LandoCommandSpec<PluginBuildResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: () =>
-    pluginBuild().pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if (result.exitCode !== 0) process.exitCode = result.exitCode;
-        }),
-      ),
-    ),
+  run: () => pluginBuild(),
+  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
   render: (result) => renderPluginBuildResult(result as PluginBuildResult),
 };
 

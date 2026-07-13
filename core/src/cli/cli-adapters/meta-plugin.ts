@@ -64,8 +64,10 @@ import {
   emitDiagnosticLine,
   globalRuntimeLayer,
   rejectInvalidInvocation,
+  resetActiveCommandInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
+  setActiveCommandId,
 } from "../compiled-runtime.ts";
 import type { LandoCommandSpec } from "../oclif/command-base.ts";
 import {
@@ -327,13 +329,7 @@ export const runMetaPluginTest = async (argv: ReadonlyArray<string>): Promise<vo
     return;
   }
   await runCompiledCommand(
-    pluginTest({ argv }).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if (result.exitCode !== 0) process.exitCode = result.exitCode;
-        }),
-      ),
-    ),
+    pluginTest({ argv }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginTestResult,
   );
@@ -342,13 +338,7 @@ export const runMetaPluginTest = async (argv: ReadonlyArray<string>): Promise<vo
 export const runMetaPluginBuild = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("meta:plugin:build", argv)) return;
   await runCompiledCommand(
-    pluginBuild().pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if (result.exitCode !== 0) process.exitCode = result.exitCode;
-        }),
-      ),
-    ),
+    pluginBuild(),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginBuildResult,
   );
@@ -373,13 +363,7 @@ const parsePluginPublish = (argv: ReadonlyArray<string>): PluginPublishOptions =
 export const runMetaPluginPublish = async (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation(metaPluginPublishCommandId, argv)) return;
   await runCompiledCommand(
-    pluginPublish(parsePluginPublish(argv)).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if (result.exitCode !== 0) process.exitCode = result.exitCode;
-        }),
-      ),
-    ),
+    pluginPublish(parsePluginPublish(argv)),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginPublishResult,
   );
@@ -538,6 +522,8 @@ export const resolveCanonicalCommandId = (token: string | undefined): string => 
 };
 
 export const runMetaVersion = async (): Promise<void> => {
+  setActiveCommandId("meta:version");
+  resetActiveCommandInvocation("meta:version", []);
   await runCompiledCommand(
     versionOperation,
     Layer.empty,

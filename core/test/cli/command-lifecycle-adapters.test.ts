@@ -1,13 +1,21 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { Effect, Layer, Queue, Stream } from "effect";
 
-import { resolveCanonicalCommandId } from "../../src/cli/cli-adapters/meta-plugin.ts";
+import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+
+import { runDynamicTooling } from "../../src/cli/cli-adapters/app-lifecycle.ts";
+import { resolveCanonicalCommandId, runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
+import * as compiledRuntime from "../../src/cli/compiled-runtime.ts";
 import {
+  activeCommandId,
   getActiveCommandInvocation,
   resetActiveCommandInvocation,
   setActiveCommandId,
 } from "../../src/cli/compiled-runtime.ts";
+import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 
 afterEach(() => {
   setActiveCommandId("cli:unknown");
@@ -15,6 +23,48 @@ afterEach(() => {
 });
 
 describe("CLI lifecycle adapters", () => {
+  test("meta version replaces stale invocation identity when called directly", async () => {
+    // Given
+    const runCompiledCommand = spyOn(compiledRuntime, "runCompiledCommand").mockResolvedValue();
+    setActiveCommandId("--version");
+    resetActiveCommandInvocation("--version", ["stale"]);
+
+    // When
+    try {
+      await runMetaVersion();
+    } finally {
+      runCompiledCommand.mockRestore();
+    }
+
+    // Then
+    expect(activeCommandId).toBe("meta:version");
+    expect(getActiveCommandInvocation()).toMatchObject({
+      commandId: "meta:version",
+      argv: [],
+    });
+  });
+
+  test("dynamic tooling replaces stale invocation identity and retains arguments", async () => {
+    // Given
+    const runCompiledCommand = spyOn(compiledRuntime, "runCompiledCommand").mockResolvedValue();
+    setActiveCommandId("stale:command");
+    resetActiveCommandInvocation("stale:command", ["stale"]);
+
+    // When
+    try {
+      await runDynamicTooling(["missing-lifecycle-test-tool", "--verbose", "target"]);
+    } finally {
+      runCompiledCommand.mockRestore();
+    }
+
+    // Then
+    expect(activeCommandId).toBe("app:missing-lifecycle-test-tool");
+    expect(getActiveCommandInvocation()).toMatchObject({
+      commandId: "app:missing-lifecycle-test-tool",
+      argv: ["--verbose", "target"],
+    });
+  });
+
   test("compiled alias input retains the canonical command identity", () => {
     // Given
     const commandId = resolveCanonicalCommandId("start");
@@ -59,9 +109,52 @@ describe("CLI lifecycle adapters", () => {
       "app:exec",
       "app:ssh",
       "app:shell",
+      "meta:plugin:build",
+      "meta:plugin:publish",
+      "meta:plugin:test",
       "meta:uninstall",
     ];
 
     expect(ids.filter((id) => landoSpecForId(id)?.successExitCode === undefined)).toEqual([]);
+  });
+
+  test("result-driven plugin commands publish and apply their nonzero lifecycle exit code", async () => {
+    const ids = ["meta:plugin:build", "meta:plugin:publish", "meta:plugin:test"];
+
+    for (const id of ids) {
+      // Given
+      const events: LandoEvent[] = [];
+      const exitCodes: number[] = [];
+      const eventService: EventServiceShape = {
+        publish: (event) => Effect.sync(() => events.push(event)),
+        subscribe: () => Stream.empty,
+        subscribeQueue: Effect.gen(function* () {
+          return yield* Queue.unbounded<LandoEvent>();
+        }),
+        waitFor: () => Effect.never,
+        waitForAny: () => Effect.never,
+        query: () => Effect.succeed([]),
+      };
+      const spec = landoSpecForId(id);
+      if (spec?.successExitCode === undefined) throw new Error(`${id} lacks successExitCode`);
+
+      // When
+      await runWithRendererHandling(Effect.succeed({ exitCode: 17 }), {
+        runtime: Layer.succeed(EventService, eventService),
+        rendererMode: "plain",
+        command: id,
+        invocation: { commandId: id, argv: [], args: {}, flags: {}, cwd: "/workspace/plugin" },
+        resultSchema: spec.resultSchema,
+        io: createBufferedRendererIO(),
+        render: () => undefined,
+        successExitCode: spec.successExitCode,
+        setExitCode: (code) => exitCodes.push(code),
+        formatError: (error) => String(error),
+      });
+
+      // Then
+      expect(events.at(-1)).toMatchObject({ _tag: `cli-${id}-run`, exitCode: 17 });
+      expect(exitCodes).toEqual([17]);
+    }
   });
 });

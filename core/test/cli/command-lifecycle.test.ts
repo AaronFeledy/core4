@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
-import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { EventService, type EventServiceShape, type LandoEvent, Logger } from "@lando/sdk/services";
 
 import {
   type RunWithRendererHandlingOptions,
@@ -126,8 +126,8 @@ describe("generic CLI command lifecycle", () => {
       expect.objectContaining({
         _tag: "cli-app:start-init",
         commandId: "app:start",
-        argv: ["start", "--service", "appserver"],
-        args: { service: "appserver" },
+        argv: ["[redacted]", "--service", "[redacted]"],
+        args: { service: "[redacted]" },
         flags: { verbose: true },
         cwd: "/workspace/demo",
         app: { kind: "user", id: "demo", root: "/workspace/demo" },
@@ -238,6 +238,39 @@ describe("generic CLI command lifecycle", () => {
     expect(JSON.stringify(harness.events)).toContain("[redacted]");
   });
 
+  test("publishes invocation summaries without separated secrets or passthrough tails", async () => {
+    // Given
+    const harness = makeRecordingHarness();
+    const invocation: CliInvocation = {
+      ...canonicalInvocation,
+      argv: ["start", "--service", "appserver", "--token", "s3cr3t", "--", "hunter2"],
+    };
+
+    // When
+    await runWithRendererHandling(
+      Effect.fail(new CommandLifecycleTestError({ message: "provider unavailable" })),
+      optionsFor<never>(harness, invocation),
+    );
+
+    // Then
+    const serialized = JSON.stringify(harness.events);
+    expect(serialized).not.toContain("s3cr3t");
+    expect(serialized).not.toContain("hunter2");
+    expect(serialized).not.toContain("appserver");
+  });
+
+  test("does not publish failure messages that can echo unknown secrets", async () => {
+    const harness = makeRecordingHarness();
+
+    await runWithRendererHandling(
+      Effect.fail(new CommandLifecycleTestError({ message: "rejected unknown-secret-value" })),
+      optionsFor<never>(harness),
+    );
+
+    expect(JSON.stringify(harness.events)).not.toContain("unknown-secret-value");
+    expect(harness.events.at(-1)).toMatchObject({ failureTag: "CommandLifecycleTestError" });
+  });
+
   test("preserves command success when lifecycle publication fails", async () => {
     // Given
     const harness = makeRecordingHarness(undefined, true);
@@ -254,6 +287,28 @@ describe("generic CLI command lifecycle", () => {
 
     // Then
     expect(rendered).toEqual(["started"]);
+    expect(harness.exitCodes).toEqual([]);
+  });
+
+  test("logs lifecycle publication failures at debug without changing command success", async () => {
+    const harness = makeRecordingHarness(undefined, true);
+    const debugMessages: string[] = [];
+    const logger = {
+      debug: (message: string) => Effect.sync(() => debugMessages.push(message)),
+      info: () => Effect.void,
+      warn: () => Effect.void,
+      error: () => Effect.void,
+    };
+
+    await runWithRendererHandling(Effect.succeed("started"), {
+      ...optionsFor<string>(harness),
+      runtime: Layer.merge(harness.layer, Layer.succeed(Logger, logger)),
+    });
+
+    expect(debugMessages).toEqual([
+      "CLI lifecycle event publication failed.",
+      "CLI lifecycle event publication failed.",
+    ]);
     expect(harness.exitCodes).toEqual([]);
   });
 

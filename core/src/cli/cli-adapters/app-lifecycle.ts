@@ -66,8 +66,10 @@ import {
   compiledFormat,
   emitDiagnosticLine,
   rejectInvalidInvocation,
+  resetActiveCommandInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
+  setActiveCommandId,
 } from "../compiled-runtime.ts";
 import { appConfigOptionsFromInput } from "../oclif/commands/app/config/index.ts";
 import { logsFollowFromInput, logsOptionsFromInput } from "../oclif/commands/app/logs.ts";
@@ -107,8 +109,12 @@ export const runStop = (): Promise<void> =>
 export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> => {
   const name = argv[0];
   if (name === undefined) throw new Error("Missing tooling command name");
+  const commandId = `app:${name}`;
+  const commandArgv = argv.slice(1);
+  setActiveCommandId(commandId);
+  resetActiveCommandInvocation(commandId, commandArgv);
   return runCompiledCommand(
-    runTooling({ name, args: argv.slice(1), renderProgress: true }),
+    runTooling({ name, args: commandArgv, renderProgress: true }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderRunToolingResult,
     { renderEvents: true, plainTaskEvents: "detail-only" },
