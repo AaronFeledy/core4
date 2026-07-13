@@ -6,6 +6,7 @@ type Resume = (result: IteratorResult<ShellReplInput>) => void;
 
 export const makeProcessShellReplIO = (): ShellReplIO => {
   const output = process.stdout;
+  const inputStream = process.stdin;
   const pending: ShellReplInput[] = [];
   const waiters: Resume[] = [];
   let closed = false;
@@ -14,7 +15,7 @@ export const makeProcessShellReplIO = (): ShellReplIO => {
     if (waiter === undefined) pending.push(event);
     else waiter({ done: false, value: event });
   };
-  const terminal = createInterface({ input: process.stdin, output, terminal: true });
+  const terminal = createInterface({ input: inputStream, output, terminal: true });
   terminal.setPrompt("lando> ");
   terminal.on("line", (line) => push({ _tag: "line", line }));
   terminal.on("SIGINT", () => push({ _tag: "interrupt" }));
@@ -36,10 +37,23 @@ export const makeProcessShellReplIO = (): ShellReplIO => {
     input,
     writeStdout: (chunk) => output.write(chunk),
     writeStderr: (chunk) => output.write(chunk),
-    prompt: () => terminal.prompt(),
+    prompt: () => {
+      if (!closed) terminal.prompt();
+    },
     close: () => {
+      if (closed) return;
       closed = true;
       terminal.close();
+      terminal.removeAllListeners();
+      if (
+        inputStream.isTTY === true &&
+        inputStream.isRaw === true &&
+        typeof inputStream.setRawMode === "function"
+      ) {
+        inputStream.setRawMode(false);
+      }
+      inputStream.pause();
+      if (typeof inputStream.unref === "function") inputStream.unref();
       for (const waiter of waiters.splice(0)) waiter({ done: true, value: undefined });
     },
   };
