@@ -527,3 +527,10 @@ Open closure categories:
   - A complete ordered source fingerprint is the hot-cache trust boundary; once it matches, evaluate cached constraint metadata directly rather than reparsing unchanged Landofiles.
   - The universal machine error envelope remains `_tag`/`message`/`remediation`; put required provenance in the error message and use `CommandWarning.context` for structured skip metadata.
 ---
+
+## 2026-07-13 08:19 CDT - US-441 Review
+- Fixed the remaining §7.1 discovery blocker: an app root is now recognized from any of the six YAML/TypeScript merge-layer positions, including projects with no canonical `.lando.yml` or `.lando.ts`; canonical files remain the preferred representative path when present.
+- Review notes (deferred/rejected): Cursor Bugbot produced no report because the authenticated account was quota-locked on both the default and alternate model; no finding was inferred from the tool failure.
+- Verification: typecheck and lint passed; focused Landofile discovery, version-constraint, cache, command-registry, doctor, result-encoding, and SDK schema/machine-output test spot checks passed.
+- **Learnings for future iterations:** Six-layer loading and six-layer discovery are one contract: every root-discovery seam must use the same ordered layer table rather than treating the canonical file as mandatory.
+---

@@ -14,6 +14,7 @@ import {
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { getVersionConstraintEntries } from "../../src/config/version-constraint.ts";
+import { findAppRoot, findLandofilePath } from "../../src/landofile/discovery.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -81,6 +82,21 @@ describe("LandofileServiceLive", () => {
       await writeFile(join(dir, ".lando.yml"), "name: canonical\n");
       process.chdir(dir);
       expect((await discover()).name).toBe("canonical");
+    });
+  });
+
+  test("discovers an app root from a noncanonical merge layer", async () => {
+    await withTempCwd(async (dir) => {
+      const appRoot = join(dir, "app");
+      const nested = join(appRoot, "src", "nested");
+      const layerPath = join(appRoot, ".lando.dist.yml");
+      await mkdir(nested, { recursive: true });
+      await writeFile(layerPath, "name: dist-only\n");
+      process.chdir(nested);
+
+      expect(await findLandofilePath(nested)).toBe(layerPath);
+      expect(await findAppRoot(nested)).toBe(appRoot);
+      expect((await discover()).name).toBe("dist-only");
     });
   });
 

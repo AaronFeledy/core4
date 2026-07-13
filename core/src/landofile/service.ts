@@ -22,9 +22,10 @@ import {
   rememberVersionConstraintEntries,
 } from "../config/version-constraint.ts";
 import { decodeOrFail } from "../schema/decode.ts";
+import { LANDOFILE_NAME } from "./discovery.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { resolveLandofileIncludes } from "./includes.ts";
-import { presentLandofileLayers } from "./layers.ts";
+import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
@@ -33,8 +34,6 @@ import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
 
-const LANDOFILE_NAME = ".lando.yml";
-const LANDOFILE_TS_NAME = ".lando.ts";
 const REMEDIATION = "Remove unsupported keys or update the documented Landofile service schema.";
 const COMPOSE_ALLOWLIST_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
@@ -91,26 +90,16 @@ const findLandofile = async (cwd: string): Promise<DiscoveredLandofile> => {
   let current = cwd;
 
   for (;;) {
-    const yamlCandidate = join(current, LANDOFILE_NAME);
-    const tsCandidate = join(current, LANDOFILE_TS_NAME);
-    searched.push(yamlCandidate, tsCandidate);
-
-    const [yamlExists, tsExists] = await Promise.all([
-      Bun.file(yamlCandidate).exists(),
-      Bun.file(tsCandidate).exists(),
-    ]);
-
-    if (yamlExists && tsExists) {
-      throw new LandofileFormConflictError({
-        message: `Both ${LANDOFILE_NAME} and ${LANDOFILE_TS_NAME} are present in ${current}.`,
-        layer: "canonical",
-        yamlPath: yamlCandidate,
-        typescriptPath: tsCandidate,
-        remediation: `Remove either ${yamlCandidate} or ${tsCandidate}; each layer accepts exactly one form.`,
-      });
+    const candidates = landofileLayerPaths(current);
+    searched.push(...candidates.flatMap(({ yamlPath, typescriptPath }) => [yamlPath, typescriptPath]));
+    const layer = representativeLandofileLayer(await presentLandofileLayers(current));
+    if (layer !== undefined) {
+      return {
+        filePath: layer.filePath,
+        form: layer.filePath.endsWith(".ts") ? "typescript" : "yaml",
+        searched,
+      };
     }
-    if (yamlExists) return { filePath: yamlCandidate, form: "yaml", searched };
-    if (tsExists) return { filePath: tsCandidate, form: "typescript", searched };
 
     const parent = dirname(current);
     if (parent === current) break;
@@ -118,7 +107,7 @@ const findLandofile = async (cwd: string): Promise<DiscoveredLandofile> => {
   }
 
   throw new LandofileNotFoundError({
-    message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched: ${searched.join(", ")}`,
+    message: `No Landofile merge layer found. Searched: ${searched.join(", ")}`,
     cwd,
   });
 };
