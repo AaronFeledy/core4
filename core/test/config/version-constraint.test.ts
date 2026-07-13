@@ -5,12 +5,14 @@ import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
   isValidSemverRange,
+  isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
   satisfiesRange,
 } from "../../src/config/version-constraint.ts";
 
 describe("satisfiesRange", () => {
   test("plain comparator ranges", () => {
+    expect(satisfiesRange("0.0.0", ">=0")).toBe(true);
     expect(satisfiesRange("4.2.0", ">=4.1")).toBe(true);
     expect(satisfiesRange("4.0.9", ">=4.1")).toBe(false);
     expect(satisfiesRange("4.2.0", "<5")).toBe(true);
@@ -43,6 +45,20 @@ describe("satisfiesRange", () => {
     expect(satisfiesRange("4.1.1", "4.1.0")).toBe(false);
     expect(satisfiesRange("4.1.0", "v4.1.0")).toBe(true);
   });
+
+  test("supports npm unions, hyphen ranges, x-ranges, prereleases, and build metadata", () => {
+    expect(satisfiesRange("4.7.0", "^3 || 4.1.0 - 4.x")).toBe(true);
+    expect(satisfiesRange("4.5.0", "4.1.0 - 4.5.0")).toBe(true);
+    expect(satisfiesRange("4.9.2", "4.x")).toBe(true);
+    expect(satisfiesRange("4.1.0-beta.2+build.7", ">=4.1 <5")).toBe(true);
+    expect(satisfiesRange("4.1.0+build.9", "4.1.0+build.1")).toBe(true);
+  });
+
+  test("preserves explicit npm prerelease ordering while including prereleases in stable ranges", () => {
+    expect(satisfiesRange("4.1.0-beta.2", ">=4.1")).toBe(true);
+    expect(satisfiesRange("4.1.0-beta.2", ">=4.1.0-beta.3")).toBe(false);
+    expect(satisfiesRange("4.1.0-beta.4", ">=4.1.0-beta.3")).toBe(true);
+  });
 });
 
 describe("isValidSemverRange", () => {
@@ -52,17 +68,23 @@ describe("isValidSemverRange", () => {
     }
   });
 
-  test("rejects unparseable and unsupported forms", () => {
-    for (const range of ["", "   ", "not-a-range", ">=4.1 || <3", "4.1.0 - 4.5.0", ">=abc", ">=@4"]) {
+  test("rejects unparseable forms", () => {
+    for (const range of ["", "   ", "not-a-range", ">=abc", ">=@4"]) {
       expect(isValidSemverRange(range)).toBe(false);
     }
   });
 });
 
 describe("evaluateVersionConstraints", () => {
+  const orders = [0, 1, 2, 3, 4, 5] as const;
   const entries = (
     ...pairs: ReadonlyArray<readonly [string, string]>
-  ): ReadonlyArray<VersionConstraintEntry> => pairs.map(([range, source]) => ({ range, source }));
+  ): ReadonlyArray<VersionConstraintEntry> =>
+    pairs.map(([range, source], index) => {
+      const order = orders[index];
+      if (order === undefined) throw new Error("version-constraint test helper supports six layers");
+      return { range, source, layer: "canonical", order };
+    });
 
   test("all satisfied returns no invalid and no unsatisfied", () => {
     const result = evaluateVersionConstraints(entries([">=4.1", ".lando.yml"]), "4.2.0");
@@ -87,6 +109,17 @@ describe("evaluateVersionConstraints", () => {
     const result = evaluateVersionConstraints(entries(["not-a-range", ".lando.yml"]), "4.2.0");
     expect(result.invalid.map((entry) => entry.source)).toEqual([".lando.yml"]);
     expect(result.unsatisfied).toEqual([]);
+  });
+});
+
+describe("isVersionConstraintEntryArray", () => {
+  test("rejects mismatched or unknown cached layer ordering", () => {
+    expect(
+      isVersionConstraintEntryArray([{ range: ">=4", source: ".lando.base.yml", layer: "base", order: 1 }]),
+    ).toBe(false);
+    expect(
+      isVersionConstraintEntryArray([{ range: ">=4", source: ".lando.yml", layer: "unknown", order: 3 }]),
+    ).toBe(false);
   });
 });
 

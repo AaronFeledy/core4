@@ -143,14 +143,14 @@ describe("binary cache encoding policy", () => {
       name: "app-command",
       magic: APP_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "app-command-v1.bin",
+      fixture: "app-command-v2.bin",
       decode: decodeAppCommandIndex,
     },
     {
       name: "plugin-command",
       magic: PLUGIN_COMMAND_MAGIC,
       version: COMMAND_INDEX_SCHEMA_VERSION,
-      fixture: "plugin-command-v1.bin",
+      fixture: "plugin-command-v2.bin",
       decode: decodePluginCommandIndex,
     },
   ] as const;
@@ -187,7 +187,7 @@ describe("binary cache encoding policy", () => {
   }
 
   test("app-plan fixture matches the encoder output", async () => {
-    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v2.bin")));
+    expect(await makeAppPlanBytes()).toEqual(await readFile(join(fixtureRoot, "app-plan-v4.bin")));
   });
 
   test("app-plan writes magic, schema version, and payload checksum in the binary header", async () => {

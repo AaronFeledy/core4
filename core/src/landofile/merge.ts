@@ -4,11 +4,10 @@
  * Default load order (low → high precedence):
  *   1. .lando.base.yml
  *   2. .lando.dist.yml
- *   3. .lando.recipe.yml
- *   4. .lando.upstream.yml
- *   5. .lando.yml          (canonical; filename configurable globally)
- *   6. .lando.local.yml
- *   7. .lando.user.yml
+ *   3. .lando.upstream.yml
+ *   4. .lando.yml          (canonical)
+ *   5. .lando.local.yml
+ *   6. .lando.user.yml
  *
  * Rules:
  * - Files load in order; later files override earlier files.
@@ -23,12 +22,7 @@
  *
  */
 
-export const DEFAULT_PRE_LANDOFILES = [
-  ".lando.base.yml",
-  ".lando.dist.yml",
-  ".lando.recipe.yml",
-  ".lando.upstream.yml",
-] as const;
+export const DEFAULT_PRE_LANDOFILES = [".lando.base.yml", ".lando.dist.yml", ".lando.upstream.yml"] as const;
 
 export const DEFAULT_LANDOFILE = ".lando.yml" as const;
 

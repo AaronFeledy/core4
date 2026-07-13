@@ -49,6 +49,8 @@ export interface ResolveLandofileIncludesOptions {
   readonly now?: () => number;
   readonly deps?: LandofileIncludeDeps;
   readonly maxDepth?: number;
+  readonly layer?: VersionConstraintEntry["layer"];
+  readonly order?: VersionConstraintEntry["order"];
 }
 
 interface NormalizedInclude {
@@ -575,8 +577,10 @@ const inlineWithoutIncludes = (landofile: Record<string, unknown>): Record<strin
 const ownVersionConstraintEntries = (
   landofile: { readonly lando?: string | undefined },
   source: string,
+  layer: VersionConstraintEntry["layer"],
+  order: VersionConstraintEntry["order"],
 ): ReadonlyArray<VersionConstraintEntry> =>
-  landofile.lando === undefined ? [] : [{ range: landofile.lando, source }];
+  landofile.lando === undefined ? [] : [{ range: landofile.lando, source, layer, order }];
 
 const resolveTree = (
   landofile: LandofileShape,
@@ -584,6 +588,8 @@ const resolveTree = (
   depth: number,
   stack: ReadonlyArray<string>,
   source: string,
+  layer: VersionConstraintEntry["layer"],
+  order: VersionConstraintEntry["order"],
 ): Effect.Effect<LandofileShape, LandofileIncludeError | LandofileLockMismatchError | LandofileParseError> =>
   Effect.gen(function* () {
     if (depth > ctx.maxDepth) {
@@ -598,7 +604,10 @@ const resolveTree = (
     const includes = landofile.includes ?? [];
     if (includes.length === 0)
       return rememberLocalIncludePaths(
-        rememberVersionConstraintEntries(landofile, ownVersionConstraintEntries(landofile, source)),
+        rememberVersionConstraintEntries(
+          landofile,
+          ownVersionConstraintEntries(landofile, source, layer, order),
+        ),
         [],
       );
 
@@ -635,6 +644,8 @@ const resolveTree = (
         depth + 1,
         [...stack, fragment.sourceId],
         fragment.sourceId,
+        layer,
+        order,
       );
       fragments.push(nested);
       fragmentRecords.push(nested as Record<string, unknown>);
@@ -682,7 +693,7 @@ const resolveTree = (
     return rememberLocalIncludePaths(
       rememberVersionConstraintEntries(decoded, [
         ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-        ...ownVersionConstraintEntries(landofile, source),
+        ...ownVersionConstraintEntries(landofile, source, layer, order),
       ]),
       [...localIncludePaths],
     );
@@ -892,7 +903,17 @@ export const resolveLandofileIncludes = (
   never
 > => {
   if (options.landofile.includes === undefined || options.landofile.includes.length === 0) {
-    return Effect.succeed(options.landofile);
+    return Effect.succeed(
+      rememberVersionConstraintEntries(
+        options.landofile,
+        ownVersionConstraintEntries(
+          options.landofile,
+          options.sourcePath ?? join(options.appRoot, ".lando.yml"),
+          options.layer ?? "canonical",
+          options.order ?? 3,
+        ),
+      ),
+    );
   }
 
   return Effect.gen(function* () {
@@ -909,7 +930,15 @@ export const resolveLandofileIncludes = (
       noNetwork: false,
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
-    const resolved = yield* resolveTree(options.landofile, ctx, 0, [options.appRoot], sourcePath);
+    const resolved = yield* resolveTree(
+      options.landofile,
+      ctx,
+      0,
+      [options.appRoot],
+      sourcePath,
+      options.layer ?? "canonical",
+      options.order ?? 3,
+    );
     yield* writeLockfileIfNeeded(ctx);
     return resolved;
   });
@@ -1001,7 +1030,15 @@ export const updateLandofileIncludes = (
     };
 
     if (includes.length > 0) {
-      yield* resolveTree(landofile, ctx, 0, [options.appRoot], join(options.appRoot, ".lando.yml"));
+      yield* resolveTree(
+        landofile,
+        ctx,
+        0,
+        [options.appRoot],
+        join(options.appRoot, ".lando.yml"),
+        "canonical",
+        3,
+      );
     }
 
     const entries: IncludeUpdateEntry[] = [...ctx.stagedLocks.values()]
@@ -1112,7 +1149,15 @@ export const verifyLandofileIncludes = (
     };
 
     if (includes.length > 0) {
-      yield* resolveTree(options.landofile, ctx, 0, [options.appRoot], join(options.appRoot, ".lando.yml"));
+      yield* resolveTree(
+        options.landofile,
+        ctx,
+        0,
+        [options.appRoot],
+        join(options.appRoot, ".lando.yml"),
+        "canonical",
+        3,
+      );
     }
 
     const staged = ctx.stagedLocks;

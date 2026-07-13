@@ -2,6 +2,7 @@ import { Effect, Either, Schema } from "effect";
 
 import type {
   AppIdReservedError,
+  LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileSandboxError,
@@ -76,6 +77,7 @@ export const AppConfigResultSchema = Schema.Struct({
 type AppConfigError =
   | AppIdReservedError
   | LandofileNotFoundError
+  | LandofileFormConflictError
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError

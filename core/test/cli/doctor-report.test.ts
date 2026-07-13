@@ -273,7 +273,11 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "fail",
         severity: "error",
-        context: { runningVersion: "0.0.0", unsatisfied: ">=99 (.lando.yml)", skipped: "false" },
+        context: {
+          runningVersion: "0.0.0",
+          unsatisfied: ">=99 (canonical#3: .lando.yml)",
+          skipped: "false",
+        },
       });
       const text = renderDoctorReport(report);
       expect(text).toContain("app-version-constraint: fail");
@@ -304,7 +308,11 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "fail",
         severity: "error",
-        context: { runningVersion: "0.0.0", unsatisfied: ">=99 (.lando.ts)", skipped: "false" },
+        context: {
+          runningVersion: "0.0.0",
+          unsatisfied: ">=99 (canonical#3: .lando.ts)",
+          skipped: "false",
+        },
       });
       expect(renderDoctorReport(report)).toContain("app-version-constraint: fail");
     } finally {
@@ -358,7 +366,7 @@ describe("meta:doctor combined report", () => {
         name: "app-version-constraint",
         status: "warn",
         severity: "warn",
-        context: { skipped: "true", unsatisfied: ">=99 (.lando.yml)" },
+        context: { skipped: "true", unsatisfied: ">=99 (canonical#3: .lando.yml)" },
       });
       expect(renderDoctorReport(report)).toContain("LANDO_SKIP_VERSION_CONSTRAINT=1 is active");
     } finally {
@@ -376,7 +384,7 @@ describe("meta:doctor combined report", () => {
     const previousSecret = process.env.LANDO_SECRET_VERSION_RANGE;
     try {
       process.chdir(dir);
-      process.env.LANDO_SECRET_VERSION_RANGE = "super-secret-version-range";
+      process.env.LANDO_SECRET_VERSION_RANGE = ">=99.0.0";
       await writeFile(
         join(dir, ".lando.yml"),
         ["template: handlebars", "name: doctor-app", "lando: {{ env.LANDO_SECRET_VERSION_RANGE }}", ""].join(
@@ -391,12 +399,10 @@ describe("meta:doctor combined report", () => {
       const yaml = renderDoctorReportAsYaml(report);
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
 
-      expect(text).not.toContain("super-secret-version-range");
-      expect(yaml).not.toContain("super-secret-version-range");
-      expect(ndjson).not.toContain("super-secret-version-range");
-      expect(report.appVersionConstraints?.checks[0]?.context.invalid).not.toContain(
-        "super-secret-version-range",
-      );
+      expect(text).not.toContain(">=99.0.0");
+      expect(yaml).not.toContain(">=99.0.0");
+      expect(ndjson).not.toContain(">=99.0.0");
+      expect(report.appVersionConstraints?.checks[0]?.context.unsatisfied).not.toContain(">=99.0.0");
     } finally {
       process.chdir(previousCwd);
       if (previousSecret === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_VERSION_RANGE");

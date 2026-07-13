@@ -75,6 +75,9 @@ import type {
   HttpRequestError,
   HttpTrustError,
   HttpUploadError,
+  LandofileFormConflictError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -288,6 +291,9 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileValidationError
       | LandofileSandboxError
       | LandofileTimeoutError
+      | LandofileFormConflictError
+      | LandofileIncludeError
+      | LandofileLockMismatchError
       | NotImplementedError
     >;
   }

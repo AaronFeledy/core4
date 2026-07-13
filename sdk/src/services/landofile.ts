@@ -1,6 +1,9 @@
 import { Context, type Effect } from "effect";
 
 import type {
+  LandofileFormConflictError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   LandofileSandboxError,
@@ -20,6 +23,9 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | LandofileValidationError
       | LandofileSandboxError
       | LandofileTimeoutError
+      | LandofileFormConflictError
+      | LandofileIncludeError
+      | LandofileLockMismatchError
       | NotImplementedError
     >;
   }

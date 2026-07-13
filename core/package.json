@@ -58,10 +58,12 @@
     "@lando/sdk": "workspace:*",
     "@oclif/core": "^4.11.2",
     "@oclif/plugin-help": "^6.2.48",
-    "effect": "^3.21.2"
+    "effect": "^3.21.2",
+    "semver": "^7.8.5"
   },
   "devDependencies": {
     "@oclif/test": "^4.1.18",
+    "@types/semver": "^7.7.1",
     "oclif": "^4.23.0"
   },
   "oclif": {

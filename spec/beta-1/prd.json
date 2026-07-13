@@ -1260,7 +1260,7 @@
         "Lint passes"
       ],
       "priority": 70,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Progress review notes defer six-file provenance, full npm-semver grammar, schema-level range predicates, structured machine warnings, and cache correctness."
     },
     {

@@ -17683,6 +17683,15 @@
               "code": {
                 "type": "string"
               },
+              "context": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "description": "Structured string metadata that identifies the warning source and affected input.",
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
               "message": {
                 "type": "string"
               },
@@ -17724,6 +17733,15 @@
       "properties": {
         "code": {
           "type": "string"
+        },
+        "context": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Structured string metadata that identifies the warning source and affected input.",
+          "properties": {},
+          "required": [],
+          "type": "object"
         },
         "message": {
           "type": "string"
@@ -41744,6 +41762,15 @@
                     "properties": {
                       "code": {
                         "type": "string"
+                      },
+                      "context": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "description": "Structured string metadata that identifies the warning source and affected input.",
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
                       },
                       "message": {
                         "type": "string"

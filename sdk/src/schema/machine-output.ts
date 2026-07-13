@@ -10,6 +10,9 @@ export const CommandWarning = Schema.Struct({
   code: Schema.String,
   message: Schema.String,
   remediation: Schema.optional(Schema.String),
+  context: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })).annotations({
+    description: "Structured string metadata that identifies the warning source and affected input.",
+  }),
 });
 export type CommandWarning = typeof CommandWarning.Type;
 

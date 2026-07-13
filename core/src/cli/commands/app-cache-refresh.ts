@@ -11,6 +11,7 @@ import type {
   CacheError,
   CapabilityError,
   LandoCommandError,
+  LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
   LandofileNotFoundError,
@@ -65,6 +66,7 @@ export const AppCacheRefreshResultSchema = Schema.Struct({
 type AppCacheRefreshError =
   | AppIdReservedError
   | LandofileNotFoundError
+  | LandofileFormConflictError
   | LandofileParseError
   | LandofileSandboxError
   | LandofileTimeoutError

@@ -409,23 +409,24 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
-  test("invalidates the warm tooling cache when cached version constraints differ from the current Landofile", async () => {
+  test("invalidates the warm tooling cache when a constraint source layer changes", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {
-        const staleLandofile = { name: "version-cache", tooling: { build: { cmd: "make" } } };
+        const landofile = { name: "version-cache", tooling: { build: { cmd: "make" } } };
         await writeFile(
           join(dir, ".lando.yml"),
-          ["name: version-cache", "lando: >=99", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
+          ["name: version-cache", "tooling:", "  build:", "    cmd: make", ""].join("\n"),
         );
         await Effect.runPromise(
           writeAppCommandCacheStrict({
-            landofile: staleLandofile,
+            landofile,
             entries: [{ id: "app:cached-only", summary: "from stale cache", hidden: false }],
             cwd: dir,
             cacheRoot,
             now: () => 100,
           }),
         );
+        await writeFile(join(dir, ".lando.base.yml"), "lando: >=99\n");
 
         const fresh = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
 
@@ -537,6 +538,26 @@ describe("CommandRegistryLive cold-path cache writes", () => {
           if (previousInclude === undefined) Reflect.deleteProperty(process.env, "LANDO_TEMPLATE_INCLUDE");
           else process.env.LANDO_TEMPLATE_INCLUDE = previousInclude;
         }
+      });
+    });
+  });
+
+  test("reads unchanged cached constraints without reparsing the Landofile", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      await withTempCwd(async (dir) => {
+        await writeFile(join(dir, ".lando.yml"), "name: cached\nlando: not-semver\n");
+        await Effect.runPromise(
+          writeAppCommandCacheStrict({
+            landofile: { name: "cached", lando: ">=0", tooling: { build: { cmd: "make" } } },
+            entries: [{ id: "app:build", summary: "", hidden: false }],
+            cwd: dir,
+            cacheRoot,
+          }),
+        );
+
+        const cached = await Effect.runPromise(readFreshAppCommandCacheForCwd({ cwd: dir, cacheRoot }));
+
+        expect(cached?.entries.map((entry) => entry.id)).toEqual(["app:build"]);
       });
     });
   });
@@ -809,7 +830,7 @@ describe("CommandRegistryLive cold-path cache writes", () => {
         const decoded = decodePluginCommandIndex(bytes);
         expect(decoded).not.toBeNull();
         if (decoded === null) return;
-        expect(decoded.schemaVersion).toBe(1);
+        expect(decoded.schemaVersion).toBe(2);
         expect(decoded.pluginNames.length).toBeGreaterThan(0);
         expect(Array.isArray(decoded.entries)).toBe(true);
       });

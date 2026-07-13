@@ -511,3 +511,19 @@ Open closure categories:
 - Verification: typecheck and lint passed; 142 post-fix focused MCP/SDK/CLI and source/compiled parity tests passed; the real blocked-pipe Bun probe changed from timeout exit 124 to clean exit 0. The TypeScript no-excuse audit passed for the new/changed transport and test seams; it continues to flag one pre-existing `as unknown` in `McpService` outside the review lines.
 - **Learnings for future iterations:** A deadline around `Effect.promise` does not cancel native Bun stdout I/O; the owning `FileSink` must be scope-finalized. Completion tombstones need an explicit retention cap even when active requests are already bounded.
 ---
+
+## 2026-07-13 06:33 CDT - Babysit
+- PR: #581 https://github.com/AaronFeledy/core4/pull/581
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip for MCP stdio transport hardening with no new user-facing guide workflows; reran guide jobs green)
+- Merge: merged (squash)
+---
+
+## 2026-07-13 08:06 CDT - US-441
+- Version constraints now accumulate across all six ordered Landofile layers and nested include sources, preserving provenance in failures, structured skip warnings, doctor reporting, and cache identity. Landofile discovery rejects conflicting YAML/TypeScript forms per layer and malformed ranges during parsing.
+- Range evaluation now uses full npm-semver grammar, including unions, hyphen ranges, x-ranges, prerelease ordering, and build-metadata semantics. App-plan and tooling caches fingerprint every present layer, invalidate when any source changes, and reuse unchanged cached constraints without reparsing the Landofile.
+- Verification: typecheck, lint, build, schema codegen idempotency, renderer/machine-output boundaries, relevant SDK/core test spot checks, and sandboxed source CLI skip/fail-closed checks passed; high-rigor review returned unconditional approval.
+- **Learnings for future iterations:**
+  - A complete ordered source fingerprint is the hot-cache trust boundary; once it matches, evaluate cached constraint metadata directly rather than reparsing unchanged Landofiles.
+  - The universal machine error envelope remains `_tag`/`message`/`remediation`; put required provenance in the error message and use `CommandWarning.context` for structured skip metadata.
+---

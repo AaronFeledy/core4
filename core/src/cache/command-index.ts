@@ -8,7 +8,7 @@ import { type VersionConstraintEntry, getVersionConstraintEntries } from "../con
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
 
-export const COMMAND_INDEX_SCHEMA_VERSION = 1n;
+export const COMMAND_INDEX_SCHEMA_VERSION = 2n;
 
 export const APP_COMMAND_MAGIC = new Uint8Array([0x4c, 0x43, 0x41, 0x43]);
 

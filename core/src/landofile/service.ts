@@ -3,6 +3,9 @@ import { dirname, join } from "node:path";
 import { Cause, type Context, Effect, Layer, ParseResult } from "effect";
 
 import {
+  LandofileFormConflictError,
+  type LandofileIncludeError,
+  type LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
   type LandofileSandboxError,
@@ -13,7 +16,16 @@ import {
 import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
+import {
+  getVersionConstraintEntries,
+  isValidSemverRange,
+  rememberVersionConstraintEntries,
+} from "../config/version-constraint.ts";
 import { decodeOrFail } from "../schema/decode.ts";
+import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
+import { resolveLandofileIncludes } from "./includes.ts";
+import { presentLandofileLayers } from "./layers.ts";
+import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
 import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "./tooling-beta.ts";
@@ -89,11 +101,12 @@ const findLandofile = async (cwd: string): Promise<DiscoveredLandofile> => {
     ]);
 
     if (yamlExists && tsExists) {
-      throw new LandofileParseError({
-        message: `Both ${LANDOFILE_NAME} and ${LANDOFILE_TS_NAME} are present in ${current}. Pick one form per directory and remove the other.`,
-        filePath: tsCandidate,
-        line: undefined,
-        column: undefined,
+      throw new LandofileFormConflictError({
+        message: `Both ${LANDOFILE_NAME} and ${LANDOFILE_TS_NAME} are present in ${current}.`,
+        layer: "canonical",
+        yamlPath: yamlCandidate,
+        typescriptPath: tsCandidate,
+        remediation: `Remove either ${yamlCandidate} or ${tsCandidate}; each layer accepts exactly one form.`,
       });
     }
     if (yamlExists) return { filePath: yamlCandidate, form: "yaml", searched };
@@ -168,8 +181,22 @@ const validationScope = (parsed: unknown): { readonly scope: string; readonly re
 const validateLandofile = (
   filePath: string,
   parsed: unknown,
-): Effect.Effect<typeof LandofileShape.Type, LandofileValidationError> =>
-  decodeOrFail(LandofileShape, (cause) => {
+): Effect.Effect<typeof LandofileShape.Type, LandofileValidationError | LandofileParseError> => {
+  const authoredRange =
+    parsed !== null && typeof parsed === "object" && "lando" in parsed
+      ? (parsed as { readonly lando?: unknown }).lando
+      : undefined;
+  if (typeof authoredRange === "string" && !isValidSemverRange(authoredRange)) {
+    return Effect.fail(
+      new LandofileParseError({
+        message: `Landofile "lando:" is not a valid semver range: "${authoredRange}". Use npm semver syntax such as ">=4.1 <5", "^4", or "4.x".`,
+        filePath,
+        line: undefined,
+        column: undefined,
+      }),
+    );
+  }
+  return decodeOrFail(LandofileShape, (cause) => {
     const issues = validationIssues(cause);
     const { scope, remediation } = validationScope(parsed);
     return new LandofileValidationError({
@@ -178,6 +205,7 @@ const validateLandofile = (
       issues,
     });
   })(parsed, { onExcessProperty: "error" });
+};
 
 const scanContentForBetaExpressions = (
   filePath: string,
@@ -215,6 +243,9 @@ type LandofileLoadError =
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
+  | LandofileFormConflictError
+  | LandofileIncludeError
+  | LandofileLockMismatchError
   | NotImplementedError;
 
 export const loadLandofileFile = (
@@ -260,10 +291,62 @@ const loadTsLandofile = (
     Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
   );
 
+export const loadLandofileLayers = (
+  appRoot: string,
+  canonicalPath: string,
+): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
+  Effect.tryPromise({
+    try: () => presentLandofileLayers(appRoot),
+    catch: (cause) =>
+      cause instanceof LandofileFormConflictError
+        ? cause
+        : new LandofileParseError({
+            message: cause instanceof Error ? cause.message : "Failed to enumerate Landofile layers.",
+            filePath: canonicalPath,
+            line: undefined,
+            column: undefined,
+            cause,
+          }),
+  }).pipe(
+    Effect.flatMap((layers) =>
+      Effect.forEach(layers, (layer) =>
+        loadLandofileFile(layer.filePath).pipe(
+          Effect.flatMap((landofile) =>
+            resolveLandofileIncludes({
+              landofile,
+              appRoot,
+              sourcePath: layer.filePath,
+              layer: layer.layer,
+              order: layer.order,
+            }),
+          ),
+          Effect.map((landofile) => ({ layer, landofile })),
+        ),
+      ),
+    ),
+    Effect.flatMap((loaded) => {
+      const merged = mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>));
+      return validateLandofile(canonicalPath, merged).pipe(
+        Effect.map((landofile) =>
+          rememberLocalIncludePaths(
+            rememberVersionConstraintEntries(
+              landofile,
+              loaded.flatMap(({ landofile, layer }) =>
+                getVersionConstraintEntries(landofile, layer.filePath),
+              ),
+            ),
+            loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
+          ),
+        ),
+      );
+    }),
+  );
+
 const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> = Effect.tryPromise({
   try: async () => findLandofile(process.cwd()),
   catch: (cause) => {
     if (cause instanceof LandofileNotFoundError) return cause;
+    if (cause instanceof LandofileFormConflictError) return cause;
     if (cause instanceof LandofileParseError) return cause;
     return new LandofileParseError({
       message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
@@ -274,7 +357,7 @@ const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoad
     });
   },
 }).pipe(
-  Effect.flatMap(({ filePath }) => loadLandofileFile(filePath)),
+  Effect.flatMap(({ filePath }) => loadLandofileLayers(dirname(filePath), filePath)),
   Effect.catchAllCause((cause) => {
     const failure = extractFailure(cause);
     if (failure !== undefined) return Effect.fail(failure);

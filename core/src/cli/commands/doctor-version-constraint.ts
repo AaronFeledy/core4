@@ -9,8 +9,7 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "../../config/version-constraint.ts";
-import { resolveLandofileIncludes } from "../../landofile/includes.ts";
-import { findDiscoveredLandofilePath, loadLandofileFile } from "../../landofile/service.ts";
+import { findDiscoveredLandofilePath, loadLandofileLayers } from "../../landofile/service.ts";
 import { createStandaloneRedactor } from "../../redaction/service.ts";
 import { CORE_VERSION } from "../../version.ts";
 
@@ -71,10 +70,8 @@ const formatConstraintEntry = (
   entry: VersionConstraintEntry,
   appRoot: string,
   redact: (value: string) => string,
-): string => `${redact(entry.range)} (${relativeSource(appRoot, entry.source)})`;
-
-const loadAppLandofileForReport = (filePath: string) =>
-  loadLandofileFile(filePath).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+): string =>
+  `${redact(entry.range)} (${entry.layer}#${entry.order}: ${relativeSource(appRoot, entry.source)})`;
 
 export const appVersionConstraintsForReport = (): Effect.Effect<
   AppVersionConstraintDoctorResult | undefined,
@@ -91,16 +88,14 @@ export const appVersionConstraintsForReport = (): Effect.Effect<
     );
     if (discovered === undefined) return undefined;
     const { appRoot, filePath } = discovered;
-    const parsed = yield* loadAppLandofileForReport(filePath);
-    if (parsed === undefined) return undefined;
-    const resolved = yield* Effect.either(
-      resolveLandofileIncludes({
-        landofile: parsed,
-        appRoot,
-        sourcePath: filePath,
-      }),
-    );
+    const resolved = yield* Effect.either(loadLandofileLayers(appRoot, filePath));
     if (Either.isLeft(resolved)) {
+      if (
+        resolved.left._tag !== "LandofileIncludeError" &&
+        resolved.left._tag !== "LandofileLockMismatchError"
+      ) {
+        return undefined;
+      }
       return {
         checks: [
           {

@@ -4,6 +4,7 @@ import { type Context, Effect, Option } from "effect";
 
 import {
   AppIdReservedError,
+  type LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
   type LandofileNotFoundError,
@@ -27,6 +28,7 @@ import { LANDOFILE_NAME } from "../landofile/discovery.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { findDiscoveredLandofilePath, loadLandofileFile } from "../landofile/service.ts";
 import { CORE_VERSION } from "../version.ts";
+import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";
 
 const RESERVED_APP_IDS: ReadonlySet<string> = new Set(["global"]);
 
@@ -50,6 +52,7 @@ export type UserLandofileError =
   | LandofileValidationError
   | LandofileSandboxError
   | LandofileTimeoutError
+  | LandofileFormConflictError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
@@ -89,20 +92,35 @@ const VERSION_CONSTRAINT_REMEDIATION =
 const warnConstraintSkipped = (
   unsatisfied: ReadonlyArray<VersionConstraintEntry>,
   runningVersion: string,
-): Effect.Effect<void> =>
-  Effect.serviceOption(Renderer).pipe(
-    Effect.flatMap((maybe) =>
-      Option.isNone(maybe)
-        ? Effect.void
-        : maybe.value.message
-            .warn(
-              `Skipping unsatisfied Lando version constraint ${unsatisfied
-                .map((entry) => `"${entry.range}"`)
-                .join(", ")} (running ${runningVersion}); LANDO_SKIP_VERSION_CONSTRAINT is set.`,
-            )
-            .pipe(Effect.catchAll(() => Effect.void)),
-    ),
-  );
+): Effect.Effect<void> => {
+  const message = `Skipping unsatisfied Lando version constraint ${unsatisfied
+    .map((entry) => `"${entry.range}"`)
+    .join(", ")} (running ${runningVersion}); LANDO_SKIP_VERSION_CONSTRAINT is set.`;
+  return Effect.gen(function* () {
+    yield* Effect.forEach(
+      unsatisfied,
+      (entry) =>
+        recordCommandWarning({
+          code: "LANDO_VERSION_CONSTRAINT_SKIPPED",
+          message,
+          remediation: VERSION_CONSTRAINT_REMEDIATION,
+          context: {
+            range: entry.range,
+            source: entry.source,
+            layer: entry.layer,
+            order: String(entry.order),
+            runningVersion,
+          },
+        }),
+      { discard: true },
+    );
+    const renderer = yield* Effect.serviceOption(Renderer);
+    const machineOutput = yield* commandWarningsUseMachineOutput;
+    if (!machineOutput && Option.isSome(renderer)) {
+      yield* renderer.value.message.warn(message).pipe(Effect.catchAll(() => Effect.void));
+    }
+  });
+};
 
 export const assertLandoVersionConstraint = (
   landofile: LandofileShape,
@@ -132,7 +150,7 @@ export const assertLandoVersionConstraint = (
   return Effect.fail(
     new LandofileVersionConstraintError({
       message: `The running Lando version ${runningVersion} does not satisfy the Landofile \`lando:\` constraint ${unsatisfied
-        .map((entry) => `"${entry.range}" (${entry.source})`)
+        .map((entry) => `"${entry.range}" (${entry.source}; ${entry.layer} layer, order ${entry.order})`)
         .join(", ")}.`,
       constraints: unsatisfied,
       runningVersion,

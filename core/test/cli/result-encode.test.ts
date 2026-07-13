@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
+import { LandofileVersionConstraintError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -81,6 +82,36 @@ describe("encodeCommandResult", () => {
       _tag: "ExampleTaggedError",
       message: "provider missing",
       remediation: "Run setup.",
+    });
+  });
+
+  test("preserves provenance-bearing version-constraint messages in normal and streaming failures", () => {
+    const error = new LandofileVersionConstraintError({
+      message:
+        'The running Lando version 4.2.0 does not satisfy ">=5" from .lando.base.yml (base layer, order 0).',
+      constraints: [{ range: ">=5", source: ".lando.base.yml", layer: "base", order: 0 }],
+      runningVersion: "4.2.0",
+      remediation: "Update Lando.",
+    });
+    const options = {
+      command: "app:info",
+      resultSchema: EmptyResultSchema,
+      outcome: { _tag: "failure", error } as const,
+      redactor: plainRedactor,
+    };
+
+    const envelope = decodeEnvelope(Effect.runSync(encodeCommandResult(options)));
+    const frame = decodeFrame(Effect.runSync(encodeStreamResultFrame(options)));
+
+    expect(envelope.error).toEqual({
+      _tag: "LandofileVersionConstraintError",
+      message:
+        'The running Lando version 4.2.0 does not satisfy ">=5" from .lando.base.yml (base layer, order 0).',
+      remediation: "Update Lando.",
+    });
+    expect(frame).toMatchObject({
+      _tag: "result",
+      envelope: { error: envelope.error },
     });
   });
 
