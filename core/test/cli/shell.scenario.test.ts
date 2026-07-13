@@ -6,7 +6,7 @@ import { Config } from "@oclif/core";
 import { type Context, DateTime, Effect, Layer, Stream } from "effect";
 
 import { shellApp } from "@lando/core/cli/operations";
-import { ProviderUnavailableError, ShellExecError, ShellRequiresTtyError } from "@lando/core/errors";
+import { ProviderUnavailableError, ShellRequiresTtyError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -23,6 +23,7 @@ import {
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  SecretStore,
   type ShellInteractiveSpec,
   ShellRunner,
 } from "@lando/core/services";
@@ -171,6 +172,12 @@ const layer = (
       select: () => Effect.succeed(provider),
     }),
     shellRunner,
+    Layer.succeed(SecretStore, {
+      id: "test",
+      get: () => Effect.die("secret not expected"),
+      has: () => Effect.succeed(false),
+      list: Effect.succeed([]),
+    }),
     emptyConfigServiceLayer,
   );
 
@@ -184,6 +191,12 @@ const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
       select: () => Effect.succeed(provider),
     }),
     shellRunnerLayer(),
+    Layer.succeed(SecretStore, {
+      id: "test",
+      get: () => Effect.die("secret not expected"),
+      has: () => Effect.succeed(false),
+      list: Effect.succeed([]),
+    }),
     emptyConfigServiceLayer,
   );
 
@@ -429,7 +442,6 @@ describe("shellApp — shell modes", () => {
     const result = await Effect.runPromise(
       shellApp({
         isInteractive: () => true,
-        shellPath: "/bin/bash",
       }).pipe(
         Effect.provide(
           layer(
@@ -447,7 +459,6 @@ describe("shellApp — shell modes", () => {
     expect(result.mode).toBe("host");
     expect(result.app).toBe("shell-scenario");
     expect(specs).toHaveLength(1);
-    expect(specs[0]?.shell).toBe("/bin/bash");
     expect(specs[0]?.cwd).toBe("/tmp/shell-scenario");
     expect(specs[0]?.env?.LANDO_APP_NAME).toBe("shell-scenario");
     expect(specs[0]?.historyFile).toMatch(/[/\\]shell[/\\].+[/\\]history$/);
@@ -461,7 +472,6 @@ describe("shellApp — shell modes", () => {
         yield* shellApp({
           host: true,
           isInteractive: () => true,
-          shellPath: "/bin/sh",
         });
         return yield* deprecations.summary();
       }).pipe(
@@ -575,7 +585,7 @@ describe("shellApp — shell modes", () => {
     Effect.runPromise(
       Effect.gen(function* () {
         let captured: ShellInteractiveSpec | undefined;
-        yield* shellApp({ isInteractive: () => true, shellPath: "/bin/sh", ...options }).pipe(
+        yield* shellApp({ isInteractive: () => true, ...options }).pipe(
           Effect.provide(
             layer(
               undefined,
@@ -595,7 +605,7 @@ describe("shellApp — shell modes", () => {
   test("host mode resolves cwd to the app root and propagates the exit code", async () => {
     const specs: ShellInteractiveSpec[] = [];
     const result = await Effect.runPromise(
-      shellApp({ isInteractive: () => true, shellPath: "/bin/sh" }).pipe(
+      shellApp({ isInteractive: () => true }).pipe(
         Effect.provide(
           layer(
             undefined,
@@ -611,7 +621,7 @@ describe("shellApp — shell modes", () => {
     expect(result.mode).toBe("host");
     expect(result.exitCode).toBe(7);
     expect(specs[0]?.cwd).toBe("/tmp/shell-scenario");
-    expect(specs[0]?.shell).toBe("/bin/sh");
+    expect(result.shell).toBe("Bun.$");
     expect(specs[0]?.env?.LANDO_APP_NAME).toBe("shell-scenario");
     expect(specs[0]?.env?.LANDO_APP_ROOT).toBe("/tmp/shell-scenario");
   });
@@ -623,10 +633,26 @@ describe("shellApp — shell modes", () => {
 
   test("reserved LANDO_* env wins over caller options.env", async () => {
     const spec = await hostSpec({
-      env: { LANDO_APP_NAME: "spoofed", LANDO_APP_ROOT: "/etc/spoof", MY_CUSTOM: "kept" },
+      env: {
+        LANDO: "spoofed",
+        LANDO_APP_NAME: "spoofed",
+        LANDO_APP_ROOT: "/etc/spoof",
+        LANDO_DEBUG: "spoofed",
+        LANDO_HOST_IP: "203.0.113.1",
+        LANDO_PROJECT: "spoofed",
+        LANDO_PROJECT_MOUNT: "/etc/spoof",
+        MY_CUSTOM: "kept",
+      },
     });
+    expect(spec.env?.LANDO).toBe("ON");
     expect(spec.env?.LANDO_APP_NAME).toBe("shell-scenario");
+    expect(spec.env?.LANDO_APP_KIND).toBe("user");
     expect(spec.env?.LANDO_APP_ROOT).toBe("/tmp/shell-scenario");
+    expect(spec.env?.LANDO_DEBUG).toBe(process.env.LANDO_DEBUG === "1" ? "1" : "");
+    expect(spec.env?.LANDO_HOST_IP).toBe("127.0.0.1");
+    expect(spec.env?.LANDO_HOST_OS).toBe(process.platform);
+    expect(spec.env?.LANDO_PROJECT).toBe("shell-scenario");
+    expect(spec.env?.LANDO_PROJECT_MOUNT).toBe("/tmp/shell-scenario");
     expect(spec.env?.MY_CUSTOM).toBe("kept");
   });
 
@@ -639,62 +665,35 @@ describe("shellApp — shell modes", () => {
   test("--no-history disables host shell history for the session", async () => {
     const spec = await hostSpec({ noHistory: true });
     expect(spec.historyFile).toBeUndefined();
-    expect(spec.env?.HISTFILE).toBe("/dev/null");
-    expect(spec.env?.HISTSIZE).toBe("0");
-    expect(spec.env?.HISTFILESIZE).toBe("0");
+    expect(spec.env?.HISTFILE).toBeUndefined();
   });
 
-  test("--no-interactive runs host shell through ShellRunner.exec", async () => {
-    const calls: Array<{ command: string; cwd?: string; env?: Readonly<Record<string, string>> }> = [];
-    const result = await Effect.runPromise(
-      shellApp({
-        isInteractive: () => false,
-        noInteractive: true,
-        shellPath: "/bin/sh",
-        args: ["-lc", "exit 13"],
-      }).pipe(
-        Effect.provide(
-          layer(
-            undefined,
-            undefined,
-            shellRunnerLayer(undefined, (command, options) => {
-              calls.push({
-                command,
-                ...(options?.cwd === undefined ? {} : { cwd: options.cwd }),
-                ...(options?.env === undefined ? {} : { env: options.env }),
-              });
-              return Effect.fail(
-                new ShellExecError({
-                  message: "Shell command exited with code 13",
-                  command,
-                  exitCode: 13,
-                  stdout: "",
-                  stderr: "",
-                }),
-              );
-            }),
-          ),
-        ),
-      ),
+  test("--no-interactive fails with ShellRequiresTtyError", async () => {
+    const error = await Effect.runPromise(
+      shellApp({ isInteractive: () => true, noInteractive: true }).pipe(Effect.provide(layer()), Effect.flip),
     );
-    expect(result.mode).toBe("host");
-    expect(result.exitCode).toBe(13);
-    expect(calls).toEqual([
-      {
-        command: "'/bin/sh' '-lc' 'exit 13'",
-        cwd: "/tmp/shell-scenario",
-        env: expect.objectContaining({ LANDO_APP_NAME: "shell-scenario" }),
-      },
-    ]);
+
+    expect(error).toBeInstanceOf(ShellRequiresTtyError);
+    expect((error as ShellRequiresTtyError).remediation).toContain(
+      "app:exec --interactive --tty -- <command>",
+    );
   });
 
-  test("a non-TTY stdin/stdout fails with ShellRequiresTtyError pointing at --no-interactive", async () => {
+  test("--no-interactive rejects service mode before provider execution", async () => {
+    const error = await Effect.runPromise(
+      shellApp({ service: "web", noInteractive: true }).pipe(Effect.provide(layer()), Effect.flip),
+    );
+
+    expect(error).toBeInstanceOf(ShellRequiresTtyError);
+  });
+
+  test("a non-TTY stdin/stdout fails with ShellRequiresTtyError pointing at app:exec", async () => {
     const error = await Effect.runPromise(
       shellApp({ isInteractive: () => false }).pipe(Effect.provide(layer()), Effect.flip),
     );
     expect(error).toBeInstanceOf(ShellRequiresTtyError);
     const ttyError = error as ShellRequiresTtyError;
-    expect(ttyError.remediation).toContain("lando shell --no-interactive");
+    expect(ttyError.remediation).not.toContain("lando shell --no-interactive");
     expect(ttyError.remediation).toContain("app:exec --interactive --tty -- <command>");
   });
 });

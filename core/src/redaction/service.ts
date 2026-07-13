@@ -53,7 +53,9 @@ const collectSecretStoreValues = (secretStore: Context.Tag.Service<typeof Secret
     return values.filter(nonEmpty);
   });
 
-const collectEnvValues = (sourceEnv: Record<string, string | undefined> | undefined): string[] => {
+export const collectSecretEnvValues = (
+  sourceEnv: Record<string, string | undefined> | undefined,
+): string[] => {
   if (sourceEnv === undefined) return [];
   const values: string[] = [];
   for (const [key, value] of Object.entries(sourceEnv)) {
@@ -76,14 +78,15 @@ const collectProxyValues = (proxyUrls: Iterable<string | undefined> | undefined)
       if (nonEmpty(parsed.password)) values.push(parsed.password);
       if (nonEmpty(parsed.username)) values.push(parsed.username);
     } catch (error) {
-      void error;
+      if (error instanceof TypeError) continue;
+      throw error;
     }
   }
   return values;
 };
 
 const collectOptionValues = (options: RedactionForProfileOptions | undefined): string[] => [
-  ...collectEnvValues(options?.sourceEnv),
+  ...collectSecretEnvValues(options?.sourceEnv),
   ...collectProxyValues(options?.proxyUrls),
   ...(options?.redactionTokens ?? []),
 ];

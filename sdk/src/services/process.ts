@@ -1,6 +1,11 @@
 import { Context, type Effect, type Stream } from "effect";
 
-import type { ProcessExecError, ProcessTimeoutError, ShellExecError } from "../errors/index.ts";
+import type {
+  ProcessExecError,
+  ProcessTimeoutError,
+  SecretNotFoundError,
+  ShellExecError,
+} from "../errors/index.ts";
 
 export interface ShellCommandOptions {
   readonly cwd?: string;
@@ -23,14 +28,27 @@ export interface ProcessResult {
   readonly stderr: string;
 }
 
+export type ShellReplInput =
+  | { readonly _tag: "line"; readonly line: string }
+  | { readonly _tag: "interrupt" }
+  | { readonly _tag: "eof" };
+
+export interface ShellReplIO {
+  readonly input: AsyncIterable<ShellReplInput>;
+  readonly writeStdout: (chunk: string) => void;
+  readonly writeStderr: (chunk: string) => void;
+  readonly prompt?: () => void;
+  readonly close?: () => void;
+}
+
 export interface ShellInteractiveSpec {
-  readonly shell: string;
-  readonly args?: ReadonlyArray<string>;
   readonly cwd?: string;
   readonly env?: Readonly<Record<string, string>>;
   readonly signal?: AbortSignal;
-  /** Ensures this file's parent dir exists and injects `HISTFILE` into the shell. */
   readonly historyFile?: string;
+  readonly historyLimit?: number;
+  readonly io?: ShellReplIO;
+  readonly resolveSecret: (id: string) => Effect.Effect<string, SecretNotFoundError>;
 }
 
 export interface ShellInteractiveResult {

@@ -58,6 +58,7 @@ const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBuck
   const fallback: A | null = spec.default ?? null;
   const schema = makeSchemaCodec(spec.schema);
   const codec = spec.codec;
+  const writeOptions = spec.mode === undefined ? {} : { mode: spec.mode };
 
   const readBytes = Effect.tryPromise({
     try: () => Bun.file(file).bytes(),
@@ -106,7 +107,9 @@ const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBuck
       try {
         frame = decodeFrame(codec, bytes);
       } catch (cause) {
-        return handleCorrupt(cause);
+        return handleCorrupt(
+          cause instanceof Error ? cause : new Error("State codec decode failed.", { cause }),
+        );
       }
       // A custom codec is unversioned (`version: null`); framed codecs carry the
       // stamped version and route a mismatch through `onVersionMismatch`.
@@ -124,7 +127,9 @@ const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBuck
         catch: (cause) => decodeError("set", file, cause),
       }).pipe(
         Effect.flatMap((body) =>
-          writeFileAtomicScoped(file, body).pipe(Effect.mapError((cause) => ioError("set", file, cause))),
+          writeFileAtomicScoped(file, body, writeOptions).pipe(
+            Effect.mapError((cause) => ioError("set", file, cause)),
+          ),
         ),
       );
     }
@@ -132,7 +137,7 @@ const buildBucket = <A, I>(spec: StateBucketSpec<A, I>, file: string): StateBuck
       Effect.mapError((cause) => decodeError("set", file, cause)),
       Effect.flatMap((encoded) => {
         const body = encodeFrame(codec, spec.version, encoded, value);
-        return writeFileAtomicScoped(file, body).pipe(
+        return writeFileAtomicScoped(file, body, writeOptions).pipe(
           Effect.mapError((cause) => ioError("set", file, cause)),
         );
       }),

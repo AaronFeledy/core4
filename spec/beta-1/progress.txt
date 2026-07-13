@@ -463,3 +463,27 @@ Open closure categories:
 - Verification: typecheck and lint passed; 80 focused MCP/app-config tests and direct catalog/dispatch smokes passed during review.
 - **Learnings for future iterations:** MCP reachability is determined by the projected `LandoCommandSpec`, not the broader OCLIF class flags; a mixed CLI command is safe only when its MCP schema is closed and its projected runner cannot select mutation.
 ---
+
+## 2026-07-13 00:51 CDT - US-439
+- Host `lando shell` now runs a per-line Bun Shell REPL through `ShellRunner`, with typed-at-prompt secret resolution, redacted pre/post events and bounded history, line-scoped interruption, correct EOF/exit status, and terminal restoration. Service shells remain provider-backed, while `--no-interactive` now fails before either host or service execution with source/compiled parity.
+- Verification: typecheck and lint passed; focused REPL, ShellRunner, shell scenario, SDK compatibility, redaction, full dispatch-parity, and sandboxed TTY spot checks passed; renderer, redaction, state-store, probe, telemetry, guide lint, and guide coverage gates passed. The public-transcript inventory remained unavailable on the clean build tree because the unrelated generated transcript corpus was absent.
+- **Learnings for future iterations:**
+  - Treat `--no-interactive` as a command-wide refusal and reject it before provider selection; a service flag must not bypass the TTY contract.
+  - Keep typed command text out of evaluator argv, remove evaluator bootstrap markers from the user environment, and apply resolved-secret redaction before output, events, or history.
+---
+
+## 2026-07-13 01:55 CDT - US-439 Review
+- Hardened the host REPL boundary: resolved secrets now remain escaped Bun Shell interpolations instead of raw syntax, arbitrary output chunks are redacted statefully before IO/events, cancellation finalizes input and reaps evaluator descendants, concurrent history updates are advisory-locked and bounded, explicit exit statuses normalize portably, and the host receives the applicable reserved LANDO environment. Closed the missing public `ShellRunner.interactive` SDK contract guard.
+- Review notes (deferred/rejected): generic `cli-app:shell-*` lifecycle events remain assigned to US-442 rather than this per-line shell story; privileged host DNS or hosts-file mutation for `host.lando.internal` was rejected in favor of the host-mode `LANDO_HOST_IP` projection. Cursor Bugbot was unavailable because the configured account had exhausted its model usage limit, so it was not treated as approval evidence.
+- Verification: typecheck and lint passed; focused REPL, ShellRunner, shell scenario, SDK compatibility, StateStore, and redaction tests passed; state-store, redaction, renderer, and paths boundary gates passed; sandboxed TTY QA passed.
+- **Learnings for future iterations:** Secret placeholders in shell-shaped programs must cross process boundaries as tagged-template values, never concatenated source, and live redaction must retain candidate secret prefixes across arbitrary stdout/stderr chunk boundaries.
+---
+
+## 2026-07-13 02:21 CDT - US-439 Verify
+- Compiled `core/dist/lando`, ran sandboxed `lando setup` (Podman 6 PATH), and exercised host shell e2e: Bun.$ REPL lines, Ctrl+C recovery, history persistence, `--no-history`, `--no-interactive` source/compiled parity (`ShellRequiresTtyError`), exit/EOF status, and adjacent version/config/help smoke. Clean teardown.
+- Fixed two real compiled-binary blockers: StateStore path-root open failed for new per-app history dirs (mkdir parent first); REPL exit left the process hung on TTY stdin (pause/unref + raw-mode restore on close).
+- Cursor Bugbot unavailable (monthly model usage limit); not treated as approval.
+- **Learnings for future iterations:**
+  - StateStore `{ path }` roots must exist before open; `realpathDeepestExisting` rejects a not-yet-created root as outside itself.
+  - Real readline host shells must detach/pause stdin on close or the CLI event loop never drains after a clean REPL return.
+---

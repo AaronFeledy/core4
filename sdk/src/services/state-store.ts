@@ -47,6 +47,8 @@ export interface StateBucketSpec<A, I> {
   readonly schema: Schema.Schema<A, I>;
   readonly version: number;
   readonly codec?: StateCodec<A, I>;
+  /** Exact permissions applied to each atomic replacement, after umask. */
+  readonly mode?: number;
   readonly lock?: "none" | "advisory";
   readonly onCorrupt?: "discard" | "quarantine" | "fail";
   readonly onVersionMismatch?: "discard" | StateMigrator<A>;
