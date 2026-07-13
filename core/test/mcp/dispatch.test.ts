@@ -5,6 +5,7 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
 import { type McpDispatchDeps, dispatchTool } from "../../src/mcp/dispatch.ts";
@@ -162,6 +163,38 @@ describe("dispatchTool", () => {
     if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
       expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
       expect((exit.cause.error as McpToolInputError).path).toBe("flags.format");
+    }
+  });
+
+  test("rejects write-shaped app config projection input before execution", async () => {
+    const projected = mcpRegistryFromCompiled({
+      "app:config": { landoSpec: spec("app:config", () => Effect.succeed({})) },
+    });
+    let executed = false;
+    const getEntry = projected.commandEntries.find((entry) => entry.spec.id === "app:config:get");
+    expect(getEntry).toBeDefined();
+    if (getEntry === undefined) return;
+    const { deps } = harness([getEntry]);
+
+    const exit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:config:get", input: { args: { key: "name", subcommand: "set" } } },
+        {
+          ...deps,
+          execute: () =>
+            Effect.sync(() => {
+              executed = true;
+              return { _tag: "success", value: {} } satisfies CommandResultOutcome;
+            }),
+        },
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(executed).toBe(false);
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error).toBeInstanceOf(McpToolInputError);
+      expect((exit.cause.error as McpToolInputError).path).toBe("args.subcommand");
     }
   });
 

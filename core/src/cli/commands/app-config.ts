@@ -25,6 +25,7 @@ import { findDiscoveredLandofilePath } from "../../landofile/service.ts";
 import { detectTemplateDirective, renderLandofileTemplate } from "../../landofile/template-render.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
+import { getAtPath } from "../config-write/dot-path.ts";
 import {
   ConfigWriteResultFields,
   type ValueType,
@@ -35,7 +36,7 @@ import {
   writeValidationErrorFromIssues,
 } from "../config-write/write-core.ts";
 
-export type AppConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
+export type AppConfigSubcommand = "view" | "get" | "set" | "unset" | "edit" | "validate";
 
 export interface AppConfigOptions {
   readonly subcommand?: AppConfigSubcommand;
@@ -96,6 +97,14 @@ const missingArgsError = (): LandofileWriteValidationError =>
     file: "",
     issues: ["Missing key path or value."],
     remediation: "Usage: `lando app config set <key.path> <value> [--type string|number|boolean|json|yaml]`.",
+  });
+
+const missingGetKeyError = (): LandofileWriteValidationError =>
+  new LandofileWriteValidationError({
+    message: "`app config get` requires a <key.path>.",
+    file: "",
+    issues: ["Missing key path."],
+    remediation: "Usage: `lando app config get <key.path>`.",
   });
 
 type WritableAppConfigSubcommand = Extract<AppConfigSubcommand, "set" | "unset" | "edit" | "validate">;
@@ -349,6 +358,23 @@ export const appConfigEdit = (
     return { subcommand: "edit", filePath: inputPath, changed: true, valid: true };
   });
 
+export const appConfigGet = (
+  options: AppConfigOptions,
+): Effect.Effect<AppConfigResult, AppConfigError, AppConfigServices> =>
+  Effect.gen(function* () {
+    const key = options.key ?? options.path;
+    if (key === undefined) return yield* Effect.fail(missingGetKeyError());
+    const landofileService = yield* LandofileService;
+    const landofile = yield* loadUserLandofile(landofileService);
+    return {
+      app: landofile.name ?? "",
+      source: "resolved",
+      subcommand: "get",
+      key,
+      value: getAtPath(landofile, key),
+    };
+  });
+
 const tableRender = (result: AppConfigResult): string => {
   const lines: string[] = [`app\t${result.app ?? ""}`];
   const services = Object.keys(result.landofile?.services ?? {});
@@ -356,6 +382,12 @@ const tableRender = (result: AppConfigResult): string => {
   else lines.push(`services\t${services.join(", ")}`);
   if (result.landofile?.recipe !== undefined) lines.push(`recipe\t${result.landofile.recipe}`);
   return lines.join("\n");
+};
+
+const getRender = (result: AppConfigResult): string => {
+  if (result.value === undefined) return "";
+  if (result.value !== null && typeof result.value === "object") return JSON.stringify(result.value);
+  return String(result.value);
 };
 
 const writeRender = (result: AppConfigResult): string => {
@@ -383,6 +415,7 @@ export const renderAppConfigResult = (
   result: AppConfigResult,
   _format: "json" | "table" = "table",
 ): string => {
+  if (result.subcommand === "get") return getRender(result);
   if (result.subcommand !== undefined && result.subcommand !== "view") return writeRender(result);
   return tableRender(result);
 };
@@ -392,6 +425,7 @@ export const appConfig = (
 ): Effect.Effect<AppConfigResult, AppConfigError, AppConfigServices> =>
   Effect.gen(function* () {
     const subcommand = options.subcommand ?? "view";
+    if (subcommand === "get") return yield* appConfigGet(options);
     if (subcommand === "set") return yield* appConfigSet(options);
     if (subcommand === "unset") return yield* appConfigUnset(options);
     if (subcommand === "edit") return yield* appConfigEdit(options);

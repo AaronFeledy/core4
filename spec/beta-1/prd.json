@@ -1206,7 +1206,7 @@
         "Lint passes"
       ],
       "priority": 67,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Progress records app:config being removed from the default MCP allowlist until read-only get/view projection exists."
     },
     {

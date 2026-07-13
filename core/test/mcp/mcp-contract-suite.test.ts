@@ -24,6 +24,7 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
@@ -98,21 +99,11 @@ const decodeEnvelope = (envelope: unknown): CommandResultEnvelope =>
   Schema.decodeUnknownSync(CommandResultEnvelope)(envelope);
 
 const specFor = (id: string): LandoCommandSpec | undefined =>
-  (compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>)[id]?.landoSpec;
+  allCommandEntries().find((entry) => entry.spec.id === id)?.spec;
 
-const allCommandEntries = (): ReadonlyArray<McpCommandEntry> => {
-  const entries: McpCommandEntry[] = [];
-  const seen = new Set<string>();
-  for (const value of Object.values(
-    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-  )) {
-    const commandSpec = value?.landoSpec;
-    if (commandSpec === undefined || seen.has(commandSpec.id)) continue;
-    seen.add(commandSpec.id);
-    entries.push({ spec: commandSpec });
-  }
-  return entries;
-};
+const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
+  mcpRegistryFromCompiled(compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>)
+    .commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
   Layer.succeed(RedactionService, {
@@ -141,6 +132,13 @@ describe("MCP contract suite — catalog matches the allowlist cache", () => {
 
   test("every cached default id resolves to a real command spec", () => {
     for (const id of MCP_DEFAULT_ALLOWLIST) expect(specFor(id)).toBeDefined();
+  });
+
+  test("app config defaults are read-only projections and the umbrella is absent", () => {
+    const ids = allCommandEntries().map((entry) => entry.spec.id);
+    expect(MCP_DEFAULT_ALLOWLIST).toContain("app:config:get");
+    expect(MCP_DEFAULT_ALLOWLIST).toContain("app:config:view");
+    expect(ids).not.toContain("app:config");
   });
 });
 

@@ -32,7 +32,9 @@ import type { RedactionService } from "../../../redaction/service.ts";
 import type { RendererMode } from "../../bug-report.ts";
 import type { ResultFormat } from "../../format-flags.ts";
 import type { LandoCommandSpec } from "../../oclif/command-base.ts";
+import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../oclif/generated/mcp-allowlist.ts";
+import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../oclif/mcp-allowlist.ts";
 import { runWithRendererHandling } from "../../renderer-boundary.ts";
 import { type RunToolingResult, renderRunToolingResult, runTooling } from "../tooling.ts";
 import {
@@ -123,9 +125,14 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
 export const mcpRegistryFromCompiled = (
   compiled: Record<string, { readonly landoSpec?: LandoCommandSpec }>,
 ): McpCommandRegistry => ({
-  commandEntries: Object.values(compiled).flatMap((command) =>
-    command.landoSpec === undefined ? [] : [{ spec: command.landoSpec }],
-  ),
+  commandEntries: Object.values(compiled).flatMap((command) => {
+    const spec = command.landoSpec;
+    if (spec === undefined) return [];
+    assertMcpAllowlistSafe(spec);
+    if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
+    if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));
+    return [{ spec }];
+  }),
 });
 
 export const mcpRegistryWithToolingEntries = (

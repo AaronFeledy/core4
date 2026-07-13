@@ -1,12 +1,23 @@
 import { McpAllowlistConflictError } from "@lando/sdk/errors";
 
+export const APP_CONFIG_MCP_UNSAFE_IDS: ReadonlySet<string> = new Set([
+  "app:config",
+  "app:config:edit",
+  "app:config:set",
+  "app:config:unset",
+  "app:config:validate",
+]);
+
 export const MCP_ALLOWLIST_FORBIDDEN_IDS: ReadonlyArray<string> = [
+  ...APP_CONFIG_MCP_UNSAFE_IDS,
   "app:destroy",
   "apps:poweroff",
   "meta:uninstall",
 ];
 
 const FORBIDDEN_ID_SET = new Set(MCP_ALLOWLIST_FORBIDDEN_IDS);
+
+export const isAppConfigMcpUnsafeId = (id: string): boolean => APP_CONFIG_MCP_UNSAFE_IDS.has(id);
 
 export const isMcpAllowlistForbidden = (id: string): boolean =>
   FORBIDDEN_ID_SET.has(id) || id.startsWith("meta:plugin:");

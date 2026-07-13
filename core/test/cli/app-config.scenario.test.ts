@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Effect, Exit, Layer, Schema } from "effect";
 
-import { AppConfigResultSchema, appConfig, renderAppConfigResult } from "@lando/core/cli/operations";
+import {
+  type AppConfigResult,
+  AppConfigResultSchema,
+  appConfig,
+  renderAppConfigResult,
+} from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -62,8 +67,8 @@ describe("lando app:config", () => {
 
     expect(result.app).toBe("test-app-config");
     expect(result.source).toBe("resolved");
-    expect(result.landofile.name).toBe("test-app-config");
-    expect(result.landofile.recipe).toBe("node");
+    expect(result.landofile?.name).toBe("test-app-config");
+    expect(result.landofile?.recipe).toBe("node");
     const table = renderAppConfigResult(result, "table");
     expect(table).toContain("app\ttest-app-config");
     expect(table).toContain("services\t(none)");
@@ -73,6 +78,52 @@ describe("lando app:config", () => {
       source: "resolved",
       landofile: { name: "test-app-config", recipe: "node" },
     });
+  });
+
+  test("returns a single resolved value for get", async () => {
+    const layer = Layer.succeed(LandofileService, {
+      discover: Effect.succeed({
+        name: "test-app-config-get",
+        recipe: "node",
+        services: { web: { type: "node" } },
+      }),
+    });
+
+    const result = await Effect.runPromise(
+      appConfig({ subcommand: "get", key: "services.web.type" }).pipe(Effect.provide(layer)),
+    );
+
+    expect(result).toMatchObject({
+      app: "test-app-config-get",
+      source: "resolved",
+      subcommand: "get",
+      key: "services.web.type",
+      value: "node",
+    });
+    expect(Schema.encodeSync(AppConfigResultSchema)(result)).toMatchObject({
+      subcommand: "get",
+      key: "services.web.type",
+      value: "node",
+    });
+  });
+
+  test("renders a get scalar as the selected value only", () => {
+    const result: AppConfigResult = {
+      subcommand: "get",
+      key: "services.web.type",
+      value: "node",
+    };
+
+    expect(renderAppConfigResult(result, "table")).toBe("node");
+  });
+
+  test("renders a missing get value as an empty string", () => {
+    const result: AppConfigResult = {
+      subcommand: "get",
+      key: "services.web.missing",
+    };
+
+    expect(renderAppConfigResult(result, "table")).toBe("");
   });
 
   test("rejects an unrecognized subcommand instead of silently defaulting to view", async () => {

@@ -61,6 +61,38 @@ export const appConfigSpec: LandoCommandSpec<AppConfigResult> = {
   },
 };
 
+export const appConfigMcpSpecs: ReadonlyArray<LandoCommandSpec<AppConfigResult>> = [
+  {
+    resultSchema: AppConfigResultSchema,
+    id: "app:config:get",
+    summary: "Read one resolved value from the current app's Landofile.",
+    namespace: "app",
+    bootstrap: "app",
+    mcpAllowed: true,
+    args: {
+      key: { type: "string", required: true, description: "Dot-path key selector." },
+    },
+    run: (input) => appConfig({ ...appConfigOptionsFromInput(input), subcommand: "get" }),
+    render: (result, input) => {
+      const format = appConfigOptionsFromInput(input).format ?? "table";
+      return renderAppConfigResult(result as AppConfigResult, format);
+    },
+  },
+  {
+    resultSchema: AppConfigResultSchema,
+    id: "app:config:view",
+    summary: "Read the resolved config for the current app.",
+    namespace: "app",
+    bootstrap: "app",
+    mcpAllowed: true,
+    run: () => appConfig({ subcommand: "view" }),
+    render: (result, input) => {
+      const format = appConfigOptionsFromInput(input).format ?? "table";
+      return renderAppConfigResult(result as AppConfigResult, format);
+    },
+  },
+];
+
 export default class AppConfigCommand extends LandoCommandBase {
   static override description = appConfigSpec.summary;
   static override aliases = [...resolveTopLevelAliases(appConfigSpec)];

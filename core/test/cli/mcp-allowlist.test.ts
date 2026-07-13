@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { McpAllowlistConflictError } from "@lando/sdk/errors";
 
+import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
 import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
@@ -13,6 +14,8 @@ import {
 } from "../../src/cli/oclif/mcp-allowlist.ts";
 
 const EXPECTED_DEFAULT_ALLOWLIST = [
+  "app:config:get",
+  "app:config:view",
   "app:exec",
   "app:info",
   "app:logs",
@@ -32,6 +35,14 @@ const specFor = (id: string): LandoCommandSpec => {
   const commandClass = (compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>)[id];
   const spec = commandClass?.landoSpec;
   if (spec === undefined) throw new Error(`No landoSpec for command id ${id}`);
+  return spec;
+};
+
+const mcpSpecFor = (id: string): LandoCommandSpec => {
+  const spec = mcpRegistryFromCompiled(
+    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
+  ).commandEntries.find((entry) => entry.spec.id === id)?.spec;
+  if (spec === undefined) throw new Error(`No MCP registry spec for tool id ${id}`);
   return spec;
 };
 
@@ -62,13 +73,28 @@ describe("assertMcpAllowlistSafe", () => {
     mcpAllowed: boolean | undefined,
   ): Pick<LandoCommandSpec, "id"> & {
     readonly mcpAllowed?: boolean;
-  } => ({ id, mcpAllowed });
+  } => {
+    if (mcpAllowed === undefined) return { id };
+    return { id, mcpAllowed };
+  };
 
   test("rejects a destructive built-in that self-allows", () => {
     expect(() => assertMcpAllowlistSafe(makeSpec("app:destroy", true))).toThrow(McpAllowlistConflictError);
     expect(() => assertMcpAllowlistSafe(makeSpec("meta:plugin:add", true))).toThrow(
       McpAllowlistConflictError,
     );
+  });
+
+  test("rejects app config write-capable variants that self-allow", () => {
+    expect(() => assertMcpAllowlistSafe(makeSpec("app:config:set", true))).toThrow(McpAllowlistConflictError);
+  });
+
+  test("rejects a self-allowed app config umbrella before MCP projection replacement", () => {
+    expect(() =>
+      mcpRegistryFromCompiled({
+        "app:config": { landoSpec: { ...specFor("app:config"), mcpAllowed: true } },
+      }),
+    ).toThrow(McpAllowlistConflictError);
   });
 
   test("allows a destructive command that does not self-allow", () => {
@@ -83,27 +109,29 @@ describe("assertMcpAllowlistSafe", () => {
 
 describe("MCP default allowlist derivation", () => {
   test("derives exactly the shipped opt-ins, sorted", () => {
-    const specs = Object.values(compiledCommands)
-      .map((commandClass) => (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec)
-      .filter((spec): spec is LandoCommandSpec => spec !== undefined);
-    expect(computeMcpDefaultAllowlist(specs)).toEqual(EXPECTED_DEFAULT_ALLOWLIST);
+    const specs = mcpRegistryFromCompiled(
+      compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
+    ).commandEntries.map((entry) => entry.spec);
+    expect([...computeMcpDefaultAllowlist(specs)]).toEqual([...EXPECTED_DEFAULT_ALLOWLIST]);
   });
 
   test("the generated cache matches the live derivation (no drift)", () => {
-    const specs = Object.values(compiledCommands)
-      .map((commandClass) => (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec)
-      .filter((spec): spec is LandoCommandSpec => spec !== undefined);
-    expect([...MCP_DEFAULT_ALLOWLIST]).toEqual(computeMcpDefaultAllowlist(specs));
+    const specs = mcpRegistryFromCompiled(
+      compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
+    ).commandEntries.map((entry) => entry.spec);
+    expect([...MCP_DEFAULT_ALLOWLIST]).toEqual([...computeMcpDefaultAllowlist(specs)]);
   });
 
   test("every opt-in command actually declares mcpAllowed", () => {
     for (const id of EXPECTED_DEFAULT_ALLOWLIST) {
-      expect(specFor(id).mcpAllowed).toBe(true);
+      expect(mcpSpecFor(id).mcpAllowed).toBe(true);
     }
   });
 
-  test("does not expose the app config umbrella until MCP can project read-only verbs", () => {
+  test("projects read-only app config tools without exposing the unsafe umbrella", () => {
     expect(specFor("app:config").mcpAllowed).toBeUndefined();
+    expect(mcpSpecFor("app:config:get").id).toBe("app:config:get");
+    expect(mcpSpecFor("app:config:view").id).toBe("app:config:view");
     expect(MCP_DEFAULT_ALLOWLIST).not.toContain("app:config");
   });
 
