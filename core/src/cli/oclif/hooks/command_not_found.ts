@@ -1,7 +1,6 @@
 import type { Hook } from "@oclif/core";
-import { Effect } from "effect";
 
-import { runDynamicTooling, runDynamicToolingFailure } from "../../cli-adapters/app-lifecycle.ts";
+import { routeDynamicTooling } from "../../cli-adapters/app-lifecycle.ts";
 import {
   setActiveDeprecationWarnings,
   setActiveRendererMode,
@@ -9,7 +8,6 @@ import {
 } from "../../compiled-runtime.ts";
 import { resolveResultFormat } from "../../format-flags.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../renderer-boundary.ts";
-import { resolveToolingRoute, toolingRouteError } from "../../tooling-router.ts";
 
 const normalizeToolingArgv = async (argv: ReadonlyArray<string>): Promise<ReadonlyArray<string>> => {
   const renderer = await resolveCliRendererMode({ argv, env: process.env });
@@ -28,21 +26,7 @@ const normalizeToolingArgv = async (argv: ReadonlyArray<string>): Promise<Readon
 };
 
 export const commandNotFoundHook: Hook<"command_not_found"> = async ({ argv = [], context, id }) => {
-  const route = await Effect.runPromise(resolveToolingRoute({ argv: [id, ...argv] }));
-  switch (route._tag) {
-    case "not-tooling":
-      context.error(`command ${id} not found`, { code: "COMMAND_NOT_FOUND", exit: 127 });
-      return;
-    case "cache-miss":
-    case "unknown-tooling":
-      await runDynamicToolingFailure(
-        route.name,
-        await normalizeToolingArgv(route.argv),
-        toolingRouteError(route),
-      );
-      return;
-    case "tooling":
-      await runDynamicTooling([route.name, ...(await normalizeToolingArgv(route.argv))]);
-      return;
-  }
+  const normalizedArgv = await normalizeToolingArgv(argv);
+  if (await routeDynamicTooling([id, ...normalizedArgv])) return;
+  context.error(`command ${id} not found`, { code: "COMMAND_NOT_FOUND", exit: 127 });
 };

@@ -5,6 +5,7 @@ import { join, resolve } from "node:path";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { appToolingCompilationCachePath } from "../../src/cache/paths.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const sourceCli = resolve(repoRoot, "core/bin/lando.ts");
@@ -135,7 +136,7 @@ test("Given separate fresh fixtures, when bare and canonical tasks run, then sou
 
     // Then
     expect(sourceResult.exitCode, sourceResult.stderr).toBe(0);
-    expect(compiledResult.exitCode, compiledResult.stderr).toBe(0);
+    expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
     const expected = {
       command: "app:greet",
       ok: true,
@@ -149,6 +150,67 @@ test("Given separate fresh fixtures, when bare and canonical tasks run, then sou
     };
     expect(lastEnvelope(sourceResult.stdout)).toMatchObject(expected);
     expect(lastEnvelope(compiledResult.stdout)).toMatchObject(expected);
+  } finally {
+    await Promise.all([source.cleanup(), compiled.cleanup()]);
+  }
+}, 30_000);
+
+test("Given a cached custom task, when compiled dispatch receives version, then it routes the task before global version", async () => {
+  const compiled = await makeFixture("compiled-version-argv");
+  try {
+    // Given
+    await writeTask(compiled, "inspect-argv", ["echo -n dynamic-version-ok"]);
+    await writeFreshCache(compiled, "inspect-argv");
+
+    // When
+    const compiledResult = await runCompiledDispatcher(compiled, [
+      "inspect-argv",
+      "--version",
+      "--format=json",
+    ]);
+
+    // Then
+    expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
+    expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
+      command: "app:inspect-argv",
+      ok: true,
+      result: { stdout: "dynamic-version-ok" },
+    });
+  } finally {
+    await compiled.cleanup();
+  }
+}, 30_000);
+
+test("Given corrupted app caches, when a custom task is resolved, then both dispatchers render CacheError envelopes", async () => {
+  const source = await makeFixture("source-corrupt-cache");
+  const compiled = await makeFixture("compiled-corrupt-cache");
+  try {
+    // Given
+    await writeFreshCache(source, "broken");
+    await writeFreshCache(compiled, "broken");
+    const sourceCachePath = appToolingCompilationCachePath(source.cacheRoot, source.root);
+    const compiledCachePath = appToolingCompilationCachePath(compiled.cacheRoot, compiled.root);
+    await Promise.all([rm(sourceCachePath), rm(compiledCachePath)]);
+    await Promise.all([mkdir(sourceCachePath), mkdir(compiledCachePath)]);
+
+    // When
+    const [sourceResult, compiledResult] = await Promise.all([
+      runSource(source, ["broken", "--format=json"]),
+      runCompiledDispatcher(compiled, ["broken", "--format=json"]),
+    ]);
+
+    // Then
+    expect(sourceResult.exitCode).toBe(1);
+    expect(compiledResult.exitCode).toBe(1);
+    expect(lastEnvelope(sourceResult.stdout)).toMatchObject({
+      command: "app:broken",
+      ok: false,
+      error: {
+        _tag: "CacheError",
+        message: "Failed to read app-command cache.",
+      },
+    });
+    expect(lastEnvelope(compiledResult.stdout)).toEqual(lastEnvelope(sourceResult.stdout));
   } finally {
     await Promise.all([source.cleanup(), compiled.cleanup()]);
   }

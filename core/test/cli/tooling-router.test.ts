@@ -53,6 +53,27 @@ test("Given a fresh cached app task, when resolving its bare name, then it route
   });
 });
 
+test("Given a fresh cached app task, when resolving version, then the flag remains task argv", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [
+      { id: "app:quality", summary: "Run quality checks", hidden: false },
+    ]);
+
+    // When
+    const route = await Effect.runPromise(
+      resolveToolingRoute({ argv: ["quality", "--version"], cwd: root, cacheRoot }),
+    );
+
+    // Then
+    expect(route).toMatchObject({
+      _tag: "tooling",
+      commandId: "app:quality",
+      argv: ["--version"],
+    });
+  });
+});
+
 test("Given a fresh cached app task, when resolving its canonical id, then it routes to the same task", async () => {
   await withApp(async (root, cacheRoot) => {
     // Given

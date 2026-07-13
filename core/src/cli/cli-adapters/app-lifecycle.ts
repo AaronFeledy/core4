@@ -2,7 +2,7 @@ import { dirname } from "node:path";
 
 import { Effect, Layer, Schema } from "effect";
 
-import { type ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
+import { type CacheError, type ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
@@ -91,6 +91,7 @@ import {
 } from "../oclif/commands/app/share/common.ts";
 import { setupSpec } from "../oclif/commands/meta/setup.ts";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary.ts";
+import { resolveToolingRoute, toolingName, toolingRouteError } from "../tooling-router.ts";
 
 export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
@@ -143,12 +144,38 @@ export const runDynamicTooling = (argv: ReadonlyArray<string>): Promise<void> =>
 export const runDynamicToolingFailure = (
   name: string,
   argv: ReadonlyArray<string>,
-  error: ToolingCompileError,
+  error: ToolingCompileError | CacheError,
 ): Promise<void> => {
   const commandId = `app:${name}`;
   setActiveCommandId(commandId);
   resetActiveCommandInvocation(commandId, argv);
   return runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined, dynamicToolingOptions);
+};
+
+export const routeDynamicTooling = async (argv: ReadonlyArray<string>): Promise<boolean> => {
+  const token = argv[0];
+  if (token === undefined) return false;
+  const name = toolingName(token);
+  if (name === undefined) return false;
+
+  const resolution = await Effect.runPromise(Effect.either(resolveToolingRoute({ argv })));
+  if (resolution._tag === "Left") {
+    await runDynamicToolingFailure(name, argv.slice(1), resolution.left);
+    return true;
+  }
+
+  const route = resolution.right;
+  switch (route._tag) {
+    case "not-tooling":
+      return false;
+    case "cache-miss":
+    case "unknown-tooling":
+      await runDynamicToolingFailure(route.name, route.argv, toolingRouteError(route));
+      return true;
+    case "tooling":
+      await runDynamicTooling([route.name, ...route.argv]);
+      return true;
+  }
 };
 
 export const runInfo = (argv: ReadonlyArray<string>): Promise<void> =>

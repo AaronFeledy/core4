@@ -132,6 +132,7 @@ ALIASES
 };
 
 import {
+  routeDynamicTooling,
   runAppCacheRefresh,
   runAppConfig,
   runAppConfigLint,
@@ -141,8 +142,6 @@ import {
   runAppIncludesVerify,
   runDestroy,
   runDoctor,
-  runDynamicTooling,
-  runDynamicToolingFailure,
   runInfo,
   runLogs,
   runOpen,
@@ -163,7 +162,6 @@ import {
   runStart,
   runStop,
 } from "./cli-adapters/app-lifecycle.ts";
-import { resolveToolingRoute, toolingRouteError } from "./tooling-router.ts";
 
 export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle.ts";
 import { runExec, runShell, runSsh } from "./cli-adapters/exec-shell.ts";
@@ -363,6 +361,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
   const dashDashIndex = argv.indexOf("--");
   const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
+  const found = findCommand(argv[0] ?? "");
+
+  if (found === undefined && (await routeDynamicTooling(argv))) return;
 
   if (
     !isBunOrX &&
@@ -879,20 +880,8 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  const found = findCommand(argv[0] ?? "");
   if (found === undefined) {
-    const route = await Effect.runPromise(resolveToolingRoute({ argv }));
-    switch (route._tag) {
-      case "not-tooling":
-        throw new Error(`Command ${argv[0] ?? ""} not found`);
-      case "cache-miss":
-      case "unknown-tooling":
-        await runDynamicToolingFailure(route.name, route.argv, toolingRouteError(route));
-        return;
-      case "tooling":
-        await runDynamicTooling([route.name, ...route.argv]);
-        return;
-    }
+    throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 
   const error = notImplementedErrorForCommand(found[0]);

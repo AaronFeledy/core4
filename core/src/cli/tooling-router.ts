@@ -38,7 +38,7 @@ export interface ResolveToolingRouteOptions {
   readonly cacheRoot?: string;
 }
 
-const toolingName = (token: string): string | undefined => {
+export const toolingName = (token: string): string | undefined => {
   if (token.startsWith("app:")) return token.slice("app:".length) || undefined;
   return token.includes(":") ? undefined : token;
 };
