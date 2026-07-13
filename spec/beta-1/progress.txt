@@ -494,3 +494,20 @@ Open closure categories:
 - Review feedback: fixed (added Guide-Coverage-Skip for SDK service surfaces already covered by lando-shell guide; reran guide jobs green)
 - Merge: merged (squash)
 ---
+
+## 2026-07-13 05:22 CDT - US-440
+- MCP serve startup now rejects unusable or TTY stdio and incompatible machine-output mode consistently across source and compiled dispatch, while global `mcp.maxConcurrent` is schema-validated and reaches the retained MCP service.
+- Stdio request framing, outstanding calls, cancellation delivery, queued response/progress bytes, and blocked writes are bounded before JSON parsing or unbounded retention; malformed, partial, oversized, slow-loris, and non-reading clients terminate with tagged transport failures.
+- Verification: typecheck, lint, build, schema codegen/idempotence, machine-output/renderer/redaction boundaries, guide gates, focused MCP/SDK/parity tests, and real source/compiled stdio and startup-refusal CLI checks passed.
+- **Learnings for future iterations:**
+  - Enforce frame and queue limits at the transport boundary before parsing, and serialize protocol output through one bounded writer that awaits flush/backpressure.
+  - Keep serve-startup capability classification shared ahead of catalog/runtime work so source and compiled dispatch fail with the same tagged contract.
+---
+
+## 2026-07-13 05:47 CDT - US-440 Review
+- Bounded completed-request tombstones so sequential calls cannot grow session memory indefinitely while preserving late-cancellation protection; scoped the Bun stdout sink so a timed-out native flush no longer keeps the process alive; made outbound byte reservation through queue acceptance interruption-safe; strengthened the notification queue-cap test to prove capacity overflow without relying on the write deadline.
+- Aligned normative global-config and SDK compatibility documentation with the shipped positive-integer `mcp.maxConcurrent` contract.
+- Review notes (deferred/rejected): rejected a concurrent progress-correlation race because the relevant Effect `Ref` operations have no asynchronous yield and a concurrent probe preserved unique monotonic progress; deferred bounded streaming JSON serialization because the confirmed contract bounds retained queue bytes while serialization is one transient value already produced by command execution; deferred creating a new MCP guide because the matrix target does not exist and guide authoring is broader than this hardening review. Cursor Bugbot was unavailable because the configured account exhausted its monthly model quota, so it was not treated as approval evidence.
+- Verification: typecheck and lint passed; 142 post-fix focused MCP/SDK/CLI and source/compiled parity tests passed; the real blocked-pipe Bun probe changed from timeout exit 124 to clean exit 0. The TypeScript no-excuse audit passed for the new/changed transport and test seams; it continues to flag one pre-existing `as unknown` in `McpService` outside the review lines.
+- **Learnings for future iterations:** A deadline around `Effect.promise` does not cancel native Bun stdout I/O; the owning `FileSink` must be scope-finalized. Completion tombstones need an explicit retention cap even when active requests are already bounded.
+---

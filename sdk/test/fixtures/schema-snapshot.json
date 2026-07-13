@@ -20888,6 +20888,12 @@
               },
               "type": "array"
             },
+            "maxConcurrent": {
+              "description": "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
+              "exclusiveMinimum": 0,
+              "title": "positive",
+              "type": "integer"
+            },
             "tooling": {
               "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
               "type": "boolean"
@@ -30308,6 +30314,12 @@
           },
           "type": "array"
         },
+        "maxConcurrent": {
+          "description": "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
+          "exclusiveMinimum": 0,
+          "title": "positive",
+          "type": "integer"
+        },
         "tooling": {
           "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
           "type": "boolean"
@@ -30340,7 +30352,9 @@
         },
         "maxConcurrent": {
           "description": "Cap on concurrent in-flight tool calls (default 4).",
-          "type": "number"
+          "exclusiveMinimum": 0,
+          "title": "positive",
+          "type": "integer"
         },
         "tooling": {
           "description": "Whether to project tooling tasks as tools (--tooling).",
@@ -42373,6 +42387,12 @@
                     "type": "string"
                   },
                   "type": "array"
+                },
+                "maxConcurrent": {
+                  "description": "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
+                  "exclusiveMinimum": 0,
+                  "title": "positive",
+                  "type": "integer"
                 },
                 "tooling": {
                   "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",

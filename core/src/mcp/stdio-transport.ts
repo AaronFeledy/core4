@@ -1,7 +1,10 @@
-import { Deferred, Effect, Option, Queue, Ref, Scope } from "effect";
+import { Deferred, Effect, Queue, Ref, Scope } from "effect";
 
+import type { McpTransportError } from "@lando/sdk/errors";
 import type { McpCatalog } from "@lando/sdk/schema";
 
+import { MAX_OUTSTANDING_REQUESTS, MAX_PENDING_CANCELLATIONS, stdioTransportError } from "./stdio-limits.ts";
+import { runStdioReader, takeUntilTerminal } from "./stdio-reader.ts";
 import {
   type JsonObject,
   type JsonRpcId,
@@ -20,6 +23,7 @@ import {
   stringField,
   toolInputFrom,
 } from "./stdio-rpc.ts";
+import { makeStdioWriter, makeStdoutLineWriter } from "./stdio-writer.ts";
 import type {
   McpTransportNotification,
   McpTransportReply,
@@ -30,7 +34,7 @@ import type {
 export interface StdioTransportOptions {
   readonly catalog: McpCatalog;
   readonly input?: ReadableStream<Uint8Array>;
-  readonly write?: (line: string) => Effect.Effect<void>;
+  readonly write?: (line: string) => Effect.Effect<void, unknown>;
   readonly serverInfo?: { readonly name: string; readonly version: string };
   readonly protocolVersion?: string;
 }
@@ -49,15 +53,6 @@ interface CorrelationState {
 const DEFAULT_PROTOCOL_VERSION = "2024-11-05";
 const DEFAULT_SERVER_INFO = { name: "lando", version: "4.0.0" } as const;
 
-const stdoutWrite = (): ((line: string) => Effect.Effect<void>) => {
-  const writer = Bun.stdout.writer();
-  return (line) =>
-    Effect.promise(async () => {
-      writer.write(`${line}\n`);
-      await writer.flush();
-    });
-};
-
 const progressTokenFromParams = (params: JsonObject | undefined): ProgressToken | undefined =>
   progressTokenFrom(objectField(params ?? {}, "_meta")?.progressToken);
 
@@ -65,41 +60,24 @@ export const makeStdioMcpTransport = (
   options: StdioTransportOptions,
 ): Effect.Effect<McpTransportShape, never, Scope.Scope> =>
   Effect.gen(function* () {
-    const input = options.input ?? Bun.stdin.stream();
-    const writeLine = options.write ?? stdoutWrite();
-    const protocolVersion = options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
-    const serverInfo = options.serverInfo ?? DEFAULT_SERVER_INFO;
-    const reader = input.getReader();
-    const decoder = new TextDecoder();
+    const reader = (options.input ?? Bun.stdin.stream()).getReader();
     const requests = yield* Queue.unbounded<McpTransportRequest>();
-    const cancellations = yield* Queue.unbounded<string>();
-    const closed = yield* Deferred.make<void>();
+    const cancellations = yield* Queue.dropping<string>(MAX_PENDING_CANCELLATIONS);
+    const terminal = yield* Deferred.make<void, McpTransportError>();
     const counter = yield* Ref.make(0);
     const correlations = yield* Ref.make<CorrelationState>({
       byInternalId: new Map(),
       byJsonrpcId: new Map(),
     });
-    const scope = yield* Effect.scope;
+    const writeLine = options.write === undefined ? yield* makeStdoutLineWriter() : options.write;
+    const writer = yield* makeStdioWriter({ writeLine, terminal });
+    const protocolVersion = options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
+    const serverInfo = options.serverInfo ?? DEFAULT_SERVER_INFO;
 
-    const close = Deferred.succeed(closed, undefined).pipe(Effect.asVoid);
-    const writeJson = (message: JsonObject): Effect.Effect<void> => writeLine(JSON.stringify(message));
-    const writeError = (id: JsonRpcId, code: number, message: string, data?: unknown): Effect.Effect<void> =>
+    const writeJson = (message: JsonObject): Effect.Effect<void, McpTransportError> =>
+      writer.write(JSON.stringify(message));
+    const writeError = (id: JsonRpcId, code: number, message: string, data?: unknown) =>
       writeJson(rpcError(id, code, message, data));
-
-    yield* Scope.addFinalizer(
-      scope,
-      close.pipe(
-        Effect.zipRight(Queue.shutdown(requests)),
-        Effect.zipRight(Queue.shutdown(cancellations)),
-        Effect.zipRight(Effect.promise(() => reader.cancel()).pipe(Effect.ignore)),
-      ),
-    );
-
-    const rememberCorrelation = (internalId: string, entry: CorrelationEntry): Effect.Effect<void> =>
-      Ref.update(correlations, (current) => ({
-        byInternalId: new Map(current.byInternalId).set(internalId, entry),
-        byJsonrpcId: new Map(current.byJsonrpcId).set(idKey(entry.jsonrpcId), internalId),
-      }));
 
     const forgetCorrelation = (internalId: string, entry: CorrelationEntry): Effect.Effect<void> =>
       Ref.update(correlations, (current) => {
@@ -112,45 +90,57 @@ export const makeStdioMcpTransport = (
 
     const incrementProgress = (internalId: string, entry: CorrelationEntry): Effect.Effect<number> =>
       Ref.updateAndGet(correlations, (current) => {
-        const nextProgress = (entry.progress ?? 0) + 1;
+        const progress = (entry.progress ?? 0) + 1;
         return {
-          byInternalId: new Map(current.byInternalId).set(internalId, { ...entry, progress: nextProgress }),
+          byInternalId: new Map(current.byInternalId).set(internalId, { ...entry, progress }),
           byJsonrpcId: current.byJsonrpcId,
         };
       }).pipe(Effect.map((current) => current.byInternalId.get(internalId)?.progress ?? 1));
 
-    const enqueueToolCall = (id: JsonRpcId, params: JsonObject | undefined): Effect.Effect<void> => {
+    const enqueueToolCall = (id: JsonRpcId, params: JsonObject | undefined) => {
       const toolId = params === undefined ? undefined : stringField(params, "name");
       if (toolId === undefined) return writeError(id, -32602, "Invalid params");
-      const inputPayload = toolInputFrom(objectField(params ?? {}, "arguments"));
       return Effect.gen(function* () {
-        const next = yield* Ref.updateAndGet(counter, (value) => value + 1);
-        const internalId = `req-${next}`;
+        const internalId = `req-${yield* Ref.updateAndGet(counter, (value) => value + 1)}`;
         const progressToken = progressTokenFromParams(params);
         const entry: CorrelationEntry =
           progressToken === undefined ? { jsonrpcId: id } : { jsonrpcId: id, progressToken };
-        yield* rememberCorrelation(internalId, entry);
+        const accepted = yield* Ref.modify(correlations, (current) => {
+          if (current.byInternalId.size >= MAX_OUTSTANDING_REQUESTS) return [false, current];
+          return [
+            true,
+            {
+              byInternalId: new Map(current.byInternalId).set(internalId, entry),
+              byJsonrpcId: new Map(current.byJsonrpcId).set(idKey(id), internalId),
+            },
+          ];
+        });
+        if (!accepted) return yield* writeError(id, -32000, "Server busy");
+        const input = toolInputFrom(objectField(params ?? {}, "arguments"));
         yield* Queue.offer(requests, {
           id: internalId,
-          request: { toolId, ...(inputPayload === undefined ? {} : { input: inputPayload }) },
+          request: {
+            toolId,
+            ...(input === undefined ? {} : { input }),
+          },
         });
       });
     };
 
-    const cancelToolCall = (params: JsonObject | undefined): Effect.Effect<void> => {
-      const requestId = jsonRpcIdFrom(params?.requestId);
-      if (requestId === undefined) return Effect.void;
-      return Ref.get(correlations).pipe(
-        Effect.flatMap((current) => {
-          const internalId = current.byJsonrpcId.get(idKey(requestId));
-          return internalId === undefined
-            ? Effect.void
-            : Queue.offer(cancellations, internalId).pipe(Effect.asVoid);
-        }),
-      );
-    };
+    const cancelToolCall = (params: JsonObject | undefined): Effect.Effect<void, McpTransportError> =>
+      Effect.gen(function* () {
+        const requestId = jsonRpcIdFrom(params?.requestId);
+        if (requestId === undefined) return;
+        const current = yield* Ref.get(correlations);
+        const internalId = current.byJsonrpcId.get(idKey(requestId));
+        if (internalId === undefined) return;
+        if (yield* Queue.offer(cancellations, internalId)) return;
+        const error = stdioTransportError("MCP stdio cancellation queue exceeded 256 pending entries.");
+        yield* Deferred.fail(terminal, error);
+        return yield* Effect.fail(error);
+      });
 
-    const handleMessage = (message: JsonObject): Effect.Effect<void> => {
+    const handleMessage = (message: JsonObject): Effect.Effect<void, McpTransportError> => {
       const method = stringField(message, "method");
       if (method === undefined) return Effect.void;
       const hasId = hasOwn(message, "id");
@@ -189,50 +179,35 @@ export const makeStdioMcpTransport = (
       }
     };
 
-    const handleLine = (line: string): Effect.Effect<void> => {
-      const trimmed = line.trim();
-      if (trimmed.length === 0) return Effect.void;
-      return parseJsonLine(trimmed).pipe(
+    const handleFrame = (line: string): Effect.Effect<void, McpTransportError> =>
+      parseJsonLine(line.trim()).pipe(
+        Effect.catchAll(() => {
+          const error = stdioTransportError("MCP stdio received malformed JSON.");
+          return writeError(null, -32700, "Parse error").pipe(Effect.zipRight(Effect.fail(error)));
+        }),
         Effect.flatMap((parsed) => (isJsonObject(parsed) ? handleMessage(parsed) : Effect.void)),
-        Effect.catchAll(() =>
-          trimmed.startsWith("{") ? writeError(null, -32700, "Parse error") : Effect.void,
-        ),
       );
-    };
 
-    const readLoop = Effect.gen(function* () {
-      let buffered = "";
-      while (true) {
-        const chunk = yield* Effect.tryPromise(() => reader.read()).pipe(
-          Effect.catchAll(() => Effect.succeed({ done: true, value: undefined })),
-        );
-        if (chunk.done === true) {
-          if (buffered.trim().length > 0) yield* handleLine(buffered);
-          yield* close;
-          return;
-        }
-        buffered += decoder.decode(chunk.value, { stream: true });
-        let newline = buffered.indexOf("\n");
-        while (newline >= 0) {
-          yield* handleLine(buffered.slice(0, newline));
-          buffered = buffered.slice(newline + 1);
-          newline = buffered.indexOf("\n");
-        }
-      }
-    });
-
-    yield* readLoop.pipe(Effect.forkScoped);
-
-    const receive: McpTransportShape["receive"] = Effect.raceFirst(
-      Queue.take(requests).pipe(Effect.map(Option.some)),
-      Deferred.await(closed).pipe(Effect.as(Option.none<McpTransportRequest>())),
-    );
-    const receiveCancel: McpTransportShape["receiveCancel"] = Effect.raceFirst(
-      Queue.take(cancellations).pipe(Effect.map(Option.some)),
-      Deferred.await(closed).pipe(Effect.as(Option.none<string>())),
+    yield* runStdioReader({
+      reader: {
+        read: async () => {
+          const result = await reader.read();
+          return { done: result.done, value: result.value };
+        },
+      },
+      terminal,
+      onFrame: handleFrame,
+    }).pipe(Effect.forkScoped);
+    yield* Scope.addFinalizer(
+      yield* Effect.scope,
+      Deferred.succeed(terminal, undefined).pipe(
+        Effect.zipRight(Queue.shutdown(requests)),
+        Effect.zipRight(Queue.shutdown(cancellations)),
+        Effect.zipRight(Effect.promise(() => reader.cancel()).pipe(Effect.ignore)),
+      ),
     );
 
-    const reply = (replyMessage: McpTransportReply): Effect.Effect<void> =>
+    const reply = (replyMessage: McpTransportReply): Effect.Effect<void, McpTransportError> =>
       Ref.get(correlations).pipe(
         Effect.flatMap((current) => {
           const entry = current.byInternalId.get(replyMessage.id);
@@ -247,7 +222,7 @@ export const makeStdioMcpTransport = (
         }),
       );
 
-    const notify = (notification: McpTransportNotification): Effect.Effect<void> =>
+    const notify = (notification: McpTransportNotification): Effect.Effect<void, McpTransportError> =>
       Ref.get(correlations).pipe(
         Effect.flatMap((current) => {
           const entry = current.byInternalId.get(notification.id);
@@ -269,5 +244,10 @@ export const makeStdioMcpTransport = (
         }),
       );
 
-    return { receive, receiveCancel, reply, notify };
+    return {
+      receive: takeUntilTerminal(requests, terminal),
+      receiveCancel: takeUntilTerminal(cancellations, terminal),
+      reply,
+      notify,
+    };
   });

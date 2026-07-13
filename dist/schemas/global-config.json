@@ -55,6 +55,12 @@
           },
           "type": "array"
         },
+        "maxConcurrent": {
+          "description": "Positive cap on concurrent MCP tool calls (global mcp.maxConcurrent; default 4).",
+          "exclusiveMinimum": 0,
+          "title": "positive",
+          "type": "integer"
+        },
         "tooling": {
           "description": "Project resolved app tooling tasks as MCP tools by default (global mcp.tooling).",
           "type": "boolean"

@@ -26,6 +26,7 @@ import {
   McpService,
   McpServiceLive,
 } from "../../../mcp/service.ts";
+import { mcpServeStartupError } from "../../../mcp/stdio-limits.ts";
 import { makeStdioMcpTransport } from "../../../mcp/stdio-transport.ts";
 import { McpTransport } from "../../../mcp/transport.ts";
 import type { RedactionService } from "../../../redaction/service.ts";
@@ -57,7 +58,10 @@ export interface ResolvedMcpOptions {
   readonly allow: ReadonlyArray<string>;
   readonly deny: ReadonlyArray<string>;
   readonly tooling: boolean;
+  readonly maxConcurrent?: number | undefined;
 }
+
+export { classifyMcpServeStartup } from "../../../mcp/stdio-limits.ts";
 
 /** The injected command registry the catalog + dispatch project from. */
 export interface McpCommandRegistry {
@@ -191,6 +195,7 @@ export const resolveMcpOptions = (
   allow: [...(config?.allow ?? []), ...(flags.allow ?? [])],
   deny: [...(config?.deny ?? []), ...(flags.deny ?? [])],
   tooling: (config?.tooling ?? false) || flags.tooling === true,
+  ...(config?.maxConcurrent === undefined ? {} : { maxConcurrent: config.maxConcurrent }),
 });
 
 const knownIdsOf = (registry: McpCommandRegistry): ReadonlySet<string> =>
@@ -295,7 +300,11 @@ export const serveMcp = (
       const catalog = yield* service.catalog(catalogOptions);
       const transport = yield* makeStdioMcpTransport({ catalog });
       yield* service
-        .serve({ transport: "stdio", ...catalogOptions })
+        .serve({
+          transport: "stdio",
+          ...catalogOptions,
+          ...(options.maxConcurrent === undefined ? {} : { maxConcurrent: options.maxConcurrent }),
+        })
         .pipe(Effect.provideService(McpTransport, transport));
     }).pipe(
       Effect.scoped,
@@ -333,16 +342,19 @@ export const dispatchMcpCommand = async (params: {
     });
   }
 
-  const exit = await Effect.runPromiseExit(
-    Effect.gen(function* () {
-      const registry = yield* resolveRegistryForCommand(
-        params.registry,
-        params.flags,
-        params.retainedRuntime,
-      );
-      yield* serveMcp(registry, params.flags, params.retainedRuntime);
-    }).pipe(Effect.provide(params.commandRuntime)),
-  );
+  const startupError = mcpServeStartupError(params.resultFormat);
+  const serveEffect =
+    startupError === undefined
+      ? Effect.gen(function* () {
+          const registry = yield* resolveRegistryForCommand(
+            params.registry,
+            params.flags,
+            params.retainedRuntime,
+          );
+          yield* serveMcp(registry, params.flags, params.retainedRuntime);
+        })
+      : Effect.fail(startupError);
+  const exit = await Effect.runPromiseExit(serveEffect.pipe(Effect.provide(params.commandRuntime)));
   if (Exit.isSuccess(exit)) return;
   if (Exit.isInterrupted(exit)) return;
 
@@ -350,7 +362,7 @@ export const dispatchMcpCommand = async (params: {
   return runWithRendererHandling(Effect.fail(squashedError), {
     runtime: Layer.empty,
     rendererMode: params.rendererMode,
-    resultFormat: params.resultFormat,
+    resultFormat: "text",
     command: "meta:mcp",
     resultSchema: McpListResultSchema,
     formatError: params.formatError,

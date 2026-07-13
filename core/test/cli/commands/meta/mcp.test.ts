@@ -7,6 +7,7 @@ import { ConfigService } from "@lando/sdk/services";
 
 import {
   type McpCommandRegistry,
+  classifyMcpServeStartup,
   mcpFlagsFromParsed,
   mcpListResult,
   mcpRegistryFromCompiled,
@@ -54,6 +55,43 @@ describe("resolveMcpOptions", () => {
     expect(options.allow).toEqual(["app:info"]);
     expect(options.deny).toEqual([]);
     expect(options.tooling).toBe(false);
+  });
+
+  test("mcp-config-max-concurrent propagates a valid configured cap", () => {
+    // Given
+    const config = { tooling: false, maxConcurrent: 8 };
+
+    // When
+    const options = resolveMcpOptions({}, config);
+
+    // Then
+    expect(Reflect.get(options, "maxConcurrent")).toBe(8);
+  });
+});
+
+describe("classifyMcpServeStartup", () => {
+  const pipe = { available: true, tty: false, kind: "fifo" } as const;
+
+  test("accepts only text serve mode with two usable non-TTY descriptors", () => {
+    // Given / When
+    const supported = classifyMcpServeStartup({ resultFormat: "text", stdin: pipe, stdout: pipe });
+    const machine = classifyMcpServeStartup({ resultFormat: "json", stdin: pipe, stdout: pipe });
+    const tty = classifyMcpServeStartup({
+      resultFormat: "text",
+      stdin: { available: true, tty: true, kind: "character" },
+      stdout: pipe,
+    });
+    const missing = classifyMcpServeStartup({
+      resultFormat: "text",
+      stdin: pipe,
+      stdout: { available: false, tty: false, kind: "other" },
+    });
+
+    // Then
+    expect(supported).toBeUndefined();
+    expect(machine?._tag).toBe("McpTransportError");
+    expect(tty?._tag).toBe("McpTransportError");
+    expect(missing?._tag).toBe("McpTransportError");
   });
 });
 

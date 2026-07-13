@@ -46,7 +46,7 @@ export interface McpProgressFrame {
   readonly service?: string;
 }
 
-export type McpNotify = (frame: unknown) => Effect.Effect<void>;
+export type McpNotify = (frame: unknown) => Effect.Effect<void, McpTransportError>;
 
 /**
  * Runs a resolved command against the retained runtime and returns a
@@ -140,7 +140,10 @@ const encodeProgressFrame = (frame: McpProgressFrame, deps: McpDispatchDeps): Ef
         redactor: deps.redactor,
       });
 
-const emitProgressFrame = (deps: McpDispatchDeps, frame: McpProgressFrame): Effect.Effect<void> =>
+const emitProgressFrame = (
+  deps: McpDispatchDeps,
+  frame: McpProgressFrame,
+): Effect.Effect<void, McpTransportError> =>
   deps.notify === undefined
     ? Effect.void
     : encodeProgressFrame(frame, deps).pipe(

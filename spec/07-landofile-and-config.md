@@ -802,6 +802,7 @@ mcp:
   allow: []                            # extra canonical command ids exposed as MCP tools beyond the mcpAllowed defaults
   deny: []                             # default-allowed ids to suppress
   tooling: false                       # also expose the resolved app's tooling tasks as MCP tools
+  maxConcurrent: 4                     # positive cap on concurrent MCP tool calls
 
 pluginConfig:
   "@lando/proxy-traefik":

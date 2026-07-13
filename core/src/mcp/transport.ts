@@ -29,11 +29,11 @@ export interface McpTransportNotification {
 
 export interface McpTransportShape {
   /** Next inbound request, or `None` once the transport is closed. */
-  readonly receive: Effect.Effect<Option.Option<McpTransportRequest>>;
+  readonly receive: Effect.Effect<Option.Option<McpTransportRequest>, McpTransportError>;
   /** Next request id cancelled by the MCP client, or `None` once the transport is closed. */
-  readonly receiveCancel: Effect.Effect<Option.Option<string>>;
-  readonly reply: (reply: McpTransportReply) => Effect.Effect<void>;
-  readonly notify: (notification: McpTransportNotification) => Effect.Effect<void>;
+  readonly receiveCancel: Effect.Effect<Option.Option<string>, McpTransportError>;
+  readonly reply: (reply: McpTransportReply) => Effect.Effect<void, McpTransportError>;
+  readonly notify: (notification: McpTransportNotification) => Effect.Effect<void, McpTransportError>;
 }
 
 export class McpTransport extends Context.Tag("@lando/core/McpTransport")<

@@ -22,7 +22,9 @@
     },
     "maxConcurrent": {
       "description": "Cap on concurrent in-flight tool calls (default 4).",
-      "type": "number"
+      "exclusiveMinimum": 0,
+      "title": "positive",
+      "type": "integer"
     },
     "tooling": {
       "description": "Whether to project tooling tasks as tools (--tooling).",

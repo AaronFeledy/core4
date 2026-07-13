@@ -57,7 +57,7 @@ export const McpServeOptions = Schema.Struct({
   tooling: Schema.optional(Schema.Boolean).annotations({
     description: "Whether to project tooling tasks as tools (--tooling).",
   }),
-  maxConcurrent: Schema.optional(Schema.Number).annotations({
+  maxConcurrent: Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())).annotations({
     description: "Cap on concurrent in-flight tool calls (default 4).",
   }),
   cwd: Schema.optional(Schema.String).annotations({
