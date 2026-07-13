@@ -10,6 +10,14 @@ const stripComments = (source: string): string =>
 
 const compiledRuntimeAssetModules = [
   "core/src/cli/run.ts",
+  "core/src/cli/compiled-argv.ts",
+  "core/src/cli/compiled-normalize.ts",
+  "core/src/cli/compiled-runtime.ts",
+  "core/src/cli/compiled-input.ts",
+  "core/src/cli/cli-help.ts",
+  "core/src/cli/cli-adapters/app-lifecycle.ts",
+  "core/src/cli/cli-adapters/exec-shell.ts",
+  "core/src/cli/cli-adapters/meta-plugin.ts",
   "core/src/cli/oclif/manifest.ts",
   "core/src/cli/oclif/compiled-manifest.ts",
   "core/src/recipes/bundled.ts",
