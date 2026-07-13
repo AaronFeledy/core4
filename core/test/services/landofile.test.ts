@@ -255,8 +255,20 @@ describe("LandofileServiceLive", () => {
           expect(error).toBeInstanceOf(LandofileNotFoundError);
           if (error._tag === "LandofileNotFoundError") {
             expect(error.cwd).toBe(join(dir, "nested"));
-            expect(error.message).toContain(join(dir, "nested", ".lando.yml"));
-            expect(error.message).toContain(join(dir, ".lando.yml"));
+            expect(error.message).toStartWith("No .lando.yml or .lando.ts found. Searched:");
+            for (const root of [join(dir, "nested"), dir]) {
+              for (const basename of [
+                ".lando.base",
+                ".lando.dist",
+                ".lando.upstream",
+                ".lando",
+                ".lando.local",
+                ".lando.user",
+              ]) {
+                expect(error.message).toContain(join(root, `${basename}.yml`));
+                expect(error.message).toContain(join(root, `${basename}.ts`));
+              }
+            }
           }
         }
       }

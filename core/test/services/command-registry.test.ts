@@ -376,6 +376,40 @@ describe("CommandRegistryLive cold-path cache writes", () => {
     });
   });
 
+  test("invalidates the warm tooling cache when TypeScript Landofile output changes with the environment", async () => {
+    await withTempCacheRoot(async () => {
+      await withTempCwd(async (dir) => {
+        const envKey = "LANDO_TEST_TOOLING_COMMAND";
+        const previousCommand = process.env[envKey];
+        try {
+          await writeFile(
+            join(dir, ".lando.ts"),
+            [
+              "export default (ctx: { env: Record<string, string | undefined> }) => ({",
+              '  name: "typescript-warm-cache",',
+              '  tooling: { [ctx.env.LANDO_TEST_TOOLING_COMMAND ?? "fallback"]: { cmd: "echo" } },',
+              "});",
+              "",
+            ].join("\n"),
+          );
+          process.chdir(dir);
+          process.env[envKey] = "first";
+
+          const cold = await listFromLive();
+          expect(cold.map((command) => command.id)).toEqual(["app:first"]);
+
+          process.env[envKey] = "second";
+          const warm = await listFromLive();
+
+          expect(warm.map((command) => command.id)).toEqual(["app:second"]);
+        } finally {
+          if (previousCommand === undefined) Reflect.deleteProperty(process.env, envKey);
+          else process.env[envKey] = previousCommand;
+        }
+      });
+    });
+  });
+
   test("invalidates the warm tooling cache when version-constraint provenance is missing", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       await withTempCwd(async (dir) => {

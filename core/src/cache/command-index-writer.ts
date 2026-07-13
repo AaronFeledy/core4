@@ -457,6 +457,7 @@ const readFreshAppCommandCacheForCwdTask = async (options: {
   const cwd = options.cwd ?? process.cwd();
   const source = await resolveAppCommandCacheSource(cwd);
   if (source === undefined) return null;
+  if (source.landofileSources.some((entry) => entry.relativePath.endsWith(".ts"))) return null;
   if (source.landofileSources.some((entry) => landofileUsesTemplate(entry.bytes))) return null;
   const appRoot = dirname(source.filePath);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();

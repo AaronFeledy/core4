@@ -26,7 +26,8 @@ import {
 } from "../config/version-constraint.ts";
 import { LANDOFILE_NAME } from "../landofile/discovery.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
-import { findDiscoveredLandofilePath, loadLandofileFile } from "../landofile/service.ts";
+import { landofileLayerPaths } from "../landofile/layers.ts";
+import { findDiscoveredLandofilePath, loadLandofileFile, loadLandofileLayers } from "../landofile/service.ts";
 import { CORE_VERSION } from "../version.ts";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";
 
@@ -196,16 +197,27 @@ export const loadUserLandofile = (
     Effect.map(({ landofile }) => landofile),
   );
 
-export const loadUserLandofileFile = (filePath: string): Effect.Effect<LandofileShape, UserLandofileError> =>
-  loadLandofileFile(filePath).pipe(
-    Effect.flatMap((landofile) => {
-      if (landofile.includes === undefined || landofile.includes.length === 0)
-        return Effect.succeed(landofile);
-      return resolveLandofileIncludes({ landofile, appRoot: dirname(filePath), sourcePath: filePath });
-    }),
+export const loadUserLandofileFile = (
+  filePath: string,
+): Effect.Effect<LandofileShape, UserLandofileError> => {
+  const appRoot = dirname(filePath);
+  return (
+    landofileLayerPaths(appRoot).some(
+      ({ yamlPath, typescriptPath }) => filePath === yamlPath || filePath === typescriptPath,
+    )
+      ? loadLandofileLayers(appRoot, filePath)
+      : loadLandofileFile(filePath).pipe(
+          Effect.flatMap((landofile) =>
+            landofile.includes === undefined || landofile.includes.length === 0
+              ? Effect.succeed(landofile)
+              : resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }),
+          ),
+        )
+  ).pipe(
     Effect.tap(assertUserAppIdNotReserved),
     Effect.tap((landofile) => assertLandoVersionConstraint(landofile, { sourcePath: filePath })),
   );
+};
 
 const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
   Effect.try({

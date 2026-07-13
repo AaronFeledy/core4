@@ -107,7 +107,7 @@ const findLandofile = async (cwd: string): Promise<DiscoveredLandofile> => {
   }
 
   throw new LandofileNotFoundError({
-    message: `No Landofile merge layer found. Searched: ${searched.join(", ")}`,
+    message: `No .lando.yml or .lando.ts found. Searched: ${searched.join(", ")}`,
     cwd,
   });
 };

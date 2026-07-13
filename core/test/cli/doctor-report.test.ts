@@ -25,6 +25,10 @@ import {
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
+import {
+  appVersionConstraintsForReport,
+  renderAppVersionConstraintResult,
+} from "../../src/cli/commands/doctor-version-constraint.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
@@ -345,6 +349,86 @@ describe("meta:doctor combined report", () => {
       expect(renderDoctorReport(report)).toContain("lando app:includes:update");
     } finally {
       process.chdir(previousCwd);
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports a malformed lando range as a redacted version-constraint failure", async () => {
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-doctor-version-malformed-")));
+    const previousCwd = process.cwd();
+    const previousSecret = process.env.LANDO_SECRET_MALFORMED_RANGE;
+    try {
+      process.chdir(dir);
+      process.env.LANDO_SECRET_MALFORMED_RANGE = "definitely-not-semver-secret";
+      await writeFile(join(dir, ".lando.yml"), "name: doctor-app\nlando: definitely-not-semver-secret\n");
+
+      const report = await Effect.runPromise(appVersionConstraintsForReport());
+
+      expect(report?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: {
+          declared: "(malformed Landofile)",
+        },
+        solutions: [
+          {
+            kind: "manual",
+            description: "Fix the Landofile syntax or `lando:` range, then rerun `lando doctor --app`.",
+          },
+        ],
+      });
+      expect(report?.checks[0]?.context.loadFailure).toContain("not a valid semver range");
+      if (report === undefined) throw new Error("expected version-constraint report");
+      const text = renderAppVersionConstraintResult(report);
+      expect(text).toContain("app-version-constraint: fail");
+      expect(text).toContain("Fix the Landofile syntax or `lando:` range");
+      expect(text).not.toContain("definitely-not-semver-secret");
+      expect(report.checks[0]?.context.loadFailure).not.toContain("definitely-not-semver-secret");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousSecret === undefined) {
+        Reflect.deleteProperty(process.env, "LANDO_SECRET_MALFORMED_RANGE");
+      } else process.env.LANDO_SECRET_MALFORMED_RANGE = previousSecret;
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("reports same-layer YAML and TypeScript forms as a redacted version-constraint failure", async () => {
+    const previousSecret = process.env.LANDO_SECRET_CONFLICT_PATH;
+    process.env.LANDO_SECRET_CONFLICT_PATH = "doctor-form-secret";
+    const dir = await realpath(await mkdtemp(join(tmpdir(), "doctor-form-secret-")));
+    const previousCwd = process.cwd();
+    try {
+      process.chdir(dir);
+      await writeFile(join(dir, ".lando.yml"), "name: doctor-app\n");
+      await writeFile(join(dir, ".lando.local.yml"), "name: local-yaml\n");
+      await writeFile(join(dir, ".lando.local.ts"), 'export default { name: "local-ts" };\n');
+
+      const report = await Effect.runPromise(appVersionConstraintsForReport());
+
+      expect(report?.checks[0]).toMatchObject({
+        name: "app-version-constraint",
+        status: "fail",
+        severity: "error",
+        context: {
+          declared: "(conflicting Landofile forms)",
+          layer: "local",
+        },
+      });
+      expect(report?.checks[0]?.context.loadFailure).toContain("are present for the local Landofile layer");
+      expect(report?.checks[0]?.solutions[0]?.description).toContain("each layer accepts exactly one form");
+      if (report === undefined) throw new Error("expected version-constraint report");
+      const text = renderAppVersionConstraintResult(report);
+      expect(text).toContain("app-version-constraint: fail");
+      expect(text).toContain("each layer accepts exactly one form");
+      expect(text).not.toContain("doctor-form-secret");
+      expect(report.checks[0]?.context.loadFailure).not.toContain("doctor-form-secret");
+      expect(report.checks[0]?.solutions[0]?.description).not.toContain("doctor-form-secret");
+    } finally {
+      process.chdir(previousCwd);
+      if (previousSecret === undefined) Reflect.deleteProperty(process.env, "LANDO_SECRET_CONFLICT_PATH");
+      else process.env.LANDO_SECRET_CONFLICT_PATH = previousSecret;
       await rm(dir, { recursive: true, force: true });
     }
   });

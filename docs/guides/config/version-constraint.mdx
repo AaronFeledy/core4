@@ -10,7 +10,7 @@ tags: [beta, docs, landofile, config, version-constraint]
   <Scenario id="author-lando-range" render={false} reason="The Landofile schema, semver parser, and app-resolution enforcement are covered by focused version-constraint tests">
     <Step name="declare">
       <Variable name="landofileKey" value='lando: ">=4.1 &lt;5"' display="Declare the running Lando core semver range at the top level of .lando.yml" />
-      <Variable name="rangeGrammar" value=">=, &lt;=, >, &lt;, =, ^, ~, exact versions" display="Supported range forms; prerelease/build metadata on the running version is ignored for numeric comparison" />
+      <Variable name="rangeGrammar" value="npm-semver comparators, unions (||), hyphen ranges, x-ranges, ^, ~, exact versions" display="Full npm-semver range grammar; prereleases participate in ordering and build metadata does not affect precedence" />
       <Variable name="distinctSurface" value="runtime: and services.*.api remain separate" display="The lando: key constrains the Lando core binary only" />
     </Step>
   </Scenario>
