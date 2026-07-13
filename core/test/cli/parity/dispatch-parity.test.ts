@@ -37,6 +37,7 @@ import { errorCodeFromStderr, normalizeJsonEnvelope, normalizeOutput } from "./n
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 const coreRoot = resolve(repoRoot, "core");
 const runSourcePath = resolve(coreRoot, "src/cli/run.ts");
+const compiledRuntimeSourcePath = resolve(coreRoot, "src/cli/compiled-runtime.ts");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
 const compiledBinary = resolve(coreRoot, "dist/lando");
 
@@ -45,6 +46,7 @@ const MVP_IDS: ReadonlyArray<string> = CANONICAL_IDS.filter(isMvpCommandId);
 const DEFERRED_IDS: ReadonlyArray<string> = [...DEFERRED_COMMAND_PLANS.keys()].sort();
 
 const runSource = readFileSync(runSourcePath, "utf-8");
+const compiledRuntimeSource = readFileSync(compiledRuntimeSourcePath, "utf-8");
 
 /**
  * A canonical id has a compiled-dispatch branch when `runCompiledCli` compares
@@ -105,11 +107,18 @@ describe("compiled-binary dispatch parity — structural", () => {
   });
 
   test("compiled scratch commands thread resolved deprecation suppression into the renderer boundary", () => {
-    const start = runSource.indexOf("const runScratchEffect =");
-    const end = runSource.indexOf("export const parseScratchStartArgv", start);
-    expect(start).toBeGreaterThanOrEqual(0);
-    expect(end).toBeGreaterThan(start);
-    expect(runSource.slice(start, end)).toContain("deprecationWarnings: activeDeprecationWarnings");
+    const scratchStart = runSource.indexOf("const runScratchEffect =");
+    const scratchEnd = runSource.indexOf("export const parseScratchStartArgv", scratchStart);
+    const runtimeStart = compiledRuntimeSource.indexOf("export const runCompiledCommand =");
+    const runtimeEnd = compiledRuntimeSource.indexOf("export const runWithProcessAbortSignal", runtimeStart);
+    expect(scratchStart).toBeGreaterThanOrEqual(0);
+    expect(scratchEnd).toBeGreaterThan(scratchStart);
+    expect(runtimeStart).toBeGreaterThanOrEqual(0);
+    expect(runtimeEnd).toBeGreaterThan(runtimeStart);
+    expect(runSource.slice(scratchStart, scratchEnd)).toContain("runCompiledCommand(");
+    expect(compiledRuntimeSource.slice(runtimeStart, runtimeEnd)).toContain(
+      "deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false",
+    );
   });
 });
 

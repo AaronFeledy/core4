@@ -5,8 +5,12 @@ import { ConfigService, DeprecationService, EventService, Renderer } from "@land
 
 import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
 import { ConfigServiceLive } from "../services/config.ts";
-import { EventServiceLive } from "../services/event-service.ts";
 import { SecretStoreLive } from "../services/secret-store.ts";
+import {
+  type CliInvocationSnapshot,
+  runCommandLifecycle,
+  withCommandEventService,
+} from "./command-lifecycle.ts";
 import { CommandWarnings, makeCommandWarnings } from "./command-warnings.ts";
 import { DEFAULT_RESULT_FORMAT, type ResultFormat } from "./format-flags.ts";
 import {
@@ -156,6 +160,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly rendererMode: RendererMode;
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
+  readonly invocation?: CliInvocationSnapshot;
   readonly resultSchema?: Schema.Schema.AnyNoContext;
   readonly streaming?: StreamFrameSchema;
   readonly streamingMode?: "live";
@@ -166,6 +171,7 @@ export interface RunWithRendererHandlingOptions<A, R, RE> {
   readonly plainTaskEvents?: "detail-only";
   readonly deprecationWarnings?: boolean;
   readonly suppressDeprecationDiagnostics?: boolean;
+  readonly suppressInterruptionDiagnostics?: boolean;
   readonly render?: (value: A, ctx: RenderContext) => string | undefined;
   readonly successExitCode?: (value: A) => number | undefined;
   readonly formatError: (error: unknown) => string;
@@ -319,23 +325,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
   const commandLayer = (
     liveStreaming
       ? Layer.mergeAll(options.runtime, rendererLayer, streamFrameSinkLayer, commandWarningsLayer)
-      : options.renderEvents === true
-        ? Layer.mergeAll(
-            options.runtime,
-            Layer.provideMerge(
-              makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
-                ...(options.plainTaskEvents === undefined
-                  ? {}
-                  : { plainTaskEvents: options.plainTaskEvents }),
-              }),
-              EventServiceLive,
-            ),
-            rendererLayer,
-            commandWarningsLayer,
-          )
-        : streamingJson
-          ? Layer.mergeAll(options.runtime, EventServiceLive, rendererLayer, commandWarningsLayer)
-          : Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer)
+      : Layer.mergeAll(options.runtime, rendererLayer, commandWarningsLayer)
   ) as Layer.Layer<R, RE>;
   const program = Effect.gen(function* () {
     const command = options.command ?? "cli:unknown";
@@ -441,32 +431,59 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         yield* writeDiagnosticLine(message);
         yield* setFailureExitCode;
       });
+    const executeCommand = Effect.gen(function* () {
+      const commandExit =
+        options.invocation === undefined
+          ? yield* Effect.exit(effect)
+          : yield* runCommandLifecycle(effect, {
+              invocation: options.invocation,
+              ...(options.successExitCode === undefined ? {} : { successExitCode: options.successExitCode }),
+              ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
+            });
+      if (
+        options.suppressInterruptionDiagnostics === true &&
+        Exit.isFailure(commandExit) &&
+        Cause.isInterruptedOnly(commandExit.cause)
+      ) {
+        return { _tag: "handled-failure" } as const;
+      }
+      if (options.suppressDeprecationDiagnostics !== true) {
+        yield* renderDeprecationDiagnostics(options.deprecationWarnings ?? true);
+      }
+      if (Exit.isFailure(commandExit)) {
+        yield* renderFailure(commandExit.cause);
+        return { _tag: "handled-failure" } as const;
+      }
+      yield* applySuccessExitCode(commandExit.value);
+      if (liveStreaming) {
+        if (renderContext.format === "json") {
+          yield* emitStreamResult(
+            { _tag: "success", value: commandExit.value },
+            options.redactionTokens?.(commandExit.value) ?? [],
+          );
+        }
+        return { _tag: "handled-success" } as const;
+      }
+      if (streamingJson) {
+        yield* emitStreamingSuccess(commandExit.value);
+        return { _tag: "handled-success" } as const;
+      }
+      return { _tag: "success", value: commandExit.value } as const;
+    });
+    const executeWithEventConsumer =
+      options.renderEvents === true
+        ? executeCommand.pipe(
+            Effect.provide(
+              makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+                ...(options.plainTaskEvents === undefined
+                  ? {}
+                  : { plainTaskEvents: options.plainTaskEvents }),
+              }),
+            ),
+          )
+        : executeCommand;
     const commandOutcome = yield* Effect.exit(
-      Effect.gen(function* () {
-        const commandExit = yield* Effect.exit(effect);
-        if (options.suppressDeprecationDiagnostics !== true) {
-          yield* renderDeprecationDiagnostics(options.deprecationWarnings ?? true);
-        }
-        if (Exit.isFailure(commandExit)) {
-          yield* renderFailure(commandExit.cause);
-          return { _tag: "handled-failure" } as const;
-        }
-        yield* applySuccessExitCode(commandExit.value);
-        if (liveStreaming) {
-          if (renderContext.format === "json") {
-            yield* emitStreamResult(
-              { _tag: "success", value: commandExit.value },
-              options.redactionTokens?.(commandExit.value) ?? [],
-            );
-          }
-          return { _tag: "handled-success" } as const;
-        }
-        if (streamingJson) {
-          yield* emitStreamingSuccess(commandExit.value);
-          return { _tag: "handled-success" } as const;
-        }
-        return { _tag: "success", value: commandExit.value } as const;
-      }).pipe(Effect.provide(commandLayer)),
+      withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(commandLayer)),
     );
     if (Exit.isFailure(commandOutcome)) {
       yield* renderFailure(commandOutcome.cause);

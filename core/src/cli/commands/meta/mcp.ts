@@ -12,7 +12,7 @@
  * The command registry is injected (never imported from `compiled-commands`
  * here) so this module stays out of the compiled command-graph import cycle.
  */
-import { Cause, Effect, Exit, Layer, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
@@ -31,6 +31,7 @@ import { makeStdioMcpTransport } from "../../../mcp/stdio-transport.ts";
 import { McpTransport } from "../../../mcp/transport.ts";
 import type { RedactionService } from "../../../redaction/service.ts";
 import type { RendererMode } from "../../bug-report.ts";
+import type { CliInvocationSnapshot } from "../../command-lifecycle.ts";
 import type { ResultFormat } from "../../format-flags.ts";
 import type { LandoCommandSpec } from "../../oclif/command-base.ts";
 import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index.ts";
@@ -320,6 +321,7 @@ export const dispatchMcpCommand = async (params: {
   readonly retainedRuntime: Layer.Layer<unknown>;
   readonly rendererMode: RendererMode;
   readonly resultFormat: ResultFormat;
+  readonly invocation: CliInvocationSnapshot;
   readonly formatError: (error: unknown) => string;
 }): Promise<void> => {
   if (params.flags.list === true) {
@@ -336,6 +338,7 @@ export const dispatchMcpCommand = async (params: {
       rendererMode: params.rendererMode,
       resultFormat: params.resultFormat,
       command: "meta:mcp",
+      invocation: params.invocation,
       resultSchema: McpListResultSchema,
       render: (value, ctx) => renderMcpListResult(value, ctx),
       formatError: params.formatError,
@@ -354,17 +357,15 @@ export const dispatchMcpCommand = async (params: {
           yield* serveMcp(registry, params.flags, params.retainedRuntime);
         })
       : Effect.fail(startupError);
-  const exit = await Effect.runPromiseExit(serveEffect.pipe(Effect.provide(params.commandRuntime)));
-  if (Exit.isSuccess(exit)) return;
-  if (Exit.isInterrupted(exit)) return;
-
-  const squashedError = Cause.squash(exit.cause);
-  return runWithRendererHandling(Effect.fail(squashedError), {
-    runtime: Layer.empty,
+  return runWithRendererHandling(serveEffect, {
+    runtime: params.commandRuntime,
     rendererMode: params.rendererMode,
     resultFormat: "text",
     command: "meta:mcp",
+    invocation: params.invocation,
     resultSchema: McpListResultSchema,
+    suppressInterruptionDiagnostics: true,
+    render: () => undefined,
     formatError: params.formatError,
   });
 };

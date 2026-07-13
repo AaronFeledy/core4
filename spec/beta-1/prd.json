@@ -1278,7 +1278,7 @@
         "Lint passes"
       ],
       "priority": 71,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-13 closure. Progress records generic cli-command lifecycle publishing as a pre-existing CLI hook TODO after app:open-specific events landed."
     },
     {

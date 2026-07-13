@@ -34,6 +34,7 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
       frames.push({ _tag: "stderr" as const, service: result.service, chunk: result.stderr });
     return frames;
   },
+  successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };
 

@@ -1,5 +1,4 @@
 import { Flags } from "@oclif/core";
-import { Effect } from "effect";
 
 import {
   type PluginPublishOptions,
@@ -37,14 +36,8 @@ export const pluginPublishSpec: LandoCommandSpec<PluginPublishResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: (input) =>
-    pluginPublish(extractInput(input)).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if (result.exitCode !== 0) process.exitCode = result.exitCode;
-        }),
-      ),
-    ),
+  run: (input) => pluginPublish(extractInput(input)),
+  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
   render: (result) => renderPluginPublishResult(result as PluginPublishResult),
 };
 

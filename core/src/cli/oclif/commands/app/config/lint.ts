@@ -4,6 +4,15 @@ import { ConfigLintResult } from "@lando/sdk/schema";
 import { appConfigLint, renderConfigLintResult } from "../../../../commands/app-config-lint.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 
+const usesJsonFormat = (input: unknown): boolean =>
+  typeof input === "object" &&
+  input !== null &&
+  "flags" in input &&
+  typeof input.flags === "object" &&
+  input.flags !== null &&
+  "format" in input.flags &&
+  input.flags.format === "json";
+
 export const appConfigLintSpec: LandoCommandSpec<ConfigLintResult> = {
   resultSchema: ConfigLintResult,
   id: "app:config:lint",
@@ -12,6 +21,7 @@ export const appConfigLintSpec: LandoCommandSpec<ConfigLintResult> = {
   topLevelAlias: false,
   bootstrap: "minimal",
   run: () => appConfigLint(),
+  successExitCode: (result, input) => (result.valid || usesJsonFormat(input) ? undefined : 1),
   render: (result) => renderConfigLintResult(result as ConfigLintResult, "text"),
 };
 

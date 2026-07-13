@@ -127,6 +127,13 @@ export default class MetaMcpCommand extends LandoCommandBase {
       retainedRuntime: retainedRuntime as Layer.Layer<unknown>,
       rendererMode,
       resultFormat,
+      invocation: {
+        commandId: metaMcpSpec.id,
+        argv: this.argv,
+        args: {},
+        flags: Object.fromEntries(Object.entries(flags)),
+        cwd: process.cwd(),
+      },
       formatError: (error) => formatCommandError({ error, commandId: "meta:mcp", rendererMode }),
     });
   }

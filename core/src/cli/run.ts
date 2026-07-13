@@ -58,7 +58,6 @@ import { type CompiledCommand, commandEntries, commandName, findCommand } from "
 import { compiledCommandInputFromArgv } from "./compiled-input.ts";
 import {
   type CompiledCommandInput,
-  activeDeprecationWarnings,
   activeRendererMode,
   activeResultFormat,
   activeTableJsonFormat,
@@ -66,6 +65,7 @@ import {
   emitDiagnosticLine,
   emitResultLine,
   rejectInvalidInvocation,
+  resetActiveCommandInvocation,
   runCompiledCommand,
   runWithProcessAbortSignal,
   scratchRunRuntimeLayer,
@@ -87,7 +87,6 @@ import {
   type RenderContext,
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
-  runWithRendererHandling,
 } from "./renderer-boundary.ts";
 
 const version = `@lando/core/${CORE_VERSION}`;
@@ -235,15 +234,7 @@ const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
 const runScratchEffect = <A>(
   operation: Effect.Effect<A, unknown, ScratchAppService>,
   render: (result: A, ctx: RenderContext) => string | undefined,
-): Promise<void> =>
-  runWithRendererHandling(operation, {
-    runtime: scratchRuntimeLayer(),
-    rendererMode: activeRendererMode,
-    resultFormat: activeResultFormat,
-    deprecationWarnings: activeDeprecationWarnings,
-    render,
-    formatError: (error) => commandErrorMessage(error),
-  });
+): Promise<void> => runCompiledCommand(operation, scratchRuntimeLayer(), render);
 
 export const parseScratchStartArgv = (argv: ReadonlyArray<string>): ScratchStartOptions =>
   scratchStartOptionsFromInput(compiledCommandInputFromArgv("apps:scratch:start", argv));
@@ -360,7 +351,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   argv = normalizeCompiledCommandArgv(argv);
 
-  setActiveCommandId(resolveCanonicalCommandId(argv[0]));
+  const canonicalCommandId = resolveCanonicalCommandId(argv[0]);
+  setActiveCommandId(canonicalCommandId);
+  resetActiveCommandInvocation(canonicalCommandId, argv.slice(1));
 
   const head = argv[0];
   const isBunOrX = head === "bun" || head === "meta:bun" || head === "x" || head === "meta:x";
@@ -399,14 +392,15 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (argv[0] === "init" || argv[0] === "apps:init") {
-    try {
-      const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
-      const result = await initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine });
-      emitResultLine(`Created ${result.appName} at ${result.directory}`);
-    } catch (error) {
-      emitDiagnosticLine(commandErrorMessage(error, "apps:init"));
-      process.exitCode = 1;
-    }
+    const input = compiledCommandInputFromArgv("apps:init", argv.slice(1));
+    await runCompiledCommand(
+      Effect.tryPromise({
+        try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
+        catch: (error) => error,
+      }),
+      Layer.empty,
+      (result) => `Created ${result.appName} at ${result.directory}`,
+    );
     return;
   }
 

@@ -1,5 +1,3 @@
-import { Effect } from "effect";
-
 import {
   type PluginTestResult,
   PluginTestResultSchema,
@@ -21,14 +19,8 @@ export const pluginTestSpec: LandoCommandSpec<PluginTestResult> = {
   namespace: "meta",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: (input) =>
-    pluginTest({ argv: extractArgv(input) }).pipe(
-      Effect.tap((result) =>
-        Effect.sync(() => {
-          if (result.exitCode !== 0) process.exitCode = result.exitCode;
-        }),
-      ),
-    ),
+  run: (input) => pluginTest({ argv: extractArgv(input) }),
+  successExitCode: (result) => (result.exitCode === 0 ? undefined : result.exitCode),
   render: (result) => renderPluginTestResult(result as PluginTestResult),
 };
 

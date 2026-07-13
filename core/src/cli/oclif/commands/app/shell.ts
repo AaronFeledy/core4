@@ -24,6 +24,7 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => shellApp(),
+  successExitCode: (result) => result.exitCode,
   render: (result) => renderShellAppResult(result as ShellAppResult),
 };
 

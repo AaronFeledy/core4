@@ -8,6 +8,15 @@ import {
 } from "../../../../commands/app-includes-verify.ts";
 import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 
+const usesJsonFormat = (input: unknown): boolean =>
+  typeof input === "object" &&
+  input !== null &&
+  "flags" in input &&
+  typeof input.flags === "object" &&
+  input.flags !== null &&
+  "format" in input.flags &&
+  input.flags.format === "json";
+
 export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
   resultSchema: AppIncludesVerifyResultSchema,
   id: "app:includes:verify",
@@ -15,6 +24,7 @@ export const appIncludesVerifySpec: LandoCommandSpec<IncludeVerifyReport> = {
   namespace: "app",
   bootstrap: "minimal",
   run: () => appIncludesVerify(),
+  successExitCode: (result, input) => (result.ok || usesJsonFormat(input) ? undefined : 1),
   render: (result) => renderIncludesVerifyResult(result as IncludeVerifyReport, "text"),
 };
 

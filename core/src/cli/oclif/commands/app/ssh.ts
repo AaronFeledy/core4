@@ -28,6 +28,7 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   run: () => execApp({ command: DEFAULT_SSH_COMMAND, interactive: true, tty: true }),
+  successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };
 

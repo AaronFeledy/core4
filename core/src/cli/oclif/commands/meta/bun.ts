@@ -1,4 +1,4 @@
-import { Cause, Effect, Exit } from "effect";
+import { Effect, Layer } from "effect";
 
 import {
   type MetaBunResult,
@@ -7,7 +7,13 @@ import {
   renderMetaBunResult,
 } from "../../../commands/bun.ts";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { runWithRendererHandling } from "../../../renderer-boundary.ts";
+import {
+  LandoCommandBase,
+  type LandoCommandSpec,
+  formatCommandError,
+  resolveTopLevelAliases,
+} from "../../command-base.ts";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];
@@ -29,6 +35,7 @@ export const metaBunSpec: LandoCommandSpec<MetaBunResult> = {
       if (result.exitCode !== 0) process.exitCode = result.exitCode;
       return result;
     }),
+  successExitCode: (result) => result.exitCode,
   render: (result) => renderMetaBunResult(result as MetaBunResult),
 };
 
@@ -41,15 +48,21 @@ export default class MetaBunCommand extends LandoCommandBase {
 
   override async run(): Promise<void> {
     const argv = this.argv.slice();
-    const exit = await Effect.runPromiseExit(metaBun({ argv }));
-    if (Exit.isSuccess(exit)) {
-      if (exit.value.exitCode !== 0) process.exitCode = exit.value.exitCode;
-      const rendered = renderMetaBunResult(exit.value);
-      if (rendered !== undefined && rendered.length > 0) this.log(rendered);
-      return;
-    }
-    const failure = Cause.failureOption(exit.cause);
-    if (failure._tag === "Some") throw failure.value as Error;
-    throw new Error(Cause.pretty(exit.cause));
+    await runWithRendererHandling(metaBun({ argv }), {
+      runtime: Layer.empty,
+      rendererMode: "plain",
+      command: metaBunSpec.id,
+      invocation: {
+        commandId: metaBunSpec.id,
+        argv,
+        args: {},
+        flags: {},
+        cwd: process.cwd(),
+      },
+      resultSchema: metaBunSpec.resultSchema,
+      render: renderMetaBunResult,
+      successExitCode: (result) => result.exitCode,
+      formatError: (error) => formatCommandError({ error, commandId: metaBunSpec.id, rendererMode: "plain" }),
+    });
   }
 }

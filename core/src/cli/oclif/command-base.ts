@@ -413,6 +413,13 @@ export abstract class LandoCommandBase extends Command {
       rendererMode,
       resultFormat,
       command: spec.id,
+      invocation: {
+        commandId: spec.id,
+        argv: input.argv,
+        args: input.args,
+        flags: input.flags,
+        cwd: process.cwd(),
+      },
       resultSchema: spec.resultSchema,
       ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),
       ...(spec.streamingMode === undefined ? {} : { streamingMode: spec.streamingMode }),

@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 
-import type { Context, Effect, Stream } from "effect";
+import { type Context, DateTime, type Effect, Schema, type Stream } from "effect";
 
 import type {
   BuildStepSkipEvent,
+  CliCommandErrorEvent,
+  CliCommandInitEvent,
+  CliCommandRunEvent,
   DownloadProgressEvent,
   LandoEvent as KnownLandoEvent,
 } from "@lando/sdk/events";
+import { CliCommandRunEvent as CliCommandRunEventSchema } from "@lando/sdk/events";
 import type { EventService, LandoEvent } from "@lando/sdk/services";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
@@ -55,5 +59,34 @@ describe("EventService typed narrowing", () => {
   test("subscribe and waitFor narrow to the same event type for the same name", () => {
     assertType<Equal<SubscribeFor<"download-progress">, WaitForResult<"download-progress">>>(true);
     expect(true).toBe(true);
+  });
+
+  test("dynamic CLI lifecycle tags narrow to their canonical event variants", () => {
+    // Given / When / Then: resolving each canonical dynamic tag selects its schema variant.
+    assertType<Equal<SubscribeFor<"cli-app:start-init">, CliCommandInitEvent>>(true);
+    assertType<Equal<WaitForResult<"cli-app:start-run">, CliCommandRunEvent>>(true);
+    assertType<Equal<QueryResult<"cli-app:start-error">, ReadonlyArray<CliCommandErrorEvent>>>(true);
+    expect(true).toBe(true);
+  });
+
+  test("the runtime CLI schema recognizes the same dynamic tag used for narrowing", () => {
+    // Given
+    const event = {
+      _tag: "cli-app:start-run",
+      commandId: "app:start",
+      argv: ["start"],
+      args: {},
+      flags: {},
+      cwd: "/workspace/demo",
+      exitCode: 0,
+      durationMs: 5,
+      timestamp: DateTime.unsafeMake("2026-07-13T16:00:00.000Z"),
+    };
+
+    // When
+    const matches = Schema.is(CliCommandRunEventSchema)(event);
+
+    // Then
+    expect(matches).toBe(true);
   });
 });
