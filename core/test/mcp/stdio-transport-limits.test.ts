@@ -103,9 +103,9 @@ describe("makeStdioMcpTransport queue and write limits", () => {
             Deferred.succeed(writeStarted, undefined).pipe(Effect.zipRight(Deferred.await(releaseWrite))),
         });
         const incoming = yield* transport.receive;
-        if (Option.isNone(incoming)) return Option.none();
+        if (Option.isNone(incoming)) return yield* Effect.die(new Error("expected an open MCP tool call"));
         const notifications = Effect.forEach(
-          Array.from({ length: 1025 }, (_, index) => index),
+          Array.from({ length: 1026 }, (_, index) => index),
           (index) =>
             transport.notify({
               id: incoming.value.id,
@@ -115,15 +115,13 @@ describe("makeStdioMcpTransport queue and write limits", () => {
         );
         const notifyFiber = yield* notifications.pipe(Effect.fork);
         yield* Deferred.await(writeStarted);
-        yield* TestClock.adjust("5 seconds");
-        const poll = yield* Fiber.poll(notifyFiber);
-        yield* Fiber.interrupt(notifyFiber);
-        return poll;
+        return yield* Fiber.await(notifyFiber);
       }).pipe(Effect.scoped, Effect.provide(TestContext.TestContext)),
     );
 
     // Then
-    expectPolledMcpTransportFailure(completion);
+    const error = expectMcpTransportFailure(completion);
+    expect(error?.message).toBe("MCP stdio outbound queue exceeded its bounded capacity.");
   });
 
   test("stdio-outbound-byte-cap-disconnects above 8 MiB", async () => {

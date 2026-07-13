@@ -25,7 +25,12 @@ import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "../cli/result-
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
-import { replyMcpCanceled } from "./cancellation.ts";
+import {
+  emptyCompletedRequestIds,
+  forgetCompletedRequestId,
+  rememberCompletedRequestId,
+  replyMcpCanceled,
+} from "./cancellation.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
 import type { McpCommandEntry } from "./registry.ts";
@@ -120,7 +125,7 @@ const makeService = (
           const runtimeContext = yield* Layer.build(config.runtimeLayer);
           const inFlight = yield* Ref.make(new Map<string, Fiber.RuntimeFiber<void, McpTransportError>>());
           const canceledBeforeStart = yield* Ref.make(new Set<string>());
-          const completed = yield* Ref.make(new Set<string>());
+          const completed = yield* Ref.make(emptyCompletedRequestIds());
           const notifyFor =
             (incoming: McpTransportRequest): McpNotify =>
             (frame) =>
@@ -190,14 +195,12 @@ const makeService = (
               const next = new Map(current);
               next.delete(id);
               return next;
-            }).pipe(Effect.zipRight(Ref.update(completed, (current) => new Set(current).add(id))));
+            }).pipe(
+              Effect.zipRight(Ref.update(completed, (current) => rememberCompletedRequestId(current, id))),
+            );
 
           const clearCompleted = (id: string): Effect.Effect<void> =>
-            Ref.update(completed, (current) => {
-              const next = new Set(current);
-              next.delete(id);
-              return next;
-            });
+            Ref.update(completed, (current) => forgetCompletedRequestId(current, id));
 
           const takeCanceledBeforeStart = (id: string): Effect.Effect<boolean> =>
             Ref.modify(canceledBeforeStart, (current) => {
@@ -224,7 +227,9 @@ const makeService = (
             dispatchTool(incoming.request, { ...depsFor(incoming), execute: () => Effect.interrupt }).pipe(
               Effect.ignore,
               Effect.zipRight(replyMcpCanceled(transport, incoming.id)),
-              Effect.zipRight(Ref.update(completed, (current) => new Set(current).add(incoming.id))),
+              Effect.zipRight(
+                Ref.update(completed, (current) => rememberCompletedRequestId(current, incoming.id)),
+              ),
             );
 
           const forkRequest = (incoming: McpTransportRequest) =>

@@ -23,7 +23,7 @@ import {
   stringField,
   toolInputFrom,
 } from "./stdio-rpc.ts";
-import { makeStdioWriter } from "./stdio-writer.ts";
+import { makeStdioWriter, makeStdoutLineWriter } from "./stdio-writer.ts";
 import type {
   McpTransportNotification,
   McpTransportReply,
@@ -53,15 +53,6 @@ interface CorrelationState {
 const DEFAULT_PROTOCOL_VERSION = "2024-11-05";
 const DEFAULT_SERVER_INFO = { name: "lando", version: "4.0.0" } as const;
 
-const stdoutWrite = (): ((line: string) => Effect.Effect<void, unknown>) => {
-  const writer = Bun.stdout.writer();
-  return (line) =>
-    Effect.promise(async () => {
-      writer.write(`${line}\n`);
-      await writer.flush();
-    });
-};
-
 const progressTokenFromParams = (params: JsonObject | undefined): ProgressToken | undefined =>
   progressTokenFrom(objectField(params ?? {}, "_meta")?.progressToken);
 
@@ -78,7 +69,8 @@ export const makeStdioMcpTransport = (
       byInternalId: new Map(),
       byJsonrpcId: new Map(),
     });
-    const writer = yield* makeStdioWriter({ writeLine: options.write ?? stdoutWrite(), terminal });
+    const writeLine = options.write === undefined ? yield* makeStdoutLineWriter() : options.write;
+    const writer = yield* makeStdioWriter({ writeLine, terminal });
     const protocolVersion = options.protocolVersion ?? DEFAULT_PROTOCOL_VERSION;
     const serverInfo = options.serverInfo ?? DEFAULT_SERVER_INFO;
 

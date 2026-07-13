@@ -24,6 +24,26 @@ export interface StdioWriterOptions {
   readonly terminal: Deferred.Deferred<void, McpTransportError>;
 }
 
+export const makeStdoutLineWriter = (): Effect.Effect<
+  (line: string) => Effect.Effect<void, unknown>,
+  never,
+  Scope.Scope
+> =>
+  Effect.gen(function* () {
+    const writer = Bun.stdout.writer();
+    yield* Scope.addFinalizer(
+      yield* Effect.scope,
+      Effect.sync(() => {
+        writer.end();
+      }),
+    );
+    return (line: string) =>
+      Effect.promise(async () => {
+        writer.write(`${line}\n`);
+        await writer.flush();
+      });
+  });
+
 const writeDeadlineFailure = (): McpTransportError =>
   stdioTransportError("MCP stdio output remained blocked beyond the 5 second write deadline.");
 
@@ -101,26 +121,28 @@ export const makeStdioWriter = (
     );
 
     const write = (line: string): Effect.Effect<void, McpTransportError> =>
-      Effect.gen(function* () {
-        const bytes = encoder.encode(line).byteLength;
-        const reserved = yield* Ref.modify(queuedBytes, (current) =>
-          current + bytes > MAX_OUTBOUND_QUEUED_BYTES ? [false, current] : [true, current + bytes],
-        );
-        if (!reserved) {
-          const error = queuedBytesFailure();
-          yield* failTerminal(error);
-          return yield* Effect.fail(error);
-        }
-        const completed = yield* Deferred.make<void, McpTransportError>();
-        const accepted = yield* Queue.offer(queue, { line, bytes, completed });
-        if (!accepted) {
-          const error = queueCapacityFailure();
-          yield* Ref.update(queuedBytes, (current) => current - bytes);
-          yield* failTerminal(error);
-          return yield* Effect.fail(error);
-        }
-        return yield* Deferred.await(completed);
-      });
+      Effect.uninterruptibleMask((restore) =>
+        Effect.gen(function* () {
+          const bytes = encoder.encode(line).byteLength;
+          const reserved = yield* Ref.modify(queuedBytes, (current) =>
+            current + bytes > MAX_OUTBOUND_QUEUED_BYTES ? [false, current] : [true, current + bytes],
+          );
+          if (!reserved) {
+            const error = queuedBytesFailure();
+            yield* failTerminal(error);
+            return yield* Effect.fail(error);
+          }
+          const completed = yield* Deferred.make<void, McpTransportError>();
+          const accepted = yield* Queue.offer(queue, { line, bytes, completed });
+          if (!accepted) {
+            const error = queueCapacityFailure();
+            yield* Ref.update(queuedBytes, (current) => current - bytes);
+            yield* failTerminal(error);
+            return yield* Effect.fail(error);
+          }
+          return yield* restore(Deferred.await(completed));
+        }),
+      );
 
     yield* Scope.addFinalizer(yield* Effect.scope, Queue.shutdown(queue));
     return { write };
