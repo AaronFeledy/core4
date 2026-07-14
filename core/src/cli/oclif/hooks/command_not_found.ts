@@ -25,8 +25,15 @@ const normalizeToolingArgv = async (argv: ReadonlyArray<string>): Promise<Readon
   return format.remainingArgv;
 };
 
-export const commandNotFoundHook: Hook<"command_not_found"> = async ({ argv = [], context, id }) => {
+export const commandNotFoundHook: Hook<"command_not_found"> = async ({ argv = [], config, context, id }) => {
   const normalizedArgv = await normalizeToolingArgv(argv);
   if (await routeDynamicTooling([id, ...normalizedArgv])) return;
-  context.error(`command ${id} not found`, { code: "COMMAND_NOT_FOUND", exit: 2 });
+  const segments = id.split(":");
+  const extendsKnownCommand = segments
+    .slice(0, -1)
+    .some((_, index) => config.findCommand(segments.slice(0, index + 1).join(":")) !== undefined);
+  context.error(`command ${id} not found`, {
+    code: "COMMAND_NOT_FOUND",
+    exit: extendsKnownCommand ? 2 : 127,
+  });
 };
