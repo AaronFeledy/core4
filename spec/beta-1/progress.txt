@@ -562,3 +562,24 @@ Open closure categories:
 - Verification: typecheck and lint passed; focused lifecycle, adapter, SDK event-schema, and event-narrowing tests passed; renderer, redaction, machine-output, and telemetry boundary gates passed.
 - **Learnings for future iterations:** A redaction registry cannot infer arbitrary CLI-only secret values. Generic invocation events must preserve structure and names while replacing value slots before publication, and failure identity should remain tag-only unless message safety is explicitly established.
 ---
+
+## 2026-07-13 16:03 CDT - Babysit
+- PR: #583 https://github.com/AaronFeledy/core4/pull/583
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for lifecycle schema-only surface; updated dispatch-parity structural coverage for shared runCompiledCommand deprecation wiring)
+- Merge: merged (squash)
+---
+
+## 2026-07-13 16:53 CDT - US-443
+- Shipped cache-only tooling command routing for source OCLIF and compiled dispatch. Bare and canonical `app:<task>` forms resolve only from a fresh app command index, then execute through the existing policy-bearing tooling path; stale, unknown, version-blocked, network-blocked, provider, and task failures retain tagged remediation and truthful exit codes.
+- Dynamic tooling now publishes full machine-result envelopes and matching lifecycle exit status, including remediated script failures. The tooling guide documents cache-backed routing and refresh recovery without expanding the Beta tooling schema.
+- Verification: typecheck, lint, focused router/tooling/cache/MCP/lifecycle tests, renderer/redaction/machine-output boundaries, guide runner/lint/coverage, and source plus relocated compiled CLI sandbox smoke passed. The public-transcript inventory remains unavailable on a clean tree because the unrelated generated transcript corpus is absent.
+- **Learnings for future iterations:** Command-not-found must resolve from routing caches only; never call `CommandRegistryLive.list` there because its cache-miss path performs live discovery. Keep routing policy-free and enter `runTooling` only after a fresh cached match so version, provider, environment, and task execution semantics stay centralized.
+---
+
+## 2026-07-13 17:19 CDT - US-443 Review
+- Fixed compiled routing precedence so cached dynamic tooling receives `--help`/`--version` instead of falling into universal built-in handling, and routed command-cache read failures through the shared lifecycle/renderer boundary so source and compiled paths emit the same tagged machine envelope and exit status.
+- Review notes (deferred/rejected): broader `topLevelAlias`/`disabled`/`aliases`/`namespace` tooling-schema graduation predates this command-not-found router and remains intentionally rejected by the current Beta parser, so it was not folded into this focused story repair; Cursor Bugbot was quota-locked and produced no report, so it was not treated as approval evidence.
+- Verification: typecheck and lint passed; focused router, router-policy, and command-lifecycle tests plus renderer, machine-output, and telemetry boundaries passed; rebuilt relocated compiled-binary sandbox QA proved dynamic `--version` dispatch and a corrupted-cache `CacheError` JSON envelope.
+- **Learnings for future iterations:** Unknown-command routing must run before universal flag handling only after built-in lookup, and cache lookup failures must cross the same typed renderer/lifecycle seam as routing misses rather than reject from a hook or compiled dispatcher.
+---

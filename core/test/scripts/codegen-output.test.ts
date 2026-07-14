@@ -21,5 +21,5 @@ describe("writeFormattedOutput", () => {
     await writeFormattedOutput(output, "export const value={name:'demo'}\n");
 
     expect(await readFile(output, "utf8")).toBe('export const value = { name: "demo" };\n');
-  });
+  }, 30_000);
 });

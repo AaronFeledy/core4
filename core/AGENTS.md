@@ -37,6 +37,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 ## CLI Dispatch Parity
 
 - Dual dispatch is structural: source mode uses OCLIF, compiled `$bunfs` mode uses `runCompiledCli`. A faithful compiled reproduction must run the binary outside the repo tree so `findRoot` cannot accidentally discover the source checkout.
+- Tooling `command_not_found` routing is cache-only: resolve through `readFreshAppCommandCacheForCwd`, never `CommandRegistryLive.list` (its cache-miss path performs live discovery), then enter `runTooling` only after a fresh cached match.
 - JSON renderer parity is byte-identical apart from normalized timestamps/temp paths; plain/`lando` stderr is allowed to differ in wrapping/prefixes but must preserve tagged-error fields.
 - Host-safe `meta:setup` parity tests should force `PATH=/no-such-path`, isolated `LANDO_USER_*` roots, and `--provider=podman`; the default `lando` provider attempts a network bundle download.
 - Compiled `meta:plugin:*` handlers must manually replicate OCLIF parse errors. `--renderer`/`--help`/`--version` are stripped before command dispatch, while command-scoped unknown flags still need exit-2 rejection.

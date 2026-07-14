@@ -16,6 +16,7 @@ const writeFakeBinary = async (dir: string): Promise<string> => {
       "#!/usr/bin/env bash",
       "set -euo pipefail",
       'sleep_ms="${LANDO_FAKE_SLEEP_MS:-1}"',
+      'if [[ -n "${LANDO_FAKE_LOG:-}" ]]; then printf \'%s\\n\' "$*" >> "$LANDO_FAKE_LOG"; fi',
       'sleep "$(awk -v ms="$sleep_ms" \'BEGIN { printf "%.3f", ms / 1000 }\')"',
       "printf 'fake lando %s\\n' \"$*\"",
       "",
@@ -81,6 +82,28 @@ describe("bench-tooling-hot-path", () => {
         resolve(repoRoot, "scripts/fixtures/tooling-hot-path/.lando/scripts/bench.bun.sh"),
       ).exists(),
     ).toBe(true);
+  });
+
+  test("prepares the app command cache before measuring tooling dispatch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-bench-prepare-"));
+    try {
+      const binary = await writeFakeBinary(dir);
+      const baseline = await writeBaseline(dir, 1_000);
+      const log = join(dir, "invocations.log");
+
+      const result = await runBench(["--binary", binary, "--baseline", baseline, "--runs", "1"], {
+        LANDO_FAKE_LOG: log,
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect((await Bun.file(log).text()).trim().split("\n")).toEqual([
+        "app:cache:refresh",
+        "bench-tool",
+        "bench-tool",
+      ]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   test("passes when warm p95 stays within the tracked regression budget", async () => {

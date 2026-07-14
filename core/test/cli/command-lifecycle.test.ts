@@ -17,6 +17,11 @@ class CommandLifecycleTestError extends Schema.TaggedError<CommandLifecycleTestE
   { message: Schema.String },
 ) {}
 
+class CommandLifecycleExitError extends Schema.TaggedError<CommandLifecycleExitError>()(
+  "CommandLifecycleExitError",
+  { message: Schema.String, exitCode: Schema.Number },
+) {}
+
 const canonicalInvocation = {
   commandId: "app:start",
   argv: ["start", "--service", "appserver"],
@@ -195,6 +200,30 @@ describe("generic CLI command lifecycle", () => {
       exitCode: 0,
     });
     expect(harness.exitCodes).toEqual([]);
+  });
+
+  test("uses a narrow tagged failure exit code for both process state and lifecycle events", async () => {
+    // Given
+    const harness = makeRecordingHarness();
+    const options = {
+      ...optionsFor<never>(harness),
+      failureExitCode: (error: unknown) =>
+        error instanceof CommandLifecycleExitError ? error.exitCode : undefined,
+    };
+
+    // When
+    await runWithRendererHandling(
+      Effect.fail(new CommandLifecycleExitError({ message: "tool failed", exitCode: 7 })),
+      options,
+    );
+
+    // Then
+    expect(harness.events.at(-1)).toMatchObject({
+      _tag: "cli-app:start-error",
+      failureTag: "CommandLifecycleExitError",
+      exitCode: 7,
+    });
+    expect(harness.exitCodes).toEqual([7]);
   });
 
   test("publishes the terminal lifecycle event before scope finalizers", async () => {

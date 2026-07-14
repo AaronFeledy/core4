@@ -132,6 +132,7 @@ ALIASES
 };
 
 import {
+  routeDynamicTooling,
   runAppCacheRefresh,
   runAppConfig,
   runAppConfigLint,
@@ -141,7 +142,6 @@ import {
   runAppIncludesVerify,
   runDestroy,
   runDoctor,
-  runDynamicTooling,
   runInfo,
   runLogs,
   runOpen,
@@ -361,6 +361,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
   const dashDashIndex = argv.indexOf("--");
   const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
+  const found = findCommand(argv[0] ?? "");
+
+  if (found === undefined && (await routeDynamicTooling(argv))) return;
 
   if (
     !isBunOrX &&
@@ -877,13 +880,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  const found = findCommand(argv[0] ?? "");
   if (found === undefined) {
-    if (argv[0] !== undefined && !argv[0].includes(":")) {
-      setActiveCommandId(`app:${argv[0]}`);
-      await runDynamicTooling(argv);
-      return;
-    }
     throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 

@@ -114,6 +114,10 @@
       }
     },
     "hooks": {
+      "command_not_found": {
+        "target": "./src/cli/oclif/hooks/command_not_found.ts",
+        "identifier": "commandNotFoundHook"
+      },
       "init": {
         "target": "./src/cli/oclif/hooks/init.ts",
         "identifier": "initHook"

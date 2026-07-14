@@ -1,4 +1,4 @@
-import { Effect, type Layer } from "effect";
+import { Effect, type Layer, type Schema } from "effect";
 
 import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
@@ -188,6 +188,8 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly deprecationWarnings?: boolean;
     readonly suppressDeprecationDiagnostics?: boolean;
     readonly successExitCode?: (value: A) => number | undefined;
+    readonly failureExitCode?: (error: unknown) => number | undefined;
+    readonly resultSchema?: Schema.Schema.AnyNoContext;
     readonly streamingMode?: "live";
   } = {},
 ): Promise<void> => {
@@ -204,7 +206,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     resultFormat: activeResultFormat,
     command: activeCommandId,
     ...(activeCommandInvocation === undefined ? {} : { invocation: activeCommandInvocation }),
-    resultSchema: spec?.resultSchema ?? EmptyResultSchema,
+    resultSchema: options.resultSchema ?? spec?.resultSchema ?? EmptyResultSchema,
     ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
     ...(options.streamingMode === undefined ? {} : { streamingMode: options.streamingMode }),
     ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
@@ -214,6 +216,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.renderEvents === undefined ? {} : { renderEvents: options.renderEvents }),
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     ...(successExitCode === undefined ? {} : { successExitCode }),
+    ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
     render,
     formatError: (error: unknown) => commandErrorMessage(error),
   };

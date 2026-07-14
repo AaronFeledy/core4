@@ -231,14 +231,14 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 
 **Acceptance Criteria:**
 
-- [ ] The `command_not_found` tooling-router stub is replaced with dispatch that resolves eligible tooling tasks from the active app/recipe/tooling registry.
-- [ ] Dispatch preserves Landofile version-constraint checks, cache invalidation behavior, network/no-network policy, provider selection, and tooling task environment rules.
-- [ ] Unknown commands, ambiguous matches, disabled tooling, missing providers, network-policy violations, and task failures return tagged failures with remediation and correct exit codes.
-- [ ] Source and compiled dispatch behave identically, including top-level aliases and machine-output envelopes.
-- [ ] Tests prove the router cannot bypass version constraints, cache correctness, or network restrictions by entering through command-not-found.
-- [ ] Tests pass
-- [ ] Typecheck passes
-- [ ] Lint passes
+- [x] The `command_not_found` tooling-router stub is replaced with dispatch that resolves eligible tooling tasks from the active app/recipe/tooling registry.
+- [x] Dispatch preserves Landofile version-constraint checks, cache invalidation behavior, network/no-network policy, provider selection, and tooling task environment rules.
+- [x] Unknown commands, ambiguous matches, disabled tooling, missing providers, network-policy violations, and task failures return tagged failures with remediation and correct exit codes.
+- [x] Source and compiled dispatch behave identically, including top-level aliases and machine-output envelopes.
+- [x] Tests prove the router cannot bypass version constraints, cache correctness, or network restrictions by entering through command-not-found.
+- [x] Tests pass
+- [x] Typecheck passes
+- [x] Lint passes
 
 ## Functional Requirements
 

@@ -6,16 +6,19 @@ tags: [beta, docs, tooling, php, composer]
 ---
 
 <Guide>
-  <Scenario id="tooling-bootstrap" render={false} reason="Documents the user-facing Composer alias shape without running provider-backed commands">
+  <Scenario id="tooling-bootstrap" render={false} reason="Documents cache-backed tooling routing without running provider-backed commands">
     <Step name="scaffold">
       <UseFixture name="composer-php-demo" />
       <Variable name="serviceType" value="php:8.3" display="Use a PHP service as the command target" />
-      <Variable name="toolingAlias" value="composer" display="Declare a top-level tooling alias named composer" />
+      <Variable name="toolingTask" value="composer" display="Declare a tooling task named composer" />
       <Variable name="bootstrap" value="tooling" display="Command discovery reads the lightweight tooling runtime" />
     </Step>
-    <Step name="run-alias">
-      <Variable name="command" value="lando composer --version" display="Run the Composer alias from the app root" />
-      <Variable name="hotPath" value="Command discovery reads the lightweight tooling runtime before provider-backed execution" display="The alias can be dispatched before provider-backed execution starts" />
+    <Step name="route-task">
+      <Variable name="bareCommand" value="lando composer --version" display="Run the task by its bare command from the app root" />
+      <Variable name="canonicalCommand" value="lando app:composer --version" display="Run the same task by its canonical app command id" />
+      <Variable name="hotPath" value="The router reads only a fresh app command cache before provider-backed execution starts" display="Both command forms use the same cache-only route" />
+      <Variable name="staleCache" value="lando app cache refresh, lando start, or lando rebuild" display="A stale or missing command cache fails with commands that refresh it" />
+      <Variable name="execution" value="runTooling" display="After routing, the normal tooling path still enforces version, provider, environment, and runtime policies" />
     </Step>
   </Scenario>
 
