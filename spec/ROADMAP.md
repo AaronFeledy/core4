@@ -584,7 +584,7 @@ Beta 1 additionally lands a bounded **feature wave** — the last new feature su
 
 ### Concrete deliverables
 
-Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`) plus the feature-wave stories **US-396+** (`spec/beta-1/prd-beta-1-{06..09}-*.md`):
+Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`) plus the feature-wave stories **US-396+** (`spec/beta-1/prd-beta-1-{06..09}-*.md`), runtime/Podman/log-source waves (**US-410..US-429**), closure wave (**US-430..US-443**, PRD-13), and residual-hardening wave (**US-444..US-454**, PRD-14):
 
 - **Durability & probe remediation (PRD-01)**: fsync-backed atomic writes everywhere durable state lands; exactly one durable-store implementation under `core/src/state/` (retire `json-bucket.ts`); real `runProbe`-backed `HealthcheckRunner`/`UrlScanner` built-ins plus doctor/downloader/setup-readiness migration; `waitForEvent` runtime coverage; working-tree hygiene.
 - **Managed-file contract completion (PRD-02)**: `RedactionService`-routed managed-file events; `PathsService.managedFileLedger(appId)`; `FileFormat` reconciled with the frozen contract.
@@ -598,7 +598,7 @@ Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta
 
 ### Exit criteria for Beta 1
 
-Every US-372..US-395 remediation story and every US-396+ feature-wave story is accepted with its verification contract green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only.
+Every US-372..US-395 remediation story, every US-396+ feature-wave story, the US-430..US-443 closure wave, and the US-444..US-454 residual-hardening wave (PRD-14) are accepted with verification contracts green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only. PRD-14 is hardening-only residual work inside Beta 1; it is not a license to expand freeze surface.
 
 ---
 

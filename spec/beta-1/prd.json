@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 runs through US-443 and includes a closure wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; and US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps before feature freeze, with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
+  "description": "Phase 5 Beta 1 runs through US-454 and includes a closure wave plus residual-hardening wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps (with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence); and US-444..US-454 close review-time hardening deferrals that remained after the closure wave before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
   "userStories": [
     {
       "id": "US-372",
@@ -1298,6 +1298,184 @@
       "priority": 72,
       "passes": true,
       "notes": "PRD-13 closure. Progress identifies OCLIF command_not_found tooling dispatch as a remaining source-router stub."
+    },
+    {
+      "id": "US-444",
+      "title": "Host-proxy worker IPC write backpressure",
+      "description": "As a host-proxy operator, detached-worker startup cannot hang or lose payload bytes when the worker stdin pipe applies backpressure.",
+      "acceptanceCriteria": [
+        "Worker payload delivery uses backpressure-aware write/end semantics (or an equivalent bounded framing path) rather than a single unbounded stdin.write of the full payload.",
+        "Oversized or slow-consumer cases fail with a tagged, remediated error and do not leave orphan workers or half-started sessions.",
+        "Focused tests cover successful delivery, partial-write/backpressure, and failure cleanup; existing toolbox/host-proxy readiness proofs remain green.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 73,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-433 verify Bugbot deferred single stdin.write without backpressure as follow-up hardening."
+    },
+    {
+      "id": "US-445",
+      "title": "Malformed CLI flag-value parsing fails closed",
+      "description": "As a CLI user, malformed flag values produce tagged failures with remediation instead of silent mis-parses or defect paths.",
+      "acceptanceCriteria": [
+        "Representative OCLIF and compiled-dispatch flag parsers reject malformed values (missing required values, illegal shapes, truncated combined forms) with tagged errors and non-zero exit codes.",
+        "Source and compiled dispatch share the failure identity and exit-code parity for the covered cases.",
+        "Machine-output mode emits the standard error envelope (_tag / message / remediation) without leaking secrets.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 74,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-431 review deferred malformed flag-value parsing as pre-existing defensive CLI concern."
+    },
+    {
+      "id": "US-446",
+      "title": "Clean-tree public-transcript inventory gate",
+      "description": "As a maintainer on a clean build tree, public-transcript / guide inventory gates are operable without requiring an unrelated full generated transcript corpus to already exist.",
+      "acceptanceCriteria": [
+        "check:public-transcripts (and any dependent inventory gate used in CI) either generates the required corpus as part of the gate or documents and implements a deterministic bootstrap path that works from a clean tree.",
+        "Clean-tree CI/local reproduction no longer reports the gate as unavailable solely because generated transcripts were absent after bun run clean / a fresh clone build.",
+        "Guide lint/coverage/drift gates remain green for existing owned guides.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 75,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-433/US-439/US-443 verification notes that public-transcript inventory remained unavailable on clean trees."
+    },
+    {
+      "id": "US-447",
+      "title": "Runtime-bundle CI supply-chain pin residuals",
+      "description": "As a release owner, runtime-bundle publish workflows pin third-party actions and build package inputs tightly enough that the US-430 non-blocking security residuals are closed.",
+      "acceptanceCriteria": [
+        "Runtime-bundle (and closely related publish) workflows pin GitHub Actions to immutable digests or an equivalent fail-closed pin policy already used elsewhere in the repo; mutable floating tags are not reintroduced for those steps.",
+        "Ubuntu/build package installs used to assemble runtime bundles are version-pinned or otherwise locked so unversioned package drift cannot silently change bundle contents.",
+        "Generated workflow drift checks and runtime-bundle tests remain green after the pin changes.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 76,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-430 non-blocking security residuals (mutable action tags and unversioned Ubuntu build packages)."
+    },
+    {
+      "id": "US-448",
+      "title": "MCP streaming JSON serialization bounds",
+      "description": "As an MCP client, large command results cannot grow process memory without bound during JSON serialization even when the retained outbound queue is already byte-capped.",
+      "acceptanceCriteria": [
+        "Serialization of MCP tool results / progress payloads is bounded or streamed such that a single oversized result cannot retain unbounded intermediate buffers beyond a documented limit.",
+        "Oversized results fail with a tagged transport/result error and free retained buffers; active request caps and completion tombstone caps from US-440 remain intact.",
+        "Focused adversarial tests cover large result bodies and prove process-level retention stays under the documented bound (or fails closed before exceeding it).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 77,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-440 review deferred bounded streaming JSON serialization."
+    },
+    {
+      "id": "US-449",
+      "title": "Landofile TypeScript-form lint and include-update parity",
+      "description": "As an author of TypeScript Landofiles, lint and include-update paths honor the same \u00a77.1.1 form-parity rules as YAML layers instead of silently skipping or mis-handling TS forms.",
+      "acceptanceCriteria": [
+        "Lint and include-update entrypoints accept TypeScript-form layers where \u00a77.1.1 permits them, or fail closed with tagged remediation when a path cannot be handled \u2014 never silently no-op.",
+        "Same-layer YAML+TypeScript dual forms still fail through LandofileFormConflictError (or the current canonical tagged conflict).",
+        "Focused tests cover TS-only roots, mixed-layer apps, and include-update behavior without expanding the TS loader security model beyond existing trusted-author assumptions.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 78,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-441 review deferred TypeScript-form lint/include-update parser gap as \u00a77.1.1 form-parity scope."
+    },
+    {
+      "id": "US-450",
+      "title": "Windows managed-machine trust + Hyper-V privilege contract closure",
+      "description": "As a Windows user of the managed Podman machine, ownership-gated CA trust sync completes without elevation, and Hyper-V / virtualization gaps stay fail-closed manual remediation — never auto-elevated — matching US-423 and US-436.",
+      "acceptanceCriteria": [
+        "Ownership-gated Windows managed-machine trust sync (`podman machine init|set --import-native-ca` for Lando-owned machines only) is documented and tested as non-elevating: it does not call `PrivilegeService.elevate` and does not request UAC.",
+        "Windows Hyper-V / virtualization prerequisite failures remain fail-closed tagged errors (e.g. `WindowsMachinePrerequisiteError`) whose remediation names the exact manual steps (`wsl --install` / `wsl --update` / elevated `podman system hyperv-prep` as applicable) and states that Lando never runs prep or elevates for the user — reaffirming US-423 and US-436, not reopening them.",
+        "Non-Windows hosts remain structured skips or unchanged; Linux/macOS trust-import behavior does not regress.",
+        "Platform- or env-gated tests lock the no-auto-elevate contracts (trust sync does not elevate; Hyper-V remediation never auto-runs prep); secrets and host paths stay redacted in remediation and events.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 79,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Contract proof of intentional non-elevation (US-423/US-436), not a UAC path. Origin: US-436 completion notes misread manual Hyper-V remediation as unfinished elevation work."
+    },
+    {
+      "id": "US-451",
+      "title": "Host-proxy doctor DNS reachability check",
+      "description": "As a user debugging in-container runLando failures, doctor reports host-proxy DNS/name reachability problems with structured remediation rather than only failing at request time.",
+      "acceptanceCriteria": [
+        "Doctor includes a host-proxy DNS/reachability check for the production transport (Unix socket path or Windows Desktop alias/loopback bridge as applicable).",
+        "Failures are typed doctor findings with remediation; passes are silent or informational without false alarms when host-proxy is intentionally unavailable/no-op.",
+        "NDJSON/text doctor output stays on the renderer/redaction seams.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 80,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-433 review deferred DNS host-proxy doctor check as broader follow-up scope."
+    },
+    {
+      "id": "US-452",
+      "title": "MCP serve executable guide",
+      "description": "As a developer wiring agents to Lando, an executable guide documents MCP serve startup, allowlisted tools, refusal modes, and bounded stdio behavior.",
+      "acceptanceCriteria": [
+        "An executable guide under docs/guides/ covers lando mcp / serve startup, non-interactive stdio requirements, startup refusals (TTY/unusable stdio/incompatible machine-output), and at least one successful tool call path.",
+        "Guide codegen, lint, coverage, and public-transcript gates pass for the new guide (or an explicit matrix entry if required).",
+        "The guide does not claim write-capable app-config tools; read-only projection from US-438 remains authoritative.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 81,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-440 review deferred creating a new MCP guide because the matrix target did not exist."
+    },
+    {
+      "id": "US-453",
+      "title": "macOS/Windows machine lifecycle live acceptance",
+      "description": "As a release owner, managed/system machine lifecycle on macOS and Windows is either live-proven or structured-skipped with release-policy clarity \u2014 not silently untested.",
+      "acceptanceCriteria": [
+        "Env-gated acceptance cells exist for macOS and Windows machine start/stop (and destroy where claimed) for the providers Beta 1 still supports on those hosts.",
+        "Missing credentials, unsupported host, or absent machine tooling produces a structured skip with reason; a broken claimed path fails, never passes.",
+        "CI/release reporting distinguishes pass/fail/skip; release-blocking cells are named in the story notes or provider-matrix config.",
+        "Linux cells from US-432 remain green and are not regressed.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 82,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: Podman 6 wave and US-432 advisory macOS/Windows skips; machine lifecycle could not be live-exercised from the Linux sandbox."
+    },
+    {
+      "id": "US-454",
+      "title": "Pre-command failure surface consistency",
+      "description": "As an agent or CI consumer, failures that occur before a resolved command lifecycle still emit consistent tagged machine envelopes and exit codes.",
+      "acceptanceCriteria": [
+        "Pre-parse validation failures and runtime-layer construction failures that are user-facing emit the standard machine error envelope (or documented bootstrap equivalent) with non-zero exit codes on both source and compiled paths.",
+        "These failures are either explicitly documented as outside generic cli-*-init/run/error events with tests locking that contract, or folded into a minimal bootstrap lifecycle without inventing new public event schema fields unless required.",
+        "Secret-bearing argv/env fragments are not echoed in failure messages.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 83,
+      "passes": false,
+      "notes": "PRD-14 residual hardening. Origin: US-442 review deferred pre-parse and runtime-layer construction as outside the shared command lifecycle boundary."
     }
   ]
 }

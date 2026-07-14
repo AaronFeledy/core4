@@ -2,9 +2,9 @@
 
 ## Introduction
 
-Beta 1 cannot close on the green story ledger alone. The progress log records several residual gaps after US-429: the published Linux runtime bundle was checksum-valid but remote-only; independent review lanes were inconclusive in this harness; live Podman 6 acceptance and several provider seams still need real or explicitly env-gated coverage; and multiple §8/§10/§12/§16 closure items remain documented as deferred gaps.
+Beta 1 cannot close on the green story ledger alone. The progress log recorded residual gaps after US-429: the published Linux runtime bundle was checksum-valid but remote-only; independent review lanes were inconclusive in this harness; live Podman 6 acceptance and several provider seams still needed real or explicitly env-gated coverage; and multiple §8/§10/§12/§16 closure items remained documented as deferred gaps.
 
-This PRD makes those residuals explicit Beta 1 closure work rather than silently deferring them past feature freeze. It does not mark any implementation complete. Every story in this PRD starts with `passes: false` and exists to preserve the hierarchy: normative spec is source of truth, these PRDs define Beta 1 acceptance, and `progress.txt` remains historical evidence.
+This PRD made those residuals explicit Beta 1 closure work (US-430..US-443) rather than silently deferring them past feature freeze. Those stories are now complete (`passes: true` in `prd.json`). Review-time hardening deferrals that remained after this wave are owned by **PRD-14** (US-444..US-454), not by reopening this PRD.
 
 ## Source References
 
@@ -258,7 +258,7 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 
 ## Technical Considerations
 
-- Keep new implementation stories small enough to land independently, but do not mark Beta 1 closed until their aggregate acceptance is true.
+- Keep new implementation stories small enough to land independently. US-430..US-443 aggregate acceptance is true; do not mark Beta 1 closed until PRD-14 (US-444..US-454) residual hardening is also true.
 - Host-proxy production transport should reuse the logical dispatcher and generated allowlist work already recorded in progress rather than forking policy.
 - MCP read-only config projection should avoid a broad command-level boolean for umbrella commands; project safe subcommands or constrained tool schemas instead.
 - Version-constraint completion should prefer a standard npm-semver-compatible parser rather than extending the partial parser case by case.
@@ -266,10 +266,10 @@ This PRD makes those residuals explicit Beta 1 closure work rather than silently
 
 ## Success Metrics
 
-- `spec/beta-1/prd.json` contains unique ordered US-430..US-443 entries with priorities continuing after US-429 and all `passes: false`.
+- `spec/beta-1/prd.json` contains unique ordered US-430..US-443 entries with priorities continuing after US-429; those stories are complete (`passes: true`) once verified.
 - US-430 explicitly owns corrected local-engine Linux bundle publishing, manifest repinning, and zero-override managed setup evidence.
-- The Beta 1 index traces every residual progress gap to a closure story.
-- Validation scripts confirm JSON parses, story IDs/priorities are unique and ordered, new story statuses are false, and Markdown/JSON story IDs/titles match.
+- The Beta 1 index traces every residual progress gap to a closure story; post-closure review hardening deferrals are traced to PRD-14 (US-444..US-454).
+- Validation scripts confirm JSON parses, story IDs/priorities are unique and ordered, and Markdown/JSON story IDs/titles match.
 
 ## Guide Coverage
 

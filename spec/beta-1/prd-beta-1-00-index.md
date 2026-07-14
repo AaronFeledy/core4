@@ -1,6 +1,6 @@
 # PRD Index — Lando v4 Phase 5 (Beta 1 / "contract completion + feature wave + closure wave")
 
-> **Phase position:** Beta 1 is the **fifth** shipped phase (**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1**) and the first beta, sitting between Alpha 4 ("governance + the last feature surface") and Beta 2 ("feature-freeze hardening"). It has three parts. **Remediation (PRD-01..05):** every story either completes a contract that a shipped Alpha 4 PRD already promised (an explicit MUST in `spec/alpha-4/prd-alpha-4-*.md` whose story was marked `passes: true` while an acceptance sub-requirement remained unmet), or closes spec §8/§12 drift that no later phase owns. **Feature wave (PRD-06..12):** a bounded, deliberate set of new feature surface sequenced here because each either realizes the agent-native tenet (§1.2) on primitives Alpha 4 already shipped or is a small, high-leverage DX/runtime surface, and Beta 1 is the last phase that can add SDK surface before freeze. **Closure wave (PRD-13):** every residual gap recorded in `progress.txt` and prior review is explicit Beta 1 work, not silently deferred post-Beta scope. At the end of Beta 1 the first signed `4.0.0-beta.N` ships on the `next` channel and **feature freeze is entered**. See [`spec/ROADMAP.md`](../ROADMAP.md) Phase 5 for the authoritative ladder.
+> **Phase position:** Beta 1 is the **fifth** shipped phase (**MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1**) and the first beta, sitting between Alpha 4 ("governance + the last feature surface") and Beta 2 ("feature-freeze hardening"). It has four parts. **Remediation (PRD-01..05):** every story either completes a contract that a shipped Alpha 4 PRD already promised (an explicit MUST in `spec/alpha-4/prd-alpha-4-*.md` whose story was marked `passes: true` while an acceptance sub-requirement remained unmet), or closes spec §8/§12 drift that no later phase owns. **Feature wave (PRD-06..12):** a bounded, deliberate set of new feature surface sequenced here because each either realizes the agent-native tenet (§1.2) on primitives Alpha 4 already shipped or is a small, high-leverage DX/runtime surface, and Beta 1 is the last phase that can add SDK surface before freeze. **Closure wave (PRD-13):** every residual gap recorded in `progress.txt` and prior review is explicit Beta 1 work, not silently deferred post-Beta scope. **Residual hardening (PRD-14):** review/verify hardening deferrals that remained after the closure wave, still inside Beta 1 and still hardening-only (no new freeze surface). At the end of Beta 1 the first signed `4.0.0-beta.N` ships on the `next` channel and **feature freeze is entered**. See [`spec/ROADMAP.md`](../ROADMAP.md) Phase 5 for the authoritative ladder.
 
 ## Introduction
 
@@ -13,7 +13,7 @@ A post-Alpha-4 gap audit (2026-07-02) compared every Alpha 4 PRD acceptance crit
 - **Setup/uninstall/release acceptance residue.** Plugin `setup.flags` are declared in the SDK schema but never merged into `lando setup` metadata; uninstall marks managed provider machines `manual` and can drop the resumable report after a purge failure; macOS/Windows `ensureRuntime` still falls back to system Podman machine tooling and the `LANDO_TEST_PODMAN_SOCKET` test variable; the committed release workflow runs only the dev prerelease, not the 13-stage pipeline.
 - **Spec §8 CLI parity drift.** Config surfaces are read-only where §8.2 requires write; `app shell`, `app logs`, `app includes update`, the global-app commands, and `lando version` all diverge from their spec'd contracts; §12 cache writes bypass the atomic helper.
 
-This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through **US-443**: US-372..US-395 are the remediation stories, US-396..US-409 are the agent-native feature-wave stories, US-410..US-412 (PRD-10) cover runtime-bundle distribution, US-413..US-424 (PRD-11) lock the Podman 6 runtime contract, US-425..US-429 (PRD-12) add the service-log-sources primitive (§6.14), and US-430..US-443 (PRD-13) are the Beta 1 closure wave. PRD-10 stood up the in-repo `runtime-v*` publishing pipeline and the §5.8.1 committed-manifest invariant. PRD-13 keeps the later remote-only Linux asset defect and every other residual progress/review gap inside Beta 1 scope.
+This PRD set picks up at **US-372** (Alpha 4 ended at US-371) and runs through **US-454**: US-372..US-395 are the remediation stories, US-396..US-409 are the agent-native feature-wave stories, US-410..US-412 (PRD-10) cover runtime-bundle distribution, US-413..US-424 (PRD-11) lock the Podman 6 runtime contract, US-425..US-429 (PRD-12) add the service-log-sources primitive (§6.14), US-430..US-443 (PRD-13) are the Beta 1 closure wave, and US-444..US-454 (PRD-14) close review-time hardening deferrals that remained after the closure wave. PRD-10 stood up the in-repo `runtime-v*` publishing pipeline and the §5.8.1 committed-manifest invariant. PRD-13 closed the remote-only Linux asset defect and the primary residual progress gaps. PRD-14 keeps the remaining review/verify hardening residuals inside Beta 1 scope rather than silently deferring them past feature freeze.
 
 The feature wave is spec'd first, PRD'd second: the four features were worked into the normative spec parts before these PRDs were written — `McpService` (§10.14) + `meta:mcp` (§8.2.6) + `mcpAllowed:` (§8.3), agent-context env forwarding (§6.9.1, §7.4, §7.5), `app:open` (§8.2.5), the `lando:` version constraint (§7.4), and `apps:scratch:run` + the `toolbox` recipe (§21.10.3, §8.8.10). When a feature PRD and a spec part disagree, the spec part wins.
 
@@ -44,6 +44,7 @@ The Podman 6 and closure waves follow the same convention: the runtime/CLI/tooli
 | 11 | [Podman 6 runtime contract](./prd-beta-1-11-podman-6.md) | Podman 6 bundle baseline, machine OS upgrade/remediation flow, provider capability probes, runtime-bundle manifest alignment, rollback guidance | US-413..US-424 | PRD-10 (runtime-bundle publishing) |
 | 12 | [Service log sources](./prd-beta-1-12-service-log-sources.md) | `LogSource` schema + `LogChunk.source` + `serviceLogSources` capability, service-type/Landofile `logs:` intent, build-time `redirect` reification, provider-owned `follow` semantics, `lando logs --source` + redaction boundary (§6.14, §5.3, §5.4, §10.9) | US-425..US-429 | PRD-05 (US-393 logs follow/since) |
 | 13 | [Beta closure wave](./prd-beta-1-13-beta-closure.md) | corrected local-engine Linux runtime bundle, independent closure review lanes, live Podman 6 acceptance, production runLando transport, real log-follow file access, buildKey short-circuit, remaining Podman seams, global rebuild, MCP read-only config projection, Bun.$ host REPL, MCP stdio hardening, version-constraint closure, generic CLI lifecycle events, tooling-router dispatch | US-430..US-443 | PRD-05, PRD-06, PRD-08, PRD-09, PRD-10, PRD-11, PRD-12 |
+| 14 | [Residual hardening](./prd-beta-1-14-residual-hardening.md) | host-proxy IPC backpressure, CLI flag-parse fail-closed, clean-tree public-transcript gate, runtime-bundle CI supply-chain pins, MCP serialization bounds, Landofile TS form-parity, Windows machine trust + Hyper-V privilege contract closure, host-proxy doctor DNS, MCP serve guide, macOS/Windows machine live cells, pre-command failure surface consistency | US-444..US-454 | PRD-13 (closure-wave review deferrals) |
 
 ## Verification contract (applies to every story)
 
@@ -94,3 +95,29 @@ The Podman 6 and closure waves follow the same convention: the runtime/CLI/tooli
 | Version-constraint implementation lacks six-file provenance, full npm-semver grammar, schema-level validation/predicates, structured warnings, and cache correctness | spec §7.4 / PRD-08 progress review notes | US-441 |
 | Generic CLI command lifecycle events remain a CLI hook TODO beyond command-specific events | spec §3.5 / §8.11 / progress app:open review notes | US-442 |
 | `command_not_found` tooling-router path remains a source-router stub that does not dispatch tooling with version/cache/network policies | spec §16.7 / progress tooling-router notes | US-443 |
+| Detached-worker payload `stdin.write` without backpressure | US-433 verify Bugbot follow-up | US-444 |
+| Malformed flag-value parsing is a pre-existing defensive CLI concern | US-431 review deferred | US-445 |
+| Public-transcript inventory unavailable on clean build trees | US-433 / US-439 / US-443 verification notes | US-446 |
+| Mutable action tags + unversioned Ubuntu build packages | US-430 non-blocking security residuals | US-447 |
+| MCP streaming JSON serialization not bounded | US-440 review deferred | US-448 |
+| TypeScript-form lint/include-update parser gap (§7.1.1) | US-441 review deferred | US-449 |
+| Windows managed-machine trust + Hyper-V privilege contract needs explicit non-elevate closure (not a UAC path) | US-436 completion notes / US-423 no-auto-elevate | US-450 |
+| Host-proxy DNS doctor check broader follow-up | US-433 review deferred | US-451 |
+| MCP serve guide not authored | US-440 review deferred | US-452 |
+| macOS/Windows machine lifecycle not live-exercised from Linux | Podman 6 wave / US-432 advisory skips | US-453 |
+| Pre-parse / runtime-layer failures outside shared command lifecycle | US-442 review deferred | US-454 |
+
+## Explicit post-4.0 deferrals (not Beta 1 stories)
+
+These were recorded in progress as deferred or rejected-as-broader-scope and must **not** be pulled into PRD-14 as feature work:
+
+| Deferred capability | Why not Beta 1 residual hardening | Suggested later home |
+| --- | --- | --- |
+| Host-proxy generic dispatch beyond generated `app:open` allowlist | New command surface / allowlist expansion | 4.1+ agent/host-proxy polish |
+| Tooling schema graduation (`topLevelAlias` / `disabled` / `aliases` / `namespace`) | New tooling schema surface; intentionally rejected by Beta parser | 4.1 tooling schema |
+| Service-plugin version provenance in `buildKey` | Needs `ServicePlan` contributor metadata (schema) | 4.1 scratch/build provenance |
+| Stale external image pruning / artifact-existence contract | New `RuntimeProvider` capability | 4.1+ provider data-plane |
+| MCP HTTP transport | New transport surface; stdio-only for v4.0 | 4.2+ agent surfaces |
+| Dynamic external-flag two-phase parser for plugin `setup.flags` | New CLI parser architecture | 4.2 plugin authoring polish |
+| Broader TypeScript Landofile loader isolation/purity enforcement | Security architecture beyond form-parity | 4.1+ Landofile hardening |
+| Privileged host DNS / hosts-file mutation for `host.lando.internal` | Rejected in US-439 in favor of `LANDO_HOST_IP` | only if product revisits |

@@ -1,585 +1,114 @@
 # Ralph Progress Log — Lando v4 Beta 1 (contract-completion remediation)
 
 Branch: ralph/beta-1
-Source PRDs: spec/beta-1/prd-beta-1-{01..13}-*.md (US-372..US-443: remediation, feature, runtime, and closure waves)
+Source PRDs: spec/beta-1/prd-beta-1-{01..14}-*.md (US-372..US-454)
 Spec source of truth: spec/{01..19}-*.md + the originating Alpha 4 PRDs cited per story
 Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceability table)
 
 ## Conventions
 
-- This log is a durable progress narrative, not a changed-file ledger. Git records diffs; this file records outcomes, decisive verification, blockers, and durable learnings.
-- Story entries should explain what became true, what materially proved it, and what remains blocked or deferred. Do not add review choreography, PR mechanics, generated-path inventories, exact test-count trivia, or formatting/comment-only changes.
-- If a story relaxes a shipped contract, record the decision and the synchronized spec/PRD/snapshot updates. Otherwise keep the focus on Beta 1 closure state.
+- Durable progress narrative, not a changed-file ledger. Git records diffs; this file records outcomes, decisive verification, blockers, and durable learnings.
+- Explain what became true, what proved it, and what remains blocked or deferred. Skip review choreography, PR babysit notes, generated-path inventories, test-count trivia, and formatting/comment-only changes.
+- If a story relaxes a shipped contract, record the decision and the synchronized spec/PRD/snapshot updates. Truth hierarchy is spec > PRD > progress.
 
 ## Durable learnings
 
-- Business logic stays in pure Effect. Filesystem, process, network, terminal, provider, and renderer effects belong behind services or seams; command bodies should compose services and return structured results.
-- Public contracts come from Effect Schema with tagged errors and generated schema snapshots. Additive schema exports need field annotations, compatibility bookkeeping where required, and snapshot/docs refresh; machine error envelopes only serialize `_tag`, `message`, and `remediation`, so machine-required context must appear in the message.
-- Generated-file discipline is non-negotiable. Change the generator, run the matching codegen, and include intentional emitted outputs; do not hand-edit generated workflows, manifests, bootstrap layers, compiled OCLIF manifest, plugin tables, or schema artifacts.
-- Source and compiled CLI paths must stay behaviorally paired. OCLIF flags, compiled `run.ts` parsing, command result schemas, streaming modes, and parity fixtures move together whenever command routing changes.
-- Renderer and redaction boundaries own output. Commands and provider seams should not write directly to stdout/stderr; user-visible text, StreamFrames, events, doctor contexts, and provider error details must pass through the shared renderer/redactor seams.
-- Durable host state and platform paths use shared services. Versioned/locked state belongs in `StateStore`; Lando roots and derived paths come from `makeLandoPaths`/`PathsService`; host/provider probing uses `@lando/sdk/probe` rather than ad hoc retry loops.
-- Runtime bundles for managed Linux setup must contain a local-engine Podman. A checksum-valid manifest can still pin an operationally wrong asset; the managed service requires `podman --root ... --runroot ... system service`, which a `podman-remote-static-*` client cannot provide.
-- Runtime-bundle verification must exercise network create/remove and a published-port container through the managed Podman root/runroot/config shape. Version checks and a ready API socket do not prove that bundled networking helpers are selected or complete.
-- Runtime-bundle host keys and release artifact ids are different domains. Runtime bundles publish only `linux-x64`, `linux-arm64`, `darwin-arm64`, and `win32-x64`; CLI/release artifacts can still include Intel Mac or differently named Windows targets.
-- Log-follow lifecycle semantics live in the provider-neutral SDK engine. It owns handle close via explicit close plus `Stream.ensuring`, byte-level UTF-8-safe framing, tail/since/copytruncate/rotation diagnostics, and planner-owned capability degradation. Do not reintroduce scoped file handles that close before streams run.
-- Effect finalizers must be lazy: a method passed to `Effect.ensuring` must not start promises or mutate resource state while the Effect graph is being constructed. Start cleanup inside the returned Effect so the protected operation runs first.
-- Log-source availability is a planning truth, not a mid-stream surprise. Required follow sources fail planning when `serviceLogSources` is unavailable; optional follow sources are recorded as unavailable; redirect sources ride console and are never followed.
-- Truth hierarchy is spec > PRD > progress. Progress can summarize and explain, but it must not preserve stale unreleased behavior over the spec or mark pending stories complete.
+- Business logic stays in pure Effect; filesystem/process/network/terminal/provider/renderer effects belong behind services.
+- Public contracts come from Effect Schema with tagged errors and generated schema snapshots. Machine error envelopes serialize only `_tag`, `message`, and `remediation`.
+- Generated-file discipline is non-negotiable: change the generator, run codegen, include intentional outputs.
+- Source and compiled CLI paths must stay behaviorally paired whenever command routing changes.
+- Renderer and redaction own user-visible output; durable state uses `StateStore`; paths use `makeLandoPaths`/`PathsService`; host/provider probing uses `@lando/sdk/probe`.
+- Runtime bundles for managed Linux setup need a local-engine Podman plus complete helpers (including `rootlessport`). Checksums and a ready socket do not prove networking/port publish works. Launch managed service with `CONTAINERS_CONF=.../containers.conf` — `--config <dir>` alone does not load it. Prefer `/libpod/_ping` for readiness, not `/libpod/info`.
+- Log-follow lifecycle lives in the provider-neutral SDK engine (lazy finalizers, UTF-8 framing, planner-owned capability degradation). Required follow sources fail at plan time when capability is missing.
+- Never classify a present-but-broken release-blocking path as an environment skip.
 
-## Foundation summary — US-372..US-400 (2026-07-02 through 2026-07-06)
+## Condensed history — US-372..US-429 (2026-07-02 through 2026-07-09)
 
-The first Beta 1 wave converted many Alpha 4 compatibility gaps into enforceable contracts. The durable foundation was less about isolated features and more about making the repo harder to drift: schema snapshots, machine envelopes, boundary gates, generated metadata, and dispatch parity became the standard closure proof for CLI/runtime work.
+The foundation wave (US-372..US-400) turned Alpha 4 compatibility gaps into enforceable contracts: typed provider readiness, result schemas/machine envelopes, boundary gates, source/compiled dispatch parity, config write/validate/serialize paths, doctor aggregation with redaction, MCP projection groundwork, and agent-env forwarding policy.
 
-Material outcomes:
+The agent-native wave (US-401..US-409) made `agentEnv` a first-class host policy, landed plan-only `app open` plus the logical `runLando` contract (physical transport deferred), operationalized `lando:` constraints in cache/doctor, and shipped toolbox/`lando run` with fresh scratch identity (real buildKey cache still deferred).
 
-- Provider setup and runtime readiness moved toward typed verdicts instead of stringly failures.
-- CLI commands increasingly returned result schemas and structured envelopes rather than bespoke text/JSON.
-- Deferred command graduation became a known multi-surface operation, not just adding an OCLIF file.
-- Config write surfaces converged on explicit verb rejection, canonical serialization, and validation before write.
-- Include/offline paths gained cache-boundary proofs so `--no-network` cannot quietly hit network seams.
-- Doctor reporting became an aggregation of typed sections with NDJSON/text parity and redacted context.
-- Public schema additions were paired with annotations, fixtures, compatibility records, and snapshot drift checks.
-- Boundary gates became part of the ordinary acceptance path, not late cleanup.
+Runtime-bundle publishing (US-410..US-412) assembled immutable `runtime-v*` assets for the four runtime host keys with deterministic packing and committed-manifest gates. The first published Linux asset was later found remote-only (cannot run managed `--root`/`system service`); that defect was owned by US-430, not reopened PRD-10 stories.
 
-Durability and probing work landed across provider setup, managed runtime readiness, health/readiness checks, app lifecycle, cache behavior, and doctor reporting. Repeated review fixes moved host/provider retry and timeout behavior onto typed seams and probe-style classifiers, with redaction at the final event/error boundary rather than inside pure parsers.
+Podman 6 (US-413..US-424) enforced version floors, `/v6.0.0` API prefixes, CI Homebrew Podman 6, and managed-machine/host-target seams. Several seams landed first as typed parsers/fake-transport units (pull progress, OOM doctor, volume prune, health wait, loopback port binding) before later live wiring.
 
-Managed-file and renderer discipline hardened during this wave. Runtime-owned files gained ownership rules and drift checks; CLI output moved toward central result encoding and renderer-owned frames; direct writes and ad hoc JSON became review findings rather than acceptable shortcuts.
+Service log sources (US-425..US-429) shipped the SDK `LogSource` contract, planner merge/cache semantics, redirect reification, the provider-neutral follow engine, and CLI `--source` filtering with redacted TTY/JSON source labels and `lando info` source availability. Real container file-read adapters remained a later story (US-434).
 
-Source/compiled CLI parity became a recurring acceptance criterion. Graduated commands had to update OCLIF wrappers, compiled dispatch, generated manifests, machine-output schemas, and parity fixtures together. This prevented source-only fixes from silently leaving the compiled `$bunfs` path behind.
+## Current Beta 1 status
 
-Configuration and command surfaces were made more agent-drivable. App/global config write paths were hardened for typo rejection, canonical serialization, validation errors with remediation, structured output, and safer cache/offline behavior. Config translator and include-update surfaces moved toward deterministic preview/write semantics and network-boundary proofs.
+- **Complete (`passes: true`):** US-372..US-443.
+- **Open residual hardening (PRD-14, `passes: false`):** US-444..US-454 — host-proxy IPC backpressure and doctor DNS; CLI flag-parse and pre-command failure surfaces; clean-tree public-transcript gate; runtime-bundle CI supply-chain pins; MCP serialization bounds and MCP serve guide; Landofile TS form-parity; Windows machine trust + Hyper-V privilege contract closure (non-elevate); macOS/Windows machine live cells.
 
-MCP and agent-environment groundwork landed. MCP became a projection of command specs with allowlist generation, structured result envelopes, cancellation/input handling, redacted diagnostics, and doctor visibility. Agent-context env forwarding started with fixed host markers, then gained config policy, opt-outs, audit reporting, and precedence fixes.
+## Closure wave — US-430..US-436 (condensed)
 
-Important constraints that survived this wave:
+### US-430 — local-engine Linux runtime bundle
+Published immutable `runtime-v0.1.2` with a real local-engine Podman 6.0.1 (cgo tags, no `libsubid`), repinned the committed manifest, and proved zero-override managed setup plus a rootless container from the published pin. Non-blocking residuals: mutable action tags and unversioned Ubuntu build packages (now US-447).
+- **Learning:** verify dynamic deps and zero-override rootless run from the published manifest; `CGO_ENABLED=0` is not an equivalent local-engine build.
 
-- A command-level `--format` flag is declarative; central command-base machinery owns the actual output mode.
-- Global/bootstrap commands must not import app-only services just to reuse app logic; plan-based helpers keep layers small.
-- Config command seams can host validation that would otherwise widen unrelated service error unions.
-- Generated allowlists should be literal-data modules with freshness tests, not hand-maintained parallel registries.
-- Source-mode `CORE_VERSION` is not a release version; compiled artifacts are stamped separately.
+### US-431 — closure-review evidence
+Five retained review lanes validate through a fail-closed schema; inconclusive lanes cannot approve; linked blockers cannot hide failing stories. Approval-integrity bypasses (inconclusive+approved, whitespace-forged evidence) were closed.
+- **Deferred:** malformed flag-value parsing (now US-445).
 
-Version-constraint work became a cache and doctor concern, not just a parse check. `lando:` constraints were enforced during app loading, represented in cache freshness, honored by skip mode without mutating stale caches, and surfaced through doctor output.
+### US-432 — live Podman 6 acceptance
+Provider/host matrix with structured pass/fail/skip. First blocked on missing `rootlessport` in `0.1.2`; fixed by publishing `runtime-v0.1.3` and product fixes (`CONTAINERS_CONF`, hermetic `registries.conf`, pinned `crun`/`conmon` + `k8s-file` logs, `/libpod/_ping` readiness, service.log capture). Release-blocking managed Lando / system Podman / Docker cells green; advisory macOS skips structured.
+- **Learning:** setup readiness ≠ network/port capability; never skip a broken release-blocking runtime.
 
-Material verification for this foundation included root typecheck/lint, schema-snapshot drift checks, generated-manifest/codegen idempotency, renderer/redaction/machine-output/state/probe/path boundary gates, focused unit and contract suites, parity dispatch suites, guide lint/coverage where guides owned the surface, and manual CLI smoke on source and compiled paths where meaningful.
+### US-433 — production host-proxy runLando
+Shipped Unix-socket + arch-selected compiled shim, Windows Desktop alias/loopback TCP bridge, session token auth, concurrency/recursion limits, and lifecycle cleanup. Hardened to a socket control plane (identify/shutdown, no process-table forensics), stripped session tokens from applied state and shim env, structured `ProviderCapabilities.hostProxy`, and fixed Bun proxy-env latching/absolute-form routing. Compiled sandbox proved allowlist, auth, recursion, envelope/exit parity, and cleanup.
+- **Deferred:** worker IPC backpressure (US-444); host-proxy doctor DNS and allowlist expansion beyond `app:open` (US-451 / post-4.0).
+- **Learning:** keep detached worker Layer scope open for the session; ownership must bind control identity before fallback signals; loopback proxy bypass must set both `NO_PROXY` and `no_proxy`.
 
-## Agent-native milestone — US-401..US-409 (2026-07-06 through 2026-07-07)
+### US-434 — real provider log-follow file access
+Docker-compatible providers follow in-container files via a provider-owned archive-and-exec helper with truthful capability advertising. Hardened to unguessable in-container helper paths and typed protocol parsing; shipped the service-logs guide. Verify fixed glibc helpers so default Debian service images can run the upload (musl was Alpine-only).
+- **Learning:** helpers must match default service libc; decode both Docker multiplexed and Podman raw exec frames.
 
-Configurable agent env forwarding became a first-class host policy. `agentEnv` gained global config, exact-name allow/deny, a Landofile opt-out, `LANDO_AGENT_ENV=0`, and `info --deep` audit output. The important implementation constraint is that policy resolves fresh per invocation; it is not cached into app plans because config and per-invocation switches must take effect immediately.
+### US-435 — buildKey build-results short-circuit
+Content-addressed build results stamp artifact refs into the applied plan; warm repeats keep fresh scratch ids. Deterministic context packing/dockerignore, shared digest helper, exec- vs shell-form `RUN`, redacted buildargs, and schema-backed skip events landed.
+- **Deferred:** service-plugin version provenance and external image prune (post-4.0 / non-goals).
 
-The env-forwarding policy preserved precedence: forwarded host markers sit below service-declared environment and explicit exec/task env. The audit surface reports names only, never values.
+### US-436 — live-wire remaining Podman 6 seams
+Real provider pulls with redacted progress, OOM doctor correlation, ownership-complete volume prune (`all=true` query param + single ownership selector), and ownership-gated machine trust. Windows Hyper-V prep remains intentional manual remediation (never auto-elevated); US-450 locks that non-elevate contract rather than adding UAC.
 
-`app open` and the logical container-to-host `runLando` round trip established the host-proxy command pattern. `open` resolves URLs from the plan, opens through a ShellRunner-backed platform helper, degrades safely on headless Linux, and publishes redacted lifecycle events. The in-container path proved allowlist, cwd remap, env filtering, retained-runtime dispatch, event redaction, envelope parity, and exit-code parity.
+## Latter closure entries
 
-Host opening remained plan-only. Targets are resolved from app plan routes/endpoints; container-provided URLs are not trusted as authority.
+### 2026-07-12 — US-437 complete
+Global rebuild is a real lifecycle command on source and compiled dispatch: regenerate global app, fail closed when provider is missing before destructive work, destroy without removing state/volumes, apply the BuildOrchestrator-returned plan, inspect, and publish success-only global rebuild events. Semantic source/compiled help parity includes inherited `--format`/`--json`.
+- **Learning:** compiled no-flag handlers must still reject unknown argv; always apply the orchestrator-returned plan because artifact refs live there.
 
-The production host-proxy transport remained incomplete. The physical Unix socket, compiled shim binary, container mount, token auth, concurrency cap, and recursion guard were explicitly deferred; US-403 proved the logical contract only.
+### 2026-07-12 — US-438 complete
+MCP exposes only closed read-only tools `app:config:get` and `app:config:view`. Write-capable umbrella and verb ids are absent from the MCP registry and allowlists; crafted write-shaped inputs fail before execution. Source, compiled, and real stdio MCP surfaces agree.
+- **Learning:** safe MCP projection must strip every write-capable verb id, not only the umbrella; reachability is the projected `LandoCommandSpec`, not OCLIF class flags.
 
-Version constraints and hot caches were made operational. Landofile `lando:` constraints enforce against `CORE_VERSION`, surface tagged errors/remediation, support skip mode, and participate in app-plan/tooling cache freshness. Doctor reports learned to explain constraint status.
+### 2026-07-13 — US-439 complete
+Host `lando shell` is a per-line Bun Shell REPL via `ShellRunner` with typed-at-prompt secret resolution, stateful redaction, bounded locked history, line-scoped interruption, and terminal restoration. `--no-interactive` fails before host or service execution with source/compiled parity. Compiled verify fixed StateStore parent-mkdir for history roots and stdin pause/unref so REPL exit does not hang the process.
+- **Rejected:** privileged hosts-file mutation for `host.lando.internal` (use `LANDO_HOST_IP`).
+- **Learning:** secret placeholders must cross process boundaries as tagged-template values; StateStore path roots must exist before open.
 
-Cache freshness includes the sources that can change command/version semantics: Landofile bytes, lockfile provenance, local include content, and normalized `lando:` constraint state.
+### 2026-07-13 — US-440 complete
+MCP serve rejects unusable/TTY stdio and incompatible machine-output mode on both dispatches; `mcp.maxConcurrent` is schema-validated. Request frames, outstanding calls, response/progress queues, and blocked writes are bounded before parse/retention; tombstones are capped; timed-out Bun stdout sinks are scope-finalized so the process can exit.
+- **Deferred:** streaming JSON serialization bounds (US-448); MCP serve guide (US-452).
+- **Learning:** a deadline around `Effect.promise` does not cancel native Bun stdout I/O — finalize the owning sink.
 
-Recipe/toolbox/scratch work provided a disposable tooling path. The `toolbox` recipe, raw `type: lando` service, recipe list/describe/validate commands, `apps:scratch:run`, streaming JSON frames, env forwarding into scratch exec, cleanup/keep semantics, and reserved alias rules landed with both source and compiled dispatch coverage.
+### 2026-07-13 — US-441 complete
+`lando:` constraints accumulate across all six Landofile layers and nested includes with provenance in errors, skip warnings, doctor, and cache identity. Full npm-semver grammar; app roots discoverable from any layer form; environment-dependent TypeScript layers bypass source-byte tooling hot cache; config writes always target canonical `.lando.yml` while validation reads the merge.
+- **Deferred:** TypeScript-form lint/include-update form-parity (US-449); broader TS-loader isolation (post-4.0).
+- **Learning:** six-layer loading and discovery share one ordered layer table; source-byte freshness cannot prove environment-dependent TS output.
 
-Scratch execution treats a non-zero tool exit as a successful command result carrying that exit code. Ownership cleanup remains scope-bound unless `--keep` successfully hands the scratch to the registry.
+### 2026-07-13 — US-442 complete
+Every resolved command emits redacted `cli-<canonical-id>-init` then exactly one `-run` or `-error`, with command-specific events nested between. Invocation payloads use structural summaries (not raw secret-bearing values); failure identity stays tag-safe.
+- **Deferred:** pre-parse/runtime-layer failures outside shared lifecycle (US-454).
+- **Learning:** lifecycle publication belongs at the shared renderer/runtime seam after provisioning, reusing an already-provided `EventService` when present.
 
-The real buildKey cache remained incomplete. Scratch warm-repeat verification proved fresh scratch acquisition, no warm pool, and stable content-addressed image-build inputs; it did not implement or prove a runtime build-results cache hit because that remained spec-only in Beta 1.
+### 2026-07-13 — US-443 complete
+Command-not-found tooling routes only from a fresh app command index into the policy-bearing tooling path (version/network/provider/task semantics centralized). Compiled routing gives cached dynamic tooling `--help`/`--version` before universal built-ins; cache-read failures use the same lifecycle/renderer envelope as misses.
+- **Rejected for Beta:** tooling-schema graduation of `topLevelAlias`/`disabled`/`aliases`/`namespace` (post-4.0).
+- **Learning:** never call `CommandRegistryLive.list` from command-not-found — its cache-miss path does live discovery.
 
-Verification centered on typecheck/lint, schema/codegen idempotency, boundary gates, MCP/host-proxy allowlist freshness, command parity, scratch lifecycle tests, guide scenarios for owned docs, and real Podman sandbox smoke where the managed runtime was available.
+### 2026-07-13 — PRD-14 residual hardening stories opened
+Review/verify deferrals that remained after US-430..US-443 are explicit Beta 1 work as **PRD-14** / **US-444..US-454** (`passes: false`). Feature-shaped follow-ups stay in the index post-4.0 table, not as open stories. No implementation claimed for US-444..US-454 in the PRD-only update.
+- **Learning:** required review deferrals must become numbered stories in-phase or they become an invisible backlog past freeze.
 
-## Runtime-bundle milestone — US-410..US-412 (2026-07-07)
-
-Runtime-bundle publishing and manifest pinning were implemented. The publish workflow assembles immutable `runtime-v<version>` assets for the four runtime host keys, uses pinned upstream source digests, packs reproducible archives, guards release immutability, and regenerates the committed manifest pin. The committed manifest was repinned to real `runtime-v0.1.0` release assets with HTTPS URLs, authoritative SHA-256 digests, real byte sizes, and no `darwin-x64` runtime entry.
-
-What is complete:
-
-- Release-mode URL derivation points at this repository's `runtime-v*` assets by default.
-- Assembly verifies upstream bytes fail-closed before packaging.
-- Archive packing is deterministic, so byte drift is reviewable.
-- Manifest resolution still supports explicit override for local testing.
-- The committed manifest schema accepts the real pins and rejects placeholder classes through explicit gates.
-
-Manifest invariants became release and CI gates. Offline checks reject placeholder-like checksums, zero sizes, off-repo URLs, missing required host keys, and runtime-version mismatches. Live URL/length verification was scheduled for nightly/release contexts rather than every PR.
-
-Subsequent operational validation exposed a separate Linux managed-setup gap. The published Linux asset is checksum-valid and installs, and the bundled binary reports Podman 6.0.0, but it is a remote-only client: `podman --root` rejects with `unknown flag: --root`, and it cannot launch `system service` with the managed `--root`/`--runroot` arguments. A zero-override `lando setup` for provider-lando on Linux therefore does not pass.
-
-This is not a local manifest bug and not a URL swap within the same upstream Podman release. The asset must be republished with a local-engine-capable Linux Podman and the committed manifest must be repinned. US-430 tracks that corrected publish-and-pin loop without reopening US-410 or US-411.
-
-Verification proved checksum/manifests/gates, deterministic assembly, schema-valid pins, override precedence, extraction layout, and published URL byte/sha matching. It did not prove managed zero-override Linux setup because the published asset cannot satisfy the local-engine requirement.
-
-## Podman 6 milestone — US-413..US-424 (2026-07-07 through 2026-07-08)
-
-Podman 6 version gates landed before provider action. Setup rejects old or unparsable Podman versions with typed provider-unavailable errors and remediation, using the selected CLI/API source as appropriate. The sandbox caveat is important: the default apt Podman in `lando4-dev` was 5.4.2 and correctly failed the floor; Homebrew Podman 6 on PATH was needed for live provider=podman verification.
-
-Provider=podman setup did complete when Homebrew Podman 6 was selected. Provider-lando managed setup did not, because it depends on the runtime bundle asset discussed above.
-
-CI provisioning moved Linux Podman-backed jobs to Homebrew Podman 6 with helper binaries and a fail-fast host-contract assertion. This replaced the runner's older distro Podman path for provider integration and guide e2e contexts.
-
-The CI assertion compares semantic version tuples rather than packed integers and fails closed when the host binary is absent or unparsable.
-
-The Podman HTTP API prefix migrated to `/v6.0.0`, and a static gate prevents new production provider code from constructing Podman 5 libpod prefixes. Version-floor enforcement remains separate from API-prefix correctness.
-
-Managed-machine and host-target seams were updated for Podman 6. Machine start avoids hijacking the user's default connection, OS upgrade uses the Podman 6 command shape, WSL unsupported paths fail with typed remediation, Intel Mac is gated as unsupported for runtime bundles, and managed machine CA import/Windows Hyper-V prep remained advisory or platform-specific.
-
-The Intel Mac decision applies to runtime bundles, not to every release artifact. Runtime support and release packaging intentionally retain separate target vocabularies.
-
-Several Podman 6 seams landed as typed future-implementation units rather than live wiring: image-pull progress parsing/events, OOMKilled died-event doctor surfacing, libpod volume-prune selection/parsing, health status inspection/waiting, and managed `containers.conf` loopback port binding. These seams were unit/contract verified with pure parsers, fake transports, redaction boundaries, and generated schema updates where surfaced.
-
-Future-implementation seams followed a consistent shape:
-
-- Pure parser/classifier first, with no redaction inside pure parsing.
-- Boundary builder second, where identifiers and provider payloads are redacted.
-- Fake transport or captured spawn tests for exact provider/API behavior.
-- No live provider action unless the story explicitly required it and the environment could support it.
-
-Live integration was environment-limited. Provider=podman setup against Homebrew Podman 6 succeeded where documented, and compiled smoke commands passed, but default provider-lando managed setup remained blocked by the remote-only Linux runtime bundle. macOS/Windows machine lifecycle behavior could not be live-exercised from the Linux sandbox.
-
-## Service-log contract milestone — US-425..US-427 (2026-07-08 through 2026-07-09)
-
-The declared-log-source SDK contract landed first. `LogSource`, `LogSourceInput`, `LogSourceId`, log stream/strategy literals, reserved `console` semantics, `LogChunk.source`, `LogOptions.sources/source`, and required `ProviderCapabilities.serviceLogSources` became public or provider contract surface as appropriate.
-
-The SDK additions were intentionally layered before runtime behavior. US-425 changed the contract and schema surface; US-426/US-427 made that contract visible to planning and redirect reification; US-428/US-429 made follow/runtime/CLI behavior observable.
-
-Review tightened contract truthfulness: provider capability keys derive from schema fields, lossy Landofile encoding is rejected, public JSON schema registration was added, and compatibility/export tests cover the new surface.
-
-Plan-time merge and cache semantics followed. User and service-type log sources merge by id, `extends` preserves inherited declarations with child precedence, invalid redirect on unsupported bases is rejected, and the app-plan cache/fingerprint includes resolved source declarations so service catalog changes cannot reuse stale plans.
-
-Absolute path/id hardening beyond the existing schema primitives was explicitly deferred to the follow/redirect wire-up rather than overloading the initial SDK-contract story.
-
-Redirect reification shipped as a build-plan foundation. `redirect` sources on Lando-built services emit deterministic symlink build steps to stdout/stderr, while runtime follow selection filters to `follow` sources only. A review fix bumped the cache schema so warm caches without redirect build steps do not survive the new semantics.
-
-At this point the contract, capability bit, planner merge, cache invalidation, and redirect-to-console path existed. Real provider-owned file following and CLI/source filtering were still the next stories.
-
-## US-428 — provider-owned follow log sources (2026-07-09)
-
-US-428 shipped the provider-neutral `follow` log-source engine and provider integration surface. The engine implements finite snapshots, follow backfill, appended writes, missing-file pending/unavailable diagnostics, logrotate rename/create, copytruncate, byte-level UTF-8-safe framing, CRLF cleanup, final partial-line flushing at EOF, per-source tail, bounded line truncation, and `since` handling only for timestamped sources.
-
-The engine emits diagnostics as `LogFollowEvent`s and projects only line events into `LogChunk`s. This keeps provider chunks stable while preserving diagnostic information for later surfacing.
-
-Handle lifecycle was the critical implementation constraint. The engine keeps `RuntimeProviderShape.logs` as `Stream<LogChunk, ProviderError>` with no extra Scope requirement; file handles are closed by explicit `handle.close` plus `Stream.ensuring` on normal completion, interruption, and dropped streams. Construction-scoped file acquisition was avoided because it can close real handles too early while in-memory tests mask the issue.
-
-The polling loop deliberately avoids repo-banned retry/schedule helpers for this class of host/provider probing. It uses clock-driven pagination/sleep and a bounded readiness loop for missing files.
-
-Real providers merge the live console stream with file-follow streams only when a `logFileAccess` seam is injected. If the seam is undefined, providers stream console only and do not fail. The actual container file-read adapter remains a later live wave.
-
-Planner-owned capability degradation was made truthful. Required follow sources fail during planning when `serviceLogSources` is unavailable and name the redirect alternative; optional follow sources become unavailable metadata on the service plan. Providers now advertise `serviceLogSources` only when the follower seam exists, so they do not claim a capability they will silently omit.
-
-`app:logs` forwards each service's resolved sources to providers. The SDK fake provider and contract suites proved console plus tagged source projection and finite termination; the dedicated engine suite proved the file-follow failure modes under deterministic clock control.
-
-Meaningful verification included typecheck/lint, focused SDK log-follow engine tests, provider follow tests, app-planner capability tests, provider capability tests, and review fixes for capability truthfulness. The initial-backfill final partial-line behavior stayed as implemented because the contract test explicitly asserted it.
-
-## US-429 — CLI/source visibility and filtering (2026-07-09)
-
-US-429 completed the declared-log-source user surface. `lando logs` accepts `--source <id>` for a declared source or the implicit `console`; unknown ids fail up front with known-source context; the flag composes with service, follow, tail, and since options.
-
-The command normalizes `since` before provider dispatch, preserving the US-393 contract that bad time expressions fail before provider selection.
-
-Filtering semantics became explicit. A file-source request filters resolved sources and tells providers to suppress the container console stream so output is restricted to that source. `--source console` maps to console-only behavior because `LogSourceId` deliberately rejects the reserved `console` id. Redirected sources keep their console-backed stream rather than being suppressed to empty output, and unavailable follow sources fail up front when provider capability is missing.
-
-This preserves the distinction between redirected sources and followed file sources: redirects are already console by construction, while follow sources need provider file access.
-
-Every log line now carries source visibility. TTY rendering labels declared-source lines while preserving the existing console appearance; JSON mode uses the central StreamFrame contract with an additive optional `source` field on stdout/stderr frames. The schema snapshot, SDK compatibility record, and spec StreamFrame block were refreshed for that additive field.
-
-Redaction was fixed for both output modes. Providers still emit raw `LogChunk`s, but the follow StreamFrameSink now redacts file content for TTY and JSON paths before rendering. A boundary test locks that registered secrets in followed files are masked in rendered and JSON output while the on-disk file remains raw.
-
-`lando info` now reports each service's resolved log sources with id, path, strategy, and availability: available, redirected-to-console, or unavailable with reason. Review fixes made unavailable reasons visible in human output as well as the structured result.
-
-Capability gating from the earlier logs work stayed intact. Providers without `serviceLogs` still fail up front, and providers without `serviceLogSources` cannot silently pretend followed sources are available.
-
-Verification included typecheck/lint, redaction and renderer boundary gates, schema snapshot regeneration, focused logs/info scenarios, result-encode and machine-output checks, dual-dispatch parity, provider log-follow/capability/contract suites, app-planner/log-source coverage, and compiled CLI help QA for the new flag.
-
-Durable lessons: most source plumbing already existed from US-425..428; US-429 mainly surfaced it through CLI, renderer, info, schema, and provider suppression behavior. Any future stream of user/file content must redact TTY output as well as JSON output.
-
-## Current Beta 1 closure status
-
-US-430..US-443 are pending and must remain `passes: false` until implemented and verified. This progress rewrite does not claim any implementation for those stories.
-
-Open closure categories:
-
-- Runtime republish/live acceptance: US-430 remains pending until the Linux runtime bundle is republished with a local-engine Podman, repinned, and proven by zero-override managed setup/live acceptance.
-- Independent review: remaining stories need their own implementation evidence and review findings resolved, not inherited approval from this condensed progress narrative.
-- Production wiring of deferred seams: host-proxy physical transport/shim/auth/limits, container file-read log adapter, and other typed future seams must be live-wired where the new PRDs require them.
-- CLI/MCP parity: new command surfaces must keep source and compiled dispatch, generated manifests, MCP allowlists, machine envelopes, streaming frames, and result schemas in sync.
-- Version/lifecycle/tooling gaps: Podman 6 lifecycle edge cases, runtime setup acceptance, scratch/build cache realities, guide/transcript ownership, and boundary-gate coverage remain closure work for the pending stories.
-
-## 2026-07-10 01:08 CDT - US-430
-- Prepared the corrected immutable runtime release path: Linux bundles now require native source-built Podman and helpers, verify the production managed-service argument shape, and declare `runtime-v0.1.1` independently from the last published manifest pin so review-time manifest invariants stay fail-closed.
-- Native linux-x64 assembly and packed-service QA passed in `lando4-dev`: the managed Unix socket became ready and both client and server reported Podman 6.0.1 from the pinned source commit. Typecheck, lint, deprecation checks, manifest invariants, generated-workflow idempotency, and relevant runtime-bundle test spot checks passed.
-- Immutable asset publication, the post-release manifest pin, and zero-override published-manifest setup remain pending until the main-only publish workflow runs; the story therefore remains open.
-- **Learnings for future iterations:**
-  - Treat `runtime-bundle-sources.json.runtimeVersion` as the next source-set release and `runtime-bundle-version` as the last published pin; the publisher advances the pin and manifest together only after immutable assets exist.
-  - Podman `--config` takes a directory, and verifier coverage must compare the full production service arguments (`--time=0` plus Unix socket), not stop at global-flag parsing.
----
-
-## 2026-07-10 12:34 CDT - US-430 complete
-- Published immutable `runtime-v0.1.2` assets from `main` in runtime-bundle run `29110853957` after superseding the non-portable `runtime-v0.1.1`; no existing release asset was overwritten. PRs #563 and #564 established the recovery-safe publisher, and PR #565 removed the bundled Podman's host `libsubid.so.4` dependency while retaining the pinned Podman 6.0.1 local engine.
-- Linux Podman now builds with `CGO_ENABLED=1` and literal tags `grpcnotrace libsqlite3 systemd seccomp`. Assembly rejects empty `ldd` output, unresolved libraries, `libsubid.so*`, and unreviewed SONAMEs before it runs the production managed-service argv verifier or packs an archive. Native `linux-x64` and `linux-arm64` jobs both passed those gates.
-- Manifest pin commit `d6f15a18` advanced the committed version and manifest to `0.1.2`. The release and manifest agree on all four HTTPS assets, byte sizes, and SHA-256 digests; Linux x64 is `c5876a07feded0d7f1a04f4f1aebe06cd263dbb96eeb7249ed268db98f853109` (44,376,067 bytes) and Linux arm64 is `7cf5ffc79899fc74d92e60fda27afca657a639b1fe677f39e997f6106f8513ac` (40,788,904 bytes). `bun run check:runtime-bundle-manifest` passes on the committed `runtime-v0.1.2` pin.
-- Final zero-override acceptance passed in `lando4-dev` from fresh isolated data/config/cache roots with `LANDO_RUNTIME_BUNDLE_MANIFEST`, URL, and SHA override variables unset. Compiled `lando setup --yes --provider=lando` downloaded and checksum-verified the committed release, started the managed socket, and persisted Podman `6.0.1`, bundle `0.1.2`, and the exact published x64 SHA. The installed binary had no `libsubid` or unresolved dependencies; client/server both reported `6.0.1`; a rootless `alpine:3.20` container exited successfully; `lando poweroff` and sandbox cleanup passed.
-- Verification included 120 focused runtime-bundle tests, typecheck, lint/deprecation checks, generated-workflow idempotency/YAML validation, manifest invariants, Bugbot, the full PR #565 CI matrix, and five terminal review lanes. Goal, QA, code quality, security, and history/context all passed after QA found and tests locked the supported `libassuan.so.0`/`.9` host variants. Non-blocking security residuals are the pre-existing mutable action tags and unversioned Ubuntu build packages.
-- US-410 and US-411 remain historically complete, and US-432 remains separate; only US-430 changes to `passes: true` here.
-- **Learnings for future iterations:**
-  - A local-engine `--help` verifier is necessary but not sufficient for a portable bundle. Verify dynamic dependencies on native build hosts and run a zero-override rootless container from the published manifest before accepting the release.
-  - Podman's no-`libsubid` build path is upstream-supported and keeps cgo/local-engine behavior while using file-backed `/etc/subuid` and `/etc/subgid`; `CGO_ENABLED=0` is not an equivalent Linux local-engine build.
----
-
-## 2026-07-10 15:29 CDT - US-432 blocked
-- Added generated provider/host acceptance cells with structured pass, fail, and skip reports, release-blocking evaluation, prerequisite preflight, per-cell evidence artifacts, and explicit lifecycle coverage through stop/destroy.
-- Fixed managed service startup to load its generated `containers.conf` through `CONTAINERS_CONF`; without it, Podman ignored the bundled helper directory and selected the host's Netavark 1.14.0 instead of bundled Netavark 2.0.0. The matrix now pulls live fixture images before provider lifecycle checks.
-- Verification: typecheck, lint, workflow/codegen/provider-acceptance spot checks passed. Fresh zero-override setup reached the repinned runtime-v0.1.2 socket; managed network creation, image pulls, SDK contract, start, exec, logs, health, and volume checks passed. The release-blocking stop/destroy fixture then exposed that runtime-v0.1.2 omits `rootlessport`, so a service with a published port cannot start.
-- US-432 remains `passes: false`. Completion requires a new immutable runtime bundle containing the Podman 6 `rootlessport` helper, a repinned manifest, and a managed published-port lifecycle smoke before rerunning the release-blocking cells.
-- **Learnings for future iterations:**
-  - `--config <runtimeConfigDir>` does not load `containers.conf`; launch the managed service with `CONTAINERS_CONF=<runtimeConfigDir>/containers.conf` or Podman falls back to host helpers.
-  - A successful managed setup proves download, checksum, service argv, and socket readiness; it does not prove the runtime can create networks or publish container ports.
-  - Never classify a present-but-broken release-blocking runtime as an environment skip. Preserve the failed report and fix the immutable prerequisite.
----
-
-## 2026-07-10 16:53 CDT - US-432 publication prerequisite ready
-- The Linux runtime source build now compiles and packages Podman 6.0.1's rootlessport helper from the same pinned source, and pre-publication portability checks fail if either Podman binary is missing or outside the reviewed dependency baseline. The runtime source set advances to immutable version 0.1.3 while the committed manifest correctly remains on published 0.1.2.
-- Verification: typecheck and lint passed; focused runtime-bundle, workflow, and provider-acceptance spot checks passed. In lando4-dev, a locally assembled bundle installed through managed setup and completed image pull, published-port curl, exec, logs, stop, and remove with the bundled helper.
-- US-432 remains open until the main-only publisher creates and repins runtime-v0.1.3 and all release-blocking provider/host cells pass against the published manifest.
-- **Learnings for future iterations:**
-  - A runtime source-set change must advance runtime-bundle-sources.json; build-script changes alone do not trigger the main-only immutable publisher.
-  - Build rootlessport from the pinned Podman source alongside bin/podman, and inspect both artifacts before deterministic packing.
----
-
-## 2026-07-11 - US-432 (completion)
-- Live Podman 6 acceptance is fully closed: runtime-v0.1.3 published with rootlessport, manifest repinned on main, and all release-blocking provider-matrix cells (managed Lando Podman 6, system Podman 6, Docker Engine) pass with zero override env vars. Advisory macOS cells emit structured skips. US-432 flipped to passes: true on real CI evidence.
-- Getting the managed cell green required four product fixes beyond publication: readiness probing via `/libpod/_ping` instead of `/libpod/info`; managed service stdout/stderr captured to `<run dir>/service.log` with the tail surfaced in launch errors; a hermetic managed `registries.conf` (v2) wired via `CONTAINERS_REGISTRIES_CONF`; and pinning bundled `crun`/`conmon` plus `log_driver = "k8s-file"` in the managed containers.conf.
-- Verification: typecheck, lint passed; provider-lando/runtime-config/workflow test spot checks passed; provider-matrix run 29141267291 fully green.
-- **Learnings for future iterations:**
-  - GitHub ubuntu-24.04 runners ship a v1 `/etc/containers/registries.conf`, a pre-Podman-6 `crun`, and a huge dpkg database. The managed runtime must never consult host container configs or host OCI binaries: pin everything to the bundle via the managed config dir.
-  - `/libpod/info` shells out to the system package manager per helper binary and can take >45s on package-heavy hosts; never use it as a liveness probe — `_ping` is the readiness endpoint.
-  - Never spawn long-lived services with stderr "ignore"; empty evidence turns a config bug into a multi-round debugging hunt.
-  - A disposable workflow on a throwaway branch (push-triggered, never merged) is the fastest way to interrogate a GitHub runner: probe steps beat guess-and-dispatch cycles.
-  - The upstream static `conmon` release binary has no journald support; pair it with `log_driver = "k8s-file"`.
-
-## 2026-07-11 - US-431
-- Added a retained closure-review evidence surface for Beta 1: five required lanes now validate through a structured schema, inconclusive lanes cannot approve, blocker findings cannot be dismissed or hidden behind linked failing stories, and the final JSON/Markdown artifacts preserve lane scope, inputs, commands/tools, findings, dispositions, residual risks, and evidence.
-- Fixed the closure priority ledger so US-430..US-443 remain uniquely ordered, then retained approved goal, QA, code-quality, security, and context/history review lanes under `spec/beta-1/closure/us-431/`; the real closure-review CLI approved the retained lane input and wrote the audit report/note.
-- Verification: typecheck, lint passed; focused closure-review script tests passed; real CLI artifact generation passed.
-- **Learnings for future iterations:**
-  - Closure-review evidence must be machine-checkable and retained; inaccessible team messages or instruction-only/empty review output should be replaced with terminal lane results that can be audited later.
-  - Linked blockers can preserve accountability, but they must not make a closure report approved while the linked story is still failing.
----
-
-## 2026-07-11 02:43 CDT - US-431 Review
-- Closed approval-integrity bypasses: approved or blocked lanes carrying an inconclusive class now fail validation without rendering contradictory approved/inconclusive output, and whitespace-only audit fields cannot forge evidence. The CLI integration test now resolves the repository root explicitly instead of depending on the caller's working directory.
-- Review notes (deferred/rejected): malformed flag-value parsing is a pre-existing defensive CLI concern outside the story's retained-evidence contract; semantic-but-not-byte-identical JSON formatting does not change the audited report; unavailable original task sessions do not invalidate the self-contained retained lane evidence required by the PRD.
-- Verification: typecheck and focused closure-review tests passed; lint passed after formatting the focused regression change.
-- **Learnings for future iterations:** Disposition and inconclusive classification form one state invariant; validate both directions so contradictory external input cannot pass a fail-closed approval gate.
----
-
-## 2026-07-11 07:13 CDT - US-433
-- Shipped the production in-container `runLando` path: eligible services receive a read-only per-app Unix socket and compiled shim, while a detached host worker retains one app runtime and preserves the logical dispatcher's allowlist, cwd/env filtering, structured result, exit-code, event, and redaction behavior.
-- Added session-scoped token authentication, atomic concurrency admission, recursion protection, bounded request handling, capability-aware no-op reporting, and owned cleanup across failed setup, stop, destroy, rebuild, restart, and uninstall. Oversized requests are drained without retaining bytes and close after one tagged rejection response and event pair.
-- Verification: typecheck and lint passed; host-proxy, planner, start/info/uninstall, redaction, SDK, and service-lando spot checks passed; renderer, redaction, machine-output, and path boundaries passed; schema/codegen and focused guide checks passed; the compiled shim and sandboxed CLI surface were exercised successfully. The public-transcript inventory gate requires the unrelated full generated transcript corpus and therefore remained unavailable after a clean build tree.
-- **Learnings for future iterations:**
-  - Detached app workers need non-secret ownership records with live argv fingerprint checks before termination; deleting socket state alone can orphan a warm runtime.
-  - Enforce request-size and concurrency limits before retaining bytes or forking dispatch, and keep rejection events paired even for authentication and parse failures.
-  - Provider capability `none` must survive into the plan as explicit unavailable metadata so runtime no-ops remain visible through `lando info`.
----
-
-## 2026-07-11 07:48 CDT - US-433 Review
-- Fixed exact missing/stale/cross-app authentication failure parity, authenticated slow-body admission outside the concurrency cap, listener cleanup after post-bind failure, app-specific detached-worker ownership and Darwin verification, interruption cleanup during worker startup and provider apply, overly broad uninstall removal of shared run state, and release-shaped compiled-binary shim delivery.
-- Review notes (deferred/rejected): US-433 is reopened for a cross-architecture compiled shim sidecar, repeat-start worker replacement, complete pre-apply interruption cleanup, and native Windows platform-equivalent transport; the existing DNS host-proxy doctor check and generic dispatch beyond the generated `app:open` allowlist were rejected as broader follow-up scope rather than blockers for this focused repair.
-- Verification: typecheck and lint passed; focused host-proxy transport/worker, start lifecycle, and uninstall tests passed; renderer, machine-output, and env-helper boundaries passed during the repair.
-- **Learnings for future iterations:** A compiled sidecar is not shipped merely because a package build script emits it; release-shaped binary tests must prove artifact delivery. Concurrency admission must happen before authenticated body retention, and shared run roots must only be cleaned through ownership-aware seams.
----
-
-## 2026-07-11 12:15 CDT - US-433 complete
-- Completed the production runLando host-proxy transport: target-specific Linux shim sidecars are selected from runtime-engine architecture, Unix sockets remain app-scoped, and Windows Docker/Podman paths use provider-declared Desktop aliases to reach a loopback-only authenticated TCP bridge.
-- Hardened lifecycle ownership across repeat starts and interruption: only verified workers are replaced or removed, unverified ownership state is preserved, and session cleanup is installed immediately after acquisition through apply, stop, destroy, restart, and uninstall paths.
-- Verification: typecheck and lint passed; focused host-proxy, start, provider capability/registry, container-plan, lifecycle, redaction, SDK, and service-lando spot checks passed; renderer, managed-file, state-store, probe, redaction, paths, and machine-output boundaries passed; x64/AArch64 shim builds and sandboxed CLI help passed. Native Windows container-side alias checks are retained as platform-gated live integration tests and structured-skipped on this Linux host.
-- **Learnings for future iterations:**
-  - Container helper architecture must come from the runtime engine's live info response, never the CLI host CPU or static capability defaults.
-  - Desktop host aliases are provider behavior: advertise them only after provider introspection, keep host listeners loopback-only, and retain a real Windows container-side round-trip test for reachability.
-  - Ownership cleanup must preserve state when process identity cannot be verified; losing the record while leaving a worker alive makes safe recovery impossible.
----
-
-## 2026-07-11 13:10 CDT - US-433 Review
-- Fixed authenticated partial-body starvation with a bounded read deadline, made detached-worker ownership verification platform-safe on Windows and whitespace-safe on Darwin, derived cwd remapping from the production host-proxy eligibility marker, restored Docker provider degradation when daemon capability introspection is unavailable, and paired inspect failures or interruption with provider rollback so applied containers never retain dead host-proxy mounts.
-- Review notes (deferred/rejected): rejected Bugbot's later claim that interrupt rollback destroys a successful start because interruption before `startApp` returns is a failed transaction and the existing rollback helper is already the file-sync failure contract; rejected the compiled shim argv claim because compiled-shim round-trip tests invoke `lando open` and prove the first argument, envelope, and exit code are preserved.
-- Verification: typecheck and lint passed; focused host-proxy transport/worker/start and Docker capability/availability spot checks passed.
-- **Learnings for future iterations:** Pre-dispatch body reads need their own deadline even when dispatch concurrency is capped; worker identity markers must be single-token and platform-readable; shared eligibility predicates must drive both feature injection and retained-worker behavior.
----
-
-## 2026-07-11 17:40 CDT - US-433 architecture hardening
-- Closed two session-token leaks: provider-lando now persists/caches only `stripHostProxyRunLando(plan)` so applied-state JSON never contains `LANDO_HOST_PROXY_*` material, and the shim env filter denylists all host-proxy session names (depth is reconstructed by the dispatcher from the wire, never inherited from container env).
-- Replaced pidfile+argv-fingerprint worker ownership with a socket control plane: workers serve authenticated `identify`/`shutdown` endpoints keyed by a control token stored only in a 0600 `worker.json` (Schema-validated, atomic write, advisory-locked critical sections); liveness is an endpoint probe with only `live | dead` outcomes, pid signals are escalation-only after identify proves ownership, and `/proc`, `ps`, PowerShell CIM, and owner-marker argv inspection were deleted. Worker spawn gained a readiness timeout and SIGTERM-then-SIGKILL termination; `start.ts` cleanup collapsed to one scoped `withStartedHostProxy` seam; a control-plane shutdown now resolves the worker entry so replaced workers exit instead of orphaning.
-- Replaced stringly host-proxy provider-extension prefixes with a structured optional `ProviderCapabilities.hostProxy` (`containerTargets` union + hostname-validated `tcpHostGateway`), updated the three providers and consumers, refreshed the schema snapshot and API compatibility record, and deleted the prefix parsers.
-- Providers that declare host reachability but no host-proxy container target now degrade to an explicit planner-recorded no-op (same contract as `hostReachability: "none"`) instead of failing app start; this repairs the published embedding-runtime guide, which could not start an embedded app against `TestRuntimeProvider`. Conflicting declared targets remain a hard start failure. The doctor NDJSON completeness assertion now treats `hostProxy` as the one optional capability field.
-- Fixed a whole-suite pollution class: Bun latches HTTP(S)_PROXY at first fetch and keeps it after env restore, breaking loopback and absolute-form request routing for every later test file. Host-proxy handlers now route on normalized pathnames (absolute-form tolerant per RFC 7230), loopback NO_PROXY guards run at binary/worker/shim entry (real fix for corp-proxy users on the Windows TCP bridge), a bun test preload mirrors the guard, and the http-client test restores unset proxy env by deletion instead of `= undefined`.
-- Verification: typecheck, lint, renderer/state-store/probe/redaction/paths/managed-file boundaries, telemetry inventory, and guide lint passed; host-proxy physical transport, worker manager (including real-worker control-plane shutdown pid-exit proofs), start/stop/destroy/rebuild/restart/uninstall/info scenarios, provider capability suites, and sdk schema tests passed; full core+plugins run matches the pre-existing environmental failure set only, with zero leaked `__internal:host-proxy-worker` processes.
-- **Learnings for future iterations:**
-  - A worker that owns an authenticated socket should also be identified and shut down through it; process-table forensics adds unverifiable states the control plane never has.
-  - Session closure must be observable (`closed` promise) so control-plane-initiated shutdown terminates the detached entry; SIGTERM-only wiring silently orphans replaced workers.
-  - Bun's proxy env is latched at first fetch per process and survives env unsets; loopback bypass must be installed at process entry, and HTTP servers must route on normalized pathnames because proxied clients send absolute-form request lines.
----
-
-## 2026-07-11 18:54 CDT - US-433 Review
-- Fixed loopback proxy bypass compatibility so host-proxy process entry synchronizes the merged bypass list into both `NO_PROXY` and `no_proxy`, preserving wildcard and duplicate semantics for clients that honor either casing. The compiled shim now shares the session-env denylist and proves against its real serialized request body that transport/auth credentials never enter forwarded env. Detached workers inherit all ordinary host env but scrub that same session denylist before spawning, preventing internal worker startup from being hijacked into shim mode. Lifecycle cleanup also removes stale per-app run artifacts when a partial start or crashed worker leaves no ownership record.
-- Review notes (deferred/rejected): rejected the claimed no-op dependency failure because `Effect.context` captures the existing context without runtime service lookup; rejected partial Unix feature injection because production sessions always carry the explicit Unix socket path and malformed internal session fixtures are not a reachable transport state; rejected moving compiled CLI fast paths ahead of shim routing because eligible-container invocations must preserve generated host-proxy allowlist enforcement, while session transport env is stripped from host command env.
-- Verification: typecheck and lint passed; focused proxy-bypass, compiled shim serialization, env filtering, transport feature, physical transport, and worker cleanup test spot checks passed; the strict TypeScript no-excuse audit passed on new focused files, with two pre-existing worker-test catch violations unchanged.
-- **Learnings for future iterations:** Proxy environment variables are casing-sensitive across clients, so process-entry bypass guards must update both variants together. Compiled sidecars must consume shared pure security predicates; parallel allowlist copies drift and can serialize credentials even when a downstream boundary filters them again.
----
-
-## 2026-07-11 20:27 CDT - US-433 Review
-- Fixed configured-root drift across host-proxy startup and lifecycle cleanup, isolated same-name apps by fingerprinting their roots in worker-state paths, and preserved authenticated cleanup of legacy worker records. The host CLI no longer switches into shim mode from leaked transport environment, while the dedicated compiled sidecar remains unchanged. Runtime service typing and restart/rebuild harness wiring now include `PathsService`, cleanup assertions only accept true missing-path failures, and pre-apply interruption no longer destroys an existing app before the provider transaction begins.
-- Review notes (deferred/rejected): rejected Bugbot's claim that an omitted optional `hostProxy` block throws while reading `containerTargets.length`; JavaScript optional chaining short-circuits that full property chain and the existing `?? 0` correctly treats it as no targets. Pre-existing scenario-fixture language-server diagnostics were not expanded into unrelated fixture modernization because root typecheck, lint, and the executable scenario suites are green.
-- Verification: typecheck and lint passed; 106 focused lifecycle/host-proxy tests passed with one platform-gated live-provider skip; 36 SDK compatibility/export tests passed; post-fix Oracle review passed.
-- **Learnings for future iterations:** Detached-worker ownership must bind the authenticated control identity to app id, protocol, PID, and transport before fallback signals. App-scoped runtime artifacts need an app-root fingerprint even when user-visible app ids remain name-based, and persisted state format changes need a narrow cleanup path for prior records.
----
-
-## 2026-07-11 21:25 CDT - US-433 Verify
-- Compiled binary + sandboxed `lando setup --provider=podman` succeeded; toolbox app start installed a 0600 Unix socket, compiled shim mounts, session env, and detached worker. In-container shim proved allowlist, stale/cross-app auth, recursion rejection, and `open --print` envelope/exit-code parity; stop/destroy cleaned run state and workers. Adjacent info/exec/host-open smoke stayed green.
-- Fixed production host-proxy dispatch: keep the worker's Effect runtime Layer scope open for the full session (scoped EventService/PubSub was torn down after ready), ignore detached-worker stderr, and sink stdio after readiness so parent-pipe close cannot hang or SIGPIPE request handling.
-- **Learnings for future iterations:** Detached long-lived workers that `Effect.provide` a Layer with `Layer.scoped` services must keep that effect open for the worker lifetime; capturing `Effect.context` after scope finalization leaves a dead EventService. Detached Bun spawns must not leave stdout/stderr piped to a parent that exits.
----
-
-## 2026-07-11 21:28 CDT - US-433 Verify Bugbot
-- Post-fix Bugbot reported two medium findings; both deferred as out of scope for this verify fix and not reproduced as blockers in the compiled-binary sandbox scenario.
-- Rejected: stopApp ensuring host-proxy cleanup even when provider.destroy fails is the existing lifecycle ownership contract (prefer dead mounts over orphan workers); a failed destroy leaving containers up is a provider failure path, not a transport regression.
-- Rejected: single `stdin.write` of worker payload without backpressure is pre-existing spawn plumbing; toolbox and focused worker tests complete readiness successfully, and enlarging the IPC framing is a follow-up hardening item rather than a US-433 acceptance gap.
----
-
-## 2026-07-12 01:57 CDT - Babysit
-- PR: #573 https://github.com/AaronFeledy/core4/pull/573
-- CI outcome: pass
-- Review feedback: fixed (compiled worker argv for $bunfs; package host-proxy shims in CI artifacts; Windows build reuses Linux shims instead of cross-extracting bun-linux)
-- Merge: merged (squash)
----
-
-## 2026-07-12 05:04 CDT - US-434
-- Real Docker-compatible providers now follow declared in-container log files through a provider-owned archive-and-exec helper seam. The implementation supports bounded file reads and preserves the provider-neutral snapshot/follow contract across missing files, tail/since, copytruncate, rename-create rotation, truncation, oversized or binary lines, UTF-8 boundaries, and final partial lines without routing diagnostics into service output.
-- Provider capabilities become truthful only when packaged helper payloads are available, and CI/nightly/provider jobs build the helper payloads before provider tests. Helper sessions close on normal completion, interruption, dropped streams, and provider failure; cleanup is effect-lazy so finalizers cannot race ahead of the protected request.
-- Verification: typecheck, lint, redaction boundary, full monorepo build, 159 focused unit/contract/workflow tests, and the real provider-lando container-file integration scenario passed against Podman 6 in `lando4-dev`; teardown confirmed the container was removed and no helper process remained.
-- **Learnings for future iterations:**
-  - Docker-compatible exec output differs by provider: Docker multiplexes stdout/stderr attach frames while Podman may return raw upgraded bytes, so the helper decoder must detect both without corrupting split UTF-8 frames.
-  - Build helper binaries for both `@lando/container-runtime` and `@lando/core` consumers before provider tests; capability advertising must remain false when payload resolution fails.
----
-
-## 2026-07-12 05:43 CDT - US-434 Review
-- Hardened the provider-owned helper boundary: every file-access session now installs into an unguessable private path instead of reusing a mutable `/tmp` executable, cleanup is helper-owned and bounded, and malformed numeric protocol fields become typed provider failures rather than Effect defects. Added the shipped service-log guide covering declared sources, source selection, capability degradation, lifecycle, and redaction behavior.
-- Review notes (deferred/rejected): duplicate Docker and user-Podman live suites were rejected because all three providers share the exercised Docker-compatible adapter and retain provider-specific capability/framing tests; duplicate Ctrl+C/service-stop scenarios were rejected because interruption cleanup is owned and proven by the shared SDK follower plus adapter close/abort tests. Cursor Bugbot was unavailable because the local account had exhausted its model quota, so it was recorded as unavailable rather than treated as approval.
-- Verification: typecheck and lint passed; focused adapter/helper/transport, SDK follower, and provider capability spot checks passed; guide generation, lint, coverage, and public transcript gates passed; the rebuilt helper passed the real provider-lando container-file integration scenario against Podman 6 in `lando4-dev` with clean teardown.
-- **Learnings for future iterations:** A helper uploaded into a container crosses an adversarial filesystem boundary: use a per-session unpredictable path, parse every protocol scalar at the host boundary, and make cleanup both narrowly scoped and unable to block stream finalization.
----
-
-## 2026-07-12 06:04 CDT - US-434 Verify
-- Compiled binary + sandboxed `lando setup --provider=podman` succeeded. Real app with declared follow sources proved finite snapshot, source labels, per-source `--tail`, unknown-source failure, merged multi-source output, and interruptible `--follow` against in-container files via the provider-owned helper; adjacent info/exec/console-logs/destroy stayed green with no leftover containers.
-- Fixed log-file helper ABI: ship glibc (`bun-linux-x64`/`arm64`) helpers so default Debian service images (`node:22`, etc.) can execute the uploaded binary; the prior musl target only ran in Alpine and failed real-world `lando logs --source` with "session ended before responding".
-- **Learnings for future iterations:** Container-uploaded helpers must target the libc of default service base images (glibc for official `node`/`php`/etc.), not Alpine-only musl; live integration fixtures should use the same image family as `type: node:22` or dual-ship helpers.
----
-## 2026-07-12 09:16 CDT - Babysit
-- PR: #574 https://github.com/AaronFeledy/core4/pull/574
-- CI outcome: pass
-- Review feedback: fixed (guide-coverage skip; advertise serviceLogSources when helpers present; load live-test helpers from dist/; pre-pull node:22; defer registry helper payload load for hot-path budget)
-- Merge: merged (squash)
----
-
-## 2026-07-12 11:39 CDT - US-435
-- Disposable toolbox builds now persist content-addressed results and return provider-built or cached artifact refs into the plan that is actually applied. Identical runs keep fresh scratch identities and cleanup scopes while skipping current artifact work; recipe, redirect, base-image, build-arg, provider, and provider-visible environment changes invalidate the key.
-- Docker, Podman, and managed Lando providers now build deterministic artifacts through their container APIs. Context builds with generated redirect steps use a derived second image so the original target and the redirect commands are both preserved; structured skip events omit host roots and secret-bearing inputs.
-- Verification: typecheck, lint, boundary gates, focused SDK/core/provider tests, real Podman 6 derived-image execution, and two sandboxed `lando run` invocations passed; reviewer gate returned unconditional approval.
-- **Learnings for future iterations:**
-  - Artifact orchestration must apply the returned stamped plan; recording a provider ref without replacing the service artifact leaves cache hits unusable.
-  - A context build plus generated build steps is a two-stage image operation: build the requested context/target first, then derive the final deterministic image from that ref.
-  - Build-result lookup is newest-first, and an artifact-phase cache hit is valid only when it carries an artifact ref.
----
-
-## 2026-07-12 12:10 CDT - US-435 Review
-- Review fixes landed for deterministic realized build contexts: context packing now honors ordered `.dockerignore` comments, directory rules, negations, deterministic ordering, executable modes, and symlink tar entries; `buildKey` hashes the packed bytes through the shared `@lando/container-runtime/image-build` digest helper so same-path content changes invalidate and identical content at different roots shares a key.
-- Derived Dockerfiles now preserve both `CommandSpec` forms: string build steps emit shell-form `RUN`, while `string[]` steps emit Docker JSON exec-form `RUN`; base refs and argv/shell text reject CR/LF/control-character injection with typed provider errors instead of silently dropping unsafe content.
-- Provider build failures now redact raw and URL-encoded `buildargs` at the shared build request boundary. Scratch build-result state remains in the shared root-level cache so warm repeats survive fresh scratch ids without leaving artifacts inside per-run scratch cleanup paths.
-- `BuildStepSkipEvent` is now schema-backed in SDK events/union/schema registry and core continues publishing the typed redacted skip shape. Schema snapshot/codegen refreshed the public schema artifacts.
-- Rejected/deferred outcomes: stale external image pruning is rejected because `RuntimeProvider` has no artifact-existence contract and adding one is outside this focused story; service-plugin version provenance is deferred because `ServicePlan` lacks contributor metadata and actual generated build-step content is hashed; scratch-namespaced or per-scratch cache locations are rejected because they either violate scratch cleanup invariants or break warm repeats across fresh ids; Cursor Bugbot was unavailable due account usage limit.
-- Verification passed: focused container-runtime/core/SDK/provider tests, `bun run codegen:schema-snapshot`, `bun run typecheck`, `bun run lint`, `bun run check:state-store-boundary`, `bun run check:redaction-boundary`, and the TypeScript no-excuse checker.
----
-
-## 2026-07-12 13:20 CDT - Babysit
-- PR: #575 https://github.com/AaronFeledy/core4/pull/575
-- CI outcome: pass
-- Review feedback: fixed (export BuildStepSkipEvent on public schema; Guide-Coverage-Skip for internal buildKey cache; reran flaky live Podman bringUp)
-- Merge: merged (squash)
----
-
-## 2026-07-12 14:55 CDT - US-436
-- Live-wired the remaining Podman 6 seams: artifact pulls now dispatch through real providers with redacted progress rendering and typed failures; OOM died events feed doctor correlation/remediation; managed-machine trust sync remains ownership-gated with Windows elevation left manual.
-- Volume cleanup now uses ownership-complete app/provider/class selectors, keeps named-volume intent explicit, and verifies ownership before direct deletion. Real Podman 6 pull, prune, and OOM scenarios passed with clean teardown; unsupported native machine hosts produce structured skip reasons instead of passes.
-- Verification: typecheck and lint passed; 243 focused tests and six boundary gates passed; sandboxed live provider scenarios and 80-column terminal rendering passed; strict completion and dual TUI reviewers approved without blockers.
-- **Learnings for future iterations:**
-  - Podman combines repeated label values broadly; encode ownership dimensions into one selector value rather than assuming multiple label values are ANDed.
-  - For `/libpod/volumes/prune`, named-volume intent belongs in the top-level `all=true` query parameter. Putting `all` inside the filter map can bypass label scoping on Podman 6.
-  - Env-gated integration tests need a machine-readable skip kind and an observable reason in reporter output; an opaque `skipIf` does not preserve acceptance evidence.
----
-
-## 2026-07-12 15:25 CDT - US-436 Review
-- Preserved planned image digests through provider pulls and current or legacy warm scratch-cache hits, restricted OOM doctor failures to died events carrying both app and service ownership correlation, and redacted nested Podman transport causes so encoded registry credentials cannot leak through typed pull failures.
-- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account had exhausted its monthly model quota; no Bugbot findings were treated as approval evidence.
-- Verification: typecheck and lint passed; focused build-result, build-orchestrator, image-pull/capability, and doctor-OOM spot checks passed; strict TypeScript diagnostics passed. The no-excuse audit found only two pre-existing assertions in provider-lando capabilities outside the changed lines.
----
-## 2026-07-12 17:05 CDT - Babysit
-- PR: #576 https://github.com/AaronFeledy/core4/pull/576
-- CI outcome: pass
-- Review feedback: fixed (Guide-Coverage-Skip on PR body; live bring-up HTTP readiness retry)
-- Merge: merged (squash)
----
-
-## 2026-07-12 17:52 CDT - US-437
-- Global rebuild is now a real lifecycle command across source and compiled dispatch: it regenerates the global app, preserves missing-provider safety before destructive work, destroys existing resources without removing state or volumes, applies the BuildOrchestrator-returned plan with reconciliation, inspects rebuilt services, and publishes dedicated global rebuild events only on success.
-- Source, alias, and compiled help now agree; invalid flags fail at parity, deferred-command fixtures reject regression to NotImplementedError, and the global runtime provides BuildOrchestrator lazily.
-- Verification: typecheck and lint passed; focused SDK schema/event, global lifecycle, deferred-command, runtime, source/compiled parity, manifest, and snapshot tests passed; renderer, machine-output, redaction, probe, state-store, and paths boundaries passed; sandboxed source/compiled CLI help and typed failure behavior passed with clean teardown.
-- **Learnings for future iterations:**
-  - Compiled handlers must validate their remaining argv before running a no-flag command; parsing into an unused input silently accepts unknown flags and breaks source/compiled exit-code parity.
-  - Global rebuild must apply the plan returned by BuildOrchestrator, because produced or cached artifact refs are stamped into that returned plan rather than the originally loaded plan.
----
-
-## 2026-07-12 18:26 CDT - US-437 Review
-- Fixed compiled help projection so inherited universal `--format` and `--json` flags appear alongside command-specific flags, with semantic source/compiled help parity locked for global rebuild.
-- Review notes (deferred/rejected): rejected byte-identical OCLIF/compiled help typography because the established parity contract is semantic; rejected skipping global dist regeneration for a cleared layer because spec §20.3 requires rebuild to regenerate from contribution enablement state; build/apply-specific failure tests were not added because the existing post-destroy inspect failure already proves the required partial-rebuild failure contract. Cursor Bugbot was unavailable because the account had reached its monthly usage limit, so it was not treated as approval.
-- Verification: typecheck and lint passed; focused global lifecycle, SDK event/schema, deferred-command, dual-dispatch, and compiled behavioral parity tests passed.
----
-
-## 2026-07-12 19:59 CDT - Babysit
-- PR: #577 https://github.com/AaronFeledy/core4/pull/577
-- CI outcome: pass
-- Review feedback: fixed (Guide-Coverage-Skip on PR body for additive global rebuild SDK events)
-- Merge: merged (squash)
----
-
-## 2026-07-12 20:38 CDT - US-438
-- MCP now exposes app config through two closed read-only tools: `app:config:get` selects one resolved value and `app:config:view` returns the resolved Landofile, while the mixed umbrella and every separately registered write verb are absent from the MCP registry and rejected from flag/config allowlists.
-- Generated defaults derive from the projected registry, crafted write-shaped inputs fail before command execution, and reads retain the standard non-interactive, redacted CommandResultEnvelope path. Source, compiled, and real stdio MCP surfaces agreed on the catalog, read result, and tagged rejection behavior.
-- Verification: typecheck, lint, build, machine-output and redaction boundaries passed; 80 focused MCP/app-config tests passed; allowlist codegen was idempotent; source and compiled CLI smoke plus a real stdio MCP session passed with clean teardown; high-rigor review passed after closing explicit write-id reachability and get rendering findings.
-- **Learnings for future iterations:**
-  - A mixed umbrella may also have separately registered verb ids in the compiled command registry. Safe MCP projection must remove every write-capable verb id, not only avoid default-allowing the umbrella.
----
-
-## 2026-07-12 20:50 CDT - US-438 Review
-- Reviewed the read-only MCP projection against the source PRD; no additional story blocker required a code change.
-- Review notes (deferred/rejected): rejected the claim that explicitly allowing `app:config:translate` exposes its CLI `--write` mode because MCP derives a closed, flagless schema from its `LandoCommandSpec`, rejects `flags.write`, and can execute only preview mode; Cursor Bugbot was inconclusive because the configured account had reached its monthly usage limit.
-- Verification: typecheck and lint passed; 80 focused MCP/app-config tests and direct catalog/dispatch smokes passed during review.
-- **Learnings for future iterations:** MCP reachability is determined by the projected `LandoCommandSpec`, not the broader OCLIF class flags; a mixed CLI command is safe only when its MCP schema is closed and its projected runner cannot select mutation.
----
-
-## 2026-07-13 00:51 CDT - US-439
-- Host `lando shell` now runs a per-line Bun Shell REPL through `ShellRunner`, with typed-at-prompt secret resolution, redacted pre/post events and bounded history, line-scoped interruption, correct EOF/exit status, and terminal restoration. Service shells remain provider-backed, while `--no-interactive` now fails before either host or service execution with source/compiled parity.
-- Verification: typecheck and lint passed; focused REPL, ShellRunner, shell scenario, SDK compatibility, redaction, full dispatch-parity, and sandboxed TTY spot checks passed; renderer, redaction, state-store, probe, telemetry, guide lint, and guide coverage gates passed. The public-transcript inventory remained unavailable on the clean build tree because the unrelated generated transcript corpus was absent.
-- **Learnings for future iterations:**
-  - Treat `--no-interactive` as a command-wide refusal and reject it before provider selection; a service flag must not bypass the TTY contract.
-  - Keep typed command text out of evaluator argv, remove evaluator bootstrap markers from the user environment, and apply resolved-secret redaction before output, events, or history.
----
-
-## 2026-07-13 01:55 CDT - US-439 Review
-- Hardened the host REPL boundary: resolved secrets now remain escaped Bun Shell interpolations instead of raw syntax, arbitrary output chunks are redacted statefully before IO/events, cancellation finalizes input and reaps evaluator descendants, concurrent history updates are advisory-locked and bounded, explicit exit statuses normalize portably, and the host receives the applicable reserved LANDO environment. Closed the missing public `ShellRunner.interactive` SDK contract guard.
-- Review notes (deferred/rejected): generic `cli-app:shell-*` lifecycle events remain assigned to US-442 rather than this per-line shell story; privileged host DNS or hosts-file mutation for `host.lando.internal` was rejected in favor of the host-mode `LANDO_HOST_IP` projection. Cursor Bugbot was unavailable because the configured account had exhausted its model usage limit, so it was not treated as approval evidence.
-- Verification: typecheck and lint passed; focused REPL, ShellRunner, shell scenario, SDK compatibility, StateStore, and redaction tests passed; state-store, redaction, renderer, and paths boundary gates passed; sandboxed TTY QA passed.
-- **Learnings for future iterations:** Secret placeholders in shell-shaped programs must cross process boundaries as tagged-template values, never concatenated source, and live redaction must retain candidate secret prefixes across arbitrary stdout/stderr chunk boundaries.
----
-
-## 2026-07-13 02:21 CDT - US-439 Verify
-- Compiled `core/dist/lando`, ran sandboxed `lando setup` (Podman 6 PATH), and exercised host shell e2e: Bun.$ REPL lines, Ctrl+C recovery, history persistence, `--no-history`, `--no-interactive` source/compiled parity (`ShellRequiresTtyError`), exit/EOF status, and adjacent version/config/help smoke. Clean teardown.
-- Fixed two real compiled-binary blockers: StateStore path-root open failed for new per-app history dirs (mkdir parent first); REPL exit left the process hung on TTY stdin (pause/unref + raw-mode restore on close).
-- Cursor Bugbot unavailable (monthly model usage limit); not treated as approval.
-- **Learnings for future iterations:**
-  - StateStore `{ path }` roots must exist before open; `realpathDeepestExisting` rejects a not-yet-created root as outside itself.
-  - Real readline host shells must detach/pause stdin on close or the CLI event loop never drains after a clean REPL return.
----
-
-## 2026-07-13 04:00 CDT - Babysit
-- PR: #580 https://github.com/AaronFeledy/core4/pull/580
-- CI outcome: fail (guide-scenarios-* guide-drift) then pass after triage
-- Review feedback: fixed (added Guide-Coverage-Skip for SDK service surfaces already covered by lando-shell guide; reran guide jobs green)
-- Merge: merged (squash)
----
-
-## 2026-07-13 05:22 CDT - US-440
-- MCP serve startup now rejects unusable or TTY stdio and incompatible machine-output mode consistently across source and compiled dispatch, while global `mcp.maxConcurrent` is schema-validated and reaches the retained MCP service.
-- Stdio request framing, outstanding calls, cancellation delivery, queued response/progress bytes, and blocked writes are bounded before JSON parsing or unbounded retention; malformed, partial, oversized, slow-loris, and non-reading clients terminate with tagged transport failures.
-- Verification: typecheck, lint, build, schema codegen/idempotence, machine-output/renderer/redaction boundaries, guide gates, focused MCP/SDK/parity tests, and real source/compiled stdio and startup-refusal CLI checks passed.
-- **Learnings for future iterations:**
-  - Enforce frame and queue limits at the transport boundary before parsing, and serialize protocol output through one bounded writer that awaits flush/backpressure.
-  - Keep serve-startup capability classification shared ahead of catalog/runtime work so source and compiled dispatch fail with the same tagged contract.
----
-
-## 2026-07-13 05:47 CDT - US-440 Review
-- Bounded completed-request tombstones so sequential calls cannot grow session memory indefinitely while preserving late-cancellation protection; scoped the Bun stdout sink so a timed-out native flush no longer keeps the process alive; made outbound byte reservation through queue acceptance interruption-safe; strengthened the notification queue-cap test to prove capacity overflow without relying on the write deadline.
-- Aligned normative global-config and SDK compatibility documentation with the shipped positive-integer `mcp.maxConcurrent` contract.
-- Review notes (deferred/rejected): rejected a concurrent progress-correlation race because the relevant Effect `Ref` operations have no asynchronous yield and a concurrent probe preserved unique monotonic progress; deferred bounded streaming JSON serialization because the confirmed contract bounds retained queue bytes while serialization is one transient value already produced by command execution; deferred creating a new MCP guide because the matrix target does not exist and guide authoring is broader than this hardening review. Cursor Bugbot was unavailable because the configured account exhausted its monthly model quota, so it was not treated as approval evidence.
-- Verification: typecheck and lint passed; 142 post-fix focused MCP/SDK/CLI and source/compiled parity tests passed; the real blocked-pipe Bun probe changed from timeout exit 124 to clean exit 0. The TypeScript no-excuse audit passed for the new/changed transport and test seams; it continues to flag one pre-existing `as unknown` in `McpService` outside the review lines.
-- **Learnings for future iterations:** A deadline around `Effect.promise` does not cancel native Bun stdout I/O; the owning `FileSink` must be scope-finalized. Completion tombstones need an explicit retention cap even when active requests are already bounded.
----
-
-## 2026-07-13 06:33 CDT - Babysit
-- PR: #581 https://github.com/AaronFeledy/core4/pull/581
-- CI outcome: pass
-- Review feedback: fixed (added Guide-Coverage-Skip for MCP stdio transport hardening with no new user-facing guide workflows; reran guide jobs green)
-- Merge: merged (squash)
----
-
-## 2026-07-13 08:06 CDT - US-441
-- Version constraints now accumulate across all six ordered Landofile layers and nested include sources, preserving provenance in failures, structured skip warnings, doctor reporting, and cache identity. Landofile discovery rejects conflicting YAML/TypeScript forms per layer and malformed ranges during parsing.
-- Range evaluation now uses full npm-semver grammar, including unions, hyphen ranges, x-ranges, prerelease ordering, and build-metadata semantics. App-plan and tooling caches fingerprint every present layer, invalidate when any source changes, and reuse unchanged cached constraints without reparsing the Landofile.
-- Verification: typecheck, lint, build, schema codegen idempotency, renderer/machine-output boundaries, relevant SDK/core test spot checks, and sandboxed source CLI skip/fail-closed checks passed; high-rigor review returned unconditional approval.
-- **Learnings for future iterations:**
-  - A complete ordered source fingerprint is the hot-cache trust boundary; once it matches, evaluate cached constraint metadata directly rather than reparsing unchanged Landofiles.
-  - The universal machine error envelope remains `_tag`/`message`/`remediation`; put required provenance in the error message and use `CommandWarning.context` for structured skip metadata.
----
-
-## 2026-07-13 08:19 CDT - US-441 Review
-- Fixed the remaining §7.1 discovery blocker: an app root is now recognized from any of the six YAML/TypeScript merge-layer positions, including projects with no canonical `.lando.yml` or `.lando.ts`; canonical files remain the preferred representative path when present. Scratch forks now route source loading through the shared version-constraint enforcement seam and reject an unsatisfied source before provider capability lookup or planning.
-- Review notes (deferred/rejected): Cursor Bugbot produced no report because the authenticated account was quota-locked on both the default and alternate model; no finding was inferred from the tool failure. The TypeScript-form lint/include-update parser gap is real but predates this story and was rejected as unrelated §7.1.1 form-parity scope; same-layer dual forms already fail through `LandofileFormConflictError`.
-- Verification: typecheck and lint passed; focused Landofile discovery, version-constraint, scratch-fork, cache, command-registry, doctor, result-encoding, SDK compatibility, schema, and machine-output test spot checks passed.
-- **Learnings for future iterations:** Six-layer loading and six-layer discovery are one contract: every root-discovery seam must use the same ordered layer table rather than treating the canonical file as mandatory.
----
-
-## 2026-07-13 09:47 CDT - US-441 Review
-- Closed four cross-path gaps: environment-dependent TypeScript layers now bypass the source-only tooling hot cache; explicit normative Landofile selectors enforce all six layers; app config writes always target canonical `.lando.yml` while validation reads the merged app; and doctor reports malformed ranges/form conflicts as redacted failures instead of omitting the constraint check. The executable guide now documents full npm-semver grammar.
-- Review notes (deferred/rejected): rejected the double include-resolution finding because resolved layer trees remove `includes` before `loadUserLandofile` receives them. Rejected forbidding TypeScript overlay layers because §7.1.1 explicitly permits TypeScript at every layer and programmatic Landofiles are trusted executable author artifacts; broader TS-loader isolation/purity enforcement predates this story. Cursor Bugbot remained quota-locked and produced no report, so it was not treated as approval evidence.
-- Verification: typecheck and lint passed; 9 focused version-constraint, Landofile, cache, config, doctor, and scratch test files passed; redaction and machine-output boundaries passed; focused executable-guide, guide lint, and guide coverage checks passed; sandboxed source CLI QA proved a dist-only app writes canonical `.lando.yml` without changing `.lando.dist.yml`. Guide drift was unavailable outside PR context.
-- **Learnings for future iterations:** Source-byte freshness cannot prove environment-dependent TypeScript output; bypass that hot cache unless every dynamic input is fingerprinted. Discovery identifies the app root, not an editable layer: writes select canonical explicitly, while reads and validation consume the full merge.
----
-
-## 2026-07-13 10:47 CDT - Babysit
-- PR: #582 https://github.com/AaronFeledy/core4/pull/582
-- CI outcome: pass
-- Review feedback: fixed (Guide-Coverage-Skip for non-contract surface touches; trimmed eager semver imports for perf budget; aligned Landofile TS form tests with FormConflictError and includes resolution)
-- Merge: merged (squash)
----
-
-## 2026-07-13 12:11 CDT - US-442
-- Shipped canonical CLI lifecycle publication across source OCLIF and compiled dispatch. Every resolved command now emits a redacted `cli-<canonical-id>-init` event followed by exactly one `-run` or `-error` event with invocation summaries, timing, exit status, and failure identity; command-specific events remain nested between the generic boundaries.
-- Preserved lifecycle coverage for aliases, tagged failures, defects, graceful interactive interruption, live streams, direct command adapters, and all bootstrap depths while keeping event publication centralized at the renderer/runtime boundary.
-- Verification: typecheck, lint, build, renderer/redaction/machine-output/telemetry boundaries, and relevant SDK schema, event typing, OCLIF, compiled-dispatch, MCP, shell, streaming, and parity test spot checks passed; source and compiled version CLI smoke passed.
-- **Learnings for future iterations:** Command lifecycle events belong around the shared renderer-handling seam after runtime provisioning, not in command bodies or OCLIF hooks. Reuse an already-provided `EventService` so generic boundaries and command-specific events share ordering and scope; create an internal service only for bootstrap-none commands.
----
-
-## 2026-07-13 14:24 CDT - US-442 Review
-- Closed lifecycle data exposure for CLI-only secrets by replacing raw argv/args/flags values with structural summaries and omitting failure messages that can echo unknown input. Corrected stale canonical identity for direct version and dynamic-tooling adapters, centralized plugin result exit-code handling so events match process status, and logged lifecycle publication failures at debug without changing command outcomes.
-- Review notes (deferred/rejected): pre-parse validation and runtime-layer construction occur before a resolved command invocation and usable command `EventService`, so they are outside the shared command lifecycle boundary rather than missing command terminal events; generic app binding remains optional because the common boundary runs before app resolution, while command-specific lifecycle events retain resolved `AppRef` context; Cursor Bugbot was unavailable because the configured account had exhausted its usage limit and was not treated as approval evidence.
-- Verification: typecheck and lint passed; focused lifecycle, adapter, SDK event-schema, and event-narrowing tests passed; renderer, redaction, machine-output, and telemetry boundary gates passed.
-- **Learnings for future iterations:** A redaction registry cannot infer arbitrary CLI-only secret values. Generic invocation events must preserve structure and names while replacing value slots before publication, and failure identity should remain tag-only unless message safety is explicitly established.
----
-
-## 2026-07-13 16:03 CDT - Babysit
-- PR: #583 https://github.com/AaronFeledy/core4/pull/583
-- CI outcome: pass
-- Review feedback: fixed (Guide-Coverage-Skip for lifecycle schema-only surface; updated dispatch-parity structural coverage for shared runCompiledCommand deprecation wiring)
-- Merge: merged (squash)
----
-
-## 2026-07-13 16:53 CDT - US-443
-- Shipped cache-only tooling command routing for source OCLIF and compiled dispatch. Bare and canonical `app:<task>` forms resolve only from a fresh app command index, then execute through the existing policy-bearing tooling path; stale, unknown, version-blocked, network-blocked, provider, and task failures retain tagged remediation and truthful exit codes.
-- Dynamic tooling now publishes full machine-result envelopes and matching lifecycle exit status, including remediated script failures. The tooling guide documents cache-backed routing and refresh recovery without expanding the Beta tooling schema.
-- Verification: typecheck, lint, focused router/tooling/cache/MCP/lifecycle tests, renderer/redaction/machine-output boundaries, guide runner/lint/coverage, and source plus relocated compiled CLI sandbox smoke passed. The public-transcript inventory remains unavailable on a clean tree because the unrelated generated transcript corpus is absent.
-- **Learnings for future iterations:** Command-not-found must resolve from routing caches only; never call `CommandRegistryLive.list` there because its cache-miss path performs live discovery. Keep routing policy-free and enter `runTooling` only after a fresh cached match so version, provider, environment, and task execution semantics stay centralized.
----
-
-## 2026-07-13 17:19 CDT - US-443 Review
-- Fixed compiled routing precedence so cached dynamic tooling receives `--help`/`--version` instead of falling into universal built-in handling, and routed command-cache read failures through the shared lifecycle/renderer boundary so source and compiled paths emit the same tagged machine envelope and exit status.
-- Review notes (deferred/rejected): broader `topLevelAlias`/`disabled`/`aliases`/`namespace` tooling-schema graduation predates this command-not-found router and remains intentionally rejected by the current Beta parser, so it was not folded into this focused story repair; Cursor Bugbot was quota-locked and produced no report, so it was not treated as approval evidence.
-- Verification: typecheck and lint passed; focused router, router-policy, and command-lifecycle tests plus renderer, machine-output, and telemetry boundaries passed; rebuilt relocated compiled-binary sandbox QA proved dynamic `--version` dispatch and a corrupted-cache `CacheError` JSON envelope.
-- **Learnings for future iterations:** Unknown-command routing must run before universal flag handling only after built-in lookup, and cache lookup failures must cross the same typed renderer/lifecycle seam as routing misses rather than reject from a hook or compiled dispatcher.
+### 2026-07-14 — US-450 rewritten as non-elevate contract closure
+US-450 no longer asks for a Windows UAC elevation path for managed-machine trust. It locks the US-423/US-436 split: ownership-gated `--import-native-ca` without `PrivilegeService.elevate`, Hyper-V prep permanent manual remediation only. Index phase summary updated to four parts (PRD-14 residual hardening).
+- **Learning:** "left manual" completion notes for intentional security contracts must not be reopened as elevation features.
 ---
