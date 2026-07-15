@@ -15,6 +15,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
+- A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
 
 ## Durable learnings
 
@@ -163,4 +164,19 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass (after triage)
 - Review feedback: fixed (aligned shell/translate/scratch expectations with MalformedCliFlagValueError and fail-closed isolate modes)
 - Merge: merged (squash)
+---
+
+## 2026-07-15 05:26 CDT - US-446
+- The public-transcript inventory gate now bootstraps the deterministic transcript corpus when invoked from a wholly clean tree, while existing and partial corpora retain strict missing-artifact diagnostics. The CI runbook documents the standalone clean-tree path and keeps generated transcripts uncommitted.
+- Verification: typecheck, lint, guide lint/coverage/drift, no-excuse audit, and focused transcript/guide tests passed; a real `bun run clean` followed by `bun run check:public-transcripts` regenerated 39 artifacts and exited successfully; high-rigor review approved without findings.
+- **Learnings for future iterations:**
+  - Self-bootstrap only on a fully empty corpus; regenerating a partial corpus would turn an inventory gate into a tautology and hide drift.
+---
+
+## 2026-07-15 05:40 CDT - US-446 Review
+- Tightened bootstrap eligibility from "no JSON files" to an absent or truly empty transcript directory, so non-JSON content cannot be cleared and remains strict with actionable missing-artifact diagnostics.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted; broader path-containment validation was rejected because `root` and `transcriptRoot` are trusted in-process options and the CLI uses fixed repository paths; a separate subprocess regression for the CLI wiring was rejected as redundant with the focused API regression and real clean-tree CLI proof.
+- Verification: typecheck, lint, guide lint/coverage, TypeScript no-excuse audit, and focused transcript plus adjacent guide-script tests passed.
+- **Learnings for future iterations:**
+  - Generated-corpus emptiness must consider every directory entry before invoking an emitter that clears its output root; filtering only expected artifact extensions can misclassify and delete unrelated content.
 ---

@@ -1344,7 +1344,7 @@
         "Lint passes"
       ],
       "priority": 75,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-433/US-439/US-443 verification notes that public-transcript inventory remained unavailable on clean trees."
     },
     {

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import {
   buildGuideScenarioAst,
   buildPublicTranscript,
+  emitPublicTranscripts,
   publicTranscriptRelativePath,
   variantsOf,
 } from "./build-guide-scenarios.ts";
@@ -29,6 +30,7 @@ export interface PublicTranscriptCheckResult {
 }
 
 export interface CheckPublicTranscriptsOptions {
+  readonly bootstrap?: boolean;
   readonly indexPath?: string;
   readonly transcriptRoot?: string;
 }
@@ -55,6 +57,17 @@ const listJsonFiles = async (root: string, relativeDir: string): Promise<Readonl
 
   await walk(relativeDir);
   return results;
+};
+
+const canBootstrapTranscriptRoot = async (root: string, relativeDir: string): Promise<boolean> => {
+  try {
+    return (await readdir(resolve(root, relativeDir))).length === 0;
+  } catch (error) {
+    if (error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return true;
+    }
+    throw error;
+  }
 };
 
 export const checkPublicTranscripts = (input: CheckPublicTranscriptsInput): PublicTranscriptCheckResult => {
@@ -94,7 +107,15 @@ export const checkPublicTranscriptsOnDisk = async (
     }
   }
 
-  const actual = new Set(await listJsonFiles(root, transcriptRoot));
+  let actual = new Set(await listJsonFiles(root, transcriptRoot));
+  if (
+    options.bootstrap === true &&
+    expected.length > 0 &&
+    (await canBootstrapTranscriptRoot(root, transcriptRoot))
+  ) {
+    await emitPublicTranscripts(asts, root, transcriptRoot);
+    actual = new Set(await listJsonFiles(root, transcriptRoot));
+  }
   return checkPublicTranscripts({ expected, actual });
 };
 
@@ -102,7 +123,7 @@ export const formatPublicTranscriptDiagnostic = (diagnostic: PublicTranscriptDia
   `${diagnostic.code}: ${diagnostic.message}`;
 
 const main = async (): Promise<void> => {
-  const result = await checkPublicTranscriptsOnDisk(REPO_ROOT);
+  const result = await checkPublicTranscriptsOnDisk(REPO_ROOT, { bootstrap: true });
   if (result.diagnostics.length === 0) {
     process.stdout.write("All shipped guides have public transcript artifacts.\n");
     return;
