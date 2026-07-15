@@ -35,6 +35,29 @@ export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostPro
 
 const READY_TIMEOUT_MS = 15_000;
 const TERMINATE_GRACE_MS = 5_000;
+const WORKER_PAYLOAD_CHUNK_BYTES = 64 * 1024;
+const WORKER_PAYLOAD_MAX_BYTES = 16 * 1024 * 1024;
+const WORKER_PAYLOAD_TIMEOUT_MS = 15_000;
+
+const awaitWorkerInput = async (result: number | Promise<number>, deadline: number): Promise<number> => {
+  const remaining = deadline - Date.now();
+  if (remaining <= 0)
+    throw new Error("Host-proxy worker startup payload delivery timed out after 15 seconds.");
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(result),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Host-proxy worker startup payload delivery timed out after 15 seconds.")),
+          remaining,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
+  }
+};
 
 export const hostProxyWorkerEnv = (): Record<string, string> => {
   const env: Record<string, string> = {};
@@ -111,8 +134,17 @@ export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
     pid: proc.pid,
     argv: spec.argv,
     writeStdin: async (value) => {
-      proc.stdin.write(value);
-      proc.stdin.end();
+      const payload = new TextEncoder().encode(value);
+      if (payload.byteLength > WORKER_PAYLOAD_MAX_BYTES)
+        throw new Error("Host-proxy worker startup payload exceeds the 16 MiB limit.");
+      const deadline = Date.now() + WORKER_PAYLOAD_TIMEOUT_MS;
+      for (let offset = 0; offset < payload.byteLength; ) {
+        const end = Math.min(offset + WORKER_PAYLOAD_CHUNK_BYTES, payload.byteLength);
+        await awaitWorkerInput(proc.stdin.write(payload.subarray(offset, end)), deadline);
+        offset = end;
+        await awaitWorkerInput(proc.stdin.flush(), deadline);
+      }
+      await awaitWorkerInput(proc.stdin.end(), deadline);
     },
     readReady: async () => {
       const line = await textFromStreamUntilLine(proc.stdout, READY_TIMEOUT_MS);

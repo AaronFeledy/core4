@@ -52,6 +52,10 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - Host `app:shell` uses the Bun Shell line REPL behind `ShellRunner.interactive`, not a raw system-shell child. Keep each line behind the host-shell evaluator, resolve secrets only when typed, and redact before output, events, or history; service mode remains provider-backed. `ShellRunnerLive` is wired into the `app` bootstrap layer.
 - `check:deprecations` (in `bun run lint`) rejects a `BUILT_IN_COMMAND_DEPRECATIONS` notice whose `since` is not a released/pending version (`4.0.0`/`4.1.0`/`4.2.0`/`5.0.0`) or is >12 months old without a future-major/minor `removeIn`; use the most recent pending version (`4.2.0`) as `since` for a new default-flip notice.
 
+## Host-proxy workers
+
+- Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Write each bounded chunk once, await `write`/`flush`, and await `end`; retrying from the returned value duplicates bytes.
+
 ## Machine-output gate
 
 - `bun run check:machine-output` (`scripts/check-machine-output.ts`) is a TypeScript-AST boundary gate over `core/src/**`+`plugins/**`. It fails on a `JSON.stringify` whose argument is (recursively, with shallow same-file `const`/`let` alias resolution) a command-result envelope (direct keys `apiVersion`+`command`+`ok`+`result`|`error`) or a `{ _tag: "result", envelope }` stream frame; the only carve-out is `core/src/cli/result-encode.ts`. Serialize result envelopes only through `encodeCommandResult`/`encodeStreamResultFrame`; a synchronous `=> string` helper can route through them via `Effect.runSync(...)` with the exported `identityRedactor` when its payload carries no secret-bearing field (the doctor NDJSON renderers do this). The gate also flags a `LandoCommandSpec` object literal (annotated `: LandoCommandSpec` or shaped `id`+`summary`+`namespace`+`bootstrap`+`run`) missing a direct `resultSchema`; `EmptyResultSchema` counts as present.
