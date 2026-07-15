@@ -304,3 +304,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - A correct Windows pipe pathname is insufficient unless every API operation uses named-pipe-capable transport; factory-path assertions cannot prove connectivity.
   - An installed-version marker is valid only when every required platform helper still exists.
 ---
+
+## 2026-07-15 18:02 CDT - US-461
+- Published immutable runtime bundle 0.1.4 from the reviewed source set and repinned the production manifest. The Windows archive now installs Podman with both machine API helpers, while unchanged Linux and macOS assets retain their prior verified digests.
+- Verification: typecheck, lint, libpod-prefix and live runtime-manifest gates passed; focused provider, runtime, workflow, and Windows acceptance spot checks passed; a fresh release download passed archive integrity and contained `podman.exe`, `gvproxy.exe`, and `win-sshproxy.exe`.
+- **Learnings for future iterations:**
+  - Runtime release provenance is byte-exact: the tag's committed source manifest, including its trailing newline, must hash identically to the desired source file before publication.
+---
