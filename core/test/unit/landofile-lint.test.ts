@@ -71,6 +71,20 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("lint stays invalid when a canonical value masks an invalid lower-layer value", async () => {
+    await writeFile(join(dir, ".lando.base.yml"), "name: layered-app\nrecipe: true\n", "utf8");
+    await write("recipe: lamp\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(false);
+      expect(exit.value.app).toBe("layered-app");
+      expect(exit.value.violations.some((violation) => violation.path === "recipe")).toBe(true);
+    }
+  });
+
   test("same-layer YAML and TS forms fail with LandofileFormConflictError", async () => {
     await writeFile(join(dir, ".lando.yml"), "name: yaml-app\n", "utf8");
     await writeFile(join(dir, ".lando.ts"), 'export default { name: "ts-app" };\n', "utf8");

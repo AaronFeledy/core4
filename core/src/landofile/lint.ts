@@ -109,6 +109,13 @@ const violationFromIssue = (issue: {
     : { path, message: issue.message, suggestedFix };
 };
 
+const violationsFor = (parsed: unknown): ReadonlyArray<ConfigLintViolation> => {
+  const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
+  return Either.isRight(decoded)
+    ? []
+    : ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map(violationFromIssue);
+};
+
 const appNameOf = (parsed: unknown): string => {
   if (parsed === null || typeof parsed !== "object") return "";
   const name = (parsed as { readonly name?: unknown }).name;
@@ -233,10 +240,17 @@ export const lintLandofile = (
     }
 
     const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
-    const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
-    const violations = Either.isRight(decoded)
-      ? []
-      : ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map(violationFromIssue);
+    const mergedViolations = violationsFor(parsed);
+    const violations = [...mergedViolations];
+    const violationKeys = new Set(mergedViolations.map((violation) => JSON.stringify(violation)));
+    for (const layer of parsedLayers) {
+      for (const violation of violationsFor(layer)) {
+        const key = JSON.stringify(violation);
+        if (violationKeys.has(key)) continue;
+        violationKeys.add(key);
+        violations.push(violation);
+      }
+    }
 
     return {
       app: appNameOf(parsed),

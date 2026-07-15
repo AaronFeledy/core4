@@ -19,6 +19,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
 - Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; bind each installed candidate's own policy stanza to that snapshot under `pipefail` without early-exit pipelines.
 - Landofile authoring tools must enumerate `presentLandofileLayers` and route each form through the existing YAML/TypeScript loader seam; include refresh must gather authored layers without invoking pin-mode include resolution.
+- Landofile lint validates each authored layer before validating the merged document; merge precedence must not hide a layer shape that runtime loading rejects.
 
 ## Durable learnings
 
@@ -233,4 +234,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, renderer and machine-output boundaries passed; focused lint/include-update and adjacent Landofile, lock-store, and doctor spot checks passed; real source CLI proofs covered TS-only lint, dual-form failures, and an offline mixed-layer refresh.
 - **Learnings for future iterations:**
   - `loadLandofileLayers` resolves includes in pin mode, so refresh commands must reuse its form discovery/loading seams without calling the aggregate loader itself.
+---
+
+## 2026-07-15 12:14 CDT - US-449 Review
+- Fixed layered lint parity so an invalid lower layer remains a structured violation even when a higher layer masks the bad value; include-update tests now restore an originally absent cache-root environment variable by true deletion instead of leaking the string `undefined`.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted. A new TypeScript trust gate or sandbox rewrite was rejected because US-449 preserves the existing trusted-author loader authority and explicitly defers broader loader isolation beyond form parity.
+- Verification: typecheck, lint, renderer and machine-output boundaries passed; focused lint, config-lint, include-update, and doctor spot checks passed.
 ---

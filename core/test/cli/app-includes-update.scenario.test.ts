@@ -59,6 +59,17 @@ const restoreExitCode = <T>(run: () => T): T => {
   }
 };
 
+const withUserCacheRoot = async <T>(userCacheRoot: string, run: () => Promise<T>): Promise<T> => {
+  const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+  process.env.LANDO_USER_CACHE_ROOT = userCacheRoot;
+  try {
+    return await run();
+  } finally {
+    if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+    else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+  }
+};
+
 describe("renderIncludesUpdateResult", () => {
   test("check-mode drift sets process.exitCode = 1", () => {
     const report: IncludeUpdateReport = {
@@ -107,6 +118,27 @@ describe("renderIncludesUpdateResult", () => {
 });
 
 describe("lando app:includes:update (source dispatch)", () => {
+  test("scoped user cache root leaves an originally absent value absent", async () => {
+    // Given
+    const originalCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+    Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+
+    try {
+      const scopedCacheRoot = join(tmpdir(), "lando-includes-update-scoped-cache");
+
+      // When
+      await withUserCacheRoot(scopedCacheRoot, async () => {
+        expect(process.env.LANDO_USER_CACHE_ROOT).toBe(scopedCacheRoot);
+      });
+
+      // Then
+      expect(Object.hasOwn(process.env, "LANDO_USER_CACHE_ROOT")).toBe(false);
+    } finally {
+      if (originalCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+      else process.env.LANDO_USER_CACHE_ROOT = originalCacheRoot;
+    }
+  });
+
   test("a Landofile with no includes exits 0 with a no-remote-includes message", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: demo\nrecipe: lamp\n");
@@ -187,10 +219,7 @@ describe("lando app:includes:update (source dispatch)", () => {
           return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
         },
       };
-      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
-      process.env.LANDO_USER_CACHE_ROOT = join(dir, ".cache");
-
-      try {
+      await withUserCacheRoot(join(dir, ".cache"), async () => {
         const report = await Effect.runPromise(appIncludesUpdate({ cwd: dir, deps: { gitCloner } }));
 
         expect(report.entries.map((entry) => entry.source).sort()).toEqual([
@@ -201,10 +230,7 @@ describe("lando app:includes:update (source dispatch)", () => {
           "https://github.com/acme/base.git",
           "https://github.com/acme/canonical.git",
         ]);
-      } finally {
-        if (previousCacheRoot === undefined) process.env.LANDO_USER_CACHE_ROOT = undefined;
-        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
-      }
+      });
     });
   });
 
