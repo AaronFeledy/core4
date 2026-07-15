@@ -264,3 +264,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Treat settings documented as startup-applied as incomplete on a running machine until the owning lifecycle restarts it.
 ---
+
+## 2026-07-15 14:25 CDT - US-450 Verify
+- Windows interop: cross-compiled `bun-windows-x64` binary (no `--bytecode`) ran `lando setup --provider=lando` non-interactively. Managed Podman machine `lando` was created with `ImportNativeCA: true` and machine start reported "The host trusted CA certificates have been imported successfully" without UAC elevation or `podman system hyperv-prep`. Linux sandbox setup + 42 focused trust/ownership/argv tests remain green. Full setup still fails after machine bring-up with unreachable runtime API (`win-sshproxy.exe` missing from helper binaries) — outside US-450 trust/Hyper-V non-elevate scope; machine torn down after proof.
+- **Learnings for future iterations:**
+  - Cross-compile Windows binaries without `--bytecode` for host interop smoke; bytecode standalone currently segfaults on this Windows host.
+  - Podman machine state lives under the real Windows user profile even when `LANDO_USER_DATA_ROOT` is isolated — inspect `~\.config\containers\podman\machine\` for trust flags.
+  - US-450 real-world proof is create-path `--import-native-ca` / `ImportNativeCA` + non-elevated start CA import message; do not treat post-machine API/helper gaps as trust-contract failures.
+---
