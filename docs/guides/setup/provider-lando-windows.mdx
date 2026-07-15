@@ -18,6 +18,7 @@ tags: [beta, docs, provider-lando, setup, windows]
     <Step name="managed-machine-trust">
       <Variable name="machineInit" value="podman machine init --import-native-ca lando" display="Lando-owned machine creation imports the host native CA trust store" />
       <Variable name="machineTrustSync" value="podman machine set --import-native-ca lando" display="Existing machines get native CA trust sync only when setup state proves Lando created them" />
+      <Variable name="machineTrustRestart" value="podman machine stop lando &amp;&amp; podman machine start lando" display="A running Lando-owned machine restarts after trust sync so Podman imports the host CA store at startup" />
       <Variable name="userOwnedMachine" value="createdByLando=false" display="User-owned machines are left untouched by setup trust remediation" />
       <Variable name="hypervPrep" value="podman system hyperv-prep" display="Manual Administrator-terminal remediation; Lando never auto-elevates or runs Hyper-V prep for you" />
     </Step>
