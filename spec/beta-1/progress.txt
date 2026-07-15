@@ -157,3 +157,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - A short boolean followed by an unknown suffix must be classified as an attached value before OCLIF can echo it; recognized short bundles must remain valid. Compare normalized JSON envelopes before applying asymmetric matchers because matcher inspection may mutate parsed values.
 ---
+
+## 2026-07-15 05:08 CDT - Babysit
+- PR: #586 https://github.com/AaronFeledy/core4/pull/586
+- CI outcome: pass (after triage)
+- Review feedback: fixed (aligned shell/translate/scratch expectations with MalformedCliFlagValueError and fail-closed isolate modes)
+- Merge: merged (squash)
+---
