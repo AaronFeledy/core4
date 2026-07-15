@@ -16,7 +16,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 - A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
-- Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; verify installed versions equal snapshot candidates under `pipefail` without early-exit pipelines.
+- Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; bind each installed candidate's own policy stanza to that snapshot under `pipefail` without early-exit pipelines.
 
 ## Durable learnings
 
@@ -187,4 +187,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint passed; workflow codegen and 62 focused runtime-bundle tests passed; the exact generated package-install block completed in the isolated sandbox with clean teardown.
 - **Learnings for future iterations:**
   - Under `set -o pipefail`, do not exit an `awk` consumer early when the producer can receive SIGPIPE; let candidate-version parsing consume the full bounded output.
+---
+
+## 2026-07-15 07:03 CDT - US-447 Review
+- Closed two supply-chain blockers: the write/OIDC release workflow now shares immutable action pins with runtime-bundle publishing, and package provenance now requires the installed candidate's own policy stanza to name the fixed Ubuntu snapshot instead of accepting an unrelated snapshot entry.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account review quota was exhausted; mutable tags in general CI, nightly, and provider-matrix workflows were rejected as outside the runtime-bundle and closely related publish scope.
+- Verification: typecheck, lint, TypeScript no-excuse audit, focused runtime-bundle workflow/supply-chain tests, and release-workflow codegen idempotence passed.
+- **Learnings for future iterations:**
+  - A repository URL anywhere in package policy output does not prove candidate provenance; validate the exact installed candidate's version-table block.
 ---

@@ -167,10 +167,15 @@ jobs:
             POLICY="$(apt-cache policy "$PACKAGE")"
             CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
             test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
-            case "$POLICY" in
-              *"https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT"*) ;;
-              *) echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"; exit 1 ;;
-            esac
+            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
+              $1 == "***" && $2 == candidate { candidate_block = 1; next }
+              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
+              candidate_block { candidate_block = 0 }
+              END { exit found ? 0 : 1 }
+            ' <<< "$POLICY"; then
+              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
+              exit 1
+            fi
           done
 
       - name: Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources

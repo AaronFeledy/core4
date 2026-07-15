@@ -2,6 +2,7 @@
 import { resolve } from "node:path";
 
 import { releasePackageNames } from "./prepare-npm-dev-packages.ts";
+import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/release.yml");
@@ -52,10 +53,10 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
         with:
           bun-version-file: .bun-version
 
@@ -105,15 +106,15 @@ jobs:
     needs: [dev-prerelease-linux-x64]
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
         with:
           bun-version-file: .bun-version
 
       - name: Setup Node for npm trusted publishing
-        uses: actions/setup-node@v4
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupNode} # v4.4.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
