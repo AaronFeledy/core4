@@ -11,6 +11,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Explain what became true, what proved it, and what remains blocked or deferred. Skip review choreography, PR babysit notes, generated-path inventories, test-count trivia, and formatting/comment-only changes.
 - If a story relaxes a shipped contract, record the decision and the synchronized spec/PRD/snapshot updates. Truth hierarchy is spec > PRD > progress.
 
+## Codebase Patterns
+
+- Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
+
 ## Durable learnings
 
 - Business logic stays in pure Effect; filesystem/process/network/terminal/provider/renderer effects belong behind services.
@@ -116,4 +120,17 @@ US-450 no longer asks for a Windows UAC elevation path for managed-machine trust
 ### 2026-07-14 — PRD-15 renderer-substrate wave opened (spec/PRD only; no implementation landed)
 US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), covering the OpenTUI `^0.4.3` substrate contract, the split-footer live region, prompt chrome + frame-snapshot harness, the complete `RendererCapabilities`/`notify.desktop`/`NotifyConfig` SDK surface with foreground-only realization, the accidental `HostProxyRequest` `notify`/`clipboardCopy` verb cleanup, the `@lando/notify-lando` bundled policy plugin, and the contract-only freeze of the 4.1 panel/keymap/rich-event surfaces. The `@opentui/core` `^0.4.3` package/lockfile bump for `plugins/renderer-lando` is the only artifact actually present in the tree today. No generated output (`scripts/generated/opentui-native/**`, bootstrap layers, bundled-plugin tables), no `@lando/sdk` schema/service code, no `@lando/notify-lando` plugin package, and no `@lando/renderer-lando` runtime change has landed — this pass is normative spec + PRD text only, establishing the contract the implementation stories still have to satisfy.
 - **Learning:** a dependency bump landing before its consuming spec is fully decision-complete is not itself progress on the PRD; keep the progress log honest about what's spec-only versus implemented so PRD-15 isn't mistaken for shipped work.
+---
+
+## 2026-07-15 00:50 CDT - US-444
+- Detached host-proxy startup now sends bounded payload chunks through backpressure-aware writes, enforces a 16 MiB frame limit and 15-second delivery deadline, and closes stdin only after buffered bytes drain. Oversized startup remains a tagged, remediated failure and terminates the child without persisting half-started worker state.
+- Verification: typecheck, lint passed; focused payload/backpressure and host-proxy manager/contract tests passed; scratch-run and toolbox spot checks passed.
+- **Learnings for future iterations:**
+  - Await Bun pipe writes and flushes for flow control, but advance by the chunk boundary rather than interpreting the completion value as a partial-write count.
+---
+
+## 2026-07-15 01:10 CDT - US-444 Review
+- Added a direct slow-consumer deadline regression using the production worker pipe: the shortened test deadline maps to the unchanged tagged/remediated transport error, persists no worker state, and terminates the child.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account's subagent quota was exhausted; the pre-existing terminate-grace timer cleanup and a handshake rewrite of the passing backpressure test are non-blocking hardening outside this focused acceptance fix.
+- Verification: typecheck, lint, TypeScript no-excuse audit, and focused host-proxy worker/transport plus toolbox/scratch-run spot checks passed.
 ---

@@ -1312,7 +1312,7 @@
         "Lint passes"
       ],
       "priority": 73,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-433 verify Bugbot deferred single stdin.write without backpressure as follow-up hardening."
     },
     {
