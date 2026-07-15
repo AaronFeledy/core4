@@ -19,11 +19,8 @@ import { type LandoEvent, PostMcpCallEvent, PreMcpCallEvent } from "@lando/sdk/e
 import type { Redactor } from "@lando/sdk/secrets";
 
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import {
-  encodeCommandResult,
-  encodeStreamStderrFrame,
-  encodeStreamStdoutFrame,
-} from "../cli/result-encode.ts";
+import { buildCommandResultEnvelope } from "../cli/result-encode.ts";
+import { redactBoundedJsonValue } from "./bounded-json.ts";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry.ts";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
@@ -127,18 +124,19 @@ const envelopeTag = (envelope: unknown): string | undefined => {
   return typeof tag === "string" ? tag : undefined;
 };
 
-const encodeProgressFrame = (frame: McpProgressFrame, deps: McpDispatchDeps): Effect.Effect<string> =>
-  frame._tag === "stdout"
-    ? encodeStreamStdoutFrame({
-        chunk: frame.chunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        redactor: deps.redactor,
-      })
-    : encodeStreamStderrFrame({
-        chunk: frame.chunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        redactor: deps.redactor,
-      });
+const encodeProgressFrame = (
+  frame: McpProgressFrame,
+  deps: McpDispatchDeps,
+): Effect.Effect<unknown, McpTransportError> =>
+  redactBoundedJsonValue(
+    {
+      _tag: frame._tag,
+      chunk: frame.chunk,
+      ...(frame.service === undefined ? {} : { service: frame.service }),
+    },
+    deps.redactor,
+    "MCP progress payload",
+  );
 
 const emitProgressFrame = (
   deps: McpDispatchDeps,
@@ -147,7 +145,7 @@ const emitProgressFrame = (
   deps.notify === undefined
     ? Effect.void
     : encodeProgressFrame(frame, deps).pipe(
-        Effect.flatMap((line) => deps.notify?.(JSON.parse(line)) ?? Effect.void),
+        Effect.flatMap((encoded) => deps.notify?.(encoded) ?? Effect.void),
       );
 
 /**
@@ -243,13 +241,13 @@ export const dispatchTool = (
           yield* emitProgressFrame(deps, frame);
         }
       }
-      const line = yield* encodeCommandResult({
+      const encodedEnvelope = yield* buildCommandResultEnvelope({
         command: entry.spec.id,
         resultSchema: entry.spec.resultSchema,
         outcome,
         redactor: deps.redactor,
       });
-      const envelope: unknown = JSON.parse(line);
+      const envelope = yield* redactBoundedJsonValue(encodedEnvelope, deps.redactor, "MCP tool result");
       const ok = (envelope as { readonly ok?: unknown }).ok === true;
 
       yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));

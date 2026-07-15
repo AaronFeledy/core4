@@ -3,14 +3,14 @@ import { Deferred, Effect, Queue, Ref, Scope } from "effect";
 import type { McpTransportError } from "@lando/sdk/errors";
 import type { McpCatalog } from "@lando/sdk/schema";
 
+import { stringifyBoundedJson } from "./bounded-json.ts";
 import { MAX_OUTSTANDING_REQUESTS, MAX_PENDING_CANCELLATIONS, stdioTransportError } from "./stdio-limits.ts";
+import { encodeStdioReply } from "./stdio-outbound.ts";
 import { runStdioReader, takeUntilTerminal } from "./stdio-reader.ts";
 import {
   type JsonObject,
   type JsonRpcId,
   type ProgressToken,
-  errorData,
-  errorMessage,
   hasOwn,
   idKey,
   isJsonObject,
@@ -75,7 +75,7 @@ export const makeStdioMcpTransport = (
     const serverInfo = options.serverInfo ?? DEFAULT_SERVER_INFO;
 
     const writeJson = (message: JsonObject): Effect.Effect<void, McpTransportError> =>
-      writer.write(JSON.stringify(message));
+      stringifyBoundedJson(message, "MCP JSON-RPC frame").pipe(Effect.flatMap(writer.write));
     const writeError = (id: JsonRpcId, code: number, message: string, data?: unknown) =>
       writeJson(rpcError(id, code, message, data));
 
@@ -212,13 +212,10 @@ export const makeStdioMcpTransport = (
         Effect.flatMap((current) => {
           const entry = current.byInternalId.get(replyMessage.id);
           if (entry === undefined) return Effect.void;
-          const output = replyMessage.ok
-            ? rpcResult(entry.jsonrpcId, {
-                content: [{ type: "text", text: JSON.stringify(replyMessage.result.envelope) }],
-                isError: replyMessage.result.ok === false,
-              })
-            : rpcError(entry.jsonrpcId, -32603, errorMessage(replyMessage), errorData(replyMessage));
-          return writeJson(output).pipe(Effect.zipRight(forgetCorrelation(replyMessage.id, entry)));
+          const writeReply = encodeStdioReply(replyMessage, entry.jsonrpcId).pipe(
+            Effect.flatMap(writer.write),
+          );
+          return writeReply.pipe(Effect.ensuring(forgetCorrelation(replyMessage.id, entry)));
         }),
       );
 
@@ -227,19 +224,23 @@ export const makeStdioMcpTransport = (
         Effect.flatMap((current) => {
           const entry = current.byInternalId.get(notification.id);
           if (entry?.progressToken === undefined) return Effect.void;
-          return incrementProgress(notification.id, entry).pipe(
-            Effect.flatMap((progress) =>
-              writeJson({
-                jsonrpc: "2.0",
-                method: "notifications/progress",
-                params: {
-                  progressToken: entry.progressToken,
-                  progress,
-                  message: JSON.stringify(notification.frame),
-                  data: notification.frame,
-                },
-              }),
+          return stringifyBoundedJson(notification.frame, "MCP progress payload").pipe(
+            Effect.flatMap((message) =>
+              incrementProgress(notification.id, entry).pipe(
+                Effect.map((progress) => ({
+                  jsonrpc: "2.0",
+                  method: "notifications/progress",
+                  params: {
+                    progressToken: entry.progressToken,
+                    progress,
+                    message,
+                    data: notification.frame,
+                  },
+                })),
+              ),
             ),
+            Effect.flatMap((message) => stringifyBoundedJson(message, "MCP progress notification")),
+            Effect.flatMap(writer.write),
           );
         }),
       );

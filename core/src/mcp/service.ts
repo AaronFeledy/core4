@@ -21,10 +21,10 @@ import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "../cli/result-encode.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
+import { redactBoundedJsonValue } from "./bounded-json.ts";
 import {
   emptyCompletedRequestIds,
   forgetCompletedRequestId,
@@ -133,19 +133,16 @@ const makeService = (
           const encodeProgressFrame = (
             frame: StreamFrameSinkFrame,
             redactorForFrame: Redactor,
-          ): Effect.Effect<unknown> =>
-            (frame._tag === "stdout"
-              ? encodeStreamStdoutFrame({
-                  chunk: frame.chunk,
-                  ...(frame.service === undefined ? {} : { service: frame.service }),
-                  redactor: redactorForFrame,
-                })
-              : encodeStreamStderrFrame({
-                  chunk: frame.chunk,
-                  ...(frame.service === undefined ? {} : { service: frame.service }),
-                  redactor: redactorForFrame,
-                })
-            ).pipe(Effect.map((line) => JSON.parse(line) as unknown));
+          ): Effect.Effect<unknown, McpTransportError> =>
+            redactBoundedJsonValue(
+              {
+                _tag: frame._tag,
+                chunk: frame.chunk,
+                ...(frame.service === undefined ? {} : { service: frame.service }),
+              },
+              redactorForFrame,
+              "MCP progress payload",
+            );
           const streamSinkFor = (
             notify: McpNotify,
             redactorForFrame: Redactor,
