@@ -38,6 +38,7 @@ const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
 const PROVIDER_ID = "lando";
 const MINIMUM_PODMAN_VERSION = "6.0.0";
+const WINDOWS_MACHINE_HELPERS = ["gvproxy.exe", "win-sshproxy.exe"] as const;
 
 const currentHostPlatform = (): HostPlatform =>
   process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32";
@@ -271,6 +272,24 @@ const machineFailure = (
   platform: HostPlatform,
 ): ProviderUnavailableError => {
   const output = typeof cause === "object" && cause !== null && "stderr" in cause ? cause.stderr : cause;
+  const missingHelper =
+    platform === "win32" && typeof output === "string"
+      ? WINDOWS_MACHINE_HELPERS.find(
+          (helper) =>
+            output.toLowerCase().includes(helper) &&
+            /not found|could not find|missing|no such/iu.test(output),
+        )
+      : undefined;
+  if (missingHelper !== undefined) {
+    return new ProviderUnavailableError({
+      providerId: PROVIDER_ID,
+      operation,
+      message: `Podman machine ${operation} failed because required helper ${missingHelper} was not found.`,
+      remediation:
+        "Rerun `lando setup --provider=lando` to reinstall the managed Windows runtime bundle, then retry.",
+      details: { helper: missingHelper },
+    });
+  }
   if (
     platform === "win32" &&
     typeof output === "string" &&
@@ -433,6 +452,16 @@ const missingBundledMachineToolingError = (
     ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
   });
 
+const missingBundledMachineHelperError = (helper: string): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: `The installed Lando runtime bundle is missing required Windows machine helper ${helper}.`,
+    remediation:
+      "Rerun `lando setup --provider=lando` to reinstall the managed Windows runtime bundle, then retry.",
+    details: { helper },
+  });
+
 // Require bundled Podman on disk before spawn so failures use missingBundledMachineToolingError, not PodmanNotInstalledError.
 const resolveSetupPodmanCommandRunner = (
   platform: HostPlatform,
@@ -463,6 +492,13 @@ const resolveSetupMachineRunner = (
   const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const toolingExists = (options._machineToolingExists ?? existsSync)(podmanBin);
   if (!toolingExists) return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
+  if (platform === "win32") {
+    const normalizedRuntimeBinDir = runtimeBinDir.replace(/[\\/]+$/u, "");
+    const missingHelper = WINDOWS_MACHINE_HELPERS.find(
+      (helper) => !(options._machineToolingExists ?? existsSync)(`${normalizedRuntimeBinDir}/${helper}`),
+    );
+    if (missingHelper !== undefined) return Effect.fail(missingBundledMachineHelperError(missingHelper));
+  }
 
   const factory = options._machineRunnerFactory ?? makeSystemPodmanMachineRunner;
   return Effect.succeed(factory(podmanBin, MANAGED_MACHINE_NAME, platform));

@@ -398,8 +398,69 @@ ${landoManagedPodmanTeardownCommands}
 const landoProviderIntegrationSteps = (platform: CiPlatform): string =>
   `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps(platform)}`;
 
+const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Assemble current-commit Windows runtime bundle
+        run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
+
+      - name: Upload current-commit Windows runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-bundle-win32-x64-current
+          path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
+          if-no-files-found: error
+          retention-days: 1
+
+${timingNoticeStep("runtime-bundle-win32-x64", 15)}
+`;
+
+const windowsManagedSetupSteps = `      - name: Download current-commit Windows runtime bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-bundle-win32-x64-current
+          path: dist/cache/runtime-bundle
+
+      - name: Build local Windows runtime manifest
+        run: |
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          bun run scripts/build-runtime-bundle.ts --local --platform win32-x64 --runtime-version "$RUNTIME_VERSION"
+
+      - name: Verify compiled Windows managed setup and API reachability
+        env:
+          LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
+          LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
+          LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
+          LANDO_RUNTIME_BUNDLE_MANIFEST: \${{ github.workspace }}/dist/cache/runtime-bundle/runtime-bundle-versions.json
+        run: |
+          bun run scripts/windows-managed-setup-acceptance.ts --binary dist/lando-windows-x64.exe --report provider-diagnostics/windows-managed-setup.json
+
+      - name: Teardown Windows managed machine
+        if: always()
+        env:
+          LANDO_USER_DATA_ROOT: \${{ runner.temp }}/lando-data
+          LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
+          LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
+        run: |
+          powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\bin\\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\config\\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT'`;
+
+const providerIntegrationSteps = (platform: CiPlatform): string => {
+  if (platform.liveProviderIntegration) return landoProviderIntegrationSteps(platform);
+  if (platform.id === "windows-x64") {
+    return `${windowsManagedSetupSteps}\n\n${contractProviderTestSteps}`;
+  }
+  return contractProviderTestSteps;
+};
+
 const renderProviderIntegrationJob = (platform: CiPlatform): string => `  provider-integration-${platform.id}:
-    needs: [build-${platform.id}]
+    needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : `[build-${platform.id}]`}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
@@ -418,7 +479,7 @@ ${setupBunSteps}
       - name: Restore binary executable bit
         run: chmod +x dist/${platform.binaryName}
 
-${platform.liveProviderIntegration ? landoProviderIntegrationSteps(platform) : contractProviderTestSteps}
+${providerIntegrationSteps(platform)}
 
       - name: Upload provider integration diagnostics
         if: always()
@@ -653,6 +714,7 @@ ${timingNoticeStep("recipe-tests", 15)}
 
 ${guideScenarioJobs}
 ${buildJobs}
+${windowsRuntimeBundleJob}
 ${perfBudgetJob}
 ${providerIntegrationJobs}`;
 };

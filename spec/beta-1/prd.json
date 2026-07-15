@@ -1427,7 +1427,7 @@
         "Lint passes"
       ],
       "priority": 80,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: US-450 Windows interop verify. Real host setup created machine `lando` with ImportNativeCA:true and printed successful host CA import without UAC, then failed with ProviderUnavailableError: runtime service did not become reachable \u2014 Podman reported missing win-sshproxy.exe in helper_binaries_dir. Existing CI windows-x64 jobs only smoke version/help/shellenv and run bun contract unit tests; they do not exercise live managed setup\u2192API. High priority so Windows first-run is not Beta-blocked by a post-trust connectivity gap."
     },
     {

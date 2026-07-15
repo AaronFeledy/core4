@@ -179,7 +179,9 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
       id: "provider-lando-runtime-ready",
       policy: deps.readinessPolicy ?? defaultRuntimeReadinessPolicy,
     },
-    deps.podmanApi.ping,
+    deps.platform === "win32"
+      ? deps.podmanApi.ping.pipe(Effect.andThen(deps.podmanApi.info), Effect.asVoid)
+      : deps.podmanApi.ping,
   ).pipe(
     Effect.flatMap((result) =>
       result.outcome === "green"

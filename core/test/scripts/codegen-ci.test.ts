@@ -279,7 +279,7 @@ describe("ci workflow codegen", () => {
       const runtimeBundleWorkflowGenerator = await readFile(runtimeBundleWorkflowGeneratorPath, "utf8");
 
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
-      expect(versionFileMatches).toBe(22);
+      expect(versionFileMatches).toBe(23);
       expect(workflow).not.toContain("bun-version: ");
       expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(8);
       expect(nightlyWorkflow).not.toContain("bun-version: ");

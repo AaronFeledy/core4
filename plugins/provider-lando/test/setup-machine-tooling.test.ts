@@ -87,6 +87,41 @@ describe("provider-lando bundled machine tooling resolution", () => {
     }
   });
 
+  test("win32 setup names a missing win-sshproxy helper before starting the machine", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-missing-win-helper-"));
+    let machineRunnerCreated = false;
+    try {
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "win32",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          runtimeBinDir,
+          skipSocketProbe: true,
+          _machineToolingExists: (path) => path.endsWith("podman.exe") || path.endsWith("gvproxy.exe"),
+          _machineRunnerFactory: () => {
+            machineRunnerCreated = true;
+            return machineRunner("missing");
+          },
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          const error = failure.value as ProviderUnavailableError;
+          expect(error.message).toContain("win-sshproxy.exe");
+          expect(error.remediation).toContain("lando setup");
+        }
+      }
+      expect(machineRunnerCreated).toBe(false);
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
   test("darwin setup resolves the machine runner from the bundled Podman path", async () => {
     const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-darwin-"));
     const stateDir = await mkdtemp(join(tmpdir(), "lando-bundle-darwin-state-"));

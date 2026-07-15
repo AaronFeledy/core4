@@ -117,6 +117,32 @@ describe("provider-lando runtime path resolution", () => {
     }
   });
 
+  test("win32 managed runtime uses the Podman machine API pipe", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "lando-runtime-paths-win32-"));
+    const observedSockets: string[] = [];
+    try {
+      await Effect.runPromise(
+        makeRuntimeProvider({
+          platform: "win32",
+          podmanApiFactory: (socketPath) => {
+            observedSockets.push(socketPath);
+            return { info: Effect.succeed({}), ping: Effect.succeed(undefined) };
+          },
+          providerSocketPath: join(tempDir, "runtime", "run", "podman.sock"),
+          providerPidPath: join(tempDir, "runtime", "run", "podman.pid"),
+          runtimeBinDir: join(tempDir, "runtime", "bin"),
+          runtimeStorageDir: join(tempDir, "runtime", "storage"),
+          runtimeRunDir: join(tempDir, "runtime", "run"),
+          runtimeConfigDir: join(tempDir, "runtime", "config"),
+        }),
+      );
+
+      expect(observedSockets).toEqual(["\\\\.\\pipe\\podman-lando"]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test("darwin managed runtime fails without bundled machine tooling instead of falling back to system Podman", async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "lando-runtime-paths-darwin-missing-"));
     try {

@@ -13,6 +13,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ## Codebase Patterns
 
+- Windows managed Podman machines expose the API at `\\.\pipe\podman-lando`; the data-root `runtime/run/podman.sock` endpoint is the native managed-service path, not the win32 machine endpoint.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
 - MCP outbound queue caps do not bound pre-queue JSON serialization; enforce the same byte budget during traversal before retaining the completed JSON string.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
@@ -283,4 +284,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass
 - Review feedback: fixed (Guide-Coverage-Skip on PR body for guide-drift; merged origin/main to clear conflict)
 - Merge: merged (squash)
+---
+
+## 2026-07-15 16:36 CDT - US-461
+- The Windows runtime source set advances to 0.1.4 with verified `gvproxy.exe` and `win-sshproxy.exe` pins. Setup preflights both helpers, preserves the missing filename in a tagged remediated failure, and routes managed API traffic through Podman's `\\.\pipe\podman-lando` endpoint; Windows readiness now requires both ping and info while Linux remains ping-only.
+- Generated CI assembles the current-commit Windows bundle on Linux, runs the compiled binary's non-interactive setup/API gate on `windows-2022`, records only the exact structured virtualization-prerequisite failure as a skip, and always removes the managed machine and isolated roots. The locally assembled archive contained all three Windows binaries; Windows interop reached helper launch and machine API forwarding, then recorded an environment-only block because this shared WSL host's cross-distro UID-1000 cgroup left `user@1000.service` at `Device or resource busy`; test resources were removed.
+- Verification: typecheck, lint, runtime-bundle manifest, workflow/codegen, and focused provider/runtime/bundle tests passed; high-rigor review approved after the structured-skip classifier was made fail-closed.
+- **Learnings for future iterations:**
+  - Do not infer the Windows machine endpoint from Lando's data root; use the deterministic Podman machine pipe and verify both `_ping` and `info`.
+  - A CI environment skip must parse the sole terminal machine envelope and exact prerequisite failure; raw substring matching can hide an unrelated setup regression.
 ---

@@ -121,4 +121,28 @@ describe("provider-lando system machine runner argv", () => {
     expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
     expect(calls.some((argv) => argv.includes("hyperv-prep"))).toBe(false);
   });
+
+  test("win32 start reports a missing API forwarding helper by filename", async () => {
+    const failingSpawn: MachineSpawn = () => ({
+      stdout: streamOf(""),
+      stderr: streamOf(
+        'Error: could not find "win-sshproxy.exe" in one of [helper_binaries_dir] directories',
+      ),
+      exited: Promise.resolve(1),
+    });
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).start);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        const error = failure.value as ProviderUnavailableError;
+        expect(error.message).toContain("win-sshproxy.exe");
+        expect(error.remediation).toContain("lando setup");
+      }
+    }
+  });
 });

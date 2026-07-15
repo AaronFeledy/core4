@@ -911,6 +911,35 @@ describe("ci workflow", () => {
     );
   });
 
+  test("runs compiled Windows managed setup through machine and API reachability", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const runtimeBundle = findIndentedBlock(jobs, "runtime-bundle-win32-x64", 2);
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-windows-x64", 2);
+
+    expect(runtimeBundle).toContain("    runs-on: ubuntu-24.04");
+    expect(runtimeBundle).toContain("      - name: Assemble current-commit Windows runtime bundle");
+    expect(runtimeBundle).toContain(
+      "        run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64",
+    );
+    expect(runtimeBundle).toContain("          name: runtime-bundle-win32-x64-current");
+    expect(providerIntegration).toContain("    needs: [build-windows-x64, runtime-bundle-win32-x64]");
+    expect(providerIntegration).toContain("      - name: Download current-commit Windows runtime bundle");
+    expect(providerIntegration).toContain("      - name: Build local Windows runtime manifest");
+    expect(providerIntegration).toContain(
+      "          bun run scripts/windows-managed-setup-acceptance.ts --binary dist/lando-windows-x64.exe --report provider-diagnostics/windows-managed-setup.json",
+    );
+    expect(providerIntegration).toContain("      - name: Teardown Windows managed machine");
+    expect(providerIntegration).toContain("& $podman machine rm --force lando");
+    expect(providerIntegration).toContain("        if: always()");
+    expect(providerIntegration.indexOf("Build local Windows runtime manifest")).toBeLessThan(
+      providerIntegration.indexOf("windows-managed-setup-acceptance.ts"),
+    );
+    expect(providerIntegration.indexOf("windows-managed-setup-acceptance.ts")).toBeLessThan(
+      providerIntegration.indexOf("Run provider contract tests"),
+    );
+  });
+
   test("generates the multi-platform build and provider integration matrix", async () => {
     const workflow = await readWorkflow();
 

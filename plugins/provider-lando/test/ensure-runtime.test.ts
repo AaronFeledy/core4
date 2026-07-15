@@ -879,4 +879,34 @@ describe("ensureRuntime", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("win32 readiness requires both API ping and info after machine start", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: string[] = [];
+      const apiCalls: string[] = [];
+      const p = paths(dir);
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: {
+            ping: Effect.sync(() => apiCalls.push("ping")),
+            info: Effect.sync(() => {
+              apiCalls.push("info");
+              return {};
+            }),
+          },
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("missing", calls),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual(["inspect", "create", "start"]);
+      expect(apiCalls).toEqual(["ping", "info"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });
