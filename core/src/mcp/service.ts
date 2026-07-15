@@ -14,7 +14,7 @@
  */
 import { Cause, Context, Deferred, Effect, type Exit, Fiber, Layer, Option, Ref } from "effect";
 
-import type { McpTransportError } from "@lando/sdk/errors";
+import { McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
@@ -34,6 +34,7 @@ import {
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
 import type { McpCommandEntry } from "./registry.ts";
+import { projectMcpProgressFrame } from "./result-inspector.ts";
 import { McpTransport, type McpTransportRequest } from "./transport.ts";
 
 /** Default in-flight tool-call cap (config `mcp.maxConcurrent`). */
@@ -131,17 +132,23 @@ const makeService = (
             (frame) =>
               transport.notify({ id: incoming.id, frame });
           const encodeProgressFrame = (
-            frame: StreamFrameSinkFrame,
+            frame: unknown,
             redactorForFrame: Redactor,
           ): Effect.Effect<unknown, McpTransportError> =>
-            redactBoundedJsonValue(
-              {
-                _tag: frame._tag,
-                chunk: frame.chunk,
-                ...(frame.service === undefined ? {} : { service: frame.service }),
-              },
-              redactorForFrame,
-              "MCP progress payload",
+            Effect.try({
+              try: () => projectMcpProgressFrame(frame),
+              catch: (cause) =>
+                cause instanceof McpTransportError
+                  ? cause
+                  : new McpTransportError({
+                      message: "MCP progress payload could not be safely inspected.",
+                      remediation:
+                        "Emit a plain stdout or stderr frame with string chunk and service fields.",
+                    }),
+            }).pipe(
+              Effect.flatMap((projected) =>
+                redactBoundedJsonValue(projected, redactorForFrame, "MCP progress payload"),
+              ),
             );
           const streamSinkFor = (
             notify: McpNotify,

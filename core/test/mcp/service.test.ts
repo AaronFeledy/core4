@@ -218,6 +218,42 @@ describe("McpService.serve", () => {
     });
   });
 
+  test("rejects a hostile live frame without invoking its getter", async () => {
+    // Given
+    let getterCalls = 0;
+    const streaming = spec("app:logs", () =>
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({
+          _tag: "stdout",
+          get chunk(): string {
+            getterCalls += 1;
+            return "not-read";
+          },
+        });
+        return {};
+      }),
+    );
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:logs"],
+      runtimeLayer: Layer.empty,
+    };
+
+    // When
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies({ config, options: { transport: "stdio" }, toolId: "app:logs" }),
+    );
+
+    // Then
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      ok: true,
+      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+    });
+    expect(getterCalls).toBe(0);
+  });
+
   test("fails an aggregate oversized result and accepts the follow-up request", async () => {
     // Given
     let calls = 0;

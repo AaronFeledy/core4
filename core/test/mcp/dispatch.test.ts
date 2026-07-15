@@ -8,7 +8,7 @@ import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
-import { type McpDispatchDeps, dispatchTool } from "../../src/mcp/dispatch.ts";
+import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "../../src/mcp/dispatch.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
 
@@ -441,5 +441,64 @@ describe("dispatchTool", () => {
     expect(notifications).toHaveLength(1);
     expect(JSON.stringify(notifications[0])).not.toContain(secret);
     expect(notifications[0]).toMatchObject({ _tag: "stdout" });
+  });
+
+  test("rejects hostile streamFrames without invoking getters or proxy traps", async () => {
+    // Given
+    let getterCalls = 0;
+    let trapCalls = 0;
+    const accessorFrame = {
+      _tag: "stdout" as const,
+      get chunk(): string {
+        getterCalls += 1;
+        return "not-read";
+      },
+    };
+    const proxyFrame = new Proxy(
+      { _tag: "stderr" as const, chunk: "not-read" },
+      {
+        get: (target, key, receiver) => {
+          trapCalls += 1;
+          return Reflect.get(target, key, receiver);
+        },
+        getOwnPropertyDescriptor: (target, key) => {
+          trapCalls += 1;
+          return Reflect.getOwnPropertyDescriptor(target, key);
+        },
+        getPrototypeOf: (target) => {
+          trapCalls += 1;
+          return Reflect.getPrototypeOf(target);
+        },
+        ownKeys: (target) => {
+          trapCalls += 1;
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    let frame: McpProgressFrame = accessorFrame;
+    const entry: McpCommandEntry = {
+      spec: spec("app:logs", () => Effect.succeed({}), {
+        streamFrames: () => [frame],
+      }),
+    };
+    const { deps } = harness([entry]);
+    const notify = (): Effect.Effect<void> => Effect.void;
+
+    // When
+    const accessorExit = await Effect.runPromiseExit(
+      dispatchTool({ toolId: "app:logs" }, { ...deps, notify }),
+    );
+    frame = proxyFrame;
+    const proxyExit = await Effect.runPromiseExit(dispatchTool({ toolId: "app:logs" }, { ...deps, notify }));
+
+    // Then
+    for (const exit of [accessorExit, proxyExit]) {
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(McpTransportError);
+      }
+    }
+    expect(getterCalls).toBe(0);
+    expect(trapCalls).toBe(0);
   });
 });

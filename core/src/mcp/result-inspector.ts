@@ -30,6 +30,40 @@ const chunkEnd = (value: string, start: number): number => {
 const isOmittedValue = (value: unknown): boolean =>
   value === undefined || typeof value === "function" || typeof value === "symbol";
 
+export interface McpProgressData {
+  readonly _tag: "stdout" | "stderr";
+  readonly chunk: string;
+  readonly service?: string;
+}
+
+export const projectMcpProgressFrame = (value: unknown): McpProgressData => {
+  const context = "MCP progress payload";
+  if (value === null || typeof value !== "object") throw inspectionFailure(context);
+  if (isRuntimeProxy(value)) throw inspectionFailure(context);
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) throw inspectionFailure(context);
+
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (descriptor === undefined || !("value" in descriptor)) throw inspectionFailure(context);
+    if (key === "toJSON") throw inspectionFailure(context);
+  }
+
+  const tag = Object.getOwnPropertyDescriptor(value, "_tag")?.value;
+  const chunk = Object.getOwnPropertyDescriptor(value, "chunk")?.value;
+  const serviceDescriptor = Object.getOwnPropertyDescriptor(value, "service");
+  if ((tag !== "stdout" && tag !== "stderr") || typeof chunk !== "string") {
+    throw inspectionFailure(context);
+  }
+  if (serviceDescriptor !== undefined && typeof serviceDescriptor.value !== "string") {
+    throw inspectionFailure(context);
+  }
+
+  return serviceDescriptor === undefined
+    ? { _tag: tag, chunk }
+    : { _tag: tag, chunk, service: serviceDescriptor.value };
+};
+
 class BoundedDataInspector {
   readonly #ancestors = new WeakSet<object>();
   readonly #context: string;

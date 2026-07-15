@@ -22,7 +22,7 @@ import type { CommandResultOutcome } from "../cli/result-encode.ts";
 import { buildCommandResultEnvelope } from "../cli/result-encode.ts";
 import { redactBoundedJsonValue } from "./bounded-json.ts";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry.ts";
-import { inspectMcpCommandOutcome } from "./result-inspector.ts";
+import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "./result-inspector.ts";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
 
@@ -133,17 +133,20 @@ const envelopeTag = (envelope: unknown): string | undefined => {
 };
 
 const encodeProgressFrame = (
-  frame: McpProgressFrame,
+  frame: unknown,
   deps: McpDispatchDeps,
 ): Effect.Effect<unknown, McpTransportError> =>
-  redactBoundedJsonValue(
-    {
-      _tag: frame._tag,
-      chunk: frame.chunk,
-      ...(frame.service === undefined ? {} : { service: frame.service }),
-    },
-    deps.redactor,
-    "MCP progress payload",
+  Effect.try({
+    try: () => projectMcpProgressFrame(frame),
+    catch: (cause) =>
+      cause instanceof McpTransportError
+        ? cause
+        : new McpTransportError({
+            message: "MCP progress payload could not be safely inspected.",
+            remediation: "Emit a plain stdout or stderr frame with string chunk and service fields.",
+          }),
+  }).pipe(
+    Effect.flatMap((projected) => redactBoundedJsonValue(projected, deps.redactor, "MCP progress payload")),
   );
 
 const emitProgressFrame = (
