@@ -79,15 +79,11 @@ export interface PatternClass {
   readonly replace: string | ((substring: string, ...groups: string[]) => string);
 }
 
-// --- Deterministic placeholders ---
-
 const PATH = "[path]";
 const URL = "[url]";
 const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
-
-// --- secrets-profile pattern classes ---
 
 const SECRET_KEY_PATTERN =
   /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
@@ -123,8 +119,6 @@ const SECRETS_REPLACEMENTS = [
   { pattern: BEARER_TOKEN_PATTERN, replace: (_m: string, scheme: string) => `${scheme} ${REDACTED}` },
   { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: (_m: string, prefix: string) => `${prefix}${REDACTED}` },
 ] as const;
-
-// --- telemetry-profile pattern classes ---
 
 const TELEMETRY_URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/giu;
 const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._$-]+(?:\\[^\s\\'"]+)*/gu;
