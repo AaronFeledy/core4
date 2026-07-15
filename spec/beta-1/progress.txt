@@ -241,3 +241,8 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted. A new TypeScript trust gate or sandbox rewrite was rejected because US-449 preserves the existing trusted-author loader authority and explicitly defers broader loader isolation beyond form parity.
 - Verification: typecheck, lint, renderer and machine-output boundaries passed; focused lint, config-lint, include-update, and doctor spot checks passed.
 ---
+
+## 2026-07-15 14:40 CDT - US-461 planned
+- Added high-priority US-461 (priority 80) after US-450 Windows interop verify: win32 managed setup must ship/discover `win-sshproxy` helpers and leave a reachable Podman API; CI must prove setup→API beyond version/help smoke. Bumped open-story priorities US-451..US-460 to 81..90. PRD-14 + index synchronized.
+- **CI note (current state):** windows-2022 builds the binary (with bytecode), smokes `--version`/`--help`/`shellenv`, runs guide scenarios and bun contract unit tests under `provider-integration-windows-x64`. It does **not** run live `lando setup --provider=lando` against a Podman machine. US-453 still covers broader machine lifecycle live cells; US-461 is the setup/API green-path gate.
+---

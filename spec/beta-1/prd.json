@@ -1398,10 +1398,10 @@
     {
       "id": "US-450",
       "title": "Windows managed-machine trust + Hyper-V privilege contract closure",
-      "description": "As a Windows user of the managed Podman machine, ownership-gated CA trust sync completes without elevation, and Hyper-V / virtualization gaps stay fail-closed manual remediation — never auto-elevated — matching US-423 and US-436.",
+      "description": "As a Windows user of the managed Podman machine, ownership-gated CA trust sync completes without elevation, and Hyper-V / virtualization gaps stay fail-closed manual remediation \u2014 never auto-elevated \u2014 matching US-423 and US-436.",
       "acceptanceCriteria": [
         "Ownership-gated Windows managed-machine trust sync (`podman machine init|set --import-native-ca` for Lando-owned machines only) is documented and tested as non-elevating: it does not call `PrivilegeService.elevate` and does not request UAC.",
-        "Windows Hyper-V / virtualization prerequisite failures remain fail-closed tagged errors (e.g. `WindowsMachinePrerequisiteError`) whose remediation names the exact manual steps (`wsl --install` / `wsl --update` / elevated `podman system hyperv-prep` as applicable) and states that Lando never runs prep or elevates for the user — reaffirming US-423 and US-436, not reopening them.",
+        "Windows Hyper-V / virtualization prerequisite failures remain fail-closed tagged errors (e.g. `WindowsMachinePrerequisiteError`) whose remediation names the exact manual steps (`wsl --install` / `wsl --update` / elevated `podman system hyperv-prep` as applicable) and states that Lando never runs prep or elevates for the user \u2014 reaffirming US-423 and US-436, not reopening them.",
         "Non-Windows hosts remain structured skips or unchanged; Linux/macOS trust-import behavior does not regress.",
         "Platform- or env-gated tests lock the no-auto-elevate contracts (trust sync does not elevate; Hyper-V remediation never auto-runs prep); secrets and host paths stay redacted in remediation and events.",
         "Tests pass",
@@ -1411,6 +1411,24 @@
       "priority": 79,
       "passes": false,
       "notes": "PRD-14 residual hardening. Contract proof of intentional non-elevation (US-423/US-436), not a UAC path. Origin: US-436 completion notes misread manual Hyper-V remediation as unfinished elevation work."
+    },
+    {
+      "id": "US-461",
+      "title": "Windows managed setup reaches Podman API (win-sshproxy helpers)",
+      "description": "As a Windows user of provider-lando, `lando setup --provider=lando` completes with a reachable managed Podman API after machine create/trust \u2014 not a green machine with a dead client connection \u2014 so real Windows first-run works.",
+      "acceptanceCriteria": [
+        "The win32-x64 runtime bundle (and post-extract runtime bin dir) ships the Windows machine helper binaries Podman needs for client API reachability after `podman machine start` \u2014 at minimum `win-sshproxy.exe` alongside existing helpers such as `gvproxy.exe` \u2014 and managed `containers.conf` / helper discovery points at that directory so Podman does not fail with missing helper_binaries_dir entries.",
+        "On Windows, non-interactive `lando setup --yes --no-interactive --provider=lando` ends with a reachable Podman API for the Lando-owned machine (ping/info succeed) when Hyper-V/WSL virtualization prerequisites are already satisfied; machine ownership-gated native CA trust (`ImportNativeCA` / startup CA import) remains non-elevating and Hyper-V prep remains manual-only (US-423/US-436/US-450).",
+        "When helper or API reachability fails, the failure is a tagged, remediated ProviderUnavailableError (or existing equivalent) that names the missing helper or connection surface without leaking host secrets; setup does not claim success with an unreachable runtime.",
+        "CI proves the Windows green path beyond `--version`/`--help`/`shellenv` smoke: at least one windows-2022 job runs compiled-binary setup (or an env-gated live cell) that asserts machine + API reachability, or structured-skips only when the runner cannot host a Podman machine \u2014 never silent pass on a broken claimed path. US-453 lifecycle cells may share infrastructure but do not replace this setup/API gate.",
+        "Linux/macOS managed setup paths do not regress.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 80,
+      "passes": false,
+      "notes": "Origin: US-450 Windows interop verify. Real host setup created machine `lando` with ImportNativeCA:true and printed successful host CA import without UAC, then failed with ProviderUnavailableError: runtime service did not become reachable \u2014 Podman reported missing win-sshproxy.exe in helper_binaries_dir. Existing CI windows-x64 jobs only smoke version/help/shellenv and run bun contract unit tests; they do not exercise live managed setup\u2192API. High priority so Windows first-run is not Beta-blocked by a post-trust connectivity gap."
     },
     {
       "id": "US-451",
@@ -1424,7 +1442,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 80,
+      "priority": 81,
       "passes": false,
       "notes": "PRD-14 residual hardening. Origin: US-433 review deferred DNS host-proxy doctor check as broader follow-up scope."
     },
@@ -1440,7 +1458,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 81,
+      "priority": 82,
       "passes": false,
       "notes": "PRD-14 residual hardening. Origin: US-440 review deferred creating a new MCP guide because the matrix target did not exist."
     },
@@ -1457,7 +1475,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 82,
+      "priority": 83,
       "passes": false,
       "notes": "PRD-14 residual hardening. Origin: Podman 6 wave and US-432 advisory macOS/Windows skips; machine lifecycle could not be live-exercised from the Linux sandbox."
     },
@@ -1473,7 +1491,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 83,
+      "priority": 84,
       "passes": false,
       "notes": "PRD-14 residual hardening. Origin: US-442 review deferred pre-parse and runtime-layer construction as outside the shared command lifecycle boundary."
     },
@@ -1493,7 +1511,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 84,
+      "priority": 85,
       "passes": false,
       "notes": "Origin: spec section 8.9.3 (default renderer implementation contract) and section 17.3.1 (per-target OpenTUI native asset packaging). The ^0.4.3 dependency bump is included in this patch; this story adds the boundary tests, degradation contract, and compiled native packaging."
     },
@@ -1512,7 +1530,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 85,
+      "priority": 86,
       "passes": false,
       "notes": "Origin: spec section 8.9.3 (task-tree live region). Replaces plugins/renderer-lando/src/task-tree-tail.ts whole-frame rewind/erase/repaint painter. Riskiest story of the wave; land after US-457 harness."
     },
@@ -1528,7 +1546,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 86,
+      "priority": 87,
       "passes": false,
       "notes": "Origin: spec sections 8.9.3 (testing, prompt chrome) and 13.1 (Renderer frames layer). Presentation only; no InteractionService changes."
     },
@@ -1546,7 +1564,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 87,
+      "priority": 88,
       "passes": false,
       "notes": "Origin: spec section 8.9.7 (foreground-only realization via OpenTUI triggerNotification) and section 10.10.2 (explicit non-goal: container-initiated notify/clipboardCopy relay is unsupported/deferred). SDK-additive; follow sdk/AGENTS.md snapshot discipline."
     },
@@ -1566,7 +1584,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 88,
+      "priority": 89,
       "passes": false,
       "notes": "Origin: spec sections 8.9.7, 1.4, and 11.3.1 (bounded subscriber selectors and factories). This story owns implementing the newly frozen subscribers: manifest/context surface (lazy-loaded, cached SubscriberFactory invocation), using notify-lando as the first real consumer and reference example."
     },
@@ -1585,7 +1603,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 89,
+      "priority": 90,
       "passes": false,
       "notes": "Origin: spec sections 8.9.4-8.9.6, 8.9.8, 9.5, 13.1. Follows the TunnelService/RemoteSource contract-only freeze precedent; implementations are ROADMAP Phase 9 (4.1)."
     }
