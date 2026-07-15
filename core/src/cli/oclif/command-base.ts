@@ -22,6 +22,7 @@ import {
 } from "../renderer-boundary.ts";
 import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
+import { renderCommandFlagValueValidation } from "./command-boundary.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
 import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
@@ -348,6 +349,19 @@ export abstract class LandoCommandBase extends Command {
       throw error;
     }
 
+    if (
+      await renderCommandFlagValueValidation({
+        commandId: spec.id,
+        argv: this.argv,
+        definitions: { ...this.ctor.baseFlags, ...this.ctor.flags },
+        rendererMode,
+        resultFormat,
+        resultSchema: spec.resultSchema,
+        deprecationWarnings: deprecationWarnings.enabled,
+      })
+    )
+      return;
+
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       const error = notImplementedErrorForCommand(spec.id);
       const text = formatCommandError({
@@ -400,6 +414,7 @@ export abstract class LandoCommandBase extends Command {
     process.once("SIGTERM", abort);
     const input = {
       argv: this.argv,
+      parsedArgv: (parsed as { readonly argv?: ReadonlyArray<string> }).argv ?? [],
       signal: controller.signal,
       flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
       args: (parsed as { args?: Record<string, unknown> }).args ?? {},

@@ -7,6 +7,7 @@ import {
   scratchStart,
   scratchStartOptionsFromInput,
 } from "../../src/cli/commands/scratch.ts";
+import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { parseScratchStartArgv } from "../../src/cli/run.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { resolveScratchAcquireIsolation } from "../../src/scratch-app/service.ts";
@@ -78,13 +79,13 @@ describe("apps:scratch:start --isolate flag mapping", () => {
     expect(scratchStartOptionsFromInput({ flags: { fork: true, isolate: "bogus" } }).isolate).toBeUndefined();
   });
 
-  test("parseScratchStartArgv mirrors --isolate parsing (dual-dispatch parity)", () => {
+  test("parseScratchStartArgv mirrors valid --isolate parsing and rejects invalid modes", () => {
     expect(parseScratchStartArgv(["--fork", "--isolate", "full"]).isolate).toBe("full");
     expect(parseScratchStartArgv(["--fork", "--isolate=full"]).isolate).toBe("full");
     expect(parseScratchStartArgv(["--fork", "--isolate=baked"]).isolate).toBe("baked");
     expect(parseScratchStartArgv(["--fork", "--isolate=none"]).isolate).toBe("cwd");
     expect(parseScratchStartArgv(["--fork"]).isolate).toBeUndefined();
-    expect(parseScratchStartArgv(["--fork", "--isolate=bogus"]).isolate).toBeUndefined();
+    expect(() => parseScratchStartArgv(["--fork", "--isolate=bogus"])).toThrow(MalformedCliFlagValueError);
   });
 });
 

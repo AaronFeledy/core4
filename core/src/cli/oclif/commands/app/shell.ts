@@ -8,13 +8,7 @@ import {
   extractSpecAbortSignal,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
-
-interface ShellFlags {
-  readonly service?: string;
-  readonly host?: boolean;
-  readonly "no-history"?: boolean;
-  readonly "no-interactive"?: boolean;
-}
+import { extractSpecFlags } from "../../command-boundary.ts";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   resultSchema: EmptyResultSchema,
@@ -23,7 +17,17 @@ export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => shellApp(),
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    const signal = extractSpecAbortSignal(input);
+    return shellApp({
+      host: flags.host === true,
+      noHistory: flags["no-history"] === true,
+      noInteractive: flags["no-interactive"] === true,
+      ...(signal === undefined ? {} : { signal }),
+      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+    });
+  },
   successExitCode: (result) => result.exitCode,
   render: (result) => renderShellAppResult(result as ShellAppResult),
 };
@@ -50,19 +54,6 @@ export default class AppShellCommand extends LandoCommandBase {
   static override bootstrap = appShellSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(AppShellCommand)) as { readonly flags: ShellFlags };
-    await this.runEffect({
-      ...appShellSpec,
-      run: (input) => {
-        const signal = extractSpecAbortSignal(input);
-        return shellApp({
-          host: parsed.flags.host === true,
-          noHistory: parsed.flags["no-history"] === true,
-          noInteractive: parsed.flags["no-interactive"] === true,
-          ...(signal === undefined ? {} : { signal }),
-          ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
-        });
-      },
-    });
+    await this.runEffect(appShellSpec);
   }
 }

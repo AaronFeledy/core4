@@ -27,6 +27,7 @@ import {
   formatCommandError,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
+import { renderCommandFlagValueValidation } from "../../command-boundary.ts";
 import { getCommandRuntimeLayer } from "../../hooks/init.ts";
 
 const formatRendererSelectionError = (error: unknown): string =>
@@ -103,6 +104,19 @@ export default class MetaMcpCommand extends LandoCommandBase {
       }
       throw error;
     }
+
+    if (
+      await renderCommandFlagValueValidation({
+        commandId: metaMcpSpec.id,
+        argv: this.argv,
+        definitions: { ...this.ctor.baseFlags, ...this.ctor.flags },
+        rendererMode,
+        resultFormat,
+        resultSchema: metaMcpSpec.resultSchema,
+        deprecationWarnings: deprecationWarnings.enabled,
+      })
+    )
+      return;
 
     const parsed = await this.parse(MetaMcpCommand);
     const flags = mcpFlagsFromParsed((parsed as { flags?: Record<string, unknown> }).flags ?? {});

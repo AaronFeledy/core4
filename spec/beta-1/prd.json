@@ -1328,7 +1328,7 @@
         "Lint passes"
       ],
       "priority": 74,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-431 review deferred malformed flag-value parsing as pre-existing defensive CLI concern."
     },
     {

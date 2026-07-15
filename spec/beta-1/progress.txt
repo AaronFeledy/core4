@@ -14,6 +14,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 ## Codebase Patterns
 
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
+- Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 
 ## Durable learnings
 
@@ -140,4 +141,19 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass (after triage)
 - Review feedback: fixed (added Guide-Coverage-Skip for internal host-proxy IPC backpressure; no guide change needed)
 - Merge: merged (squash)
+---
+
+## 2026-07-15 02:33 CDT - US-445
+- Malformed value-taking CLI flags now fail before command execution on source and compiled dispatch with one tagged, remediated error: missing and empty values, strict integer violations, and repeated non-repeatable values no longer fall through to raw OCLIF diagnostics or silent compiled mis-parses. Machine mode uses the standard redacted result envelope with exit-code parity.
+- Verification: typecheck, lint, renderer and machine-output boundaries passed; focused validator/parser tests and source/compiled parity spot checks passed; sandbox CLI proofs confirmed malformed exits at 2 and valid values at 0.
+- **Learnings for future iterations:**
+  - Keep OCLIF parsing inside `LandoCommandBase.runEffect`; wrapper-level pre-parsing bypasses shared renderer-aware validation. Preserve explicit optional-value contracts such as bare `--mount-cwd` when adding generic empty-value rejection.
+---
+
+## 2026-07-15 04:02 CDT - US-445 Review
+- Closed source/compiled gaps for declared choice values, truncated short bundles, repeated flags in custom wrappers, and values attached to boolean flags (including secret-bearing short suffixes); source wrappers now preserve shared validation before parsing, and stale raw-OCLIF parity assertions enforce tagged redacted envelopes instead.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted; no Bugbot finding was treated as approval or used to weaken coverage.
+- Verification: typecheck, lint, renderer and machine-output boundaries, TypeScript no-excuse audit, focused validator/compiled-input tests, and six source/compiled sandbox parity cases passed.
+- **Learnings for future iterations:**
+  - A short boolean followed by an unknown suffix must be classified as an attached value before OCLIF can echo it; recognized short bundles must remain valid. Compare normalized JSON envelopes before applying asymmetric matchers because matcher inspection may mutate parsed values.
 ---
