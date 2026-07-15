@@ -1,7 +1,7 @@
 # Ralph Progress Log — Lando v4 Beta 1 (contract-completion remediation)
 
 Branch: ralph/beta-1
-Source PRDs: spec/beta-1/prd-beta-1-{01..14}-*.md (US-372..US-454)
+Source PRDs: spec/beta-1/prd-beta-1-{01..15}-*.md (US-372..US-460)
 Spec source of truth: spec/{01..19}-*.md + the originating Alpha 4 PRDs cited per story
 Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceability table)
 
@@ -38,6 +38,7 @@ Service log sources (US-425..US-429) shipped the SDK `LogSource` contract, plann
 
 - **Complete (`passes: true`):** US-372..US-443.
 - **Open residual hardening (PRD-14, `passes: false`):** US-444..US-454 — host-proxy IPC backpressure and doctor DNS; CLI flag-parse and pre-command failure surfaces; clean-tree public-transcript gate; runtime-bundle CI supply-chain pins; MCP serialization bounds and MCP serve guide; Landofile TS form-parity; Windows machine trust + Hyper-V privilege contract closure (non-elevate); macOS/Windows machine live cells.
+- **Open renderer-substrate wave (PRD-15, `passes: false`):** US-455..US-460 — OpenTUI `^0.4.3` substrate + import discipline/degradation + per-target compiled native packaging; split-footer task-tree live region; prompt chrome + frame-snapshot harness; `RendererCapabilities`/`notify.desktop`/`NotifyConfig` SDK surface + foreground-only realization + HostProxy union cleanup; the `@lando/notify-lando` bundled policy plugin; the contract-only freeze of the 4.1 renderer surfaces (panel slots, keymap, rich render events).
 
 ## Closure wave — US-430..US-436 (condensed)
 
@@ -111,4 +112,8 @@ Review/verify deferrals that remained after US-430..US-443 are explicit Beta 1 w
 ### 2026-07-14 — US-450 rewritten as non-elevate contract closure
 US-450 no longer asks for a Windows UAC elevation path for managed-machine trust. It locks the US-423/US-436 split: ownership-gated `--import-native-ca` without `PrivilegeService.elevate`, Hyper-V prep permanent manual remediation only. Index phase summary updated to four parts (PRD-14 residual hardening).
 - **Learning:** "left manual" completion notes for intentional security contracts must not be reopened as elevation features.
+
+### 2026-07-14 — PRD-15 renderer-substrate wave opened (spec/PRD only; no implementation landed)
+US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), covering the OpenTUI `^0.4.3` substrate contract, the split-footer live region, prompt chrome + frame-snapshot harness, the complete `RendererCapabilities`/`notify.desktop`/`NotifyConfig` SDK surface with foreground-only realization, the accidental `HostProxyRequest` `notify`/`clipboardCopy` verb cleanup, the `@lando/notify-lando` bundled policy plugin, and the contract-only freeze of the 4.1 panel/keymap/rich-event surfaces. The `@opentui/core` `^0.4.3` package/lockfile bump for `plugins/renderer-lando` is the only artifact actually present in the tree today. No generated output (`scripts/generated/opentui-native/**`, bootstrap layers, bundled-plugin tables), no `@lando/sdk` schema/service code, no `@lando/notify-lando` plugin package, and no `@lando/renderer-lando` runtime change has landed — this pass is normative spec + PRD text only, establishing the contract the implementation stories still have to satisfy.
+- **Learning:** a dependency bump landing before its consuming spec is fully decision-complete is not itself progress on the PRD; keep the progress log honest about what's spec-only versus implemented so PRD-15 isn't mistaken for shipped work.
 ---

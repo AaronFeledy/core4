@@ -32,10 +32,12 @@ Development follows the phase ladder in [`spec/ROADMAP.md`](./spec/ROADMAP.md):
   telemetry, schema publication, the plugin authoring toolkit, and the
   `lando setup` / `lando uninstall` lifecycle. Alphas publish `4.0.0-alpha.N`
   on the `dev` channel. PRD sets live under `spec/mvp/` and `spec/alpha-{1..4}/`.
-- **Current: Beta 1** ("contract-completion remediation") — no new feature
-  surface; an audit-driven pass that closes every gap between what the Alpha 4
-  PRDs promised (and the spec requires) and what actually shipped. Stories
-  US-372..US-395 in [`spec/beta-1/`](./spec/beta-1/prd-beta-1-00-index.md).
+- **Current: Beta 1** ("contract-completion remediation") — an audit-driven
+  remediation pass (US-372..US-395) plus a bounded feature wave, runtime/Podman/
+  log-source waves, a closure wave, a residual-hardening wave, and the
+  renderer-substrate wave (US-455..US-460: the bundled renderer's specified
+  OpenTUI `^0.4.3` substrate, desktop notifications, and the contract-only
+  freeze of the 4.1 renderer surfaces) in [`spec/beta-1/`](./spec/beta-1/prd-beta-1-00-index.md).
   The first signed `4.0.0-beta.N` ships on the `next` channel at the end of
   Beta 1, and **feature freeze is entered**.
 - **After:** Beta 2 (bug burn-down), RC (all-platform §17.9 acceptance), GA.

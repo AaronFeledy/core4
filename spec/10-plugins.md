@@ -147,6 +147,11 @@ provides:
   renderers:
     - id: lando
       module: ./src/renderer.ts
+  rendererPanels:
+    - id: build-status
+      slot: status-bar
+      watch: [post-start, post-stop]
+      module: ./src/panels/build-status.ts
   toolingEngines:
     - id: providerExec
       module: ./src/tooling/provider-exec.ts
@@ -210,10 +215,17 @@ provides:
 
 # Event subscribers
 subscribers:
-  - event: post-start
-    scope: app
+  - id: audit-post-start                 # unique within this plugin
+    selectors:
+      - event: post-start                # exact event name
     module: ./src/subscribers/post-start.ts
-    priority: 5
+    priority: 500                        # 100..999; default 500 when omitted
+    abortOnError: false                  # default; see §11.6
+  - id: notify-on-command-terminal
+    selectors:
+      - family: cli-command-terminal     # precomputed run/error phases for every canonical command (§11.3.1)
+    module: ./src/subscribers/notify.ts
+    configKey: notify                    # optional; projects only the decoded NotifyConfig as the factory's second argument (§9.5)
 
 # Compatibility
 requires:
@@ -243,6 +255,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `certificateAuthorities` | `CertificateAuthority` impls | Certs subsystem |
 | `loggers` | `Logger` impls | Logging service |
 | `renderers` | `Renderer` impls | Renderer service |
+| `rendererPanels` | `RendererPanel` contributions for named default-renderer slots (`status-bar`, `task-tree:footer`, `doctor:summary`; §8.9.5 — contract frozen at 4.0, rendered from 4.1) | Renderer service |
 | `toolingEngines` | `ToolingEngine` impls for compiled Lando task graphs | Tooling service |
 | `httpClients` | `HttpClient` impls — the outbound-egress chokepoint for all Lando-owned network access (§10.3.2) | HttpClient service |
 | `downloaders` | `Downloader` impls for verified Lando-owned artifact downloads, layered over `HttpClient` (§10.3.3) | Downloader service |
@@ -277,6 +290,43 @@ There are no legacy autoload directories. All contributions go through the manif
 - An engine that cannot honor the §7.3.1 purity rules MUST declare `capabilities.unsafe: true`. Unsafe engines are disabled by default and require explicit opt-in via global config (`templateEngines.<id>.allowUnsafe: true`). The plugin loader emits `TemplateEngineUnsafeRejectedError` when an unsafe engine is selected without opt-in.
 - Engines MUST register through the published `@lando/sdk/services` `TemplateEngine` tag and accept the canonical `TemplateRenderContext` shape (§7.3.2) without engine-specific shape mutations.
 - Engines SHOULD register the §7.3.1 portable function set under the engine's idiomatic registration API so users see the same helper names regardless of engine.
+
+**Renderer panel contribution rules:**
+
+- Each `rendererPanels:` entry MUST declare an `id` (`RendererPanelId`), `slot`, `watch` (`RendererPanelWatch` manifest metadata), and `module`, validated as a whole against `RendererPanelManifestEntry`. Duplicate ids, unknown slots, malformed shapes, and paths that escape the plugin package root all fail with the existing `PluginManifestError`; validation never imports the module.
+- After every plugin command is registered, `watch` membership is checked against the closed built-in `LandoEvent` taxonomy plus generated `cli-<canonical-id>-{init,run,error}` names for the complete canonical command registry. Plugins cannot contribute arbitrary event names. An unknown watched name is `PluginManifestError`, still without importing panel code.
+- A panel whose slot is never visible is never imported. On first visibility, the host starts a persistent isolated worker with the validated module URL; **only the worker imports the panel module**. Its decoded panel id must return in the bounded 1000ms ready handshake and match the manifest id before registration or rendering. Import/export/load/id failures and id mismatches are `PluginLoadError`; the host terminates and permanently drops that worker. The host never imports panel code to inspect it first. The 8ms post-ready render deadline and bounded binary request/response protocol are normative in §8.9.5.
+
+**Subscriber contribution rules:**
+
+- Each `subscribers:` entry decodes as a whole against the schema-derived `SubscriberManifestEntry`:
+
+  ```ts
+  export const SubscriberManifestEntry = Schema.Struct({
+    id:           Schema.String,
+    selectors:    Schema.Array(SubscriberSelector).pipe(Schema.minItems(1)),   // §11.3.1
+    module:       Schema.String,
+    priority:     Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(100), Schema.lessThanOrEqualTo(999)), { default: () => 500 }),
+    abortOnError: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+    configKey:    Schema.optional(PublishedGlobalConfigKey),   // §9.5 below; omitted -> factory's config argument is undefined
+  });
+  export type SubscriberManifestEntry = Schema.Schema.Type<typeof SubscriberManifestEntry>;
+  ```
+
+  `id` MUST be unique within the contributing plugin; `selectors:` MUST be one or more `SubscriberSelector` values (§11.3.1 — exact `{ event }` or the `{ family: "cli-command-terminal" }` literal; no regex/wildcard forms); `module`'s default export MUST be a `SubscriberFactory` (§11.3.1). Invalid manifest values fail with `PluginManifestError`, not subscriber-local error classes.
+- `priority:` is an integer in `100..999`; omitted defaults to `500`. Values outside the range fail with `PluginManifestError`. This is exactly the §11.3 `default` band — plugin subscribers cannot claim the `critical` (`0`–`9`), `early` (`10`–`99`), `late` (`1000`–`9999`), or `final` (`10000+`) bands, which stay reserved for core's own built-in subscribers. A plugin may choose a later position inside the default band; bundled `@lando/notify-lando` explicitly uses `900` (§8.9.7).
+- `abortOnError:` is a boolean; omitted defaults to `false` (§11.6).
+- **`configKey:` and config projection.** The set of global-config keys a subscriber may request is a closed, published literal union — not an arbitrary string, and never a path into the full global config:
+
+  ```ts
+  export const PublishedGlobalConfigKey = Schema.Literal("notify");   // the only Beta 1 published key (§7.5, §8.9.7)
+  export type PublishedGlobalConfigKey = Schema.Schema.Type<typeof PublishedGlobalConfigKey>;
+  ```
+
+  When an entry declares `configKey: notify`, the loader looks up `"notify"` in an internal, closed projection registry mapping each `PublishedGlobalConfigKey` to (a) the already-decoded `GlobalConfig`'s corresponding field and (b) that field's own schema (`NotifyConfig` for `"notify"`), and passes only that already-decoded, schema-typed slice as the factory's second argument. The subscriber never receives the full `GlobalConfig` object, never re-decodes anything, and cannot reach any key outside its declared `configKey`. When `configKey` is omitted, the factory's second argument is `undefined` — never an empty object, never the full config with unused fields.
+- The resolved `module` realpath MUST remain under the plugin package root; paths that escape through `..`, symlinks, absolute paths, or external `file://` URLs are rejected with `PluginModulePathError`, the same rule the loader applies to every other `module:` contribution (§9.6).
+- Subscriber modules are loaded lazily and cached, per the §11.3.1 two-phase timing: manifest read validates only syntax (entry shape, `module` realpath containment); selector *semantics* (event-name/family-expansion membership) are validated once, after plugin registration completes; the module is not imported and the `SubscriberFactory` is not invoked until the **first** event matching one of the entry's (by-then-expanded) selectors is about to be delivered. That first-match import+invocation result (the returned handler) is cached for the remainder of the process and reused for every subsequent matching event — the factory runs exactly once per subscriber entry, not once per event and not eagerly for every subscriber at level `plugins`.
+- `SubscriberManifestEntry`, `SubscriberSelector`, and `PublishedGlobalConfigKey` are additive `@lando/sdk` exports subject to the standard `sdk/AGENTS.md` compatibility/snapshot discipline (§13.2).
 
 **Service-type contribution rules:**
 
@@ -389,6 +439,19 @@ export interface LandoPluginContext {
   readonly logger: Logger.Logger<unknown, unknown>;
   readonly stateStore: PluginStateStore;      // §12.7 StateStore, pre-namespaced to plugins/<id>/
   readonly managedFiles: PluginManagedFiles;  // §10.13 ManagedFileService, pre-namespaced to owner:<id>
+  readonly events: {
+    // Constrained publish-only seam onto the render-event vocabulary (§8.9, §8.9.4, §8.9.7). Redacts
+    // through the canonical RedactionService (§3.7), schema-decodes the argument against the published
+    // RenderEvent union, and publishes it through the internal EventService (§11.1). A schema-decode
+    // failure surfaces as the same `EventError` every other EventService operation can fail with
+    // (§11.1) — there is no separate render-event-only error type and no new reason literal; this is
+    // ordinary EventError schema-decode failure, not a distinct error shape.
+    // `LandoPluginContext` does NOT expose the unrestricted `EventService` tag (no arbitrary `publish`,
+    // `subscribe`, `waitFor`, or `query`) — this is the only event-bus access a plugin's subscriber
+    // factory or contribution module gets, and it can only ever emit the closed `RenderEvent`
+    // vocabulary, never an arbitrary `LandoEvent`.
+    readonly publishRender: (event: RenderEvent) => Effect.Effect<void, EventError>;
+  };
 }
 ```
 

@@ -39,20 +39,18 @@ Bun is the runtime, the package manager, the test runner, the bundler, and the b
 **Single-executable distribution.** The default Lando v4 binary is built with `bun build --compile`:
 
 ```bash
-bun build ./bin/lando.ts \
-  --compile \
-  --bytecode \
+bun run scripts/build-compiled-binary.ts \
   --target=bun-${TARGET} \
   --outfile=dist/lando-${TARGET} \
   --minify \
   --sourcemap=external
 ```
 
-`--bytecode` is REQUIRED. It precompiles JavaScript to V8 bytecode at build time and embeds the bytecode in the binary, eliminating per-invocation parse cost on cold start. The resulting binary is ~30% larger but starts measurably faster — the cold-start budgets below assume bytecode caching is on. If a future Bun version regresses or removes `--bytecode`, the build floor moves with it; the flag is not optional. The Bun version floor for v4.0.0 GA is tracked in §14.2 and MUST be one that supports stable `--bytecode` for every cross-compile target listed below.
+The wrapper's programmatic `Bun.build` call sets `bytecode: true`; bytecode is REQUIRED. It precompiles JavaScript to V8 bytecode at build time and embeds the bytecode in the binary, eliminating per-invocation parse cost on cold start. The resulting binary is ~30% larger but starts measurably faster — the cold-start budgets below assume bytecode caching is on. If a future Bun version regresses or removes bytecode support, the build floor moves with it; the setting is not optional. The Bun version floor for v4.0.0 GA is tracked in §14.2 and MUST support stable bytecode for every cross-compile target listed below.
 
-Cross-compilation targets: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-windows-x64`. Each release ships all four supported host binaries; Intel macOS is not a supported Lando v4 runtime host.
+Cross-compilation targets: `bun-linux-x64`, `bun-linux-arm64`, `bun-darwin-arm64`, `bun-darwin-x64`, `bun-windows-x64`. Each release ships all five supported host binaries, including Intel macOS.
 
-The build invocation above is one stage of the larger release pipeline (codegen, type-check, lint, test, compile, sign, notarize, manifest, provenance, publish). The full ordered pipeline, the orchestrator script, signing/notarization rules, supply-chain artifacts, and the self-update mechanism live in §17 ([15 Binary Build and Release Engineering](./15-binary-build-and-release.md)).
+The build invocation above is one stage of the larger release pipeline (codegen, type-check, lint, test, compile, sign, notarize, manifest, provenance, publish). Every release-shaped main-binary build uses this wrapper so the OpenTUI native-root pruning plugin is attached (§17.3.1); bare compile remains allowed only for helper binaries without OpenTUI. The full ordered pipeline, signing/notarization rules, supply-chain artifacts, and self-update mechanism live in §17 ([15 Binary Build and Release Engineering](./15-binary-build-and-release.md)).
 
 **Compiled-binary constraints.** Bun-compiled binaries only embed modules and assets that are visible to the build graph. Build-known code and data therefore must be statically imported or explicitly embedded. Runtime-installed plugin code is different: it intentionally lives outside the binary and is loaded from Lando-managed disk locations through absolute `file://` dynamic imports after validation and lockfile checks (§9.7). This forces two architectural choices:
 

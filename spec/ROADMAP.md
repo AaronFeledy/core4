@@ -406,14 +406,14 @@ Complete the breadth surface — every canonical service type, both providers on
 - Closes §14.2 "Renderer wiring at the CLI command boundary" and converts the §2.4 interim caveats into the originally-specified prohibitions.
 
 **Build / distribution:**
-- All 4 platform binaries: `darwin-arm64`, `linux-x64`, `linux-arm64`, `windows-x64`
+- All 5 platform binaries: `darwin-arm64`, `darwin-x64`, `linux-x64`, `linux-arm64`, `windows-x64`
 - Codegen pipeline complete: `scripts/codegen.ts`, `scripts/build-bundled-plugins.ts`
 - `bundled.ts` populated with real Layer references
 - AOT bootstrap-layer codegen (§17.2)
 - Asset embedding (recipes, schemas, OCLIF manifest)
 
 **CI:**
-- Per-PR matrix on all 4 supported release platforms (§13.6)
+- Per-PR matrix covers all 5 supported release targets (§13.6)
 - All test layers from §13.1 green per-PR
 - Nightly: full e2e against `@lando/provider-lando`, distribution rehearsal
 - Weekly provider matrix (Docker Desktop, Engine, Podman Desktop, Podman, Lima, OrbStack)
@@ -581,10 +581,11 @@ Beta 1 additionally lands a bounded **feature wave** — the last new feature su
 - **`lando open`** (§8.2.5) — open resolved app URLs in the host browser; the outbound sibling of the host-proxy `openUrl` channel.
 - **Landofile version constraint** (`lando: <semver-range>`, §7.4) — team-workflow version pinning with fail-closed remediation.
 - **Disposable tool runner** (`lando run`, `apps:scratch:run`, §21.10.3) — one-shot cwd-mounted toolbox containers as a thin layer over `ScratchAppService` plus the bundled `toolbox` recipe.
+- **Renderer substrate + notifications** (§8.9.3, §8.9.7) — the bundled renderer's TTY implementation moves onto its specified OpenTUI 0.4.x substrate (split-footer live region, degradation contract, headless frame-snapshot tests), and desktop notifications land as the `notify.desktop` render event + `RendererCapabilities.notifications` + the bundled `@lando/notify-lando` policy plugin. The 4.1 renderer surfaces — rich render events (§8.9.4), renderer panel slots (§8.9.5), keymap remapping (§8.9.6), and the interactive log viewer (§8.9.8) — are **frozen here, contract-only**, following the `TunnelService`/`RemoteSource` precedent: schemas + manifest surface + contract suites ship now; implementations land in 4.1.
 
 ### Concrete deliverables
 
-Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`) plus the feature-wave stories **US-396+** (`spec/beta-1/prd-beta-1-{06..09}-*.md`), runtime/Podman/log-source waves (**US-410..US-429**), closure wave (**US-430..US-443**, PRD-13), and residual-hardening wave (**US-444..US-454**, PRD-14):
+Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta-1-{01..05}-*.md`) plus the feature-wave stories **US-396+** (`spec/beta-1/prd-beta-1-{06..09}-*.md`), runtime/Podman/log-source waves (**US-410..US-429**), closure wave (**US-430..US-443**, PRD-13), residual-hardening wave (**US-444..US-454**, PRD-14), and the renderer-substrate wave (**US-455..US-460**, PRD-15):
 
 - **Durability & probe remediation (PRD-01)**: fsync-backed atomic writes everywhere durable state lands; exactly one durable-store implementation under `core/src/state/` (retire `json-bucket.ts`); real `runProbe`-backed `HealthcheckRunner`/`UrlScanner` built-ins plus doctor/downloader/setup-readiness migration; `waitForEvent` runtime coverage; working-tree hygiene.
 - **Managed-file contract completion (PRD-02)**: `RedactionService`-routed managed-file events; `PathsService.managedFileLedger(appId)`; `FileFormat` reconciled with the frozen contract.
@@ -595,10 +596,11 @@ Stories **US-372..US-395** (remediation) across five PRDs (`spec/beta-1/prd-beta
 - **`lando open` (PRD-07)**: `app:open` with target resolution from the app plan, `--service`/`--route`/`--all`/`--print`, headless degradation, and host-proxy round-trip (`hostProxyAllowed: true`).
 - **Landofile version constraint (PRD-08)**: the top-level `lando:` key, accumulate-across-layers semantics, prerelease-inclusive range evaluation, `LandofileVersionConstraintError`, the `LANDO_SKIP_VERSION_CONSTRAINT` escape, hot-path enforcement from the plan cache, and doctor reporting.
 - **Disposable tool runner (PRD-09)**: `apps:scratch:run` (`lando run`) over `ScratchAppService.acquire`, the bundled `toolbox` canonical recipe, cwd-mount default, exit-code propagation, `--keep` detachment, and the reserved bare `run` alias.
+- **Renderer substrate & notifications (PRD-15)**: OpenTUI `^0.4.3` baseline with the §8.9.3 import-discipline and degradation contract, plus `scripts/build-compiled-binary.ts`'s §17.3.1 build plugin pruning 7 of the 8 catalog OpenTUI native packages down to the one matching each compiled release target; the split-footer task-tree live region replacing the hand-rolled repaint painter; prompt-chrome polish plus the headless frame-snapshot harness; the complete `RendererCapabilities` surface and the `notify.desktop` render event + `notifications` field, realized foreground-only through OpenTUI's own `triggerNotification`, plus the bundled `@lando/notify-lando` plugin as the first real consumer of the newly frozen §11.3.1/§9.5 schema-derived subscriber manifest/context/`configKey` surface (container-initiated notification/clipboard relay through `HostProxyService` is explicitly deferred/unsupported — see §10.10.2, which also deletes the two accidental `HostProxyRequest` verbs); and the contract-only freeze of the §8.9.4–§8.9.6/§8.9.8 4.1 renderer surfaces (schemas, `rendererPanels:` manifest surface, contract suites — no implementations).
 
 ### Exit criteria for Beta 1
 
-Every US-372..US-395 remediation story, every US-396+ feature-wave story, the US-430..US-443 closure wave, and the US-444..US-454 residual-hardening wave (PRD-14) are accepted with verification contracts green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only. PRD-14 is hardening-only residual work inside Beta 1; it is not a license to expand freeze surface.
+Every US-372..US-395 remediation story, every US-396+ feature-wave story, the US-430..US-443 closure wave, the US-444..US-454 residual-hardening wave (PRD-14), and the US-455..US-460 renderer-substrate wave (PRD-15) are accepted with verification contracts green (tests, typecheck, lint, boundary gates), any deliberately re-scoped contract (e.g. `FileFormat`, release posture, shell default) has spec/PRD text and schema snapshots moved in the same change, and the first signed `4.0.0-beta.N` pre-release ships from CI on the `next` channel. **Feature freeze is entered** — from Beta 2 on, no new spec section is added and every later phase is hardening only. PRD-14 is hardening-only residual work inside Beta 1; it is not a license to expand freeze surface.
 
 ---
 
@@ -678,6 +680,7 @@ No new features and no code changes from `4.0.0-rc.N` → `4.0.0` other than the
 - Performance work driven by telemetry: hot-path latency on macOS Docker Desktop, cold-start on Windows
 - More config translators contributed as plugins (legacy v3, ddev import, devbox import) — not in core, hosted by Lando Alliance
 - Renderer plugins: a TUI-style `lando` renderer variant; a CI-friendly `github-actions` renderer
+- **Renderer 4.1 surface implementations** — feature work on the Beta-1 frozen contracts (PRD-15, §8.9.4–§8.9.8), not new primitives: the default renderer wires **panel slots** (`rendererPanels:` rendering in `status-bar`/`task-tree:footer`/`doctor:summary`, OpenTUI runtime-plugin machinery underneath) with a first bundled consumer; **keymap remapping** (global config `keymap:` honored against the frozen action vocabulary, chord grammar, and conflict rules, `KeymapConflictError`, the `keymap.help` (`question-mark`) bindings overlay); **rich render-event presentation** (syntax-highlighted `code.snippet`, colorized `diff.render`, terminal markdown) plus the first core emitters (doctor Landofile snippets, destructive-plan previews); and the **interactive `app:logs --follow` viewer** (scrollback, stick-to-tail, source cycling) on the §6.14 log-source stream
 - Doctor depth: more checks driven by Beta 1 field reports
 - Bun version floor bump if Bun shipped a meaningfully better release
 - Hot-path tooling profiling fixes (real ~150ms target chasing)

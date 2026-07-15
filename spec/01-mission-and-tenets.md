@@ -90,6 +90,7 @@ Reference bundle (subject to change in §14):
 | Service base | `@lando/service-lando` | Required for `type: lando` |
 | Logger | `@lando/logger-pretty` | Optional (Effect default `Logger.pretty` is built in) |
 | Renderer | `@lando/renderer-lando` | Bundled default (plugin-contributed) |
+| Desktop notifications | `@lando/notify-lando` | Optional (bundled by default; publishes `notify.desktop` render events for long-running command completion through the constrained `LandoPluginContext.events.publishRender` seam per §8.9.7/§11.3.1; policy-only — foreground presentation via OpenTUI's `triggerNotification` is the renderer's) |
 | Template engine (Handlebars) | `@lando/template-handlebars` | Optional (bundled by default; configured with `noEscape: true` and `strict: true`; §7.3.2) |
 | Template engine (Mustache) | `@lando/template-mustache` | Optional (bundled by default; logic-less; §7.3.2) |
 | File-sync engine (Mutagen) | `@lando/file-sync-mutagen` | Optional (bundled by default; the planner auto-selects it on providers reporting `bindMountPerformance: "slow"`; passive on Linux-native and OrbStack; §4.2, §10.6) |
@@ -107,7 +108,7 @@ Lando v4 ships in two distribution forms (see §13.5 for the artifact catalog an
 
 | Form | Audience | Built from |
 |---|---|---|
-| **Single-binary CLI** | End users | `bun build --compile` of `bin/lando.ts` |
+| **Single-binary CLI** | End users | `scripts/build-compiled-binary.ts` wrapping programmatic `Bun.build({ compile })` for `bin/lando.ts` (§17.3.1); bare compile is helper-binary-only |
 | **Library package** | Bun programs that embed Lando, plus end users who prefer a package-manager install | Standard `@lando/core` publish with multiple ESM entry points; `package.json#bin` exposes `lando` on PATH for `bun add -g @lando/core` users |
 
 The two forms are produced from the same source and pinned to the same version; they are never out of sync.

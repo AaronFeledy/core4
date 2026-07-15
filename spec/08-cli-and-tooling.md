@@ -446,7 +446,7 @@ OCLIF is consumed in *one place only*: `src/cli/oclif/`. Outside that directory,
 
 §8.4 above describes the OCLIF integration policy as it applies to **source mode** — `bun core/bin/lando.ts <cmd>` and the test harnesses that drive `core/bin/lando.ts` through `runCli`. In source mode, `runCli` calls `@oclif/core`'s `execute()` and the policy in §8.4 is normative.
 
-The **compiled `$bunfs` binary** produced by `bun build --compile` does NOT route through `@oclif/core` at runtime. `runCli` detects `entryPath.includes("$bunfs")` and forks to a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`) that parses argv directly and dispatches to the same `LandoCommandSpec.run` implementations the OCLIF path uses. This dual-dispatch architecture is **permanent**: the §14.2 "Compiled-binary CLI dispatch unification" decision resolved to **option (b)** (see §14 Appendix D.1). The spike proved that `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile` single-executable binary through any supported public API — `Config.load` → `findRoot` cannot locate the package root next to a relocated single-file binary, and the `module-loader` does a runtime `import()` of a computed absolute path the bundler never embeds. The two shipping paths are instead held at parity by the rules below and enforced by the §13.1 compiled-binary dispatch parity test layer.
+The **compiled `$bunfs` binary** produced by `scripts/build-compiled-binary.ts` does NOT route through `@oclif/core` at runtime. `runCli` detects `entryPath.includes("$bunfs")` and forks to a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`) that parses argv directly and dispatches to the same `LandoCommandSpec.run` implementations the OCLIF path uses. This dual-dispatch architecture is **permanent**: the §14.2 "Compiled-binary CLI dispatch unification" decision resolved to **option (b)** (see §14 Appendix D.1). The spike proved that `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile` single-executable binary through any supported public API — `Config.load` → `findRoot` cannot locate the package root next to a relocated single-file binary, and the `module-loader` does a runtime `import()` of a computed absolute path the bundler never embeds. The two shipping paths are instead held at parity by the rules below and enforced by the §13.1 compiled-binary dispatch parity test layer.
 
 **Why the fork exists.** OCLIF v4's `execute()` performs runtime command discovery against the on-disk `commands/` tree, which is not addressable inside a `bun build --compile` single-executable binary. The static manifest (`oclif.manifest.json`) and the static command registry (`core/src/cli/oclif/compiled-commands.ts`) together carry every shape `execute()` would otherwise discover at runtime, but `execute()` still re-roots and re-`import()`s from real disk, so the compiled binary cannot consume them. The hand-rolled dispatcher is therefore the permanent compiled-mode router, not a temporary scaffold.
 
@@ -671,7 +671,7 @@ Semantics:
 - **No flag passthrough.** The outer task does **not** automatically forward its flags/args to the inner command. Pass values explicitly via expressions: `flags: { rebuild: "{{ .flags.rebuild | default false }}" }`.
 - **Recursion guard.** Direct cycles (`app:my-start` → `command: app:my-start`) are rejected at compile time with `ToolingCommandCycleError`. Indirect cycles are detected at the same pass over the task graph; runtime invocation cannot loop because the cache stores the resolved acyclic graph.
 - **Bootstrap escalation.** A task's effective `bootstrap:` level is the maximum of its declared level and the target of every `command:` step it contains (transitively). A task at `bootstrap: tooling` that contains `command: app:start` is auto-escalated to `bootstrap: app`. The escalation is computed at compile time and stored in the cached `ToolingProgram`; the hot path stays optimal when no `command:` step needs escalation.
-- **Lifecycle events.** The target command publishes its own `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, and `cli-<canonical-id>-error` events (§3.5/§11). Subscribers that watch for `cli-app:start-run` still fire when `app:start` is invoked from inside a wrapper task.
+- **Lifecycle events.** The target command publishes its own `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, and `cli-<canonical-id>-error` events (§3.5/§11). Subscribers that watch for `cli-app:start-run` still fire when `app:start` is invoked from inside a wrapper task. Per §11.2's `invocationId`/`parentInvocationId` correlation, a `command:` step's target gets its own fresh `invocationId` and carries the enclosing invocation's id as `parentInvocationId` — it is never the outer, notification-eligible invocation, so a nested `command:` invocation's completion never independently triggers foreground presentation (§8.9.7) even when it succeeds or fails on its own.
 - **Output.** The target's output flows through the same `Renderer` as the parent task. `silent: true` suppresses only the target's renderer events; the target's logs still go through the active `Logger` at their declared level.
 - **Cancellation.** `Effect.interrupt` propagates from the outer task to the inner command. The target's resource scopes finalize per §2.4 and §3.6.
 - **Bare canonical ids only.** `command:` accepts canonical ids (`app:start`), not top-level aliases (`start`). This keeps the wrap explicit and prevents an alias override from accidentally short-circuiting itself.
@@ -1358,6 +1358,43 @@ export class Renderer extends Context.Service<Renderer, {
 }>()("@lando/core/Renderer") {}
 ```
 
+**`RendererCapabilities`.** A single Effect Schema struct published from `@lando/sdk`, part of the §13.2 schema snapshot, and owned exclusively by the **resolved** `Renderer`. A renderer id does not compute one fixed value at selection and freeze it for the run — instead `Renderer.capabilities` is a **getter returning the current immutable snapshot object**: each observation returns a plain, fully-populated `RendererCapabilities` struct (never a mutated-in-place object), and the renderer MAY replace which snapshot object the getter returns **exactly once**, monotonically, when the substrate's async capability probe resolves (see "Async probing" below). No other service or command reads or infers capabilities independently. This is the *entire* public capability surface: renderer-neutral, small, and boolean-only.
+
+```ts
+// The renderer-neutral capability surface every renderer publishes and every command/plugin author
+// consumes. Every field is a plain boolean; there is no partial/unknown tri-state at this layer.
+export const RendererCapabilities = Schema.Struct({
+  color:         Schema.Boolean,   // ANSI color output supported
+  interactive:   Schema.Boolean,   // keyboard input honored (task-tree focus/expand, prompts)
+  animation:     Schema.Boolean,   // continuous/live redraw supported (spinners, progress fill)
+  notifications: Schema.Boolean,   // §8.9.7 desktop-notification path supported
+});
+export type RendererCapabilities = Schema.Schema.Type<typeof RendererCapabilities>;
+```
+
+Raw terminal-substrate capability probing (whether the current terminal is a TTY, supports OSC-based notifications, tracks focus, etc.) is **not** public SDK surface. `@lando/renderer-lando` probes its OpenTUI substrate's own capability shape internally and folds the result into `RendererCapabilities` above at renderer initialization; that internal probe is an implementation detail of the bundled renderer, never published from `@lando/sdk`, never schema-snapshotted, and never constructed or read by any other renderer, service, or command. A non-OpenTUI renderer computes `RendererCapabilities` however its own substrate reports capabilities, but MUST follow the same immutable-snapshot-getter semantics described here.
+
+**Exact default/false semantics.** `RendererCapabilities` fields default to `false` and are computed as follows for every 4.0 renderer id:
+
+| Run shape | `color` | `interactive` | `animation` | `notifications` |
+|---|---|---|---|---|
+| Default renderer, TTY, substrate initialized, before probe resolves | `false` | `true` | `true` | `false` |
+| Default renderer, TTY, substrate initialized, after probe resolves | probed | `true`\* | `true`\* | probed |
+| Default renderer, TTY, substrate degraded (§8.9.3 "Degradation") | `false` | `false` | `false` | `false` |
+| Default renderer, non-TTY (piped/redirected stdout) | `false` | `false` | `false` | `false` |
+| `--renderer=plain` | `false` | `false` | `false` | `false` |
+| `--renderer=json` | `false` | `false` | `false` | `false` |
+| `--renderer=verbose`, TTY | `true` | `false` | `false` | `false` |
+| `--renderer=verbose`, non-TTY | `false` | `false` | `false` | `false` |
+
+\* `interactive`/`animation` are the two fields whose default TTY value is already `true` before the probe resolves (§8.9.1 first paint cannot wait on the substrate's async capability probe); the probe is only capable of *promoting* `color`/`notifications`, so `interactive`/`animation` read `true` in both rows above except where degradation/non-TTY/`plain`/`json`/`verbose` force every field `false`.
+
+**Immutable snapshots and monotonic promotion.** Every observation of `Renderer.capabilities` returns one of exactly two possible immutable snapshot objects for a given run: an **initial snapshot** — `interactive: true`, `animation: true`, `color: false`, `notifications: false` — installed synchronously at renderer initialization so first paint (§8.9.1) never blocks on the substrate's capability probe, and a **promoted snapshot**, installed at most once when the probe resolves, in which the getter begins returning a new snapshot object whose probed-supported fields (`color`, `notifications`) may flip `false → true`. A promoted snapshot MUST NOT demote any field from `true` to `false`, and `interactive`/`animation` never change between the two snapshots for the default renderer's non-degraded TTY path — only `color` and `notifications` are subject to probe-driven promotion. Degraded, non-TTY, `plain`, `json`, and `verbose` runs never install a promoted snapshot; every field stays permanently `false` (or `verbose`'s TTY `color: true`) for the run's lifetime. A caller that reads a render-affecting capability (e.g. deciding whether to call `triggerNotification`, §8.9.7) MUST re-read the getter at the point of use rather than caching a snapshot across an `await`, since a promotion may have landed in between.
+
+**Async probing.** The substrate's capability probe (color support, desktop-notification support) runs as a bounded, nonblocking asynchronous operation that never blocks renderer selection or the §8.9.1 first-paint budget — the renderer is fully usable against the initial snapshot the instant it is constructed. The probe has a fixed timeout; on success it installs the promoted snapshot per the rule above, and on timeout or no response it leaves the initial (`color: false`, `notifications: false`) snapshot in place permanently for the run — there is no retry. Test coverage uses a fake/injected clock to exercise delayed-success, timeout, and no-response probe outcomes deterministically without a real wall-clock wait.
+
+**Events published before promotion.** Any render event that depends on a probed-supported field (e.g. `notify.desktop`, gated on `notifications`) and that is evaluated against the initial snapshot before the probe resolves is **dropped**, exactly as it would be if the field had permanently resolved `false` — there is no buffering or replay of a pre-promotion event once the promoted snapshot lands; a caller wanting probe-aware behavior must re-check the capability at the point of use (previous paragraph). "Probed" in the table above means the value is read from the substrate's own internal capability detection once the probe resolves, never assumed `true`. Every degraded/non-TTY/`plain`/`json`/`verbose` cell is an unconditional, permanent value per the table above — those runs MUST NOT report any capability as available even if the underlying terminal would otherwise support it, because there is no substrate initialized (or, for `verbose`, no interactive/animated substrate) to act on that capability. A third-party renderer computes `RendererCapabilities` by the same rule against its own substrate — its own initial/promoted snapshot values and probe timing are its own implementation's concern — but MUST follow the same two-snapshot, monotonic-promotion-only, no-buffered-replay contract described here; the table's "Default renderer" rows are the reference implementation's concrete values, and the non-TTY/`plain`/`json`/`verbose` rows apply identically in shape (not necessarily identical values) to every renderer id.
+
 Built-in render events:
 
 - `task.start`, `task.progress`, `task.complete`, `task.fail`
@@ -1369,6 +1406,8 @@ Built-in render events:
 - `table.row`, `table.end`
 - `prompt.start`, `prompt.complete`
 - `paint.banner` — emitted by the pre-bootstrap fast path (see below).
+- `code.snippet`, `diff.render`, `markdown.block` — rich output events (§8.9.4).
+- `notify.desktop` — desktop-notification request (§8.9.7).
 
 **Default renderer** is the bundled `@lando/renderer-lando` plugin (interactive, colorful, and selected as `lando`). Core keeps stable built-in fallback modes for machine and debug output, and plugins may ship additional renderer ids:
 
@@ -1432,6 +1471,459 @@ task.tree.complete  →  collapse to summary; tree is now passive (focused-child
 **Cancellation.** `Effect.interrupt` (Ctrl+C) propagates from the imperative shell through the orchestrator to every in-flight child; the renderer MUST receive a `task.fail` for each affected child within the §2.1 cancellation budget. While the alt-screen view is active, the renderer MUST NOT swallow Ctrl+C; the input is still routed to the runtime so the user can cancel from inside the expanded view without first pressing Esc.
 
 **Test coverage.** The §13.1 perf-budget suite exercises the contract end-to-end: a fixture with three services whose `build.app` scripts sleep for known durations asserts that wall-clock time is approximately `max(t_a, t_b, t_c)` (within 20%) rather than `sum(…)`, that every child emits at least one `task.detail` event during the sleep window, and that the renderer publishes `task.detail.expand` / `task.detail.collapse` events when synthetic Enter / Esc inputs are fed to its TTY. The non-TTY mode is asserted on the same fixture by piping output and matching the `[<stepId>]`-prefixed line set.
+
+**Keybindings.** The keys named above (`↑`/`↓`/`Tab`/`Enter`/`Esc`) are the frozen default bindings of the §8.9.6 renderer action vocabulary (`tree.focus-prev`, `tree.focus-next`, `tree.cycle`, `tree.expand`, `tree.collapse`); §8.9.6 owns the action ids and the (4.1) remapping surface.
+
+#### 8.9.3 Default renderer implementation contract (`@lando/renderer-lando` + OpenTUI)
+
+This subsection is an **implementation contract for the bundled default renderer only**. The `Renderer` service contract (§8.9–§8.9.2) stays renderer-neutral; nothing here is required of third-party renderers. It exists so the bundled renderer's TTY substrate is a specified, testable surface rather than an accident of implementation.
+
+**Substrate.** The `@lando/renderer-lando` TTY implementation is built on `@opentui/core`, minimum version `0.4.3`. The 0.4.x line is required because the implementation depends on: custom-stream output routing (`NativeSpanFeed`), the split-footer resize replay reset, atomic footer+scrollback frame flushing, render backpressure handling, and memory-buffered headless output for tests.
+
+**Import discipline.** `@opentui/core` MUST be loaded via a Bun-traceable **literal** dynamic import — `import("@opentui/core")` written verbatim, with no string concatenation, template interpolation, or other constructed/aliased specifier — inside the renderer plugin only, and only in **production code paths** (`plugins/renderer-lando/src/**` outside `test/`). It MUST NOT be a dependency of `@lando/core`, MUST NOT be statically imported anywhere in production code, MUST NOT load before bootstrap for level ≥ `plugins`, and MUST NOT load at all for level-`none` commands, the §8.9.1 pre-renderer, or any non-TTY / `plain` / `json` run. A constructed or aliased specifier for `@opentui/core` is not a substitute for the literal form and is itself a boundary violation, even though it is also dynamic — the requirement is a *statically analyzable* dynamic import, not merely a deferred one, because the §13.4 import-boundary gate and the compiled-binary bundler both need a literal specifier they can trace without executing code. This rule governs the renderer's *own* runtime dispatch, not test authoring: `plugins/renderer-lando/test/**` and the §8.9.3 "Testing" frame-snapshot suite MAY statically `import { createTestRenderer } from "@opentui/core/testing"` (and other `@opentui/core` testing-only exports) at the top of a test file, because a test file is not a cold-start code path and the substrate is expected to be present in the test environment. The §13.4 import-boundary gate enforces the distinction structurally (production glob vs. test glob) and additionally asserts every production `@opentui/core` import site is the literal specifier form, not by a blanket "never statically imported" rule. Violations in production code paths are cold-start regressions per §2.1.
+
+**Degradation.** When OpenTUI cannot initialize (unsupported terminal, missing native binding for the host platform, load failure), the renderer MUST degrade to its non-TTY line-mode output path for the remainder of the process, emit a debug-level notice, and continue honoring every §8.9–§8.9.2 behavioral requirement that does not require raw-mode TTY (spinners and keyboard interaction are waived exactly as in the non-TTY exemption). Degradation MUST NOT fail the command and MUST NOT contaminate machine output.
+
+**Task-tree live region.** The §8.9.2 tree renders inside a terminal-native pinned footer region (OpenTUI `split-footer` screen mode with captured stdout), not a hand-rolled repaint loop:
+
+- The live tree occupies a bottom-pinned region whose height tracks visible children (bounded by terminal rows); everything Lando prints *above* the region — passthrough log lines, completed-tree summaries, `message.*` output — is committed to normal terminal scrollback through the substrate's scrollback writers, so completed output survives in native scrollback and is never repainted.
+- Frames MUST be atomic: no torn frames, cursor droppings, or duplicated regions, including under interleaved passthrough writes.
+- Terminal resize MUST be honored via the substrate's split-footer replay reset; a resize mid-build MUST NOT corrupt committed scrollback or the live region.
+- The §8.9.2 alt-screen full-tail expand is realized as a runtime screen-mode transition to the alternate screen and back; exiting MUST restore the live region without redraw-from-scratch artifacts (already required by §8.9.2).
+
+**Animation.** Continuous rendering (the substrate's live mode) MUST be enabled only while an animated affordance (spinner, progress fill) is on screen and dropped when the frame is static. Frame rate is capped at 30 fps. The §8.9.1 spinner threshold and non-TTY rules are unchanged; non-TTY output never animates.
+
+**Prompt chrome.** The §8.10 prompt surfaces owned by this renderer use the same substrate: titled, bordered prompt panels (title + accent color), inline validation, and an explicit selection indicator on select/multiselect controls. The `InteractionService` seam and prompt schemas are untouched — this is presentation only.
+
+**Testing.** The bundled renderer MUST carry frame-snapshot coverage driven by the substrate's headless test renderer (`@opentui/core/testing`, `createTestRenderer` with memory-buffered output): task-tree frames across start/detail/complete/fail transitions, prompt chrome for every §8.10.1 prompt type it renders, narrow-terminal (≤ 40 columns) fixtures, and a resize mid-tree case. This coverage joins the §13.1 matrix ("Renderer frames" layer) and runs headless — no PTY required.
+
+#### 8.9.4 Rich render events
+
+Three render events carry structured rich content so commands can emit code, diffs, and formatted prose without knowing which renderer is active. The event schemas are published from `@lando/sdk` and are part of the §13.2 schema snapshot; they are **frozen at 4.0 as contract-only surface** — rich TTY presentation and the first core emitters land in 4.1 (the plain-text fallbacks below are the 4.0 behavior for every renderer).
+
+```ts
+export const CodeSnippetEvent = Schema.TaggedStruct("code.snippet", {
+  code:           Schema.String,
+  language:       Schema.optional(Schema.String),        // tree-sitter language id; plain text when absent/unknown
+  path:           Schema.optional(Schema.String),        // display-only origin (already redacted by the publisher)
+  startLine:      Schema.optional(Schema.Number.pipe(Schema.int(), Schema.positive())),   // 1-based first line for gutter numbering
+  highlightLines: Schema.optional(Schema.Array(Schema.Number.pipe(Schema.int(), Schema.positive()))),   // 1-based line numbers
+});
+
+export const DiffRenderEvent = Schema.TaggedStruct("diff.render", {
+  unified:  Schema.String,                               // standard unified-diff text
+  path:     Schema.optional(Schema.String),
+  language: Schema.optional(Schema.String),
+});
+
+export const MarkdownBlockEvent = Schema.TaggedStruct("markdown.block", {
+  markdown: Schema.String,
+});
+```
+
+Renderer behavior matrix:
+
+| Renderer | `code.snippet` | `diff.render` | `markdown.block` |
+|---|---|---|---|
+| Default (TTY, 4.1+) | Syntax-highlighted block with optional line numbers and highlighted rows | Colorized hunk view with add/remove markers | Terminal-rendered markdown (headings, emphasis, lists, fenced code) |
+| Default (TTY, 4.0) / degraded / non-TTY / `plain` | Verbatim text (optionally fenced) | Verbatim unified diff | Verbatim markdown source |
+| `json` | Structured event passthrough on stderr per §8.9.1 | Structured event passthrough | Structured event passthrough |
+
+Required behaviors: content arrives **already redacted** by the publisher (same rule as `task.detail`, §8.9.2); renderers MUST NOT re-wrap or truncate `unified` content in ways that break `patch(1)` applicability in `plain`/non-TTY modes; an unknown `language` MUST fall back to plain text, never fail. Planned 4.1 emitters: `lando doctor` (Landofile snippets at the failing key), destructive-plan previews (`app:rebuild`/`app:destroy` diffs), and guide/help surfaces. Adding an emitter is not a schema change; the event vocabulary above is the frozen contract.
+
+#### 8.9.5 Renderer panel slots
+
+Renderer panel slots let plugins contribute bounded UI panels into named regions of the default renderer without owning the terminal. The host renderer stays in control of layout, screen mode, painting, and input; panels only produce content. The contract is **frozen at 4.0 as contract-only surface** (schemas + manifest surface + contract suite); the default renderer's slot implementation and the first bundled consumer land in 4.1.
+
+**Slot registry.** Slot ids are renderer-defined, but the identifier space itself is a published, schema-derived closed set — not a free-form string:
+
+```ts
+export const RendererPanelSlot = Schema.Literal("status-bar", "task-tree:footer", "doctor:summary");
+export type RendererPanelSlot = Schema.Schema.Type<typeof RendererPanelSlot>;
+
+// A panel id is a plugin-scoped identifier: lowercase, starts with a letter, and every subsequent
+// segment (if any) is a single hyphen followed by one or more lowercase-alphanumeric characters —
+// no leading/trailing/doubled hyphens, 1..64 characters total. Uniqueness is enforced per-plugin
+// at manifest validation (§9.5 "Renderer panel contribution rules").
+export const RendererPanelId = Schema.String.pipe(
+  Schema.minLength(1),
+  Schema.maxLength(64),
+  Schema.pattern(/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/),
+  Schema.brand("RendererPanelId"),
+);
+export type RendererPanelId = Schema.Schema.Type<typeof RendererPanelId>;
+
+// Event tags a panel re-renders on: 1..32 entries, no duplicates. This is manifest metadata (it
+// lives on RendererPanelManifestEntry below, never on the RendererPanel module contract) validated
+// in two passes, at two different times: (1) at manifest read, this schema checks only the static
+// shape — cardinality and uniqueness, nothing else — because that's all a single manifest parse can
+// know; (2) known-event-name membership is checked separately, by the plugin loader, once every
+// plugin command is registered (end of bootstrap level `plugins`, the same point §11.3.1 finalizes
+// the subscriber index). Each tag must name a member of the closed LandoEvent registry: a built-in
+// taxonomy name or a generated cli-<canonical-id>-{init,run,error} name. Plugins cannot contribute
+// arbitrary event names. An unknown name is a PluginManifestError and the panel never loads; a
+// duplicate entry fails the same manifest decode at manifest read. Neither check imports the panel.
+export const RendererPanelWatch = Schema.Array(Schema.String).pipe(
+  Schema.minItems(1),
+  Schema.maxItems(32),
+  Schema.filter((tags) => new Set(tags).size === tags.length, { message: () => "RendererPanelWatch entries must be unique" }),
+);
+export type RendererPanelWatch = Schema.Schema.Type<typeof RendererPanelWatch>;
+```
+
+The default renderer's published 4.0 slot vocabulary is exactly these three ids: `status-bar` (single-line region above the task-tree live region), `task-tree:footer` (single-line region below the tree), and `doctor:summary` (block region after doctor results). Renderers that do not implement slots ignore contributions; `json`/`plain`/non-TTY runs never render panels. A manifest `slot:` value outside this literal union fails validation (§9.5 "Renderer panel contribution rules") before any module is imported.
+
+**Contribution surface and manifest metadata.** Plugins contribute `rendererPanels:` in the manifest (§9.5). The **watched event list is manifest metadata, not part of the `RendererPanel` module contract** — the loader must know what to watch before it ever imports the module (and, for a slot that's never visible, it must never import the module at all), so `watch` cannot live on something the loader only obtains by importing:
+
+```ts
+export const RendererPanelManifestEntry = Schema.Struct({
+  id:     RendererPanelId,
+  slot:   RendererPanelSlot,
+  watch:  RendererPanelWatch,     // 1..32 known event names, no duplicates (defined above)
+  module: Schema.String,          // relative path, resolved and realpath-contained under the plugin package root
+});
+export type RendererPanelManifestEntry = Schema.Schema.Type<typeof RendererPanelManifestEntry>;
+```
+
+```yaml
+rendererPanels:
+  - id: my-plugin-status         # unique per plugin; must equal the module's exported RendererPanel.id (checked on first import, below)
+    slot: status-bar             # target slot id; must be a RendererPanelSlot literal
+    watch: [post-start, post-stop]  # manifest metadata; validated against the closed event registry after commands register (§9.5)
+    module: ./panels/status.ts   # module whose default export satisfies RendererPanel
+```
+
+**Styled output primitives.** Panel content is composed from a small, closed styling vocabulary, published from `@lando/sdk` alongside the panel contract:
+
+```ts
+export const StyledSpanTone = Schema.Literal("default", "muted", "accent", "success", "warning", "danger");
+export type StyledSpanTone = Schema.Schema.Type<typeof StyledSpanTone>;
+
+export const StyledSpan = Schema.Struct({
+  text:      Schema.String,
+  tone:      Schema.optionalWith(StyledSpanTone, { default: () => "default" as const }),
+  bold:      Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  dim:       Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  italic:    Schema.optionalWith(Schema.Boolean, { default: () => false }),
+  underline: Schema.optionalWith(Schema.Boolean, { default: () => false }),
+});
+export type StyledSpan = Schema.Schema.Type<typeof StyledSpan>;
+
+// Bounded rows-of-spans: at most 8 rows, at most 32 spans per row, and at most 4096 UTF-8 bytes of
+// encoded text across every span's `text` field combined. These are schema-level bounds, not a
+// runtime clip: a `render` result that fails any of them (too many rows, too many spans in a row,
+// or the 4096-byte total exceeded) fails `PanelView` decode outright. A decode failure is handled
+// identically to a thrown `render` — the panel is dropped for the remainder of the process (see
+// "Required behaviors" below) — there is no silent truncation/clipping path anywhere in this contract.
+// encodedByteLength is a small runtime-neutral helper (`new TextEncoder().encode(text).length`,
+// available in Bun, Node, and every other target this schema might decode in) used only to
+// compute the byte-total filter below; it is not a separate exported symbol.
+export const PanelView = Schema.Array(Schema.Array(StyledSpan).pipe(Schema.maxItems(32))).pipe(
+  Schema.maxItems(8),
+  Schema.filter(
+    (rows) => rows.reduce((n, row) => n + row.reduce((m, span) => m + encodedByteLength(span.text), 0), 0) <= 4096,
+    { message: () => "PanelView encoded text exceeds the 4096 UTF-8 byte total limit" },
+  ),
+);
+export type PanelView = Schema.Schema.Type<typeof PanelView>;
+
+// Positive terminal-size context: a slot is never rendered into a zero-or-negative region.
+export const RendererPanelSize = Schema.Struct({
+  columns: Schema.Number.pipe(Schema.int(), Schema.positive()),
+  rows:    Schema.Number.pipe(Schema.int(), Schema.positive()),
+});
+export type RendererPanelSize = Schema.Schema.Type<typeof RendererPanelSize>;
+```
+
+**Panel contract.** The panel API is renderer-neutral, published from `@lando/sdk`, and built entirely from schema-inferred types (`Schema.Schema.Type<typeof X>`, never a hand-written parallel interface, per the root-`AGENTS.md` "public contracts come from Effect Schema" tenet). Panels do not see OpenTUI (the default renderer MAY realize panels through its substrate's slot/runtime-plugin machinery, but that is an implementation detail behind this schema); the context reuses the existing §3.5 `AppRef` and §11.1 `LandoEvent` types rather than introducing panel-local identity/event shapes:
+
+```ts
+export const RendererPanelContext = Schema.Struct({
+  app:   Schema.optional(AppRef),        // resolved app identity when a user app is in scope
+  size:  RendererPanelSize,
+  event: LandoEvent,                     // the event that triggered this render — any published LandoEvent, render or lifecycle
+});
+export type RendererPanelContext = Schema.Schema.Type<typeof RendererPanelContext>;
+
+export interface RendererPanel {
+  readonly id: RendererPanelId;
+  // Pure, synchronous view function: (typed context) → bounded styled rows. Re-invoked when one of
+  // the manifest entry's `watch` events arrives on the bus (the loader owns that dispatch, driven by
+  // the manifest metadata above — the module itself carries no watch list). A 4.1 host renderer
+  // runtime MUST enforce non-blocking execution itself (see "Non-blocking enforcement" below) — this
+  // signature does not return an Effect or a Promise, because a panel author cannot make a
+  // synchronous function call itself asynchronously; the deadline is an external runtime property,
+  // not part of the type.
+  readonly render: (ctx: RendererPanelContext) => PanelView;
+}
+```
+
+A concrete `RendererPanel` implementation (both the 4.1 default-renderer runtime and the 4.0 reference fixture used by the contract suite below) MUST consume these inferred types directly — `render`'s parameter and return type are `RendererPanelContext` / `PanelView` as declared above, not a hand-rolled shape that happens to be structurally compatible.
+
+**Required behaviors.**
+
+- **Bootstrap-time validation (no import).** At plugin manifest read, the loader validates every `rendererPanels:` entry's shape, id uniqueness, slot membership, `watch` shape, and `module` realpath containment without importing anything. After plugin command registration completes, it closes the event registry from the built-in `LandoEvent` taxonomy plus generated CLI lifecycle names and checks `watch` membership against that registry, still without importing panel code. Any malformed entry, escaping path, duplicate id, unknown slot, or unknown watched event is a `PluginManifestError`. A panel whose target slot is never visible is never imported.
+- **Worker-only import and identity check.** When the default renderer is active on a TTY and the target slot first becomes visible, the host starts that panel's persistent isolated worker and passes only the validated module URL and manifest id as startup data. The host MUST NOT import, evaluate, or inspect the panel module itself. The worker imports the module, validates its default export, decodes the returned `RendererPanel.id`, and sends that decoded id in its ready response. The host compares the worker-returned id with the manifest id before registering the panel or sending any render request. Missing/invalid exports, import/load failures, invalid ids, and id mismatches are `PluginLoadError`s; the worker is terminated and the panel is permanently dropped.
+- Panel failure is isolated: any load, id, request/response decode, size-limit, timeout, thrown `render`, or worker failure terminates the worker and drops the panel for the remainder of the process with a debug-level notice. The renderer and every other panel continue. These runtime isolation outcomes do not introduce panel-specific public error classes.
+- Panels are output-only: no stdin access, no direct terminal writes (the §13.4 renderer-boundary gate applies to panel modules), no screen-mode changes. `render` MUST be pure; slow or effectful data acquisition belongs in an event subscriber that publishes events the manifest's `watch` list names, never inside `render` itself.
+- Panel content passes the same redaction rule as `task.detail`: publishers redact before events reach panels. A `render` result that fails `PanelView` decode (over the row/span/byte bounds above, or any other shape mismatch) is **not** truncated, clipped, or scrolled into range — it is treated exactly like a thrown `render` (see failure isolation above): the panel is dropped for the remainder of the process. There is no code path in this contract that silently reshapes an oversize or malformed result into something paintable.
+- Contributions from untrusted plugins follow the standard plugin trust flow (§9); there is no separate panel trust gate.
+
+**Non-blocking enforcement (4.1 runtime obligation).** `render` being declared synchronous in the type does not by itself make a panel non-blocking. The 4.1 default-renderer runtime enforces isolation with this bounded protocol:
+
+- Each panel gets one **persistent isolated worker** (`Bun.Worker` or equivalent), started only after its slot becomes visible. The worker alone imports the panel module. Its ready response, including the decoded panel id, MUST arrive within **1000ms** of worker start. The host terminates and permanently drops a worker that fails, exceeds the ready deadline, returns a malformed ready frame, or returns an id unequal to the manifest id. Registration and rendering begin only after this handshake succeeds.
+- Host/worker messages are transferable `ArrayBuffer`/`Uint8Array` binary frames, never structured-cloned objects. A render request is one byte of protocol/version, one byte of operation, a four-byte unsigned big-endian payload length, and the canonical UTF-8 schema encoding of `RendererPanelContext`. The payload is capped at **65,536 bytes** and the complete request at **65,542 bytes**; both sides reject an announced or actual length above those bounds before allocation or decode.
+- A successful render response uses the bounded binary `PanelView` encoding: one byte row count; for each row, one byte span count; for each span, one byte tone enum, one byte style flags, a two-byte unsigned big-endian UTF-8 text length, then the text bytes. The schema limits remain 8 rows, 32 spans per row, and 4096 text bytes total, making the maximum encoded response exactly **5,129 bytes** (`1 + 8 + (8 × 32 × 4) + 4096`). The host rejects an announced or actual response above 5,129 bytes before decode. Ready and failure responses use the same binary channel and are smaller than this response ceiling.
+- After ready succeeds, each render request has an **8ms wall-clock round-trip deadline**, including worker execution, response transfer, binary decode, and `PanelView` schema decode. Worker startup/import time is covered only by the separate 1000ms ready deadline. The render loop that owns the live region (§8.9.3) never calls panel code in its own thread/tick.
+- A render round trip exceeding 8ms terminates the worker and permanently drops the panel. No partial/torn response is painted; the renderer preserves and may continue painting that panel's last-good `PanelView` (or nothing if no render succeeded) after the timeout. Other failure classes drop the offending panel without substituting, clipping, or truncating its response.
+- The renderer keeps the panel's **last-good `PanelView`** (the most recent successful, on-deadline, schema-valid result) and continues painting it — unchanged — for any watched event that arrives while a previous `render` call for the same panel is still in flight. Concurrent re-render requests for one panel **coalesce**: at most one `render` invocation per panel may be in flight at a time; additional watched events that arrive during that invocation trigger, at most, one more invocation immediately after the current one finishes (not one invocation per queued event).
+- A worker's response is still decoded against `PanelView` after it returns; a structurally invalid or over-bound response is a decode failure (dropped per the "Required behaviors" rule above), never silently accepted or reshaped.
+- This worker/deadline/coalescing machinery is 4.1 runtime scope (it requires the default renderer's live-region runtime from §8.9.3, which itself lands in 4.1). At 4.0 nothing invokes a panel's `render` in the compiled CLI; the obligation above is normative for the 4.1 implementation, and the 4.0 contract suite (below) proves the *contract* — timeout, throw, invalid output, purity, determinism — using an equivalent real, terminable worker rather than the not-yet-built default-renderer runtime.
+
+**4.0 contract suite scope.** The §13.1 "Renderer panel contract" suite ships now from `@lando/sdk/test` as a **standalone reference harness** — it does not run inside `@lando/renderer-lando` (nothing there consumes panels until 4.1) and it is not one of the six §4.2 plugin-abstraction kit suites (`ToolingEngine`, `RouteFilter`, `SecretStore`, `ConfigTranslator`, `PluginSource`, `DoctorCheck`); panels are not added to that manifest. The harness uses the exact worker-only import and bounded binary protocol above: a persistent worker started when the fixture slot becomes visible, a 1000ms ready/id handshake, 65,542-byte request and 5,129-byte response ceilings, and an 8ms post-ready render round trip. It is never an in-process synchronous call. The harness exercises a reference panel fixture for:
+
+- **Timeout** — a `render` that sleeps past 8ms inside its worker is terminated via `Worker.terminate()` and the last-good view (or nothing, on first call) is retained.
+- **Throw** — a `render` that throws synchronously is caught, the panel is dropped with a debug notice, and no other panel is affected.
+- **Invalid output** — a `render` that returns a shape failing `PanelView` decode (wrong field types, non-`StyledSpan` rows, over row/span/byte bounds) is treated identically to a throw — dropped, never clipped.
+- **Purity** — no FS/network/process mutation observable from inside `render` (a fixture that attempts one fails the suite).
+- **Determinism** — identical `RendererPanelContext` input produces byte-identical `PanelView` output across repeated calls.
+- **Limits** — a `render` returning more than 8 rows, more than 32 spans in a row, or more than 4096 UTF-8 bytes of total encoded text fails `PanelView` decode and is dropped exactly like "Invalid output" above; a slot rendered with `RendererPanelSize` at any positive value never receives a zero/negative size.
+
+This suite is a §13.1 shared-contract-suite row like `TunnelService`, `FileSyncEngine`, `HttpClient`, `Downloader`, `Redaction`, and `Interaction` — a `@lando/sdk/test`-published contract exercised by its own invocation test — **not** one of the §4.2 six-abstraction plugin kit (`ToolingEngine`, `RouteFilter`, `SecretStore`, `ConfigTranslator`, `PluginSource`, `DoctorCheck`). It is therefore correctly absent from `core/test/contract/plugin-abstraction-coverage.test.ts`'s kit manifest; that gate's "every published kit suite MUST be exercised" rule does not apply to it, exactly as it does not apply to the other non-kit §13.1 suites listed above.
+
+#### 8.9.6 Keymap: renderer actions and bindings
+
+Every interactive key the default renderer honors is a named **renderer action**, grouped into **surfaces** (the task tree, prompts, the 4.1 log viewer, the 4.1 binding overlay). A surface is the mutually-exclusive input context active at any moment — exactly one surface owns the keyboard at a time — so a chord may be reused freely across surfaces without conflicting. The action-id vocabulary, the chord grammar, and the frozen default bindings below are **frozen at 4.0**; user remapping (the `keymap:` global-config key) and the discoverability overlay land in 4.1 as described at the end of this section.
+
+**Action vocabulary (frozen, closed set):**
+
+| Action | Surface | Chord cardinality |
+|---|---|---|
+| `tree.focus-prev` | §8.9.2 task tree | 1 default chord, up to 4 total |
+| `tree.focus-next` | §8.9.2 task tree | 1 default chord, up to 4 total |
+| `tree.cycle` | §8.9.2 task tree | 1 default chord, up to 4 total |
+| `tree.expand` | §8.9.2 task tree | 1 default chord, up to 4 total |
+| `tree.collapse` | §8.9.2 task tree | 1 default chord, up to 4 total |
+| `prompt.cancel` | §8.10 prompts | 1 default chord, up to 4 total |
+| `viewer.scroll-up` | §8.9.8 log viewer (4.1) | 1 default chord, up to 4 total |
+| `viewer.scroll-down` | §8.9.8 log viewer (4.1) | 1 default chord, up to 4 total |
+| `viewer.follow` | §8.9.8 log viewer (4.1) | 1 default chord, up to 4 total |
+| `viewer.source-next` | §8.9.8 log viewer (4.1) | 1 default chord, up to 4 total |
+| `viewer.quit` | §8.9.8 log viewer (4.1) | 1 default chord, up to 4 total |
+| `keymap.help` | binding overlay (4.1) | 1 default chord, up to 4 total |
+
+No action outside this closed set exists at 4.0; a plugin cannot register a new renderer action (that would require a new renderer surface, out of scope here — see §8.9 non-goals).
+
+**Chord grammar.** A chord is a string matching `(modifier+)*key-name`, where:
+
+- **Modifiers**, when present, appear in the canonical lowercase order `ctrl+`, then `alt+`, then `shift+` — e.g. `ctrl+alt+shift+f`, never `shift+ctrl+f` or `Ctrl+F`. A chord in any other modifier order or letter case fails `RendererKeyChord` decode; the schema normalizes nothing — the canonical order is the only accepted spelling.
+- **Key names** are drawn from one frozen, closed vocabulary (also all-lowercase): the 26 letters `a`..`z`; the 10 digits `0`..`9`; the 4 arrow keys `up`/`down`/`left`/`right`; `tab`, `enter`, `escape`, `space`, `backspace`, `delete`, `home`, `end`, `page-up`, `page-down`, `insert`; the 12 function keys `f1`..`f12`; and the named punctuation keys `question-mark` (`?`), `slash` (`/`), `minus` (`-`), `plus` (`+`), `period` (`.`), `comma` (`,`), `semicolon` (`;`), `backtick` (`` ` ``). Punctuation is always spelled by name, never by the literal glyph (`?` is written `question-mark`, matching `keymap.help`'s default below) — a literal punctuation character fails the chord's format and is rejected the same way any other malformed chord is (below): as an ordinary schema-decode failure, not a keymap-specific error.
+
+None of the failure modes above (bad modifier order/case, unknown key name, a literal punctuation glyph, a malformed chord shape) get their own tagged error type. A `KeymapConfig` value with any such problem simply fails ordinary Effect Schema decode, surfaced the same way every other global-config decode failure is surfaced: the existing `ConfigError` (§2 "Reference Effect patterns" — `{ message, path?, cause? }`), with `path` naming the offending action key (e.g. `"keymap.tree.expand[1]"`) and `message` carrying the schema's own diagnostic. There is no `KeymapChordFormatError`, `KeymapKeyNameUnknownError`, `KeymapReservedChordError`, or `KeymapCardinalityError` — inventing one per raw-schema failure mode would just be restating what `ConfigError` + the schema's own path/message already say.
+
+**Schemas.** The action-id set, the key-name vocabulary, the chord shape, and the whole-config surface are each published Effect Schema, not prose alone:
+
+```ts
+export const RendererActionId = Schema.Literal(
+  "tree.focus-prev", "tree.focus-next", "tree.cycle", "tree.expand", "tree.collapse",
+  "prompt.cancel",
+  "viewer.scroll-up", "viewer.scroll-down", "viewer.follow", "viewer.source-next", "viewer.quit",
+  "keymap.help",
+);
+export type RendererActionId = Schema.Schema.Type<typeof RendererActionId>;   // exactly the 12 actions above
+
+export const RendererKeyName = Schema.Literal(
+  "a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p","q","r","s","t","u","v","w","x","y","z",
+  "0","1","2","3","4","5","6","7","8","9",
+  "up","down","left","right",
+  "tab","enter","escape","space","backspace","delete","home","end","page-up","page-down","insert",
+  "f1","f2","f3","f4","f5","f6","f7","f8","f9","f10","f11","f12",
+  "question-mark","slash","minus","plus","period","comma","semicolon","backtick",
+);
+export type RendererKeyName = Schema.Schema.Type<typeof RendererKeyName>;
+
+// Canonical shape: optional ctrl+, then optional alt+, then optional shift+, then exactly one
+// RendererKeyName — in that order, all lowercase. The pattern alone cannot enforce closed-set key
+// names or the ctrl+c reservation, so both are additional Schema.filter checks on top of it; any
+// of the three failing is ordinary schema-decode failure (ConfigError), not a distinct error type.
+export const RendererKeyChordPattern = /^(ctrl\+)?(alt\+)?(shift\+)?[a-z0-9][a-z0-9-]*$/;
+export const RendererKeyChord = Schema.String.pipe(
+  Schema.pattern(RendererKeyChordPattern),
+  Schema.filter(
+    (chord) => Schema.is(RendererKeyName)(chord.replace(/^(ctrl\+)?(alt\+)?(shift\+)?/, "")),
+    { message: () => "unknown key name" },
+  ),
+  Schema.filter((chord) => chord !== "ctrl+c", { message: () => "ctrl+c is reserved and can never be bound" }),
+);
+export type RendererKeyChord = Schema.Schema.Type<typeof RendererKeyChord>;
+
+// One chord, or an array of 1..4 distinct chords (§ "Per-action chord cardinality and deduplication" below).
+export const RendererKeyBinding = Schema.Union(
+  RendererKeyChord,
+  Schema.Array(RendererKeyChord).pipe(
+    Schema.minItems(1),
+    Schema.maxItems(4),
+    Schema.filter((chords) => new Set(chords).size === chords.length, { message: () => "duplicate chord for one action" }),
+  ),
+);
+export type RendererKeyBinding = Schema.Schema.Type<typeof RendererKeyBinding>;
+
+// Closed struct: exactly the 12 RendererActionId keys, every one optional (an omitted action keeps
+// its frozen default binding from the table below), no other keys accepted. This struct is
+// intentionally plain — no root-level Schema.filter — per the SDK schema-snapshot rule: a
+// Schema.filter piped onto an exported, snapshotted struct collapses its published JSON Schema
+// (sdk/AGENTS.md). Cross-field validation (the same-surface conflict rule below) is therefore a
+// separate step, not part of this schema.
+export const KeymapConfig = Schema.Struct({
+  "tree.focus-prev":   Schema.optional(RendererKeyBinding),
+  "tree.focus-next":   Schema.optional(RendererKeyBinding),
+  "tree.cycle":        Schema.optional(RendererKeyBinding),
+  "tree.expand":       Schema.optional(RendererKeyBinding),
+  "tree.collapse":     Schema.optional(RendererKeyBinding),
+  "prompt.cancel":     Schema.optional(RendererKeyBinding),
+  "viewer.scroll-up":  Schema.optional(RendererKeyBinding),
+  "viewer.scroll-down": Schema.optional(RendererKeyBinding),
+  "viewer.follow":     Schema.optional(RendererKeyBinding),
+  "viewer.source-next": Schema.optional(RendererKeyBinding),
+  "viewer.quit":       Schema.optional(RendererKeyBinding),
+  "keymap.help":       Schema.optional(RendererKeyBinding),
+});
+export type KeymapConfig = Schema.Schema.Type<typeof KeymapConfig>;
+```
+
+`RendererKeyChord`'s two filters, `RendererKeyChordPattern`'s own format check, and `RendererKeyBinding`'s dedup/cardinality checks (`minItems`/`maxItems` above) all run at ordinary schema-decode time, regardless of which action they appear under. None of them is a distinct tagged error — a pattern mismatch, an unknown key name, `ctrl+c`, a repeated chord in one action's array, or an out-of-range array size are all just `ConfigError` (§2), with `path` naming the offending action/index and `message` the schema's diagnostic. **Same-surface collision detection is the one exception, and it is genuinely a new tagged error** because it is not expressible as a single value's schema failure at all — it is a relationship between two different keys of the struct. After a `KeymapConfig` value decodes successfully (meaning every individual binding was already well-formed), a separate config-boundary validation step — run once at global config load, using an internal predicate that groups the decoded actions by surface (per the action table above) and checks for a shared chord within a group — rejects the whole config with the new `KeymapConflictError` when two actions on the same surface resolve to a common chord (deterministic; there is no last-writer-wins fallback). Two actions on **different** surfaces reusing the same chord is not a conflict at all and passes both steps cleanly (surfaces are mutually exclusive input contexts, so there is no ambiguity to resolve). This split mirrors why the struct above stays plain: `KeymapConfig` alone answers "is every individual binding well-formed?" (via `ConfigError` on failure); the config-boundary step answers "do these well-formed bindings collide?" (via the new `KeymapConflictError` on failure) — and only the second question needs to see every key at once.
+
+`KeymapConflictError` is a public schema-backed error contract, exported from `@lando/sdk/errors` and re-exported by `@lando/core/errors`:
+
+```ts
+export class KeymapConflictError extends Schema.TaggedError<KeymapConflictError>()(
+  "KeymapConflictError",
+  {
+    surface:    Schema.Literal("task-tree", "prompt", "viewer", "keymap"),
+    chord:      RendererKeyChord,
+    actions:    Schema.Tuple(RendererActionId, RendererActionId),
+    message:    Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+```
+
+`actions` is deterministically sorted by action id, `message` names the shared chord and both actions, and `remediation` tells the user to remove or change one same-surface binding. No other keymap-specific tagged error is public.
+
+**Default bindings (frozen):**
+
+| Action | Default chord(s) |
+|---|---|
+| `tree.focus-prev` | `up` |
+| `tree.focus-next` | `down` |
+| `tree.cycle` | `tab` |
+| `tree.expand` | `enter` |
+| `tree.collapse` | `escape` |
+| `prompt.cancel` | `escape` |
+| `viewer.scroll-up` | `page-up` |
+| `viewer.scroll-down` | `page-down` |
+| `viewer.follow` | `f` |
+| `viewer.source-next` | `s` |
+| `viewer.quit` | `q` |
+| `keymap.help` | `question-mark` |
+
+**The irrevocable `ctrl+c` interrupt.** `ctrl+c` is not part of the renderer action vocabulary and is never assignable to any action's chord list, in either the frozen 4.0 defaults or a 4.1 `KeymapConfig` override — `RendererKeyChord`'s own filter rejects any chord equal to `ctrl+c` as ordinary schema-decode failure (`ConfigError`), before the value ever reaches `KeymapConfig`. On every surface, in every renderer state (including the §8.9.2 alt-screen expand and the §8.9.8 log viewer), `ctrl+c` unconditionally triggers `Effect.interrupt` of the running command exactly as it does at any other point in the CLI (§3.6). It cannot be remapped, disabled, or shadowed by a surface-specific binding.
+
+**Per-action chord cardinality and deduplication.** Each action binds at least 1 and at most 4 chords (the frozen defaults above each bind exactly 1). A `KeymapConfig` entry for an action MAY supply a single chord string or an array of up to 4; an array with more than 4 entries, a duplicate chord within the same action's array, or an empty array all fail `RendererKeyBinding` decode (`ConfigError`) before the value reaches the renderer.
+
+**Same-surface conflict rule.** Two actions bound to the same chord conflict — and are rejected with the new `KeymapConflictError` (deterministic; there is no last-writer-wins fallback) — **only when both actions belong to the same surface** (per the table above). Because surfaces are mutually exclusive input contexts, `viewer.follow`'s default `f` and a hypothetical task-tree action bound to `f` do not conflict at all (different surfaces) and both decode and pass the conflict check cleanly; `tree.expand` and `tree.collapse` both bound to `enter` would conflict (same surface). This is **not** enforced by the `KeymapConfig` schema itself (which stays a plain struct, above and never fails for a cross-surface reuse); it runs once, as a separate config-boundary validation step immediately after a successful `KeymapConfig` decode (global config load), not per-keystroke.
+
+Required behaviors, frozen now: action handling is renderer-owned input per §8.10 (the `InteractionService` is not the raw-keystroke surface); non-TTY runs bind nothing; the action vocabulary, chord grammar, and default bindings above cannot change without a spec revision.
+
+**4.1 surface (contract-only today).** The `KeymapConfig` schema above is published from `@lando/sdk` and snapshot-tracked now (e.g. `{ "tree.expand": "space", "viewer.quit": ["q", "ctrl+d"] }` decodes cleanly; `{ "prompt.cancel": "ctrl+c" }` fails `RendererKeyChord` decode with `ConfigError`; `{ "tree.expand": "enter", "tree.collapse": "enter" }` decodes cleanly but fails the separate same-surface conflict check with `KeymapConflictError`). In 4.1 the global config gains a `keymap:` key decoding against `KeymapConfig`, and `keymap.help` renders an overlay of the active bindings (default plus any override). The default renderer MAY implement bindings on a keymap engine (e.g. `@opentui/keymap`); the schemas, grammar, and rules above are the contract, not the engine.
+
+#### 8.9.7 Desktop notifications
+
+Long-running commands can request a terminal-mediated desktop notification so a user who switched windows learns that `lando start` finished. This is a **foreground-only** pipeline: the process running the interactive command notifies about its own completion through its own active renderer. There is no container-initiated variant — see the non-goal at the end of §10.10 and this section's closing paragraph. The pipeline has three frozen pieces: a render event, a renderer capability, and a bundled policy plugin.
+
+**The render event.** `notify.desktop` is a render event published from `@lando/sdk`:
+
+```ts
+export const NotifyDesktopEvent = Schema.TaggedStruct("notify.desktop", {
+  title:   Schema.String.pipe(Schema.minLength(1), Schema.maxLength(256)),
+  body:    Schema.optional(Schema.String.pipe(Schema.maxLength(4096))),
+  urgency: Schema.optional(Schema.Literal("info", "success", "failure")),
+});
+```
+
+**Renderer behavior.** The default renderer computes `notifications` on its `RendererCapabilities` per the §8.9 table above (probed internally from its OpenTUI substrate's own capability detection when the substrate is initialized; unconditionally `false` when degraded, non-TTY, `plain`, or `json`). When `renderer.capabilities.notifications` is `true`, and only then, the renderer realizes `notify.desktop` by calling the verified OpenTUI 0.4.3 renderer API directly:
+
+```ts
+// title is always present on NotifyDesktopEvent; body is optional. OpenTUI's own
+// triggerNotification(message: string, title?: string): boolean takes the primary message first
+// and an optional secondary title second, so when a body IS present it becomes the OpenTUI
+// "message" and title stays the OpenTUI "title"; when no body is present the event's title alone
+// becomes the OpenTUI "message" and no second argument is passed.
+renderer.triggerNotification(body ?? title, body === undefined ? undefined : title);
+```
+
+Lando does **not** hand-frame OSC 9/777/52 sequences, and does not select a notification protocol, decide tmux/multiplexer behavior, or choose an output stream for the escape bytes — `triggerNotification` owns all of that inside OpenTUI, including whatever makes it work across SSH sessions (the *user's* terminal emulator raises the toast; OpenTUI, not Lando, decides how the bytes reach it). When `notifications` is `false` (capability absent), the renderer does not call `triggerNotification` at all and the event is dropped silently. `json` passes the event through as a structured stderr event regardless of capability (machine consumers decide their own presentation); `plain` and non-TTY runs drop it.
+
+**Sanitization.** `title`/`body` MUST be redacted by the publisher before the event is published (standard §3.7 boundary). Before calling `triggerNotification`, the renderer additionally applies this fixed sanitizer to each of `title` and (when present) `body`, in order:
+
+1. Replace every `CR` (`\r`), `LF` (`\n`), and `TAB` (`\t`) with a single space — `triggerNotification`'s arguments are single-line strings.
+2. Strip every remaining C0/C1 control character (`U+0000`–`U+001F`, `U+007F`–`U+009F`), including `ESC` (`U+001B`) and `BEL` (`U+0007`), and strip `DEL` (`U+007F`, already covered by the C0/C1 range but called out explicitly).
+3. Strip the Unicode bidirectional-override/isolate control characters (`U+202A`–`U+202E`, `U+2066`–`U+2069`).
+4. Normalize the result to Unicode NFC.
+
+If the sanitized `title` is empty after these steps, the renderer does not call `triggerNotification` at all (an empty title is never sent, with or without a body) and drops the notification silently, identically to the capability-absent case. This sanitizer is the full extent of Lando's involvement in the byte stream; everything past the `triggerNotification` call boundary — protocol choice, terminal-emulator compatibility, multiplexer passthrough — is OpenTUI's contract, not Lando's.
+
+**The policy plugin.** The bundled `@lando/notify-lando` plugin owns *when* to notify; core never decides. It contributes a lifecycle-event subscriber that publishes one `notify.desktop` per qualifying run: **the outer command invocation** (§3.5's `invocationId`/`parentInvocationId` correlation — the invocation with no `parentInvocationId`; a nested `command:` step invocation, §8.5.2.1, never independently qualifies even if it is in the eligible family and exceeds the threshold on its own) in the resolved notify-eligible family whose wall-clock `durationMs` is **`>= thresholdMs`** (the single, unified eligibility rule — there is no separate "exceeded" vs. "at least" wording anywhere else in this pipeline), on completion (`urgency: "success"`) or failure (`urgency: "failure"`). Configuration decodes against the canonical `NotifyConfig` schema, published from `@lando/sdk` and referenced by the §7.5 global config schema, under the global config `notify:` key:
+
+```ts
+export const NotifyConfig = Schema.Struct({
+  enabled:     Schema.optionalWith(Schema.Boolean, { default: () => true }),
+  // Minimum qualifying duration in milliseconds. 0 is valid and qualifies every eligible completed
+  // command (durationMs >= 0 is always true); the cap keeps a misconfigured value from silently
+  // disabling notifications for the run's entire lifetime.
+  thresholdMs: Schema.optionalWith(
+    Schema.Number.pipe(Schema.int(), Schema.greaterThanOrEqualTo(0), Schema.lessThanOrEqualTo(3_600_000)),
+    { default: () => 15000 },
+  ),
+  // Additional canonical command ids beyond the default family (below): at most 128 entries, each
+  // at most 128 characters and shaped like a canonical command id (§8.1.1, e.g. "app:start",
+  // "meta:setup"). An over-count array, an over-length entry, or a non-canonical-id-shaped entry
+  // fails schema decode before the resolved-family/registry step below ever runs.
+  commands:    Schema.optionalWith(
+    Schema.Array(Schema.String.pipe(Schema.maxLength(128), Schema.pattern(/^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$/))).pipe(Schema.maxItems(128)),
+    { default: () => [] },
+  ),
+});
+```
+
+```yaml
+notify:
+  enabled: true          # default
+  thresholdMs: 15000     # minimum qualifying duration in ms; 0 qualifies every eligible completed command
+  commands: []           # additional canonical ids beyond the default family; max 128 entries, max 128 chars each
+```
+
+The **default family** is: `app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`. After `NotifyConfig` decodes successfully, the plugin resolves the eligible family in two more steps, both beyond plain schema decode:
+
+1. **Registry validation.** Every id in `commands` is checked against the resolved command registry (§8.3 — the same registry `hostProxyAllowed`/allowlist checks use). An id that is not a real canonical command id fails with the existing `ConfigError` at config-resolution time, with `path` naming the offending `notify.commands` entry and `message` naming the unknown id and remediation. This happens before any subscriber registers; no notify-specific error is introduced.
+2. **Ordered deduplication.** The resolved eligible family is **not** a plain string `Set` (which would discard the meaningful order below) — it is an ordered list built as: the default family first, in the fixed order listed above; then each entry from `commands` that is not already in the default family, in the order it first appears in `commands`, skipping any id already added (whether from the default family or an earlier `commands` entry). A command id listed twice in `commands`, or listed once in `commands` and already present in the default family, contributes exactly one entry to the resolved family, at the position of its first occurrence — never a duplicate, and never reordered by a later repeat.
+
+Required behaviors: at most one notification per command run; nothing fires in non-TTY/CI runs or when the renderer lacks the capability (the plugin publishes the event regardless — capability gating is the renderer's job per the table above); disabling the plugin (standard §9 plugin enablement) or `notify.enabled: false` silences the surface entirely.
+
+The subscriber declares explicit priority **900**. This is intentionally late within the plugin `default` band (`100..999`) so ordinary plugin subscribers observe terminal lifecycle events first, while preserving the rule that plugin subscribers default to priority 500 when they omit the field (§11.3/§9.5).
+
+**Non-goal: container-initiated notification/clipboard relay.** This pipeline is foreground-only by design. `HostProxyService` (§10.10) carries no `notify`/`clipboardCopy` verb and none is planned for 4.0: the host-proxy dispatcher is a detached background worker with no renderer and no controlling terminal, so it has no active `Renderer.capabilities` to gate on and nothing to call `triggerNotification` through. A container process that already has a PTY attached can emit terminal escape sequences directly to its own inherited stdio without any host round-trip; a container process with no PTY has no terminal for a host-side response to write to either. See §10.10.2 for the full statement of why a cooperative relay through the host proxy would not add a real security boundary in either case.
+
+#### 8.9.8 Interactive log viewer
+
+`app:logs --follow` on a TTY under the default renderer presents an **interactive viewer** instead of a raw line stream. This is a **4.1 feature**; the contract is frozen now so the flag surface and renderer obligations are stable at GA.
+
+- **Content.** The viewer consumes the same merged, source-labeled `LogChunk` stream as line mode (§6.14) — identical redaction boundary, identical `--source`/`--since`/`--tail` semantics. It adds presentation only: scrollback over the buffered stream, per-source labels, and a bounded in-memory window (the viewer is not a pager over unbounded history).
+- **Follow behavior.** The viewer starts stuck to the tail; scrolling up unsticks it and new chunks accumulate without yanking the viewport; `viewer.follow` (`f`) re-sticks. `viewer.source-next` (`s`) cycles a source filter across the declared §6.14 sources plus `console` and "all". `viewer.quit` (`q`) and `Ctrl+C` exit; exit MUST leave the visible log lines in normal terminal scrollback (main-screen presentation, not alt-screen).
+- **Escape hatches.** `--no-viewer` forces line mode on a TTY. Non-TTY, `--renderer=plain`, and `--renderer=json` runs are line-mode always and are byte-identical to today's contract — the viewer never exists for machine consumers.
+- **Bindings** are the `viewer.*` actions of §8.9.6.
+
+**Freeze status.** This subsection is **spec-frozen only** — the behavioral contract above is normative for the eventual 4.1 implementation, but it introduces no new public schema and is **not part of the §13.2 schema snapshot**. There is nothing to add to `sdk/API_COMPATIBILITY.md` or `codegen:schema-snapshot` for this section; `--no-viewer` being accepted as a no-op flag at 4.0 is a CLI-surface detail (§8.1), not a schema export.
 
 ### 8.10 Interaction and prompts
 

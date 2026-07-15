@@ -58,7 +58,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - The committed `@lando/provider-lando` runtime-bundle manifest points at real published assets. To test a local unpublished bundle, build it locally and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it; verification is never disabled.
 - Managed Podman's `--config <dir>` does not load `<dir>/containers.conf`; the service launcher must also set `CONTAINERS_CONF=<dir>/containers.conf` so bundled helper paths are honored.
 - Podman 6 volume-prune safety requires one ownership-complete selector per `label` value because values are ORed; keep named-volume intent in the top-level `all=true` query parameter, not inside the encoded `filters` map, or it broadens deletion.
-- OpenTUI prompt support belongs behind the renderer plugin and dynamic import boundary described in `core/AGENTS.md`; never add `@opentui/core` to `@lando/core` or import it statically.
+- OpenTUI prompt support belongs behind the renderer plugin and dynamic import boundary described in `core/AGENTS.md`; never add `@opentui/core` to `@lando/core` or import it statically. Production code loads it only via a Bun-traceable literal `import("@opentui/core")`, lazy and TTY/default-renderer-only (spec §8.9.3 "Import discipline"); a constructed or aliased specifier (e.g. string concatenation) is not a substitute and is treated as a boundary violation.
 
 ## Guides and Docs-as-Tests
 

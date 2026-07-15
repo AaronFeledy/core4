@@ -57,6 +57,20 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 | Docs redactions | `@lando/core/docs/redactions` | Re-export of the canonical transcript redaction list owned by `@lando/sdk/docs/redactions` (§19.6); consumed by both the docs build and the test-time transcript writer. |
 | OCLIF adapter | `@lando/core/oclif` | The OCLIF-specific glue. Hosts MUST NOT import this unless they are building an alternate CLI distribution. |
 
+**Renderer-substrate and notifications additive compatibility inventory.** This is the authoritative public inventory for the Beta-1 feature wave. Every symbol below is additive, receives JSDoc/TSDoc, is recorded in `sdk/API_COMPATIBILITY.md`, and is covered by SDK backward-compatibility import tests. Every schema-backed symbol is also registered in the generated schema snapshot; `bun run codegen:schema-snapshot` followed by a clean snapshot diff is mandatory.
+
+| SDK surface | Additive exports |
+|---|---|
+| `@lando/sdk/renderer` | `RendererCapabilities`; `RendererPanelSlot`, `RendererPanelId`, `RendererPanelWatch`, `RendererPanelManifestEntry`, `RendererPanelSize`, `RendererPanelContext`, `RendererPanel`; `StyledSpanTone`, `StyledSpan`, `PanelView`; `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, `KeymapConfig` |
+| `@lando/sdk/events` | `RenderEvent`; `CodeSnippetEvent`, `DiffRenderEvent`, `MarkdownBlockEvent`, `NotifyDesktopEvent`; `CommandInvocationCorrelation`; the closed `LandoEvent` union containing the built-in taxonomy plus generated `cli-<canonical-id>-{init,run,error}` lifecycle schemas |
+| `@lando/sdk/schema` | `NotifyConfig`, `SubscriberManifestEntry`, `SubscriberSelector`, `PublishedGlobalConfigKey`, and the renderer/event schemas above through the canonical schema barrel |
+| `@lando/sdk/plugins` | `SubscriberFactory`; the additive `rendererPanels` and `subscribers` fields on `PluginManifest`; `LandoPluginContext.events.publishRender` as the only plugin publication seam, restricted to the closed `RenderEvent` union |
+| `@lando/sdk/errors` | `KeymapConflictError`; existing `PluginManifestError`, `PluginLoadError`, and `ConfigError` remain the owners for the failure classes specified in §8.9.5/§8.9.7 and gain no panel-, selector-, or notify-specific replacements |
+
+The compatibility inventory includes both schema values and their `Schema.Schema.Type<typeof ...>` inferred types; no parallel hand-written public types are introduced. `sdk/API_COMPATIBILITY.md` records the additive manifest fields and `LandoPluginContext` member as well as named exports, while the schema snapshot records every schema-backed value (including `CommandInvocationCorrelation` and `KeymapConflictError`). The §8.9.8 interactive log viewer is prose-frozen only and intentionally absent from both inventories.
+
+This inventory does not change the separate `RemoteSource`/`Dataset` Beta-1 freeze: those contracts remain contract-only, never sync application code, and their implementation stays in the 4.1 feature wave (§10.12).
+
 Stability rules:
 
 - The default entry (`@lando/core`), `@lando/core/services`, `@lando/core/schema`, `@lando/core/errors`, `@lando/core/events`, `@lando/core/paths`, `@lando/core/landofile`, and `@lando/core/cli` are **semver-stable** within a major version. Breaking changes bump the major. `@lando/core/landofile` re-exports the pure `@lando/sdk/landofile` serializer (§7.8.1); the `LandofileEmitError` it adds rides the subpath, not the frozen `@lando/core/errors` barrel.

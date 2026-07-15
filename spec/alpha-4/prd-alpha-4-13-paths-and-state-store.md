@@ -220,7 +220,7 @@ Depends on: **ALPHA4-01** (setup/uninstall consume roots and derived paths), **A
 - [ ] The shared boundary-gate AST scanners detect dynamic `import()` call expressions (constructed or statically resolvable specifiers) in addition to static `import`/`require`, for at least `check:env-helper-boundary` and the `import-boundary` walker.
 - [ ] Barrel re-export escape hatches (`export * from` / `export { x } from` re-exporting a banned module) are flagged wherever a direct import would be.
 - [ ] `mkdtemp` negative fixtures prove each hardened gate fires on a dynamic-import offender and a re-export offender, and the real working tree passes clean.
-- [ ] Intentionally-allowed dynamic imports (e.g. the OpenTUI constructed-specifier boundary) remain allowlisted and are not broken.
+- [ ] Intentionally-allowed dynamic imports (e.g. the OpenTUI Bun-traceable literal `import("@opentui/core")` boundary, §8.9.3 "Import discipline") remain allowlisted and are not broken; a *constructed or aliased* specifier for `@opentui/core` (e.g. `import("@opentui/" + "core")`) is not one of the allowlisted shapes and MUST still be caught as a static-import-equivalent violation by these same scanners.
 - [ ] Tests pass.
 - [ ] Typecheck passes.
 - [ ] Lint passes.

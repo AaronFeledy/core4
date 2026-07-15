@@ -607,13 +607,6 @@ export const HostProxyRequest = Schema.Union(
     tty:  Schema.Boolean,                                     // whether the caller has a TTY attached
     env:  Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   }),
-  Schema.TaggedStruct("notify", {
-    title: Schema.String,
-    body:  Schema.optional(Schema.String),
-  }),
-  Schema.TaggedStruct("clipboardCopy", {
-    text: Schema.String,
-  }),
 );
 export type HostProxyRequest = Schema.Schema.Type<typeof HostProxyRequest>;
 
@@ -624,6 +617,8 @@ export const HostProxyResponse = Schema.Union(
 ```
 
 `runLando` responses are delivered as NDJSON frames over the socket so the in-container shim can stream stdout/stderr in real time and exit with the host command's exit code. Each frame is one of `{ kind: "stdout", chunk }`, `{ kind: "stderr", chunk }`, `{ kind: "exit", code }`, or `{ kind: "error", … }`.
+
+**Container-initiated terminal notification / clipboard relay is unsupported in 4.0.** `HostProxyRequest` carries no `notify` or `clipboardCopy` verb, and none is planned as a `HostProxyService` responsibility: the dispatcher (§10.10.1) is a detached background worker with no renderer and no controlling terminal, so it has nothing to relay a notification/clipboard write *to*; a container process that already has a PTY attached (an interactive `docker exec -t` / `lando shell` session) can emit terminal escape sequences (OSC 9/777/52 or any other protocol its own terminal supports) directly to its own inherited stdio without going through the host proxy at all, and a container process with no PTY has no terminal for any server-side response to write to either — so a cooperative "the host decides, the container asks" relay would not be a real security boundary in either case. §8.9.7 covers the one notification path 4.0 does ship: the *foreground* CLI process notifying about its own command.
 
 **Allowed URL schemes for `openUrl`** (out-of-the-box):
 
@@ -679,7 +674,7 @@ If `LANDO_HOST_PROXY_SOCKET` is unset (the user is in a service without the feat
 `HostProxyService` is a §4.2 pluggable abstraction. Plugins replace the default Layer to satisfy use cases the bundled implementation deliberately does not cover:
 
 - **Headless CI.** Swallow `openUrl` (log instead of opening a browser); `runLando` proceeds normally.
-- **Audited builds.** Every dispatch is appended to a tamper-evident append-only log; `notify`/`clipboardCopy` are rejected.
+- **Audited builds.** Every dispatch is appended to a tamper-evident append-only log.
 - **Remote host transports.** Dispatch over a different transport (e.g., a teams-mode build that posts URLs to Slack instead of opening them locally).
 - **Recording/test runs.** Capture every request for assertions; never call out to the real host.
 

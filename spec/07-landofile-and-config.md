@@ -783,6 +783,10 @@ network:
 
 logger: pretty                         # which Logger plugin to use
 renderer: lando                        # which Renderer plugin to use
+notify:
+  enabled: true                        # enable desktop notifications
+  thresholdMs: 15000                   # minimum qualifying command duration
+  commands: []                         # additional canonical command ids
 toolingEngine: providerExec            # which ToolingEngine plugin to use
 
 # Top-level CLI command aliasing (§8.1.2).
@@ -841,6 +845,16 @@ experimental: false
 
 stats:
   report: true                         # telemetry enabled by default; users may opt out
+```
+
+`notify` is the **only** global-config key Beta 1 publishes through the §9.5 `PublishedGlobalConfigKey`/`configKey` subscriber-projection seam. The `notify:` block decodes against the canonical `NotifyConfig` schema defined once in §8.9.7 (not re-declared here): `enabled` (boolean, default `true`), `thresholdMs` (integer `0..3_600_000`, default `15000` — `0` qualifies every eligible completed command, since `durationMs >= 0` is always true), and `commands` (at most 128 canonical-command-id-shaped strings, each at most 128 characters, default `[]`). After decode, every `commands` entry is validated against the resolved command registry (§8.3) — an unknown id fails with `ConfigError`, whose `path` identifies the offending entry and whose `message` provides remediation — and the eligible family resolves as the fixed-order default family (`app:start`, `app:stop`, `app:restart`, `app:rebuild`, `app:destroy`, `meta:setup`, `meta:update`) followed by each `commands` entry not already present, in first-occurrence order (never a plain unordered Set union).
+
+This block follows the standard environment-override behavior in §7.6: `notify.enabled` → `LANDO_NOTIFY_ENABLED`, `notify.thresholdMs` → `LANDO_NOTIFY_THRESHOLD_MS`, `notify.commands` → `LANDO_NOTIFY_COMMANDS` (a JSON array string, parsed per the standard "JSON-parseable string values are parsed into objects/arrays" rule — the same mechanism `LANDO_NETWORK_CA_CERTS` uses):
+
+```bash
+LANDO_NOTIFY_ENABLED=false
+LANDO_NOTIFY_THRESHOLD_MS=0
+LANDO_NOTIFY_COMMANDS='["app:info","app:logs"]'
 ```
 
 `build.concurrency.app: min(4, cpu_count)` is the spec form; the resolved value at runtime is the integer minimum of `4` and the host CPU count. CI runners with high core counts therefore stay capped at `4` by default to leave headroom for the runner's own work; users with a fixed budget can pin a literal integer in their global config or per-app override. Per-service overrides live under `services.<name>.build:` in the Landofile (§6.2): `services.appserver.build.failFast: true` opts a single service into fail-fast even when the phase default is continue-all; `services.node.build.concurrency: 1` serializes a service's own multi-step app build.

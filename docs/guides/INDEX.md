@@ -107,6 +107,9 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-12 | US-284 | Terminal renderer visual QA | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
 | PRD-12 | US-425, US-426, US-427, US-428, US-429 | `lando logs` with declared file sources and `--source` | `docs/guides/cli/service-logs.mdx` | Shipped |
 | PRD-15 | US-329 | Driving Lando from JSON / an agent | `docs/guides/scripting-with-json.mdx` | Shipped |
+| BETA1-PRD-15 | US-455, US-456, US-458 | OpenTUI substrate, split-footer live region, degradation, and foreground desktop notifications (future ownership; not yet landed in this guide's body) | `docs/guides/cli/terminal-ui-polish.mdx` | Planned |
+| BETA1-PRD-15 | US-457 | Prompt chrome polish and the frame-snapshot harness (future ownership; not yet landed in this guide's body) | `docs/guides/cli/interactive-prompts.mdx` | Planned |
+| BETA1-PRD-15 | US-457 | Frame-snapshot / visual-QA coverage for the renderer substrate (future ownership; not yet landed in this guide's body) | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Planned |
 
 ## Core service catalog (capability guides — no PRD mapping)
 

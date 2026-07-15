@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 runs through US-454 and includes a closure wave plus residual-hardening wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps (with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence); and US-444..US-454 close review-time hardening deferrals that remained after the closure wave before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
+  "description": "Phase 5 Beta 1 runs through US-460 and includes a closure wave plus residual-hardening wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps (with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence); and US-444..US-454 close review-time hardening deferrals that remained after the closure wave before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria. US-455..US-460 (PRD-15) land the renderer-substrate wave: the OpenTUI ^0.4.3 substrate contract with per-target compiled native packaging, the split-footer task-tree live region, prompt chrome plus the frame-snapshot harness, foreground-only desktop notifications realized via OpenTUI's triggerNotification (notify.desktop + @lando/notify-lando; container-initiated notify/clipboard relay through HostProxyService is explicitly deferred/unsupported), and the contract-only freeze of the 4.1 renderer surfaces.",
   "userStories": [
     {
       "id": "US-372",
@@ -1476,6 +1476,118 @@
       "priority": 83,
       "passes": false,
       "notes": "PRD-14 residual hardening. Origin: US-442 review deferred pre-parse and runtime-layer construction as outside the shared command lifecycle boundary."
+    },
+    {
+      "id": "US-455",
+      "title": "OpenTUI 0.4.x baseline, import discipline, and degradation",
+      "description": "As a user on any terminal, the bundled renderer either runs on its specified substrate or degrades to line mode - it never crashes a command, slows cold start, or contaminates machine output because of the TUI layer.",
+      "acceptanceCriteria": [
+        "@lando/renderer-lando depends on @opentui/core ^0.4.3; no other workspace package depends on it, and no static import of @opentui/core exists in any production module - production code loads it only via a Bun-traceable literal import(\"@opentui/core\") inside the renderer plugin (no constructed or aliased specifier); plugins/renderer-lando/test/ MAY statically import @opentui/core/testing - asserted by a boundary test that encodes the production/test glob distinction and additionally rejects a constructed-specifier fixture (section 8.9.3 \"Import discipline\").",
+        "OpenTUI is not loaded for level-none commands, the pre-renderer fast path, non-TTY runs, or --renderer=plain|json runs, asserted by an import-graph/spy test on both dispatch paths.",
+        "A forced substrate load/init failure (missing native binding fixture, unsupported-terminal fixture) degrades to the non-TTY line-mode path for the remainder of the process with a debug-level notice; the command completes successfully and json/plain output is byte-identical to a run without the substrate.",
+        "section 2.1 cold-start and first-paint perf-budget suites stay green after the substrate lands.",
+        "scripts/build-compiled-binary.ts (section 17.3.1) wraps programmatic Bun.build({ compile, plugins }) with an onResolve plugin that matches exactly the 8 catalog @opentui/core-* native-package roots, lets the one root matching the current release target resolve normally, and redirects the other 7 to generated import-free throwing stubs (never redirecting @opentui/core/testing or a relative/non-root import); scripts/build-opentui-native-stubs.ts (section 17.2) generates the 8-root/5-mapping catalog plus the 35 stub modules (5 targets \u00d7 7 redirected roots), with a deterministic re-run + git diff --exit-code drift gate and a focused bun run codegen:opentui-native-stubs command.",
+        "Stage 7 of the section 17.1 release pipeline, the local rehearsal path, and every other release-shaped main-binary compile call site are migrated to call scripts/build-compiled-binary.ts's wrapper - asserted by a source-grep gate that no bare bun build --compile/Bun.build({ compile }) call for the main binary exists outside the wrapper; the section 10.10.3 in-container shim and other small helper binaries are explicitly unaffected and keep their plain, plugin-free compile call.",
+        "Each of the five release targets' compiled binary embeds exactly one native shared library (the one matching its own target) with no sidecar node_modules or loose native library file; a relocated binary driven through a PTY harness initializes the substrate and renders successfully, proves the other 7 catalog roots are unreachable (each would throw its stub's fixed error), and proves the native asset is unreachable from any level-none/json/non-TTY invocation.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 84,
+      "passes": false,
+      "notes": "Origin: spec section 8.9.3 (default renderer implementation contract) and section 17.3.1 (per-target OpenTUI native asset packaging). The ^0.4.3 dependency bump is included in this patch; this story adds the boundary tests, degradation contract, and compiled native packaging."
+    },
+    {
+      "id": "US-456",
+      "title": "Split-footer task-tree live region",
+      "description": "As a user watching a multi-service build, the task tree renders in a bottom-pinned live region while completed output scrolls into native terminal scrollback - no torn frames, no repaint artifacts, and resize just works.",
+      "acceptanceCriteria": [
+        "The task tree renders through the substrate split-footer screen mode with captured stdout; the hand-rolled repaint painter is removed (its non-TTY line-mode formatting survives as the degradation/line path).",
+        "Passthrough lines are committed to terminal scrollback above the live region in arrival order with no lost or duplicated lines under concurrent writes.",
+        "Terminal resize mid-build triggers the split-footer replay reset; committed scrollback and the live region survive without corruption, covered by a resize frame-snapshot fixture.",
+        "The alt-screen full-tail expand is realized as a runtime screen-mode transition and back with task.detail.expand/collapse publication and state restoration per section 8.9.2.",
+        "Live mode is enabled only while an animated affordance is on screen, dropped when static, capped at 30 fps.",
+        "The section 8.9.2 perf-budget fixture and the first-paint suite pass unchanged.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 85,
+      "passes": false,
+      "notes": "Origin: spec section 8.9.3 (task-tree live region). Replaces plugins/renderer-lando/src/task-tree-tail.ts whole-frame rewind/erase/repaint painter. Riskiest story of the wave; land after US-457 harness."
+    },
+    {
+      "id": "US-457",
+      "title": "Prompt chrome polish and the frame-snapshot harness",
+      "description": "As a user answering prompts, panels carry titles and explicit selection indicators; as a maintainer, every rendered surface has headless frame-snapshot coverage.",
+      "acceptanceCriteria": [
+        "Prompt panels render a border title with accent color and select/multiselect controls show an explicit selection indicator; InteractionService seams, prompt schemas, and answer semantics are untouched.",
+        "A frame-snapshot harness on @opentui/core/testing (createTestRenderer, memory-buffered output) covers task-tree frames, prompt chrome for every rendered prompt type, a narrow-terminal fixture, and the resize case; it runs headless in CI with no PTY.",
+        "The harness joins the section 13.1 Renderer frames layer; snapshots are deterministic across repeated runs.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 86,
+      "passes": false,
+      "notes": "Origin: spec sections 8.9.3 (testing, prompt chrome) and 13.1 (Renderer frames layer). Presentation only; no InteractionService changes."
+    },
+    {
+      "id": "US-458",
+      "title": "RendererCapabilities, notify.desktop SDK surface, foreground renderer realization, and HostProxy union cleanup",
+      "description": "As an SDK consumer, the complete renderer capability surface and the notification event/config are typed contract surface; as a user on a supporting terminal (including over SSH), a notify.desktop event raises a real desktop notification from the foreground command that published it - there is no container-initiated notification/clipboard path in 4.0, and the accidental HostProxyRequest verbs that briefly implied one are deleted.",
+      "acceptanceCriteria": [
+        "This story owns publishing and wiring the complete RendererCapabilities struct - all four fields (color, interactive, animation, notifications), not notifications alone - from @lando/sdk, and owns every renderer implementation computing it correctly per the section 8.9 default/false table: the default renderer's TTY, substrate-initialized path before/after the async probe resolves (initial snapshot interactive/animation true, color/notifications false; a promoted snapshot may flip color/notifications false to true, never demoting), the default renderer degraded, non-TTY, --renderer=plain, --renderer=json, and --renderer=verbose - explicitly { color: true, interactive: false, animation: false, notifications: false } on a TTY and all false on a non-TTY - and any third-party renderer (computes the same four fields against its own substrate, with no shared internal shape to conform to). Renderer.capabilities is a getter returning one of at most two immutable snapshot objects per run (initial, then at most one monotonic promotion at probe resolution); it is never mutated in place and the promotion never demotes a field. NotifyDesktopEvent ({ title, body?, urgency? }, title 1..256 chars, body optional up to 4096 chars) and the NotifyConfig schema are also exported from @lando/sdk. Raw OpenTUI terminal capability probing stays an internal @lando/renderer-lando detail and is never published from @lando/sdk. RendererCapabilities/NotifyDesktopEvent/NotifyConfig are additive, recorded in sdk/API_COMPATIBILITY.md, and the schema snapshot is refreshed with git diff --exit-code clean - asserted by a test matrix covering every run shape in the section 8.9 table (including both verbose rows) on all bundled renderer ids, plus a fake-clock test proving delayed-success, timeout, and no-response probe outcomes each resolve to the correct permanent/promoted snapshot without a real wall-clock wait, and a test proving a notify.desktop event evaluated against the initial (pre-promotion) snapshot is dropped rather than buffered for replay after promotion.",
+        "Every cli-<canonical-id>-init/-run/-error payload carries CommandInvocationCorrelation: a fresh invocationId and optional parentInvocationId, with one stable pair shared across an invocation's lifecycle triplet. Only the parentless outer invocation resolved from user/embedding-host argv is notification-eligible; nested command: invocations receive their own id plus the enclosing id as parent and still publish their normal lifecycle events to exact and cli-command-terminal subscribers, but never independently drive foreground notification presentation.",
+        "When renderer.capabilities.notifications is true, and only then, the default renderer calls the verified OpenTUI 0.4.3 triggerNotification(body ?? title, body === undefined ? undefined : title) directly - Lando does not hand-frame OSC 9/777 or select a notification protocol; OpenTUI owns protocol selection, tmux/multiplexer handling, and output routing. When the capability is false, triggerNotification is never called and the event is dropped silently. json passes the event through as a structured stderr event regardless of capability; plain/non-TTY drop it.",
+        "Title and body are redacted at the publisher boundary (section 3.7), asserted by a secret-bearing fixture, and the renderer applies its fixed sanitizer (CR/LF/TAB \u2192 space, strip C0/C1/ESC/BEL/DEL, strip bidi-override characters, NFC-normalize) before calling triggerNotification; an empty sanitized title suppresses the call entirely (with or without a body); a title/body exceeding the schema's 256/4096-character bound fails NotifyDesktopEvent decode before publication.",
+        "The current, unreleased HostProxyRequest union carries an accidental notify/clipboardCopy pair left over from an earlier draft of this same patch; this story deletes both variants - plus any dispatcher handling, allowlist entries, and contract-suite tests that assumed them - leaving HostProxyRequest's tagged union with exactly four members: openUrl, openPath, runLando, runBun. Nothing is deprecated, aliased, or shimmed - since nothing has shipped, the two accidental variants are simply removed. Asserted by a schema-surface test confirming the union's exact membership.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 87,
+      "passes": false,
+      "notes": "Origin: spec section 8.9.7 (foreground-only realization via OpenTUI triggerNotification) and section 10.10.2 (explicit non-goal: container-initiated notify/clipboardCopy relay is unsupported/deferred). SDK-additive; follow sdk/AGENTS.md snapshot discipline."
+    },
+    {
+      "id": "US-459",
+      "title": "The @lando/notify-lando bundled policy plugin",
+      "description": "As a user who kicked off a long rebuild and switched windows, I get one desktop notification when it finishes or fails - and I can turn the whole thing off.",
+      "acceptanceCriteria": [
+        "A new bundled @lando/notify-lando workspace plugin contributes its subscriber through the section 11.3.1/section 9.5 schema-derived SubscriberManifestEntry (id, selectors: [{ family: \"cli-command-terminal\" }] decoding against the SubscriberSelector Effect Schema union, module, explicit priority: 900 in the allowed plugin default band 100..999, default abortOnError, and configKey: notify) whose default-export SubscriberFactory<NotifyConfig> factory receives LandoPluginContext and only the already-decoded NotifyConfig projected by the loader (never the full GlobalConfig), and publishes exactly one notify.desktop per qualifying run through ctx.events.publishRender - never a raw EventService - for the parentless outer foreground invocation in the resolved eligible family (default family unioned with notify.commands, deduplicated, registry-validated per section 7.5) whose wall-clock durationMs is >= notify.thresholdMs (default 15000, unified eligibility rule), urgency: \"success\" on completion and \"failure\" on tagged failure. Nested invocations remain published to lifecycle subscribers but are never notification-eligible.",
+        "The CLI terminal lifecycle events consumed by the subscriber carry invocationId and optional parentInvocationId, stable across each invocation's init/run/error triplet. The subscriber accepts only a terminal event with no parentInvocationId as the outer foreground candidate; nested terminal events still publish and reach subscribers normally but are ignored for notification eligibility.",
+        "Global config notify: (enabled default true, thresholdMs bounded 0..3_600_000, commands additive allowlist deduplicated against the default family) decodes against the published NotifyConfig schema; notify.enabled: false and disabling the plugin both silence the surface; thresholdMs: 0 qualifies every eligible completed command; notify is asserted as the only PublishedGlobalConfigKey in Beta 1.",
+        "Non-TTY/CI runs never notify (capability gating at the renderer; the plugin remains presentation-agnostic).",
+        "The subscriber's selector semantics are validated once, at the end of plugin registration, after the command registry is complete: exact selectors must belong to the closed built-in LandoEvent taxonomy plus generated canonical-command lifecycle names (PluginManifestError otherwise), plugins cannot register arbitrary events, and cli-command-terminal expands to the run/error pair for every canonical command. A test asserts that the subscriber's expanded event set is empty/absent until registration finishes and correct immediately after, never partially populated mid-registration (section 11.3.1's two-phase timing).",
+        "SubscriberManifestEntry, SubscriberSelector, PublishedGlobalConfigKey, and SubscriberFactory are exported from @lando/sdk, recorded in sdk/API_COMPATIBILITY.md, and (for the schema-derived exports) schema-snapshot-tracked; this story owns that publication, not just the plugin consuming it.",
+        "The plugin appears in the section 1.4 reference bundle and the generated bundled-plugin tables (bun run codegen clean); bun install resolves the new workspace package; this plugin doubles as the reference example for the section 11.3.1/section 9.5 subscriber-factory and configKey contribution surfaces.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 88,
+      "passes": false,
+      "notes": "Origin: spec sections 8.9.7, 1.4, and 11.3.1 (bounded subscriber selectors and factories). This story owns implementing the newly frozen subscribers: manifest/context surface (lazy-loaded, cached SubscriberFactory invocation), using notify-lando as the first real consumer and reference example."
+    },
+    {
+      "id": "US-460",
+      "title": "Contract-only freeze of the 4.1 renderer surfaces",
+      "description": "As a plugin author targeting 4.0, the panel-slot, keymap, and rich-render-event schemas are frozen, snapshot-tracked SDK surface I can build against - while the interactive log viewer's contract is frozen as spec-frozen prose only, with no schema of its own - even though core renders none of these until 4.1.",
+      "acceptanceCriteria": [
+        "The authoritative additive SDK inventory from section 16.2 is exported from its documented subpaths with JSDoc/TSDoc and inferred schema types: @lando/sdk/renderer adds RendererCapabilities, RendererPanelSlot, RendererPanelId, RendererPanelWatch, RendererPanelManifestEntry, RendererPanelSize, RendererPanelContext, RendererPanel, StyledSpanTone, StyledSpan, PanelView, RendererActionId, RendererKeyName, RendererKeyChordPattern, RendererKeyChord, RendererKeyBinding, and KeymapConfig; @lando/sdk/events adds RenderEvent, CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent, NotifyDesktopEvent, CommandInvocationCorrelation, and the closed LandoEvent union; @lando/sdk/schema adds NotifyConfig, SubscriberManifestEntry, SubscriberSelector, PublishedGlobalConfigKey, and the canonical renderer/event schema exports; @lando/sdk/plugins adds SubscriberFactory, PluginManifest.rendererPanels, PluginManifest.subscribers, and LandoPluginContext.events.publishRender restricted to the closed RenderEvent union; @lando/sdk/errors adds the public schema-backed KeymapConflictError, while existing PluginManifestError, PluginLoadError, and ConfigError own panel/selector/notify failures with no panel-, selector-, or notify-specific replacements. sdk/API_COMPATIBILITY.md records named exports plus the manifest/context additions, backward-compatibility import tests cover them, every schema-backed value (including CommandInvocationCorrelation and KeymapConflictError) is in the generated schema snapshot, and bun run codegen:schema-snapshot leaves a clean diff. The section 8.9.8 interactive log viewer remains prose-only and absent from both inventories. The separate RemoteSource/Dataset Beta-1 freeze remains contract-only, never syncs application code, and stays a 4.1 implementation.",
+        "The plugin manifest schema accepts rendererPanels: entries (id, slot, watch, module) decoded against RendererPanelManifestEntry, including the frozen 4.0 slot vocabulary (status-bar, task-tree:footer, doctor:summary), the RendererPanelId pattern, and a unique 1..32-entry RendererPanelWatch. Manifest shape/id/slot/path validation and, after all plugins register, watch membership validation occur without importing panel code; the closed registry is exactly the built-in LandoEvent taxonomy plus generated cli-<canonical-id>-{init,run,error} lifecycle names, and plugins cannot register arbitrary events. Every malformed entry, duplicate plugin-local id, unknown slot/event, or escaping module path is PluginManifestError. A never-visible slot never imports its panel. On first visibility the host starts one persistent isolated worker with only the validated module URL and manifest id; the host never imports/evaluates/inspects the module, the worker alone imports it, validates the default export and id, and returns the decoded id during a 1000ms ready handshake before registration or rendering. Import/export/load/id failure or mismatch is PluginLoadError; only that worker is terminated and panel dropped.",
+        "KeymapConfig is exported as a plain struct (no root-level Schema.filter, per the SDK schema-snapshot rule against filtering exported snapshotted structs); every per-value schema failure - malformed chord/case, unknown key name, literal punctuation, reserved ctrl+c, duplicate chord, or out-of-range cardinality - is ordinary ConfigError with the offending path and schema diagnostic. Same-surface chord-conflict detection is a separate config-boundary validation step, run once after a successful KeymapConfig decode, that raises the public schema-backed KeymapConflictError; a well-formed colliding config decodes first and fails only there, while cross-surface chord reuse passes. RendererPanelWatch similarly stays schema-checkable on shape/uniqueness alone; known-event membership belongs to plugin-loader validation, not the exported schema.",
+        "The section 13.1 \"Renderer panel contract\" suite ships from @lando/sdk/test as a standalone reference harness, deliberately absent from the section 4.2 six-abstraction plugin-abstraction-coverage.test.ts manifest. At first fixture-slot visibility it starts a persistent isolated worker, and only that worker imports the module; the decoded id must return in the 1000ms ready handshake. Host/worker IPC uses transferable binary frames capped at 65,542 bytes per complete request (65,536-byte payload) and 5,129 bytes per encoded response. Each post-ready render round trip, including transfer and decode, has an 8ms wall-clock deadline. Any load/id/decode/limit/timeout/throw/worker failure terminates and permanently drops only that panel; timeout preserves its last-good PanelView, invalid output is never clipped/truncated, and the fixture covers purity, determinism, the 8-row/32-span/4096-text-byte bounds, and last-good/coalescing behavior. It is never an in-process synchronous call.",
+        "Every 4.0 renderer honors the plain-text fallback matrix for the rich render events (code.snippet/diff.render/markdown.block emit verbatim content in TTY/plain/non-TTY; json passes events through), asserted against the bundled renderers; startLine/highlightLines decode only positive integers.",
+        "No 4.0 implementation ships for: rich TTY presentation, panel rendering, keymap remapping / the keymap: global-config key, the keymap.help (question-mark) overlay, or the interactive log viewer - each is documented as landing in 4.1 (ROADMAP Phase 9), and app:logs --follow behavior is unchanged in 4.0 apart from the reserved --no-viewer flag being accepted as a no-op; the section 8.9.8 log-viewer contract is spec-frozen prose only and adds no schema to the section 13.2 snapshot.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 89,
+      "passes": false,
+      "notes": "Origin: spec sections 8.9.4-8.9.6, 8.9.8, 9.5, 13.1. Follows the TunnelService/RemoteSource contract-only freeze precedent; implementations are ROADMAP Phase 9 (4.1)."
     }
   ]
 }

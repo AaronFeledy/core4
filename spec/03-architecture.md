@@ -278,7 +278,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `InteractionService` | The input peer of `Renderer` (§8.10): resolves a typed `PromptSpec` (or ordered batch) against the active answer source — explicit answer → recipe/caller default (`--yes`) → interactive prompt → fail — using the published prompt vocabulary (text/select/multiselect/confirm/number/secret/path/editor); owns interactivity-mode resolution (`auto`/`interactive`/`non-interactive`), `secret`/redaction guarantees, and dynamic `choicesFrom` resolution. Used by `apps:init` recipe prompts, `meta:plugin:new`, the `meta:plugin:add` trust gate, `meta:setup` confirmations, and `lando doctor --fix` | `InteractionServiceLive` (`Layer.suspend`-wrapped — built only when a command actually prompts; default `auto` mode in CLI, `non-interactive` in library mode; plugin-contributed implementations register at level `plugins` and replace the default per §4.2/§4.3) |
 | `DeprecationService` | Records deprecated-surface usage, dedupes per process, publishes `deprecation-used` events, and answers lookups for `lando doctor` / `lando config` / docs build (§18) | `DeprecationServiceLive` (constructed eagerly at level `minimal`; registry index populated at level `plugins`) |
 | `DoctorService` | Runs host/app/provider diagnostics and exposes automated or manual remediations; aggregates plugin-contributed `doctorChecks` (§9.5); also records deprecation entries surfaced by `lando doctor --deprecations` (§18.6) | `DoctorServiceLive` (constructed at level `plugins` so plugin-contributed checks register; transcripts captured via `ShellRunner` per §10.9) |
-| `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2), `notify` (host notification), `clipboardCopy` (host clipboard write) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
+| `HostProxyService` | Per-app container→host RPC: opens `<userDataRoot>/run/<app-id>/host-proxy.sock`, dispatches the full §10.10.2 message set — `openUrl` (host browser open), `openPath` (host-side path open), `runLando` (in-process re-entry into `@lando/core/cli` against a retained runtime), `runBun` (read-only Bun verbs forwarded to host `BunSelfRunner`; verb allowlist in §10.10.2) — enforces token auth and the §10.10 allowlists, publishes `pre-host-proxy-call` / `post-host-proxy-call` lifecycle events. Container-initiated terminal notification/clipboard relay is not part of this dispatch (§10.10.2). | `HostProxyServiceLive` (lazy via `Layer.suspend`; only constructed when the active app plan includes the `lando.host-proxy` feature, §6.11) |
 | `TunnelService` | Public app/service sharing (§10.2.2): resolves a `RoutePlan` or service endpoint target, performs provider control-plane calls through `HttpClient`, provisions any connector binary through the tool-provisioning helper over `Downloader`, supervises connector processes through `ProcessRunner`, persists detached session state through `StateStore`, waits for readiness with the probe primitive, publishes tunnel lifecycle events, and composes `InteractionService` + `RedactionService`. It is not a data-transfer primitive and does not use `DataMover` except in higher-level features that also move bytes | No always-on default in v4.0; plugin-contributed `TunnelService` implementations register at level `plugins` and are constructed lazily when `app:share` / `App.share` asks for one (§4.2/§4.3) |
 | `McpService` | The in-process Model Context Protocol server behind `lando mcp` (§10.14, §8.2.6): projects allowlisted `LandoCommandSpec`s as typed MCP tools (input schemas from `FlagSpec`/`ArgSpec`, results as `CommandResultEnvelope`s through `encodeCommandResult`), optionally projects tooling tasks, exposes resolved-config/info/doctor resources, replays the redacted `EventService` history as notifications, dispatches every call through the `@lando/core/cli` operations against a retained runtime, enforces the generated `mcp-allowlist` cache plus `mcp.allow`/`mcp.deny` config, runs non-interactive, caps concurrency, maps MCP cancellation to `Effect.interrupt`, and publishes `pre-mcp-call` / `post-mcp-call` events. **Not a §4.2 plugin abstraction in v4.0** — the pluggable seams are `mcpAllowed:` command flags and the `mcp.*` config keys | `McpServiceLive` (lazy via `Layer.suspend` at level `plugins`; only constructed when `meta:mcp` or a library host requests it) |
 | `GlobalAppService` | The global Lando app: regenerates `<userDataRoot>/global/.lando.dist.yml` from `globalServices:` manifest contributions, manages the `global` app's plan, lifecycle, and auto-start (§20). Reuses the same `RuntimeProvider`, `AppPlanner`, and `BuildOrchestrator` user apps use; only the `<app-id>` is fixed to `global`. | `GlobalAppServiceLive` (constructed at level `global`; `Layer.suspend`-wrapped — `lando info` against an already-running user app whose features require no global services pays zero cost) |
@@ -497,6 +497,8 @@ Events are typed and validated. Subscribers register through plugin manifests.
 
 CLI event names use the **canonical command id** (§8.1.1), not the top-level alias the user typed. Subscribing to `cli-app:start-run` catches the event whether the user invoked `lando app start` or `lando start`.
 
+**Closed event registry.** `LandoEvent` is the closed schema union of the built-in event taxonomy in this section plus the three generated lifecycle schemas for every canonical command in the resolved command registry: `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, and `cli-<canonical-id>-error`. Registering a plugin command adds only those generated lifecycle names for that command. Plugins cannot contribute event schemas, register arbitrary event names, or widen `LandoEvent`; their only publish seam is the closed rich `RenderEvent` subset exposed by `LandoPluginContext.events.publishRender` (§9.8).
+
 **CLI event mapping to OCLIF lifecycle:**
 
 | Event suffix | Fires when | OCLIF hook |
@@ -506,6 +508,21 @@ CLI event names use the **canonical command id** (§8.1.1), not the top-level al
 | `-error` | The command's `run()` body raised a tagged error or was interrupted. The error is published as the event payload. Fires before `Scope` finalization. | OCLIF error path / `command_not_found` |
 
 Exactly one of `-run` or `-error` fires for any given invocation; `-init` always fires first when the command is resolved (it does not fire for `command_not_found`).
+
+**Command invocation correlation.** Every `cli-<canonical-id>-init`/`-run`/`-error` payload carries a schema-derived correlation pair:
+
+```ts
+export const CommandInvocationCorrelation = Schema.Struct({
+  invocationId:       Schema.String,                       // ULID; unique per command invocation (outer or nested)
+  parentInvocationId: Schema.optional(Schema.String),       // ULID of the enclosing invocation; absent for the outer invocation
+});
+export type CommandInvocationCorrelation = Schema.Schema.Type<typeof CommandInvocationCorrelation>;
+```
+
+- The **outer invocation** — the command OCLIF (or `runCompiledCli`) resolved directly from user/embedding-host argv — gets a freshly generated `invocationId` and carries no `parentInvocationId`. It is the **only** notification-eligible foreground invocation for the run (§8.9.7): `@lando/notify-lando` and any other foreground-presentation consumer act on the outer invocation's `-run`/`-error` event only.
+- A **nested `command:` step invocation** (§8.5.2.1) — a tooling task invoking another canonical command internally — gets its own fresh `invocationId` and sets `parentInvocationId` to the invocation that contains it (which may itself be nested, chaining an arbitrary-depth invocation tree). A nested invocation's `-run`/`-error` event fires exactly as normal for any subscriber watching that canonical id or the `cli-command-terminal` family (§11.3.1) — it is not suppressed — but it never independently qualifies as *the* foreground invocation, so it never drives desktop notifications or other single-shot foreground presentation on its own.
+- `cli-<canonical-id>-run` and `cli-<canonical-id>-error` for a given invocation share the same `invocationId`/`parentInvocationId` pair their sibling `cli-<canonical-id>-init` published — the triplet for one invocation always correlates by that single id, never regenerated between `-init` and `-run`/`-error`.
+- `RendererCapabilities`-gated presentation (§8.9) still governs whether the outer invocation's notification is actually shown; invocation correlation only decides *which* invocation is eligible to ask, not whether the renderer honors the request.
 
 Subscriber registration is declarative (manifest + subscriber module path). Runtime registration outside declared plugin entry points is not a public extension mechanism. The internal core code may register inline subscribers, but plugins always go through the manifest.
 
@@ -601,6 +618,8 @@ export class EventService extends Context.Service<EventService, {
   ) => Effect.Effect<ReadonlyArray<E>, EventError>;
 }>()("@lando/core/EventService") {}
 ```
+
+Plugins never receive this full tag. Plugin code that wants to publish a render event (§8.9) does so through the narrow `LandoPluginContext.events.publishRender` accessor (§9.8), which redacts and schema-decodes the event before handing it to this same `publish`, so a plugin can push a `code.snippet`/`diff.render`/`markdown.block`/`notify.desktop` render event onto the bus without gaining the ability to publish or subscribe to arbitrary `LandoEvent`s.
 
 **Hot-path performance rules:**
 
@@ -902,6 +921,43 @@ Subscribers register a priority (lower runs first). Priority bands are:
 | `final` | 10000+ | Final cleanup |
 
 Built-in core subscribers are placed in `critical` and `late`. Plugin subscribers default to `default`.
+
+### 11.3.1 Subscriber selectors and factories
+
+A manifest `subscribers:` entry (§9.5) selects the event(s) it wants through a **bounded selector**, not a pattern. The selector is a proper Effect Schema union, not a hand-written parallel TS type — its inferred type is what `SubscriberManifestEntry` (§9.5) and every consumer use:
+
+```ts
+export const SubscriberSelector = Schema.Union(
+  Schema.Struct({ event: Schema.String }),                        // exact event name, e.g. "post-start" or "build-step-fail"
+  Schema.Struct({ family: Schema.Literal("cli-command-terminal") }), // precomputed: every canonical command's terminal phases
+);
+export type SubscriberSelector = Schema.Schema.Type<typeof SubscriberSelector>;
+```
+
+- `{ event }` MUST name a single known member of the closed `LandoEvent` registry: either a built-in taxonomy name (§11.2/§11.4/§11.5) or a generated lifecycle name for a registered canonical command. There is no plugin event-contribution surface, partial match, prefix match, or glob.
+- `{ family: "cli-command-terminal" }` is the one precomputed family a selector may name. It expands to exactly two event names per canonical command: `cli-<canonical-id>-run` (success/**run** phase) and `cli-<canonical-id>-error` (**error** phase). It never expands to `cli-<canonical-id>-init` — that phase fires before a command's declared bootstrap level completes and is not a "terminal" observation point. The family exists because "run something after every command finishes, success or failure" is a common subscriber shape (telemetry, `@lando/notify-lando`, audit) that would otherwise require one `{ event }` selector pair per canonical command, re-enumerated whenever a plugin adds a command.
+- **No regex, no wildcard, no runtime string matching against event names.** A selector is either an exact literal or the one closed-set family literal above; `SubscriberSelector`'s own union shape rejects anything else (a glob character, a regex-shaped string, an unknown family name) as an ordinary schema-decode failure at manifest read — before any plugin module is imported and before selector *semantics* (below) are checked at all.
+
+**Two-phase validation, not one.** Manifest read and selector-semantics validation are deliberately separate steps, at deliberately different times:
+
+1. **At manifest read** (plugin bootstrap), the loader validates only *syntax*: each entry decodes against `SubscriberManifestEntry` (shape, `SubscriberSelector` union membership, `id` uniqueness within the plugin, `priority`/`abortOnError`/`configKey` shape, `module` realpath containment). This is necessarily shallow because plugin command registration has not yet completed, so the generated CLI lifecycle portion of the closed event registry and the family expansion are not final.
+2. **At the end of plugin registration** (once every plugin has finished registering its commands and subscribers — the same point §8.9.5's panel `watch` membership check runs, and strictly before the runtime ever delivers a single event to any subscriber), the loader closes the event-name registry from the built-in `LandoEvent` taxonomy plus generated lifecycle names for the now-complete canonical command registry. Every `{ event }` selector MUST name a member of that closed registry; a miss is a `PluginManifestError` identifying the subscriber and unknown name. Every `{ family: "cli-command-terminal" }` selector then expands — exactly once, at this point, never again — to exactly the `cli-<id>-run` / `cli-<id>-error` pair for every canonical command in the now-complete command registry. The expansion result is folded into the ordinary per-event-name subscriber index — a family selector contributes normal entries under `cli-<id>-run` / `cli-<id>-error` for each id, sorted by priority alongside any exact-selector subscribers on those same events — and this same pass is what populates the §11.1 `hasSubscribers` map. `publish` never evaluates a selector at publish time; it only ever does the existing O(1) map lookup by concrete event name, and the zero-subscriber fast path (§11.1) is unaffected — a run with no family or exact subscribers still short-circuits before payload validation or `PubSub` enqueue.
+
+Because expansion happens once, after registration completes rather than incrementally per-plugin, a plugin whose manifest is parsed before a second plugin that contributes a new canonical command is still included in the family's expansion — there is no "registered too early to see it" ordering hazard.
+
+**Subscriber modules are factories**, not bare handlers, so they receive the same constrained `LandoPluginContext` (§9.8) every other contribution surface does, plus an optional second argument: a narrow, already-decoded slice of global config, never the whole thing.
+
+```ts
+// Config defaults to undefined for a subscriber that declares no configKey. When configKey IS
+// declared, Config is the decoded type of exactly that one published global-config key's schema
+// (§9.5 "Subscriber contribution rules" — never a broader or hand-shaped config object).
+export type SubscriberFactory<Config = undefined> = (
+  ctx: LandoPluginContext,
+  config: Config,
+) => (event: LandoEvent) => Effect.Effect<void, EventError>;
+```
+
+The plugin loader validates and registers each `subscribers:` entry's syntax at manifest read (step 1 above) and its selector semantics/priority-index membership once registration completes (step 2 above), but it does not import the entry's `module` or invoke its `SubscriberFactory` at either point. The factory is imported and invoked lazily, exactly once, the first time an event matching one of the entry's (by-then-expanded) selectors is about to be delivered; the returned handler is cached against that subscriber entry for the remainder of the process and reused for every later matching event (§9.5 "Subscriber contribution rules"). A factory MUST NOT perform IO at the outer (factory) call — only inside the returned handler — mirroring the §7.1.1 / §8.8.14 "side effects at module top level are forbidden" rule applied to the factory body itself. `abortOnError` (§11.6) and `priority` (§11.3) are read from the manifest entry, not from the factory.
 
 ### 11.4 Standard event sequence
 

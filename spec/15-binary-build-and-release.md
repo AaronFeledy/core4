@@ -18,7 +18,7 @@ A release of Lando v4 produces two artifact families from one source tree at one
 1. **Compiled binaries** — one per platform target listed in §13.5.
 2. **Library package** — published to npm as `@lando/core` with the entry-point catalog from §2.7.
 
-The pipeline that produces both is a single ordered sequence. There is **one orchestrator** — `scripts/release.ts` — that runs every stage. The orchestrator is itself a Bun program that uses Bun's two host-execution primitives in their declared roles (§3.4): **`Bun.$`** (Bun Shell) for the shell-shaped stages where pipes, redirection, glob expansion, or built-in `mv`/`rm`/`mkdir` make the code read like the §17.1 stages table on the page (sign → notarize → manifest → GPG → cosign → publish, plus the `dist/` housekeeping each stage needs), and **`Bun.spawn`** for the argv-precise tool calls where escaping ambiguity would be a hazard (`tsc`, `bun build --compile`, `signtool`, `notarytool`, `codesign`). The orchestrator and the codegen scripts under `scripts/` MAY use `Bun.$` directly without going through the `ShellRunner` service because they run outside `LandoRuntimeLive`; production source under `core/src/` still routes shell-shaped work through `ShellRunner` for redaction, lifecycle events, and pluggability (§3.4, §4.2). The release orchestrator is consumed by CI (§17.8) and by maintainers running a local rehearsal.
+The pipeline that produces both is a single ordered sequence. There is **one orchestrator** — `scripts/release.ts` — that runs every stage. The orchestrator is itself a Bun program that uses Bun's two host-execution primitives in their declared roles (§3.4): **`Bun.$`** (Bun Shell) for shell-shaped stages and **`Bun.spawn`** for argv-precise external tools such as `tsc`, `signtool`, `notarytool`, and `codesign`. Main-binary compilation is not an external bare compile call: the orchestrator invokes `scripts/build-compiled-binary.ts`, which owns the required programmatic `Bun.build` plugin path (§17.3.1). The orchestrator and codegen scripts MAY use `Bun.$` directly because they run outside `LandoRuntimeLive`; production source under `core/src/` still routes shell-shaped work through `ShellRunner` (§3.4, §4.2).
 
 **Stages, in order.**
 
@@ -30,7 +30,7 @@ The pipeline that produces both is a single ordered sequence. There is **one orc
 | 4 | **Test gates** | `bun test` (unit + Effect service + library API + scenario + recipe + provider contract + smoke e2e) | Yes | Yes |
 | 5 | **Schema artifacts** | Generate `dist/schemas/*.json` and `dist/types/*.d.ts` per §2.7 entry point | Yes | Yes |
 | 6 | **Library bundle** | `bun build` (no `--compile`) per `package.json#exports` entry; emit `dist/<entry>.js` + `.d.ts` | No | Yes |
-| 7 | **Compile** | `bun build --compile --bytecode --target=bun-${T}` over `bin/lando.ts` → `dist/lando-${T}`; `--bytecode` is required (§2.1) | Yes | No |
+| 7 | **Compile** | `scripts/build-compiled-binary.ts` (§17.3.1) — a thin, mandatory wrapper around programmatic `Bun.build({ compile: { target: "bun-${T}" }, bytecode: true, plugins: [...] })` over `bin/lando.ts` → `dist/lando-${T}`; `--bytecode` is required (§2.1). Every release-shaped **main-binary** compile call MUST go through this wrapper (never a bare `bun build --compile` CLI invocation) so the OpenTUI native-package `onResolve` plugin (§17.3.1) is always attached; the §10.10.3 in-container shim and any other small Bun-compiled helper binary are unaffected — they carry no OpenTUI dependency and keep using a plain `Bun.build({ compile })` call with no plugin. | Yes | No |
 | 8 | **Strip** | Remove debug symbols where the platform supports it; preserve external sourcemap | Yes | No |
 | 9 | **Sign** | Per-platform (§17.4): macOS `codesign`, Windows `signtool`, Linux is signed at the manifest layer in stage 11 | Yes | No |
 | 10 | **Notarize** | macOS only: `notarytool submit` + `stapler staple` | Yes | No |
@@ -77,7 +77,8 @@ Codegen is the largest single source of correctness drift in a build like this, 
 | **Recipe README scaffold output** | `scripts/build-recipe-readmes.ts` (§19.13) | `recipes/<id>/README.mdx` | `recipes/<id>/.scaffold/README.md` (strip-and-flatten of executable components into prose-only Markdown for `lando init` to copy into the user's project) | Build (stage 1); dev watch on recipe README edit | Re-run + `git diff --exit-code`; the `.scaffold/` output MUST contain no MDX JSX, no `import` statements, and no unresolved interpolation expressions |
 | **Mutagen gRPC client** | `scripts/build-mutagen-client.ts` | `plugins/file-sync-mutagen/vendor/mutagen-protos/**/*.proto` (vendored at the pinned Mutagen version) + `plugins/file-sync-mutagen/mutagen-versions.json` | `plugins/file-sync-mutagen/src/generated/**/*.ts` (Connect-ES TypeScript client and message types for the Mutagen `Synchronization`, `Daemon`, and `Prompting` services) | Build (stage 1); dev watch on `.proto` or version-pin change | Re-run + `git diff --exit-code`; the generated client MUST type-check under `tsc --noEmit` against the rest of the plugin, MUST contain no native-binding imports (`@grpc/grpc-js`, `node-grpc`, `protobufjs/runtime`), and MUST be Bun-compile-clean (no top-level dynamic imports, no `__dirname`-based asset reads) |
 | **Mutagen versions manifest** | `scripts/build-mutagen-versions.ts` | `plugins/file-sync-mutagen/mutagen-version` (a one-line file holding the pinned upstream Mutagen tag, e.g., `v0.18.3`) + GitHub release metadata fetched at build time and cached under `dist/cache/mutagen/` | `plugins/file-sync-mutagen/mutagen-versions.json` (the static-asset manifest mapping `<host-platform>` and `<agent-platform>` to download URL, file size, SHA-256; validated against the canonical `ToolManifest` schema and consumed at runtime by the tool-provisioning helper via §17.3 mechanism A, §10.3.4) | Build (stage 1); manual on Mutagen-version bump | Re-run + `git diff --exit-code`; the manifest MUST be byte-stable for a given pinned upstream tag, every URL MUST resolve over HTTPS to a 200 response with the recorded `Content-Length` and SHA-256, and the platform set MUST cover every host target listed in §13.5 plus the three guest agent targets enumerated in §12.4 |
-| **Runtime bundle manifest** | `scripts/build-runtime-bundle.ts` | `plugins/provider-lando/runtime-bundle-version` (a one-line file holding the Lando runtime-bundle version; it names the `runtime-v<version>` release tag on **this repository** whose assets the manifest references) + per-platform bundle artifacts assembled from pinned upstream Podman + Lando helper binaries, staged under `dist/cache/runtime-bundle/` | `plugins/provider-lando/runtime-bundle-versions.json` (the static-asset manifest mapping `<host-platform>` to runtime-bundle download URL, file size, SHA-256; consumed at runtime via §17.3 mechanism A) | Build (stage 1); manual on runtime-bundle-version bump | Re-run + `git diff --exit-code`; the committed manifest MUST be byte-stable for a given runtime-bundle version. **Offline invariant checks (every codegen/staleness pass, no network):** every `url` is an HTTPS URL under this repository's `releases/download/runtime-v<version>/` path, the platform set covers every host target listed in §13.5 expressed as runtime host keys (`linux-x64`, `linux-arm64`, `darwin-arm64`, `win32-x64` — the §13.5 release platform id `windows-x64` corresponds to manifest host key `win32-x64`), and no entry carries a placeholder checksum or `sizeBytes: 0` (§5.8.1 committed-manifest invariant). **Live verification (release path + periodic job, never per-PR):** every `url` resolves over HTTPS to a 200 with the recorded `Content-Length`; the recorded SHA-256 is proven at publish time, when the manifest is regenerated against the just-published assets (§17.8). In `--local` mode the script stages the bundle and emits a `file://` manifest with a locally-computed SHA-256 for §13.5 CI/dev verification instead; that output is never committed |
+| **OpenTUI native stub catalog** | `scripts/build-opentui-native-stubs.ts` | The 8-root native-package catalog (`@opentui/core-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64`, `-win32-x64`, `-win32-arm64`, `-linux-x64-musl`, `-linux-arm64-musl`), the 5-entry release-target-to-native-root mapping (§17.3.1's table), the `plugins/renderer-lando` package (to confirm its `@opentui/core` dependency range), the installed `@opentui/core` package (to read its own literal `import("@opentui/core-<target>")` branch list and keep the catalog honest against what's actually on disk), and `bun.lock` (to pin exact resolved versions) | `scripts/generated/opentui-native/catalog.generated.ts` (the machine-readable 8-root/5-mapping table §17.3.1's build plugin imports) plus 35 generated stub modules under `scripts/generated/opentui-native/stubs/<target>/<redirected-root>.generated.ts` (5 targets × 7 redirected roots each = 35; every stub is import-free and its entire body throws a fixed `Error` on any access, so a redirected root can never accidentally resolve to working code) | Build (stage 1), before stage 7 (compile); manual re-run on an `@opentui/core` version bump | Re-run + `git diff --exit-code`; the generator fails closed if the installed `@opentui/core`'s own literal branch list no longer matches the 8-root catalog (a new/removed upstream native package is a generator-blocking drift, not a silent mismatch). Focused command: `bun run codegen:opentui-native-stubs` |
+| **Runtime bundle manifest** | `scripts/build-runtime-bundle.ts` | `plugins/provider-lando/runtime-bundle-version` (a one-line file holding the Lando runtime-bundle version; it names the `runtime-v<version>` release tag on **this repository** whose assets the manifest references) + per-platform bundle artifacts assembled from pinned upstream Podman + Lando helper binaries, staged under `dist/cache/runtime-bundle/` | `plugins/provider-lando/runtime-bundle-versions.json` (the static-asset manifest mapping `<host-platform>` to runtime-bundle download URL, file size, SHA-256; consumed at runtime via §17.3 mechanism A) | Build (stage 1); manual on runtime-bundle-version bump | Re-run + `git diff --exit-code`; the committed manifest MUST be byte-stable for a given runtime-bundle version. **Offline invariant checks (every codegen/staleness pass, no network):** every `url` is an HTTPS URL under this repository's `releases/download/runtime-v<version>/` path, the platform set covers all five release hosts as runtime keys (`linux-x64`, `linux-arm64`, `darwin-arm64`, `darwin-x64`, `win32-x64` — `windows-x64` maps to `win32-x64`), and no entry carries a placeholder checksum or `sizeBytes: 0` (§5.8.1 committed-manifest invariant). **Live verification (release path + periodic job, never per-PR):** every `url` resolves over HTTPS to a 200 with the recorded `Content-Length`; the recorded SHA-256 is proven at publish time, when the manifest is regenerated against the just-published assets (§17.8). In `--local` mode the script stages the bundle and emits a `file://` manifest with a locally-computed SHA-256 for §13.5 CI/dev verification instead; that output is never committed |
 
 Codegen MUST be deterministic: re-running with identical inputs produces byte-identical outputs. The staleness gate exists because Lando publishes some generated files (`oclif.manifest.json`, `dist/schemas/*.json`, schema MDX, recipe README scaffolds) that downstream consumers read; CI regenerates them and refuses to merge if the committed copy diverges. Guide-scenario test outputs and scenario transcripts are intentionally outside this rule — both are regenerated each test run, not committed, and validated by "must regenerate cleanly + tests pass" rather than `git diff --exit-code` (§19.7, §19.6).
 
@@ -138,11 +139,79 @@ Bundled plugin indexes, recipe loaders, schema loaders, and command-reference lo
 
 **Library mode behavior.** When `@lando/core` is consumed as a library (not as the compiled binary), `EmbeddedAssetService` falls back to disk reads under the package directory. The interface is identical; only the implementation differs. This is the same mechanism plugins under development use to test against a non-compiled Lando.
 
+#### 17.3.1 OpenTUI native asset packaging
+
+`@opentui/core` `0.4.3` ships its native binding as **eight** per-target packages — `@opentui/core-linux-x64`, `-linux-arm64`, `-darwin-x64`, `-darwin-arm64`, `-win32-x64`, `-win32-arm64`, `-linux-x64-musl`, `-linux-arm64-musl` — each carrying one shared library for exactly one platform/arch(/libc) combination. Bundling this correctly into a single-binary-per-target compiled release (§17.1) requires its own build-time mechanism, distinct from the two general asset-embedding mechanisms above, because the asset is native code selected by the *build target*, not by runtime data shape, and because a naive bundle of `@opentui/core` pulls in all eight optional packages rather than the one the target actually needs.
+
+**Release-target-to-native-root mapping.** Lando ships five release main-binary targets (§13.5, §17.1, §17.8). Each maps to exactly one of the eight catalog native-package roots; the other seven are pruned to stubs for that target's build (below).
+
+| Release target | `@opentui/core-*` native root |
+|---|---|
+| `darwin-arm64` | `@opentui/core-darwin-arm64` |
+| `darwin-x64` | `@opentui/core-darwin-x64` |
+| `linux-arm64` | `@opentui/core-linux-arm64` |
+| `linux-x64` | `@opentui/core-linux-x64` |
+| `windows-x64` | `@opentui/core-win32-x64` |
+
+This is the machine-readable `targetToNativeRoot` table §17.2's generator emits into `catalog.generated.ts`; `windows-x64` mapping to the `win32-x64` native root (not a literal `windows-x64` root, which doesn't exist upstream) is the one non-identity mapping and mirrors the existing `windows-x64`/`win32-x64` release-id-vs-host-key split documented elsewhere in this spec (§17.2's runtime-bundle host-key note).
+
+**Package shape (as published).** At runtime, `@opentui/core` does `await import("@opentui/core-<target>")` from a fixed set of eight literal string branches, selected by `process.platform`/`process.arch`(/detected libc). Each of those eight per-target packages is a thin wrapper: its `package.json#exports["."]` resolves, under Bun (the `"bun"` export condition), to that package's own `index.bun.js`, whose entire body is `const module = await import("./libopentui.so", { with: { type: "file" } }); export default module.default` (the exact file name differs by platform — `.dylib` on macOS, `.dll` on Windows — but the shape is identical). Lando never reaches into that internal path itself; there is no supported `@opentui/core-linux-x64/libopentui.so` import, only the package root.
+
+**`scripts/build-compiled-binary.ts` and its `onResolve` plugin.** The main-binary compile stage (§17.1 stage 7) is a canonical Bun script, not a bare CLI invocation, because Bun's `Bun.build` programmatic API is the only surface that accepts a `plugins:` array:
+
+```ts
+// scripts/build-compiled-binary.ts (shape, not full source)
+import { plugin } from "bun";
+import { opentuiNativeCatalog } from "./generated/opentui-native/catalog.generated";  // §17.2 generator output
+
+export async function buildCompiledBinary(target: ReleaseTarget) {
+  const nativeRoot = opentuiNativeCatalog.targetToNativeRoot[target];        // the one root this target resolves normally
+  const redirected = opentuiNativeCatalog.allNativeRoots.filter((r) => r !== nativeRoot);  // the other 7
+
+  return Bun.build({
+    entrypoints: ["bin/lando.ts"],
+    compile: { target: `bun-${target}` },
+    bytecode: true,
+    plugins: [{
+      name: "opentui-native-onResolve",
+      setup(build) {
+        build.onResolve({ filter: opentuiNativeCatalog.rootImportFilter }, (args) => {
+          // Never redirect the substrate's own test-only export or a relative/non-root import —
+          // only an exact match against one of the 8 known package-root specifiers is eligible.
+          if (args.path === "@opentui/core/testing" || !opentuiNativeCatalog.allNativeRoots.includes(args.path)) {
+            return undefined;   // fall through to normal resolution
+          }
+          if (args.path === nativeRoot) {
+            return undefined;   // this target's one real root resolves normally
+          }
+          // One of the other 7: redirect to its generated, import-free throwing stub.
+          return { path: opentuiNativeCatalog.stubPathFor(target, args.path) };
+        });
+      },
+    }],
+  });
+}
+```
+
+The `onResolve` plugin matches **exactly** the eight known native-package-root specifiers (never a substring match, never a prefix match) — an import of `@opentui/core/testing`, a relative import, or any import that isn't one of the eight roots verbatim falls through untouched. For the target root itself, resolution is untouched (normal `node_modules` resolution reaches the real package, whose own `index.bun.js` performs the literal `import("./libopentui.so", { with: { type: "file" } })` that `Bun.embeddedFiles` carries into `$bunfs`). For each of the other **seven** roots, the plugin redirects the import to a generated stub module for that `(target, redirectedRoot)` pair — a small file with no imports of its own whose entire body throws a fixed `Error` naming the mismatched target/root pair if anything ever tries to touch it (it is unreachable in practice, since `@opentui/core`'s own runtime platform switch only ever imports the root matching the actual `process.platform`/`process.arch`, which is fixed for a given compiled target — the stub exists purely so the *bundler* has something resolvable to embed instead of pulling in seven other platforms' native libraries).
+
+**Generated stub catalog (§17.2).** `scripts/build-opentui-native-stubs.ts` generates the catalog module `scripts/generated/opentui-native/catalog.generated.ts` (the 8-root list, the 5-entry release-target-to-native-root mapping, the `rootImportFilter`, and `stubPathFor`) plus the 35 stub modules themselves (5 release targets × 7 redirected roots each = 35) under `scripts/generated/opentui-native/stubs/<target>/<redirected-root>.generated.ts`. See §17.2's catalog row for inputs/outputs/staleness-gate detail.
+
+**Every release-shaped main-binary compile caller MUST use the wrapper.** Stage 7 of §17.1, the local rehearsal path, and any CI job that produces a release-shaped `lando` binary all call `scripts/build-compiled-binary.ts`'s exported function — never a bare `bun build --compile` invocation for the main binary — so the `onResolve` plugin is always attached and the 7-of-8 pruning always happens. This requirement is scoped to the **main binary**; the §10.10.3 in-container shim and any other small Bun-compiled helper binary carry no OpenTUI dependency at all and are unaffected — they keep using a plain, plugin-free `Bun.build({ compile })` call exactly as before.
+
+**Exactly one embedded native asset; no sidecars, no `node_modules`.** After the 7-of-8 pruning above, the compiled binary embeds exactly the target's one native shared library as a `$bunfs` asset; it does not ship a sibling `node_modules/@opentui/*` directory, a loose `.so`/`.dylib`/`.dll` file next to the binary, or any other sidecar. A relocated binary (moved to an arbitrary directory with no adjacent files, §17.9) MUST still load its native asset purely from `$bunfs`.
+
+**Reachability stays behind the default TTY path.** This native asset loads only when the bundled renderer's substrate actually initializes — the same condition as §8.9.3 "Import discipline": TTY, default renderer selected, bootstrap level ≥ `plugins`, not `plain`/`json`/non-TTY. A level-`none` command, a `--renderer=json` run, or any non-TTY invocation never touches the embedded native asset, regardless of which target the binary was compiled for.
+
+**Musl stays optional, never a release target.** `@opentui/core-linux-x64-musl` and `@opentui/core-linux-arm64-musl` are 2 of the 8 catalog roots, present upstream for musl-libc hosts (e.g. Alpine-based dev environments invoking a locally-built `@lando/core`), but musl is not one of the five §17.1/§17.8 release targets and no release CI job produces a musl-linked `lando` binary — for every release target, both musl roots are among the 7 redirected-to-stub roots, never the 1 resolved-normally root. A musl host running the compiled glibc-target binary continues to work exactly as it does today for every other native dependency (or degrades per §8.9.3 if it cannot load the glibc-linked native asset) — this section does not change musl's status from "optional, unsupported as a release target" to anything else.
+
+**Testing.** Each release target's per-target compiled-binary smoke test (§13.4, §13.5) relocates that target's binary off the build tree and drives a real TTY-backed render through a PTY harness, proving: exactly **one** native package's shared library loads (asserted by a loader-invocation spy or equivalent instrumentation compiled into the test build), the other **seven** catalog roots are unreachable (each would throw its stub's fixed error if anything tried), and the binary's own `$bunfs`-embedded copy is what loads — not a coincidentally-present system copy.
+
 ### 17.4 Signing and notarization
 
 Every released artifact MUST be signed. v4.0.0 commits to full per-platform signing — no "checksums only" channel.
 
-**macOS (`darwin-arm64`).**
+**macOS (`darwin-arm64`, `darwin-x64`).**
 
 - Signing certificate: Developer ID Application certificate from an Apple Developer Program account owned by the Lando project.
 - Process: `codesign --sign "Developer ID Application: …" --options runtime --timestamp --entitlements scripts/lando.entitlements ./dist/lando-darwin-${arch}`.
@@ -219,6 +288,7 @@ Schema (validated by `UpdateManifestSchema` in `@lando/sdk/schema`, also re-expo
   "minimum": "4.0.0",
   "binaries": {
     "darwin-arm64":{ "url": "https://github.com/lando/lando/releases/download/v4.2.0/lando-darwin-arm64", "sha256": "…", "size": 51234567 },
+    "darwin-x64":  { "url": "…", "sha256": "…", "size": 0 },
     "linux-x64":   { "url": "…", "sha256": "…", "size": 0 },
     "linux-arm64": { "url": "…", "sha256": "…", "size": 0 },
     "windows-x64": { "url": "…", "sha256": "…", "size": 0 }
@@ -311,6 +381,7 @@ CI runs on **GitHub Actions**. The release workflow lives at `.github/workflows/
 - `ubuntu-latest-x64` produces `linux-x64`
 - `ubuntu-latest-arm64` (or QEMU emulation if a native ARM runner isn't available) produces `linux-arm64`
 - `macos-14` (arm64) produces `darwin-arm64`
+- `macos-13` (x64) produces `darwin-x64`
 - `windows-2022` (x64) produces `windows-x64`
 
 A coordinator job runs stages 11–13 (manifest, provenance & SBOM, publish) once all matrix jobs succeed.
@@ -357,6 +428,7 @@ The binary-shipping criteria below augment §15.C. The v4.0.0 release MUST satis
 - A failed external plugin import marks that plugin unhealthy, reports a tagged `PluginLoadError`, and does not prevent unrelated plugins from loading.
 - `bun run codegen:check` succeeds on a clean checkout with no uncommitted changes.
 - Removing a bundled plugin from `core/build.config.ts` and rebuilding produces a binary that omits the plugin from `oclif.manifest.json` and `src/plugins/bundled.ts` without code edits in `src/`.
+- Each of the five release targets' compiled binary is produced by `scripts/build-compiled-binary.ts` (§17.3.1), prunes 7 of the 8 catalog `@opentui/core-*` native packages to generated throwing stubs and embeds exactly the one matching its own target, carries no sidecar `node_modules`/loose shared-library file, and — when relocated off the build tree and driven through a PTY harness — successfully initializes the bundled renderer's TTY substrate and renders a task tree; the same relocated-binary smoke test also asserts the native asset is unreachable from any level-`none`, `--renderer=json`, or non-TTY invocation.
 - Adding a new canonical recipe under `recipes/<id>/` with a valid `recipe.yml` requires no code change to ship — only `bun run codegen` regenerates `src/recipes/bundled.ts` and the recipe is reachable via `lando init --recipe <id>` in the next built binary.
 
 ---
