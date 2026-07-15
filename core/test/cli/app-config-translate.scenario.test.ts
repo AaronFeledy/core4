@@ -45,7 +45,8 @@ describe("lando app:config:translate CLI argv parsing", () => {
       const result = await runCli(["app:config:translate", "--from"], dir);
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("Flag --from expects a value");
+      expect(result.stderr).toContain("--from has a malformed value.");
+      expect(result.stderr).toContain("code: MalformedCliFlagValueError");
     });
   });
 
@@ -55,7 +56,8 @@ describe("lando app:config:translate CLI argv parsing", () => {
       const result = await runCli(["app:config:translate", "--file"], dir);
 
       expect(result.exitCode).not.toBe(0);
-      expect(result.stderr).toContain("Flag --file expects a value");
+      expect(result.stderr).toContain("--file has a malformed value.");
+      expect(result.stderr).toContain("code: MalformedCliFlagValueError");
     });
   });
 

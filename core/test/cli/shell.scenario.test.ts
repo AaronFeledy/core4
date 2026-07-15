@@ -773,7 +773,8 @@ describe("lando shell — CLI argv parsing", () => {
     await withTempApp(async (dir) => {
       const result = await runCli(["shell", "--service", "--no-history"], dir);
       expect(result.exitCode).toBe(2);
-      expect(result.stderr).toContain("Flag --service expects a value");
+      expect(result.stderr).toContain("--service has a malformed value.");
+      expect(result.stderr).toContain("code: MalformedCliFlagValueError");
     });
   }, 30_000);
 
@@ -781,7 +782,8 @@ describe("lando shell — CLI argv parsing", () => {
     await withTempApp(async (dir) => {
       const result = await runCli(["shell", "--service"], dir);
       expect(result.exitCode).toBe(2);
-      expect(result.stderr).toContain("Flag --service expects a value");
+      expect(result.stderr).toContain("--service has a malformed value.");
+      expect(result.stderr).toContain("code: MalformedCliFlagValueError");
     });
   }, 30_000);
 });
