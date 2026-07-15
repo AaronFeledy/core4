@@ -16,6 +16,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 - A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
+- Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; verify installed versions equal snapshot candidates under `pipefail` without early-exit pipelines.
 
 ## Durable learnings
 
@@ -179,4 +180,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, guide lint/coverage, TypeScript no-excuse audit, and focused transcript plus adjacent guide-script tests passed.
 - **Learnings for future iterations:**
   - Generated-corpus emptiness must consider every directory entry before invoking an emitter that clears its output root; filtering only expected artifact extensions can misclassify and delete unrelated content.
+---
+
+## 2026-07-15 06:46 CDT - US-447
+- Runtime-bundle publishing now pins every third-party action to an immutable commit and assembles Linux bundles from a fixed Ubuntu archive snapshot. Package installation reinstalls or downgrades to snapshot candidates and fails closed when an installed version differs.
+- Verification: typecheck, lint passed; workflow codegen and 62 focused runtime-bundle tests passed; the exact generated package-install block completed in the isolated sandbox with clean teardown.
+- **Learnings for future iterations:**
+  - Under `set -o pipefail`, do not exit an `awk` consumer early when the producer can receive SIGPIPE; let candidate-version parsing consume the full bounded output.
 ---

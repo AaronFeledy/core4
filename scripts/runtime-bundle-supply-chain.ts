@@ -1,0 +1,29 @@
+export const RUNTIME_BUNDLE_ACTION_PINS = {
+  checkout: "actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955",
+  downloadArtifact: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+  rustToolchain: "dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4",
+  setupBun: "oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76",
+  setupGo: "actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
+  uploadArtifact: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+} as const;
+
+export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260701T000000Z";
+
+export const RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT = [
+  "set -euo pipefail",
+  `UBUNTU_SNAPSHOT=${RUNTIME_BUNDLE_UBUNTU_SNAPSHOT}`,
+  `printf 'APT::Snapshot "%s";\\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot`,
+  "sudo apt-get update",
+  "PACKAGES=(build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsqlite3-dev libsystemd-dev pkg-config protobuf-compiler uidmap)",
+  'sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"',
+  'for PACKAGE in "${PACKAGES[@]}"; do',
+  `  INSTALLED_VERSION="$(dpkg-query -W -f='\${Version}' "$PACKAGE")"`,
+  '  POLICY="$(apt-cache policy "$PACKAGE")"',
+  `  CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"`,
+  '  test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"',
+  '  case "$POLICY" in',
+  '    *"https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT"*) ;;',
+  '    *) echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"; exit 1 ;;',
+  "  esac",
+  "done",
+].join("\n          ");
