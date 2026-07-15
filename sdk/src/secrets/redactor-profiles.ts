@@ -91,10 +91,10 @@ const SECRET_KEY_PATTERN =
 const SECRET_ASSIGNMENT_PATTERN =
   /(?<![?&])\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_]*)=([^\s,;"'\]}]+)/giu;
 
-const URL_USERINFO_PATTERN = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
+const URL_USERINFO_PATTERN = /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
 
 const ENCODED_URL_USERINFO_PATTERN =
-  /([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
+  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
 
 const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+[\w.~+/=-]+/giu;
 
