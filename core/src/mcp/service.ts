@@ -14,17 +14,17 @@
  */
 import { Cause, Context, Deferred, Effect, type Exit, Fiber, Layer, Option, Ref } from "effect";
 
-import type { McpTransportError } from "@lando/sdk/errors";
+import { McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "../cli/result-encode.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
+import { redactBoundedJsonValue } from "./bounded-json.ts";
 import {
   emptyCompletedRequestIds,
   forgetCompletedRequestId,
@@ -34,6 +34,7 @@ import {
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
 import type { McpCommandEntry } from "./registry.ts";
+import { projectMcpProgressFrame } from "./result-inspector.ts";
 import { McpTransport, type McpTransportRequest } from "./transport.ts";
 
 /** Default in-flight tool-call cap (config `mcp.maxConcurrent`). */
@@ -131,30 +132,30 @@ const makeService = (
             (frame) =>
               transport.notify({ id: incoming.id, frame });
           const encodeProgressFrame = (
-            frame: StreamFrameSinkFrame,
+            frame: unknown,
             redactorForFrame: Redactor,
-          ): Effect.Effect<unknown> =>
-            (frame._tag === "stdout"
-              ? encodeStreamStdoutFrame({
-                  chunk: frame.chunk,
-                  ...(frame.service === undefined ? {} : { service: frame.service }),
-                  redactor: redactorForFrame,
-                })
-              : encodeStreamStderrFrame({
-                  chunk: frame.chunk,
-                  ...(frame.service === undefined ? {} : { service: frame.service }),
-                  redactor: redactorForFrame,
-                })
-            ).pipe(Effect.map((line) => JSON.parse(line) as unknown));
+          ): Effect.Effect<unknown, McpTransportError> =>
+            Effect.try({
+              try: () => projectMcpProgressFrame(frame),
+              catch: (cause) =>
+                cause instanceof McpTransportError
+                  ? cause
+                  : new McpTransportError({
+                      message: "MCP progress payload could not be safely inspected.",
+                      remediation:
+                        "Emit a plain stdout or stderr frame with string chunk and service fields.",
+                    }),
+            }).pipe(
+              Effect.flatMap((projected) =>
+                redactBoundedJsonValue(projected, redactorForFrame, "MCP progress payload"),
+              ),
+            );
           const streamSinkFor = (
             notify: McpNotify,
             redactorForFrame: Redactor,
           ): Context.Tag.Service<typeof StreamFrameSink> => ({
             emit: (frame: StreamFrameSinkFrame) =>
-              encodeProgressFrame(frame, redactorForFrame).pipe(
-                Effect.flatMap(notify),
-                Effect.catchAll(() => Effect.void),
-              ),
+              encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
           });
           const outcomeFromExit = (
             exit: Exit.Exit<unknown, unknown>,

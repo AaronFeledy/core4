@@ -99,6 +99,41 @@ describe("value layer applied before pattern layer", () => {
     const r = createRedactor("secrets", { values: ["secret", "secret-token"] });
     expect(r.redactString("x secret-token y")).toBe("x [redacted] y");
   });
+
+  test("bounded redaction aborts one-character secret expansion while constructing output", () => {
+    // Given
+    const r = createRedactor("secrets", { values: ["a"] });
+
+    // When
+    const result = r.redactStringBounded?.("a".repeat(900_000), 8 * 1_024 * 1_024);
+
+    // Then
+    expect(result).toBeUndefined();
+  });
+
+  test("bounded redaction accepts ordinary strings up to their actual byte budget", () => {
+    // Given
+    const r = createRedactor("secrets", { values: ["absent"] });
+    const input = "x".repeat(64 * 1_024);
+
+    // When
+    const result = r.redactStringBounded?.(input, input.length);
+
+    // Then
+    expect(result).toBe(input);
+  });
+
+  test("bounded redaction preserves literal and secrets-pattern semantics", () => {
+    // Given
+    const r = createRedactor("secrets", { values: ["known-value"] });
+    const input = "known-value PASSWORD=hunter2 https://user:pw@proxy Authorization: Bearer abc ?api_key=xyz";
+
+    // When
+    const result = r.redactStringBounded?.(input, 1_024);
+
+    // Then
+    expect(result).toBe(r.redactString(input));
+  });
 });
 
 describe("redactValue structure preservation", () => {

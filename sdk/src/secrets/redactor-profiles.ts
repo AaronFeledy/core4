@@ -29,7 +29,16 @@
  * docs build without constructing a runtime.
  */
 
+import { replacePatternsBounded } from "./bounded-redaction.ts";
 import { REDACTED, createSecretRedactor } from "./redactor.ts";
+import {
+  TRANSCRIPT_PATTERN_CLASSES,
+  type TranscriptRedactionEnv,
+  redactTranscriptString,
+} from "./transcript-redaction.ts";
+import { redactValueWith } from "./value-redaction.ts";
+
+export type { TranscriptRedactionEnv } from "./transcript-redaction.ts";
 
 /** The redaction profiles published by {@link createRedactor}. */
 export const REDACTION_PROFILES = ["secrets", "telemetry", "transcript"] as const;
@@ -43,13 +52,6 @@ export type RedactionProfile = (typeof REDACTION_PROFILES)[number];
  * `node:os`, so a caller (the core `RedactionService` / docs build) supplies
  * resolved defaults.
  */
-export interface TranscriptRedactionEnv {
-  readonly home?: string;
-  readonly tmp?: string;
-  readonly user?: string;
-  readonly host?: string;
-  readonly extraRoots?: readonly string[];
-}
 
 /** Options accepted by {@link createRedactor}. */
 export interface CreateRedactorOptions {
@@ -63,6 +65,7 @@ export interface CreateRedactorOptions {
 export interface Redactor {
   /** Redact a single string with the value layer then the profile patterns. */
   readonly redactString: (text: string) => string;
+  readonly redactStringBounded?: (text: string, maxBytes: number) => string | undefined;
   /**
    * Redact an arbitrary value, preserving array/object/`Error` shape, masking
    * `secretKeyedField` keys, and never throwing on cyclic or exotic input.
@@ -76,24 +79,11 @@ export interface PatternClass {
   readonly replace: string | ((substring: string, ...groups: string[]) => string);
 }
 
-// --- Deterministic placeholders ---
-
 const PATH = "[path]";
 const URL = "[url]";
 const EMAIL = "[email]";
 const ID = "[id]";
 const HOST = "[host]";
-
-const HOME_PH = "<HOME>";
-const TMP_PH = "<TMP>";
-const USER_PH = "<USER>";
-const HOST_PH = "<HOST>";
-const PORT_PH = "<PORT>";
-const CONTAINER_ID_PH = "<CONTAINER_ID>";
-const PROVIDER_ID_PH = "<PROVIDER_ID>";
-const DIGEST_PH = "<DIGEST>";
-
-// --- secrets-profile pattern classes ---
 
 const SECRET_KEY_PATTERN =
   /password|passwd|secret|token|credential|bearer|apikey|api[_-]?key|^authorization$|^auth(?:token|orization)?$/iu;
@@ -101,10 +91,10 @@ const SECRET_KEY_PATTERN =
 const SECRET_ASSIGNMENT_PATTERN =
   /(?<![?&])\b([A-Za-z0-9_]*(?:PASSWORD|PASSWD|SECRET|TOKEN|CREDENTIAL|BEARER|APIKEY|API_KEY)[A-Za-z0-9_]*)=([^\s,;"'\]}]+)/giu;
 
-const URL_USERINFO_PATTERN = /([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
+const URL_USERINFO_PATTERN = /\b([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)[^/\s:@]+:[^/\s@]+@/gu;
 
 const ENCODED_URL_USERINFO_PATTERN =
-  /([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
+  /\b([a-zA-Z][a-zA-Z0-9+.-]*%3A%2F%2F)[^&\s"'\]}{]*?%3A[^&\s"'\]}{]*?%40/giu;
 
 const BEARER_TOKEN_PATTERN = /\b(Bearer)\s+[\w.~+/=-]+/giu;
 
@@ -119,7 +109,16 @@ const redactSecretsString = (text: string): string =>
     .replace(BEARER_TOKEN_PATTERN, (_m, scheme: string) => `${scheme} ${REDACTED}`)
     .replace(SIGNED_QUERY_PARAM_PATTERN, (_m, prefix: string) => `${prefix}${REDACTED}`);
 
-// --- telemetry-profile pattern classes ---
+const SECRETS_REPLACEMENTS = [
+  { pattern: SECRET_ASSIGNMENT_PATTERN, replace: (_m: string, name: string) => `${name}=${REDACTED}` },
+  { pattern: URL_USERINFO_PATTERN, replace: (_m: string, scheme: string) => `${scheme}${REDACTED}@` },
+  {
+    pattern: ENCODED_URL_USERINFO_PATTERN,
+    replace: (_m: string, scheme: string) => `${scheme}${REDACTED}%40`,
+  },
+  { pattern: BEARER_TOKEN_PATTERN, replace: (_m: string, scheme: string) => `${scheme} ${REDACTED}` },
+  { pattern: SIGNED_QUERY_PARAM_PATTERN, replace: (_m: string, prefix: string) => `${prefix}${REDACTED}` },
+] as const;
 
 const TELEMETRY_URL_PATTERN = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"<>`]+/giu;
 const UNC_PATH_PATTERN = /\\\\[A-Za-z0-9._$-]+(?:\\[^\s\\'"]+)*/gu;
@@ -144,124 +143,6 @@ const redactTelemetryString = (text: string): string =>
     .replace(UUID_PATTERN, ID)
     .replace(HOSTNAME_PATTERN, HOST)
     .replace(HIGH_ENTROPY_TOKEN_PATTERN, (match) => (hasLetterAndDigit(match) ? REDACTED : match));
-
-// --- transcript-profile pattern classes ---
-
-const WELL_KNOWN_PORTS = new Set([80, 443, 3000, 3306, 5432, 8080, 8443, 9000, 9229]);
-
-const REPO_RELATIVE_FIXTURE_PATH_PATTERN =
-  /(^|[\s"'`(=])((?:\.{1,2}[\\/])?(?:[A-Za-z0-9._-]+[\\/])*fixtures[\\/][^\s"'`)]+)/giu;
-const SHORT_SECRET_EQUALS_FLAG_PATTERN =
-  /(^|[\s"'`(])(-[tk])\s*=\s*(?:\\"[^"]*\\"|\\'[^']*\\'|\\`[^`]*\\`|"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=)]+)/giu;
-const SHORT_SECRET_SPACE_FLAG_PATTERN =
-  /(^|[\s"'`(])(-[tk])\s+(?:\\"[^"]*\\"|\\'[^']*\\'|\\`[^`]*\\`|"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=)]+)/giu;
-const GENERIC_KEY_EQUALS_SECRET_PATTERN =
-  /\b([A-Za-z0-9_]*(?:token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)[A-Za-z0-9_]*)\s*=\s*(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?]+)/giu;
-const GENERIC_KEY_SPACE_SECRET_PATTERN =
-  /\b(token|secret|password|passwd|credential|bearer|apikey|api[_-]?key)\s+(?:"[^"]*"|'[^']*'|`[^`]*`|[^\s"'`&?=]+)/giu;
-const TOKEN_SECRET_LITERAL_PATTERN = /\btoken\s+secret\b/gi;
-const TRANSCRIPT_QUERY_SECRET_PATTERN =
-  /([?&](?:[\w-]*[-_])?(?:access[_-]?token|token|secret|password|passwd|credential|signature|sig|api[_-]?key|apikey)=)([^&\s"']+)/giu;
-const DOUBLE_MARKER_PATTERN = /\[\s*redacted\s*\]\s*\]/giu;
-
-const GENERIC_PATH_PATTERNS: readonly RegExp[] = [
-  /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
-  /\/Users\/[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
-  /\/root(?:\/[^\s"'`]*)?/gi,
-  /\/var\/folders\/[^/]+\/T(?:\/[^\s"'`]*)?/gi,
-  /\/tmp\/(?:lando-)?[^/\s"'`]+(?:\/[^\s"'`]*)?/gi,
-  /[A-Za-z]:\\(?:Users|AppData\\Local\\Temp)[^"\s'`]*/gi,
-  /%USERPROFILE%[^"\s'`]*/gi,
-  /%TEMP%[^"\s'`]*/gi,
-];
-
-const TRANSCRIPT_ROOT_PATTERN =
-  /\/home\/[^/\s"'`]+(?:\/[^\s"'`]*)?|\/Users\/[^/\s"'`]+(?:\/[^\s"'`]*)?|\/root(?:\/[^\s"'`]*)?|\/var\/folders\/[^/]+\/T(?:\/[^\s"'`]*)?|\/tmp\/(?:lando-)?[^/\s"'`]+(?:\/[^\s"'`]*)?|[A-Za-z]:\\(?:Users|AppData\\Local\\Temp)[^"\s'`]*|%USERPROFILE%[^"\s'`]*|%TEMP%[^"\s'`]*/giu;
-const PORT_PATTERN = /:(\d{2,5})\b/gu;
-const CONTAINER_ID_PATTERN = /\b(?:[0-9a-f]{12}|[0-9a-f]{16,63})\b/giu;
-const DIGEST_PATTERN = /\bsha256:[0-9a-f]{64}\b/giu;
-
-const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-const redactTranscriptPaths = (text: string, env: TranscriptRedactionEnv): string => {
-  let out = text.replace(REPO_RELATIVE_FIXTURE_PATH_PATTERN, (_m, prefix: string) => `${prefix}${HOME_PH}`);
-
-  for (const re of GENERIC_PATH_PATTERNS) {
-    out = out.replace(re, (m) => (/tmp|Temp/i.test(m) ? TMP_PH : HOME_PH));
-  }
-
-  const roots: Array<{ value: string; placeholder: string }> = [];
-  if (env.home) roots.push({ value: env.home, placeholder: HOME_PH });
-  if (env.tmp) roots.push({ value: env.tmp, placeholder: TMP_PH });
-  if (env.extraRoots?.length) {
-    for (const r of env.extraRoots) roots.push({ value: r, placeholder: HOME_PH });
-  }
-
-  const sorted = [...roots].sort((a, b) => b.value.length - a.value.length);
-  for (const { value, placeholder } of sorted) {
-    if (!value) continue;
-    out = out.replace(new RegExp(escapeRegExp(value), "gi"), placeholder);
-  }
-
-  return out;
-};
-
-const redactTranscriptPorts = (text: string): string =>
-  text.replace(/:(\d{2,5})\b/g, (_m, p: string) => {
-    const port = Number(p);
-    if (!Number.isFinite(port)) return _m;
-    if (WELL_KNOWN_PORTS.has(port)) return _m;
-    if (port >= 1024) return `:${PORT_PH}`;
-    return _m;
-  });
-
-const redactTranscriptContainerIds = (text: string): string =>
-  text
-    .replace(/\b([0-9a-f]{12})\b/gi, CONTAINER_ID_PH)
-    .replace(/\b([0-9a-f]{16,63})\b/gi, CONTAINER_ID_PH)
-    .replace(/\bsha256:([0-9a-f]{64})\b/gi, `sha256:${DIGEST_PH}`);
-
-const redactTranscriptProviderIds = (text: string): string =>
-  text.replace(/\b([A-Za-z0-9_-]+[_-](?:web|app|db|svc)[_-][A-Za-z0-9_-]+)\b/gi, PROVIDER_ID_PH);
-
-const redactTranscriptLiterals = (text: string, env: TranscriptRedactionEnv): string => {
-  let out = text;
-  if (env.user) out = out.replace(new RegExp(`\\b${escapeRegExp(env.user)}\\b`, "gi"), USER_PH);
-  if (env.host) out = out.replace(new RegExp(`\\b${escapeRegExp(env.host)}\\b`, "gi"), HOST_PH);
-  return out;
-};
-
-const redactTranscriptBareSecrets = (text: string): string =>
-  text
-    .replace(
-      SHORT_SECRET_EQUALS_FLAG_PATTERN,
-      (_m, prefix: string, key: string) => `${prefix}${key}=${REDACTED}`,
-    )
-    .replace(
-      SHORT_SECRET_SPACE_FLAG_PATTERN,
-      (_m, prefix: string, key: string) => `${prefix}${key} ${REDACTED}`,
-    )
-    .replace(GENERIC_KEY_EQUALS_SECRET_PATTERN, (_m, key: string) => `${key}=${REDACTED}`)
-    .replace(GENERIC_KEY_SPACE_SECRET_PATTERN, (_m, key: string) => `${key} ${REDACTED}`)
-    .replace(TOKEN_SECRET_LITERAL_PATTERN, `token ${REDACTED}`);
-
-const redactTranscriptQuerySecrets = (text: string): string =>
-  text.replace(TRANSCRIPT_QUERY_SECRET_PATTERN, (_m, prefix: string) => `${prefix}${REDACTED}`);
-
-const redactTranscriptString = (text: string, env: TranscriptRedactionEnv): string => {
-  if (!text) return text;
-  let out = text;
-  out = redactTranscriptPaths(out, env);
-  out = redactTranscriptPorts(out);
-  out = redactTranscriptContainerIds(out);
-  out = redactTranscriptProviderIds(out);
-  out = redactTranscriptLiterals(out, env);
-  out = redactTranscriptBareSecrets(out);
-  out = redactTranscriptQuerySecrets(out);
-  out = redactSecretsString(out);
-  out = out.replace(DOUBLE_MARKER_PATTERN, REDACTED);
-  return out;
-};
 
 /**
  * The canonical pattern-class catalog. Data-only (matcher + replacement) so a
@@ -293,80 +174,8 @@ export const PATTERN_CLASSES: Readonly<Record<string, PatternClass>> = Object.fr
     pattern: HIGH_ENTROPY_TOKEN_PATTERN,
     replace: (match: string) => (hasLetterAndDigit(match) ? REDACTED : match),
   },
-  port: {
-    pattern: PORT_PATTERN,
-    replace: (match: string, portText: string) => {
-      const port = Number(portText);
-      if (!Number.isFinite(port)) return match;
-      if (WELL_KNOWN_PORTS.has(port)) return match;
-      return port >= 1024 ? `:${PORT_PH}` : match;
-    },
-  },
-  containerId: { pattern: CONTAINER_ID_PATTERN, replace: CONTAINER_ID_PH },
-  digest: { pattern: DIGEST_PATTERN, replace: `sha256:${DIGEST_PH}` },
-  providerId: {
-    pattern: /\b([A-Za-z0-9_-]+[_-](?:web|app|db|svc)[_-][A-Za-z0-9_-]+)\b/gi,
-    replace: PROVIDER_ID_PH,
-  },
-  root: { pattern: TRANSCRIPT_ROOT_PATTERN, replace: HOME_PH },
+  ...TRANSCRIPT_PATTERN_CLASSES,
 });
-
-// --- deep value walker ---
-
-const redactValueWith = (
-  profileString: (text: string) => string,
-  value: unknown,
-  stack: WeakSet<object>,
-  memo: WeakMap<object, unknown>,
-): unknown => {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "string") return profileString(value);
-  if (typeof value !== "object") return value;
-
-  const memoHit = memo.get(value);
-  if (memoHit !== undefined) return memoHit;
-  if (stack.has(value)) return "[circular]";
-
-  stack.add(value);
-
-  let result: unknown;
-  if (Array.isArray(value)) {
-    result = value.map((item) => redactValueWith(profileString, item, stack, memo));
-  } else if (value instanceof Error) {
-    result = { name: value.name, message: profileString(value.message) };
-  } else {
-    let keys: string[];
-    try {
-      keys = Object.keys(value as Record<string, unknown>);
-    } catch {
-      result = REDACTED;
-      stack.delete(value);
-      memo.set(value, result);
-      return result;
-    }
-
-    const out: Record<string, unknown> = {};
-    for (const key of keys) {
-      if (SECRET_KEY_PATTERN.test(key)) {
-        out[key] = REDACTED;
-        continue;
-      }
-      let raw: unknown;
-      try {
-        raw = (value as Record<string, unknown>)[key];
-      } catch {
-        out[key] = REDACTED;
-        continue;
-      }
-      out[key] = redactValueWith(profileString, raw, stack, memo);
-    }
-    result = out;
-  }
-
-  stack.delete(value);
-  memo.set(value, result);
-  return result;
-};
 
 /**
  * Build a {@link Redactor} for the given profile. The value layer (known secret
@@ -380,14 +189,24 @@ export const createRedactor = (profile: RedactionProfile, options: CreateRedacto
     profile === "telemetry"
       ? (text: string) => redactTelemetryString(redactSecretsString(text))
       : profile === "transcript"
-        ? (text: string) => redactTranscriptString(text, env)
+        ? (text: string) => redactTranscriptString(text, env, redactSecretsString)
         : redactSecretsString;
 
   const redactString = (text: string): string => patternString(valueLayer.redact(text));
+  const boundedValueLayer = valueLayer.redactBounded;
+  const redactStringBounded =
+    profile === "secrets" && boundedValueLayer !== undefined
+      ? (text: string, maxBytes: number): string | undefined => {
+          const valueRedacted = boundedValueLayer(text, maxBytes);
+          return valueRedacted === undefined
+            ? undefined
+            : replacePatternsBounded(valueRedacted, SECRETS_REPLACEMENTS, maxBytes);
+        }
+      : undefined;
 
   return {
     redactString,
-    redactValue: (value) =>
-      redactValueWith(redactString, value, new WeakSet<object>(), new WeakMap<object, unknown>()),
+    ...(redactStringBounded === undefined ? {} : { redactStringBounded }),
+    redactValue: (value) => redactValueWith(redactString, (key) => SECRET_KEY_PATTERN.test(key), value),
   };
 };

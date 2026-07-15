@@ -48,7 +48,8 @@ tags: [beta, docs, plugins, compatibility]
   <Scenario id="redaction-primitive" render={false} reason="The SDK secrets subpath is covered by pure export and redactor tests; this guide records the plugin-author compatibility contract without depending on a live runtime emitter">
     <Step name="sdk-subpath">
       <Variable name="import" value="@lando/sdk/secrets" display="Plugin and SDK authors can import the shared redaction primitive from @lando/sdk/secrets without depending on @lando/core or an Effect runtime" />
-      <Variable name="factory" value="createRedactor(profile, options)" display="createRedactor returns redactString and redactValue helpers that compose known secret values with a profile-specific pattern pass" />
+      <Variable name="factory" value="createRedactor(profile, options)" display="createRedactor returns redactString, optional redactStringBounded, and redactValue helpers that compose known secret values with a profile-specific pattern pass" />
+      <Variable name="bounded" value="redactBounded? / redactStringBounded?" display="Bounded helpers accept text and a UTF-8 byte budget and return undefined rather than retaining oversized output; callers that require a bound fail closed when the helper is absent or returns undefined, and createRedactor supplies it for the secrets profile" />
       <Variable name="profiles" value="secrets|telemetry|transcript" display="The published profiles cover general secret masking, telemetry normalization, and deterministic transcript placeholders" />
     </Step>
     <Step name="runtime-status">

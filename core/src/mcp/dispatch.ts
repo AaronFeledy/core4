@@ -16,15 +16,13 @@ import { Cause, DateTime, Effect, Option } from "effect";
 
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import { type LandoEvent, PostMcpCallEvent, PreMcpCallEvent } from "@lando/sdk/events";
-import type { Redactor } from "@lando/sdk/secrets";
+import { REDACTED, type Redactor } from "@lando/sdk/secrets";
 
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import {
-  encodeCommandResult,
-  encodeStreamStderrFrame,
-  encodeStreamStdoutFrame,
-} from "../cli/result-encode.ts";
+import { buildCommandResultEnvelope } from "../cli/result-encode.ts";
+import { redactBoundedJsonValue } from "./bounded-json.ts";
 import { type McpCommandEntry, type McpToolInput, validateToolInput } from "./registry.ts";
+import { inspectMcpCommandOutcome, projectMcpProgressFrame } from "./result-inspector.ts";
 
 export type McpDispatchError = McpToolNotAllowedError | McpToolInputError | McpTransportError;
 
@@ -77,21 +75,28 @@ export interface McpDispatchDeps {
   readonly now?: () => number;
 }
 
+const EVENT_FIELD_MAX_BYTES = 64 * 1_024;
+
 const nowMs = (deps: McpDispatchDeps): number => (deps.now ?? Date.now)();
 
+const boundedEventString = (redactor: Redactor, value: string): string =>
+  redactor.redactStringBounded?.(value, EVENT_FIELD_MAX_BYTES) ?? REDACTED;
+
 const appRefSummary = (deps: McpDispatchDeps, input: McpToolInput | undefined): string | undefined =>
-  input?.appPath === undefined ? undefined : deps.redactor.redactString(input.appPath);
+  input?.appPath === undefined ? undefined : boundedEventString(deps.redactor, input.appPath);
 
 const emit = (deps: McpDispatchDeps, event: LandoEvent): Effect.Effect<void> =>
   deps.publish === undefined ? Effect.void : deps.publish(event).pipe(Effect.catchAll(() => Effect.void));
 
-const preEvent = (deps: McpDispatchDeps, request: McpToolCallRequest, commandId: string): LandoEvent => {
-  const appRef = appRefSummary(deps, request.input);
+const preEvent = (
+  deps: McpDispatchDeps,
+  input: Pick<PostEventInput, "toolId" | "commandId" | "appRef">,
+): LandoEvent => {
   return PreMcpCallEvent.make({
     eventName: "pre-mcp-call",
-    toolId: request.toolId,
-    commandId,
-    ...(appRef === undefined ? {} : { appRef }),
+    toolId: boundedEventString(deps.redactor, input.toolId),
+    commandId: boundedEventString(deps.redactor, input.commandId),
+    ...(input.appRef === undefined ? {} : { appRef: input.appRef }),
     timestamp: DateTime.unsafeMake(nowMs(deps)),
   });
 };
@@ -108,14 +113,14 @@ interface PostEventInput {
 const postEvent = (deps: McpDispatchDeps, input: PostEventInput): LandoEvent =>
   PostMcpCallEvent.make({
     eventName: "post-mcp-call",
-    toolId: input.toolId,
-    commandId: input.commandId,
+    toolId: boundedEventString(deps.redactor, input.toolId),
+    commandId: boundedEventString(deps.redactor, input.commandId),
     ...(input.appRef === undefined ? {} : { appRef: input.appRef }),
     outcome: input.outcome,
     durationMs: input.durationMs,
     ...(input.failureDetail === undefined
       ? {}
-      : { failureDetail: deps.redactor.redactString(input.failureDetail) }),
+      : { failureDetail: boundedEventString(deps.redactor, input.failureDetail) }),
     timestamp: DateTime.unsafeMake(nowMs(deps)),
   });
 
@@ -127,18 +132,22 @@ const envelopeTag = (envelope: unknown): string | undefined => {
   return typeof tag === "string" ? tag : undefined;
 };
 
-const encodeProgressFrame = (frame: McpProgressFrame, deps: McpDispatchDeps): Effect.Effect<string> =>
-  frame._tag === "stdout"
-    ? encodeStreamStdoutFrame({
-        chunk: frame.chunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        redactor: deps.redactor,
-      })
-    : encodeStreamStderrFrame({
-        chunk: frame.chunk,
-        ...(frame.service === undefined ? {} : { service: frame.service }),
-        redactor: deps.redactor,
-      });
+const encodeProgressFrame = (
+  frame: unknown,
+  deps: McpDispatchDeps,
+): Effect.Effect<unknown, McpTransportError> =>
+  Effect.try({
+    try: () => projectMcpProgressFrame(frame),
+    catch: (cause) =>
+      cause instanceof McpTransportError
+        ? cause
+        : new McpTransportError({
+            message: "MCP progress payload could not be safely inspected.",
+            remediation: "Emit a plain stdout or stderr frame with string chunk and service fields.",
+          }),
+  }).pipe(
+    Effect.flatMap((projected) => redactBoundedJsonValue(projected, deps.redactor, "MCP progress payload")),
+  );
 
 const emitProgressFrame = (
   deps: McpDispatchDeps,
@@ -147,7 +156,7 @@ const emitProgressFrame = (
   deps.notify === undefined
     ? Effect.void
     : encodeProgressFrame(frame, deps).pipe(
-        Effect.flatMap((line) => deps.notify?.(JSON.parse(line)) ?? Effect.void),
+        Effect.flatMap((encoded) => deps.notify?.(encoded) ?? Effect.void),
       );
 
 /**
@@ -166,7 +175,7 @@ export const dispatchTool = (
     const entry = deps.registry.get(request.toolId);
     const commandId = entry?.spec.id ?? request.toolId;
 
-    yield* emit(deps, preEvent(deps, request, commandId));
+    yield* emit(deps, preEvent(deps, { toolId: request.toolId, commandId, appRef }));
 
     const emitPost = (
       outcome: "success" | "failure",
@@ -208,12 +217,10 @@ export const dispatchTool = (
 
       if (!deps.effective.has(request.toolId)) {
         const error = rejectNotAllowed();
-        yield* emitPost("failure", error._tag);
         return yield* Effect.fail(error);
       }
       if (entry === undefined) {
         const error = unavailable();
-        yield* emitPost("failure", error._tag);
         return yield* Effect.fail(error);
       }
 
@@ -227,7 +234,7 @@ export const dispatchTool = (
                 toolId: request.toolId,
                 remediation: "Provide input matching the tool's derived schema.",
               }),
-      }).pipe(Effect.tapError((error) => emitPost("failure", error._tag)));
+      });
 
       const runInput: McpRunInput = {
         argv: [],
@@ -237,19 +244,20 @@ export const dispatchTool = (
         ...(request.input?.appPath === undefined ? {} : { appPath: request.input.appPath }),
       };
 
-      const outcome = yield* deps.execute(entry, runInput);
+      const rawOutcome = yield* deps.execute(entry, runInput);
+      const outcome = yield* inspectMcpCommandOutcome(rawOutcome);
       if (outcome._tag === "success") {
         for (const frame of entry.spec.streamFrames?.(outcome.value) ?? []) {
           yield* emitProgressFrame(deps, frame);
         }
       }
-      const line = yield* encodeCommandResult({
+      const encodedEnvelope = yield* buildCommandResultEnvelope({
         command: entry.spec.id,
         resultSchema: entry.spec.resultSchema,
         outcome,
         redactor: deps.redactor,
       });
-      const envelope: unknown = JSON.parse(line);
+      const envelope = yield* redactBoundedJsonValue(encodedEnvelope, deps.redactor, "MCP tool result");
       const ok = (envelope as { readonly ok?: unknown }).ok === true;
 
       yield* emitPost(ok ? "success" : "failure", ok ? undefined : envelopeTag(envelope));
@@ -264,5 +272,10 @@ export const dispatchTool = (
       return yield* Effect.fail(interruptedError());
     }
     const failure = Cause.failureOption(exit.cause);
-    return yield* Option.isSome(failure) ? Effect.fail(failure.value) : Effect.die(Cause.squash(exit.cause));
+    if (Option.isSome(failure)) {
+      yield* emitPost("failure", failure.value._tag);
+      return yield* Effect.fail(failure.value);
+    }
+    yield* emitPost("failure", "Defect");
+    return yield* Effect.die(Cause.squash(exit.cause));
   });
