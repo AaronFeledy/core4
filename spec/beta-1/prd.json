@@ -1392,7 +1392,7 @@
         "Lint passes"
       ],
       "priority": 78,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-441 review deferred TypeScript-form lint/include-update parser gap as \u00a77.1.1 form-parity scope."
     },
     {

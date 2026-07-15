@@ -18,6 +18,8 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 - A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
 - Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; bind each installed candidate's own policy stanza to that snapshot under `pipefail` without early-exit pipelines.
+- Landofile authoring tools must enumerate `presentLandofileLayers` and route each form through the existing YAML/TypeScript loader seam; include refresh must gather authored layers without invoking pin-mode include resolution.
+- Landofile lint validates each authored layer before validating the merged document; merge precedence must not hide a layer shape that runtime loading rejects.
 
 ## Durable learnings
 
@@ -218,4 +220,24 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - A shared descriptor-only progress projection rejects accessors on projected fields, `toJSON`, exotic prototypes, and proxies before reading `_tag`, `chunk`, or `service` in both dispatch-generated and live `StreamFrameSink` paths; extra properties are ignored without invocation, and failures remain tagged command/transport outcomes. Focused service/stdio coverage also proves correlation release, follow-up usability, and secret-key/value redaction. An isolated Bun process proves a small serialization retains less than 1 MiB of array-buffer storage rather than reserving the full 8 MiB policy budget.
 - Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account review quota was exhausted. Replacing the internal parsed bounded value with a new wire-only transport type was rejected as unnecessary scope: every staged representation is independently capped, while preserving the structured in-memory transport contract avoids a cross-subsystem API rewrite. A pessimistic fraction of the cap was rejected in favor of exact writer accounting.
 - Verification: clean LSP diagnostics, `bun run typecheck`, `bun run lint`, machine-output and redaction boundaries, guide lint/coverage plus the focused SDK-compatibility guide pass, the SDK secrets boundary, focused SDK redactor tests, and individual MCP serialization/dispatch/service/transport tests passed. Guide drift skipped locally because no pull-request context was available; the optional TypeScript no-excuse audit script is not present in this repository.
+---
+
+## 2026-07-15 11:26 CDT - Babysit
+- PR: #589 https://github.com/AaronFeledy/core4/pull/589
+- CI outcome: pass (after fix; initially unit-tests-linux-x64 failed)
+- Review feedback: fixed (URL-userinfo redaction patterns no longer quadratic on long ordinary strings)
+- Merge: merged (squash)
+---
+
+## 2026-07-15 11:54 CDT - US-449
+- Landofile lint now loads every authored YAML or TypeScript layer through its canonical form path, merges layers before schema-only diagnostics, and preserves tagged same-layer form conflicts. Include update now gathers declarations from every authored layer through the existing trusted TypeScript loader without entering pin mode, so mixed-form apps refresh one complete lock set.
+- Verification: typecheck, lint, renderer and machine-output boundaries passed; focused lint/include-update and adjacent Landofile, lock-store, and doctor spot checks passed; real source CLI proofs covered TS-only lint, dual-form failures, and an offline mixed-layer refresh.
+- **Learnings for future iterations:**
+  - `loadLandofileLayers` resolves includes in pin mode, so refresh commands must reuse its form discovery/loading seams without calling the aggregate loader itself.
+---
+
+## 2026-07-15 12:14 CDT - US-449 Review
+- Fixed layered lint parity so an invalid lower layer remains a structured violation even when a higher layer masks the bad value; include-update tests now restore an originally absent cache-root environment variable by true deletion instead of leaking the string `undefined`.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted. A new TypeScript trust gate or sandbox rewrite was rejected because US-449 preserves the existing trusted-author loader authority and explicitly defers broader loader isolation beyond form parity.
+- Verification: typecheck, lint, renderer and machine-output boundaries passed; focused lint, config-lint, include-update, and doctor spot checks passed.
 ---

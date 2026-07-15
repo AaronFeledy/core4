@@ -15,7 +15,7 @@ import { dirname } from "node:path";
 
 import { Effect, Either, ParseResult, Schema } from "effect";
 
-import { LandofileNotFoundError } from "@lando/sdk/errors";
+import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY,
@@ -25,9 +25,12 @@ import {
   LandofileShape,
 } from "@lando/sdk/schema";
 
-import { LANDOFILE_NAME, findLandofilePath } from "./discovery.ts";
+import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
+import { presentLandofileLayers } from "./layers.ts";
+import { mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
+import { loadLandofileTs } from "./ts-loader.ts";
 
 export interface LintLandofileOptions {
   /** Directory to search upward from for a Landofile. Defaults to `process.cwd()`. */
@@ -106,6 +109,13 @@ const violationFromIssue = (issue: {
     : { path, message: issue.message, suggestedFix };
 };
 
+const violationsFor = (parsed: unknown): ReadonlyArray<ConfigLintViolation> => {
+  const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
+  return Either.isRight(decoded)
+    ? []
+    : ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map(violationFromIssue);
+};
+
 const appNameOf = (parsed: unknown): string => {
   if (parsed === null || typeof parsed !== "object") return "";
   const name = (parsed as { readonly name?: unknown }).name;
@@ -140,50 +150,107 @@ const singleViolationResult = (
  */
 export const lintLandofile = (
   options: LintLandofileOptions = {},
-): Effect.Effect<ConfigLintResult, LandofileNotFoundError, never> =>
+): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
-    const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
+    const discovery = yield* Effect.tryPromise({
+      try: () => findLandofilePath(cwd),
+      catch: (cause) => cause,
+    }).pipe(Effect.either);
+    if (Either.isLeft(discovery)) {
+      if (discovery.left instanceof LandofileFormConflictError) return yield* Effect.fail(discovery.left);
+      const message =
+        discovery.left instanceof Error ? discovery.left.message : "Failed to discover Landofile.";
+      return singleViolationResult(cwd, message);
+    }
+    const filePath = discovery.right;
     if (filePath === undefined) {
       return yield* Effect.fail(
         new LandofileNotFoundError({
-          message: `No ${LANDOFILE_NAME} found. Searched from ${cwd} upward.`,
+          message: `No ${LANDOFILE_NAME} or ${LANDOFILE_TS_NAME} found. Searched from ${cwd} upward.`,
           cwd,
         }),
       );
     }
 
-    const contentEither = yield* Effect.tryPromise(() => Bun.file(filePath).text()).pipe(Effect.either);
-    if (Either.isLeft(contentEither)) {
-      const cause = contentEither.left;
-      const message = cause instanceof Error ? cause.message : `Failed to read ${filePath}.`;
+    const layersDiscovery = yield* Effect.tryPromise({
+      try: () => presentLandofileLayers(dirname(filePath)),
+      catch: (cause) => cause,
+    }).pipe(Effect.either);
+    if (Either.isLeft(layersDiscovery)) {
+      if (layersDiscovery.left instanceof LandofileFormConflictError) {
+        return yield* Effect.fail(layersDiscovery.left);
+      }
+      const message =
+        layersDiscovery.left instanceof Error
+          ? layersDiscovery.left.message
+          : "Failed to discover Landofile layers.";
       return singleViolationResult(filePath, message);
     }
 
-    const renderedEither = yield* renderLandofileTemplate({
-      filePath,
-      content: contentEither.right,
-    }).pipe(Effect.either);
-    if (Either.isLeft(renderedEither)) {
-      const error = renderedEither.left;
-      return singleViolationResult(filePath, error.message, { line: error.line, column: error.column });
+    const parsedLayers: unknown[] = [];
+    for (const layer of layersDiscovery.right) {
+      const contentEither = yield* Effect.tryPromise(() => Bun.file(layer.filePath).text()).pipe(
+        Effect.either,
+      );
+      if (Either.isLeft(contentEither)) {
+        const cause = contentEither.left;
+        const message = cause instanceof Error ? cause.message : `Failed to read ${layer.filePath}.`;
+        return singleViolationResult(layer.filePath, message);
+      }
+
+      if (layer.filePath.endsWith(".ts")) {
+        const loadedEither = yield* loadLandofileTs({
+          filePath: layer.filePath,
+          appRoot: dirname(filePath),
+          content: contentEither.right,
+        }).pipe(Effect.either);
+        if (Either.isLeft(loadedEither)) {
+          return singleViolationResult(layer.filePath, loadedEither.left.message);
+        }
+        parsedLayers.push(loadedEither.right);
+        continue;
+      }
+
+      const renderedEither = yield* renderLandofileTemplate({
+        filePath: layer.filePath,
+        content: contentEither.right,
+      }).pipe(Effect.either);
+      if (Either.isLeft(renderedEither)) {
+        const error = renderedEither.left;
+        return singleViolationResult(layer.filePath, error.message, {
+          line: error.line,
+          column: error.column,
+        });
+      }
+
+      const parsedEither = yield* parseLandofile({
+        file: layer.filePath,
+        content: renderedEither.right,
+        cwd: dirname(filePath),
+      }).pipe(Effect.either);
+      if (Either.isLeft(parsedEither)) {
+        const error = parsedEither.left;
+        return singleViolationResult(layer.filePath, error.message, {
+          line: error.line,
+          column: error.column,
+        });
+      }
+      parsedLayers.push(parsedEither.right);
     }
 
-    const parsedEither = yield* parseLandofile({
-      file: filePath,
-      content: renderedEither.right,
-      cwd: dirname(filePath),
-    }).pipe(Effect.either);
-    if (Either.isLeft(parsedEither)) {
-      const error = parsedEither.left;
-      return singleViolationResult(filePath, error.message, { line: error.line, column: error.column });
+    const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
+    const mergedViolations = violationsFor(parsed);
+    const violations = [...mergedViolations];
+    const violationKeys = new Set(mergedViolations.map((violation) => JSON.stringify(violation)));
+    for (const layer of parsedLayers) {
+      for (const violation of violationsFor(layer)) {
+        const key = JSON.stringify(violation);
+        if (violationKeys.has(key)) continue;
+        violationKeys.add(key);
+        violations.push(violation);
+      }
     }
-
-    const parsed = parsedEither.right;
-    const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
-    const violations = Either.isRight(decoded)
-      ? []
-      : ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map(violationFromIssue);
 
     return {
       app: appNameOf(parsed),
