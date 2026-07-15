@@ -67,6 +67,22 @@ describe("provider-lando machine ownership recording", () => {
     expect(calls).toEqual(["inspect", "create", "start"]);
   });
 
+  for (const [platform, ensureMachine] of [
+    ["macOS", ensureMacOSPodmanMachine],
+    ["Windows", ensureWindowsPodmanMachine],
+  ] as const) {
+    test(`${platform} restarts a running Lando-owned machine after enabling native CA import`, async () => {
+      const calls: string[] = [];
+
+      const result = await Effect.runPromise(
+        ensureMachine(machineRunner("running", calls), { name: "lando", createdByLando: true }),
+      );
+
+      expect(result).toEqual({ createdByLando: false });
+      expect(calls).toEqual(["inspect", "syncTrust", "stop", "start"]);
+    });
+  }
+
   test("setup persists machine ownership on macOS when it created the machine", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-owned-"));
     try {
@@ -157,7 +173,7 @@ describe("provider-lando machine ownership recording", () => {
         }),
       );
 
-      expect(calls).toEqual(["inspect", "syncTrust"]);
+      expect(calls).toEqual(["inspect", "syncTrust", "stop", "start"]);
       const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
       expect(state.machine).toEqual({ name: "lando", createdByLando: true });
     } finally {
