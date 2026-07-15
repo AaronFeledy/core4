@@ -111,6 +111,46 @@ describe("check:public-transcripts", () => {
     }
   });
 
+  test("bootstraps public transcripts when the transcript directory exists and is empty", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-empty-"));
+    try {
+      await writeRenderableGuideFixture(root);
+      await mkdir(join(root, "dist/transcripts/public/guides"), { recursive: true });
+
+      const transcriptPath = join(root, "dist/transcripts/public/guides/demo/reader-path.json");
+      const { checkPublicTranscriptsOnDisk } = await loadChecker();
+      expect((await checkPublicTranscriptsOnDisk(root, { bootstrap: true })).diagnostics).toEqual([]);
+      expect(await Bun.file(transcriptPath).exists()).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("keeps a non-JSON transcript corpus strict and preserves its content", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-public-tx-non-json-"));
+    try {
+      await writeRenderableGuideFixture(root);
+      const transcriptRoot = join(root, "dist/transcripts/public/guides");
+      await mkdir(transcriptRoot, { recursive: true });
+      const sentinelPath = join(transcriptRoot, "README.txt");
+      await Bun.write(sentinelPath, "preserve me\n");
+
+      const transcriptPath = join(transcriptRoot, "demo/reader-path.json");
+      const { checkPublicTranscriptsOnDisk } = await loadChecker();
+      expect((await checkPublicTranscriptsOnDisk(root, { bootstrap: true })).diagnostics).toEqual([
+        {
+          code: "transcript.missing",
+          message:
+            "Shipped guide is missing its public transcript artifact: dist/transcripts/public/guides/demo/reader-path.json",
+        },
+      ]);
+      expect(await Bun.file(sentinelPath).text()).toBe("preserve me\n");
+      expect(await Bun.file(transcriptPath).exists()).toBe(false);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
   test("keeps missing diagnostics by default when the corpus is empty", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-public-tx-default-"));
     try {

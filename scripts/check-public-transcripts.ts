@@ -59,6 +59,17 @@ const listJsonFiles = async (root: string, relativeDir: string): Promise<Readonl
   return results;
 };
 
+const canBootstrapTranscriptRoot = async (root: string, relativeDir: string): Promise<boolean> => {
+  try {
+    return (await readdir(resolve(root, relativeDir))).length === 0;
+  } catch (error) {
+    if (error !== null && typeof error === "object" && "code" in error && error.code === "ENOENT") {
+      return true;
+    }
+    throw error;
+  }
+};
+
 export const checkPublicTranscripts = (input: CheckPublicTranscriptsInput): PublicTranscriptCheckResult => {
   const missing = input.expected
     .filter((path) => !input.actual.has(path))
@@ -97,7 +108,11 @@ export const checkPublicTranscriptsOnDisk = async (
   }
 
   let actual = new Set(await listJsonFiles(root, transcriptRoot));
-  if (options.bootstrap === true && actual.size === 0 && expected.length > 0) {
+  if (
+    options.bootstrap === true &&
+    expected.length > 0 &&
+    (await canBootstrapTranscriptRoot(root, transcriptRoot))
+  ) {
     await emitPublicTranscripts(asts, root, transcriptRoot);
     actual = new Set(await listJsonFiles(root, transcriptRoot));
   }

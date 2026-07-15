@@ -172,3 +172,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Self-bootstrap only on a fully empty corpus; regenerating a partial corpus would turn an inventory gate into a tautology and hide drift.
 ---
+
+## 2026-07-15 05:40 CDT - US-446 Review
+- Tightened bootstrap eligibility from "no JSON files" to an absent or truly empty transcript directory, so non-JSON content cannot be cleared and remains strict with actionable missing-artifact diagnostics.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted; broader path-containment validation was rejected because `root` and `transcriptRoot` are trusted in-process options and the CLI uses fixed repository paths; a separate subprocess regression for the CLI wiring was rejected as redundant with the focused API regression and real clean-tree CLI proof.
+- Verification: typecheck, lint, guide lint/coverage, TypeScript no-excuse audit, and focused transcript plus adjacent guide-script tests passed.
+- **Learnings for future iterations:**
+  - Generated-corpus emptiness must consider every directory entry before invoking an emitter that clears its output root; filtering only expected artifact extensions can misclassify and delete unrelated content.
+---
