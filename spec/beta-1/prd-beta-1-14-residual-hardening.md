@@ -186,6 +186,23 @@ Scope is hardening and contract parity only: no new commands, flags, service typ
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+### US-461: Windows managed setup reaches Podman API (win-sshproxy helpers)
+
+**Description:** As a Windows user of provider-lando, `lando setup --provider=lando` completes with a reachable managed Podman API after machine create/trust — not a green machine with a dead client connection — so real Windows first-run works.
+
+**Acceptance Criteria:**
+
+- [ ] The win32-x64 runtime bundle (and post-extract runtime bin dir) ships the Windows machine helper binaries Podman needs for client API reachability after `podman machine start` — at minimum `win-sshproxy.exe` alongside existing helpers such as `gvproxy.exe` — and managed `containers.conf` / helper discovery points at that directory so Podman does not fail with missing `helper_binaries_dir` entries.
+- [ ] On Windows, non-interactive `lando setup --yes --no-interactive --provider=lando` ends with a reachable Podman API for the Lando-owned machine (ping/info succeed) when Hyper-V/WSL virtualization prerequisites are already satisfied; machine ownership-gated native CA trust (`ImportNativeCA` / startup CA import) remains non-elevating and Hyper-V prep remains manual-only (US-423/US-436/US-450).
+- [ ] When helper or API reachability fails, the failure is a tagged, remediated `ProviderUnavailableError` (or existing equivalent) that names the missing helper or connection surface without leaking host secrets; setup does not claim success with an unreachable runtime.
+- [ ] CI proves the Windows green path beyond `--version`/`--help`/`shellenv` smoke: at least one `windows-2022` job runs compiled-binary setup (or an env-gated live cell) that asserts machine + API reachability, or structured-skips only when the runner cannot host a Podman machine — never silent pass on a broken claimed path. US-453 lifecycle cells may share infrastructure but do not replace this setup/API gate.
+- [ ] Linux/macOS managed setup paths do not regress.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+**Notes:** Origin US-450 Windows interop verify: machine created with `ImportNativeCA: true` and successful host CA import without UAC, then setup failed because `win-sshproxy.exe` was missing from helper discovery. Existing CI windows jobs smoke the binary and run contract unit tests; they do not prove live managed setup→API.
+
 ## Functional Requirements
 
 - **FR-1:** Every story is hardening or parity against already-shipped contracts; no new user-facing feature surface.
@@ -203,9 +220,9 @@ Scope is hardening and contract parity only: no new commands, flags, service typ
 
 ## Success Metrics
 
-- `spec/beta-1/prd.json` contains unique ordered US-444..US-454 entries with priorities continuing after US-443 and all start at `passes: false`.
+- `spec/beta-1/prd.json` contains unique ordered US-444..US-454 and US-461 entries with priorities continuing after US-443 (US-461 inserted at high priority after US-450 verify findings) and residual stories start at `passes: false` until closed.
 - Every residual row in the index traceability table maps to a story in this PRD or an explicit post-4.0 non-goal.
-- Beta 1 feature freeze is not claimed until US-444..US-454 pass or are deliberately reclassified with source-backed rationale and synchronized PRD/spec text.
+- Beta 1 feature freeze is not claimed until US-444..US-454 and US-461 pass or are deliberately reclassified with source-backed rationale and synchronized PRD/spec text.
 
 ## Guide Coverage
 
