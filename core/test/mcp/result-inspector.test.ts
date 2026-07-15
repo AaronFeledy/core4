@@ -42,6 +42,15 @@ test("omits a hidden accessor before result-schema encoding", async () => {
 test("projects only plain descriptor-safe progress data", () => {
   // Given
   let toJsonCalls = 0;
+  let ignoredGetterCalls = 0;
+  const withIgnoredAccessor = { _tag: "stdout", chunk: "hello" };
+  Object.defineProperty(withIgnoredAccessor, "ignored", {
+    enumerable: true,
+    get: () => {
+      ignoredGetterCalls += 1;
+      return "not-read";
+    },
+  });
   const withToJson = {
     _tag: "stdout",
     chunk: "not-read",
@@ -57,12 +66,15 @@ test("projects only plain descriptor-safe progress data", () => {
 
   // When
   const projected = projectMcpProgressFrame({ _tag: "stdout", chunk: "hello", service: "web" });
+  const projectedWithIgnoredAccessor = projectMcpProgressFrame(withIgnoredAccessor);
   const toJsonFailure = () => projectMcpProgressFrame(withToJson);
   const exoticFailure = () => projectMcpProgressFrame(new ExoticFrame());
 
   // Then
   expect(projected).toEqual({ _tag: "stdout", chunk: "hello", service: "web" });
+  expect(projectedWithIgnoredAccessor).toEqual({ _tag: "stdout", chunk: "hello" });
   expect(toJsonFailure).toThrow(McpTransportError);
   expect(exoticFailure).toThrow(McpTransportError);
   expect(toJsonCalls).toBe(0);
+  expect(ignoredGetterCalls).toBe(0);
 });

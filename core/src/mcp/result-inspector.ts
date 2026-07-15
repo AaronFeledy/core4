@@ -43,11 +43,7 @@ export const projectMcpProgressFrame = (value: unknown): McpProgressData => {
   const prototype = Object.getPrototypeOf(value);
   if (prototype !== Object.prototype && prototype !== null) throw inspectionFailure(context);
 
-  for (const key of Reflect.ownKeys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || !("value" in descriptor)) throw inspectionFailure(context);
-    if (key === "toJSON") throw inspectionFailure(context);
-  }
+  if (Object.getOwnPropertyDescriptor(value, "toJSON") !== undefined) throw inspectionFailure(context);
 
   const tag = Object.getOwnPropertyDescriptor(value, "_tag")?.value;
   const chunk = Object.getOwnPropertyDescriptor(value, "chunk")?.value;
