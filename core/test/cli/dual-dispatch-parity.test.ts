@@ -5,6 +5,7 @@ import {
   scratchListFormatFromInput,
   scratchStartOptionsFromInput,
 } from "../../src/cli/commands/scratch.ts";
+import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import type { ResultFormat } from "../../src/cli/format-flags.ts";
 import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/oclif/commands/app/logs.ts";
 import { initOptionsFromInput } from "../../src/cli/oclif/commands/apps/init.ts";
@@ -92,6 +93,14 @@ describe("dual-dispatch argv parser parity", () => {
     expect(logsFollowFromInput(compiledInput("app:logs", ["--follow"]))).toBe(true);
   });
 
+  test("compiled command inputs preserve valid separated, equals, and repeatable values", () => {
+    const logs = compiledInput("app:logs", ["--service", "appserver", "--since=1h", "--tail", "25"]);
+    const init = compiledInput("apps:init", ["--answer", "php=8.3", "--answer=database=mysql"]);
+
+    expect(logsOptionsFromInput(logs)).toEqual({ service: "appserver", since: "1h", tail: 25 });
+    expect(init.flags.answer).toEqual(["php=8.3", "database=mysql"]);
+  });
+
   test("app:logs parses --source identically in compiled dispatch", () => {
     const input = compiledInput("app:logs", ["--service", "db", "--source", "slow-query", "--follow"]);
 
@@ -99,11 +108,11 @@ describe("dual-dispatch argv parser parity", () => {
     expect(logsFollowFromInput(input)).toBe(true);
   });
 
-  test("app:logs drops a non-numeric --tail instead of forwarding a string", () => {
-    const input = compiledInput("app:logs", ["--tail", "abc"]);
-
-    expect((input.flags as { readonly tail?: unknown }).tail).toBeUndefined();
-    expect(logsOptionsFromInput(input)).toEqual({});
+  test.each([
+    ["invalid integer", ["--tail", "abc"]],
+    ["repeated option", ["--service", "appserver", "--service=database"]],
+  ])("app:logs rejects %s before producing compiled input", (_name, argv) => {
+    expect(() => compiledInput("app:logs", argv)).toThrow(MalformedCliFlagValueError);
   });
 
   test("apps:scratch:start uses scratchStartOptionsFromInput for recipe and fork flags", () => {

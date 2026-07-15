@@ -14,6 +14,7 @@ import {
   activeResultFormat,
   setActiveCommandInvocation,
 } from "./compiled-runtime.ts";
+import { validateCommandFlagValues } from "./flag-value-validation.ts";
 import { type ResultFormat, resolveResultFormat } from "./format-flags.ts";
 
 export const compiledCommandInputFromArgv = (
@@ -45,6 +46,8 @@ export const compiledCommandInputFromArgv = (
       ? normalizeScratchStartArgv(argvWithoutUniversalFormat)
       : argvWithoutUniversalFormat;
   const flagDefinitions = flagDefinitionsForCommand(command);
+  const flagValueError = validateCommandFlagValues(commandId, normalizedArgv, flagDefinitions);
+  if (flagValueError !== undefined) throw flagValueError;
   const flagTokens = flagNameByToken(flagDefinitions);
   const argNames = Object.keys(argDefinitionsForCommand(command));
   const flags: Record<string, unknown> = {};

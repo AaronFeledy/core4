@@ -87,7 +87,8 @@ export default class MetaGlobalLogsCommand extends LandoCommandBase {
   static override bootstrap = globalLogsSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(MetaGlobalLogsCommand)) as { readonly flags: GlobalLogsFlags };
-    await this.runEffect(parsed.flags.follow === true ? followGlobalLogsSpec : globalLogsSpec);
+    await this.runEffect(
+      this.argv.includes("--follow") || this.argv.includes("-f") ? followGlobalLogsSpec : globalLogsSpec,
+    );
   }
 }

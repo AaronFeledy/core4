@@ -87,7 +87,8 @@ export default class LogsCommand extends LandoCommandBase {
   static override bootstrap = logsSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(LogsCommand)) as { readonly flags: LogsFlags };
-    await this.runEffect(parsed.flags.follow === true ? followLogsSpec : logsSpec);
+    await this.runEffect(
+      this.argv.includes("--follow") || this.argv.includes("-f") ? followLogsSpec : logsSpec,
+    );
   }
 }

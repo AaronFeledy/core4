@@ -54,7 +54,13 @@ import {
 export { normalizeCompiledCommandArgv };
 export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run.ts";
 import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help.ts";
-import { type CompiledCommand, commandEntries, commandName, findCommand } from "./compiled-argv.ts";
+import {
+  type CompiledCommand,
+  commandEntries,
+  commandName,
+  findCommand,
+  flagDefinitionsForCommand,
+} from "./compiled-argv.ts";
 import { compiledCommandInputFromArgv } from "./compiled-input.ts";
 import {
   type CompiledCommandInput,
@@ -76,6 +82,7 @@ import {
   setActiveResultFormat,
 } from "./compiled-runtime.ts";
 export { compiledCommandInputFromArgv } from "./compiled-input.ts";
+import { validateCommandFlagValues } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
@@ -392,6 +399,20 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   ) {
     await runMetaVersion();
     return;
+  }
+
+  if (found !== undefined) {
+    const flagValueError = validateCommandFlagValues(
+      canonicalCommandId,
+      argv.slice(1),
+      flagDefinitionsForCommand(found[1]),
+    );
+    if (flagValueError !== undefined) {
+      await runCompiledCommand(Effect.fail(flagValueError), Layer.empty, () => undefined, {
+        failureExitCode: () => 2,
+      });
+      return;
+    }
   }
 
   if (argv[0] === "init" || argv[0] === "apps:init") {

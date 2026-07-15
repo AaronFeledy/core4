@@ -14,6 +14,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 ## Codebase Patterns
 
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
+- Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 
 ## Durable learnings
 
@@ -140,4 +141,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass (after triage)
 - Review feedback: fixed (added Guide-Coverage-Skip for internal host-proxy IPC backpressure; no guide change needed)
 - Merge: merged (squash)
+---
+
+## 2026-07-15 02:33 CDT - US-445
+- Malformed value-taking CLI flags now fail before command execution on source and compiled dispatch with one tagged, remediated error: missing and empty values, strict integer violations, and repeated non-repeatable values no longer fall through to raw OCLIF diagnostics or silent compiled mis-parses. Machine mode uses the standard redacted result envelope with exit-code parity.
+- Verification: typecheck, lint, renderer and machine-output boundaries passed; focused validator/parser tests and source/compiled parity spot checks passed; sandbox CLI proofs confirmed malformed exits at 2 and valid values at 0.
+- **Learnings for future iterations:**
+  - Keep OCLIF parsing inside `LandoCommandBase.runEffect`; wrapper-level pre-parsing bypasses shared renderer-aware validation. Preserve explicit optional-value contracts such as bare `--mount-cwd` when adding generic empty-value rejection.
 ---

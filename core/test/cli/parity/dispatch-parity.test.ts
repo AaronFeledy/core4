@@ -350,6 +350,15 @@ const lastJsonLine = (output: string): unknown => {
   return JSON.parse(line);
 };
 
+const commandResultEnvelope = (value: unknown): unknown =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  value._tag === "result" &&
+  "envelope" in value
+    ? value.envelope
+    : value;
+
 const expectUnknownFlagParity = async (argv: ReadonlyArray<string>, flag: string): Promise<void> => {
   const source = await runSourceCli(argv);
   const compiled = await runCompiledCli(argv);
@@ -834,7 +843,50 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
         expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
         expect(compiled.stdout).toBe("");
-        expect(compiled.stderr).toContain("expects");
+        expect(errorCodeFromStderr(source.stderr)).toBe("MalformedCliFlagValueError");
+        expect(errorCodeFromStderr(compiled.stderr)).toBe("MalformedCliFlagValueError");
+        expect(source.stderr).toContain("Supply a non-empty value");
+        expect(compiled.stderr).toContain("Supply a non-empty value");
+      }
+    }, 30_000);
+
+    test("malformed flag values use the same tagged machine failure without supplied values", async () => {
+      const malformedCases = [
+        ["meta:setup", "--provider"],
+        ["meta:setup", "--provider", "--yes"],
+        ["meta:setup", "--provider="],
+        ["app:logs", "--tail=12x"],
+        ["meta:setup", "--provider", "podman-private", "--provider", "docker-private"],
+      ];
+
+      for (const argv of malformedCases) {
+        const suppliedValues = argv.filter((token) => token.includes("private"));
+        const source = await runSourceCli([...argv, "--format=json"]);
+        const compiled = await runCompiledCli([...argv, "--format=json"]);
+
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(2);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(2);
+        const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+        const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+        for (const frame of [sourceFrame, compiledFrame]) {
+          expect(commandResultEnvelope(frame)).toMatchObject({
+            apiVersion: "v4",
+            ok: false,
+            error: {
+              _tag: "MalformedCliFlagValueError",
+            },
+          });
+        }
+        const sourceEnvelope = normalizeJsonEnvelope(sourceFrame);
+        const compiledEnvelope = normalizeJsonEnvelope(compiledFrame);
+        expect(sourceEnvelope.code).toBe("MalformedCliFlagValueError");
+        expect(compiledEnvelope).toEqual(sourceEnvelope);
+        expect(sourceEnvelope.message).toBeString();
+        expect(sourceEnvelope.remediation).toBeString();
+        for (const suppliedValue of suppliedValues) {
+          expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+          expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
+        }
       }
     }, 30_000);
 

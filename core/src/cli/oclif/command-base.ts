@@ -12,6 +12,7 @@ import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
+import { validateCommandFlagValues } from "../flag-value-validation.ts";
 import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
 import {
   type RenderContext,
@@ -346,6 +347,29 @@ export abstract class LandoCommandBase extends Command {
         throw new Error(formatRendererSelectionError(error));
       }
       throw error;
+    }
+
+    const flagValueError = validateCommandFlagValues(spec.id, this.argv, {
+      ...this.ctor.baseFlags,
+      ...this.ctor.flags,
+    });
+    if (flagValueError !== undefined) {
+      await runWithRendererHandling(Effect.fail(flagValueError), {
+        runtime: Layer.empty,
+        rendererMode,
+        resultFormat,
+        command: spec.id,
+        resultSchema: spec.resultSchema,
+        deprecationWarnings: deprecationWarnings.enabled,
+        failureExitCode: () => 2,
+        formatError: (error) =>
+          formatCommandError({
+            error,
+            commandId: spec.id,
+            rendererMode,
+          }),
+      });
+      return;
     }
 
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
