@@ -311,3 +311,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Runtime release provenance is byte-exact: the tag's committed source manifest, including its trailing newline, must hash identically to the desired source file before publication.
 ---
+
+## 2026-07-15 18:31 CDT - US-461 Review
+- Confirmed the published 0.1.4 manifest and Windows helper archive, direct named-pipe ping/info/request/stream transport, missing-helper re-extraction, and fail-closed Windows acceptance classifier; no in-scope product fix was required.
+- Review notes (deferred/rejected): An Actions run for local `HEAD` was deferred to Push/Babysit because Review intentionally precedes remote publication; the generated `windows-2022` gate is present and fails closed. Named-pipe server process/identity attestation was rejected as same-user threat-model hardening beyond the existing Docker/Podman IPC contract, not a setup reachability blocker. Shared socket-transport request/response buffering and ordinary-request cancellation limits were rejected from US-461 as pre-existing cross-provider data-plane hardening rather than Windows first-run setup behavior.
+- Verification: typecheck, lint, runtime-bundle manifest, and focused named-pipe, extraction, readiness, workflow, bundle, and Windows acceptance tests passed; the published Windows archive checksum and helper contents matched the committed pins; Cursor Bugbot found no bugs.
+---
