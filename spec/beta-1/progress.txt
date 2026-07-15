@@ -241,3 +241,17 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted. A new TypeScript trust gate or sandbox rewrite was rejected because US-449 preserves the existing trusted-author loader authority and explicitly defers broader loader isolation beyond form parity.
 - Verification: typecheck, lint, renderer and machine-output boundaries passed; focused lint, config-lint, include-update, and doctor spot checks passed.
 ---
+
+## 2026-07-15 13:33 CDT - Babysit
+- PR: #590 https://github.com/AaronFeledy/core4/pull/590
+- CI outcome: pass (after fix; initially guide-scenarios-* failed on guide-drift)
+- Review feedback: fixed (added Guide-Coverage-Skip for TS-form implementation parity with form-agnostic guides)
+- Merge: merged (squash)
+---
+
+## 2026-07-15 13:40 CDT - US-450
+- Verified complete on the existing managed-machine trust implementation with no new code: Windows machine creation and trust sync use ownership-gated `--import-native-ca` argv without a privilege dependency, while virtualization failures remain tagged with explicit manual WSL and elevated Hyper-V prep remediation that Lando never runs.
+- Verification: typecheck, lint, redaction boundary, guide lint/coverage, focused Windows provider guide, and relevant provider test spot checks passed; fake-spawn production surfaces confirmed exact trust argv and no Hyper-V prep execution.
+- **Learnings for future iterations:**
+  - A closure story may already be satisfied by prior implementation and contract tests; verify the full acceptance surface and record completion rather than inventing production changes.
+---

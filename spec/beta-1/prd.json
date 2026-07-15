@@ -1409,7 +1409,7 @@
         "Lint passes"
       ],
       "priority": 79,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Contract proof of intentional non-elevation (US-423/US-436), not a UAC path. Origin: US-436 completion notes misread manual Hyper-V remediation as unfinished elevation work."
     },
     {
