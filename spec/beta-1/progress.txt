@@ -20,6 +20,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; bind each installed candidate's own policy stanza to that snapshot under `pipefail` without early-exit pipelines.
 - Landofile authoring tools must enumerate `presentLandofileLayers` and route each form through the existing YAML/TypeScript loader seam; include refresh must gather authored layers without invoking pin-mode include resolution.
 - Landofile lint validates each authored layer before validating the merged document; merge precedence must not hide a layer shape that runtime loading rejects.
+- Podman imports host certificates for `machine set --import-native-ca` during machine startup; an already-running Lando-owned machine must restart after enabling the setting for trust sync to complete.
 
 ## Durable learnings
 
@@ -254,4 +255,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, redaction boundary, guide lint/coverage, focused Windows provider guide, and relevant provider test spot checks passed; fake-spawn production surfaces confirmed exact trust argv and no Hyper-V prep execution.
 - **Learnings for future iterations:**
   - A closure story may already be satisfied by prior implementation and contract tests; verify the full acceptance surface and record completion rather than inventing production changes.
+---
+
+## 2026-07-15 13:50 CDT - US-450 Review
+- Fixed trust sync for an already-running Lando-owned Podman machine: after enabling native CA import, setup now restarts the machine so Podman performs the documented startup-time certificate import; stopped owned machines still set trust before their normal start, and user-owned machines remain untouched.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account review quota was exhausted; no Bugbot finding was treated as approval.
+- Verification: typecheck, lint, clean changed-file diagnostics, and focused machine trust, machine argv, and ownership spot checks passed.
+- **Learnings for future iterations:**
+  - Treat settings documented as startup-applied as incomplete on a running machine until the owning lifecycle restarts it.
 ---

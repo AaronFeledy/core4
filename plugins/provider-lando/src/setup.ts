@@ -486,6 +486,11 @@ export const ensureMacOSPodmanMachine = (
     if (trust.kind === "import" && trust.mode === "manage") {
       const syncTrust = machine.syncTrust ?? Effect.void;
       yield* syncTrust;
+      if (status === "running") {
+        yield* machine.stop;
+      }
+      yield* machine.start;
+      return { createdByLando: false };
     }
     if (status === "stopped") {
       yield* machine.start;
@@ -523,6 +528,11 @@ export const ensureWindowsPodmanMachine = (
     if (trust.kind === "import" && trust.mode === "manage") {
       const syncTrust = machine.syncTrust ?? Effect.void;
       yield* syncTrust;
+      if (status === "running") {
+        yield* machine.stop;
+      }
+      yield* machine.start;
+      return { createdByLando: false };
     }
     if (status === "stopped") {
       yield* machine.start;
