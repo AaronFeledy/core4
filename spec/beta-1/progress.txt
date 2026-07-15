@@ -294,3 +294,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Do not infer the Windows machine endpoint from Lando's data root; use the deterministic Podman machine pipe and verify both `_ping` and `info`.
   - A CI environment skip must parse the sole terminal machine envelope and exact prerequisite failure; raw substring matching can hide an unrelated setup regression.
 ---
+
+## 2026-07-15 17:34 CDT - US-461 Review
+- Fixed the Windows API blocker: managed named-pipe endpoints now use direct HTTP-over-IPC for ping, info, ordinary requests, and streams instead of passing `\\.\pipe\podman-lando` to `curl --unix-socket`. Readiness failures name the deterministic pipe, and transport-level tests exercise the real socket protocol rather than an injected factory.
+- Same-version Windows installs now re-extract when either machine helper is missing, and the Windows CI acceptance gate rejects plaintext, malformed, additional-error, and generic helper-failure output instead of converting it into a virtualization skip.
+- Review notes (deferred/rejected): US-461 returns to `passes: false` because `runtime-v0.1.4` is not published and the embedded production manifest still installs helper-less `0.1.3`; Build must publish and repin the immutable artifact before closure. Requiring `CONTAINERS_CONF` on machine commands was rejected: helpers are colocated with bundled Podman and Windows interop already reached helper launch; the explicit environment requirement applies to the managed Linux service launcher.
+- Verification: typecheck, lint, libpod-prefix boundary, and focused named-pipe API, capabilities, runtime path/readiness/extraction, machine argv, Windows acceptance, source-build, and Windows bundle tests passed.
+- **Learnings for future iterations:**
+  - A correct Windows pipe pathname is insufficient unless every API operation uses named-pipe-capable transport; factory-path assertions cannot prove connectivity.
+  - An installed-version marker is valid only when every required platform helper still exists.
+---

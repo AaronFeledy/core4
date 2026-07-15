@@ -28,24 +28,30 @@ const setupFailureMessage = (value: unknown): string | undefined => {
   return value.error.message;
 };
 
-const structuredSetupFailureMessages = (result: WindowsManagedSetupCommandResult): readonly string[] =>
-  `${result.stdout}\n${result.stderr}`.split(/\r?\n/u).flatMap((line) => {
-    if (!line.trimStart().startsWith("{")) return [];
+const structuredSetupFailureMessages = (
+  result: WindowsManagedSetupCommandResult,
+): readonly string[] | undefined => {
+  const messages: string[] = [];
+  for (const line of `${result.stdout}\n${result.stderr}`.split(/\r?\n/u)) {
+    if (line.trim().length === 0) continue;
     try {
       const message = setupFailureMessage(JSON.parse(line));
-      return message === undefined ? [] : [message];
+      if (message === undefined) return undefined;
+      messages.push(message);
     } catch (cause) {
-      if (cause instanceof SyntaxError) return [];
+      if (cause instanceof SyntaxError) return undefined;
       throw cause;
     }
-  });
+  }
+  return messages;
+};
 
 export const classifyWindowsManagedSetupResult = (
   result: WindowsManagedSetupCommandResult,
 ): WindowsManagedSetupClassification => {
   if (result.exitCode === 0) return { outcome: "passed", exitCode: 0 };
   const failures = structuredSetupFailureMessages(result);
-  if (failures.length === 1 && failures[0] === WINDOWS_PREREQUISITE_MESSAGE) {
+  if (result.exitCode === 2 && failures?.length === 1 && failures[0] === WINDOWS_PREREQUISITE_MESSAGE) {
     return {
       outcome: "skipped",
       exitCode: 0,

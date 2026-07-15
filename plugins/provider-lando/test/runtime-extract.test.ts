@@ -461,6 +461,8 @@ describe("installRuntimeBundle", () => {
       await mkdir(runtimeBinDir, { recursive: true });
       await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
       await writeFile(join(runtimeBinDir, "podman.exe"), "podman");
+      await writeFile(join(runtimeBinDir, "gvproxy.exe"), "gvproxy");
+      await writeFile(join(runtimeBinDir, "win-sshproxy.exe"), "win-sshproxy");
       let calls = 0;
 
       const result = await Effect.runPromise(
@@ -482,6 +484,40 @@ describe("installRuntimeBundle", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test.each(["gvproxy.exe", "win-sshproxy.exe"])(
+    "reinstalls a matching Windows runtime when %s is missing",
+    async (missingHelper) => {
+      const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+      try {
+        await mkdir(runtimeBinDir, { recursive: true });
+        await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+        for (const name of ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"]) {
+          if (name !== missingHelper) await writeFile(join(runtimeBinDir, name), `old-${name}`);
+        }
+
+        const result = await Effect.runPromise(
+          installRuntimeBundle({
+            archiveBytes: new Uint8Array([1]),
+            version: "1.0.0",
+            runtimeBinDir,
+            platform: "win32",
+            extractImpl: () =>
+              ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"].map((name) => ({
+                path: `bin/${name}`,
+                bytes: encoder.encode(`new-${name}`),
+                mode: 0o755,
+              })),
+          }),
+        );
+
+        expect(result).toEqual({ installed: true, runtimeBinDir, version: "1.0.0" });
+        expect(await readFile(join(runtimeBinDir, missingHelper), "utf8")).toBe(`new-${missingHelper}`);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   test("atomically replaces stale files on version change", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
