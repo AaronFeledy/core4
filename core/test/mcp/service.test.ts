@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer } from "effect";
+import { Effect, Fiber, Layer, Schema } from "effect";
 
 import type { McpServeOptions } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
@@ -13,6 +13,7 @@ import {
   McpService,
   McpServiceLive,
 } from "../../src/mcp/service.ts";
+import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { RuntimeCwd } from "../../src/runtime/cwd.ts";
@@ -41,7 +42,17 @@ const configLayer = (config: McpRuntimeConfigShape) => Layer.succeed(McpRuntimeC
 const serviceLayer = (config: McpRuntimeConfigShape, redactedValues: ReadonlyArray<string> = []) =>
   McpServiceLive.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
 
-const dispatchAndCollectReplies = (config: McpRuntimeConfigShape, options: McpServeOptions, toolId: string) =>
+const dispatchAndCollectReplies = ({
+  config,
+  options,
+  toolId,
+  redactedValues = [],
+}: {
+  readonly config: McpRuntimeConfigShape;
+  readonly options: McpServeOptions;
+  readonly toolId: string;
+  readonly redactedValues?: ReadonlyArray<string>;
+}) =>
   Effect.gen(function* () {
     const inmem = yield* makeInMemoryTransport();
     const service = yield* McpService;
@@ -54,7 +65,7 @@ const dispatchAndCollectReplies = (config: McpRuntimeConfigShape, options: McpSe
     yield* inmem.close;
     yield* Fiber.join(fiber);
     return replies;
-  }).pipe(Effect.scoped, Effect.provide(serviceLayer(config)));
+  }).pipe(Effect.scoped, Effect.provide(serviceLayer(config, redactedValues)));
 
 describe("McpService.catalog", () => {
   test("lists the effective allowlist as tools", async () => {
@@ -104,7 +115,11 @@ describe("McpService.serve", () => {
     };
 
     const replies = await Effect.runPromise(
-      dispatchAndCollectReplies(config, { transport: "stdio", tooling: true }, "app:php"),
+      dispatchAndCollectReplies({
+        config,
+        options: { transport: "stdio", tooling: true },
+        toolId: "app:php",
+      }),
     );
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ ok: true });
@@ -129,7 +144,11 @@ describe("McpService.serve", () => {
     };
 
     const replies = await Effect.runPromise(
-      dispatchAndCollectReplies(config, { transport: "stdio", tooling: true, deny: ["app:php"] }, "app:php"),
+      dispatchAndCollectReplies({
+        config,
+        options: { transport: "stdio", tooling: true, deny: ["app:php"] },
+        toolId: "app:php",
+      }),
     );
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ ok: false });
@@ -171,6 +190,139 @@ describe("McpService.serve", () => {
     expect(JSON.stringify(notifications[0])).not.toContain(secret);
   });
 
+  test("propagates an oversized live frame as a tagged command failure", async () => {
+    // Given
+    const streaming = spec("app:logs", () =>
+      Effect.gen(function* () {
+        const sink = yield* StreamFrameSink;
+        yield* sink.emit({ _tag: "stdout", chunk: "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1) });
+        return {};
+      }),
+    );
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: streaming } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:logs"],
+      runtimeLayer: Layer.empty,
+    };
+
+    // When
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies({ config, options: { transport: "stdio" }, toolId: "app:logs" }),
+    );
+
+    // Then
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({
+      ok: true,
+      result: { ok: false, envelope: { error: { _tag: "McpTransportError" } } },
+    });
+  });
+
+  test("fails an aggregate oversized result and accepts the follow-up request", async () => {
+    // Given
+    let calls = 0;
+    const command = spec(
+      "app:info",
+      () =>
+        Effect.sync(() => {
+          calls += 1;
+          return { chunks: calls === 1 ? Array.from({ length: 1_100_000 }, () => 1_000_000) : [1] };
+        }),
+      { resultSchema: Schema.Struct({ chunks: Schema.Array(Schema.Number) }) },
+    );
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    // When
+    const replies = await Effect.runPromise(
+      Effect.gen(function* () {
+        const inmem = yield* makeInMemoryTransport();
+        const service = yield* McpService;
+        const fiber = yield* service
+          .serve({ transport: "stdio" })
+          .pipe(Effect.provideService(McpTransport, inmem.transport), Effect.forkScoped);
+        yield* inmem.push({ toolId: "app:info" });
+        while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+        yield* inmem.push({ toolId: "app:info" });
+        while ((yield* inmem.replies).length < 2) yield* Effect.sleep("10 millis");
+        const observed = yield* inmem.replies;
+        yield* inmem.close;
+        yield* Fiber.join(fiber);
+        return observed;
+      }).pipe(Effect.scoped, Effect.provide(serviceLayer(config))),
+    );
+
+    // Then
+    expect(replies).toHaveLength(2);
+    expect(replies[0]).toMatchObject({ ok: false, error: { _tag: "McpTransportError" } });
+    expect(replies[1]).toMatchObject({ ok: true, result: { envelope: { result: { chunks: [1] } } } });
+  });
+
+  test("fails before retaining a canonical one-character secret expansion", async () => {
+    // Given
+    const command = spec("app:info", () => Effect.succeed({ note: "a".repeat(900_000) }), {
+      resultSchema: Schema.Struct({ note: Schema.String }),
+    });
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    // When
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies({
+        config,
+        options: { transport: "stdio" },
+        toolId: "app:info",
+        redactedValues: ["a"],
+      }),
+    );
+
+    // Then
+    expect(replies).toHaveLength(1);
+    expect(replies[0]).toMatchObject({ ok: false, error: { _tag: "McpTransportError" } });
+  });
+
+  test("rejects exotic result hooks without executing them", async () => {
+    // Given
+    let getterCalls = 0;
+    let toJsonCalls = 0;
+    const command = spec(
+      "app:info",
+      () =>
+        Effect.succeed({
+          get value(): string {
+            getterCalls += 1;
+            return "not-read";
+          },
+          toJSON: () => {
+            toJsonCalls += 1;
+            return { unsafe: true };
+          },
+        }),
+      { resultSchema: Schema.Unknown },
+    );
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: command } satisfies McpCommandEntry],
+      defaultAllowlist: ["app:info"],
+      runtimeLayer: Layer.empty,
+    };
+
+    // When
+    const replies = await Effect.runPromise(
+      dispatchAndCollectReplies({ config, options: { transport: "stdio" }, toolId: "app:info" }),
+    );
+
+    // Then
+    expect(replies[0]).toMatchObject({ ok: false, error: { _tag: "McpTransportError" } });
+    expect(getterCalls).toBe(0);
+    expect(toJsonCalls).toBe(0);
+  });
+
   test("returns a failure envelope when a command dies", async () => {
     const dying = spec("app:info", () => Effect.die(new Error("boom")));
     const config: McpRuntimeConfigShape = {
@@ -180,7 +332,7 @@ describe("McpService.serve", () => {
     };
 
     const replies = await Effect.runPromise(
-      dispatchAndCollectReplies(config, { transport: "stdio" }, "app:info"),
+      dispatchAndCollectReplies({ config, options: { transport: "stdio" }, toolId: "app:info" }),
     );
     expect(replies).toHaveLength(1);
     expect(replies[0]).toMatchObject({ ok: true, result: { ok: false } });

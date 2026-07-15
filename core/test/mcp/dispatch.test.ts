@@ -3,13 +3,14 @@ import { Effect, Schema } from "effect";
 
 import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
-import { createRedactor } from "@lando/sdk/secrets";
+import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
 import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
 import { type McpDispatchDeps, dispatchTool } from "../../src/mcp/dispatch.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
+import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
 
 class PromptRequiredError extends Schema.TaggedError<PromptRequiredError>()("RecipeMissingAnswerError", {
   message: Schema.String,
@@ -225,6 +226,188 @@ describe("dispatchTool", () => {
     const { deps } = harness([entry], { secrets: [secret] });
     const result = await Effect.runPromise(dispatchTool({ toolId: "app:info" }, deps));
     expect(JSON.stringify(result.envelope)).not.toContain(secret);
+  });
+
+  test("rejects unsafe result traversal before the result schema can invoke it", async () => {
+    // Given
+    let getterCalls = 0;
+    let trapCalls = 0;
+    const accessorResult = {
+      get nested(): { readonly value: string } {
+        getterCalls += 1;
+        return { value: "not-read" };
+      },
+    };
+    const nestedProxy = new Proxy(
+      { value: "not-read" },
+      {
+        get: (target, key, receiver) => {
+          trapCalls += 1;
+          return Reflect.get(target, key, receiver);
+        },
+        getOwnPropertyDescriptor: (target, key) => {
+          trapCalls += 1;
+          return Reflect.getOwnPropertyDescriptor(target, key);
+        },
+        getPrototypeOf: (target) => {
+          trapCalls += 1;
+          return Reflect.getPrototypeOf(target);
+        },
+        ownKeys: (target) => {
+          trapCalls += 1;
+          return Reflect.ownKeys(target);
+        },
+      },
+    );
+    const entry: McpCommandEntry = {
+      spec: spec("app:unsafe-result", () => Effect.succeed({}), {
+        resultSchema: Schema.Struct({ nested: Schema.Struct({ value: Schema.String }) }),
+      }),
+    };
+    const { deps } = harness([entry]);
+
+    // When
+    const accessorExit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:unsafe-result" },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "success", value: accessorResult }),
+        },
+      ),
+    );
+    const proxyExit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:unsafe-result" },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "success", value: { nested: nestedProxy } }),
+        },
+      ),
+    );
+
+    // Then
+    for (const exit of [accessorExit, proxyExit]) {
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+        expect(exit.cause.error).toBeInstanceOf(McpTransportError);
+      }
+    }
+    expect(getterCalls).toBe(0);
+    expect(trapCalls).toBe(0);
+  });
+
+  test("publishes a bounded post event when pre-schema inspection rejects a result", async () => {
+    // Given
+    const omittedKey = "x".repeat(MAX_OUTBOUND_QUEUED_BYTES + 1);
+    const entry: McpCommandEntry = {
+      spec: spec("app:unsafe-result", () => Effect.succeed({}), { resultSchema: Schema.Unknown }),
+    };
+    const { deps, events } = harness([entry]);
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:unsafe-result" },
+        {
+          ...deps,
+          execute: () => Effect.succeed({ _tag: "success", value: { [omittedKey]: undefined } }),
+        },
+      ),
+    );
+
+    // Then
+    expect(exit._tag).toBe("Failure");
+    expect(events.map((event) => event._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
+    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "McpTransportError" });
+  });
+
+  test("bounds app references before publishing lifecycle events", async () => {
+    // Given
+    const entry: McpCommandEntry = { spec: spec("app:info", () => Effect.succeed({})) };
+    const { deps, events } = harness([entry], { secrets: ["a"] });
+
+    // When
+    await Effect.runPromise(
+      dispatchTool({ toolId: "app:info", input: { appPath: "a".repeat(900_000) } }, deps),
+    );
+
+    // Then
+    expect(events).toHaveLength(2);
+    expect(events[0]).toMatchObject({ appRef: REDACTED });
+    expect(events[1]).toMatchObject({ appRef: REDACTED });
+  });
+
+  test("redacts rejected tool ids in MCP lifecycle events", async () => {
+    // Given
+    const secretToolId = "sk-event-secret";
+    const { deps, events } = harness([], { allow: [], secrets: [secretToolId] });
+
+    // When
+    const exit = await Effect.runPromiseExit(dispatchTool({ toolId: secretToolId }, deps));
+
+    // Then
+    expect(exit._tag).toBe("Failure");
+    expect(events.map((event) => event._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
+    expect(JSON.stringify(events)).not.toContain(secretToolId);
+  });
+
+  test("publishes a post event when command execution dies", async () => {
+    // Given
+    const entry: McpCommandEntry = { spec: spec("app:exec", () => Effect.succeed({})) };
+    const { deps, events } = harness([entry]);
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      dispatchTool({ toolId: "app:exec" }, { ...deps, execute: () => Effect.die(new Error("boom")) }),
+    );
+
+    // Then
+    expect(exit._tag).toBe("Failure");
+    expect(events.map((event) => event._tag)).toEqual(["pre-mcp-call", "post-mcp-call"]);
+    expect(events[1]).toMatchObject({ outcome: "failure", failureDetail: "Defect" });
+  });
+
+  test("rejects hostile command failures without invoking their hooks", async () => {
+    // Given
+    let getterCalls = 0;
+    let trapCalls = 0;
+    const accessorError = {
+      _tag: "HostileError",
+      get message(): string {
+        getterCalls += 1;
+        return "not-read";
+      },
+    };
+    const proxyError = new Proxy(accessorError, {
+      getOwnPropertyDescriptor: (target, key) => {
+        trapCalls += 1;
+        return Reflect.getOwnPropertyDescriptor(target, key);
+      },
+    });
+    const entry: McpCommandEntry = { spec: spec("app:unsafe-failure", () => Effect.succeed({})) };
+    const { deps, events } = harness([entry]);
+
+    // When
+    const accessorExit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:unsafe-failure" },
+        { ...deps, execute: () => Effect.succeed({ _tag: "failure", error: accessorError }) },
+      ),
+    );
+    const proxyExit = await Effect.runPromiseExit(
+      dispatchTool(
+        { toolId: "app:unsafe-failure" },
+        { ...deps, execute: () => Effect.succeed({ _tag: "failure", error: proxyError }) },
+      ),
+    );
+
+    // Then
+    expect(accessorExit._tag).toBe("Failure");
+    expect(proxyExit._tag).toBe("Failure");
+    expect(getterCalls).toBe(0);
+    expect(trapCalls).toBe(0);
+    expect(events.filter((event) => event._tag === "post-mcp-call")).toHaveLength(2);
   });
 
   test("emits redacted streamFrames as MCP progress notifications", async () => {

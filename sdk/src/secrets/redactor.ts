@@ -10,12 +10,15 @@
  * a longer one cannot leave the remainder of the longer value exposed.
  */
 
+import { replaceLiteralBounded, retainWithinBytes } from "./bounded-redaction.ts";
+
 /** Sentinel written in place of a redacted secret value. */
 export const REDACTED = "[redacted]" as const;
 
 export interface SecretRedactor {
   /** Replace every occurrence of a known secret value with {@link REDACTED}. */
   readonly redact: (text: string) => string;
+  readonly redactBounded?: (text: string, maxBytes: number) => string | undefined;
 }
 
 /**
@@ -30,7 +33,10 @@ export const createSecretRedactor = (values: Iterable<string>): SecretRedactor =
   unique.sort((a, b) => b.length - a.length);
 
   if (unique.length === 0) {
-    return { redact: (text) => text };
+    return {
+      redact: (text) => text,
+      redactBounded: retainWithinBytes,
+    };
   }
 
   return {
@@ -40,6 +46,14 @@ export const createSecretRedactor = (values: Iterable<string>): SecretRedactor =
         if (result.includes(value)) {
           result = result.split(value).join(REDACTED);
         }
+      }
+      return result;
+    },
+    redactBounded: (text, maxBytes) => {
+      let result: string | undefined = text;
+      for (const value of unique) {
+        result = replaceLiteralBounded(result, value, REDACTED, maxBytes);
+        if (result === undefined) return undefined;
       }
       return result;
     },

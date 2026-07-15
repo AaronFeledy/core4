@@ -1376,7 +1376,7 @@
         "Lint passes"
       ],
       "priority": 77,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-440 review deferred bounded streaming JSON serialization."
     },
     {

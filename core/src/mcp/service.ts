@@ -148,10 +148,7 @@ const makeService = (
             redactorForFrame: Redactor,
           ): Context.Tag.Service<typeof StreamFrameSink> => ({
             emit: (frame: StreamFrameSinkFrame) =>
-              encodeProgressFrame(frame, redactorForFrame).pipe(
-                Effect.flatMap(notify),
-                Effect.catchAll(() => Effect.void),
-              ),
+              encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
           });
           const outcomeFromExit = (
             exit: Exit.Exit<unknown, unknown>,

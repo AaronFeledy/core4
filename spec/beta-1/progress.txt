@@ -14,6 +14,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 ## Codebase Patterns
 
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
+- MCP outbound queue caps do not bound pre-queue JSON serialization; enforce the same byte budget during traversal before retaining the completed JSON string.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 - A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
 - Runtime-bundle publishers pin actions to full commit SHAs and resolve Ubuntu build packages through a fixed APT snapshot; bind each installed candidate's own policy stanza to that snapshot under `pipefail` without early-exit pipelines.
@@ -195,4 +196,26 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, TypeScript no-excuse audit, focused runtime-bundle workflow/supply-chain tests, and release-workflow codegen idempotence passed.
 - **Learnings for future iterations:**
   - A repository URL anywhere in package policy output does not prove candidate provenance; validate the exact installed candidate's version-table block.
+---
+
+## 2026-07-15 08:16 CDT - Babysit
+- PR: #588 https://github.com/AaronFeledy/core4/pull/588
+- CI outcome: pass
+- Review feedback: fixed (codegen-ci test now matches SHA-pinned setup-bun actions 1:1 with bun-version-file)
+- Merge: merged (squash)
+---
+
+## 2026-07-15 08:43 CDT - US-448
+- MCP result, progress, and complete JSON-RPC serialization now share the existing 8 MiB outbound policy during traversal, so oversized strings stop before later values or full frames are retained. Circular and BigInt payloads become tagged transport failures; oversized results emit a machine-readable error, release their correlation, and leave subsequent requests usable.
+- Verification: typecheck, lint, machine-output and redaction boundaries passed; all 75 MCP tests passed; isolated `lando mcp` stdio initialize/tools-list smoke passed with exit 0 and empty stderr.
+- **Learnings for future iterations:**
+  - A byte cap applied by the writer is too late for structured payloads: nested JSON text and the outer protocol frame must each be bounded before queue accounting.
+---
+
+## 2026-07-15 09:19 CDT - US-448 Review
+- MCP JSON now traverses into grow-on-demand bounded segments, redacting string values, property names, and secret-keyed fields before completed text is retained; canonical secrets redaction bounds every literal and pattern-replacement stage, so even one-character secrets cannot create output beyond the cap. Exact UTF-8 and escaping accounting preserves astral and lone-surrogate semantics without an eager 8 MiB allocation for small frames.
+- A pre-schema inspector incrementally builds a bounded safe clone from JSON-visible enumerable own data, omitting hidden properties so Effect Schema can never reach uninspected application data; it rejects oversized results, omitted-property floods, enumerable accessors, custom `toJSON`, cycles, BigInt, exotic prototypes, and proxies. Failure objects are projected through own data descriptors only, lifecycle event summaries use bounded redaction, and every rejected result still publishes exactly one post-call failure event.
+- Live `StreamFrameSink` serialization failures propagate into the command outcome; focused service/stdio coverage proves tagged failure, correlation release, follow-up usability, and secret-key/value redaction. An isolated Bun process proves a small serialization retains less than 1 MiB of array-buffer storage rather than reserving the full 8 MiB policy budget.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account review quota was exhausted. Replacing the internal parsed bounded value with a new wire-only transport type was rejected as unnecessary scope: every staged representation is independently capped, while preserving the structured in-memory transport contract avoids a cross-subsystem API rewrite. A pessimistic fraction of the cap was rejected in favor of exact writer accounting.
+- Verification: clean LSP diagnostics, `bun run typecheck`, `bun run lint`, machine-output and redaction boundaries, guide lint plus the focused SDK-compatibility guide pass, SDK secrets boundary, and the TypeScript no-excuse audit passed; focused SDK redactor and individual MCP serialization/dispatch/service/transport tests passed.
 ---
