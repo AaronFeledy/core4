@@ -153,6 +153,8 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 
 The scenario-layer generated guide tests run on all five PR platforms through `guide-scenarios-<platform>` jobs. Each job regenerates guides, validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
 
+`bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
+
 Only `guide-scenarios-linux-x64` runs the e2e `@smoke` second pass. It downloads the Linux x64 compiled binary, provisions the same Podman socket used by provider integration, sets `LANDO_GUIDE_E2E=1`, and runs only generated tests whose names contain `@smoke` and `[e2e]`:
 
 ```bash
