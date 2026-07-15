@@ -134,3 +134,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account's subagent quota was exhausted; the pre-existing terminate-grace timer cleanup and a handshake rewrite of the passing backpressure test are non-blocking hardening outside this focused acceptance fix.
 - Verification: typecheck, lint, TypeScript no-excuse audit, and focused host-proxy worker/transport plus toolbox/scratch-run spot checks passed.
 ---
+
+## 2026-07-15 01:49 CDT - Babysit
+- PR: #585 https://github.com/AaronFeledy/core4/pull/585
+- CI outcome: pass (after triage)
+- Review feedback: fixed (added Guide-Coverage-Skip for internal host-proxy IPC backpressure; no guide change needed)
+- Merge: merged (squash)
+---
