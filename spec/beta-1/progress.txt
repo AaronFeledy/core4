@@ -277,3 +277,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Added high-priority US-461 (priority 80) after US-450 Windows interop verify: win32 managed setup must ship/discover `win-sshproxy` helpers and leave a reachable Podman API; CI must prove setup→API beyond version/help smoke. Bumped open-story priorities US-451..US-460 to 81..90. PRD-14 + index synchronized.
 - **CI note (current state):** windows-2022 builds the binary (with bytecode), smokes `--version`/`--help`/`shellenv`, runs guide scenarios and bun contract unit tests under `provider-integration-windows-x64`. It does **not** run live `lando setup --provider=lando` against a Podman machine. US-453 still covers broader machine lifecycle live cells; US-461 is the setup/API green-path gate.
 ---
+
+## 2026-07-15 15:24 CDT - Babysit
+- PR: #591 https://github.com/AaronFeledy/core4/pull/591
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip on PR body for guide-drift; merged origin/main to clear conflict)
+- Merge: merged (squash)
+---
