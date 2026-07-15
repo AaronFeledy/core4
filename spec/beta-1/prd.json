@@ -1360,7 +1360,7 @@
         "Lint passes"
       ],
       "priority": 76,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-430 non-blocking security residuals (mutable action tags and unversioned Ubuntu build packages)."
     },
     {

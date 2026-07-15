@@ -61,7 +61,7 @@ describe("runtime-bundle workflow", () => {
       "  assemble:\n    needs: [classify]\n    if: github.ref == 'refs/heads/main' && needs.classify.outputs.state == 'publish_new'\n    runs-on",
     );
     expect(workflow).toContain(
-      "      - uses: actions/checkout@v4\n        with:\n          persist-credentials: false",
+      "      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0\n        with:\n          persist-credentials: false",
     );
     expect(workflow).toContain(
       "  publish:\n    needs: [classify, assemble]\n    if: github.ref == 'refs/heads/main' && always() && ((needs.classify.outputs.state == 'publish_new' && needs.assemble.result == 'success') || needs.classify.outputs.state == 'recover_pin')\n    permissions:\n      contents: write",
@@ -72,7 +72,7 @@ describe("runtime-bundle workflow", () => {
   test("checks out publish without persisted write credentials before installing dependencies", async () => {
     const workflow = await readWorkflow();
     const publishJob = workflow.indexOf("  publish:");
-    const checkout = workflow.indexOf("      - uses: actions/checkout@v4", publishJob);
+    const checkout = workflow.indexOf("      - uses: actions/checkout@", publishJob);
     const persistCredentials = workflow.indexOf("          persist-credentials: false", checkout);
     const install = workflow.indexOf("      - name: Install dependencies", checkout);
     const firstPublishToken = workflow.indexOf("          GH_TOKEN: ${{ github.token }}", publishJob);
@@ -136,7 +136,7 @@ describe("runtime-bundle workflow", () => {
     const assemble = workflow.indexOf("Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources");
     expect(installPrereqs).toBeGreaterThan(-1);
     expect(assemble).toBeGreaterThan(installPrereqs);
-    for (const prerequisite of "uses: actions/setup-go@v5|go-version: 1.25.6|dtolnay/rust-toolchain@1.88.0|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
+    for (const prerequisite of "uses: actions/setup-go@|go-version: 1.25.6|dtolnay/rust-toolchain@|libcap-dev|libsqlite3-dev|libseccomp-dev|protobuf-compiler|uidmap".split(
       "|",
     )) {
       expect(workflow).toContain(prerequisite);

@@ -27,12 +27,12 @@ jobs:
       runtime_tag: ${{ steps.classify.outputs.runtime_tag }}
       desired_sources_sha: ${{ steps.classify.outputs.desired_sources_sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version-file: .bun-version
 
@@ -131,12 +131,12 @@ jobs:
             filename: lando-runtime-win32-x64.zip
             runsOn: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version-file: .bun-version
 
@@ -145,25 +145,44 @@ jobs:
 
       - name: Setup Go for Linux Podman source build
         if: startsWith(matrix.hostKey, 'linux-')
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with:
           go-version: 1.25.6
 
       - name: Setup Rust for Linux helper source builds
         if: startsWith(matrix.hostKey, 'linux-')
-        uses: dtolnay/rust-toolchain@1.88.0
+        uses: dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4 # 1.88.0
 
       - name: Install Linux Podman source-build prerequisites
         if: startsWith(matrix.hostKey, 'linux-')
         run: |
+          set -euo pipefail
+          UBUNTU_SNAPSHOT=20260701T000000Z
+          printf 'APT::Snapshot "%s";\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsqlite3-dev libsystemd-dev pkg-config protobuf-compiler uidmap
+          PACKAGES=(build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsqlite3-dev libsystemd-dev pkg-config protobuf-compiler uidmap)
+          sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"
+          for PACKAGE in "${PACKAGES[@]}"; do
+            INSTALLED_VERSION="$(dpkg-query -W -f='${Version}' "$PACKAGE")"
+            POLICY="$(apt-cache policy "$PACKAGE")"
+            CANDIDATE_VERSION="$(awk '/Candidate:/ { print $2 }' <<< "$POLICY")"
+            test "$INSTALLED_VERSION" = "$CANDIDATE_VERSION"
+            if ! awk -v candidate="$CANDIDATE_VERSION" -v snapshot="https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT" '
+              $1 == "***" && $2 == candidate { candidate_block = 1; next }
+              candidate_block && $1 ~ /^[0-9]+$/ { if ($2 == snapshot) found = 1; next }
+              candidate_block { candidate_block = 0 }
+              END { exit found ? 0 : 1 }
+            ' <<< "$POLICY"; then
+              echo "::error title=runtime-bundle-apt-snapshot::$PACKAGE candidate $CANDIDATE_VERSION did not resolve from Ubuntu snapshot $UBUNTU_SNAPSHOT"
+              exit 1
+            fi
+          done
 
       - name: Assemble ${{ matrix.hostKey }} runtime bundle from pinned sources
         run: bun run scripts/assemble-runtime-bundle.ts --platform ${{ matrix.hostKey }}
 
       - name: Upload assembled bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: runtime-bundle-${{ matrix.hostKey }}
           path: dist/cache/runtime-bundle/${{ matrix.filename }}
@@ -178,18 +197,18 @@ jobs:
       actions: write
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955 # v4.3.0
         with:
           persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
           bun-version-file: .bun-version
 
       - name: Download assembled bundles
         if: needs.classify.outputs.state == 'publish_new'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: runtime-bundle-*
           merge-multiple: true
