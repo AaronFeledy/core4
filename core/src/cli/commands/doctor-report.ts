@@ -44,6 +44,14 @@ const appConfigForReport = (): Effect.Effect<ConfigLintResult, never, never> =>
         violations: [{ path: "", message: error.message }],
       } satisfies ConfigLintResult),
     ),
+    Effect.catchTag("LandofileFormConflictError", (error) =>
+      Effect.succeed({
+        app: "",
+        file: error.yamlPath,
+        valid: false,
+        violations: [{ path: "", message: error.message }],
+      } satisfies ConfigLintResult),
+    ),
   );
 
 const sourceForDeprecation = (entry: {

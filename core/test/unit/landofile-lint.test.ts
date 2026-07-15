@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Effect, Exit } from "effect";
+import { Cause, Effect, Exit } from "effect";
+
+import { LandofileFormConflictError } from "@lando/core/errors";
 
 import { lintLandofile } from "../../src/landofile/lint.ts";
 
@@ -31,6 +33,57 @@ describe("lintLandofile", () => {
       expect(exit.value.violations).toHaveLength(0);
       expect(exit.value.app).toBe("myapp");
       expect(exit.value.file.endsWith(".lando.yml")).toBe(true);
+    }
+  });
+
+  test("a TS-only Landofile lints clean", async () => {
+    await writeFile(
+      join(dir, ".lando.ts"),
+      'export default { name: "ts-app", services: { web: { image: "node:lts" } } };\n',
+      "utf8",
+    );
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(true);
+      expect(exit.value.app).toBe("ts-app");
+      expect(exit.value.violations).toHaveLength(0);
+    }
+  });
+
+  test("mixed YAML and TS layers merge before linting", async () => {
+    await writeFile(join(dir, ".lando.base.yml"), "name: mixed-app\nrecipe: lamp\n", "utf8");
+    await writeFile(
+      join(dir, ".lando.ts"),
+      'export default { services: { web: { image: "node:lts" } } };\n',
+      "utf8",
+    );
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(true);
+      expect(exit.value.app).toBe("mixed-app");
+      expect(exit.value.violations).toHaveLength(0);
+    }
+  });
+
+  test("same-layer YAML and TS forms fail with LandofileFormConflictError", async () => {
+    await writeFile(join(dir, ".lando.yml"), "name: yaml-app\n", "utf8");
+    await writeFile(join(dir, ".lando.ts"), 'export default { name: "ts-app" };\n', "utf8");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(LandofileFormConflictError);
+      }
     }
   });
 

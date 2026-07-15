@@ -119,6 +119,23 @@ describe("lando app:config:lint (source dispatch)", () => {
     });
   });
 
+  test("--format=json on a TS-only Landofile emits a valid ConfigLintResult", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.ts"),
+        'export default { name: "ts-json-app", services: { web: { image: "node:lts" } } };\n',
+      );
+
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+
+      expect(result.exitCode).toBe(0);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+      expect(parsed.valid).toBe(true);
+      expect(parsed.app).toBe("ts-json-app");
+      expect(parsed.violations).toHaveLength(0);
+    });
+  });
+
   test("a schema violation exits non-zero with a structured violation", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), "name: bad-app\nbogusKey: nope\n");

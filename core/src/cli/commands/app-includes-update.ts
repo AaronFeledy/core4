@@ -2,9 +2,16 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { LandofileNotFoundError, LandofileParseError, type NotImplementedError } from "@lando/sdk/errors";
+import {
+  LandofileFormConflictError,
+  LandofileNotFoundError,
+  LandofileParseError,
+  type LandofileSandboxError,
+  type LandofileTimeoutError,
+  type LandofileValidationError,
+  type NotImplementedError,
+} from "@lando/sdk/errors";
 import type { LandofileIncludeError, LandofileLockMismatchError } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
 
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import {
@@ -12,8 +19,8 @@ import {
   type LandofileIncludeDeps,
   updateLandofileIncludes,
 } from "../../landofile/includes.ts";
-import { parseLandofile } from "../../landofile/parser.ts";
-import { rejectBetaToolingFeatures } from "../../landofile/tooling-beta.ts";
+import { presentLandofileLayers } from "../../landofile/layers.ts";
+import { loadLandofileFile } from "../../landofile/service.ts";
 
 export type {
   IncludeUpdateEntry,
@@ -52,11 +59,13 @@ export interface AppIncludesUpdateOptions {
 export type AppIncludesUpdateError =
   | LandofileNotFoundError
   | LandofileParseError
+  | LandofileFormConflictError
+  | LandofileValidationError
+  | LandofileSandboxError
+  | LandofileTimeoutError
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError;
-
-const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 
 /**
  * Refresh every `includes:` lockfile entry for the current app's Landofile.
@@ -69,43 +78,49 @@ export const appIncludesUpdate = (
 ): Effect.Effect<IncludeUpdateReport, AppIncludesUpdateError, never> =>
   Effect.gen(function* () {
     const cwd = options.cwd ?? process.cwd();
-    const filePath = yield* Effect.promise(() => findLandofilePath(cwd));
+    const filePath = yield* Effect.tryPromise({
+      try: () => findLandofilePath(cwd),
+      catch: (cause) =>
+        cause instanceof LandofileFormConflictError
+          ? cause
+          : new LandofileParseError({
+              message: cause instanceof Error ? cause.message : "Failed to discover Landofile.",
+              filePath: cwd,
+              line: undefined,
+              column: undefined,
+              cause,
+            }),
+    });
     if (filePath === undefined) {
       return yield* Effect.fail(
         new LandofileNotFoundError({
-          message: "No .lando.yml found. Run `lando init` to create one before updating includes.",
+          message:
+            "No .lando.yml or .lando.ts found. Run `lando init` to create one before updating includes.",
           cwd,
         }),
       );
     }
     const appRoot = dirname(filePath);
-    const content = yield* Effect.tryPromise({
-      try: () => Bun.file(filePath).text(),
+    const layers = yield* Effect.tryPromise({
+      try: () => presentLandofileLayers(appRoot),
       catch: (cause) =>
-        new LandofileParseError({
-          message: `Could not read ${filePath}: ${cause instanceof Error ? cause.message : String(cause)}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause,
-        }),
+        cause instanceof LandofileFormConflictError
+          ? cause
+          : new LandofileParseError({
+              message: cause instanceof Error ? cause.message : "Failed to discover Landofile layers.",
+              filePath,
+              line: undefined,
+              column: undefined,
+              cause,
+            }),
     });
-    const parsed = yield* parseLandofile({ file: filePath, content, cwd: appRoot });
-    yield* rejectBetaToolingFeatures(filePath, parsed);
-    const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
-    if (decoded._tag === "Left") {
-      return yield* Effect.fail(
-        new LandofileParseError({
-          message: `Landofile ${filePath} is not valid: ${String(decoded.left)}`,
-          filePath,
-          line: undefined,
-          column: undefined,
-          cause: decoded.left,
-        }),
-      );
+    const includes = [];
+    for (const layer of layers) {
+      const landofile = yield* loadLandofileFile(layer.filePath);
+      includes.push(...(landofile.includes ?? []));
     }
     return yield* updateLandofileIncludes({
-      landofile: decoded.right,
+      landofile: { includes },
       appRoot,
       ...(options.check === true ? { check: true } : {}),
       ...(options.deps === undefined ? {} : { deps: options.deps }),

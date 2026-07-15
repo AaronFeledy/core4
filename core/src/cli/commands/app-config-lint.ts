@@ -1,6 +1,6 @@
 import type { Effect } from "effect";
 
-import type { LandofileNotFoundError } from "@lando/sdk/errors";
+import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import { type LintLandofileOptions, lintLandofile } from "../../landofile/lint.ts";
@@ -17,7 +17,8 @@ export type AppConfigLintOptions = LintLandofileOptions;
  */
 export const appConfigLint = (
   options: AppConfigLintOptions = {},
-): Effect.Effect<ConfigLintResult, LandofileNotFoundError, never> => lintLandofile(options);
+): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
+  lintLandofile(options);
 
 const textRender = (result: ConfigLintResult): string => {
   if (result.valid) {

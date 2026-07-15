@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -7,7 +7,9 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@lando/core/cli/operations";
 import type { IncludeUpdateReport } from "@lando/core/cli/operations";
+import { LandofileFormConflictError } from "@lando/core/errors";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
+import type { GitIncludeCloner } from "../../src/landofile/includes.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -139,6 +141,69 @@ describe("lando app:includes:update (source dispatch)", () => {
           expect((failure.value as { _tag: string; message: string })._tag).toBe("NotImplementedError");
           expect((failure.value as { message: string }).message).toContain('Tooling flags entry "verbose"');
         }
+      }
+    });
+  });
+
+  test("same-layer YAML and TS forms fail with LandofileFormConflictError", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), "name: yaml-app\n");
+      await writeFile(join(dir, ".lando.ts"), 'export default { name: "ts-app" };\n');
+
+      const exit = await Effect.runPromiseExit(appIncludesUpdate({ cwd: dir }));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(LandofileFormConflictError);
+        }
+      }
+    });
+  });
+
+  test("mixed YAML and TS layers gather remote includes from every authored layer", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.base.yml"),
+        "name: mixed-app\nincludes:\n  - source: github:acme/base\n    path: fragment.yml\n",
+      );
+      await writeFile(
+        join(dir, ".lando.ts"),
+        [
+          "export default {",
+          '  includes: [{ source: "github:acme/canonical", path: "fragment.yml" }],',
+          "};",
+          "",
+        ].join("\n"),
+      );
+      const cloneUrls: string[] = [];
+      const gitCloner: GitIncludeCloner = {
+        clone: async ({ url, stagingDir }) => {
+          cloneUrls.push(url);
+          await mkdir(stagingDir, { recursive: true });
+          await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
+          return { commitSha: url.includes("/base.git") ? "base123" : "canonical456" };
+        },
+      };
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      process.env.LANDO_USER_CACHE_ROOT = join(dir, ".cache");
+
+      try {
+        const report = await Effect.runPromise(appIncludesUpdate({ cwd: dir, deps: { gitCloner } }));
+
+        expect(report.entries.map((entry) => entry.source).sort()).toEqual([
+          "github:acme/base/fragment.yml",
+          "github:acme/canonical/fragment.yml",
+        ]);
+        expect(cloneUrls.sort()).toEqual([
+          "https://github.com/acme/base.git",
+          "https://github.com/acme/canonical.git",
+        ]);
+      } finally {
+        if (previousCacheRoot === undefined) process.env.LANDO_USER_CACHE_ROOT = undefined;
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
       }
     });
   });
