@@ -14,7 +14,7 @@ import {
   activeResultFormat,
   setActiveCommandInvocation,
 } from "./compiled-runtime.ts";
-import { validateCommandFlagValues } from "./flag-value-validation.ts";
+import { normalizeCliFlagTokens, validateCommandFlagValues } from "./flag-value-validation.ts";
 import { type ResultFormat, resolveResultFormat } from "./format-flags.ts";
 
 export const compiledCommandInputFromArgv = (
@@ -41,11 +41,12 @@ export const compiledCommandInputFromArgv = (
     return input;
   }
   const argvWithoutUniversalFormat = formatResolution?.remainingArgv ?? argv;
-  const normalizedArgv =
+  const commandArgv =
     commandId === "apps:scratch:start"
       ? normalizeScratchStartArgv(argvWithoutUniversalFormat)
       : argvWithoutUniversalFormat;
   const flagDefinitions = flagDefinitionsForCommand(command);
+  const normalizedArgv = normalizeCliFlagTokens(commandArgv, flagDefinitions);
   const flagValueError = validateCommandFlagValues(commandId, normalizedArgv, flagDefinitions);
   if (flagValueError !== undefined) throw flagValueError;
   const flagTokens = flagNameByToken(flagDefinitions);

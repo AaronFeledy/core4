@@ -511,24 +511,49 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       }
     }, 30_000);
 
-    test("meta:shellenv invalid --shell fails on both paths", async () => {
-      const source = await runSourceCli(["meta:shellenv", "--shell=fish"]);
-      const compiled = await runCompiledCli(["meta:shellenv", "--shell=fish"]);
+    test("meta:shellenv invalid --shell returns the same tagged redacted failure", async () => {
+      const suppliedValue = "private-shell";
+      const argv = ["meta:shellenv", `--shell=${suppliedValue}`, "--format=json"];
+      const source = await runSourceCli(argv);
+      const compiled = await runCompiledCli(argv);
 
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
-      expect(compiled.stdout).toBe("");
-      expect(compiled.stderr).toContain("Expected --shell=fish to be one of: posix, powershell, pwsh");
+      const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+      const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+      expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+      for (const frame of [sourceFrame, compiledFrame]) {
+        expect(commandResultEnvelope(frame)).toMatchObject({
+          apiVersion: "v4",
+          ok: false,
+          error: {
+            _tag: "MalformedCliFlagValueError",
+            message: expect.any(String),
+            remediation: expect.any(String),
+          },
+        });
+      }
+      expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+      expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
     }, 30_000);
 
-    test("meta:shellenv missing --shell value fails on both paths", async () => {
-      const source = await runSourceCli(["meta:shellenv", "--shell"]);
-      const compiled = await runCompiledCli(["meta:shellenv", "--shell"]);
+    test("meta:shellenv missing --shell value returns the same tagged failure", async () => {
+      const source = await runSourceCli(["meta:shellenv", "--shell", "--format=json"]);
+      const compiled = await runCompiledCli(["meta:shellenv", "--shell", "--format=json"]);
 
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
-      expect(compiled.stdout).toBe("");
-      expect(compiled.stderr).toContain("Flag --shell expects one of these values: posix, powershell, pwsh");
+      const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+      const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+      expect(commandResultEnvelope(sourceFrame)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "MalformedCliFlagValueError",
+          message: expect.any(String),
+          remediation: expect.any(String),
+        },
+      });
+      expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
     }, 30_000);
 
     test("shell rejects a bare positional service name on both paths", async () => {
@@ -581,15 +606,119 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(compiled.stderr).toContain("Unexpected argument: https://example.test");
     }, 30_000);
 
-    test("shell --service followed by another flag fails on both paths instead of eating it", async () => {
-      const source = await runSourceCli(["shell", "--service", "--no-history"]);
-      const compiled = await runCompiledCli(["shell", "--service", "--no-history"]);
+    test("shell --service followed by another flag returns the same tagged failure", async () => {
+      const argv = ["shell", "--service", "--no-history", "--format=json"];
+      const source = await runSourceCli(argv);
+      const compiled = await runCompiledCli(argv);
 
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
-      expect(compiled.stdout).toBe("");
-      expect(source.stderr).toContain("Flag --service expects a value");
-      expect(compiled.stderr).toContain("Flag --service expects a value");
+      const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+      const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+      expect(commandResultEnvelope(sourceFrame)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "MalformedCliFlagValueError",
+          message: expect.any(String),
+          remediation: expect.any(String),
+        },
+      });
+      expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+    }, 30_000);
+
+    test("logs rejects a truncated short bundle with the same tagged failure", async () => {
+      await expectJsonEnvelopeParity(["app:logs", "-fs"], "MalformedCliFlagValueError", { exitCode: 2 });
+    }, 30_000);
+
+    test.each([
+      [
+        "app:exec repeated service",
+        [
+          "app:exec",
+          "--service",
+          "private-exec-one",
+          "--service=private-exec-two",
+          "--format=json",
+          "--",
+          "echo",
+          "ok",
+        ],
+        ["private-exec-one", "private-exec-two"],
+      ],
+      [
+        "app:ssh repeated user",
+        ["app:ssh", "--user", "private-ssh-one", "--user=private-ssh-two", "--format=json"],
+        ["private-ssh-one", "private-ssh-two"],
+      ],
+      [
+        "app:config:translate repeated translator",
+        [
+          "app:config:translate",
+          "--from",
+          "private-translator-one",
+          "--from=private-translator-two",
+          "--list",
+          "--format=json",
+        ],
+        ["private-translator-one", "private-translator-two"],
+      ],
+      [
+        "apps:init repeated name",
+        ["apps:init", "--name", "private-init-one", "--name=private-init-two", "--yes", "--format=json"],
+        ["private-init-one", "private-init-two"],
+      ],
+      ["meta:mcp missing allow value", ["meta:mcp", "--allow", "--list", "--format=json"], []],
+      [
+        "app:destroy boolean value",
+        ["app:destroy", "-yprivate-confirmation", "--format=json"],
+        ["private-confirmation"],
+      ],
+    ] as const)(
+      "%s returns a tagged malformed-value failure at parity",
+      async (name, argv, suppliedValues) => {
+        const source = await runSourceCli(argv);
+        const compiled = await runCompiledCli(argv);
+
+        expect(source.exitCode, `${name} source stderr: ${source.stderr}`).toBe(2);
+        expect(compiled.exitCode, `${name} compiled stderr: ${compiled.stderr}`).toBe(2);
+        const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+        const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+        expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+        for (const frame of [sourceFrame, compiledFrame]) {
+          expect(commandResultEnvelope(frame)).toMatchObject({
+            apiVersion: "v4",
+            ok: false,
+            error: {
+              _tag: "MalformedCliFlagValueError",
+              message: expect.any(String),
+              remediation: expect.any(String),
+            },
+          });
+        }
+        for (const suppliedValue of suppliedValues) {
+          expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+          expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
+        }
+      },
+      30_000,
+    );
+
+    test("scratch accepts bare --mount-cwd before compiled flag validation", async () => {
+      const cwd = mkdtempSync(join(tmpdir(), "lando-parity-scratch-mount-"));
+      const isolated = makeIsolatedEnv();
+      try {
+        await expectJsonEnvelopeParity(
+          ["apps:scratch:start", "--mount-cwd"],
+          "ScratchSourceUnresolvedError",
+          {
+            cwd,
+            env: isolated.env,
+          },
+        );
+      } finally {
+        isolated.cleanup();
+        rmSync(cwd, { recursive: true, force: true });
+      }
     }, 30_000);
 
     test("shellenv alias rejects unknown flags on both paths", async () => {
@@ -630,15 +759,26 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     }, 30_000);
 
     test("meta:setup representative validation failure matches on both paths", async () => {
-      const source = await runSourceCli(["meta:setup", "--host-proxy=bad"]);
-      const compiled = await runCompiledCli(["meta:setup", "--host-proxy=bad"]);
+      const suppliedValue = "private-host-proxy";
+      const argv = ["meta:setup", `--host-proxy=${suppliedValue}`, "--format=json"];
+      const source = await runSourceCli(argv);
+      const compiled = await runCompiledCli(argv);
 
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
-      expect(compiled.stdout).toBe("");
-      expect(normalizeOutput(compiled.stderr)).toContain(
-        "Expected --host-proxy=bad to be one of: auto, none",
-      );
+      const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+      const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+      expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+      expect(commandResultEnvelope(sourceFrame)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "MalformedCliFlagValueError",
+          message: expect.any(String),
+          remediation: expect.any(String),
+        },
+      });
+      expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+      expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
     }, 30_000);
 
     test("meta:setup --format json emits the canonical setup envelope on both paths", async () => {
@@ -749,9 +889,11 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(sourceCanonical.exitCode).toBe(sourceAlias.exitCode);
       expect(compiledAlias.exitCode).toBe(sourceAlias.exitCode);
       expect(compiledCanonical.exitCode).toBe(sourceAlias.exitCode);
-      expect(normalizeOutput(sourceAlias.stderr)).toContain("Expected --channel=bogus to be one of");
+      expect(normalizeOutput(sourceAlias.stderr)).toContain("--channel has a malformed value.");
+      expect(sourceAlias.stderr).not.toContain("bogus");
       expect(normalizeOutput(sourceCanonical.stderr)).toBe(normalizeOutput(sourceAlias.stderr));
-      expect(normalizeOutput(compiledAlias.stderr)).toContain("Expected --channel=bogus to be one of");
+      expect(normalizeOutput(compiledAlias.stderr)).toContain("--channel has a malformed value.");
+      expect(compiledAlias.stderr).not.toContain("bogus");
       expect(normalizeOutput(compiledCanonical.stderr)).toBe(normalizeOutput(compiledAlias.stderr));
     }, 30_000);
 
@@ -790,21 +932,35 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       }
     }, 30_000);
 
-    test("meta:uninstall rejects --yes=false / --purge=false (boolean flags take no value) on both paths", async () => {
+    test("meta:uninstall rejects and redacts values attached to boolean flags on both paths", async () => {
       const isolated = makeIsolatedEnv();
       try {
         for (const malformed of [
-          ["meta:uninstall", "--yes=false"],
-          ["meta:uninstall", "--purge=false"],
-          ["uninstall", "--dry-run=false"],
+          ["meta:uninstall", "--yes=private-confirmation", "--format=json"],
+          ["meta:uninstall", "--purge=private-purge", "--format=json"],
+          ["uninstall", "--dry-run=private-preview", "--format=json"],
         ]) {
           const source = await runSourceCli(malformed, { env: isolated.env });
           const compiled = await runCompiledCli(malformed, { env: isolated.env });
 
           expect(source.exitCode, `${malformed.join(" ")} source stderr: ${source.stderr}`).toBe(2);
           expect(compiled.exitCode, `${malformed.join(" ")}`).toBe(source.exitCode);
-          expect(compiled.stdout).toBe("");
-          expect(compiled.stderr).toContain("Unexpected argument: false");
+          const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+          const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+          expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+          expect(commandResultEnvelope(sourceFrame)).toMatchObject({
+            ok: false,
+            error: {
+              _tag: "MalformedCliFlagValueError",
+              message: expect.any(String),
+              remediation: expect.any(String),
+            },
+          });
+          const suppliedValue = malformed[1]?.split("=", 2)[1];
+          if (suppliedValue !== undefined) {
+            expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+            expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
+          }
         }
       } finally {
         isolated.cleanup();
@@ -916,7 +1072,9 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
-      expect(compiled.stderr).toContain("Expected --template=nope to be one of:");
+      expect(compiled.stderr).toContain("--template has a malformed value.");
+      expect(compiled.stderr).toContain("code: MalformedCliFlagValueError");
+      expect(compiled.stderr).not.toContain("nope");
     }, 30_000);
 
     test("meta:plugin:test forwards post-dash help flags to Bun on both paths", async () => {
@@ -1143,22 +1301,34 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
     }, 30_000);
 
     test("new: invalid --template value is rejected with exit 2 on both paths", async () => {
+      const suppliedValue = "private-template";
       const args = [
         "meta:plugin:new",
         "@acme/lando-plugin-x",
         "./x",
-        "--template=nope",
+        `--template=${suppliedValue}`,
         "--cspace=acme",
         "--description=Demo",
         "--no-interactive",
+        "--format=json",
       ];
       const source = await runSourceCli(args);
       const compiled = await runCompiledCli(args);
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
-      expect(compiled.stdout).toBe("");
-      expect(source.stderr).toContain("Expected --template=nope to be one of:");
-      expect(compiled.stderr).toContain("Expected --template=nope to be one of:");
+      const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+      const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+      expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+      expect(commandResultEnvelope(sourceFrame)).toMatchObject({
+        ok: false,
+        error: {
+          _tag: "MalformedCliFlagValueError",
+          message: expect.any(String),
+          remediation: expect.any(String),
+        },
+      });
+      expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+      expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
     }, 30_000);
 
     test("new: non-interactive missing input fails identically under renderer=json", async () => {

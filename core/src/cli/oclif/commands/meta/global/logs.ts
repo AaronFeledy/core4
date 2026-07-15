@@ -8,6 +8,7 @@ import {
   globalLogs,
   renderGlobalLogsResult,
 } from "../../../../commands/meta/global-logs.ts";
+import { normalizeCliFlagTokens } from "../../../../flag-value-validation.ts";
 import {
   EmptyResultSchema,
   LandoCommandBase,
@@ -87,8 +88,14 @@ export default class MetaGlobalLogsCommand extends LandoCommandBase {
   static override bootstrap = globalLogsSpec.bootstrap;
 
   override async run(): Promise<void> {
+    const normalizedArgv = normalizeCliFlagTokens(this.argv, {
+      ...this.ctor.baseFlags,
+      ...this.ctor.flags,
+    });
     await this.runEffect(
-      this.argv.includes("--follow") || this.argv.includes("-f") ? followGlobalLogsSpec : globalLogsSpec,
+      normalizedArgv.includes("--follow") || normalizedArgv.includes("-f")
+        ? followGlobalLogsSpec
+        : globalLogsSpec,
     );
   }
 }

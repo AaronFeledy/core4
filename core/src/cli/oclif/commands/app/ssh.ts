@@ -10,13 +10,7 @@ import {
   type LandoCommandSpec,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
-
-interface SshFlags {
-  readonly service?: string;
-  readonly user?: string;
-  readonly subsystem?: string;
-  readonly sidecar?: boolean;
-}
+import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary.ts";
 
 const DEFAULT_SSH_COMMAND: ReadonlyArray<string> = ["sh", "-l"];
 
@@ -27,7 +21,19 @@ export const sshSpec: LandoCommandSpec<ExecAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => execApp({ command: DEFAULT_SSH_COMMAND, interactive: true, tty: true }),
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    const parsedArgv = extractSpecParsedArgv(input);
+    if (typeof flags.subsystem === "string") return Effect.fail(subsystemDeferred("subsystem"));
+    if (flags.sidecar === true) return Effect.fail(subsystemDeferred("sidecar"));
+    return execApp({
+      command: parsedArgv.length === 0 ? DEFAULT_SSH_COMMAND : parsedArgv,
+      interactive: true,
+      tty: true,
+      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+    });
+  },
   successExitCode: (result) => result.exitCode,
   render: (result) => renderExecAppResult(result as ExecAppResult),
 };
@@ -64,28 +70,6 @@ export default class SshCommand extends LandoCommandBase {
   static override bootstrap = sshSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(SshCommand)) as {
-      readonly flags: SshFlags;
-      readonly argv: ReadonlyArray<string>;
-    };
-    const command = parsed.argv.length === 0 ? DEFAULT_SSH_COMMAND : (parsed.argv as ReadonlyArray<string>);
-    await this.runEffect({
-      ...sshSpec,
-      run: () => {
-        if (parsed.flags.subsystem !== undefined) {
-          return Effect.fail(subsystemDeferred("subsystem"));
-        }
-        if (parsed.flags.sidecar === true) {
-          return Effect.fail(subsystemDeferred("sidecar"));
-        }
-        return execApp({
-          command,
-          interactive: true,
-          tty: true,
-          ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
-          ...(parsed.flags.user === undefined ? {} : { user: parsed.flags.user }),
-        });
-      },
-    });
+    await this.runEffect(sshSpec);
   }
 }

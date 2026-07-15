@@ -27,6 +27,7 @@ import {
 } from "./commands/scratch-run.ts";
 import {
   type ScratchStartOptions,
+  normalizeScratchStartArgv,
   renderScratchDestroyResult,
   renderScratchGcReport,
   renderScratchInfoResult,
@@ -359,6 +360,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   argv = normalizeCompiledCommandArgv(argv);
 
   const canonicalCommandId = resolveCanonicalCommandId(argv[0]);
+  if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {
+    argv = [argv[0], ...normalizeScratchStartArgv(argv.slice(1))];
+  }
   setActiveCommandId(canonicalCommandId);
   resetActiveCommandInvocation(canonicalCommandId, argv.slice(1));
 

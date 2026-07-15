@@ -12,7 +12,6 @@ import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
-import { validateCommandFlagValues } from "../flag-value-validation.ts";
 import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
 import {
   type RenderContext,
@@ -23,6 +22,7 @@ import {
 } from "../renderer-boundary.ts";
 import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
+import { renderCommandFlagValueValidation } from "./command-boundary.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
 import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
@@ -349,28 +349,18 @@ export abstract class LandoCommandBase extends Command {
       throw error;
     }
 
-    const flagValueError = validateCommandFlagValues(spec.id, this.argv, {
-      ...this.ctor.baseFlags,
-      ...this.ctor.flags,
-    });
-    if (flagValueError !== undefined) {
-      await runWithRendererHandling(Effect.fail(flagValueError), {
-        runtime: Layer.empty,
+    if (
+      await renderCommandFlagValueValidation({
+        commandId: spec.id,
+        argv: this.argv,
+        definitions: { ...this.ctor.baseFlags, ...this.ctor.flags },
         rendererMode,
         resultFormat,
-        command: spec.id,
         resultSchema: spec.resultSchema,
         deprecationWarnings: deprecationWarnings.enabled,
-        failureExitCode: () => 2,
-        formatError: (error) =>
-          formatCommandError({
-            error,
-            commandId: spec.id,
-            rendererMode,
-          }),
-      });
+      })
+    )
       return;
-    }
 
     if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
       const error = notImplementedErrorForCommand(spec.id);
@@ -424,6 +414,7 @@ export abstract class LandoCommandBase extends Command {
     process.once("SIGTERM", abort);
     const input = {
       argv: this.argv,
+      parsedArgv: (parsed as { readonly argv?: ReadonlyArray<string> }).argv ?? [],
       signal: controller.signal,
       flags: (parsed as { flags?: Record<string, unknown> }).flags ?? {},
       args: (parsed as { args?: Record<string, unknown> }).args ?? {},

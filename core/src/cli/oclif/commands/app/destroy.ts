@@ -10,13 +10,7 @@ import {
   renderDestroyAppResult,
 } from "../../../commands/destroy.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
-
-interface DestroyFlags {
-  readonly purge: boolean;
-  readonly "purge-caches": boolean;
-  readonly volumes: boolean;
-  readonly yes: boolean;
-}
+import { extractSpecFlags } from "../../command-boundary.ts";
 
 export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   resultSchema: DestroyAppResultSchema,
@@ -25,7 +19,14 @@ export const destroySpec: LandoCommandSpec<DestroyAppResult> = {
   namespace: "app",
   topLevelAlias: true,
   bootstrap: "app",
-  run: () => destroyApp(),
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    return destroyApp({
+      volumes: flags.volumes === true || flags.purge === true,
+      purgeCaches: flags["purge-caches"] === true,
+      yes: flags.yes === true,
+    });
+  },
   render: (result) => renderDestroyAppResult(result as DestroyAppResult),
 };
 
@@ -55,15 +56,6 @@ export default class DestroyCommand extends LandoCommandBase {
   static override bootstrap = destroySpec.bootstrap;
 
   override async run(): Promise<void> {
-    const { flags } = (await this.parse(DestroyCommand)) as { readonly flags: DestroyFlags };
-    await this.runEffect({
-      ...destroySpec,
-      run: () =>
-        destroyApp({
-          volumes: flags.volumes || flags.purge,
-          purgeCaches: flags["purge-caches"],
-          yes: flags.yes,
-        }),
-    });
+    await this.runEffect(destroySpec);
   }
 }

@@ -8,12 +8,7 @@ import {
   type LandoCommandSpec,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
-
-interface ExecFlags {
-  readonly service?: string;
-  readonly user?: string;
-  readonly cwd?: string;
-}
+import { extractSpecFlags, extractSpecParsedArgv } from "../../command-boundary.ts";
 
 export const execSpec: LandoCommandSpec<ExecAppResult> = {
   resultSchema: EmptyResultSchema,
@@ -24,7 +19,15 @@ export const execSpec: LandoCommandSpec<ExecAppResult> = {
   topLevelAlias: true,
   bootstrap: "app",
   streaming: StreamFrame,
-  run: () => execApp({ command: [] }),
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    return execApp({
+      command: extractSpecParsedArgv(input),
+      ...(typeof flags.service === "string" ? { service: flags.service } : {}),
+      ...(typeof flags.user === "string" ? { user: flags.user } : {}),
+      ...(typeof flags.cwd === "string" ? { cwd: flags.cwd } : {}),
+    });
+  },
   streamFrames: (value) => {
     const result = value as ExecAppResult;
     const frames = [];
@@ -54,20 +57,6 @@ export default class ExecCommand extends LandoCommandBase {
   static override bootstrap = execSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(ExecCommand)) as {
-      readonly flags: ExecFlags;
-      readonly argv: ReadonlyArray<string>;
-    };
-    const command = parsed.argv;
-    await this.runEffect({
-      ...execSpec,
-      run: () =>
-        execApp({
-          command,
-          ...(parsed.flags.service === undefined ? {} : { service: parsed.flags.service }),
-          ...(parsed.flags.user === undefined ? {} : { user: parsed.flags.user }),
-          ...(parsed.flags.cwd === undefined ? {} : { cwd: parsed.flags.cwd }),
-        }),
-    });
+    await this.runEffect(execSpec);
   }
 }

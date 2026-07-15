@@ -93,6 +93,13 @@ describe("dual-dispatch argv parser parity", () => {
     expect(logsFollowFromInput(compiledInput("app:logs", ["--follow"]))).toBe(true);
   });
 
+  test("compiled input parses bundled log flags at the shared argv helper seam", () => {
+    const input = compiledInput("app:logs", ["-fsappserver"]);
+
+    expect(logsOptionsFromInput(input)).toEqual({ service: "appserver" });
+    expect(logsFollowFromInput(input)).toBe(true);
+  });
+
   test("compiled command inputs preserve valid separated, equals, and repeatable values", () => {
     const logs = compiledInput("app:logs", ["--service", "appserver", "--since=1h", "--tail", "25"]);
     const init = compiledInput("apps:init", ["--answer", "php=8.3", "--answer=database=mysql"]);
@@ -111,6 +118,7 @@ describe("dual-dispatch argv parser parity", () => {
   test.each([
     ["invalid integer", ["--tail", "abc"]],
     ["repeated option", ["--service", "appserver", "--service=database"]],
+    ["truncated short bundle", ["-fs"]],
   ])("app:logs rejects %s before producing compiled input", (_name, argv) => {
     expect(() => compiledInput("app:logs", argv)).toThrow(MalformedCliFlagValueError);
   });

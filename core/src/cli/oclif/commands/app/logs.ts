@@ -3,6 +3,7 @@ import { Flags } from "@oclif/core";
 import { StreamFrame } from "@lando/sdk/schema";
 
 import { type LogsAppResult, followLogsApp, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
+import { normalizeCliFlagTokens } from "../../../flag-value-validation.ts";
 import {
   EmptyResultSchema,
   LandoCommandBase,
@@ -87,8 +88,12 @@ export default class LogsCommand extends LandoCommandBase {
   static override bootstrap = logsSpec.bootstrap;
 
   override async run(): Promise<void> {
+    const normalizedArgv = normalizeCliFlagTokens(this.argv, {
+      ...this.ctor.baseFlags,
+      ...this.ctor.flags,
+    });
     await this.runEffect(
-      this.argv.includes("--follow") || this.argv.includes("-f") ? followLogsSpec : logsSpec,
+      normalizedArgv.includes("--follow") || normalizedArgv.includes("-f") ? followLogsSpec : logsSpec,
     );
   }
 }

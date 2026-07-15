@@ -12,6 +12,7 @@ import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import { formatBugReport } from "../../../bug-report.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
+import { type ResultFormat, resolveResultFormat } from "../../../format-flags.ts";
 import {
   mergeAnswerSources,
   parseAnswerFlags,
@@ -19,6 +20,7 @@ import {
 } from "../../../prompts/answer-flags.ts";
 import {
   makeRendererServiceLiveForMode,
+  resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
   writeDiagnosticLine,
@@ -30,6 +32,7 @@ import {
   type LandoCommandSpec,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
+import { renderCommandFlagValueValidation } from "../../command-boundary.ts";
 
 export interface InitFlags {
   readonly full: boolean;
@@ -158,6 +161,42 @@ export default class InitCommand extends LandoCommandBase {
       throw error;
     }
 
+    const deprecationWarnings = resolveCliDeprecationWarnings({ argv: this.argv, env: process.env });
+    this.argv.length = 0;
+    this.argv.push(...deprecationWarnings.remainingArgv);
+
+    let resultFormat: ResultFormat = "text";
+    try {
+      const resolution = resolveResultFormat({ argv: this.argv, rendererMode });
+      resultFormat = resolution.format;
+      this.argv.length = 0;
+      this.argv.push(...resolution.remainingArgv);
+    } catch (error) {
+      if (error instanceof RendererSelectionError) {
+        throw new Error(
+          formatBugReport({
+            error,
+            context: { commandId: "cli:format-selection" },
+            rendererMode: "plain",
+          }),
+        );
+      }
+      throw error;
+    }
+
+    if (
+      await renderCommandFlagValueValidation({
+        commandId: initSpec.id,
+        argv: this.argv,
+        definitions: { ...this.ctor.baseFlags, ...this.ctor.flags },
+        rendererMode,
+        resultFormat,
+        resultSchema: initSpec.resultSchema,
+        deprecationWarnings: deprecationWarnings.enabled,
+      })
+    )
+      return;
+
     const parsed = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
 
     const options = {
@@ -173,7 +212,9 @@ export default class InitCommand extends LandoCommandBase {
       {
         runtime: Layer.empty,
         rendererMode,
+        resultFormat,
         command: initSpec.id,
+        deprecationWarnings: deprecationWarnings.enabled,
         invocation: {
           commandId: initSpec.id,
           argv: this.argv,

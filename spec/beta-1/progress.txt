@@ -149,3 +149,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Keep OCLIF parsing inside `LandoCommandBase.runEffect`; wrapper-level pre-parsing bypasses shared renderer-aware validation. Preserve explicit optional-value contracts such as bare `--mount-cwd` when adding generic empty-value rejection.
 ---
+
+## 2026-07-15 04:02 CDT - US-445 Review
+- Closed source/compiled gaps for declared choice values, truncated short bundles, repeated flags in custom wrappers, and values attached to boolean flags (including secret-bearing short suffixes); source wrappers now preserve shared validation before parsing, and stale raw-OCLIF parity assertions enforce tagged redacted envelopes instead.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit was exhausted; no Bugbot finding was treated as approval or used to weaken coverage.
+- Verification: typecheck, lint, renderer and machine-output boundaries, TypeScript no-excuse audit, focused validator/compiled-input tests, and six source/compiled sandbox parity cases passed.
+- **Learnings for future iterations:**
+  - A short boolean followed by an unknown suffix must be classified as an attached value before OCLIF can echo it; recognized short bundles must remain valid. Compare normalized JSON envelopes before applying asymmetric matchers because matcher inspection may mutate parsed values.
+---

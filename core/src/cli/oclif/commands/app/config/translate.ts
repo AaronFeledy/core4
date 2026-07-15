@@ -7,6 +7,7 @@ import {
   renderConfigTranslateResult,
 } from "../../../../commands/app-config-translate.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+import { extractSpecFlags } from "../../../command-boundary.ts";
 
 export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> = {
   resultSchema: AppConfigTranslateResultSchema,
@@ -15,7 +16,19 @@ export const appConfigTranslateSpec: LandoCommandSpec<AppConfigTranslateResult> 
   namespace: "app",
   topLevelAlias: false,
   bootstrap: "minimal",
-  run: () => appConfigTranslate(),
+  run: (input) => {
+    const flags = extractSpecFlags(input);
+    const files = Array.isArray(flags.file)
+      ? flags.file.filter((file): file is string => typeof file === "string")
+      : undefined;
+    return appConfigTranslate({
+      write: flags.write === true,
+      list: flags.list === true,
+      detect: flags.detect === true,
+      ...(typeof flags.from === "string" ? { from: flags.from } : {}),
+      ...(files === undefined ? {} : { files }),
+    });
+  },
   render: (result) => renderConfigTranslateResult(result as AppConfigTranslateResult, "yaml"),
 };
 
@@ -52,27 +65,6 @@ export default class AppConfigTranslateCommand extends LandoCommandBase {
   static override bootstrap = appConfigTranslateSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const parsed = (await this.parse(AppConfigTranslateCommand)) as {
-      readonly flags: {
-        readonly write?: boolean;
-        readonly list?: boolean;
-        readonly detect?: boolean;
-        readonly from?: string;
-        readonly file?: ReadonlyArray<string>;
-        readonly format?: string;
-      };
-    };
-    const { write, list, detect, from, file } = parsed.flags;
-    await this.runEffect({
-      ...appConfigTranslateSpec,
-      run: () =>
-        appConfigTranslate({
-          write: write === true,
-          list: list === true,
-          detect: detect === true,
-          ...(from === undefined ? {} : { from }),
-          ...(file === undefined ? {} : { files: file }),
-        }),
-    });
+    await this.runEffect(appConfigTranslateSpec);
   }
 }
