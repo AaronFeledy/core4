@@ -162,4 +162,42 @@ describe("detached host-proxy worker payload delivery", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("maps a payload delivery deadline to a remediated tagged error and terminates the worker", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-host-proxy-input-"));
+    const scriptPath = await makeInputWorker(root);
+    let spawnedPid: number | undefined;
+    const exit = await Effect.runPromiseExit(
+      startDetachedHostProxyWorker({
+        app,
+        plan: { ...plan, name: "x".repeat(2 * MEBIBYTE) },
+        paths: { userDataRoot: root },
+        shimArtifactPath: join(root, "lando"),
+        spawnWorker: () => {
+          const worker = defaultSpawnWorker(
+            { argv: [process.execPath, scriptPath, "300"] },
+            { payloadTimeoutMs: 25 },
+          );
+          spawnedPid = worker.pid;
+          return worker;
+        },
+      }),
+    );
+    try {
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Success") throw new Error("Expected payload delivery deadline to fail.");
+      const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+      expect(failure).toMatchObject({
+        _tag: "HostProxyTransportUnavailableError",
+        message: "Host-proxy worker startup payload delivery timed out after 15 seconds.",
+        remediation: "Inspect the detached host-proxy worker startup failure.",
+      });
+      expect(await Bun.file(workerStatePath(app, { userDataRoot: root })).exists()).toBe(false);
+      expect(spawnedPid).toBeNumber();
+      if (spawnedPid !== undefined) expect(pidIsAlive(spawnedPid)).toBe(false);
+    } finally {
+      if (exit._tag === "Success") await exit.value.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -128,3 +128,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Await Bun pipe writes and flushes for flow control, but advance by the chunk boundary rather than interpreting the completion value as a partial-write count.
 ---
+
+## 2026-07-15 01:10 CDT - US-444 Review
+- Added a direct slow-consumer deadline regression using the production worker pipe: the shortened test deadline maps to the unchanged tagged/remediated transport error, persists no worker state, and terminates the child.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account's subagent quota was exhausted; the pre-existing terminate-grace timer cleanup and a handshake rewrite of the passing backpressure test are non-blocking hardening outside this focused acceptance fix.
+- Verification: typecheck, lint, TypeScript no-excuse audit, and focused host-proxy worker/transport plus toolbox/scratch-run spot checks passed.
+---

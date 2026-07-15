@@ -31,6 +31,10 @@ export interface HostProxyWorkerSpawnSpec {
   readonly argv: ReadonlyArray<string>;
 }
 
+interface DefaultSpawnWorkerOptions {
+  readonly payloadTimeoutMs?: number;
+}
+
 export type HostProxyWorkerSpawner = (spec: HostProxyWorkerSpawnSpec) => HostProxyWorkerProcess;
 
 const READY_TIMEOUT_MS = 15_000;
@@ -40,18 +44,15 @@ const WORKER_PAYLOAD_MAX_BYTES = 16 * 1024 * 1024;
 const WORKER_PAYLOAD_TIMEOUT_MS = 15_000;
 
 const awaitWorkerInput = async (result: number | Promise<number>, deadline: number): Promise<number> => {
+  const timeoutMessage = "Host-proxy worker startup payload delivery timed out after 15 seconds.";
   const remaining = deadline - Date.now();
-  if (remaining <= 0)
-    throw new Error("Host-proxy worker startup payload delivery timed out after 15 seconds.");
+  if (remaining <= 0) throw new Error(timeoutMessage);
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
       Promise.resolve(result),
       new Promise<never>((_, reject) => {
-        timeout = setTimeout(
-          () => reject(new Error("Host-proxy worker startup payload delivery timed out after 15 seconds.")),
-          remaining,
-        );
+        timeout = setTimeout(() => reject(new Error(timeoutMessage)), remaining);
       }),
     ]);
   } finally {
@@ -120,7 +121,10 @@ const textFromStreamUntilLine = async (
   }
 };
 
-export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
+export const defaultSpawnWorker = (
+  spec: HostProxyWorkerSpawnSpec,
+  options: DefaultSpawnWorkerOptions = {},
+): HostProxyWorkerProcess => {
   // stderr ignored: detached worker outlives parent; piped stderr SIGPIPEs after start.
   const proc = Bun.spawn([...spec.argv], {
     stdin: "pipe",
@@ -137,7 +141,8 @@ export const defaultSpawnWorker: HostProxyWorkerSpawner = (spec) => {
       const payload = new TextEncoder().encode(value);
       if (payload.byteLength > WORKER_PAYLOAD_MAX_BYTES)
         throw new Error("Host-proxy worker startup payload exceeds the 16 MiB limit.");
-      const deadline = Date.now() + WORKER_PAYLOAD_TIMEOUT_MS;
+      const payloadTimeoutMs = options.payloadTimeoutMs ?? WORKER_PAYLOAD_TIMEOUT_MS;
+      const deadline = Date.now() + payloadTimeoutMs;
       for (let offset = 0; offset < payload.byteLength; ) {
         const end = Math.min(offset + WORKER_PAYLOAD_CHUNK_BYTES, payload.byteLength);
         await awaitWorkerInput(proc.stdin.write(payload.subarray(offset, end)), deadline);
