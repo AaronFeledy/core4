@@ -297,7 +297,7 @@ describe("ci workflow codegen", () => {
         providerMatrixWorkflow,
         runtimeBundleWorkflow,
       ]) {
-        const setupBunMatches = (generatedWorkflow.match(/uses: oven-sh\/setup-bun@v2/g) ?? []).length;
+        const setupBunMatches = (generatedWorkflow.match(/uses: oven-sh\/setup-bun@\S+/g) ?? []).length;
         const versionFileMatches = (generatedWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length;
 
         expect(versionFileMatches).toBe(setupBunMatches);
