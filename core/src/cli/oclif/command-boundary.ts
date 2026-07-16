@@ -2,7 +2,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import type { RendererMode } from "../bug-report.ts";
 import { formatBugReport } from "../bug-report.ts";
-import { validateCommandFlagValues, validateUnknownCliFlags } from "../flag-value-validation.ts";
+import { validateCommandCliFlags } from "../flag-value-validation.ts";
 import type { ResultFormat } from "../format-flags.ts";
 import { runWithRendererHandling } from "../renderer-boundary.ts";
 import type { RendererIO } from "../renderer/io.ts";
@@ -95,14 +95,18 @@ interface CommandFlagValueValidationInput {
   readonly resultFormat: ResultFormat;
   readonly resultSchema: Schema.Schema.AnyNoContext;
   readonly deprecationWarnings?: boolean;
+  readonly allowUnknownFlags?: boolean;
 }
 
 export const renderCommandFlagValueValidation = async (
   input: CommandFlagValueValidationInput,
 ): Promise<boolean> => {
-  const error =
-    validateUnknownCliFlags(input.argv, input.definitions) ??
-    validateCommandFlagValues(input.commandId, input.argv, input.definitions);
+  const error = validateCommandCliFlags({
+    commandId: input.commandId,
+    argv: input.argv,
+    definitions: input.definitions,
+    allowUnknownFlags: input.allowUnknownFlags === true,
+  });
   if (error === undefined) return false;
   await renderPreCommandFailure({
     commandId: input.commandId,

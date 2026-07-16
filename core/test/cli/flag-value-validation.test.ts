@@ -4,6 +4,7 @@ import {
   MalformedCliFlagValueError,
   UnknownCliFlagError,
   validateCliFlagValues,
+  validateCommandCliFlags,
   validateUnknownCliFlags,
 } from "../../src/cli/flag-value-validation.ts";
 
@@ -105,5 +106,16 @@ describe("CLI flag-value validation", () => {
       message: "Nonexistent flag: -z",
     });
     expect(JSON.stringify(error)).not.toContain("private-value");
+  });
+
+  test("allows forwarded flags for non-strict passthrough commands", () => {
+    expect(
+      validateCommandCliFlags({
+        commandId: "app:exec",
+        argv: ["appserver", "sh", "-c", "echo hi"],
+        definitions: flags,
+        allowUnknownFlags: true,
+      }),
+    ).toBeUndefined();
   });
 });

@@ -215,3 +215,12 @@ export const validateCommandFlagValues = (
   definitions: Readonly<Record<string, unknown>>,
 ): MalformedCliFlagValueError | undefined =>
   validateCliFlagValues(argv, definitions, EMPTY_VALUE_FLAGS_BY_COMMAND[commandId]);
+
+export const validateCommandCliFlags = (input: {
+  readonly commandId: string;
+  readonly argv: ReadonlyArray<string>;
+  readonly definitions: Readonly<Record<string, unknown>>;
+  readonly allowUnknownFlags: boolean;
+}): MalformedCliFlagValueError | UnknownCliFlagError | undefined =>
+  (input.allowUnknownFlags ? undefined : validateUnknownCliFlags(input.argv, input.definitions)) ??
+  validateCommandFlagValues(input.commandId, input.argv, input.definitions);

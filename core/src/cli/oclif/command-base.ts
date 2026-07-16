@@ -366,6 +366,7 @@ export abstract class LandoCommandBase extends Command {
         resultFormat,
         resultSchema: spec.resultSchema,
         deprecationWarnings: deprecationWarnings.enabled,
+        allowUnknownFlags: this.ctor.strict === false,
       })
     )
       return;

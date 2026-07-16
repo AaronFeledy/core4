@@ -83,7 +83,7 @@ import {
   setActiveResultFormat,
 } from "./compiled-runtime.ts";
 export { compiledCommandInputFromArgv } from "./compiled-input.ts";
-import { validateCommandFlagValues, validateUnknownCliFlags } from "./flag-value-validation.ts";
+import { validateCommandCliFlags } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary.ts";
@@ -415,10 +415,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (found !== undefined) {
-    const definitions = flagDefinitionsForCommand(found[1]);
-    const flagError =
-      validateUnknownCliFlags(argv.slice(1), definitions) ??
-      validateCommandFlagValues(canonicalCommandId, argv.slice(1), definitions);
+    const flagError = validateCommandCliFlags({
+      commandId: canonicalCommandId,
+      argv: argv.slice(1),
+      definitions: flagDefinitionsForCommand(found[1]),
+      allowUnknownFlags: isBunOrX || found[1].strict === false,
+    });
     if (flagError !== undefined) {
       await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
         failureExitCode: () => 2,
