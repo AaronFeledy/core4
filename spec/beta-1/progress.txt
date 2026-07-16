@@ -13,7 +13,6 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ## Codebase Patterns
 
-- Terminal layout must measure with `Bun.stringWidth` and split or truncate on `Intl.Segmenter` grapheme boundaries; code-unit length corrupts CJK/emoji framing and cursor-row accounting.
 - Env-gated native acceptance preflights host, explicit opt-in, and tooling as structured skips; once prerequisites pass, command failures remain failed outcomes even when release policy makes the cell advisory.
 - Windows managed Podman machines expose the API at `\\.\pipe\podman-lando`; the data-root `runtime/run/podman.sock` endpoint is the native managed-service path, not the win32 machine endpoint.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
@@ -25,6 +24,9 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Landofile lint validates each authored layer before validating the merged document; merge precedence must not hide a layer shape that runtime loading rejects.
 - Podman imports host certificates for `machine set --import-native-ca` during machine startup; an already-running Lando-owned machine must restart after enabling the setting for trust sync to complete.
 - Host-proxy transport diagnostics discover ownership-valid worker records under `makeLandoPaths().hostProxyRunRoot` and reuse the authenticated `probeWorker` control path; absent worker state is an intentional no-op, not a warning.
+- Main-binary builds go through `scripts/build-compiled-binary.ts`: OpenTUI requires ESM bytecode, and multi-target release builds must install all locked optional native packages with frozen `--os=* --cpu=*` inputs before compiling.
+- Programmatic `Bun.build` may resolve with `success: false`; compile wrappers must inspect the result, preserve diagnostics, and fail the calling release stage instead of trusting promise resolution.
+- Promise-backed interactive drivers must accept the enclosing Effect cancellation signal and settle through their normal cleanup path so interruption destroys terminal renderers and listeners.
 
 ## Durable learnings
 
@@ -460,6 +462,50 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, changed-file diagnostics, and focused lifecycle name/argv, provider-matrix reporting, native-cell policy, and generated-workflow tests passed.
 - **Learnings for future iterations:**
   - Purpose-specific fixed names are not disposable ownership: native destructive acceptance needs a per-invocation unguessable name even when it first asserts the target is absent.
+---
+
+## 2026-07-16 07:07 CDT - Babysit
+- PR: #596 https://github.com/AaronFeledy/core4/pull/596
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for CI/infra-only machine lifecycle acceptance; no user-facing guide change)
+- Merge: merged (squash)
+---
+
+## 2026-07-16 09:37 CDT - US-455
+- The bundled renderer now owns one literal lazy OpenTUI load with process-latched line-mode degradation, while level-none, pre-renderer, non-TTY, plain, and JSON paths stay substrate-free on source and compiled dispatch. Standalone init prompting uses the same renderer-mode gate and the relocated compiled binary renders the native framed picker.
+- Main-binary compilation is centralized behind an ESM-bytecode pruning wrapper. Generated catalog/stubs cover eight native roots, five release mappings, and 35 import-free failure modules; release and CI install locked cross-target optionals, enforce generated drift, and run relocated acceptance on every native build job with exactly one embedded library and no sidecars.
+- Verification: typecheck, lint, renderer/guide/public-transcript gates passed; focused build, release, import, degradation, renderer, interaction, source/compiled PTY, version, and host-proxy tests passed; five cross-target artifacts each embedded one native asset; high-rigor review approved.
+- **Learnings for future iterations:**
+  - Bun bytecode defaults to CommonJS, which cannot bundle OpenTUI 0.4.3's top-level await; the main wrapper must set `format: "esm"`.
+  - A renderer service may be absent from standalone Promise prompt paths, so those paths must consult the lightweight resolved renderer-mode state before installing a rich prompt driver.
+---
+
+## 2026-07-16 11:39 CDT - US-455 Review
+- Closed review blockers in the compiled and interactive paths: unsuccessful `Bun.build` results now fail release compilation with retained diagnostics, Effect interruption cancels the active rich prompt and destroys its renderer/listeners, degradation notices run through the caller's awaited debug logger, and compiled/source acceptance directly observes excluded imports, forced fallback, and the selected native root.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs and the final security lane passed. Shipping the acceptance-only global loader probe was accepted because setting it already requires in-process code execution. A new `apps:list` absolute startup gate was rejected as unrelated pre-existing minimal-bootstrap debt after frozen `origin/main` reproduced the failure and was slower; the OpenTUI gate now uses the normative level-none `--version` 50ms canary while existing renderer first-paint tests cover the rich path.
+- Verification: typecheck, lint, base-aware guide drift, renderer boundary, generated native/workflow idempotence, and focused build/import/release/interaction/first-paint tests passed; rebuilt relocated Linux source/compiled PTY acceptance passed. The isolated WSL sandbox cannot provide absolute latency evidence (current `--version` p95 166ms and frozen `origin/main` 160ms against 50ms), but the strict Linux CI gate remains enabled and the US-455 binary improved `apps:list` by roughly 25ms versus the same-environment baseline.
+- **Learnings for future iterations:**
+  - Promise resolution is not build success in Bun; inspect `BuildOutput.success` before release stages continue.
+  - Effect interruption must cross into Promise-owned terminal resources via `AbortSignal`, then reuse ordinary cleanup rather than abandoning the Promise.
+  - Performance review must compare the story branch with a frozen same-environment baseline before attributing an existing command-class budget miss to a newly lazy dependency.
+---
+
+## 2026-07-16 12:17 CDT - US-455 Review Restart
+- Closed the remaining prompt-lifecycle blocker: Effect interruption now waits for the rich driver's listener and renderer cleanup before the fiber returns `InteractionCancelledError`; the exact relocated compiled/PTTY and source plain/JSON acceptance pair passed three consecutive sandbox reruns.
+- Review notes (deferred/rejected): The missing reference-runner `<50ms` evidence was rejected as a local code blocker because this WSL environment also fails the frozen `origin/main` baseline; the strict native-Linux CI gate remains enabled and Babysit must treat a remote failure as blocking. `Guide-Coverage-Skip: Internal AbortSignal cleanup plumbing changes no recipe syntax, authoring contract, or user workflow.`
+- Verification: typecheck, lint, generated OpenTUI native-stub drift, focused interaction/import/build/prompt-driver tests, and repeated relocated compiled/source acceptance passed; base-aware guide drift identified only the documented recipe-guide skip.
+---
+
+## 2026-07-16 12:26 CDT - US-455 Review Follow-up
+- Post-fix Bugbot found and review confirmed that teardown failure discarded an already accepted rich-prompt answer. The driver now returns the completed answer, latches the teardown cause, and degrades subsequent prompts instead of asking the same question twice.
+- Verification: typecheck, lint, changed-file diagnostics, and focused prompt-driver, interaction, and interactive-driver tests passed.
+---
+
+## 2026-07-16 15:43 CDT - Babysit
+- PR: #597 https://github.com/AaronFeledy/core4/pull/597
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for recipe driver plumbing; host-aware OpenTUI test bundling; lazy compiled-module splitting for cold-start budget; Windows OpenTUI process-tree teardown and delayed-release cleanup; restored intentional pink renderer frames)
+- Merge: merged (squash)
 ---
 
 ## 2026-07-16 17:10 CDT - US-457

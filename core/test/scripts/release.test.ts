@@ -2309,13 +2309,15 @@ describe("release orchestrator", () => {
     ]);
     expect(spawnStages.at(-2)?.cmd).toEqual([
       "bun",
-      "build",
-      "./core/bin/lando.ts",
-      "--compile",
-      "--bytecode",
-      '--define=__LANDO_CORE_VERSION__="0.0.0"',
-      "--target=bun-windows-x64",
-      "--outfile=./dist/lando-windows-x64.exe",
+      "run",
+      "scripts/build-compiled-binary.ts",
+      "--target",
+      "bun-windows-x64",
+      "--outfile",
+      "./dist/lando-windows-x64.exe",
+      "--version",
+      "0.0.0",
+      "--minify",
       "--sourcemap=external",
     ]);
     expect(spawnStages.at(-1)?.cmd).toEqual([
@@ -2324,7 +2326,7 @@ describe("release orchestrator", () => {
       "scripts/sanitize-compiled-binary.ts",
       "./dist/lando-windows-x64.exe",
     ]);
-    expect(spawnStages.some(({ cmd }) => cmd.includes("--target=bun-linux-x64"))).toBe(false);
+    expect(spawnStages.some(({ cmd }) => cmd.includes("linux-x64"))).toBe(false);
     expect(logs.some((line) => line.includes("9-sign"))).toBe(false);
   });
 
@@ -2342,7 +2344,7 @@ describe("release orchestrator", () => {
       runner: {
         spawn: async ({ stageId, cmd }) => {
           spawnStages.push({ stageId, cmd });
-          if (stageId === "7-compile" && cmd[0] === "bun" && cmd[1] === "build") now += 42_000;
+          if (stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts") now += 42_000;
         },
         shell: async () => {},
       },
@@ -2350,25 +2352,28 @@ describe("release orchestrator", () => {
     });
 
     const compileCommands = spawnStages.filter(({ stageId }) => stageId === "7-compile");
-    expect(compileCommands.map(({ cmd }) => cmd)).toEqual(
-      CI_PLATFORMS.flatMap((platform) => {
+    expect(compileCommands.map(({ cmd }) => cmd)).toEqual([
+      ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+      ...CI_PLATFORMS.flatMap((platform) => {
         const outfile = `./dist/lando-${platform.id}${platform.id === "windows-x64" ? ".exe" : ""}`;
         return [
           [
             "bun",
-            "build",
-            "./core/bin/lando.ts",
-            "--compile",
-            "--bytecode",
-            '--define=__LANDO_CORE_VERSION__="0.0.0"',
-            `--target=${platform.bunTarget}`,
-            `--outfile=${outfile}`,
+            "run",
+            "scripts/build-compiled-binary.ts",
+            "--target",
+            platform.bunTarget,
+            "--outfile",
+            outfile,
+            "--version",
+            "0.0.0",
+            "--minify",
             "--sourcemap=external",
           ],
           ["bun", "run", "scripts/sanitize-compiled-binary.ts", outfile],
         ];
       }),
-    );
+    ]);
     expect(CI_PLATFORMS.map((platform) => platform.id)).toEqual([
       "darwin-arm64",
       "darwin-x64",
@@ -2401,9 +2406,9 @@ describe("release orchestrator", () => {
     });
 
     const compileCmd = spawnStages.find(
-      ({ stageId, cmd }) => stageId === "7-compile" && cmd[0] === "bun" && cmd[1] === "build",
+      ({ stageId, cmd }) => stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts",
     );
-    expect(compileCmd?.cmd).toContain('--define=__LANDO_CORE_VERSION__="4.1.0-beta.2"');
+    expect(compileCmd?.cmd).toContain("4.1.0-beta.2");
   });
 
   test("compile stage reports duration and fails the linux-x64 cold-build budget", async () => {
@@ -2417,8 +2422,8 @@ describe("release orchestrator", () => {
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          if (stageId !== "7-compile" || cmd[0] !== "bun" || cmd[1] !== "build") return;
-          now += cmd.includes("--target=bun-linux-x64") ? 600_001 : 10_000;
+          if (stageId !== "7-compile" || cmd[2] !== "scripts/build-compiled-binary.ts") return;
+          now += cmd.includes("bun-linux-x64") ? 600_001 : 10_000;
         },
         shell: async () => {},
       },
@@ -2454,7 +2459,7 @@ describe("release orchestrator", () => {
       now: () => now,
       runner: {
         spawn: async ({ stageId, cmd }) => {
-          if (stageId === "7-compile" && cmd[0] === "bun" && cmd[1] === "build") now += 25_000;
+          if (stageId === "7-compile" && cmd[2] === "scripts/build-compiled-binary.ts") now += 25_000;
         },
         shell: async () => {},
       },

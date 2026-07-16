@@ -35,8 +35,11 @@ import {
   writeDiagnosticLine,
   writeResultLine,
 } from "./renderer-boundary.ts";
+import { activeRendererMode } from "./renderer-mode-state.ts";
 import type { RendererIO } from "./renderer/io.ts";
 import type { StreamFrameSink } from "./stream-frame-sink.ts";
+
+export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state.ts";
 
 export interface CompiledCommandInput {
   readonly argv: ReadonlyArray<string>;
@@ -47,7 +50,6 @@ export interface CompiledCommandInput {
   readonly signal?: AbortSignal;
 }
 
-export let activeRendererMode: RendererMode = "lando";
 export let activeResultFormat: ResultFormat = DEFAULT_RESULT_FORMAT;
 export let activeDeprecationWarnings = true;
 export let activeCommandId = "cli:unknown";
@@ -57,10 +59,6 @@ export const getActiveCommandInvocation = (): CliInvocationSnapshot | undefined 
 
 export const clearActiveCommandInvocation = (): void => {
   activeCommandInvocation = undefined;
-};
-
-export const setActiveRendererMode = (mode: RendererMode): void => {
-  activeRendererMode = mode;
 };
 
 export const setActiveResultFormat = (format: ResultFormat): void => {

@@ -52,7 +52,9 @@ describe("Linux-x64 release acceptance rehearsal guide", () => {
     expect(guide).toContain('Scenario id="runtime-bytecode-aot" render={false}');
     expect(guide).toContain("FileSyncEngine creates accelerated app:start sessions");
     expect(guide).toContain("repeat app:start invocations reuse existing file-sync sessions");
-    expect(guide).toContain("bun build ./core/bin/lando.ts --compile --bytecode");
+    expect(guide).toContain(
+      "bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando",
+    );
     expect(guide).toContain("core/src/runtime/generated/layers/<level>.ts");
 
     expect(guide).toContain('Scenario id="performance-and-level-none" render={false}');

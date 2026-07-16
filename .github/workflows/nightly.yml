@@ -206,7 +206,7 @@ jobs:
       - name: Build Linux x64 binary
         run: |
           bun run --filter='@lando/core' build:manifest
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./core/dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
           ./core/dist/lando --version
 
@@ -377,7 +377,7 @@ jobs:
         run: |
           mkdir -p dist/cache/runtime-bundle
           bun run --filter='@lando/core' build:manifest
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
 
@@ -456,11 +456,12 @@ jobs:
           mkdir -p dist/bundle
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64 --sourcemap=external
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe --sourcemap=external
+          bun install --frozen-lockfile --os="*" --cpu="*"
+          bun run scripts/build-compiled-binary.ts --target bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64 --minify --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64 --minify --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64 --minify --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64 --minify --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-arm64
           bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-darwin-x64
           bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-arm64

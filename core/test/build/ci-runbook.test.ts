@@ -71,6 +71,14 @@ describe("ci runbook", () => {
     expect(runbook).toContain("LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock bun test core/test/scenario");
     expect(runbook).toContain("podman system service --time=0 unix:///tmp/podman.sock");
     expect(runbook).toContain("Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64");
+    expect(runbook).toContain("bun install --frozen-lockfile --os=* --cpu=*");
+    expect(runbook).toContain("bun run codegen:opentui-native-stubs");
+    expect(runbook).toContain(
+      "bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external",
+    );
+    expect(runbook).toContain("LANDO_RELEASE_TARGET=<target>");
+    expect(runbook).toContain("LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary>");
+    expect(runbook).toContain("bun run bench:opentui-startup -- --binary <binary>");
     expect(runbook).toContain("npm alpha package publishing");
     expect(runbook).toContain("npm trusted publishing through GitHub OIDC (`id-token: write`)");
     expect(runbook).toContain("does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path");

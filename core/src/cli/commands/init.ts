@@ -16,7 +16,7 @@ import { RecipeManifestService } from "@lando/sdk/services";
 
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
-import { makeInteractionService } from "../../interaction/service.ts";
+import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service.ts";
 import { getInteractionServiceOverride } from "../../interaction/testing-override.ts";
 import { makeDiskBackend, makeManagedFileService } from "../../managed-file/service.ts";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
@@ -43,6 +43,7 @@ import {
   publishTreeStartAsync,
 } from "../progress.ts";
 import { readAnswersFile } from "../prompts/answer-flags.ts";
+import { activeRendererMode } from "../renderer-mode-state.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
 import { parseInitSourceFlags } from "./init-source.ts";
 
@@ -254,7 +255,11 @@ const composeAnswers = async (options: InitAppOptions): Promise<Record<string, s
 const defaultInitPrompter = (choicesRunner?: ChoicesCommandRunner): InteractionPrompter =>
   makePromiseInteractionPrompter(
     getInteractionServiceOverride() ??
-      makeInteractionService(choicesRunner === undefined ? {} : { choicesRunner }),
+      makeInteractionService({
+        resolveDriver:
+          activeRendererMode === "lando" ? makeDefaultResolveInteractionDriver() : async () => undefined,
+        ...(choicesRunner === undefined ? {} : { choicesRunner }),
+      }),
   );
 
 type InternalPromptBatchOptions = PromptBatchOptions & {

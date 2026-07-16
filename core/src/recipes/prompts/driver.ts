@@ -82,5 +82,5 @@ export interface PromptDriverRequest {
  *   falls back to the line-based {@link PromptIO}.
  */
 export interface PromptDriver {
-  readonly readRaw: (request: PromptDriverRequest) => Promise<string>;
+  readonly readRaw: (request: PromptDriverRequest, signal?: AbortSignal) => Promise<string>;
 }

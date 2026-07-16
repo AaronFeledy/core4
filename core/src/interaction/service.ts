@@ -14,7 +14,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { Cause, type Context, Effect, Layer, Option, Redacted } from "effect";
+import { Cause, type Context, Effect, Layer, Option, Redacted, Runtime } from "effect";
 
 import {
   ChoicesUnavailableError,
@@ -40,6 +40,7 @@ import {
   type InteractionError,
   InteractionService,
   type InteractionServiceShape,
+  Logger,
   type PromptAnswers,
   Renderer,
   type SecretSpec,
@@ -70,14 +71,16 @@ export type ResolveInteractionDriver = (gate: {
   readonly isTTY: boolean;
   readonly yes: boolean;
   readonly nonInteractive: boolean;
+  readonly debug?: InteractiveDriverGate["debug"];
 }) => Promise<PromptDriver | undefined>;
 
 /** Adapts the OpenTUI prompt-driver loader to the {@link ResolveInteractionDriver} seam; overrides are test-only. */
 export const makeDefaultResolveInteractionDriver = (
-  overrides: Pick<InteractiveDriverGate, "env" | "importRendererPlugin"> = {},
+  overrides: Pick<InteractiveDriverGate, "debug" | "env" | "importRendererPlugin"> = {},
 ): ResolveInteractionDriver => {
-  return (gate) =>
-    resolveInteractivePromptDriver({
+  return (gate) => {
+    const debug = overrides.debug ?? gate.debug;
+    return resolveInteractivePromptDriver({
       isTTY: gate.isTTY,
       yes: gate.yes,
       nonInteractive: gate.nonInteractive,
@@ -85,7 +88,9 @@ export const makeDefaultResolveInteractionDriver = (
       ...(overrides.importRendererPlugin === undefined
         ? {}
         : { importRendererPlugin: overrides.importRendererPlugin }),
+      ...(debug === undefined ? {} : { debug }),
     });
+  };
 };
 
 /** Construction inputs; all optional so tests can script stdin/stdout and inject a driver. */
@@ -255,8 +260,19 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
         Effect.async<EnginePromptAnswers, InteractionError>((resume, signal) => {
           const rawModeBefore = readRawMode(stdin);
           const io = buildIo(rendererOption, signal);
+          const driver = collect.interactiveDriver;
+          const activeCollect: Omit<CollectPromptsOptions, "io"> =
+            driver === undefined
+              ? collect
+              : {
+                  ...collect,
+                  interactiveDriver: {
+                    readRaw: (request) => driver.readRaw(request, signal),
+                  },
+                };
           let settled = false;
-          collectPrompts({ ...collect, io }).then(
+          const collectPromise = collectPrompts({ ...activeCollect, io });
+          collectPromise.then(
             (answers) => {
               settled = true;
               resume(Effect.succeed(answers));
@@ -268,7 +284,16 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           );
           return Effect.sync(() => {
             if (!settled) restoreTty(stdin, rawModeBefore);
-          });
+          }).pipe(
+            Effect.zipRight(
+              Effect.promise(() =>
+                collectPromise.then(
+                  () => undefined,
+                  () => undefined,
+                ),
+              ),
+            ),
+          );
         }),
       ).pipe(
         Effect.catchAllCause((cause) =>
@@ -281,14 +306,20 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     interactive: boolean,
     tty: boolean,
     gate: { readonly yes: boolean; readonly nonInteractive: boolean },
+    rendererOption: Option.Option<RendererService>,
+    debug: InteractiveDriverGate["debug"] | undefined,
   ): Effect.Effect<PromptDriver | undefined> =>
-    deps.resolveDriver === undefined || !interactive || !tty
+    deps.resolveDriver === undefined ||
+    !interactive ||
+    !tty ||
+    (Option.isSome(rendererOption) && rendererOption.value.id !== "lando")
       ? Effect.succeed(undefined)
       : Effect.promise(() =>
           (deps.resolveDriver as ResolveInteractionDriver)({
             isTTY: tty,
             yes: gate.yes,
             nonInteractive: gate.nonInteractive,
+            ...(debug === undefined ? {} : { debug }),
           }),
         );
 
@@ -298,6 +329,8 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
   ): Effect.Effect<EnginePromptAnswers, InteractionError> =>
     Effect.gen(function* () {
       const rendererOption = yield* Effect.serviceOption(Renderer);
+      const loggerOption = yield* Effect.serviceOption(Logger);
+      const runtime = yield* Effect.runtime<never>();
       const tty = isTtyStdin(stdin);
       const gate = resolveGate(options, tty, defaultMode);
       const cwd = options?.cwd ?? process.cwd();
@@ -321,7 +354,11 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
                 }),
             });
       const answers: Record<string, string> = { ...fromFile, ...explicit };
-      const driver = yield* resolveDriver(gate.interactive, tty, gate);
+      const debug = Option.isNone(loggerOption)
+        ? undefined
+        : (message: string, data: Readonly<Record<string, unknown>>): Promise<void> =>
+            Runtime.runPromise(runtime)(loggerOption.value.debug(message, data).pipe(Effect.ignore));
+      const driver = yield* resolveDriver(gate.interactive, tty, gate, rendererOption, debug);
       const collect: Omit<CollectPromptsOptions, "io"> = {
         prompts: specs as ReadonlyArray<RecipePrompt>,
         answers,

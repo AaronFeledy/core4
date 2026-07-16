@@ -123,3 +123,35 @@ export const physicalRowsForFrame = (
   frame: ReadonlyArray<string>,
   terminalColumns: number | undefined,
 ): number => frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
+
+export interface TaskTreeFrameStyles {
+  readonly pink: string;
+  readonly reset: string;
+  readonly dim: string;
+  readonly dimReset: string;
+}
+
+export const styleBodyFrame = (
+  line: string,
+  styleStart: string,
+  styleEnd: string,
+  styles: TaskTreeFrameStyles,
+): string => {
+  const hasTrailingFrame = line.endsWith("│");
+  const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
+  const trailingFrame = hasTrailingFrame ? `${styles.pink}│${styles.reset}` : "";
+  return `${styles.pink}${line.slice(0, 1)}${styles.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
+};
+
+export const styleBottomFrame = (line: string, styles: TaskTreeFrameStyles): string => {
+  let trailingFrameStart = line.length;
+  if (line.endsWith("╯")) {
+    trailingFrameStart -= 1;
+    while (trailingFrameStart > 2 && line[trailingFrameStart - 1] === "─") trailingFrameStart -= 1;
+  }
+  const content = line.slice(2, trailingFrameStart);
+  const trailingFrame = line.slice(trailingFrameStart);
+  const styledTrailingFrame =
+    trailingFrame.length === 0 ? "" : `${styles.pink}${trailingFrame}${styles.reset}`;
+  return `${styles.pink}${line.slice(0, 2)}${styles.reset}${styles.dim}${styles.pink}${content}${styles.dimReset}${styles.reset}${styledTrailingFrame}`;
+};

@@ -21,6 +21,7 @@ const csi = {
   dim: `${ESC}[2m`,
   dimReset: `${ESC}[22m`,
   cyan: `${ESC}[36m`,
+  pink: `${ESC}[95m`,
   green: `${ESC}[32m`,
   amber: `${ESC}[33m`,
   red: `${ESC}[31m`,
@@ -155,18 +156,25 @@ const capLine = (left: string, title: string, right: string, width: number): str
 /** Top frame line: `╭─ TITLE ──────╮`. */
 export const boxTop = (title: string, width: number): string => capLine("╭─", title, "╮", width);
 
-/** Bottom frame line: `╰─ TITLE ──────╯`. */
-export const boxBottom = (title: string, width: number): string => capLine("╰─", title, "╯", width);
+/** Bottom frame line: `╰─ TITLE ──────╯`, with optionally styled content. */
+export const boxBottom = (title: string, width: number, style?: (content: string) => string): string => {
+  const innerBudget = Math.max(1, width - displayWidth("╰─") - displayWidth("╯") - 2);
+  const fitted = truncateToWidth(title, innerBudget);
+  const content = style === undefined ? ` ${fitted} ` : style(` ${fitted} `);
+  const fill = width - displayWidth(`╰─ ${fitted} `) - displayWidth("╯");
+  return `${csi.pink}╰─${csi.reset}${content}${csi.pink}${repeat("─", fill)}╯${csi.reset}`;
+};
 
 /** Mid-frame separator: `├─ TITLE ──────┤`. */
 export const boxSeparator = (title: string, width: number): string => capLine("├─", title, "┤", width);
 
-/** Body line: `│ text<padding> │`, truncated and padded to width with side borders. */
-export const boxBody = (text: string, width: number): string => {
+/** Body line: `│ text<padding> │`, with pink borders and optionally styled content. */
+export const boxBody = (text: string, width: number, style?: (content: string) => string): string => {
   const innerWidth = Math.max(1, width - 4);
   const fitted = truncateToWidth(text, innerWidth);
   const padding = repeat(" ", innerWidth - displayWidth(fitted));
-  return `│ ${fitted}${padding} │`;
+  const content = style === undefined ? fitted : style(fitted);
+  return `${csi.pink}│${csi.reset} ${content}${padding} ${csi.pink}│${csi.reset}`;
 };
 
 export type SummaryTone = "ok" | "warn" | "error" | "info" | "pending" | "skipped";
@@ -201,10 +209,12 @@ export const padEndToWidth = (text: string, width: number): string =>
   `${text}${repeat(" ", width - displayWidth(text))}`;
 
 /** ANSI accents for the framed surfaces, mirroring the task-tree cockpit palette. */
-export const styleBoxTop = (line: string): string => `${csi.bold}${csi.cyan}${line}${csi.reset}`;
+export const styleBoxTop = (line: string): string => `${csi.bold}${csi.pink}${line}${csi.reset}`;
 export const styleBoxBottom = (line: string): string =>
   `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
-export const styleBoxSeparator = (line: string): string => `${csi.cyan}${line}${csi.reset}`;
+export const styleBoxFooter = (line: string): string =>
+  `${csi.dim}${csi.pink}${line}${csi.dimReset}${csi.reset}`;
+export const styleBoxSeparator = (line: string): string => `${csi.pink}${line}${csi.reset}`;
 export const dimText = (text: string): string => `${csi.dim}${text}${csi.dimReset}${csi.reset}`;
 
 /** Color a whole line by tone; skipped/pending read dim so the chip text leads. */

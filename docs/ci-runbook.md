@@ -67,7 +67,13 @@ bun run build
 
 Each build job uploads its binary artifact with 14-day retention. Each build job emits a `::notice title=ci-timing::...` line and has a timeout cap (30 minutes for Unix targets, 35 minutes for Windows). If a build job fails after producing the binary, inspect it from GitHub Actions at `Actions > ci > build-<platform> > Artifacts > lando-<platform>`; for example, `Actions > ci > build-linux-x64 > Artifacts > lando-linux-x64`.
 
-All platform binary builds use `bun build --compile --bytecode` against `core/bin/lando.ts`; the nightly distribution rehearsal repeats that bytecode compile for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64` so a target-specific Bun blocker is caught before release.
+Release-shaped binary jobs install the locked cross-target optional packages with `bun install --frozen-lockfile --os=* --cpu=*`, regenerate and drift-check them with `bun run codegen:opentui-native-stubs`, then build through the mandatory wrapper:
+
+```bash
+bun run scripts/build-compiled-binary.ts --target=bun-${TARGET} --outfile=dist/lando-${TARGET} --minify --sourcemap=external
+```
+
+The wrapper keeps the programmatic equivalent of `--bytecode` enabled and attaches the OpenTUI native-root pruning plugin. Nightly repeats this build for `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and `windows-x64`. Each platform job then runs the relocated acceptance with `LANDO_RELEASE_TARGET=<target> LANDO_OPENTUI_ACCEPTANCE_BINARY=<binary> bun test core/test/build/opentui-compiled-acceptance.test.ts`. The Linux x64 perf job also runs `bun run bench:opentui-startup -- --binary <binary>` against the downloaded artifact.
 
 ## Tooling hot-path perf budget
 
