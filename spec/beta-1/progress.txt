@@ -362,3 +362,23 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - App-level transport health must not depend on one arbitrarily ordered service when the feature is present in several services; probe the bounded persisted candidate set until one succeeds.
   - A legacy record type used by ownership cleanup is persisted state, not speculative compatibility; diagnostics must either handle it safely or report it explicitly.
 ---
+
+## 2026-07-16 00:19 CDT - US-451 Review Repairs
+- Closed the confirmed no-false-alarm and diagnostic gaps: worker state now persists provider ownership and classifies absent/current/legacy/malformed records; malformed state is a redacted structured warning while true absence stays silent; provider-mismatched and pre-upgrade TCP records are informational and never execute through an unproven provider; control and container probe failures are distinct.
+- A schema-valid `app:open` success or error envelope now proves transport reachability regardless of process exit code. The actual host-proxy shim already returns the machine envelope for `open --print`, so adding `--format=json` was rejected as unnecessary.
+- Aggregate diagnosis is deterministic and bounded to 32 sorted workers, 8 sorted probe services, and a 15-second overall budget; cap or budget exhaustion does not manufacture a warning. Legacy Unix probing remains unchanged.
+- Review notes (deferred/rejected): broader generic host-proxy dispatch beyond the generated `app:open` path remains deferred post-4.0; synthetic diagnostic containers, new SDK/provider contracts, renderer refactoring, and compatibility paths beyond persisted worker artifacts remain rejected as out of scope. `spec/beta-1/prd.json` was not changed because US-451 status did not change.
+- Verification: focused host-proxy doctor/worker plus doctor subsystem/report/NDJSON suites, typecheck, lint, renderer/redaction/probe/state-store/machine-output boundaries, focused executable guide, guide lint/coverage/public-transcript checks, base-aware guide drift, and changed-file LSP diagnostics passed.
+- **Learnings for future iterations:**
+  - Provider selection is not worker ownership; persisted workers must carry the provider that planned them before doctor may execute an in-container probe.
+  - Diagnostic bounds are uncertainty boundaries. Exhausting a cap or budget means “not probed,” never evidence that the transport is broken.
+---
+
+## 2026-07-16 01:20 CDT - US-451 Review Finalization
+- Closed the remaining review blockers: current-shaped invalid worker records can no longer downgrade to legacy state; diagnostic filesystem work is behind a core-private service; root discovery and worker probes share a deterministic Effect-clock budget; and stopped/unavailable services stay inconclusive while exit-127 transport evidence is retained until every bounded candidate is tried.
+- Review notes (deferred/rejected): Bugbot's cap-exhaustion warning was rejected because app-level transport health is proven by any eligible service; when persisted candidates remain unvisited, an earlier service failure cannot justify restart remediation and the bounded result must remain informational. Security, goal/constraint, and code-quality review lanes passed after repair.
+- Verification: typecheck, lint, base-aware guide drift, focused executable guide, renderer/redaction/probe/state-store/machine-output boundaries, TypeScript no-excuse audit, and 83 focused doctor/worker tests with 346 assertions passed; changed-file diagnostics are clean.
+- **Learnings for future iterations:**
+  - Persisted schema fallback must discriminate artifact generations before decoding; permissive excess-property handling can otherwise reinterpret a malformed current record as valid legacy state.
+  - App-level diagnostics should retain per-service failures while candidates remain, but cap exhaustion is uncertainty rather than proof that every eligible route is broken.
+---

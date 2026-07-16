@@ -1,23 +1,21 @@
-import { lstat, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { Duration, Effect, Either, Option, Schema } from "effect";
-
-import { runProbe } from "@lando/sdk/probe";
-import { AppId, CommandResultEnvelope, ServiceName } from "@lando/sdk/schema";
-import type { ExecResult, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import { Clock, Duration, Effect, Option } from "effect";
 
 import { makeLandoPaths, sanitizeAppName } from "../../config/paths.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
-import {
-  readLegacyWorkerRecordAt,
-  readWorkerRecordAt,
-} from "../../subsystems/host-proxy/worker-state-file.ts";
-import { probeWorker } from "../../subsystems/host-proxy/worker-state.ts";
+import { readWorkerRecordStateAt } from "../../subsystems/host-proxy/worker-state-file.ts";
 import {
   buildHostProxyAllowlistDoctorCheck,
   currentHostProxyAllowlistFreshness,
 } from "./doctor-host-proxy-allowlist.ts";
+import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem.ts";
+import { compareCodePointStrings } from "./doctor-host-proxy-order.ts";
+import {
+  type HostProxyDoctorLimits,
+  type HostProxyDoctorProvider,
+  diagnoseHostProxyWorker,
+} from "./doctor-host-proxy-worker.ts";
 import type {
   DoctorCheck,
   DoctorProviderKind,
@@ -25,15 +23,12 @@ import type {
   DoctorSelectionRecord,
   DoctorSolution,
 } from "./doctor.ts";
-import { OpenAppResultSchema } from "./open.ts";
 
-interface HostProxyDoctorProvider {
-  readonly id: string;
-  readonly displayName: string;
-  readonly version: string;
-  readonly tcpHostGateway?: string;
-  readonly exec: RuntimeProviderShape["exec"];
-}
+const DEFAULT_LIMITS: HostProxyDoctorLimits = {
+  maxWorkers: 32,
+  maxProbeServices: 8,
+  budgetMs: 15_000,
+};
 
 export interface HostProxyTransportDoctorOptions {
   readonly userDataRoot?: string;
@@ -43,50 +38,20 @@ export interface HostProxyTransportDoctorOptions {
   readonly runtime: DoctorRuntime;
   readonly selection: DoctorSelectionRecord;
   readonly sourceEnv?: Record<string, string | undefined>;
+  readonly limits?: HostProxyDoctorLimits;
 }
 
-const HOST_PROXY_REMEDIATION: DoctorSolution = {
+const HOST_PROXY_STATE_REMEDIATION: DoctorSolution = {
   kind: "manual",
   description:
-    "The app's host-proxy transport is unreachable. Run `lando restart` from the app to recreate its authenticated bridge.",
-  command: "lando restart",
-};
-
-const successfulOpenOutput = (stdout: string): boolean => {
-  try {
-    const envelope = Schema.decodeUnknownEither(CommandResultEnvelope)(JSON.parse(stdout.trim()));
-    if (Either.isLeft(envelope)) return false;
-    if (envelope.right.command !== "app:open" || !envelope.right.ok) return false;
-    return Either.isRight(Schema.decodeUnknownEither(OpenAppResultSchema)(envelope.right.result));
-  } catch (error) {
-    if (error instanceof SyntaxError) return false;
-    throw error;
-  }
-};
-
-const unixSocketMetadata = (socketPath: string) =>
-  Effect.promise(async () => {
-    try {
-      const metadata = await lstat(socketPath);
-      return { type: metadata.isSocket() ? "socket" : "other", mode: metadata.mode & 0o777 } as const;
-    } catch {
-      return undefined;
-    }
-  });
-
-const containerGatewayMatches = (containerUrl: string, gateway: string): boolean => {
-  try {
-    return new URL(containerUrl).hostname === gateway;
-  } catch (error) {
-    if (error instanceof TypeError) return false;
-    throw error;
-  }
+    "The persisted host-proxy worker state is unreadable or malformed. Inspect or remove that worker state, then retry.",
 };
 
 export const hostProxyTransportDoctorChecks = (
   options: HostProxyTransportDoctorOptions,
-): Effect.Effect<ReadonlyArray<DoctorCheck>> =>
+): Effect.Effect<ReadonlyArray<DoctorCheck>, never, HostProxyDoctorFileSystem> =>
   Effect.gen(function* () {
+    const fileSystem = yield* HostProxyDoctorFileSystem;
     const paths = makeLandoPaths(
       options.userDataRoot === undefined ? {} : { userDataRoot: options.userDataRoot },
     );
@@ -95,130 +60,116 @@ export const hostProxyTransportDoctorChecks = (
       ? yield* redactionService.value.forProfile("secrets", { sourceEnv: options.sourceEnv })
       : createStandaloneRedactor("secrets", { sourceEnv: options.sourceEnv });
     const freshness = currentHostProxyAllowlistFreshness();
-    const entries = yield* Effect.promise(() =>
-      readdir(paths.hostProxyRunRoot, { withFileTypes: true }).catch(() => []),
-    );
     const checks: DoctorCheck[] = [];
     const allowlistCheck = buildHostProxyAllowlistDoctorCheck(freshness, options);
     if (allowlistCheck !== undefined) checks.push(allowlistCheck);
-    for (const entry of entries) {
-      if (!entry.isDirectory()) continue;
+    const limits = options.limits ?? DEFAULT_LIMITS;
+    const deadline = (yield* Clock.currentTimeMillis) + limits.budgetMs;
+    const rootStateOption = yield* fileSystem
+      .readRoot(paths.hostProxyRunRoot)
+      .pipe(Effect.timeoutOption(Duration.millis(Math.max(0, deadline - (yield* Clock.currentTimeMillis)))));
+    if (Option.isNone(rootStateOption)) return checks;
+    const rootState = rootStateOption.value;
+    switch (rootState._tag) {
+      case "absent":
+        return checks;
+      case "unreadable": {
+        const rawContext = {
+          workerState: "unreadable",
+          statePath: paths.hostProxyRunRoot,
+          reason: "worker-root-unreadable",
+          errorCode: rootState.errorCode,
+        };
+        checks.push({
+          name: "host-proxy-state",
+          status: "warn",
+          severity: "warn",
+          providerId: options.provider.id,
+          providerName: options.provider.displayName,
+          providerVersion: options.provider.version,
+          providerKind: options.providerKind,
+          runtimeStatus: options.runtimeStatus,
+          runtime: options.runtime,
+          capabilities: {},
+          context: Object.fromEntries(
+            Object.entries(rawContext).map(([key, value]) => [key, redactor.redactString(value)]),
+          ),
+          solutions: [HOST_PROXY_STATE_REMEDIATION],
+          selection: options.selection,
+        });
+        return checks;
+      }
+      case "entries":
+        break;
+      default: {
+        const exhaustive: never = rootState;
+        return exhaustive;
+      }
+    }
+    const workerEntries = rootState.entries
+      .filter((entry) => entry.isDirectory)
+      .sort((left, right) => compareCodePointStrings(left.name, right.name))
+      .slice(0, limits.maxWorkers);
+    for (const entry of workerEntries) {
+      const remainingMs = deadline - (yield* Clock.currentTimeMillis);
+      if (remainingMs <= 0) break;
       const runDir = resolve(paths.hostProxyRunRoot, entry.name);
       const recordPath = resolve(runDir, "worker.json");
-      const currentRecord = yield* readWorkerRecordAt(recordPath);
-      const legacyRecord =
-        currentRecord === undefined ? yield* readLegacyWorkerRecordAt(recordPath) : undefined;
-      const record = currentRecord ?? legacyRecord;
-      if (record === undefined) continue;
-      const ownedRunDir =
-        currentRecord === undefined
-          ? resolve(paths.hostProxyRunRoot, sanitizeAppName(record.appId))
-          : resolve(paths.hostProxyRunDir(currentRecord.appId, currentRecord.appRoot));
-      if (ownedRunDir !== runDir) continue;
-
-      const probe = yield* probeWorker(record);
-      const socketMetadata =
-        record.transport === "unix-socket" && record.socketPath !== undefined
-          ? yield* unixSocketMetadata(record.socketPath)
-          : undefined;
-      const socketReady = socketMetadata?.type === "socket" && socketMetadata.mode === 0o600;
-      const gatewayAvailable = options.provider.tcpHostGateway !== undefined;
-      const containerUrl = currentRecord?.containerUrl;
-      const probeServices = currentRecord?.probeServices ?? [];
-      const gatewayMatches =
-        record.transport === "tcp-host-gateway" &&
-        containerUrl !== undefined &&
-        options.provider.tcpHostGateway !== undefined &&
-        containerGatewayMatches(containerUrl, options.provider.tcpHostGateway);
-      let containerProbeReady = false;
-      if (
-        record.transport === "tcp-host-gateway" &&
-        probe === "live" &&
-        gatewayAvailable &&
-        gatewayMatches &&
-        containerUrl !== undefined
-      ) {
-        for (const probeService of probeServices) {
-          containerProbeReady = yield* runProbe<ExecResult, ProviderError, never>(
-            {
-              id: `doctor:host-proxy:${record.appId}`,
-              policy: { maxAttempts: 1, timeout: Duration.seconds(5), backoff: "fixed" },
-              classify: {
-                success: (result) =>
-                  typeof result === "object" &&
-                  result !== null &&
-                  "exitCode" in result &&
-                  result.exitCode === 0 &&
-                  "stdout" in result &&
-                  typeof result.stdout === "string" &&
-                  successfulOpenOutput(result.stdout)
-                    ? "green"
-                    : "red",
-                failure: () => "red",
-              },
-            },
-            options.provider.exec(
-              { app: AppId.make(record.appId), service: ServiceName.make(probeService) },
-              {
-                command: ["/usr/local/bin/lando", "open", "--print"],
-                env: { LANDO_HOST_PROXY_URL: containerUrl },
-                stdin: "ignore",
-                tty: false,
-              },
-            ),
-          ).pipe(
-            Effect.map((result) => result.outcome === "green"),
-            Effect.catchAll(() => Effect.succeed(false)),
-          );
-          if (containerProbeReady) break;
+      const diagnoseEntry = Effect.gen(function* () {
+        const state = yield* readWorkerRecordStateAt(recordPath);
+        switch (state._tag) {
+          case "absent":
+            return undefined;
+          case "malformed":
+            return {
+              name: "host-proxy-state",
+              status: "warn",
+              severity: "warn",
+              providerId: options.provider.id,
+              providerName: options.provider.displayName,
+              providerVersion: options.provider.version,
+              providerKind: options.providerKind,
+              runtimeStatus: options.runtimeStatus,
+              runtime: options.runtime,
+              capabilities: {},
+              context: { workerState: "malformed", statePath: recordPath },
+              solutions: [HOST_PROXY_STATE_REMEDIATION],
+              selection: options.selection,
+            } satisfies DoctorCheck;
+          case "current": {
+            const ownedRunDir = resolve(paths.hostProxyRunDir(state.record.appId, state.record.appRoot));
+            if (ownedRunDir !== runDir) return undefined;
+            return yield* diagnoseHostProxyWorker({
+              doctor: options,
+              record: state.record,
+              current: true,
+              maxProbeServices: limits.maxProbeServices,
+            });
+          }
+          case "legacy": {
+            const ownedRunDir = resolve(paths.hostProxyRunRoot, sanitizeAppName(state.record.appId));
+            if (ownedRunDir !== runDir) return undefined;
+            return yield* diagnoseHostProxyWorker({
+              doctor: options,
+              record: state.record,
+              current: false,
+              maxProbeServices: limits.maxProbeServices,
+            });
+          }
+          default: {
+            const exhaustive: never = state;
+            return exhaustive;
+          }
         }
-      }
-      const reachable =
-        probe === "live" && (record.transport === "unix-socket" ? socketReady : containerProbeReady);
-      const endpoint = record.transport === "unix-socket" ? record.socketPath : containerUrl;
-      const rawContext: Record<string, string> = {
-        providerId: options.provider.id,
-        providerKind: options.providerKind,
-        providerVersion: options.provider.version,
-        appId: record.appId,
-        transport: record.transport,
-        reachability: reachable ? "reachable" : "unreachable",
-        endpoint: endpoint ?? "missing",
-        ...(record.transport === "unix-socket"
-          ? {
-              socketType: socketMetadata?.type ?? "missing",
-              socketMode:
-                socketMetadata === undefined ? "missing" : socketMetadata.mode.toString(8).padStart(4, "0"),
-            }
-          : {}),
-        ...(record.transport === "tcp-host-gateway" && options.provider.tcpHostGateway !== undefined
-          ? { containerGateway: options.provider.tcpHostGateway }
-          : {}),
-        ...(record.transport === "tcp-host-gateway" && !gatewayAvailable
-          ? { failure: "container-gateway-unavailable" }
-          : record.transport === "tcp-host-gateway" && !gatewayMatches
-            ? { failure: "container-gateway-mismatch" }
-            : record.transport === "tcp-host-gateway" && !containerProbeReady
-              ? { failure: "container-probe-failed" }
-              : {}),
-      };
-      const context = Object.fromEntries(
-        Object.entries(rawContext).map(([key, value]) => [key, redactor.redactString(value)]),
-      );
+      });
+      const bounded = yield* diagnoseEntry.pipe(Effect.timeoutOption(Duration.millis(remainingMs)));
+      if (Option.isNone(bounded)) break;
+      if (bounded.value === undefined) continue;
       checks.push({
-        name: "host-proxy-transport",
-        status: reachable ? "pass" : "warn",
-        severity: reachable ? "info" : "warn",
-        providerId: options.provider.id,
-        providerName: options.provider.displayName,
-        providerVersion: options.provider.version,
-        providerKind: options.providerKind,
-        runtimeStatus: options.runtimeStatus,
-        runtime: options.runtime,
-        capabilities: {},
-        context,
-        solutions: reachable ? [] : [HOST_PROXY_REMEDIATION],
-        selection: options.selection,
+        ...bounded.value,
+        context: Object.fromEntries(
+          Object.entries(bounded.value.context).map(([key, value]) => [key, redactor.redactString(value)]),
+        ),
       });
     }
     return checks;

@@ -3,17 +3,23 @@ import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { type Context, Effect, Layer } from "effect";
+import { dirname, join } from "node:path";
+import { type Context, Deferred, Effect, Fiber, Layer, Option, TestClock, TestContext } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
+import { ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 
 import {
   buildHostProxyAllowlistDoctorCheck,
   hostProxyAllowlistFreshness,
 } from "../../src/cli/commands/doctor-host-proxy-allowlist.ts";
+import {
+  HostProxyDoctorFileSystem,
+  HostProxyDoctorFileSystemLive,
+} from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
+import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
 import { makeLandoPaths, sanitizeAppName } from "../../src/config/paths.ts";
 import {
@@ -312,9 +318,48 @@ describe("meta:doctor host-proxy transport reachability", () => {
 
     // Then
     expect(result.checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
+    expect(result.checks.some((check) => check.name === "host-proxy-state")).toBe(false);
   });
 
-  test("reports an unreachable Windows gateway bridge with structured remediation", async () => {
+  test("warns when the host-proxy worker root is unreadable as a directory", async () => {
+    // Given
+    const root = await tempRoot();
+    const secret = "unreadable-root-secret";
+    const userDataRoot = join(root, secret);
+    const hostProxyRunRoot = makeLandoPaths({ userDataRoot }).hostProxyRunRoot;
+    await mkdir(dirname(hostProxyRunRoot), { recursive: true });
+    await writeFile(hostProxyRunRoot, "not-a-directory\n");
+
+    // When
+    const result = await runDoctor(userDataRoot, TestRuntimeProvider, { LANDO_TEST_TOKEN: secret });
+
+    // Then
+    const check = result.checks.find((candidate) => candidate.name === "host-proxy-state");
+    expect(check).toMatchObject({
+      status: "warn",
+      severity: "warn",
+      context: {
+        workerState: "unreadable",
+        reason: "worker-root-unreadable",
+        errorCode: "ENOTDIR",
+      },
+      solutions: [
+        {
+          kind: "manual",
+          description:
+            "The persisted host-proxy worker state is unreadable or malformed. Inspect or remove that worker state, then retry.",
+        },
+      ],
+    });
+    const text = renderDoctorResult(result);
+    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date(0) });
+    expect(text).toContain("host-proxy-state: warn");
+    expect(text).toContain("workerState: unreadable");
+    expect(text).not.toContain(secret);
+    expect(ndjson).not.toContain(secret);
+  });
+
+  test("reports a pre-upgrade TCP worker without probe metadata as informational", async () => {
     // Given
     const root = await tempRoot();
     const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
@@ -331,6 +376,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         {
           appId: app.id,
           appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
           transport: "tcp-host-gateway",
           url: endpoint,
           shimPath: join(root, "lando.exe"),
@@ -359,29 +405,25 @@ describe("meta:doctor host-proxy transport reachability", () => {
     // Then
     const check = result.checks.find((candidate) => candidate.name === "host-proxy-transport");
     expect(check).toMatchObject({
-      status: "warn",
-      severity: "warn",
+      status: "pass",
+      severity: "info",
       context: {
         appId: "demo",
         transport: "tcp-host-gateway",
-        reachability: "unreachable",
+        reachability: "not-probed",
         endpoint: "missing",
         containerGateway: "host.containers.internal",
+        reason: "pre-upgrade-record",
       },
-      solutions: [
-        {
-          kind: "manual",
-          command: "lando restart",
-        },
-      ],
+      solutions: [],
     });
 
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, {
       now: new Date("1970-01-01T00:00:00.000Z"),
     });
-    expect(text).toContain("host-proxy-transport: warn");
-    expect(text).toContain("containerGateway: host.containers.internal");
+    expect(text).toContain("host-proxy-transport: pass");
+    expect(text).toContain("reason: pre-upgrade-record");
     expect(ndjson).toContain('"event":"doctor.check"');
     expect(ndjson).toContain('"containerGateway":"host.containers.internal"');
     expect(text).not.toContain(controlToken);
@@ -420,6 +462,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
         {
           appId: app.id,
           appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
           transport: "tcp-host-gateway",
           url: `http://127.0.0.1:${address.port}`,
           containerUrl,
@@ -530,10 +573,11 @@ describe("meta:doctor host-proxy transport reachability", () => {
         {
           appId: app.id,
           appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
           transport: "tcp-host-gateway",
           url: `http://127.0.0.1:${address.port}`,
           containerUrl,
-          probeServices: ["stopped", "appserver"],
+          probeServices: ["a-stopped", "b-broken", "c-appserver"],
           shimPath: join(root, "lando.exe"),
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           startedAt: "2026-07-15T00:00:00.000Z",
@@ -558,8 +602,10 @@ describe("meta:doctor host-proxy transport reachability", () => {
         command: Parameters<typeof TestRuntimeProvider.exec>[1],
       ) => {
         calls.push({ target, command });
-        if (target.service === "stopped")
+        if (target.service === "a-stopped")
           return Effect.succeed({ exitCode: 1, stdout: "", stderr: "service is stopped" });
+        if (target.service === "b-broken")
+          return Effect.succeed({ exitCode: 127, stdout: "", stderr: "host proxy unavailable" });
         return Effect.succeed({
           exitCode: 0,
           stdout: JSON.stringify({
@@ -597,7 +643,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
     expect(calls).toEqual([
       {
-        target: { app: "demo", service: "stopped" },
+        target: { app: "demo", service: "a-stopped" },
         command: {
           command: ["/usr/local/bin/lando", "open", "--print"],
           env: { LANDO_HOST_PROXY_URL: containerUrl },
@@ -606,7 +652,16 @@ describe("meta:doctor host-proxy transport reachability", () => {
         },
       },
       {
-        target: { app: "demo", service: "appserver" },
+        target: { app: "demo", service: "b-broken" },
+        command: {
+          command: ["/usr/local/bin/lando", "open", "--print"],
+          env: { LANDO_HOST_PROXY_URL: containerUrl },
+          stdin: "ignore",
+          tty: false,
+        },
+      },
+      {
+        target: { app: "demo", service: "c-appserver" },
         command: {
           command: ["/usr/local/bin/lando", "open", "--print"],
           env: { LANDO_HOST_PROXY_URL: containerUrl },
@@ -615,5 +670,700 @@ describe("meta:doctor host-proxy transport reachability", () => {
         },
       },
     ]);
+  });
+
+  test("reports malformed worker state through redacted text and NDJSON context", async () => {
+    // Given
+    const root = await tempRoot();
+    const secret = "malformed-state-secret";
+    const runDir = join(makeLandoPaths({ userDataRoot: root }).hostProxyRunRoot, secret);
+    await mkdir(runDir, { recursive: true });
+    await writeFile(join(runDir, "worker.json"), "{not-json\n");
+
+    // When
+    const result = await runDoctor(root, TestRuntimeProvider, { LANDO_TEST_TOKEN: secret });
+
+    // Then
+    const check = result.checks.find((candidate) => candidate.name === "host-proxy-state");
+    expect(check).toMatchObject({
+      status: "warn",
+      severity: "warn",
+      context: { workerState: "malformed" },
+    });
+    const text = renderDoctorResult(result);
+    const ndjson = renderDoctorResultAsNdjson(result, { now: new Date(0) });
+    expect(text).toContain("host-proxy-state: warn");
+    expect(text).toContain("workerState: malformed");
+    expect(text).not.toContain(secret);
+    expect(ndjson).not.toContain(secret);
+  });
+
+  test("treats a schema-valid app:open error envelope as transport reachability proof", async () => {
+    // Given
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    const controlToken = "control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId: app.id,
+          sessionId: "doctor-session",
+          transport: "tcp-host-gateway",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await listenTcp(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected TCP test address.");
+    const containerUrl = "http://host.containers.internal:32123";
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "tcp-host-gateway",
+          url: `http://127.0.0.1:${address.port}`,
+          containerUrl,
+          probeServices: ["appserver"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken,
+        },
+      ),
+    );
+    const commands: unknown[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      tcpHostGateway: "host.containers.internal",
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+      exec: (
+        _target: Parameters<typeof TestRuntimeProvider.exec>[0],
+        command: Parameters<typeof TestRuntimeProvider.exec>[1],
+      ) => {
+        commands.push(command.command);
+        return Effect.succeed({
+          exitCode: 1,
+          stdout: JSON.stringify({
+            apiVersion: "v4",
+            command: "app:open",
+            ok: false,
+            error: { _tag: "LandoCommandError", message: "No routes matched." },
+            warnings: [],
+            deprecations: [],
+          }),
+          stderr: "No routes matched.",
+        });
+      },
+    };
+
+    // When
+    const result = await runDoctor(root, provider);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "pass",
+      context: { reachability: "reachable" },
+      solutions: [],
+    });
+    expect(commands).toEqual([["/usr/local/bin/lando", "open", "--print"]]);
+  });
+
+  test("does not execute a worker persisted for another provider", async () => {
+    // Given
+    const root = await tempRoot();
+    const appRoot = AbsolutePath.make(join(root, "app"));
+    const paths = makeLandoPaths({ userDataRoot: root });
+    const runDir = paths.hostProxyRunDir("demo", appRoot);
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "worker.json"),
+      `${JSON.stringify({
+        appId: "demo",
+        appRoot,
+        providerId: "different-provider",
+        transport: "tcp-host-gateway",
+        url: "http://127.0.0.1:1",
+        containerUrl: "http://host.containers.internal:32123",
+        probeServices: ["appserver"],
+        shimPath: join(root, "lando"),
+        protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+        startedAt: "2026-07-15T00:00:00.000Z",
+        pid: process.pid,
+        controlToken: "control-token",
+      })}\n`,
+    );
+    let execCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      tcpHostGateway: "host.containers.internal",
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+      exec: () => {
+        execCalls += 1;
+        return Effect.die("mismatched provider must not execute the worker");
+      },
+    };
+
+    // When
+    const result = await runDoctor(root, provider);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "pass",
+      severity: "info",
+      context: {
+        reachability: "not-probed",
+        reason: "provider-mismatch",
+        workerProviderId: "different-provider",
+      },
+      solutions: [],
+    });
+    expect(execCalls).toBe(0);
+  });
+
+  test("reports legacy TCP state without probe metadata as informational", async () => {
+    // Given
+    const root = await tempRoot();
+    const appId = "legacy-tcp";
+    const runDir = join(makeLandoPaths({ userDataRoot: root }).hostProxyRunRoot, sanitizeAppName(appId));
+    await mkdir(runDir, { recursive: true });
+    await writeFile(
+      join(runDir, "worker.json"),
+      `${JSON.stringify({
+        appId,
+        transport: "tcp-host-gateway",
+        url: "http://127.0.0.1:1",
+        shimPath: join(root, "lando"),
+        protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+        startedAt: "2026-07-15T00:00:00.000Z",
+        pid: process.pid,
+        controlToken: "control-token",
+      })}\n`,
+    );
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+    };
+
+    // When
+    const result = await runDoctor(root, provider);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "pass",
+      severity: "info",
+      context: { appId, reachability: "not-probed", reason: "pre-upgrade-record" },
+      solutions: [],
+    });
+  });
+
+  test("distinguishes an authenticated control failure from a container probe failure", async () => {
+    // Given
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "tcp-host-gateway",
+          url: "http://127.0.0.1:1",
+          containerUrl: "http://host.containers.internal:32123",
+          probeServices: ["appserver"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken: "control-token",
+        },
+      ),
+    );
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+    };
+
+    // When
+    const result = await runDoctor(root, provider);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "warn",
+      context: { failure: "control-probe-failed" },
+    });
+  });
+
+  test("caps and sorts persisted worker state before diagnosis", async () => {
+    // Given
+    const root = await tempRoot();
+    const paths = makeLandoPaths({ userDataRoot: root });
+    for (const name of ["worker-c", "worker-a", "worker-b"]) {
+      const runDir = join(paths.hostProxyRunRoot, name);
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, "worker.json"), "{not-json\n");
+    }
+
+    // When
+    const checks = await Effect.runPromise(
+      hostProxyTransportDoctorChecks({
+        userDataRoot: root,
+        provider: TestRuntimeProvider,
+        providerKind: "user-installed",
+        runtimeStatus: "ready",
+        runtime: { running: true },
+        selection: {
+          providerId: TestRuntimeProvider.id,
+          source: "default",
+          inputs: { capabilityDefault: TestRuntimeProvider.id },
+        },
+        limits: { maxWorkers: 2, maxProbeServices: 8, budgetMs: 1_000 },
+      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive)),
+    );
+
+    // Then
+    expect(
+      checks.filter((check) => check.name === "host-proxy-state").map((check) => check.context.statePath),
+    ).toEqual([
+      join(paths.hostProxyRunRoot, "worker-a", "worker.json"),
+      join(paths.hostProxyRunRoot, "worker-b", "worker.json"),
+    ]);
+  });
+
+  test("caps workers using locale-independent code-point order", async () => {
+    // Given
+    const root = await tempRoot();
+    const paths = makeLandoPaths({ userDataRoot: root });
+    for (const name of ["ä-worker", "z-worker"]) {
+      const runDir = join(paths.hostProxyRunRoot, name);
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, "worker.json"), "{not-json\n");
+    }
+
+    // When
+    const checks = await Effect.runPromise(
+      hostProxyTransportDoctorChecks({
+        userDataRoot: root,
+        provider: TestRuntimeProvider,
+        providerKind: "user-installed",
+        runtimeStatus: "ready",
+        runtime: { running: true },
+        selection: {
+          providerId: TestRuntimeProvider.id,
+          source: "default",
+          inputs: { capabilityDefault: TestRuntimeProvider.id },
+        },
+        limits: { maxWorkers: 1, maxProbeServices: 8, budgetMs: 1_000 },
+      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive)),
+    );
+
+    // Then
+    expect(checks.find((check) => check.name === "host-proxy-state")?.context.statePath).toBe(
+      join(paths.hostProxyRunRoot, "z-worker", "worker.json"),
+    );
+  });
+
+  test("caps and sorts persisted probe services", async () => {
+    // Given
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    const controlToken = "control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId: app.id,
+          sessionId: "doctor-session",
+          transport: "tcp-host-gateway",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await listenTcp(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected TCP test address.");
+    const services = Array.from(
+      { length: 10 },
+      (_, index) => `service-${String(9 - index).padStart(2, "0")}`,
+    );
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "tcp-host-gateway",
+          url: `http://127.0.0.1:${address.port}`,
+          containerUrl: "http://host.containers.internal:32123",
+          probeServices: services,
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken,
+        },
+      ),
+    );
+    const calls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+      exec: (target: Parameters<typeof TestRuntimeProvider.exec>[0]) => {
+        calls.push(String(target.service));
+        return Effect.succeed({ exitCode: 1, stdout: "not-an-envelope", stderr: "failed" });
+      },
+    };
+
+    // When
+    await runDoctor(root, provider);
+
+    // Then
+    expect(calls).toEqual(
+      Array.from({ length: 8 }, (_, index) => `service-${String(index).padStart(2, "0")}`),
+    );
+  });
+
+  test("reports stopped and unavailable probe services as informational inconclusive", async () => {
+    // Given
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    const controlToken = "control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId: app.id,
+          sessionId: "doctor-session",
+          transport: "tcp-host-gateway",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await listenTcp(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected TCP test address.");
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "tcp-host-gateway",
+          url: `http://127.0.0.1:${address.port}`,
+          containerUrl: "http://host.containers.internal:32123",
+          probeServices: ["stopped", "unavailable"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken,
+        },
+      ),
+    );
+    const calls: string[] = [];
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+      exec: (target: Parameters<typeof TestRuntimeProvider.exec>[0]) => {
+        calls.push(String(target.service));
+        if (target.service === "stopped")
+          return Effect.succeed({ exitCode: 1, stdout: "", stderr: "service is stopped" });
+        return Effect.fail(
+          new ServiceExecError({
+            providerId: TestRuntimeProvider.id,
+            operation: "exec",
+            service: target.service,
+            message: "service is unavailable",
+          }),
+        );
+      },
+    };
+
+    // When
+    const result = await runDoctor(root, provider);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "pass",
+      severity: "info",
+      context: { reachability: "not-probed", reason: "probe-services-inconclusive" },
+      solutions: [],
+    });
+    expect(calls).toEqual(["stopped", "unavailable"]);
+  });
+
+  test("warns when app:open exits 127 without a valid envelope", async () => {
+    // Given
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    const controlToken = "control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId: app.id,
+          sessionId: "doctor-session",
+          transport: "tcp-host-gateway",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await listenTcp(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected TCP test address.");
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "tcp-host-gateway",
+          url: `http://127.0.0.1:${address.port}`,
+          containerUrl: "http://host.containers.internal:32123",
+          probeServices: ["appserver"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken,
+        },
+      ),
+    );
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+      exec: () => Effect.succeed({ exitCode: 127, stdout: "", stderr: "lando: not found" }),
+    };
+
+    // When
+    const result = await runDoctor(root, provider);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "warn",
+      severity: "warn",
+      context: { reachability: "unreachable", failure: "container-probe-failed" },
+    });
+  });
+
+  test("ends aggregate diagnosis at its overall budget without a false warning", async () => {
+    // Given
+    const root = await tempRoot();
+    const app = { kind: "user" as const, id: "demo", root: AbsolutePath.make(join(root, "app")) };
+    const controlToken = "control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId: app.id,
+          sessionId: "doctor-session",
+          transport: "tcp-host-gateway",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await listenTcp(server);
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Expected TCP test address.");
+    const malformedRunDir = join(makeLandoPaths({ userDataRoot: root }).hostProxyRunRoot, "000-malformed");
+    const probeStarted = Effect.runSync(Deferred.make<void>());
+    await mkdir(malformedRunDir, { recursive: true });
+    await writeFile(join(malformedRunDir, "worker.json"), "{not-json\n");
+    await Effect.runPromise(
+      writeWorkerRecord(
+        app,
+        { userDataRoot: root },
+        {
+          appId: app.id,
+          appRoot: app.root,
+          providerId: String(TestRuntimeProvider.id),
+          transport: "tcp-host-gateway",
+          url: `http://127.0.0.1:${address.port}`,
+          containerUrl: "http://host.containers.internal:32123",
+          probeServices: ["appserver"],
+          shimPath: join(root, "lando"),
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          startedAt: "2026-07-15T00:00:00.000Z",
+          pid: process.pid,
+          controlToken,
+        },
+      ),
+    );
+    const provider = {
+      ...TestRuntimeProvider,
+      tcpHostGateway: "host.containers.internal",
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        hostProxy: {
+          containerTargets: [{ os: "linux" as const, arch: "x64" as const }],
+          tcpHostGateway: "host.containers.internal",
+        },
+      },
+      exec: () =>
+        Deferred.succeed(probeStarted, undefined).pipe(
+          Effect.zipRight(Effect.sleep(75)),
+          Effect.as({ exitCode: 1, stdout: "not-an-envelope", stderr: "failed" }),
+        ),
+    };
+
+    // When
+    const checks = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          hostProxyTransportDoctorChecks({
+            userDataRoot: root,
+            provider,
+            providerKind: "user-installed",
+            runtimeStatus: "ready",
+            runtime: { running: true },
+            selection: {
+              providerId: TestRuntimeProvider.id,
+              source: "default",
+              inputs: { capabilityDefault: TestRuntimeProvider.id },
+            },
+            limits: { maxWorkers: 32, maxProbeServices: 8, budgetMs: 25 },
+          }),
+        );
+        yield* Deferred.await(probeStarted);
+        yield* TestClock.adjust("25 millis");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive), Effect.provide(TestContext.TestContext)),
+    );
+
+    // Then
+    expect(checks).toHaveLength(1);
+    expect(checks[0]).toMatchObject({ name: "host-proxy-state", status: "warn" });
+  });
+
+  test("bounds root discovery with the aggregate Effect-clock budget without a false warning", async () => {
+    // Given
+    const root = await tempRoot();
+    let rootReads = 0;
+    const rootReadStarted = Effect.runSync(Deferred.make<void>());
+    const fileSystem = Layer.succeed(HostProxyDoctorFileSystem, {
+      readRoot: () =>
+        Effect.gen(function* () {
+          rootReads += 1;
+          yield* Deferred.succeed(rootReadStarted, undefined);
+          return yield* Effect.never;
+        }),
+      socketMetadata: () => Effect.succeed(undefined),
+    });
+
+    // When
+    const checks = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          hostProxyTransportDoctorChecks({
+            userDataRoot: root,
+            provider: TestRuntimeProvider,
+            providerKind: "user-installed",
+            runtimeStatus: "ready",
+            runtime: { running: true },
+            selection: {
+              providerId: TestRuntimeProvider.id,
+              source: "default",
+              inputs: { capabilityDefault: TestRuntimeProvider.id },
+            },
+            limits: { maxWorkers: 32, maxProbeServices: 8, budgetMs: 25 },
+          }),
+        );
+        yield* Deferred.await(rootReadStarted);
+        expect(rootReads).toBe(1);
+        expect(Option.isNone(yield* Fiber.poll(fiber))).toBe(true);
+        yield* TestClock.adjust("25 millis");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(fileSystem), Effect.provide(TestContext.TestContext)),
+    );
+
+    // Then
+    expect(checks.some((check) => check.name === "host-proxy-state")).toBe(false);
+    expect(checks.some((check) => check.name === "host-proxy-transport")).toBe(false);
   });
 });

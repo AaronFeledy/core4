@@ -26,6 +26,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
+import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { collectOomDoctorChecks } from "./doctor-oom.ts";
@@ -608,7 +609,7 @@ export const doctor = (
       runtime,
       selection,
       sourceEnv: { ...(options.env ?? process.env) },
-    });
+    }).pipe(Effect.provide(HostProxyDoctorFileSystemLive));
 
     return {
       checks: [
@@ -664,6 +665,7 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
     check.name === "runtime-service" ||
     check.name === "runtime-oom" ||
     check.name === "host-proxy-transport" ||
+    check.name === "host-proxy-state" ||
     check.name === "host-proxy-allowlist"
   ) {
     for (const [field, value] of Object.entries(check.context)) {
@@ -728,11 +730,15 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "exitCode",
   "app",
   "service",
+  "workerState",
+  "statePath",
   "appId",
   "transport",
   "reachability",
   "endpoint",
   "containerGateway",
+  "workerProviderId",
+  "reason",
   "failure",
 ];
 
