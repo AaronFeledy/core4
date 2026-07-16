@@ -280,6 +280,7 @@ const machineFailure = (
           .filter((value): value is string => typeof value === "string")
           .join("\n")
       : cause;
+  const diagnostics = typeof output === "string" ? output.trim() : "";
   const missingHelper =
     platform === "win32" && typeof output === "string"
       ? WINDOWS_MACHINE_HELPERS.find(
@@ -316,7 +317,10 @@ const machineFailure = (
   return new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message: `Podman machine ${operation} failed.`,
+    message:
+      diagnostics.length === 0
+        ? `Podman machine ${operation} failed.`
+        : `Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`,
     remediation: "Fix the Podman machine error and rerun `lando setup`.",
     cause,
   });

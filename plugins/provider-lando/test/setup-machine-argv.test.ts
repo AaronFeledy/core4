@@ -189,6 +189,27 @@ describe("provider-lando system machine runner argv", () => {
     }
   });
 
+  test("win32 create preserves unclassified Podman output in the structured failure message", async () => {
+    const failingSpawn: MachineSpawn = () => ({
+      stdout: streamOf("machine initialization failed"),
+      stderr: streamOf("provider returned an unexpected error"),
+      exited: Promise.resolve(1),
+    });
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        expect(failure.value.message).toContain("machine initialization failed");
+        expect(failure.value.message).toContain("provider returned an unexpected error");
+      }
+    }
+  });
+
   test("win32 start reports a missing API forwarding helper by filename", async () => {
     const failingSpawn: MachineSpawn = () => ({
       stdout: streamOf(""),
@@ -229,7 +250,9 @@ describe("provider-lando system machine runner argv", () => {
       if (failure._tag === "Some") {
         expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
         expect(failure.value).not.toBeInstanceOf(WindowsMachinePrerequisiteError);
-        expect(failure.value.message).toBe("Podman machine start failed.");
+        expect(failure.value.message).toBe(
+          "Podman machine start failed.\nPodman output:\nwin-sshproxy WSL connection failed",
+        );
         expect(
           classifyWindowsManagedSetupResult({
             exitCode: 2,
