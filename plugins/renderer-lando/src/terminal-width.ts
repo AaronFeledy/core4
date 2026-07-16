@@ -9,10 +9,8 @@
  */
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
-/** Terminal display-cell width of `text`; ANSI escape codes count as zero. */
 export const displayWidth = (text: string): number => Bun.stringWidth(text);
 
-/** Grapheme clusters of `text`, in order. */
 export const graphemes = (text: string): ReadonlyArray<string> =>
   Array.from(graphemeSegmenter.segment(text), (entry) => entry.segment);
 

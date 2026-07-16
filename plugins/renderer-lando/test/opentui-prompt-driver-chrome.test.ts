@@ -9,7 +9,6 @@ describe("prompt chrome", () => {
   afterEach(cleanup);
 
   test("baseline: message renders, answer semantics and inline validation are preserved", async () => {
-    // Answer semantics: select still returns a 1-based index.
     const selectSetup = await makeSetup();
     const selectDriver = await makeDriver(selectSetup);
     const selectAnswer = selectDriver.readRaw({
@@ -21,7 +20,6 @@ describe("prompt chrome", () => {
       ],
     });
     await waitForBuild(selectSetup);
-    // The prompt message content is rendered somewhere in the frame.
     expect(selectSetup.captureCharFrame()).toContain("Choose a flavor");
     selectSetup.mockInput.pressArrow("down");
     await flushInput(selectSetup);
@@ -29,7 +27,6 @@ describe("prompt chrome", () => {
     await flushInput(selectSetup);
     await expect(selectAnswer).resolves.toBe("2");
 
-    // Inline validation issue still renders in place.
     const issueSetup = await makeSetup();
     const issueDriver = await makeDriver(issueSetup);
     const issueAnswer = issueDriver.readRaw({
