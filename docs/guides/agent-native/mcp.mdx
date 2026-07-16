@@ -137,10 +137,7 @@ const reader = child.stdout.getReader();
 for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\n");
 await child.stdin.flush();
 
-while (pending.size > 0) {
-  const { value, done } = await reader.read();
-  if (done) break;
-  buffer += decoder.decode(value, { stream: true });
+const parseLines = () => {
   let nl;
   while ((nl = buffer.indexOf("\n")) !== -1) {
     const line = buffer.slice(0, nl).trim();
@@ -150,6 +147,28 @@ while (pending.size > 0) {
     responses.push(message);
     if (message.id !== undefined) pending.delete(message.id);
   }
+};
+
+while (pending.size > 0) {
+  const { value, done } = await reader.read();
+  if (value !== undefined) buffer += decoder.decode(value, { stream: !done });
+  parseLines();
+  if (done) {
+    buffer += decoder.decode();
+    parseLines();
+    const tail = buffer.trim();
+    if (tail) {
+      const message = JSON.parse(tail);
+      responses.push(message);
+      if (message.id !== undefined) pending.delete(message.id);
+    }
+    buffer = "";
+    break;
+  }
+}
+
+if (pending.size > 0) {
+  throw new Error("stdout closed with outstanding request ids: " + [...pending].join(", "));
 }
 
 await child.stdin.end();

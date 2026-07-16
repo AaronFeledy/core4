@@ -37,7 +37,7 @@ const libraryRun = (scenario: GuideScenarioNode) => {
 };
 
 describe("MCP executable guide", () => {
-  test("owns the shipped Beta guide coverage rows", async () => {
+  test("publishes the MCP guide INDEX rows as shipped", async () => {
     const index = await readText("docs/guides/INDEX.md");
 
     expect(index).toContain(
