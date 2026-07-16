@@ -405,3 +405,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - An executable protocol guide must traverse the production service dispatch path rather than hand-authoring a success envelope; public step labels should also be checked after transcript sanitization.
 ---
+
+## 2026-07-16 04:22 CDT - US-452 Verify
+- Compiled `core/dist/lando`, ran `lando setup --yes --no-interactive` in `lando4-dev`, then exercised MCP serve end-to-end: initialize → tools/list → app:config:get against a throwaway Landofile, plus catalog audit, machine-output/TTY/closed-stdin refusals, and adjacent `mcp --help` / `version` smokes.
+- Fixed reader-facing guide client example that closed stdin before replies arrived (transport close interrupts in-flight tool calls); acceptance test now requires wait-for-ids before end.
+- **Learnings for future iterations:**
+  - Real MCP clients must keep stdin open until outstanding request ids answer; write-all-then-EOF races intentional interrupt-on-close and drops tools/call replies even when frames were already written.
+---
