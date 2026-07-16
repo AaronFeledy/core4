@@ -267,7 +267,7 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
 });
 
 const WINDOWS_MACHINE_PREREQUISITE_FAILURE =
-  /(?:(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)(?:\s+(?:support|feature|prerequisites?))?[\s:=-]+(?:(?:is|are)[\s:=-]+)?(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available))|(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available))[\s:=-]+(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor))/iu;
+  /(?:(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)(?:\s+(?:support|features?|prerequisites?))?[\s:=-]+(?:(?:is|are)[\s:=-]+)?(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))|(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))[\s:=-]+(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor))/iu;
 
 const machineFailure = (
   operation: string,
