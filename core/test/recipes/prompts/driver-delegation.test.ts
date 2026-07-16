@@ -74,6 +74,44 @@ describe("collectPrompts — interactiveDriver delegation (S1)", () => {
     expect(answers.size).toBe("medium");
     expect(driver.requests[0]?.choices).toHaveLength(3);
   });
+
+  test("multiselect maps comma-separated 1-based indices from the driver to selected values", async () => {
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const driver = createFakeDriver({ answers: ["1,3"] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search", "queue"],
+        }),
+      ],
+      io,
+      interactiveDriver: driver,
+    });
+    expect(answers.addons).toEqual(["redis", "queue"]);
+    expect(driver.requests).toHaveLength(1);
+  });
+
+  test("multiselect maps an empty driver answer to an empty array when bounds allow", async () => {
+    const io = createBufferedPromptIO({ inputs: [], isTTY: true });
+    const driver = createFakeDriver({ answers: [""] });
+    const answers = await collectPrompts({
+      prompts: [
+        prompt({
+          name: "addons",
+          type: "multiselect",
+          message: "Pick addons",
+          choices: ["redis", "search"],
+        }),
+      ],
+      io,
+      interactiveDriver: driver,
+    });
+    expect(answers.addons).toEqual([]);
+    expect(driver.requests).toHaveLength(1);
+  });
 });
 
 describe("collectPrompts — inline validation re-prompt (S2)", () => {

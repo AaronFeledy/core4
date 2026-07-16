@@ -1,54 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import * as openTuiModule from "@opentui/core";
-import { ManualClock, createTestRenderer } from "@opentui/core/testing";
+import type { CliRenderer } from "@opentui/core";
 
-import { type OpenTuiModuleLike, createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
-
-type TestSetup = Awaited<ReturnType<typeof createTestRenderer>> & { clock: ManualClock };
-
-const openTui = openTuiModule satisfies OpenTuiModuleLike;
-
-const setups: TestSetup[] = [];
-
-const makeSetup = async (width = 60, height = 12): Promise<TestSetup> => {
-  const clock = new ManualClock();
-  const setup = { ...(await createTestRenderer({ width, height, clock })), clock };
-  setups.push(setup);
-  return setup;
-};
-
-const makeDriver = async (testSetup: TestSetup) =>
-  createOpenTuiPromptDriver({
-    loadModule: async () => openTui,
-    createRenderer: async () => testSetup.renderer,
-    startRenderer: () => {},
-  });
-
-const basePrompt = {
-  name: "flavor",
-  type: "text",
-  message: "Choose a flavor",
-};
-
-const waitForBuild = async (testSetup: TestSetup): Promise<void> => {
-  await Promise.resolve();
-  await Promise.resolve();
-  await testSetup.renderOnce();
-};
-
-const flushInput = async (testSetup: TestSetup): Promise<void> => {
-  testSetup.clock.advance(25);
-  await Promise.resolve();
-  await testSetup.renderOnce();
-};
-
-afterEach(async () => {
-  for (const testSetup of setups.splice(0)) {
-    await testSetup.renderer.destroy();
-  }
-});
+import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
+import { createOpenTuiPromptTestKit } from "./opentui-prompt-test-kit.ts";
 
 describe("OpenTUI prompt driver", () => {
+  const { basePrompt, cleanup, flushInput, makeDriver, makeSetup, openTui, waitForBuild } =
+    createOpenTuiPromptTestKit();
+
+  afterEach(cleanup);
+
   test("select returns a 1-based index after keyboard navigation", async () => {
     const testSetup = await makeSetup();
     const driver = await makeDriver(testSetup);
@@ -250,9 +211,9 @@ describe("OpenTUI prompt driver", () => {
     await expect(answer).resolves.toBe("resized");
   });
 
-  test("declines secret and multiselect before creating a renderer", async () => {
+  test("declines secret before creating a renderer", async () => {
     let created = false;
-    const driver = createOpenTuiPromptDriver({
+    const driver = createOpenTuiPromptDriver<CliRenderer>({
       loadModule: async () => openTui,
       createRenderer: async () => {
         created = true;
@@ -263,9 +224,6 @@ describe("OpenTUI prompt driver", () => {
     await expect(
       driver.readRaw({ prompt: { ...basePrompt, type: "secret" }, mode: "normal" }),
     ).rejects.toThrow("driver declines secret");
-    await expect(
-      driver.readRaw({ prompt: { ...basePrompt, type: "multiselect" }, mode: "normal" }),
-    ).rejects.toThrow("driver declines multiselect");
     expect(created).toBe(false);
   });
 });

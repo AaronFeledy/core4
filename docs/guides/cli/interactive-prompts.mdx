@@ -11,8 +11,14 @@ tags: [beta, docs, cli, prompts]
     <Step name="controls">
       <Variable name="input" value="OpenTUI input field" display="Free-text prompts (recipe name, description, path) render as a focused single-line field with the spaceship-console palette instead of a bare readline prompt" />
       <Variable name="textarea" value="OpenTUI textarea" display="Multi-line answers use a textarea control so longer values stay readable while typing" />
-      <Variable name="select" value="OpenTUI vertical select" display="Choice prompts with more than a few options render as a vertical select list with arrow-key navigation and a highlighted current row" />
+      <Variable name="select" value="OpenTUI vertical select" display="Choice prompts with more than a few options render as a vertical select list with arrow-key navigation and an explicit indicator on the highlighted row so the current choice reads without relying on colour alone" />
+      <Variable name="multiselect" value="OpenTUI multi-select" display="Multi-choice prompts render through the same vertical list: Space toggles the focused row's persistent checkbox indicator while the highlighted-row cursor stays independent, and Enter submits every checked choice at once" />
       <Variable name="tabSelect" value="OpenTUI tab-select" display="Confirmations and two-to-four-option choices render as a horizontal tab-select so yes/no and small option sets read as a single line" />
+    </Step>
+    <Step name="prompt-chrome">
+      <Variable name="title" value="border-title message" display="The prompt message is carried on the panel's border title rather than a separate interior row, so the question frames the control instead of stacking above it" />
+      <Variable name="accent" value="accent border colour" display="The bordered panel uses the spaceship-console accent colour so an active prompt is visually distinct from surrounding scrollback" />
+      <Variable name="selectIndicator" value="explicit selection indicator" display="Select controls mark the highlighted row with an explicit indicator glyph and list every choice, so the selection is unambiguous in both colour and character terminals" />
     </Step>
     <Step name="shared-surfaces">
       <Variable name="init" value="apps:init recipe prompts" display="Recipe prompt collection during apps:init renders every field, select, and confirmation through the same prompt treatment" />
@@ -30,7 +36,7 @@ tags: [beta, docs, cli, prompts]
       <Variable name="inlineIssue" value="inline validation issue" display="A value that fails the recipe constraint re-prompts in place with the validation message shown inline so context is not lost" />
       <Variable name="taggedError" value="tagged remediation error" display="In non-interactive paths the same failure surfaces as a tagged error carrying the --answer remediation instead of an inline retry" />
       <Variable name="cancel" value="Ctrl-C or Esc" display="Ctrl-C or Esc cancels the prompt, restores the terminal, and aborts the command rather than falling through to a partial answer" />
-      <Variable name="secret" value="secret answers stay hidden" display="Secret and multiselect prompts decline the OpenTUI surface and keep the line-based reader, so secret values are never echoed, logged, or captured in a transcript" />
+      <Variable name="secret" value="secret answers stay hidden" display="Secret prompts are the only type that declines the OpenTUI surface and keeps the line-based reader, so secret values are never echoed, logged, or captured in a transcript" />
     </Step>
   </Scenario>
 </Guide>

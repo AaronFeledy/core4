@@ -1,0 +1,7 @@
+╭─ LANDO OPS [RUNNING] Starting appli… ╮
+│ [RUNNING] · appserver bootstrapping  │
+│ the runtime                          │
+│   listening on 0.0.0.0:8080 for      │
+│   incoming requests                  │
+│ [WAIT] ◌ database                    │
+╰─ telemetry 1/2 RUNNING ──────────────╯

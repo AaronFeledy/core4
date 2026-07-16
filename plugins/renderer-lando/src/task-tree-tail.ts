@@ -25,6 +25,7 @@
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { formatDurationSuffix } from "./format.ts";
+import { physicalRowsForFrame, wrapFrameLines } from "./task-tree-frame.ts";
 
 /** Fixed ring-buffer depth for the task-detail tail panel. */
 export const TASK_DETAIL_TAIL_CAPACITY = 4 as const;
@@ -140,12 +141,6 @@ export interface LandoTreePainterSnapshot {
 /** Marker for a declared-but-not-yet-started child in the first-paint skeleton. */
 const PENDING_MARKER = "◌";
 
-const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
-
-const visibleLength = (line: string): number => line.replace(ansiPattern, "").length;
-
-const DEFAULT_TERMINAL_COLUMNS = 80;
-
 type VisualStatus = "WAIT" | "RUNNING" | "ONLINE" | "CACHED" | "SKIPPED" | "BLOCKED";
 
 const statusChip = (status: VisualStatus): string => `[${status}]`;
@@ -170,88 +165,6 @@ const classifyCompletion = (
     label: stripped.length > 0 ? stripped : fallbackLabel,
   };
 };
-
-const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
-  terminalColumns === undefined ? DEFAULT_TERMINAL_COLUMNS : Math.max(1, Math.trunc(terminalColumns));
-
-const splitContentToWidth = (content: string, width: number): ReadonlyArray<string> => {
-  if (visibleLength(content) <= width) return [content];
-  const words = content.split(/(\s+)/).filter((part) => part.length > 0);
-  const lines: string[] = [];
-  let current = "";
-  const budget = Math.max(1, width);
-
-  const pushCurrent = (): void => {
-    if (current.length === 0) return;
-    lines.push(current.trimEnd());
-    current = "";
-  };
-
-  for (const word of words) {
-    if (visibleLength(current) + visibleLength(word) <= budget) {
-      current += word;
-      continue;
-    }
-    if (current.trim().length > 0) pushCurrent();
-    let remaining = word.trimStart();
-    while (visibleLength(current) + visibleLength(remaining) > budget) {
-      const available = Math.max(1, budget - visibleLength(current));
-      current += remaining.slice(0, available);
-      remaining = remaining.slice(available);
-      pushCurrent();
-    }
-    current += remaining;
-  }
-
-  if (current.trim().length > 0) lines.push(current.trimEnd());
-  return lines.length === 0 ? [content.slice(0, width)] : lines;
-};
-
-const capLine = (left: string, text: string, right: string, width: number): string => {
-  const maxTextWidth = Math.max(1, width - visibleLength(left) - visibleLength(right) - 2);
-  const fittedText =
-    visibleLength(text) <= maxTextWidth ? text : `${text.slice(0, Math.max(1, maxTextWidth - 1))}…`;
-  const prefix = `${left} ${fittedText} `;
-  const fill = Math.max(0, width - visibleLength(prefix) - visibleLength(right));
-  return `${prefix}${"─".repeat(fill)}${right}`;
-};
-
-const bodyLine = (text: string, width: number): string => {
-  const bodyWidth = Math.max(1, width - 4);
-  const padding = Math.max(0, bodyWidth - visibleLength(text));
-  return `│ ${text}${" ".repeat(padding)} │`;
-};
-
-const wrapFrameLines = (
-  lines: ReadonlyArray<string>,
-  terminalColumns: number | undefined,
-): ReadonlyArray<string> => {
-  const columns = normalizeTerminalColumns(terminalColumns);
-  if (columns < 60) return lines;
-  return lines.flatMap((line) => {
-    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
-    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
-    if (line.startsWith("│")) {
-      const hangingIndent = line.startsWith("│    ") ? "  " : "";
-      const content = line.slice(1).trimStart();
-      const contentWidth = Math.max(1, columns - 4 - visibleLength(hangingIndent));
-      return splitContentToWidth(content, contentWidth).map((segment) =>
-        bodyLine(`${hangingIndent}${segment}`, columns),
-      );
-    }
-    return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
-  });
-};
-
-const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
-  const columns = normalizeTerminalColumns(terminalColumns);
-  return line
-    .split("\n")
-    .reduce((rows, segment) => rows + Math.max(1, Math.ceil(visibleLength(segment) / columns)), 0);
-};
-
-const physicalRowsForFrame = (frame: ReadonlyArray<string>, terminalColumns: number | undefined): number =>
-  frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
 
 /**
  * Pure, deterministic painter for the concurrent task-tree tail. Drive it with

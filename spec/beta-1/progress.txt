@@ -13,6 +13,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ## Codebase Patterns
 
+- Terminal layout must measure with `Bun.stringWidth` and split or truncate on `Intl.Segmenter` grapheme boundaries; code-unit length corrupts CJK/emoji framing and cursor-row accounting.
 - Env-gated native acceptance preflights host, explicit opt-in, and tooling as structured skips; once prerequisites pass, command failures remain failed outcomes even when release policy makes the cell advisory.
 - Windows managed Podman machines expose the API at `\\.\pipe\podman-lando`; the data-root `runtime/run/podman.sock` endpoint is the native managed-service path, not the win32 machine endpoint.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
@@ -459,4 +460,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, changed-file diagnostics, and focused lifecycle name/argv, provider-matrix reporting, native-cell policy, and generated-workflow tests passed.
 - **Learnings for future iterations:**
   - Purpose-specific fixed names are not disposable ownership: native destructive acceptance needs a per-invocation unguessable name even when it first asserts the target is absent.
+---
+
+## 2026-07-16 17:10 CDT - US-457
+- Prompt surfaces now use accented border titles, explicit select focus indicators, and multiselect focus plus persistent checked-state markers while preserving existing raw-answer, cancellation, fallback, and secret-input semantics.
+- Added a deterministic, headless OpenTUI frame layer for every rendered prompt type, task-tree transitions, narrow ASCII/CJK terminals, resize behavior, and style-aware accent evidence. Terminal wrapping is grapheme/display-width safe, and prompt-owned key listeners finalize with the driver lifecycle.
+- Verification: typecheck, lint, renderer boundary, guide lint/coverage/public transcripts, focused executable guides, renderer/prompt/runtime/import spot checks, fresh frame regeneration, terminal width checks, and dual independent visual review passed; guide drift was unavailable without pull-request context.
+- **Learnings for future iterations:**
+  - A character-frame golden proves layout but not styling; pair it with `captureSpans()` when color is part of the contract.
+  - Prompt controls that register renderer-level listeners must return a disposer to the driver lifecycle; destroying the renderer is not a substitute for explicit listener ownership.
 ---
