@@ -84,6 +84,7 @@ export const buildCompiledBinary = async (
     entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts")],
     target: "bun",
     format: "esm",
+    splitting: true,
     compile: { target: bunTargetFor(platform), outfile: options.outfile },
     bytecode: true,
     minify: true,
