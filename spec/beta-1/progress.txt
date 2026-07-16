@@ -382,3 +382,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Persisted schema fallback must discriminate artifact generations before decoding; permissive excess-property handling can otherwise reinterpret a malformed current record as valid legacy state.
   - App-level diagnostics should retain per-service failures while candidates remain, but cap exhaustion is uncertainty rather than proof that every eligible route is broken.
 ---
+
+## 2026-07-16 01:50 - Babysit
+- PR: #593 https://github.com/AaronFeledy/core4/pull/593
+- CI outcome: pass
+- Review feedback: fixed (aligned doctor-subsystems-fix recovery test with the PR's intentional contract — a disabled `mode=none`/`skipped` host proxy is a healthy no-op `pass`, so only `certs` remains degraded-manual; production source left unchanged as correct)
+- Merge: merged (squash)
+---
