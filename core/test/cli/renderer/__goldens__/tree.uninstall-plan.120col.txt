@@ -1,4 +1,4 @@
-⟨bold⟩⟨pink⟩╭─ LANDO OPS [ONLINE] Uninstall plan ready (2 ✓ · 0 ✗) (1.5s) ─────────────────────────────────────────────────────────╮⟨reset⟩
-⟨pink⟩│⟨reset⟩⟨green⟩ [ONLINE] ✓ Managed runtime removable (42ms)                                                                          ⟨reset⟩⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩⟨green⟩ [ONLINE] ✓ User data preserved (42ms)                                                                                ⟨reset⟩⟨pink⟩│⟨reset⟩
-⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ telemetry 2 ONLINE · 0 BLOCKED (1.5s) ⟨dim-off⟩⟨reset⟩⟨pink⟩──────────────────────────────────────────────────────────────────────────────╯⟨reset⟩
+⟨bold⟩⟨cyan⟩╭─ LANDO OPS [ONLINE] Uninstall plan ready (2 ✓ · 0 ✗) (1.5s) ─────────────────────────────────────────────────────────╮⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ Managed runtime removable (42ms)                                                                          │⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ User data preserved (42ms)                                                                                │⟨reset⟩
+⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ telemetry 2 ONLINE · 0 BLOCKED (1.5s) ⟨dim-off⟩⟨reset⟩⟨cyan⟩──────────────────────────────────────────────────────────────────────────────╯⟨reset⟩

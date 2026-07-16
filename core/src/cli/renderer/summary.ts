@@ -19,7 +19,6 @@ import {
   padEndToWidth,
   paintTone,
   styleBoxBottom,
-  styleBoxFooter,
   styleBoxSeparator,
   styleBoxTop,
   toneChip,
@@ -131,6 +130,6 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     for (const step of doc.nextSteps) pushBody(`• ${step}`, 2, undefined);
   }
 
-  lines.push(boxBottom(doc.footer ?? "", width, styleBoxFooter));
+  lines.push(boxBottom(doc.footer ?? "", width, styleBoxBottom));
   return lines.join("\n");
 };

@@ -51,7 +51,6 @@ const SGR_MARKERS: Record<string, string> = {
   "32": "green",
   "33": "amber",
   "36": "cyan",
-  "95": "pink",
 };
 
 /**
