@@ -406,3 +406,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review feedback: fixed (aligned doctor-subsystems-fix recovery test with the PR's intentional contract — a disabled `mode=none`/`skipped` host proxy is a healthy no-op `pass`, so only `certs` remains degraded-manual; production source left unchanged as correct)
 - Merge: merged (squash)
 ---
+
+## 2026-07-16 04:31 CDT - Babysit
+- PR: #594 https://github.com/AaronFeledy/core4/pull/594
+- CI outcome: pass
+- Review feedback: fixed (resolved the current-main progress-log conflict, updated the stale deferred-command precedence expectation, and exempted non-strict passthrough commands from command-scoped unknown-flag validation; the isolated startup-performance overage passed on rerun)
+- Merge: merged (squash)
+---
