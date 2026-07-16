@@ -414,6 +414,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     if (flagValueError !== undefined) {
       await runCompiledCommand(Effect.fail(flagValueError), Layer.empty, () => undefined, {
         failureExitCode: () => 2,
+        preCommand: true,
       });
       return;
     }

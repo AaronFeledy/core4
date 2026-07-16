@@ -22,7 +22,7 @@ import {
 } from "../renderer-boundary.ts";
 import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
-import { renderCommandFlagValueValidation } from "./command-boundary.ts";
+import { renderCommandFlagValueValidation, renderPreCommandFailure } from "./command-boundary.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
 import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
@@ -402,10 +402,19 @@ export abstract class LandoCommandBase extends Command {
         ? makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }))
         : getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
-      throw new LandoRuntimeBootstrapError({
-        message: `OCLIF command ${this.id ?? spec.id} is missing a valid static bootstrap declaration.`,
-        stage: "minimal",
+      await renderPreCommandFailure({
+        commandId: spec.id,
+        error: new LandoRuntimeBootstrapError({
+          message: `OCLIF command ${this.id ?? spec.id} is missing a valid static bootstrap declaration.`,
+          stage: "minimal",
+        }),
+        rendererMode,
+        resultFormat,
+        resultSchema: spec.resultSchema,
+        failureExitCode: 1,
+        deprecationWarnings: deprecationWarnings.enabled,
       });
+      return;
     }
 
     const controller = new AbortController();

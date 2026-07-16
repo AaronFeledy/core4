@@ -37,6 +37,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 ## CLI Dispatch Parity
 
 - Built-in OCLIF wrappers must not call `this.parse` before `LandoCommandBase.runEffect`; the base owns renderer-aware flag-value validation and parsing. If a wrapper selects a spec variant first (for example, log following), inspect argv without consuming it.
+- Pre-command failures (pre-parse flag validation, missing/invalid bootstrap, runtime-layer construction) use `renderPreCommandFailure` / `runCompiledCommand(..., { preCommand: true })`: standard machine result envelope or text bug-report, non-zero exit, and **no** `cli-<id>-init`/`-run`/`-error` lifecycle events. Only resolved command execution attaches an invocation snapshot.
 - Dual dispatch is structural: source mode uses OCLIF, compiled `$bunfs` mode uses `runCompiledCli`. A faithful compiled reproduction must run the binary outside the repo tree so `findRoot` cannot accidentally discover the source checkout.
 - Tooling `command_not_found` routing is cache-only: resolve through `readFreshAppCommandCacheForCwd`, never `CommandRegistryLive.list` (its cache-miss path performs live discovery), then enter `runTooling` only after a fresh cached match.
 - JSON renderer parity is byte-identical apart from normalized timestamps/temp paths; plain/`lando` stderr is allowed to differ in wrapping/prefixes but must preserve tagged-error fields.

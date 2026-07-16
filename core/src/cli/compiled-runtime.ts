@@ -191,6 +191,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Schema.AnyNoContext;
     readonly streamingMode?: "live";
+    readonly preCommand?: boolean;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -200,12 +201,13 @@ export const runCompiledCommand = <A, E, R, RE>(
     (spec?.successExitCode === undefined
       ? undefined
       : (value: A) => spec.successExitCode?.(value, activeCommandInvocation));
+  const invocation = activeCommandInvocation;
   const rendererOptions = {
     runtime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     command: activeCommandId,
-    ...(activeCommandInvocation === undefined ? {} : { invocation: activeCommandInvocation }),
+    ...(options.preCommand !== true && invocation !== undefined ? { invocation } : {}),
     resultSchema: options.resultSchema ?? spec?.resultSchema ?? EmptyResultSchema,
     ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
     ...(options.streamingMode === undefined ? {} : { streamingMode: options.streamingMode }),

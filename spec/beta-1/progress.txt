@@ -334,3 +334,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review feedback: fixed (surfaced Podman machine failure output; classified WSL guest-import and WSL2 kernel-update create failures as virtualization prerequisites for CI skip)
 - Merge: merged (squash)
 ---
+
+## 2026-07-16 01:21 CDT - US-454
+- Pre-parse and runtime-layer construction failures now share a single pre-command failure seam: standard machine result envelope (or text bug-report), non-zero exit codes, and deliberate exclusion from generic `cli-*-init`/`-run`/`-error` lifecycle events. Compiled flag validation sets `preCommand: true` so a staged invocation cannot leak lifecycle publishes; missing bootstrap on the OCLIF base routes through the same envelope path.
+- Verification: typecheck, lint passed; pre-command failure, command-lifecycle, flag-value, dual-dispatch, and renderer redaction spot checks passed.
+- **Learnings for future iterations:**
+  - Failures before a resolved command identity must not attach an invocation snapshot. Prefer `renderPreCommandFailure` / `runCompiledCommand(..., { preCommand: true })` over `Effect.fail` with a staged invocation.
+  - Runtime-layer build failures already skip lifecycle because `runCommandLifecycle` never starts when `Layer.provide` fails; the envelope still comes from the outer renderer-boundary diagnostic path.
+---
