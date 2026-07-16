@@ -500,3 +500,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Post-fix Bugbot found and review confirmed that teardown failure discarded an already accepted rich-prompt answer. The driver now returns the completed answer, latches the teardown cause, and degrades subsequent prompts instead of asking the same question twice.
 - Verification: typecheck, lint, changed-file diagnostics, and focused prompt-driver, interaction, and interactive-driver tests passed.
 ---
+
+## 2026-07-16 15:43 CDT - Babysit
+- PR: #597 https://github.com/AaronFeledy/core4/pull/597
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for recipe driver plumbing; host-aware OpenTUI test bundling; lazy compiled-module splitting for cold-start budget; Windows OpenTUI process-tree teardown and delayed-release cleanup; restored intentional pink renderer frames)
+- Merge: merged (squash)
+---
