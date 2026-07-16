@@ -24,7 +24,7 @@ afterEach(() => {
   resetInteractivePromptDegradationForTest();
 });
 
-describe("resolveInteractivePromptDriver — deterministic bypass gates (S3)", () => {
+describe("resolveInteractivePromptDriver — deterministic bypass gates", () => {
   test("non-TTY returns undefined without importing the plugin", async () => {
     const driver = await resolveInteractivePromptDriver({
       isTTY: false,

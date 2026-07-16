@@ -19,7 +19,7 @@ const collectTsFiles = (dir: string): string[] => {
   return out;
 };
 
-describe("OpenTUI cold-start canary (S11)", () => {
+describe("OpenTUI cold-start canary", () => {
   test("the renderer plugin entry does not statically import OpenTUI or the prompt driver", () => {
     const index = readSource("plugins/renderer-lando/src/index.ts");
     expect(index).not.toMatch(/import\s[^;]*from\s+["']@opentui\/core["']/);

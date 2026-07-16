@@ -284,7 +284,7 @@ describe("InteractionServiceLive — answer-source precedence", () => {
   });
 });
 
-describe("InteractionServiceLive — rich driver wiring (S2)", () => {
+describe("InteractionServiceLive — rich driver wiring", () => {
   test("the default resolver loads the rich driver when an interactive TTY gate passes", async () => {
     const resolve = makeDefaultResolveInteractionDriver({
       env: {},
