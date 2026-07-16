@@ -13,7 +13,7 @@ describe("Windows managed setup acceptance", () => {
   test("structured-skips the exact Windows virtualization prerequisite failure", () => {
     expect(
       classifyWindowsManagedSetupResult({
-        exitCode: 2,
+        exitCode: 1,
         stdout: "",
         stderr:
           '{"apiVersion":"v4","command":"meta:setup","ok":false,"error":{"_tag":"ProviderUnavailableError","message":"Windows virtualization prerequisites are not available. Hyper-V, WSL2, and Virtual Machine Platform are required."}}',

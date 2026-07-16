@@ -51,7 +51,7 @@ export const classifyWindowsManagedSetupResult = (
 ): WindowsManagedSetupClassification => {
   if (result.exitCode === 0) return { outcome: "passed", exitCode: 0 };
   const failures = structuredSetupFailureMessages(result);
-  if (result.exitCode === 2 && failures?.length === 1 && failures[0] === WINDOWS_PREREQUISITE_MESSAGE) {
+  if (result.exitCode === 1 && failures?.length === 1 && failures[0] === WINDOWS_PREREQUISITE_MESSAGE) {
     return {
       outcome: "skipped",
       exitCode: 0,
