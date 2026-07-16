@@ -26,6 +26,7 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
+import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { collectOomDoctorChecks } from "./doctor-oom.ts";
 import {
@@ -591,6 +592,21 @@ export const doctor = (
         platform: options.platform ?? provider.platform,
       },
     );
+    const hostProxyChecks = yield* hostProxyTransportDoctorChecks({
+      ...(userDataRoot === undefined ? {} : { userDataRoot }),
+      provider: {
+        id: provider.id,
+        displayName: provider.displayName,
+        version: provider.version,
+        ...(provider.capabilities.hostProxy?.tcpHostGateway === undefined
+          ? {}
+          : { tcpHostGateway: provider.capabilities.hostProxy.tcpHostGateway }),
+      },
+      providerKind,
+      runtimeStatus: runtimeMessage,
+      runtime,
+      selection,
+    });
 
     return {
       checks: [
@@ -599,6 +615,7 @@ export const doctor = (
         ...fileSyncChecks,
         ...setupReadinessChecks,
         ...runtimeServiceChecks,
+        ...hostProxyChecks,
         ...oomChecks,
       ],
     };
@@ -640,7 +657,12 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
   if (check.runtime.oomKilled === true) lines.push("oomKilled: true");
   if (check.selection !== undefined) lines.push(...renderSelectionLines(check.selection));
   // "runtime-oom" mirrors the name in doctor-oom.ts; a literal avoids a runtime import cycle.
-  if (check.name === "setup-readiness" || check.name === "runtime-service" || check.name === "runtime-oom") {
+  if (
+    check.name === "setup-readiness" ||
+    check.name === "runtime-service" ||
+    check.name === "runtime-oom" ||
+    check.name === "host-proxy-transport"
+  ) {
     for (const [field, value] of Object.entries(check.context)) {
       if (field === "providerId" || field === "providerKind" || field === "providerVersion") continue;
       lines.push(`${field}: ${value}`);
@@ -703,6 +725,12 @@ const CONTEXT_KEY_ORDER: ReadonlyArray<string> = [
   "exitCode",
   "app",
   "service",
+  "appId",
+  "transport",
+  "reachability",
+  "endpoint",
+  "containerGateway",
+  "failure",
 ];
 
 const orderContextKeys = (context: Readonly<Record<string, string>>): Record<string, string> =>

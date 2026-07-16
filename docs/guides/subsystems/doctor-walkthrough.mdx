@@ -16,12 +16,21 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers are fallback stubs, so each not-ready subsystem reports a warn with a manual remediation; the live layers ship with the global app and @lando/ca-mkcert">
+  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers expose degraded remediation without treating an explicitly disabled host-proxy as broken; the live layers ship with the global app and @lando/ca-mkcert">
     <Step name="subsystem-remediation">
       <Variable name="proxyRemediation" value="Run `lando setup` and start the global app to enable Traefik routing." display="proxy subsystem remediation when the HTTPS reverse proxy is not available" />
       <Variable name="certsRemediation" value="Run `lando setup` to install and trust the dev CA." display="certs subsystem remediation when the certificate authority is not installed" />
-      <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="host-proxy structured status context when DNS resolution is inactive" />
-      <Variable name="solutionKind" value="manual" display="Subsystem remediations are manual; the suggested command is `lando setup`" />
+      <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="an intentionally disabled host-proxy is an informational pass with structured status context" />
+      <Variable name="solutionKind" value="manual" display="Degraded subsystem remediations are manual; the suggested command is `lando setup`" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="doctor-host-proxy-transport" render={false} reason="Host-proxy reachability uses persisted worker ownership plus the authenticated production control endpoint; focused doctor tests exercise Unix-socket and Windows TCP bridge outcomes without launching containers">
+    <Step name="host-proxy-transport">
+      <Variable name="checkName" value="host-proxy-transport" display="One informational or warning check per persisted app host-proxy worker" />
+      <Variable name="transports" value="unix-socket | tcp-host-gateway" display="Unix hosts probe the owned socket; Windows probes the loopback bridge and reports the container gateway name" />
+      <Variable name="noWorker" value="no check" display="Apps without a host-proxy worker do not produce a false alarm" />
+      <Variable name="remediation" value="lando restart" display="An unreachable authenticated bridge reports structured restart remediation" />
     </Step>
   </Scenario>
 

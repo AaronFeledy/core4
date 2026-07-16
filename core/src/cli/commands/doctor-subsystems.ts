@@ -363,7 +363,10 @@ const buildHostProxyCheck = (
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
     const status = yield* Effect.either(hostProxy.status());
-    if (Either.isRight(status) && status.right.active) {
+    if (
+      Either.isRight(status) &&
+      (status.right.active || (status.right.mode === "none" && status.right.mechanism === "skipped"))
+    ) {
       const value = status.right;
       return passCheck(HOST_PROXY_SPEC, {
         subsystem: "host-proxy",

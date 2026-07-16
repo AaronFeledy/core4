@@ -1443,7 +1443,7 @@
         "Lint passes"
       ],
       "priority": 81,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-433 review deferred DNS host-proxy doctor check as broader follow-up scope."
     },
     {
