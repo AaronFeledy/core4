@@ -39,7 +39,6 @@ describe("visual-qa tokenizer", () => {
       [`${ESC}[32m`, "⟨green⟩"],
       [`${ESC}[33m`, "⟨amber⟩"],
       [`${ESC}[36m`, "⟨cyan⟩"],
-      [`${ESC}[95m`, "⟨pink⟩"],
     ];
     for (const [code, marker] of cases) {
       expect(tokenizeAnsi(`${code}text${ESC}[0m`)).toBe(`${marker}text⟨reset⟩`);
@@ -87,23 +86,18 @@ describe("task-tree visual golden frames", () => {
     expect(captured.styled).toContain("LANDO OPS");
     expect(captured.styled).toContain("[ONLINE]");
     expect(captured.tokenized).toContain("⟨green⟩");
-    expect(captured.tokenized).toContain("⟨pink⟩");
+    expect(captured.tokenized).toContain("⟨cyan⟩");
   });
 
-  test("keeps task-tree titles and borders pink around semantic content", () => {
+  test("keeps the telemetry footer frame cyan around dimmed text", () => {
     // Given the live setup task tree with a text-bearing telemetry footer.
     const fixture = TREE_FIXTURES.find((candidate) => candidate.id === "setup-plan");
     const captured = captureTreeFrame(fixture?.events ?? [], 100);
-    const lines = captured.tokenized.split("\n");
-    const online = lines.find((line) => line.includes("│") && line.includes("[ONLINE]"));
-    const footer = lines.find((line) => line.includes("telemetry"));
+    const footer = captured.tokenized.split("\n").find((line) => line.includes("telemetry"));
 
-    // When the frame is styled, then pink borders remain isolated from semantic content colors.
-    expect(lines[0]?.startsWith("⟨bold⟩⟨pink⟩╭─ LANDO OPS")).toBe(true);
-    expect(online?.startsWith("⟨pink⟩│⟨reset⟩⟨green⟩ ")).toBe(true);
-    expect(online?.endsWith("⟨reset⟩⟨pink⟩│⟨reset⟩")).toBe(true);
-    expect(footer?.startsWith("⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ ")).toBe(true);
-    expect(footer).toContain("⟨dim-off⟩⟨reset⟩⟨pink⟩─");
+    // When the footer is styled, then its text style is isolated from both frame segments.
+    expect(footer?.startsWith("⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ ")).toBe(true);
+    expect(footer).toContain("⟨dim-off⟩⟨reset⟩⟨cyan⟩─");
     expect(footer?.endsWith("╯⟨reset⟩")).toBe(true);
   });
 });

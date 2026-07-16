@@ -1,6 +1,6 @@
-⟨bold⟩⟨pink⟩╭─ LANDO OPS [RUNNING] Setting up Lando runtime (1/3 running) ─────────────────╮⟨reset⟩
-⟨pink⟩│⟨reset⟩⟨green⟩ [ONLINE] ✓ Verify runtime bundle (42ms)                                      ⟨reset⟩⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩⟨green⟩ [ONLINE] ✓ Proxy and CA trust ready (42ms)                                   ⟨reset⟩⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩⟨cyan⟩ [RUNNING] · Persist setup readiness summary                                  ⟨reset⟩⟨pink⟩│⟨reset⟩
-⟨pink⟩│⟨reset⟩⟨dim⟩   readiness.json updated without secrets                                     ⟨dim-off⟩⟨reset⟩⟨pink⟩│⟨reset⟩
-⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ telemetry 1/3 RUNNING ⟨dim-off⟩⟨reset⟩⟨pink⟩──────────────────────────────────────────────────────╯⟨reset⟩
+⟨bold⟩⟨cyan⟩╭─ LANDO OPS [RUNNING] Setting up Lando runtime (1/3 running) ─────────────────╮⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ Verify runtime bundle (42ms)                                      │⟨reset⟩
+⟨green⟩│ [ONLINE] ✓ Proxy and CA trust ready (42ms)                                   │⟨reset⟩
+⟨cyan⟩│ [RUNNING] · Persist setup readiness summary                                  │⟨reset⟩
+⟨dim⟩│   readiness.json updated without secrets                                     │⟨dim-off⟩⟨reset⟩
+⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ telemetry 1/3 RUNNING ⟨dim-off⟩⟨reset⟩⟨cyan⟩──────────────────────────────────────────────────────╯⟨reset⟩
