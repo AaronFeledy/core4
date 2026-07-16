@@ -23,15 +23,16 @@ shutdown in a Lando command-result envelope.
     <Step name="call-a-read-only-tool">
       <Run
         runtime="library"
-        code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
-const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../core/src/mcp/catalog.ts"));
+        code={`const { Fiber, Layer, Queue } = yield* Effect.promise(() => import("effect"));
+const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
 const { mcpRegistryFromCompiled } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
 const { default: compiledCommands } = yield* Effect.promise(() => import("../../../../../core/src/cli/oclif/compiled-commands.ts"));
+const { LandofileService } = yield* Effect.promise(() => import("../../../../../core/src/landofile/service.ts"));
+const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
+const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
+const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));
+const { RedactionService } = yield* Effect.promise(() => import("../../../../../core/src/redaction/service.ts"));
 const registry = mcpRegistryFromCompiled({ "app:config": compiledCommands["app:config"] });
-const catalog = buildCatalog({
-  commandEntries: registry.commandEntries,
-  effective: computeEffectiveAllowlist({ defaults: ["app:config:get", "app:config:view"] }),
-});
 const frames = [
   { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
   { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -43,40 +44,47 @@ const frames = [
     params: { name: "app:config:get", arguments: { args: { key: "name" } } },
   },
 ];
+let inputController: ReadableStreamDefaultController<Uint8Array> | undefined;
 const input = new ReadableStream<Uint8Array>({
   start: (controller) => {
-    controller.enqueue(new TextEncoder().encode(frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n"));
-    controller.close();
+    inputController = controller;
   },
 });
-const writes: string[] = [];
-const transport = yield* makeStdioMcpTransport({
-  catalog,
-  input,
-  write: (line) => Effect.sync(() => writes.push(line)),
+const runtimeLayer = Layer.succeed(LandofileService, {
+  discover: Effect.succeed({ name: "mcp-guide", services: {} }),
 });
-const incoming = yield* transport.receive;
-expect(incoming._tag).toBe("Some");
-if (incoming._tag !== "Some") return yield* Effect.die(new Error("expected a tool call"));
-expect(incoming.value.request).toEqual({
-  toolId: "app:config:get",
-  input: { args: { key: "name" } },
-});
-yield* transport.reply({
-  id: incoming.value.id,
-  ok: true,
-  result: {
-    envelope: {
-      apiVersion: "v4",
-      command: "app:config:get",
-      ok: true,
-      result: { key: "name", value: "mcp-guide" },
-    },
-    ok: true,
-  },
-});
-while (writes.length < 3) yield* Effect.sleep("10 millis");
-const responses = writes.map((line) => JSON.parse(line));
+const serviceLayer = McpServiceLive.pipe(Layer.provide(Layer.mergeAll(
+  Layer.succeed(McpRuntimeConfig, {
+    commandEntries: registry.commandEntries,
+    defaultAllowlist: ["app:config:get", "app:config:view"],
+    runtimeLayer,
+  }),
+  Layer.succeed(RedactionService, {
+    forProfile: () => Effect.succeed(createRedactor("secrets", { values: [] })),
+  }),
+)));
+const responses = yield* Effect.gen(function* () {
+  const output = yield* Queue.unbounded<string>();
+  const service = yield* McpService;
+  const catalog = yield* service.catalog();
+  const transport = yield* makeStdioMcpTransport({
+    catalog,
+    input,
+    write: (line) => Queue.offer(output, line).pipe(Effect.asVoid),
+  });
+  const fiber = yield* service.serve({ transport: "stdio" }).pipe(
+    Effect.provideService(McpTransport, transport),
+    Effect.forkScoped,
+  );
+  if (inputController === undefined) return yield* Effect.die(new Error("input stream did not start"));
+  inputController.enqueue(new TextEncoder().encode(
+    frames.map((frame) => JSON.stringify(frame)).join("\n") + "\n",
+  ));
+  const lines = [yield* Queue.take(output), yield* Queue.take(output), yield* Queue.take(output)];
+  inputController.close();
+  yield* Fiber.join(fiber);
+  return lines.map((line) => JSON.parse(line));
+}).pipe(Effect.scoped, Effect.provide(serviceLayer), Effect.timeout("5 seconds"));
 expect(responses).toContainEqual(expect.objectContaining({
   id: 1,
   result: expect.objectContaining({ protocolVersion: "2024-11-05" }),
@@ -90,8 +98,14 @@ expect(responses).toContainEqual(expect.objectContaining({
 }));
 expect(responses).toContainEqual(expect.objectContaining({
   id: 3,
-  result: expect.objectContaining({ isError: false }),
-}));`}
+  result: expect.objectContaining({
+    isError: false,
+    content: [expect.objectContaining({ type: "text" })],
+  }),
+}));
+const callText = responses.find((response) => response.id === 3)?.result.content[0].text;
+expect(callText).toContain('\"command\":\"app:config:get\"');
+expect(callText).toContain('\"value\":\"mcp-guide\"');`}
         displayCode={`const child = Bun.spawn(["lando", "mcp"], {
   stdin: "pipe",
   stdout: "pipe",
@@ -113,23 +127,16 @@ const frames = [
   },
 ];
 
-for (const frame of frames) child.stdin.write(JSON.stringify(frame) + "\n");
+for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\n");
 await child.stdin.flush();
-
-const reader = child.stdout.getReader();
-const decoder = new TextDecoder();
-let buffered = "";
-while (true) {
-  const chunk = await reader.read();
-  if (chunk.done) break;
-  buffered += decoder.decode(chunk.value, { stream: true });
-  const lines = buffered.split("\n");
-  buffered = lines.pop() ?? "";
-  if (lines.some((line) => JSON.parse(line).id === 3)) break;
-}
-
 await child.stdin.end();
-await child.exited;`}
+const [stdout, stderr, exitCode] = await Promise.all([
+  new Response(child.stdout).text(),
+  new Response(child.stderr).text(),
+  child.exited,
+]);
+if (exitCode !== 0) throw new Error(stderr);
+const responses = stdout.trim().split("\n").map((line) => JSON.parse(line));`}
       />
     </Step>
   </Scenario>
@@ -162,18 +169,27 @@ expect(tty?.message).toBe("MCP serve mode requires usable non-TTY stdin and stdo
 expect(unavailable?.remediation).toContain("stdin and stdout connected as pipes");
 expect(machine?.message).toBe("MCP serve mode cannot use command-result machine output.");
 expect(machine?.remediation).toContain("add --list");`}
-        displayCode={`// Let the MCP client own both protocol pipes.
-Bun.spawn(["lando", "mcp"], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-
-// Do not start serve mode directly in a terminal or with --format=json.
+        displayCode={`// Do not start serve mode directly in a terminal or with --format=json.
 // Audit the terminating, machine-readable catalog separately:
-Bun.spawn(["lando", "mcp", "--list", "--format=json"]);`}
+const catalog = Bun.spawn(["lando", "mcp", "--list", "--format=json"], {
+  stdin: "pipe",
+  stdout: "pipe",
+  stderr: "pipe",
+});
+await catalog.stdin.end();
+const [stdout, stderr, exitCode] = await Promise.all([
+  new Response(catalog.stdout).text(),
+  new Response(catalog.stderr).text(),
+  catalog.exited,
+]);
+if (exitCode !== 0) throw new Error(stderr);
+const tools = JSON.parse(stdout);`}
       />
     </Step>
   </Scenario>
 
   <Scenario id="bounded-read-only-regressions" render>
-    <Step name="keep-app-config-read-only">
+    <Step name="verify-read-only-tools">
       <Variable name="get" value="app:config:get" display="Read one resolved configuration key; `args.key` is required" />
       <Variable name="view" value="app:config:view" display="Read the complete resolved Landofile" />
       <Variable name="writes" value="app:config, app:config:set, app:config:unset, app:config:edit, app:config:validate" display="These umbrella and write-capable ids are not MCP tools, even through explicit allow configuration" />
@@ -219,11 +235,13 @@ const transport = yield* makeStdioMcpTransport({
   input,
   write: (line) => Effect.sync(() => writes.push(line)),
 });
-for (let index = 0; index < MAX_OUTSTANDING_REQUESTS; index += 1) {
-  const incoming = yield* transport.receive;
-  expect(incoming._tag).toBe("Some");
-}
-while (writes.length < 1) yield* Effect.sleep("10 millis");
+yield* Effect.gen(function* () {
+  for (let index = 0; index < MAX_OUTSTANDING_REQUESTS; index += 1) {
+    const incoming = yield* transport.receive;
+    expect(incoming._tag).toBe("Some");
+  }
+  while (writes.length < 1) yield* Effect.sleep("10 millis");
+}).pipe(Effect.timeout("5 seconds"));
 expect(JSON.parse(writes[0] ?? "{}")).toMatchObject({
   jsonrpc: "2.0",
   id: MAX_OUTSTANDING_REQUESTS + 1,

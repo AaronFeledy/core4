@@ -58,21 +58,46 @@ describe("MCP executable guide", () => {
 
     const conversation = scenarioById(guide, "stdio-conversation");
     const conversationRun = libraryRun(conversation);
+    expect(conversationRun.code).toContain("mcpRegistryFromCompiled");
     expect(conversationRun.code).toContain("makeStdioMcpTransport");
+    expect(conversationRun.code).toContain("McpRuntimeConfig");
+    expect(conversationRun.code).toContain("McpServiceLive");
+    expect(conversationRun.code).toContain("McpTransport");
+    expect(conversationRun.code).toContain("RedactionService");
+    expect(conversationRun.code).toContain("LandofileService");
+    expect(conversationRun.code).toContain('name: "mcp-guide", services: {}');
     expect(conversationRun.code).toContain('method: "initialize"');
+    expect(conversationRun.code).toContain('method: "notifications/initialized"');
     expect(conversationRun.code).toContain('method: "tools/list"');
     expect(conversationRun.code).toContain('name: "app:config:get"');
+    expect(conversationRun.code).toContain("service.serve");
+    expect(conversationRun.code).toContain("Effect.timeout");
+    expect(conversationRun.code).toContain("Fiber.join");
+    expect(conversationRun.code).toContain("isError: false");
+    expect(conversationRun.code).toMatch(/expect\(callText\)\.toContain\([^)]*app:config:get/);
+    expect(conversationRun.code).toMatch(/expect\(callText\)\.toContain\([^)]*mcp-guide/);
+    expect(conversationRun.code).not.toContain("transport.reply");
     expect(conversationRun.displayCode).toContain('Bun.spawn(["lando", "mcp"]');
+    expect(conversationRun.displayCode).toContain("await child.stdin.write");
+    expect(conversationRun.displayCode).toContain("await child.stdin.end()");
+    expect(conversationRun.displayCode).toContain("new Response(child.stdout).text()");
+    expect(conversationRun.displayCode).toContain("new Response(child.stderr).text()");
+    expect(conversationRun.displayCode).toContain("child.exited");
 
     const refusals = libraryRun(scenarioById(guide, "startup-refusals"));
     expect(refusals.code).toContain("classifyMcpServeStartup");
     expect(refusals.code).toContain('resultFormat: "json"');
     expect(refusals.code).toContain('kind: "character"');
     expect(refusals.code).toContain("available: false");
+    expect(refusals.displayCode).toContain("await catalog.stdin.end()");
+    expect(refusals.displayCode).toContain("new Response(catalog.stdout).text()");
+    expect(refusals.displayCode).toContain("new Response(catalog.stderr).text()");
+    expect(refusals.displayCode).toContain("catalog.exited");
 
     const bounded = libraryRun(scenarioById(guide, "bounded-read-only-regressions"));
     expect(bounded.code).toContain("mcpRegistryFromCompiled");
     expect(bounded.code).toContain("MAX_OUTSTANDING_REQUESTS");
+    expect(bounded.code).toContain('Effect.timeout("5 seconds")');
     expect(bounded.code).toContain('error: { code: -32000, message: "Server busy" }');
     expect(bounded.code).toContain('["app:config:get", "app:config:view"]');
 
@@ -86,5 +111,15 @@ describe("MCP executable guide", () => {
     const transcript = buildPublicTranscript(guide, conversation, undefined);
     expect(transcript?.runtime).toBe("library");
     expect(JSON.stringify(transcript)).not.toContain("../../../../../core/src/mcp");
+
+    const boundedTranscript = buildPublicTranscript(
+      guide,
+      scenarioById(guide, "bounded-read-only-regressions"),
+      undefined,
+    );
+    expect(boundedTranscript?.frames).toContainEqual(
+      expect.objectContaining({ kind: "step", displayText: "verify-read-only-tools" }),
+    );
+    expect(JSON.stringify(boundedTranscript)).not.toContain("<PROVIDER_ID>");
   });
 });
