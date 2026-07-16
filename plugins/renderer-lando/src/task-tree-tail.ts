@@ -1,25 +1,18 @@
 /**
- * Interactive Lando-renderer task-tree tail.
+ * Task-tree view-model for the default (TTY) renderer.
  *
- * This module is the pure core of the default (TTY) renderer's concurrent
- * task-tree surface. It keeps a fixed-size per-task ring buffer of the most
- * recent `task.detail` lines and surfaces them as a dimmed, indented panel
- * under each running task. On `task.complete` / `task.fail` the panel
- * collapses to a single summary line; on `task.tree.complete` the whole tree
- * collapses to a passive summary.
+ * This module is the pure state/view-model of the concurrent task-tree surface.
+ * It keeps a fixed-size per-task ring buffer of the most recent `task.detail`
+ * lines and surfaces them as a dimmed, indented panel under each running task.
+ * On `task.complete` / `task.fail` the panel collapses to a single summary line;
+ * on `task.tree.complete` the whole tree collapses to a passive summary.
  *
- * Rendering uses a **whole-frame redraw** model rather than per-panel cursor
- * accounting: the painter remembers how many terminal rows the previous frame
- * occupied, rewinds the cursor to the top of that frame, erases downward, and
- * repaints the entire active tree. This keeps the cursor invariant trivial
- * (after every write the cursor sits on a fresh line below the frame) and
- * handles concurrent stacked sibling panels without bespoke choreography.
- *
- * The painter is pure: `consume(event)` returns the exact byte chunk to write,
- * and `snapshot()` exposes the current logical frame (no control bytes) for
- * structural assertions. The `Renderer` Live Layer wiring lives in
- * `runtime.ts`; the painter core stays deterministic while runtime wiring
- * handles input subscription and event publication.
+ * The view-model emits **zero terminal-control bytes**. `apply(event)` advances
+ * the state machine; `frameLines()` returns the styled footer content lines and
+ * `snapshot()` exposes the logical (unstyled) frame. All cursor rewind / erase /
+ * repaint responsibility lives in the substrate live region (`LiveRegionController`),
+ * so the "no destructive repaint on first paint" invariant is structural here.
+ * The `Renderer` Live Layer wiring lives in `renderer-runtime.ts`.
  */
 
 import type { LandoEvent } from "@lando/sdk/services";
@@ -35,20 +28,12 @@ export const TASK_DETAIL_EXPANDED_CAPACITY = 1000 as const;
 const ESC = String.fromCharCode(27);
 
 /**
- * CSI control sequences used by the task-tree painter. Co-located here
- * because the repo intentionally ships no ANSI dependency.
+ * SGR styling sequences used by the task-tree view-model's styled frame mapping.
+ * Co-located here because the repo intentionally ships no ANSI dependency. The
+ * view-model emits only color/style SGR codes — never cursor-movement or erase
+ * sequences; those belong to the substrate live region, not the view-model.
  */
 export const csi = {
-  /** Move the cursor up `lines` rows (`ESC[<n>A`). */
-  cursorUp: (lines: number): string => `${ESC}[${lines}A`,
-  /** Erase the entire current line (`ESC[2K`). */
-  eraseLine: `${ESC}[2K`,
-  /** Erase from the cursor to the end of the line (`ESC[0K`). */
-  eraseToEndOfLine: `${ESC}[0K`,
-  /** Erase from the cursor to the end of the screen (`ESC[0J`). */
-  eraseDown: `${ESC}[0J`,
-  /** Carriage return to column 0. */
-  carriageReturn: "\r",
   /** Faint / dim text on (`ESC[2m`). */
   dim: `${ESC}[2m`,
   /** Reset faint / dim text (`ESC[22m`). */
@@ -116,7 +101,7 @@ interface TreeState {
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
 
-export interface LandoTreePainterOptions {
+export interface TaskTreeViewModelOptions {
   /** Ring-buffer depth (defaults to {@link TASK_DETAIL_TAIL_CAPACITY}). */
   readonly detailCapacity?: number;
   /** Retained full-stream depth for the expanded view (defaults to {@link TASK_DETAIL_EXPANDED_CAPACITY}). */
@@ -131,7 +116,7 @@ export interface LandoTreePainterOptions {
   readonly getTerminalRows?: (() => number | undefined) | undefined;
 }
 
-export interface LandoTreePainterSnapshot {
+export interface TaskTreeViewModelSnapshot {
   /** Logical frame lines with no control bytes (for structural assertions). */
   readonly frameLines: ReadonlyArray<string>;
   /** Ids of tasks still running (panel still rendered). */
@@ -263,23 +248,15 @@ const wrapFrameLines = (
   });
 };
 
-const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
-  const columns = normalizeTerminalColumns(terminalColumns);
-  return line
-    .split("\n")
-    .reduce((rows, segment) => rows + Math.max(1, Math.ceil(visibleLength(segment) / columns)), 0);
-};
-
-const physicalRowsForFrame = (frame: ReadonlyArray<string>, terminalColumns: number | undefined): number =>
-  frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
-
 /**
- * Pure, deterministic painter for the concurrent task-tree tail. Drive it with
- * the renderable `task.*` events; non-tree output is routed through
- * {@link LandoTreePainter.passthrough} so it scrolls above the live frame
- * without corrupting the cursor.
+ * Pure, deterministic view-model for the concurrent task-tree surface. Drive it
+ * with the renderable `task.*` events via {@link TaskTreeViewModel.apply}; read
+ * the current styled footer content with {@link TaskTreeViewModel.frameLines}.
+ * The view-model never emits cursor/erase bytes — the substrate live region owns
+ * all terminal mutation, and non-tree passthrough output is committed to
+ * scrollback by the runtime wiring, not by this class.
  */
-export class LandoTreePainter {
+export class TaskTreeViewModel {
   readonly #detailCapacity: number;
   readonly #expandedCapacity: number;
   readonly #terminalColumns: number | undefined;
@@ -290,9 +267,8 @@ export class LandoTreePainter {
   readonly #order: string[] = [];
   #tree: TreeState | undefined;
   #expandedTaskId: string | undefined;
-  #lastFrame: ReadonlyArray<string> = [];
 
-  constructor(options: LandoTreePainterOptions = {}) {
+  constructor(options: TaskTreeViewModelOptions = {}) {
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
     this.#expandedCapacity = options.expandedCapacity ?? TASK_DETAIL_EXPANDED_CAPACITY;
     this.#terminalColumns = options.terminalColumns;
@@ -301,9 +277,19 @@ export class LandoTreePainter {
     this.#getTerminalRows = options.getTerminalRows;
   }
 
-  consume(event: LandoEvent): string {
+  /** Advance the task-tree state machine by one renderable `task.*` event. */
+  apply(event: LandoEvent): void {
     this.#apply(event);
-    return this.#repaint();
+  }
+
+  /** Styled footer content lines for the current state; SGR only, never cursor/erase bytes. */
+  frameLines(): ReadonlyArray<string> {
+    return this.#renderFrame();
+  }
+
+  /** True while a running task is on screen; the runtime live-gates continuous rendering on this. */
+  hasAnimatedAffordance(): boolean {
+    return this.#runningCount() > 0;
   }
 
   get expandedTaskId(): string | undefined {
@@ -321,30 +307,18 @@ export class LandoTreePainter {
     return this.#tasks.get(taskId)?.status === "running";
   }
 
-  expandTask(taskId: string): string {
-    if (!this.canExpandTask(taskId)) return "";
+  /** Focus/expand the given running task's full-stream tail (state only). */
+  expandTask(taskId: string): void {
+    if (!this.canExpandTask(taskId)) return;
     this.#expandedTaskId = taskId;
-    return this.#repaint();
   }
 
-  collapse(): string {
+  /** Collapse any expanded task back to the concurrent tree view (state only). */
+  collapse(): void {
     this.#expandedTaskId = undefined;
-    return this.#repaint();
   }
 
-  /**
-   * Emit a plain line above the live frame: clear the current frame, print the
-   * line, then repaint the frame beneath it.
-   */
-  passthrough(line: string): string {
-    const clear = this.#clearPrevious();
-    const frame = this.#renderFrame();
-    this.#lastFrame = frame;
-    const body = frame.length === 0 ? "" : `${frame.join("\n")}\n`;
-    return `${clear}${line}\n${body}`;
-  }
-
-  snapshot(): LandoTreePainterSnapshot {
+  snapshot(): TaskTreeViewModelSnapshot {
     return {
       frameLines: this.#renderLogicalFrame(),
       activeTaskIds: this.#order.filter((id) => this.#tasks.get(id)?.status === "running"),
@@ -592,19 +566,5 @@ export class LandoTreePainter {
 
   #currentTerminalColumns(): number | undefined {
     return this.#getTerminalColumns?.() ?? this.#terminalColumns;
-  }
-
-  #clearPrevious(): string {
-    const lineCount = physicalRowsForFrame(this.#lastFrame, this.#currentTerminalColumns());
-    if (lineCount === 0) return "";
-    return `${csi.cursorUp(lineCount)}${csi.carriageReturn}${csi.eraseDown}`;
-  }
-
-  #repaint(): string {
-    const clear = this.#clearPrevious();
-    const frame = this.#renderFrame();
-    this.#lastFrame = frame;
-    if (frame.length === 0) return clear;
-    return `${clear}${frame.join("\n")}\n`;
   }
 }

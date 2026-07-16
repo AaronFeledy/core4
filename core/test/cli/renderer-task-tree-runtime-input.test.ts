@@ -4,9 +4,26 @@ import { Effect, Layer, Queue, Schema } from "effect";
 import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
+import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
+
+class FakeLiveRegion {
+  setFooter(): void {}
+  commitScrollback(): void {}
+  requestLive(): void {}
+  dropLive(): void {}
+  resize(): void {}
+  enterFullTail(): void {}
+  exitFullTail(): void {}
+  reset(): void {}
+  dispose(): void {}
+}
+
+const substrateIo = (base: ReturnType<typeof createBufferedRendererIO>) => ({
+  ...base,
+  externalOutputStream: { write: () => true } as unknown as NodeJS.WriteStream,
+});
 
 const ts = "2026-05-19T12:00:00.000Z";
 
@@ -37,14 +54,10 @@ const detail = (taskId: string, line: string): LandoEvent =>
     timestamp: ts,
   });
 
-const stripCsi = (text: string): string => {
-  const esc = String.fromCharCode(27);
-  return text.replace(new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g"), "");
-};
-
 describe("lando renderer (TTY keybindings)", () => {
   test("Enter expands the focused task and publishes task.detail.expand; Esc collapses and publishes task.detail.collapse", async () => {
-    const io = createBufferedRendererIO({ isTTY: true, terminalRows: 40 });
+    const base = createBufferedRendererIO({ isTTY: true, terminalRows: 40 });
+    const io = substrateIo(base);
 
     const program = Effect.gen(function* () {
       const svc = yield* EventService;
@@ -55,37 +68,33 @@ describe("lando renderer (TTY keybindings)", () => {
       for (let n = 0; n < 10; n += 1) yield* svc.publish(detail("a", `line-${n}`));
       yield* Effect.sleep("40 millis");
 
-      const beforeExpand = io.stdout().length;
-      io.injectKey("\r");
+      base.injectKey("\r");
       yield* Effect.sleep("40 millis");
-      const afterExpand = io.stdout().slice(beforeExpand);
 
-      const beforeCollapse = io.stdout().length;
-      io.injectKey("\x1b");
+      base.injectKey("\x1b");
       yield* Effect.sleep("40 millis");
-      const afterCollapse = io.stdout().slice(beforeCollapse);
 
       const drained = yield* Queue.takeAll(collector);
-      return { afterExpand, afterCollapse, published: [...drained] };
+      return [...drained];
     });
 
-    const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
-    const { afterExpand, afterCollapse, published } = await Effect.runPromise(
-      Effect.scoped(program.pipe(Effect.provide(layer))),
+    const layer = Layer.provideMerge(
+      makeLandoEventConsumer(io, { createLiveRegion: () => Promise.resolve(new FakeLiveRegion()) }),
+      EventServiceLive,
     );
-
-    expect(stripCsi(afterExpand)).toContain("line-0");
-    expect(stripCsi(afterExpand)).toContain("line-9");
-
-    expect(stripCsi(afterCollapse)).not.toContain("line-0");
-    expect(stripCsi(afterCollapse)).toContain("line-9");
+    const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const tags = published.map((event) => event._tag);
     expect(tags).toContain("task.detail.expand");
     expect(tags).toContain("task.detail.collapse");
     const expand = published.find((event) => event._tag === "task.detail.expand");
     const collapse = published.find((event) => event._tag === "task.detail.collapse");
-    expect((expand as { taskId: string }).taskId).toBe("a");
-    expect((collapse as { taskId: string }).taskId).toBe("a");
+    expect(expand).toBeDefined();
+    expect(collapse).toBeDefined();
+    expect(Reflect.get(expand ?? {}, "taskId")).toBe("a");
+    expect(Reflect.get(collapse ?? {}, "taskId")).toBe("a");
+    expect(tags.indexOf("task.detail.expand")).toBeLessThan(tags.indexOf("task.detail.collapse"));
+
+    // US-456 Wave 5 (sandbox): native alt-screen transition
   });
 });

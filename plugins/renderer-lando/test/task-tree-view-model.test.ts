@@ -1,0 +1,196 @@
+/**
+ * TaskTreeViewModel — pure state/view-model contract.
+ *
+ * The view-model owns the task/tree state machine and the styled frame content.
+ * It emits ZERO terminal-control bytes: `frameLines()` returns the styled footer
+ * content lines and `snapshot()` returns the logical (unstyled) frame. All
+ * cursor-rewind / erase / repaint responsibility moved out to the substrate
+ * live region, so "no cursor-up on first paint" is now structural, not asserted.
+ */
+
+import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
+
+import {
+  TaskCompleteEvent,
+  TaskDetailEvent,
+  TaskFailEvent,
+  TaskStartEvent,
+  TaskTreeCompleteEvent,
+  TaskTreeStartEvent,
+} from "@lando/sdk/events";
+import type { LandoEvent } from "@lando/sdk/services";
+
+import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
+
+const ts = "2026-05-19T12:00:00.000Z";
+const ESC = String.fromCharCode(27);
+// Cursor movement / erase control sequences the view-model must never emit.
+const cursorUpPattern = new RegExp(`${ESC}\\[[0-9]+A`);
+const eraseDownPattern = new RegExp(`${ESC}\\[0J`);
+const eraseLinePattern = new RegExp(`${ESC}\\[2K`);
+
+const treeStart = (parentId: string, label: string, children: ReadonlyArray<string>): LandoEvent =>
+  Schema.decodeUnknownSync(TaskTreeStartEvent)({
+    _tag: "task.tree.start",
+    parentId,
+    label,
+    children,
+    timestamp: ts,
+  });
+
+const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskStartEvent)({
+    _tag: "task.start",
+    taskId,
+    ...(parentId === undefined ? {} : { parentId }),
+    label,
+    timestamp: ts,
+  });
+
+const taskDetail = (taskId: string, line: string, stream: "stdout" | "stderr" = "stdout"): LandoEvent =>
+  Schema.decodeUnknownSync(TaskDetailEvent)({
+    _tag: "task.detail",
+    taskId,
+    line,
+    stream,
+    timestamp: ts,
+  });
+
+const taskComplete = (taskId: string, summary?: string, durationMs?: number): LandoEvent =>
+  Schema.decodeUnknownSync(TaskCompleteEvent)({
+    _tag: "task.complete",
+    taskId,
+    ...(summary === undefined ? {} : { summary }),
+    ...(durationMs === undefined ? {} : { durationMs }),
+    timestamp: ts,
+  });
+
+const taskFail = (taskId: string, summary: string, exitCode: number, remediation?: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskFailEvent)({
+    _tag: "task.fail",
+    taskId,
+    summary,
+    exitCode,
+    ...(remediation === undefined ? {} : { remediation }),
+    timestamp: ts,
+  });
+
+const treeComplete = (summary: string, succeeded: number, failed: number): LandoEvent =>
+  Schema.decodeUnknownSync(TaskTreeCompleteEvent)({
+    _tag: "task.tree.complete",
+    parentId: "build",
+    summary,
+    succeeded,
+    failed,
+    timestamp: ts,
+  });
+
+const stripAnsi = (text: string): string => text.replace(new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g"), "");
+const assertNoControlBytes = (lines: ReadonlyArray<string>): void => {
+  for (const line of lines) {
+    expect(cursorUpPattern.test(line)).toBe(false);
+    expect(eraseDownPattern.test(line)).toBe(false);
+    expect(eraseLinePattern.test(line)).toBe(false);
+    expect(line.includes("\r")).toBe(false);
+  }
+};
+
+describe("TaskTreeViewModel — apply + frameLines content", () => {
+  test("apply(tree.start) yields a skeleton with parent line and pending placeholders; no control bytes", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["web", "db", "cache"]));
+    const styled = vm.frameLines();
+    assertNoControlBytes(styled);
+    const plain = styled.map(stripAnsi);
+    expect(plain[0]).toContain("LANDO OPS");
+    expect(plain[0]).toContain("Building (0/3 running)");
+    const placeholders = plain.filter((line) => line.includes("◌"));
+    expect(placeholders).toHaveLength(3);
+    expect(placeholders[0]).toContain("◌ web");
+  });
+
+  test("snapshot() logical frame is unstyled and carries active running task ids", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["web", "db"]));
+    vm.apply(taskStart("web", "web service", "build"));
+    const snap = vm.snapshot();
+    assertNoControlBytes(snap.frameLines);
+    expect(snap.frameLines.join("\n")).toContain("· web service");
+    expect(snap.activeTaskIds).toEqual(["web"]);
+  });
+
+  test("running detail lines surface under the running task in frameLines", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["web"]));
+    vm.apply(taskStart("web", "web service", "build"));
+    vm.apply(taskDetail("web", "listening on :80"));
+    vm.apply(taskDetail("web", "warn: slow", "stderr"));
+    const plain = vm.frameLines().map(stripAnsi).join("\n");
+    expect(plain).toContain("listening on :80");
+    expect(plain).toContain("! warn: slow");
+  });
+});
+
+describe("TaskTreeViewModel — hasAnimatedAffordance (30fps live-gating)", () => {
+  test("false with no running tasks, true while a task runs, false again once complete", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["web"]));
+    expect(vm.hasAnimatedAffordance()).toBe(false);
+    vm.apply(taskStart("web", "web service", "build"));
+    expect(vm.hasAnimatedAffordance()).toBe(true);
+    vm.apply(taskComplete("web", "web ready", 120));
+    expect(vm.hasAnimatedAffordance()).toBe(false);
+  });
+});
+
+describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw bytes)", () => {
+  test("focusable ids exclude pending tasks and include started ones", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["a", "b"]));
+    expect(vm.focusableTaskIds()).toEqual([]);
+    vm.apply(taskStart("b", "step b", "build"));
+    expect(vm.focusableTaskIds()).toEqual(["b"]);
+  });
+
+  test("expandTask switches frameLines to the expanded tail; collapse restores the tree; no control bytes", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["web"]));
+    vm.apply(taskStart("web", "web service", "build"));
+    vm.apply(taskDetail("web", "boot line"));
+    expect(vm.canExpandTask("web")).toBe(true);
+    vm.expandTask("web");
+    expect(vm.expandedTaskId).toBe("web");
+    const expanded = vm.frameLines();
+    assertNoControlBytes(expanded);
+    expect(expanded.map(stripAnsi).join("\n")).toContain("expanded task tail");
+    vm.collapse();
+    expect(vm.expandedTaskId).toBeUndefined();
+    assertNoControlBytes(vm.frameLines());
+  });
+});
+
+describe("TaskTreeViewModel — completion + failure summaries", () => {
+  test("failed task renders a blocked summary with exit code and remediation", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["db"]));
+    vm.apply(taskStart("db", "database", "build"));
+    vm.apply(taskFail("db", "migration failed", 1, "run lando db:reset"));
+    const plain = vm.frameLines().map(stripAnsi).join("\n");
+    expect(plain).toContain("✗ migration failed");
+    expect(plain).toContain("exit 1");
+    expect(plain).toContain("run lando db:reset");
+  });
+
+  test("tree.complete renders the passive summary footer", () => {
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["web"]));
+    vm.apply(taskStart("web", "web service", "build"));
+    vm.apply(taskComplete("web", "web ready", 100));
+    vm.apply(treeComplete("Build complete", 1, 0));
+    const plain = vm.frameLines().map(stripAnsi).join("\n");
+    expect(plain).toContain("LANDO OPS");
+    expect(plain).toContain("1 ✓");
+    assertNoControlBytes(vm.frameLines());
+  });
+});

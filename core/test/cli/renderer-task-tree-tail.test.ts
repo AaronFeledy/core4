@@ -17,9 +17,9 @@ import { EventService } from "@lando/sdk/services";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import {
-  LandoTreePainter,
   TASK_DETAIL_TAIL_CAPACITY,
   TaskDetailRing,
+  TaskTreeViewModel,
   csi,
 } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
@@ -89,15 +89,11 @@ const treeComplete = (
     timestamp: ts,
   });
 
-// Strip every CSI sequence so logical content can be asserted independently of
-// the cursor/erase control bytes.
 const stripCsi = (text: string): string => {
   const esc = String.fromCharCode(27);
   const pattern = new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g");
   return text.replace(pattern, "");
 };
-
-const cursorUpAtStartPattern = new RegExp(`^${String.fromCharCode(27)}\\[\\d+A`);
 
 describe("TaskDetailRing", () => {
   test("default capacity is 4", () => {
@@ -130,13 +126,13 @@ describe("TaskDetailRing", () => {
   });
 });
 
-describe("LandoTreePainter — tail panel", () => {
+describe("TaskTreeViewModel — tail panel", () => {
   test("surfaces the most recent 4 detail lines as an indented panel", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "step a", "build"));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "step a", "build"));
     for (const line of ["l1", "l2", "l3", "l4", "l5", "l6"]) {
-      painter.consume(detail("a", line));
+      painter.apply(detail("a", line));
     }
     const frame = painter.snapshot().frameLines;
     const joined = frame.join("\n");
@@ -150,15 +146,15 @@ describe("LandoTreePainter — tail panel", () => {
   });
 
   test("collapses the panel on task.complete leaving only a summary line", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(detail("a", "compiling..."));
-    painter.consume(detail("a", "linking..."));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(detail("a", "compiling..."));
+    painter.apply(detail("a", "linking..."));
     const before = painter.snapshot().frameLines.join("\n");
     expect(before).toContain("linking...");
 
-    painter.consume(taskComplete("a", "step a", 12400));
+    painter.apply(taskComplete("a", "step a", 12400));
     const after = painter.snapshot();
     const joined = after.frameLines.join("\n");
     expect(joined).not.toContain("compiling...");
@@ -168,11 +164,11 @@ describe("LandoTreePainter — tail panel", () => {
   });
 
   test("collapses the panel on task.fail and marks the task failed", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "npm ci", "build"));
-    painter.consume(detail("a", "downloading..."));
-    painter.consume(taskFail("a", "npm ci", 1, "see lando logs a --build"));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "npm ci", "build"));
+    painter.apply(detail("a", "downloading..."));
+    painter.apply(taskFail("a", "npm ci", 1, "see lando logs a --build"));
     const joined = painter.snapshot().frameLines.join("\n");
     expect(joined).not.toContain("downloading...");
     expect(joined).toContain("✗");
@@ -180,94 +176,87 @@ describe("LandoTreePainter — tail panel", () => {
   });
 });
 
-describe("LandoTreePainter — tree start metadata", () => {
+describe("TaskTreeViewModel — tree start metadata", () => {
   test("uses declared tree children as the running denominator before all siblings start", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a", "b", "c", "d"]));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a", "b", "c", "d"]));
     expect(painter.snapshot().frameLines[0]).toContain("(0/4 running)");
 
-    painter.consume(taskStart("a", "step a", "build"));
+    painter.apply(taskStart("a", "step a", "build"));
     expect(painter.snapshot().frameLines[0]).toContain("(1/4 running)");
   });
 });
 
-describe("LandoTreePainter — CSI cursor handling", () => {
-  test("first paint emits no cursor-up (no prior frame)", () => {
-    const painter = new LandoTreePainter();
-    const out = painter.consume(treeStart("build", "Building", ["a"]));
-    expect(out.match(cursorUpAtStartPattern)).toBeNull();
-    expect(out.endsWith("\n")).toBe(true);
+describe("TaskTreeViewModel — frame content", () => {
+  test("first paint exposes styled and logical lines for the same frame", () => {
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    expect(painter.frameLines().map(stripCsi)).toEqual([...painter.snapshot().frameLines]);
+    expect(painter.snapshot().frameLines.join("\n")).toContain("◌ a");
   });
 
-  test("a subsequent event moves the cursor up by the previous frame height then repaints", () => {
-    const painter = new LandoTreePainter();
-    const first = painter.consume(treeStart("build", "Building", ["a"]));
-    const firstFrameHeight = stripCsi(first)
-      .split("\n")
-      .filter((l) => l.length > 0).length;
-    expect(firstFrameHeight).toBeGreaterThan(0);
-
-    const second = painter.consume(taskStart("a", "step a", "build"));
-    expect(second.startsWith(csi.cursorUp(firstFrameHeight))).toBe(true);
-    expect(second.includes(csi.eraseDown)).toBe(true);
+  test("a subsequent event replaces the pending row with running task content", () => {
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    expect(painter.snapshot().frameLines.join("\n")).toContain("◌ a");
+    painter.apply(taskStart("a", "step a", "build"));
+    const second = painter.snapshot().frameLines.join("\n");
+    expect(second).toContain("· step a");
+    expect(second).not.toContain("◌ a");
   });
 
-  test("rewinds by physical rows for wrapped and multiline frame entries", () => {
-    const painter = new LandoTreePainter({ terminalColumns: 20 });
-    painter.consume(treeStart("build", "Run", ["a"]));
-    painter.consume(taskStart("a", "a", "build"));
-    painter.consume(detail("a", "123456789012345678901\nx"));
-
-    const collapse = painter.consume(taskComplete("a", "a", 10));
-
-    expect(collapse.startsWith(csi.cursorUp(8))).toBe(true);
-    expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
+  test("wraps long detail rows to the configured physical width", () => {
+    const painter = new TaskTreeViewModel({ terminalColumns: 60 });
+    painter.apply(treeStart("build", "Run", ["a"]));
+    painter.apply(taskStart("a", "a", "build"));
+    painter.apply(detail("a", "abcdefghij ".repeat(12).trim()));
+    expect(painter.snapshot().frameLines.every((line) => line.length <= 60)).toBe(true);
   });
 
-  test("rewinds by physical rows using the current terminal width", () => {
-    let columns = 80;
-    const painter = new LandoTreePainter({ getTerminalColumns: () => columns });
-    painter.consume(treeStart("build", "Run", ["a"]));
-    painter.consume(taskStart("a", "a", "build"));
-    painter.consume(detail("a", "1234567890123456789012345678901"));
-
-    columns = 10;
-    const collapse = painter.consume(taskComplete("a", "a", 10));
-
-    expect(collapse.startsWith(csi.cursorUp(32))).toBe(true);
-    expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
+  test("wraps using the current terminal width read live on each render", () => {
+    let columns = 120;
+    const painter = new TaskTreeViewModel({ getTerminalColumns: () => columns });
+    painter.apply(treeStart("build", "Run", ["a"]));
+    painter.apply(taskStart("a", "a", "build"));
+    painter.apply(detail("a", "abcdefghij ".repeat(12).trim()));
+    columns = 60;
+    expect(painter.snapshot().frameLines.every((line) => line.length <= 60)).toBe(true);
   });
 
-  test("redraw clears downward so a collapsing frame leaves no stale panel rows", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(detail("a", "l1"));
-    painter.consume(detail("a", "l2"));
-    const collapse = painter.consume(taskComplete("a", "step a", 10));
-    expect(collapse.includes(csi.eraseDown)).toBe(true);
-    expect(collapse.endsWith("\n")).toBe(true);
+  test("a collapsing frame leaves no stale panel content", () => {
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(detail("a", "l1"));
+    painter.apply(detail("a", "l2"));
+    const expandedHeight = painter.snapshot().frameLines.length;
+    painter.apply(taskComplete("a", "step a", 10));
+    const collapse = painter.snapshot().frameLines;
+    expect(collapse.length).toBeLessThan(expandedHeight);
+    expect(collapse.join("\n")).not.toContain("l1");
+    expect(collapse.join("\n")).not.toContain("l2");
   });
 
   test("detail panel lines are dimmed", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    const out = painter.consume(detail("a", "hello"));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(detail("a", "hello"));
+    const out = painter.frameLines().join("\n");
     expect(out.includes(csi.dim)).toBe(true);
     expect(out.includes(csi.dimReset)).toBe(true);
   });
 });
 
-describe("LandoTreePainter — concurrent sibling panels", () => {
-  test("keeps a tail panel for each running sibling via full-frame redraw", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a", "b"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(taskStart("b", "step b", "build"));
-    painter.consume(detail("a", "a-line-1"));
-    painter.consume(detail("b", "b-line-1"));
-    painter.consume(detail("a", "a-line-2"));
+describe("TaskTreeViewModel — concurrent sibling panels", () => {
+  test("keeps a tail panel for each running sibling in the current frame", () => {
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a", "b"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(taskStart("b", "step b", "build"));
+    painter.apply(detail("a", "a-line-1"));
+    painter.apply(detail("b", "b-line-1"));
+    painter.apply(detail("a", "a-line-2"));
     const joined = painter.snapshot().frameLines.join("\n");
     expect(joined).toContain("a-line-2");
     expect(joined).toContain("b-line-1");
@@ -275,15 +264,15 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
   });
 
   test("tree.complete collapses to a passive summary line", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a", "b"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(taskStart("b", "step b", "build"));
-    painter.consume(detail("a", "x"));
-    painter.consume(taskComplete("a", "step a", 10));
-    painter.consume(taskComplete("b", "step b", 12));
-    const summary = painter.consume(treeComplete("build", "Built app dependencies", 2, 0, 12400));
-    const joined = stripCsi(summary);
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a", "b"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(taskStart("b", "step b", "build"));
+    painter.apply(detail("a", "x"));
+    painter.apply(taskComplete("a", "step a", 10));
+    painter.apply(taskComplete("b", "step b", 12));
+    painter.apply(treeComplete("build", "Built app dependencies", 2, 0, 12400));
+    const joined = painter.snapshot().frameLines.join("\n");
     expect(joined).toContain("2 ✓");
     expect(joined).toContain("0 ✗");
     expect(joined).toContain("(12.4s)");
@@ -292,11 +281,11 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
   });
 
   test("tree.complete hides pending placeholders for children that never started", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a", "b"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(taskFail("a", "step a failed", 1));
-    painter.consume(treeComplete("build", "Build failed", 0, 1, 50));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a", "b"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(taskFail("a", "step a failed", 1));
+    painter.apply(treeComplete("build", "Build failed", 0, 1, 50));
     const frame = painter.snapshot().frameLines;
     expect(frame.join("\n")).toContain("[BLOCKED] Build failed");
     expect(frame.join("\n")).toContain("[BLOCKED] ✗ step a failed");
@@ -305,12 +294,12 @@ describe("LandoTreePainter — concurrent sibling panels", () => {
   });
 });
 
-describe("LandoTreePainter — cached/skipped badges", () => {
+describe("TaskTreeViewModel — cached/skipped badges", () => {
   const completeWith = (summary: string, durationMs = 12400): string => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(taskComplete("a", summary, durationMs));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "step a", "build"));
+    painter.apply(taskComplete("a", summary, durationMs));
     return painter.snapshot().frameLines.join("\n");
   };
 
@@ -353,31 +342,33 @@ describe("LandoTreePainter — cached/skipped badges", () => {
   });
 
   test("a child whose label is literally 'cache' stays ONLINE without a marker", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["cache"]));
-    painter.consume(taskStart("cache", "cache", "build"));
-    painter.consume(taskComplete("cache", "cache", 500));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["cache"]));
+    painter.apply(taskStart("cache", "cache", "build"));
+    painter.apply(taskComplete("cache", "cache", 500));
     const frame = painter.snapshot().frameLines.join("\n");
     expect(frame).toContain("[ONLINE] ✓ cache");
     expect(frame).not.toContain("[CACHED]");
   });
 
   test("falls back to the task label when stripping the marker empties the summary", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a"]));
-    painter.consume(taskStart("a", "warm step", "build"));
-    painter.consume(taskComplete("a", "(cached)", 100));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a"]));
+    painter.apply(taskStart("a", "warm step", "build"));
+    painter.apply(taskComplete("a", "(cached)", 100));
     const frame = painter.snapshot().frameLines.join("\n");
     expect(frame).toContain("[CACHED] ✓ warm step");
   });
 
   test("cached and skipped rows are color-accented in TTY but never status-by-color-only", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a", "b"]));
-    painter.consume(taskStart("a", "a", "build"));
-    painter.consume(taskStart("b", "b", "build"));
-    const cachedFrame = painter.consume(taskComplete("a", "a (cached)", 10));
-    const skippedFrame = painter.consume(taskComplete("b", "b (skipped)", 10));
+    const painter = new TaskTreeViewModel();
+    painter.apply(treeStart("build", "Building", ["a", "b"]));
+    painter.apply(taskStart("a", "a", "build"));
+    painter.apply(taskStart("b", "b", "build"));
+    painter.apply(taskComplete("a", "a (cached)", 10));
+    const cachedFrame = painter.frameLines().join("\n");
+    painter.apply(taskComplete("b", "b (skipped)", 10));
+    const skippedFrame = painter.frameLines().join("\n");
     expect(cachedFrame.includes(String.fromCharCode(27))).toBe(true);
     expect(stripCsi(skippedFrame)).toContain("[CACHED]");
     expect(stripCsi(skippedFrame)).toContain("[SKIPPED]");
@@ -392,7 +383,7 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
       yield* Effect.sleep("20 millis");
     });
 
-  test("non-TTY IO falls back to the plain line renderer (no CSI cursor codes)", async () => {
+  test("non-TTY IO falls back to one plain line per renderable event", async () => {
     const io = createBufferedRendererIO();
     const events = [
       treeStart("build", "Building", ["a"]),
@@ -404,12 +395,12 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = io.stdout();
-    expect(out.includes(csi.eraseDown)).toBe(false);
+    expect(io.stdoutLines()).toHaveLength(events.length);
     expect(out).toContain("[a] start");
     expect(out).toContain("[a] hello");
   });
 
-  test("TTY IO engages the painter (emits CSI cursor/erase control codes)", async () => {
+  test("buffered TTY degrades to line mode without the native substrate", async () => {
     const buffered = createBufferedRendererIO();
     const io = { ...buffered, isTTY: true };
     const events = [
@@ -421,7 +412,7 @@ describe("lando renderer (TTY vs non-TTY selection)", () => {
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     const out = buffered.stdout();
-    expect(out.includes(csi.eraseDown)).toBe(true);
-    expect(stripCsi(out)).toContain("hello");
+    expect(stripCsi(out)).toContain("[a] hello");
+    expect(buffered.stdoutLines()).toHaveLength(events.length);
   });
 });

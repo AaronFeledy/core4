@@ -50,13 +50,18 @@ describe("OpenTUI cold-start canary", () => {
       }
     }
 
-    expect(opentuiImports).toEqual([
-      {
-        file: join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "prompt-driver.ts"),
-        path: "@opentui/core",
-        kind: "dynamic-import",
-      },
-    ]);
+    // Import discipline (§8.9.3): only the two renderer substrate modules, each via lazy dynamic import.
+    for (const edge of opentuiImports) {
+      expect(edge.path).toBe("@opentui/core");
+      expect(edge.kind).toBe("dynamic-import");
+    }
+    const importingFiles = opentuiImports.map((edge) => edge.file).sort();
+    expect(importingFiles).toEqual(
+      [
+        join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "live-region-controller.ts"),
+        join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "prompt-driver.ts"),
+      ].sort(),
+    );
   });
 
   test("renderer tests may statically import the OpenTUI testing harness", () => {

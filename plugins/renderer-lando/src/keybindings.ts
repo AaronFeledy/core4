@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { type LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from "@lando/sdk/events";
 
-import type { LandoTreePainter } from "./task-tree-tail.ts";
+import type { TaskTreeViewModel } from "./task-tree-tail.ts";
 
 export type KeyToken = "up" | "down" | "enter" | "esc" | "tab" | "unknown";
 
@@ -40,7 +40,6 @@ export const DEFAULT_KEYMAP: Readonly<Record<KeyToken, KeyAction | null>> = {
 export interface KeyHandleResult {
   readonly events: ReadonlyArray<LandoEvent>;
   readonly changed: boolean;
-  readonly redraw: string;
 }
 
 export interface TaskTreeInputControllerOptions {
@@ -48,7 +47,7 @@ export interface TaskTreeInputControllerOptions {
   readonly now?: () => string;
 }
 
-const NO_CHANGE: KeyHandleResult = { events: [], changed: false, redraw: "" };
+const NO_CHANGE: KeyHandleResult = { events: [], changed: false };
 
 const expandEvent = (taskId: string, timestamp: string): LandoEvent =>
   Schema.decodeUnknownSync(TaskDetailExpandEvent)({ _tag: "task.detail.expand", taskId, timestamp });
@@ -57,20 +56,20 @@ const collapseEvent = (taskId: string, timestamp: string): LandoEvent =>
   Schema.decodeUnknownSync(TaskDetailCollapseEvent)({ _tag: "task.detail.collapse", taskId, timestamp });
 
 export class TaskTreeInputController {
-  readonly #painter: LandoTreePainter;
+  readonly #viewModel: TaskTreeViewModel;
   readonly #keymap: Readonly<Record<KeyToken, KeyAction | null>>;
   readonly #now: () => string;
   #focusIndex = 0;
   #expanded = false;
 
-  constructor(painter: LandoTreePainter, options: TaskTreeInputControllerOptions = {}) {
-    this.#painter = painter;
+  constructor(viewModel: TaskTreeViewModel, options: TaskTreeInputControllerOptions = {}) {
+    this.#viewModel = viewModel;
     this.#keymap = options.keymap ?? DEFAULT_KEYMAP;
     this.#now = options.now ?? (() => new Date().toISOString());
   }
 
   get focusedTaskId(): string | undefined {
-    const ids = this.#painter.focusableTaskIds();
+    const ids = this.#viewModel.focusableTaskIds();
     if (ids.length === 0) return undefined;
     return ids[Math.min(this.#focusIndex, ids.length - 1)];
   }
@@ -96,33 +95,33 @@ export class TaskTreeInputController {
   }
 
   #syncExpandedState(): void {
-    if (this.#expanded && this.#painter.expandedTaskId === undefined) this.#expanded = false;
+    if (this.#expanded && this.#viewModel.expandedTaskId === undefined) this.#expanded = false;
   }
 
   #moveFocus(delta: number): KeyHandleResult {
-    const count = this.#painter.focusableTaskIds().length;
+    const count = this.#viewModel.focusableTaskIds().length;
     if (count === 0) return NO_CHANGE;
     const next = Math.max(0, Math.min(count - 1, this.#focusIndex + delta));
     if (next === this.#focusIndex) return NO_CHANGE;
     this.#focusIndex = next;
-    return { events: [], changed: true, redraw: "" };
+    return { events: [], changed: true };
   }
 
   #expand(): KeyHandleResult {
     if (this.#expanded) return NO_CHANGE;
     const taskId = this.focusedTaskId;
-    if (taskId === undefined || !this.#painter.canExpandTask(taskId)) return NO_CHANGE;
-    const redraw = this.#painter.expandTask(taskId);
+    if (taskId === undefined || !this.#viewModel.canExpandTask(taskId)) return NO_CHANGE;
+    this.#viewModel.expandTask(taskId);
     this.#expanded = true;
-    return { events: [expandEvent(taskId, this.#now())], changed: true, redraw };
+    return { events: [expandEvent(taskId, this.#now())], changed: true };
   }
 
   #collapse(): KeyHandleResult {
     if (!this.#expanded) return NO_CHANGE;
-    const taskId = this.#painter.expandedTaskId ?? this.focusedTaskId;
-    const redraw = this.#painter.collapse();
+    const taskId = this.#viewModel.expandedTaskId ?? this.focusedTaskId;
+    this.#viewModel.collapse();
     this.#expanded = false;
-    if (taskId === undefined) return { events: [], changed: true, redraw };
-    return { events: [collapseEvent(taskId, this.#now())], changed: true, redraw };
+    if (taskId === undefined) return { events: [], changed: true };
+    return { events: [collapseEvent(taskId, this.#now())], changed: true };
   }
 }

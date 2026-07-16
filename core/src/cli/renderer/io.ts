@@ -9,6 +9,7 @@ export const createStdioRendererIO = (
 ): RendererIO => ({
   writeStdout: (chunk) => stdout.write(chunk),
   writeStderr: (chunk) => stderr.write(chunk),
+  externalOutputStream: stdout,
   isTTY: stdout.isTTY === true,
   get terminalColumns() {
     return typeof stdout.columns === "number" ? stdout.columns : undefined;
