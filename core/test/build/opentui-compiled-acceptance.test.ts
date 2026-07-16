@@ -223,7 +223,7 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
       expect(degraded).toContain("(value or index):");
       expect(await readProbe(failureTrace)).toEqual([{ phase: "attempt", specifier: "@opentui/core" }]);
     } finally {
-      await rm(root, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
     }
   }, 120_000);
 });
