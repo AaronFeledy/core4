@@ -229,7 +229,7 @@ Scope is hardening and contract parity only: no new commands, flags, service typ
 | Surface | Guide | Status |
 | --- | --- | --- |
 | MCP serve / stdio hardening | new MCP guide (US-452) | Pending |
-| Host-proxy doctor DNS | doctor guide / host-proxy notes | Update when US-451 lands |
+| Host-proxy doctor DNS | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped (US-451) |
 | Public transcripts on clean trees | guide pipeline runbook | Update when US-446 lands |
 
 ## Open Questions

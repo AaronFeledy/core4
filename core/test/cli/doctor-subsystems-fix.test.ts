@@ -28,8 +28,9 @@ import { SshServiceUnavailableLive } from "../../src/subsystems/ssh/api.ts";
 
 const AUTOMATIC_SUBSYSTEMS = ["proxy", "ssh"] as const;
 const MANUAL_SUBSYSTEMS = ["certs", "healthcheck", "scanner", "host-proxy"] as const;
-const DEGRADED_MANUAL_SUBSYSTEMS = ["certs", "host-proxy"] as const;
+const DEGRADED_MANUAL_SUBSYSTEMS = ["certs"] as const;
 const READY_MANUAL_SUBSYSTEMS = ["healthcheck", "scanner"] as const;
+const INTENTIONALLY_DISABLED_MANUAL_SUBSYSTEMS = ["host-proxy"] as const;
 
 const runDefault = (fix: boolean): Promise<SubsystemDoctorResult> =>
   Effect.runPromise(subsystemDoctor({ fix }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)));
@@ -177,9 +178,9 @@ describe("doctor --fix recovery", () => {
     }
   });
 
-  test("--fix leaves ready healthcheck/scanner untouched with no fix outcome", async () => {
+  test("--fix leaves ready and intentionally disabled manual subsystems untouched", async () => {
     const result = await runDefault(true);
-    for (const name of READY_MANUAL_SUBSYSTEMS) {
+    for (const name of [...READY_MANUAL_SUBSYSTEMS, ...INTENTIONALLY_DISABLED_MANUAL_SUBSYSTEMS]) {
       const check = result.checks.find((c) => c.name === name);
       expect(check?.status).toBe("pass");
       expect(check?.context.fixOutcome).toBeUndefined();

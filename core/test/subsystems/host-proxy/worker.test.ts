@@ -19,6 +19,7 @@ import {
 import { makeLandoPaths, sanitizeAppName } from "../../../src/config/paths.ts";
 import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/subsystems/host-proxy/session-env.ts";
 import { defaultSpawnWorker } from "../../../src/subsystems/host-proxy/worker-process.ts";
+import { readWorkerRecordStateAt } from "../../../src/subsystems/host-proxy/worker-state-file.ts";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   type HostProxyWorkerRecord,
@@ -220,11 +221,22 @@ describe("detached host-proxy worker manager", () => {
   test("starts a detached worker, persists socket-owned state, and keeps session token out of worker.json", async () => {
     const root = await tempRoot();
     const writes: string[] = [];
+    const database = servicePlan("database", "/app", false);
+    const appserver = servicePlan("appserver", "/app");
+    const worker = servicePlan("worker", "/app");
+    const eligiblePlan: AppPlan = {
+      ...plan,
+      services: {
+        [database.name]: database,
+        [appserver.name]: appserver,
+        [worker.name]: worker,
+      },
+    };
     try {
       const session = await Effect.runPromise(
         startDetachedHostProxyWorker({
           app,
-          plan,
+          plan: eligiblePlan,
           paths: { userDataRoot: root },
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
@@ -240,6 +252,7 @@ describe("detached host-proxy worker manager", () => {
               token: "secret-token",
               controlToken: "control-token",
               socketPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "host-proxy.sock"),
+              containerUrl: "http://host.containers.internal:32123",
               shimPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "lando"),
               transport: "unix-socket" as const,
             }),
@@ -256,8 +269,67 @@ describe("detached host-proxy worker manager", () => {
       expect(writes.join("\n")).not.toContain("secret-token");
       expect(record).toContain('"controlToken": "control-token"');
       expect(record).toContain('"protocolVersion": 1');
+      expect(record).toContain('"providerId": "lando"');
+      expect(record).toContain('"containerUrl": "http://host.containers.internal:32123"');
+      expect(record).toContain('"probeServices": [\n    "appserver",\n    "worker"\n  ]');
       expect(record).not.toContain("secret-token");
       expect(hostProxyWorkerArgv({ appId: "demo" })).toEqual(expect.arrayContaining(["--app-id", "demo"]));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("classifies absent, current, legacy, and malformed worker state", async () => {
+    // Given
+    const root = await tempRoot();
+    const currentPath = workerStatePath(app, { userDataRoot: root });
+    const legacyPath = join(root, "legacy-worker.json");
+    const malformedPath = join(root, "malformed-worker.json");
+    try {
+      await Effect.runPromise(writeWorkerRecord(app, { userDataRoot: root }, workerRecord(root)));
+      const currentRecord = workerRecord(root);
+      await writeFile(
+        legacyPath,
+        `${JSON.stringify({
+          appId: currentRecord.appId,
+          transport: currentRecord.transport,
+          socketPath: currentRecord.socketPath,
+          shimPath: currentRecord.shimPath,
+          protocolVersion: currentRecord.protocolVersion,
+          startedAt: currentRecord.startedAt,
+          pid: currentRecord.pid,
+          controlToken: currentRecord.controlToken,
+        })}\n`,
+      );
+      await writeFile(malformedPath, "{not-json\n");
+
+      // When
+      const states = await Promise.all(
+        [join(root, "absent-worker.json"), currentPath, legacyPath, malformedPath].map((path) =>
+          Effect.runPromise(readWorkerRecordStateAt(path)),
+        ),
+      );
+
+      // Then
+      expect(states.map((state) => state._tag)).toEqual(["absent", "current", "legacy", "malformed"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("classifies an invalid current-shaped worker record as malformed", async () => {
+    // Given
+    const root = await tempRoot();
+    const path = join(root, "invalid-current-worker.json");
+    const record = legacyWorkerRecord(root);
+    try {
+      await writeFile(path, `${JSON.stringify({ ...record, appRoot: 42, providerId: "lando" })}\n`);
+
+      // When
+      const state = await Effect.runPromise(readWorkerRecordStateAt(path));
+
+      // Then
+      expect(state._tag).toBe("malformed");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

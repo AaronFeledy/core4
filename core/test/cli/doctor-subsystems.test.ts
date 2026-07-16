@@ -86,6 +86,17 @@ describe("meta:doctor subsystem checks", () => {
     expect(hostProxy?.context.loopback).toBe("127.0.0.1");
   });
 
+  test("treats an intentionally disabled host-proxy as an informational no-op", async () => {
+    // Given / When
+    const result = await runDefault();
+
+    // Then
+    const hostProxy = result.checks.find((check) => check.name === "host-proxy");
+    expect(hostProxy?.status).toBe("pass");
+    expect(hostProxy?.severity).toBe("info");
+    expect(hostProxy?.solutions).toEqual([]);
+  });
+
   test("runs with only the six subsystem layers", async () => {
     const result = await Effect.runPromise(
       subsystemDoctor().pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
