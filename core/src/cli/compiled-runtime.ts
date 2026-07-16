@@ -35,6 +35,7 @@ import {
   writeDiagnosticLine,
   writeResultLine,
 } from "./renderer-boundary.ts";
+import type { RendererIO } from "./renderer/io.ts";
 import type { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export interface CompiledCommandInput {
@@ -53,6 +54,10 @@ export let activeCommandId = "cli:unknown";
 let activeCommandInvocation: CliInvocationSnapshot | undefined;
 
 export const getActiveCommandInvocation = (): CliInvocationSnapshot | undefined => activeCommandInvocation;
+
+export const clearActiveCommandInvocation = (): void => {
+  activeCommandInvocation = undefined;
+};
 
 export const setActiveRendererMode = (mode: RendererMode): void => {
   activeRendererMode = mode;
@@ -191,6 +196,8 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly failureExitCode?: (error: unknown) => number | undefined;
     readonly resultSchema?: Schema.Schema.AnyNoContext;
     readonly streamingMode?: "live";
+    readonly preCommand?: boolean;
+    readonly io?: RendererIO;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
@@ -200,16 +207,21 @@ export const runCompiledCommand = <A, E, R, RE>(
     (spec?.successExitCode === undefined
       ? undefined
       : (value: A) => spec.successExitCode?.(value, activeCommandInvocation));
+  const invocation = activeCommandInvocation;
   const rendererOptions = {
     runtime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     command: activeCommandId,
-    ...(activeCommandInvocation === undefined ? {} : { invocation: activeCommandInvocation }),
+    ...(options.preCommand !== true && invocation !== undefined ? { invocation } : {}),
     resultSchema: options.resultSchema ?? spec?.resultSchema ?? EmptyResultSchema,
-    ...(spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
-    ...(options.streamingMode === undefined ? {} : { streamingMode: options.streamingMode }),
-    ...(spec?.streamFrames === undefined ? {} : { streamFrames: spec.streamFrames }),
+    ...(options.preCommand === true || spec?.streaming === undefined ? {} : { streaming: spec.streaming }),
+    ...(options.preCommand === true || options.streamingMode === undefined
+      ? {}
+      : { streamingMode: options.streamingMode }),
+    ...(options.preCommand === true || spec?.streamFrames === undefined
+      ? {}
+      : { streamFrames: spec.streamFrames }),
     ...(redactionTokens === undefined ? {} : { redactionTokens }),
     deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false,
     suppressDeprecationDiagnostics: options.suppressDeprecationDiagnostics === true,
@@ -217,6 +229,7 @@ export const runCompiledCommand = <A, E, R, RE>(
     ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
     ...(successExitCode === undefined ? {} : { successExitCode }),
     ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
+    ...(options.io === undefined ? {} : { io: options.io }),
     render,
     formatError: (error: unknown) => commandErrorMessage(error),
   };

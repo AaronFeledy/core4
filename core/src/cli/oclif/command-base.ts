@@ -22,7 +22,11 @@ import {
 } from "../renderer-boundary.ts";
 import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import type { StreamFrameSink } from "../stream-frame-sink.ts";
-import { renderCommandFlagValueValidation } from "./command-boundary.ts";
+import {
+  preCommandOutputMode,
+  renderCommandFlagValueValidation,
+  renderPreCommandFailure,
+} from "./command-boundary.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
 import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
@@ -246,13 +250,6 @@ export const formatCommandError = (input: {
   return formatBugReport({ error: input.error, context, rendererMode: input.rendererMode });
 };
 
-const formatRendererSelectionError = (error: unknown): string =>
-  formatBugReport({
-    error,
-    context: { commandId: "cli:renderer-selection" },
-    rendererMode: "plain",
-  });
-
 export const extractSpecAbortSignal = (input: unknown): AbortSignal | undefined =>
   typeof input === "object" && input !== null && "signal" in input && input.signal instanceof AbortSignal
     ? input.signal
@@ -327,7 +324,12 @@ export abstract class LandoCommandBase extends Command {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        throw new Error(formatRendererSelectionError(error));
+        await renderPreCommandFailure({
+          commandId: "cli:renderer-selection",
+          error,
+          ...preCommandOutputMode({ argv: this.argv, env: process.env }),
+        });
+        return;
       }
       throw error;
     }
@@ -344,7 +346,13 @@ export abstract class LandoCommandBase extends Command {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError) {
-        throw new Error(formatRendererSelectionError(error));
+        await renderPreCommandFailure({
+          commandId: "cli:format-selection",
+          error,
+          rendererMode,
+          resultFormat: rendererMode === "json" ? "json" : "text",
+        });
+        return;
       }
       throw error;
     }
@@ -358,6 +366,7 @@ export abstract class LandoCommandBase extends Command {
         resultFormat,
         resultSchema: spec.resultSchema,
         deprecationWarnings: deprecationWarnings.enabled,
+        allowUnknownFlags: this.ctor.strict === false,
       })
     )
       return;
@@ -402,10 +411,19 @@ export abstract class LandoCommandBase extends Command {
         ? makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }))
         : getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
-      throw new LandoRuntimeBootstrapError({
-        message: `OCLIF command ${this.id ?? spec.id} is missing a valid static bootstrap declaration.`,
-        stage: "minimal",
+      await renderPreCommandFailure({
+        commandId: spec.id,
+        error: new LandoRuntimeBootstrapError({
+          message: `OCLIF command ${this.id ?? spec.id} is missing a valid static bootstrap declaration.`,
+          stage: "minimal",
+        }),
+        rendererMode,
+        resultFormat,
+        resultSchema: spec.resultSchema,
+        failureExitCode: 1,
+        deprecationWarnings: deprecationWarnings.enabled,
       });
+      return;
     }
 
     const controller = new AbortController();

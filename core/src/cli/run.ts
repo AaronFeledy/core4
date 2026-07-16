@@ -83,9 +83,10 @@ import {
   setActiveResultFormat,
 } from "./compiled-runtime.ts";
 export { compiledCommandInputFromArgv } from "./compiled-input.ts";
-import { validateCommandFlagValues } from "./flag-value-validation.ts";
+import { validateCommandCliFlags } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
+import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary.ts";
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
 import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
@@ -331,8 +332,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         setActiveCommandId("cli:renderer-selection");
-        emitDiagnosticLine(commandErrorMessage(error));
-        process.exitCode = 1;
+        const output = preCommandOutputMode({ argv, env: process.env });
+        await renderPreCommandFailure({
+          commandId: "cli:renderer-selection",
+          error,
+          ...output,
+        });
         return;
       }
       throw error;
@@ -347,8 +352,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     } catch (error) {
       if (error instanceof RendererSelectionError) {
         setActiveCommandId("cli:format-selection");
-        emitDiagnosticLine(commandErrorMessage(error));
-        process.exitCode = 1;
+        await renderPreCommandFailure({
+          commandId: "cli:format-selection",
+          error,
+          rendererMode: activeRendererMode,
+          resultFormat: activeRendererMode === "json" ? "json" : "text",
+        });
         return;
       }
       throw error;
@@ -406,14 +415,16 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   }
 
   if (found !== undefined) {
-    const flagValueError = validateCommandFlagValues(
-      canonicalCommandId,
-      argv.slice(1),
-      flagDefinitionsForCommand(found[1]),
-    );
-    if (flagValueError !== undefined) {
-      await runCompiledCommand(Effect.fail(flagValueError), Layer.empty, () => undefined, {
+    const flagError = validateCommandCliFlags({
+      commandId: canonicalCommandId,
+      argv: argv.slice(1),
+      definitions: flagDefinitionsForCommand(found[1]),
+      allowUnknownFlags: isBunOrX || found[1].strict === false,
+    });
+    if (flagError !== undefined) {
+      await runCompiledCommand(Effect.fail(flagError), Layer.empty, () => undefined, {
         failureExitCode: () => 2,
+        preCommand: true,
       });
       return;
     }
@@ -963,8 +974,12 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
         setActiveCommandId("cli:renderer-selection");
-        emitDiagnosticLine(commandErrorMessage(error));
-        process.exitCode = 1;
+        const output = preCommandOutputMode({ argv: args, env: process.env });
+        await renderPreCommandFailure({
+          commandId: "cli:renderer-selection",
+          error,
+          ...output,
+        });
         return;
       }
       throw error;

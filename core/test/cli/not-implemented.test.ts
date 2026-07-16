@@ -71,21 +71,23 @@ describe("non-MVP OCLIF commands", () => {
     }
   }, 120_000);
 
-  test("return structured remediation even when invoked with unknown flags", async () => {
-    const probes: ReadonlyArray<{ readonly args: ReadonlyArray<string>; readonly commandId: string }> = [
-      { args: ["meta:events:follow", "--detect"], commandId: "meta:events:follow" },
-      { args: ["meta:plugin:login", "--format", "json"], commandId: "meta:plugin:login" },
-    ];
+  test("reject unknown flags before deferred command dispatch", async () => {
+    const result = await runCli(["meta:events:follow", "--detect"]);
 
-    for (const probe of probes) {
-      const result = await runCli(probe.args);
-      const envelope = parseErrorEnvelope(result.stdout);
-      const output = `${result.stdout}\n${result.stderr}`;
+    expect(result.exitCode).toBe(2);
+    expect(result.stderr).toContain("UnknownCliFlagError");
+    expect(result.stderr).toContain("commandId: meta:events:follow");
+    expect(result.stderr).toContain("Remove the unknown flag");
+  });
 
-      expect(result.exitCode, probe.commandId).not.toBe(0);
-      expect(envelope?.error?._tag ?? output, probe.commandId).toContain("NotImplementedError");
-      expect(envelope?.command ?? output, probe.commandId).toContain(probe.commandId);
-      expect(output, probe.commandId).not.toContain("Nonexistent flag");
-    }
+  test("return structured remediation when invoked with universal format flags", async () => {
+    const result = await runCli(["meta:plugin:login", "--format", "json"]);
+    const envelope = parseErrorEnvelope(result.stdout);
+    const output = `${result.stdout}\n${result.stderr}`;
+
+    expect(result.exitCode).not.toBe(0);
+    expect(envelope?.error?._tag ?? output).toContain("NotImplementedError");
+    expect(envelope?.command ?? output).toContain("meta:plugin:login");
+    expect(output).not.toContain("Nonexistent flag");
   }, 60_000);
 });

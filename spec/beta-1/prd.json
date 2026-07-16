@@ -1492,7 +1492,7 @@
         "Lint passes"
       ],
       "priority": 84,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-442 review deferred pre-parse and runtime-layer construction as outside the shared command lifecycle boundary."
     },
     {

@@ -15,6 +15,7 @@ import { BootstrapLevel, type BootstrapLevel as BootstrapLevelType } from "@land
 
 import { cliRuntimeOptions } from "../../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../../runtime/layer.ts";
+import { preCommandOutputMode, renderPreCommandFailure } from "../../oclif/command-boundary.ts";
 
 type LandoCommandClass = Command.Class & {
   readonly bootstrap?: unknown;
@@ -44,7 +45,7 @@ const readBootstrapLevel = (CommandClass: LandoCommandClass): BootstrapLevelType
 export const getCommandRuntimeLayer = (CommandClass: Command.Class): LandoRuntimeLayer | undefined =>
   commandRuntimeLayers.get(CommandClass);
 
-export const initHook: Hook<"init"> = async ({ config, context, id }) => {
+export const initHook: Hook<"init"> = async ({ argv, config, context, id }) => {
   if (id === undefined) return;
 
   const command = config.findCommand(id);
@@ -56,7 +57,13 @@ export const initHook: Hook<"init"> = async ({ config, context, id }) => {
     bootstrap = readBootstrapLevel(CommandClass);
   } catch (error) {
     if (error instanceof LandoRuntimeBootstrapError) {
-      context.error(error, { exit: 1 });
+      await renderPreCommandFailure({
+        commandId: id,
+        error,
+        ...preCommandOutputMode({ argv, env: process.env }),
+      });
+      context.exit(1);
+      return;
     }
     throw error;
   }
