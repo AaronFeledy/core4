@@ -3,16 +3,18 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Schema, Stream } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
+import { type EventFor, EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
 import {
+  clearActiveCommandInvocation,
   resetActiveCommandInvocation,
   runCompiledCommand,
   setActiveCommandId,
+  setActiveRendererMode,
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
-import { renderPreCommandFailure } from "../../src/cli/oclif/command-boundary.ts";
+import { preCommandOutputMode, renderPreCommandFailure } from "../../src/cli/oclif/command-boundary.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 
@@ -41,7 +43,7 @@ const makeRecordingHarness = (): RecordingHarness => {
     }),
     waitFor: () => Effect.never,
     waitForAny: () => Effect.never,
-    query: () => Effect.succeed(events),
+    query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
   };
   return {
     events,
@@ -55,9 +57,22 @@ beforeEach(() => {
 
 afterEach(() => {
   process.exitCode = 0;
+  setActiveCommandId("cli:unknown");
+  setActiveRendererMode("lando");
+  setActiveResultFormat("text");
+  clearActiveCommandInvocation();
 });
 
 describe("pre-command failure surface", () => {
+  test("machine output intent includes flags before an absent argument terminator", () => {
+    expect(
+      preCommandOutputMode({
+        argv: ["meta:version", "--renderer=private-value", "--format=json"],
+        env: {},
+      }),
+    ).toEqual({ rendererMode: "json", resultFormat: "json" });
+  });
+
   test("pre-parse validation emits a machine envelope without lifecycle events", async () => {
     const harness = makeRecordingHarness();
     const io = createBufferedRendererIO();
@@ -99,7 +114,9 @@ describe("pre-command failure surface", () => {
 
   test("compiled preCommand flag failure omits lifecycle even when an invocation was staged", async () => {
     const harness = makeRecordingHarness();
+    const io = createBufferedRendererIO();
     setActiveCommandId("meta:version");
+    setActiveRendererMode("json");
     setActiveResultFormat("json");
     resetActiveCommandInvocation("meta:version", ["--password=supersecret"]);
 
@@ -112,15 +129,54 @@ describe("pre-command failure surface", () => {
 
     await runCompiledCommand(Effect.fail(error), harness.layer, () => undefined, {
       failureExitCode: () => 2,
+      io,
       preCommand: true,
       resultSchema: Schema.Struct({}),
     });
 
     expect(harness.events.map((event) => event._tag)).toEqual([]);
+    expect(JSON.parse(io.stdout().trim())).toMatchObject({
+      apiVersion: "v4",
+      command: "meta:version",
+      ok: false,
+      error: { _tag: "MalformedCliFlagValueError" },
+    });
+  });
+
+  test("compiled preCommand failures suppress inherited streaming framing", async () => {
+    const io = createBufferedRendererIO();
+    setActiveCommandId("app:logs");
+    setActiveRendererMode("json");
+    setActiveResultFormat("json");
+    resetActiveCommandInvocation("app:logs", ["--tail=private-value"]);
+
+    await runCompiledCommand(
+      Effect.fail(
+        new MalformedCliFlagValueError({
+          message: "--tail has a malformed value.",
+          flag: "tail",
+          issue: "invalid_integer",
+          remediation: "Supply --tail with a whole integer.",
+        }),
+      ),
+      Layer.empty,
+      () => undefined,
+      { failureExitCode: () => 2, io, preCommand: true },
+    );
+
+    const output = JSON.parse(io.stdout().trim());
+    expect(output).not.toHaveProperty("_tag");
+    expect(output).toMatchObject({
+      apiVersion: "v4",
+      command: "app:logs",
+      ok: false,
+      error: { _tag: "MalformedCliFlagValueError" },
+    });
   });
 
   test("compiled flag failure with staged invocation publishes lifecycle without preCommand", async () => {
     const harness = makeRecordingHarness();
+    const io = createBufferedRendererIO();
     setActiveCommandId("meta:version");
     setActiveResultFormat("json");
     resetActiveCommandInvocation("meta:version", ["--format"]);
@@ -134,6 +190,7 @@ describe("pre-command failure surface", () => {
 
     await runCompiledCommand(Effect.fail(error), harness.layer, () => undefined, {
       failureExitCode: () => 2,
+      io,
       resultSchema: Schema.Struct({}),
     });
 

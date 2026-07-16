@@ -25,6 +25,12 @@ export class MalformedCliFlagValueError extends Schema.TaggedError<MalformedCliF
   },
 ) {}
 
+export class UnknownCliFlagError extends Schema.TaggedError<UnknownCliFlagError>()("UnknownCliFlagError", {
+  message: Schema.String,
+  flag: Schema.String,
+  remediation: Schema.String,
+}) {}
+
 type FlagDefinition = {
   readonly name: string;
   readonly boolean: boolean;
@@ -63,6 +69,33 @@ const flagDefinitionsByToken = (
 const flagToken = (arg: string): string => {
   const equalsIndex = arg.indexOf("=");
   return equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
+};
+
+export const validateUnknownCliFlags = (
+  argv: ReadonlyArray<string>,
+  definitions: Readonly<Record<string, unknown>>,
+): UnknownCliFlagError | undefined => {
+  const byToken = flagDefinitionsByToken(definitions);
+  const normalizedArgv = normalizeCliFlagTokens(argv, definitions);
+  for (let index = 0; index < normalizedArgv.length; index += 1) {
+    const arg = normalizedArgv[index];
+    if (arg === undefined) continue;
+    if (arg === "--") break;
+    if (!arg.startsWith("-") || arg === "-") continue;
+    const token = flagToken(arg);
+    const definition = byToken.get(token);
+    if (definition !== undefined) {
+      if (!definition.boolean && !arg.includes("=")) index += 1;
+      continue;
+    }
+    const reportedToken = token.startsWith("--") ? token : token.slice(0, 2);
+    return new UnknownCliFlagError({
+      message: `Nonexistent flag: ${reportedToken}`,
+      flag: reportedToken,
+      remediation: "Remove the unknown flag or run the command with --help to inspect supported flags.",
+    });
+  }
+  return undefined;
 };
 
 export const normalizeCliFlagTokens = (

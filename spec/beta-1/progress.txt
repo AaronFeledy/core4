@@ -342,3 +342,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Failures before a resolved command identity must not attach an invocation snapshot. Prefer `renderPreCommandFailure` / `runCompiledCommand(..., { preCommand: true })` over `Effect.fail` with a staged invocation.
   - Runtime-layer build failures already skip lifecycle because `runCommandLifecycle` never starts when `Layer.provide` fails; the envelope still comes from the outer renderer-boundary diagnostic path.
 ---
+
+## 2026-07-16 02:29 CDT - US-454 Review
+- Closed the remaining pre-command parity and disclosure gaps: unknown flags now fail before either parser can echo or ignore attached values, renderer/result-format and bootstrap failures use the shared redacted envelope seam, and streaming-capable compiled commands emit the same bare pre-command result envelope as source dispatch. The review also corrected the recording EventService fake to satisfy its generic query contract.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive after two `resource_exhausted` failures; no Bugbot result was treated as approval. `Guide-Coverage-Skip: Internal failure-transport hardening changes no successful CLI workflow or public contract.`
+- Verification: clean changed-file diagnostics; typecheck, lint, guide drift, renderer/machine-output/redaction boundaries, diff check, and focused flag-validation, pre-command, init-hook, lifecycle, and renderer-redaction tests passed; source/compiled parity coverage passed in the implementation lane.
+- **Learnings for future iterations:**
+  - Unknown short flags can carry a secret suffix; retain only the two-character flag token in diagnostics, just as long `--flag=value` diagnostics drop the attached value.
+  - Pre-command machine intent must be derived before renderer validation succeeds, and compiled pre-command failures must not inherit normal command streaming frames.
+---

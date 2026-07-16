@@ -2,7 +2,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import type { RendererMode } from "../bug-report.ts";
 import { formatBugReport } from "../bug-report.ts";
-import { validateCommandFlagValues } from "../flag-value-validation.ts";
+import { validateCommandFlagValues, validateUnknownCliFlags } from "../flag-value-validation.ts";
 import type { ResultFormat } from "../format-flags.ts";
 import { runWithRendererHandling } from "../renderer-boundary.ts";
 import type { RendererIO } from "../renderer/io.ts";
@@ -66,6 +66,27 @@ export const renderPreCommandFailure = async (input: PreCommandFailureInput): Pr
   });
 };
 
+export const preCommandOutputMode = (input: {
+  readonly argv: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+}): { readonly rendererMode: RendererMode; readonly resultFormat: ResultFormat } => {
+  const beforeTerminator = input.argv.slice(
+    0,
+    input.argv.indexOf("--") === -1 ? undefined : input.argv.indexOf("--"),
+  );
+  const machineRequested = beforeTerminator.some((arg, index) => {
+    if (arg === "--json" || arg === "-j" || arg === "--format=json" || arg === "--renderer=json") {
+      return true;
+    }
+    if (arg !== "--format" && arg !== "--renderer") return false;
+    return beforeTerminator[index + 1] === "json";
+  });
+  if (machineRequested || input.env.LANDO_RENDERER === "json") {
+    return { rendererMode: "json", resultFormat: "json" };
+  }
+  return { rendererMode: "plain", resultFormat: "text" };
+};
+
 interface CommandFlagValueValidationInput {
   readonly commandId: string;
   readonly argv: ReadonlyArray<string>;
@@ -79,7 +100,9 @@ interface CommandFlagValueValidationInput {
 export const renderCommandFlagValueValidation = async (
   input: CommandFlagValueValidationInput,
 ): Promise<boolean> => {
-  const error = validateCommandFlagValues(input.commandId, input.argv, input.definitions);
+  const error =
+    validateUnknownCliFlags(input.argv, input.definitions) ??
+    validateCommandFlagValues(input.commandId, input.argv, input.definitions);
   if (error === undefined) return false;
   await renderPreCommandFailure({
     commandId: input.commandId,
