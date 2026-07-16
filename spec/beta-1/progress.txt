@@ -327,3 +327,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - On this host, prove Windows API reachability by (1) helpers present, (2) pipe + win-sshproxy live, (3) optional manual guest `podman system service` then pipe/`podman info`; do not treat guest user-session cgroup collisions as US-461 product regressions.
   - Re-running setup while trust-manage is active restarts the machine and drops a hand-started guest socket; expect multi-minute readiness failure after that restart when the guest session is broken.
 ---
+
+## 2026-07-15 22:13 CDT - Babysit
+- PR: #592 https://github.com/AaronFeledy/core4/pull/592
+- CI outcome: pass
+- Review feedback: fixed (surfaced Podman machine failure output; classified WSL guest-import and WSL2 kernel-update create failures as virtualization prerequisites for CI skip)
+- Merge: merged (squash)
+---
