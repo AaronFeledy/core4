@@ -879,4 +879,62 @@ describe("ensureRuntime", () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+
+  test("win32 readiness requires both API ping and info after machine start", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const calls: string[] = [];
+      const apiCalls: string[] = [];
+      const p = paths(dir);
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: {
+            ping: Effect.sync(() => apiCalls.push("ping")),
+            info: Effect.sync(() => {
+              apiCalls.push("info");
+              return {};
+            }),
+          },
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("missing", calls),
+          ...p,
+        }),
+      );
+
+      expect(calls).toEqual(["inspect", "create", "start"]);
+      expect(apiCalls).toEqual(["ping", "info"]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("win32 readiness failure names the deterministic Podman pipe", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "win32",
+          podmanApi: unreachableApi(),
+          serviceRunner: throwingLaunchRunner(),
+          machineRunner: machineRunner("running", []),
+          readinessPolicy: fastReadinessPolicy,
+          ...paths(dir),
+          socketPath: "\\\\.\\pipe\\podman-lando",
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value.message).toContain("\\\\.\\pipe\\podman-lando");
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
 });

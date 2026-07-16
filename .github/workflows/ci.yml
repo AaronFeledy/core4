@@ -1049,6 +1049,39 @@ jobs:
         run: |
           echo "::notice title=ci-timing::build-windows-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
 
+  runtime-bundle-win32-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Mark job start
+        run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: .bun-version
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Assemble current-commit Windows runtime bundle
+        run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
+
+      - name: Upload current-commit Windows runtime bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: runtime-bundle-win32-x64-current
+          path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Report job timing
+        if: always()
+        run: |
+          echo "::notice title=ci-timing::runtime-bundle-win32-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+
   perf-budget-linux-x64:
     needs: [build-linux-x64]
     runs-on: ubuntu-24.04
@@ -1526,7 +1559,7 @@ jobs:
           echo "::notice title=ci-timing::provider-integration-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
   provider-integration-windows-x64:
-    needs: [build-windows-x64]
+    needs: [build-windows-x64, runtime-bundle-win32-x64]
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
@@ -1551,6 +1584,35 @@ jobs:
 
       - name: Restore binary executable bit
         run: chmod +x dist/lando-windows-x64.exe
+
+      - name: Download current-commit Windows runtime bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: runtime-bundle-win32-x64-current
+          path: dist/cache/runtime-bundle
+
+      - name: Build local Windows runtime manifest
+        run: |
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          bun run scripts/build-runtime-bundle.ts --local --platform win32-x64 --runtime-version "$RUNTIME_VERSION"
+
+      - name: Verify compiled Windows managed setup and API reachability
+        env:
+          LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
+          LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
+          LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-config
+          LANDO_RUNTIME_BUNDLE_MANIFEST: ${{ github.workspace }}/dist/cache/runtime-bundle/runtime-bundle-versions.json
+        run: |
+          bun run scripts/windows-managed-setup-acceptance.ts --binary dist/lando-windows-x64.exe --report provider-diagnostics/windows-managed-setup.json
+
+      - name: Teardown Windows managed machine
+        if: always()
+        env:
+          LANDO_USER_DATA_ROOT: ${{ runner.temp }}/lando-data
+          LANDO_USER_CACHE_ROOT: ${{ runner.temp }}/lando-cache
+          LANDO_USER_CONF_ROOT: ${{ runner.temp }}/lando-config
+        run: |
+          powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\bin\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\config\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT; exit 0'
 
       - name: Run provider contract tests
         run: |

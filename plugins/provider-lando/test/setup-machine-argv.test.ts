@@ -6,7 +6,12 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { HostPlatform } from "@lando/sdk/schema";
 
-import { type MachineSpawn, makeSystemPodmanMachineRunner } from "../src/setup.ts";
+import { classifyWindowsManagedSetupResult } from "../../../scripts/windows-managed-setup-acceptance.ts";
+import {
+  type MachineSpawn,
+  WindowsMachinePrerequisiteError,
+  makeSystemPodmanMachineRunner,
+} from "../src/setup.ts";
 
 interface CapturingSpawn {
   readonly spawn: MachineSpawn;
@@ -120,5 +125,161 @@ describe("provider-lando system machine runner argv", () => {
 
     expect(calls).toEqual([["podman", "machine", "init", "--import-native-ca", "lando"]]);
     expect(calls.some((argv) => argv.includes("hyperv-prep"))).toBe(false);
+  });
+
+  test("win32 create recognizes Podman's WSL unsupported signal as a virtualization prerequisite", async () => {
+    const failingSpawn: MachineSpawn = () => ({
+      stdout: streamOf(""),
+      stderr: streamOf("Error: wsl features not supported or configured correctly"),
+      exited: Promise.resolve(1),
+    });
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
+        expect(
+          classifyWindowsManagedSetupResult({
+            exitCode: 1,
+            stdout: JSON.stringify({
+              apiVersion: "v4",
+              command: "meta:setup",
+              ok: false,
+              error: { _tag: failure.value._tag, message: failure.value.message },
+            }),
+            stderr: "",
+          }),
+        ).toMatchObject({ outcome: "skipped", exitCode: 0 });
+      }
+    }
+  });
+
+  for (const [name, stdout, stderr] of [
+    [
+      "HCS service signal from stdout",
+      "Wsl/Service/RegisterDistro/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE",
+      "",
+    ],
+    [
+      "null-interleaved WSL kernel update signal",
+      "",
+      Array.from("WSL 2 requires an update to its kernel component.").join("\0"),
+    ],
+    ["WSL guest OS import failure", "", "Error: the WSL import of guest OS failed: exit status 0xffffffff"],
+  ] as const) {
+    test(`win32 create recognizes Podman's ${name} as a virtualization prerequisite`, async () => {
+      const failingSpawn: MachineSpawn = () => ({
+        stdout: streamOf(stdout),
+        stderr: streamOf(stderr),
+        exited: Promise.resolve(1),
+      });
+
+      const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
+          expect(
+            classifyWindowsManagedSetupResult({
+              exitCode: 1,
+              stdout: JSON.stringify({
+                apiVersion: "v4",
+                command: "meta:setup",
+                ok: false,
+                error: { _tag: failure.value._tag, message: failure.value.message },
+              }),
+              stderr: "",
+            }),
+          ).toMatchObject({ outcome: "skipped", exitCode: 0 });
+        }
+      }
+    });
+  }
+
+  test("win32 create preserves unclassified Podman output in the structured failure message", async () => {
+    const failingSpawn: MachineSpawn = () => ({
+      stdout: streamOf("machine initialization failed"),
+      stderr: streamOf("provider returned an unexpected error"),
+      exited: Promise.resolve(1),
+    });
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        expect(failure.value.message).toContain("machine initialization failed");
+        expect(failure.value.message).toContain("provider returned an unexpected error");
+      }
+    }
+  });
+
+  test("win32 start reports a missing API forwarding helper by filename", async () => {
+    const failingSpawn: MachineSpawn = () => ({
+      stdout: streamOf(""),
+      stderr: streamOf(
+        'Error: could not find "win-sshproxy.exe" in one of [helper_binaries_dir] directories',
+      ),
+      exited: Promise.resolve(1),
+    });
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).start);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        const error = failure.value as ProviderUnavailableError;
+        expect(error.message).toContain("win-sshproxy.exe");
+        expect(error.remediation).toContain("lando setup");
+      }
+    }
+  });
+
+  test("win32 helper failures mentioning WSL cannot become prerequisite skips", async () => {
+    const failingSpawn: MachineSpawn = () => ({
+      stdout: streamOf(""),
+      stderr: streamOf("win-sshproxy WSL connection failed"),
+      exited: Promise.resolve(1),
+    });
+
+    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).start);
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+        expect(failure.value).not.toBeInstanceOf(WindowsMachinePrerequisiteError);
+        expect(failure.value.message).toBe(
+          "Podman machine start failed.\nPodman output:\nwin-sshproxy WSL connection failed",
+        );
+        expect(
+          classifyWindowsManagedSetupResult({
+            exitCode: 2,
+            stdout: "",
+            stderr: JSON.stringify({
+              apiVersion: "v4",
+              command: "meta:setup",
+              ok: false,
+              error: { _tag: failure.value._tag, message: failure.value.message },
+            }),
+          }),
+        ).toMatchObject({ outcome: "failed", exitCode: 1 });
+      }
+    }
   });
 });

@@ -38,6 +38,7 @@ const nowUtc = () => DateTime.unsafeMake(new Date().toISOString());
 
 const PROVIDER_ID = "lando";
 const MINIMUM_PODMAN_VERSION = "6.0.0";
+const WINDOWS_MACHINE_HELPERS = ["gvproxy.exe", "win-sshproxy.exe"] as const;
 
 const currentHostPlatform = (): HostPlatform =>
   process.platform === "darwin" ? "darwin" : process.platform === "linux" ? "linux" : "win32";
@@ -265,23 +266,54 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
   }),
 });
 
+const WINDOWS_MACHINE_PREREQUISITE_FAILURE =
+  /(?:hcs\/(?:error_not_supported|hcs_e_service_not_available)|(?:(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)(?:\s+(?:support|features?|prerequisites?))?[\s:=-]+(?:(?:is|are)[\s:=-]+)?(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))|(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))[\s:=-]+(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)))/iu;
+const WINDOWS_MACHINE_CREATE_PREREQUISITE_FAILURE =
+  /(?:wsl\s+import\s+of\s+guest\s+os\s+failed|wsl\s*2\s+requires\s+an?\s+update\s+to\s+its\s+kernel(?:\s+component)?)/iu;
+
 const machineFailure = (
   operation: string,
   cause: unknown,
   platform: HostPlatform,
 ): ProviderUnavailableError => {
-  const output = typeof cause === "object" && cause !== null && "stderr" in cause ? cause.stderr : cause;
+  const output =
+    typeof cause === "object" && cause !== null
+      ? ["stdout" in cause ? cause.stdout : undefined, "stderr" in cause ? cause.stderr : undefined]
+          .filter((value): value is string => typeof value === "string")
+          .join("\n")
+      : cause;
+  const normalizedOutput = typeof output === "string" ? output.replaceAll("\0", "") : output;
+  const diagnostics = typeof normalizedOutput === "string" ? normalizedOutput.trim() : "";
+  const missingHelper =
+    platform === "win32" && typeof normalizedOutput === "string"
+      ? WINDOWS_MACHINE_HELPERS.find(
+          (helper) =>
+            normalizedOutput.toLowerCase().includes(helper) &&
+            /not found|could not find|missing|no such/iu.test(normalizedOutput),
+        )
+      : undefined;
+  if (missingHelper !== undefined) {
+    return new ProviderUnavailableError({
+      providerId: PROVIDER_ID,
+      operation,
+      message: `Podman machine ${operation} failed because required helper ${missingHelper} was not found.`,
+      remediation:
+        "Rerun `lando setup --provider=lando` to reinstall the managed Windows runtime bundle, then retry.",
+      details: { helper: missingHelper },
+    });
+  }
   if (
     platform === "win32" &&
-    typeof output === "string" &&
-    /virtualization|hyper-v|wsl|virtual machine platform|wsl2|wslapi|hypervisor/i.test(output)
+    typeof normalizedOutput === "string" &&
+    (WINDOWS_MACHINE_PREREQUISITE_FAILURE.test(normalizedOutput) ||
+      (operation === "create" && WINDOWS_MACHINE_CREATE_PREREQUISITE_FAILURE.test(normalizedOutput)))
   ) {
     return new WindowsMachinePrerequisiteError(cause);
   }
   if (
     platform === "darwin" &&
-    typeof output === "string" &&
-    /virtualization|vfkit|hypervisor|qemu|helper/i.test(output)
+    typeof normalizedOutput === "string" &&
+    /virtualization|vfkit|hypervisor|qemu|helper/i.test(normalizedOutput)
   ) {
     return new PodmanMachinePrerequisiteError(cause);
   }
@@ -289,7 +321,10 @@ const machineFailure = (
   return new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation,
-    message: `Podman machine ${operation} failed.`,
+    message:
+      diagnostics.length === 0
+        ? `Podman machine ${operation} failed.`
+        : `Podman machine ${operation} failed.\nPodman output:\n${diagnostics}`,
     remediation: "Fix the Podman machine error and rerun `lando setup`.",
     cause,
   });
@@ -433,6 +468,16 @@ const missingBundledMachineToolingError = (
     ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
   });
 
+const missingBundledMachineHelperError = (helper: string): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: `The installed Lando runtime bundle is missing required Windows machine helper ${helper}.`,
+    remediation:
+      "Rerun `lando setup --provider=lando` to reinstall the managed Windows runtime bundle, then retry.",
+    details: { helper },
+  });
+
 // Require bundled Podman on disk before spawn so failures use missingBundledMachineToolingError, not PodmanNotInstalledError.
 const resolveSetupPodmanCommandRunner = (
   platform: HostPlatform,
@@ -463,6 +508,13 @@ const resolveSetupMachineRunner = (
   const podmanBin = managedRuntimePodmanArgv0(runtimeBinDir, platform);
   const toolingExists = (options._machineToolingExists ?? existsSync)(podmanBin);
   if (!toolingExists) return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
+  if (platform === "win32") {
+    const normalizedRuntimeBinDir = runtimeBinDir.replace(/[\\/]+$/u, "");
+    const missingHelper = WINDOWS_MACHINE_HELPERS.find(
+      (helper) => !(options._machineToolingExists ?? existsSync)(`${normalizedRuntimeBinDir}/${helper}`),
+    );
+    if (missingHelper !== undefined) return Effect.fail(missingBundledMachineHelperError(missingHelper));
+  }
 
   const factory = options._machineRunnerFactory ?? makeSystemPodmanMachineRunner;
   return Effect.succeed(factory(podmanBin, MANAGED_MACHINE_NAME, platform));

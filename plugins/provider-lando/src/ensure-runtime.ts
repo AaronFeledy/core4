@@ -179,7 +179,9 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
       id: "provider-lando-runtime-ready",
       policy: deps.readinessPolicy ?? defaultRuntimeReadinessPolicy,
     },
-    deps.podmanApi.ping,
+    deps.platform === "win32"
+      ? deps.podmanApi.ping.pipe(Effect.andThen(deps.podmanApi.info), Effect.asVoid)
+      : deps.podmanApi.ping,
   ).pipe(
     Effect.flatMap((result) =>
       result.outcome === "green"
@@ -190,7 +192,10 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
                 new ProviderUnavailableError({
                   providerId: "lando",
                   operation: "setup",
-                  message: "The Lando runtime service did not become reachable after launch.",
+                  message:
+                    deps.platform === "win32"
+                      ? `The Lando runtime service did not become reachable at ${deps.socketPath} after launch.`
+                      : "The Lando runtime service did not become reachable after launch.",
                   remediation:
                     "Run `lando doctor` to inspect the runtime service, then rerun the command; run `lando setup` if the runtime is not installed.",
                   details: {

@@ -341,18 +341,24 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
     ),
   );
 
-const runtimeEntrypointName = (platform: HostPlatform): string =>
-  platform === "win32" ? "podman.exe" : "podman";
+const runtimeEntrypointNames = (platform: HostPlatform): readonly string[] =>
+  platform === "win32" ? ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"] : ["podman"];
 
 const hasInstalledRuntimeEntrypoint = (
   runtimeBinDir: string,
   platform: HostPlatform,
 ): Effect.Effect<boolean, never> =>
-  Effect.promise(() =>
-    access(stringJoin(runtimeBinDir, runtimeEntrypointName(platform))).then(
-      () => true,
-      () => false,
-    ),
+  Effect.promise(async () =>
+    (
+      await Promise.all(
+        runtimeEntrypointNames(platform).map((name) =>
+          access(stringJoin(runtimeBinDir, name)).then(
+            () => true,
+            () => false,
+          ),
+        ),
+      )
+    ).every(Boolean),
   );
 
 const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtractError =>

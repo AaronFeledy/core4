@@ -208,6 +208,7 @@ export type {
 } from "./capabilities.ts";
 
 export const PLUGIN_NAME = "@lando/provider-lando" as const;
+const WINDOWS_MANAGED_MACHINE_PIPE = "\\\\.\\pipe\\podman-lando";
 
 const makeUnavailable = (operation: string) =>
   new ProviderUnavailableError({
@@ -305,8 +306,17 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
 export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const plans = new Map<string, AppPlan>();
   const providerId = ProviderId.make("lando");
+  const platform = options.platform ?? currentHostPlatform();
+  if (platform === undefined) {
+    return Effect.fail(unsupportedHostPlatformError());
+  }
   const externalSocketPath = options.socketPath;
-  const managedSocketPath = options.providerSocketPath;
+  const managedSocketPath =
+    options.providerSocketPath === undefined
+      ? undefined
+      : platform === "win32"
+        ? WINDOWS_MANAGED_MACHINE_PIPE
+        : options.providerSocketPath;
   const socketPath = externalSocketPath ?? managedSocketPath;
   const podmanApi =
     options.podmanApi ??
@@ -315,10 +325,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const runtimeBinDir = options.runtimeBinDir;
   const shouldManageRuntime = externalSocketPath === undefined && managedSocketPath !== undefined;
   const ensureSocketPath = shouldManageRuntime ? managedSocketPath : undefined;
-  const platform = options.platform ?? currentHostPlatform();
-  if (platform === undefined) {
-    return Effect.fail(unsupportedHostPlatformError());
-  }
   const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
   const podmanBin =
     runtimeBinDir === undefined ? "podman" : managedRuntimePodmanArgv0(runtimeBinDir, platform);

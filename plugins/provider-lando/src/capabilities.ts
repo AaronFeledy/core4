@@ -1,15 +1,14 @@
-import { createConnection } from "node:net";
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
-import {
-  type SocketHttpConnection,
-  connectSocket,
-  makeSocketHttpClient,
-} from "@lando/container-runtime/transport";
-import { Effect, Schema, Stream } from "effect";
+import { Effect, Schema, type Stream } from "effect";
 
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
 
+import {
+  isNamedPipeEndpoint,
+  makeNamedPipePodmanApiClient,
+  streamPodmanApiRequest,
+} from "./named-pipe-api.ts";
 import { redactDetails } from "./redact.ts";
 
 const PROVIDER_ID = "lando";
@@ -91,37 +90,6 @@ export interface PodmanApiClient {
   readonly stream?: (
     request: PodmanHttpRequest,
   ) => Stream.Stream<Uint8Array, ProviderUnavailableError | ProviderInternalError>;
-}
-
-const podmanApiFailure = (
-  request: PodmanHttpRequest,
-  cause: unknown,
-): ProviderUnavailableError | ProviderInternalError =>
-  cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
-    ? cause
-    : new ProviderUnavailableError({
-        providerId: PROVIDER_ID,
-        operation: "podman-api",
-        message: "Failed to call the Podman API.",
-        details: redactDetails({ method: request.method, path: request.path }),
-        remediation: TRANSPORT_REMEDIATION,
-        cause: redactDetails(cause),
-      });
-
-async function* streamPodmanRequest(
-  socketPath: string,
-  request: PodmanHttpRequest,
-): AsyncGenerator<Uint8Array> {
-  const client = makeSocketHttpClient({
-    apiPrefix: "/v6.0.0",
-    operation: "podman-api",
-    connect: async () => {
-      const socket = createConnection({ path: socketPath });
-      await connectSocket(socket);
-      return socket as unknown as SocketHttpConnection;
-    },
-  });
-  yield* client.stream(request);
 }
 
 export const makePodmanInfoRequest = (socketPath: string): PodmanApiRequest => ({
@@ -256,11 +224,8 @@ const runPodmanApiRequest = (request: PodmanApiRequest, failure: PodmanApiReques
       }),
   });
 
-export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
-  stream: (request) =>
-    Stream.fromAsyncIterable(streamPodmanRequest(socketPath, request), (cause) =>
-      podmanApiFailure(request, cause),
-    ),
+const makeCurlPodmanApiClient = (socketPath: string): PodmanApiClient => ({
+  stream: (request) => streamPodmanApiRequest(socketPath, request),
   request: (request) =>
     Effect.gen(function* () {
       const args = [
@@ -361,7 +326,7 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
       );
     }
     return yield* Effect.try({
-      try: () => JSON.parse(stdout) as unknown,
+      try: (): unknown => JSON.parse(stdout),
       catch: (cause) =>
         new ProviderCapabilityError({
           providerId: PROVIDER_ID,
@@ -394,6 +359,11 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient => ({
     }
   }),
 });
+
+export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
+  isNamedPipeEndpoint(socketPath)
+    ? makeNamedPipePodmanApiClient(socketPath)
+    : makeCurlPodmanApiClient(socketPath);
 
 export const introspectProviderCapabilities = (
   api: PodmanApiClient,

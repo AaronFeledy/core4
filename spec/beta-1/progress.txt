@@ -13,6 +13,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ## Codebase Patterns
 
+- Windows managed Podman machines expose the API at `\\.\pipe\podman-lando`; the data-root `runtime/run/podman.sock` endpoint is the native managed-service path, not the win32 machine endpoint.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
 - MCP outbound queue caps do not bound pre-queue JSON serialization; enforce the same byte budget during traversal before retaining the completed JSON string.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
@@ -283,4 +284,46 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass
 - Review feedback: fixed (Guide-Coverage-Skip on PR body for guide-drift; merged origin/main to clear conflict)
 - Merge: merged (squash)
+---
+
+## 2026-07-15 16:36 CDT - US-461
+- The Windows runtime source set advances to 0.1.4 with verified `gvproxy.exe` and `win-sshproxy.exe` pins. Setup preflights both helpers, preserves the missing filename in a tagged remediated failure, and routes managed API traffic through Podman's `\\.\pipe\podman-lando` endpoint; Windows readiness now requires both ping and info while Linux remains ping-only.
+- Generated CI assembles the current-commit Windows bundle on Linux, runs the compiled binary's non-interactive setup/API gate on `windows-2022`, records only the exact structured virtualization-prerequisite failure as a skip, and always removes the managed machine and isolated roots. The locally assembled archive contained all three Windows binaries; Windows interop reached helper launch and machine API forwarding, then recorded an environment-only block because this shared WSL host's cross-distro UID-1000 cgroup left `user@1000.service` at `Device or resource busy`; test resources were removed.
+- Verification: typecheck, lint, runtime-bundle manifest, workflow/codegen, and focused provider/runtime/bundle tests passed; high-rigor review approved after the structured-skip classifier was made fail-closed.
+- **Learnings for future iterations:**
+  - Do not infer the Windows machine endpoint from Lando's data root; use the deterministic Podman machine pipe and verify both `_ping` and `info`.
+  - A CI environment skip must parse the sole terminal machine envelope and exact prerequisite failure; raw substring matching can hide an unrelated setup regression.
+---
+
+## 2026-07-15 17:34 CDT - US-461 Review
+- Fixed the Windows API blocker: managed named-pipe endpoints now use direct HTTP-over-IPC for ping, info, ordinary requests, and streams instead of passing `\\.\pipe\podman-lando` to `curl --unix-socket`. Readiness failures name the deterministic pipe, and transport-level tests exercise the real socket protocol rather than an injected factory.
+- Same-version Windows installs now re-extract when either machine helper is missing, and the Windows CI acceptance gate rejects plaintext, malformed, additional-error, and generic helper-failure output instead of converting it into a virtualization skip.
+- Review notes (deferred/rejected): US-461 returns to `passes: false` because `runtime-v0.1.4` is not published and the embedded production manifest still installs helper-less `0.1.3`; Build must publish and repin the immutable artifact before closure. Requiring `CONTAINERS_CONF` on machine commands was rejected: helpers are colocated with bundled Podman and Windows interop already reached helper launch; the explicit environment requirement applies to the managed Linux service launcher.
+- Verification: typecheck, lint, libpod-prefix boundary, and focused named-pipe API, capabilities, runtime path/readiness/extraction, machine argv, Windows acceptance, source-build, and Windows bundle tests passed.
+- **Learnings for future iterations:**
+  - A correct Windows pipe pathname is insufficient unless every API operation uses named-pipe-capable transport; factory-path assertions cannot prove connectivity.
+  - An installed-version marker is valid only when every required platform helper still exists.
+---
+
+## 2026-07-15 18:02 CDT - US-461
+- Published immutable runtime bundle 0.1.4 from the reviewed source set and repinned the production manifest. The Windows archive now installs Podman with both machine API helpers, while unchanged Linux and macOS assets retain their prior verified digests.
+- Verification: typecheck, lint, libpod-prefix and live runtime-manifest gates passed; focused provider, runtime, workflow, and Windows acceptance spot checks passed; a fresh release download passed archive integrity and contained `podman.exe`, `gvproxy.exe`, and `win-sshproxy.exe`.
+- **Learnings for future iterations:**
+  - Runtime release provenance is byte-exact: the tag's committed source manifest, including its trailing newline, must hash identically to the desired source file before publication.
+---
+
+## 2026-07-15 18:31 CDT - US-461 Review
+- Confirmed the published 0.1.4 manifest and Windows helper archive, direct named-pipe ping/info/request/stream transport, missing-helper re-extraction, and fail-closed Windows acceptance classifier; no in-scope product fix was required.
+- Review notes (deferred/rejected): An Actions run for local `HEAD` was deferred to Push/Babysit because Review intentionally precedes remote publication; the generated `windows-2022` gate is present and fails closed. Named-pipe server process/identity attestation was rejected as same-user threat-model hardening beyond the existing Docker/Podman IPC contract, not a setup reachability blocker. Shared socket-transport request/response buffering and ordinary-request cancellation limits were rejected from US-461 as pre-existing cross-provider data-plane hardening rather than Windows first-run setup behavior.
+- Verification: typecheck, lint, runtime-bundle manifest, and focused named-pipe, extraction, readiness, workflow, bundle, and Windows acceptance tests passed; the published Windows archive checksum and helper contents matched the committed pins; Cursor Bugbot found no bugs.
+---
+
+## 2026-07-15 19:30 CDT - US-461 Verify
+- Compiled `core/dist/lando` and ran non-interactive `lando setup --provider=lando` in `lando4-dev`: provider setup succeeded with managed runtime API reachable (`_ping`/`info`, Podman 6.0.1). Adjacent smoke: `--version`, `config --format=json`.
+- Windows interop (cross-compiled `bun-windows-x64` without bytecode): runtime 0.1.4 installed `podman.exe`/`gvproxy.exe`/`win-sshproxy.exe`; machine `lando` created with `ImportNativeCA:true`; `win-sshproxy` and `\\.\pipe\podman-lando` came up; failure remained a tagged `ProviderUnavailableError` naming the pipe (no false success).
+- Full Windows setup→API green path is still blocked on this multi-distro host: guest lacks an auto-started user Podman socket because shared UID-1000 has no usable systemd user session (`user@1000.service` collision). Manually starting `podman system service` on `/run/user/1000/podman/podman.sock` made Windows `podman info` and direct named-pipe HTTP `_ping` succeed — product helper+transport path is sound; environment cannot host a clean first-run green path here. CI `windows-2022` acceptance gate remains the fail-closed green/skip proof.
+- Scenario artifacts torn down (Linux isolate root, Windows machine rm, temp verify tree).
+- **Learnings for future iterations:**
+  - On this host, prove Windows API reachability by (1) helpers present, (2) pipe + win-sshproxy live, (3) optional manual guest `podman system service` then pipe/`podman info`; do not treat guest user-session cgroup collisions as US-461 product regressions.
+  - Re-running setup while trust-manage is active restarts the machine and drops a hand-started guest socket; expect multi-minute readiness failure after that restart when the guest session is broken.
 ---

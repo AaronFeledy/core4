@@ -1,7 +1,7 @@
 {
   "_comment": "Pinned upstream artifacts assembled into per-platform runtime bundles by scripts/assemble-runtime-bundle.ts. Every sha256 is the authoritative upstream digest. Linux Podman, Netavark, Aardvark DNS, and passt/pasta are source-built natively during assembly. newuidmap/newgidmap are host-provided via uidmap because packaging non-setuid copies would be unsafe and unusable.",
   "schemaVersion": 1,
-  "runtimeVersion": "0.1.3",
+  "runtimeVersion": "0.1.4",
   "hostProvidedHelpers": ["newuidmap", "newgidmap"],
   "bundles": {
     "linux-x64": {
@@ -264,6 +264,15 @@
           "sha256": "a3b6915d8a976f5ed2bbba727af52c90c55b9d5e85f680b584c8a1c5d6b546bc",
           "archive": "none",
           "installName": "bin/gvproxy.exe",
+          "mode": 493
+        },
+        {
+          "name": "win-sshproxy",
+          "version": "0.8.9",
+          "url": "https://github.com/containers/gvisor-tap-vsock/releases/download/v0.8.9/win-sshproxy.exe",
+          "sha256": "42cb9051ebdcaa2b607bda724c884e31f613253fe4b095c5528be1dfd48e4311",
+          "archive": "none",
+          "installName": "bin/win-sshproxy.exe",
           "mode": 493
         }
       ]
