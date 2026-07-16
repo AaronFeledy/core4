@@ -506,15 +506,23 @@ describe("InteractionServiceLive — interruption", () => {
     expect(failureTag(exit)).toBe("InteractionCancelledError");
   });
 
-  test("Effect.interrupt aborts the pending rich-driver read", async () => {
+  test("Effect.interrupt aborts and awaits pending rich-driver cleanup", async () => {
     const fakeTty = neverStdin();
     Object.setPrototypeOf(fakeTty, ReadStream.prototype);
     Object.assign(fakeTty, { isTTY: true });
     let receivedSignal: AbortSignal | undefined;
     let aborts = 0;
     let markReadStarted: (() => void) | undefined;
+    let markCleanupStarted: (() => void) | undefined;
+    let releaseCleanup: (() => void) | undefined;
     const readStarted = new Promise<void>((resolve) => {
       markReadStarted = resolve;
+    });
+    const cleanupStarted = new Promise<void>((resolve) => {
+      markCleanupStarted = resolve;
+    });
+    const cleanupReleased = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
     });
     const service = makeInteractionService({
       stdin: fakeTty,
@@ -528,9 +536,12 @@ describe("InteractionServiceLive — interruption", () => {
               "abort",
               () => {
                 aborts += 1;
-                const error = new Error("cancelled");
-                error.name = "PromptCancelledError";
-                reject(error);
+                markCleanupStarted?.();
+                cleanupReleased.then(() => {
+                  const error = new Error("cancelled after cleanup");
+                  error.name = "PromptCancelledError";
+                  reject(error);
+                });
               },
               { once: true },
             );
@@ -539,7 +550,8 @@ describe("InteractionServiceLive — interruption", () => {
       }),
     });
 
-    const exit = await Effect.runPromise(
+    let interruptSettled = false;
+    const interrupted = Effect.runPromise(
       Effect.gen(function* () {
         const fiber = yield* Effect.fork(
           Effect.scoped(
@@ -551,7 +563,16 @@ describe("InteractionServiceLive — interruption", () => {
         yield* Effect.promise(() => readStarted);
         return yield* Fiber.interrupt(fiber);
       }),
-    );
+    ).then((exit) => {
+      interruptSettled = true;
+      return exit;
+    });
+    await cleanupStarted;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(interruptSettled).toBe(false);
+    releaseCleanup?.();
+    const exit = await interrupted;
 
     expect(failureTag(exit)).toBe("InteractionCancelledError");
     expect(receivedSignal?.aborted).toBe(true);

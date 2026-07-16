@@ -271,7 +271,8 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
                   },
                 };
           let settled = false;
-          collectPrompts({ ...activeCollect, io }).then(
+          const collectPromise = collectPrompts({ ...activeCollect, io });
+          collectPromise.then(
             (answers) => {
               settled = true;
               resume(Effect.succeed(answers));
@@ -283,7 +284,16 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
           );
           return Effect.sync(() => {
             if (!settled) restoreTty(stdin, rawModeBefore);
-          });
+          }).pipe(
+            Effect.zipRight(
+              Effect.promise(() =>
+                collectPromise.then(
+                  () => undefined,
+                  () => undefined,
+                ),
+              ),
+            ),
+          );
         }),
       ).pipe(
         Effect.catchAllCause((cause) =>

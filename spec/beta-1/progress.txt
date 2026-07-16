@@ -489,3 +489,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Effect interruption must cross into Promise-owned terminal resources via `AbortSignal`, then reuse ordinary cleanup rather than abandoning the Promise.
   - Performance review must compare the story branch with a frozen same-environment baseline before attributing an existing command-class budget miss to a newly lazy dependency.
 ---
+
+## 2026-07-16 12:17 CDT - US-455 Review Restart
+- Closed the remaining prompt-lifecycle blocker: Effect interruption now waits for the rich driver's listener and renderer cleanup before the fiber returns `InteractionCancelledError`; the exact relocated compiled/PTTY and source plain/JSON acceptance pair passed three consecutive sandbox reruns.
+- Review notes (deferred/rejected): The missing reference-runner `<50ms` evidence was rejected as a local code blocker because this WSL environment also fails the frozen `origin/main` baseline; the strict native-Linux CI gate remains enabled and Babysit must treat a remote failure as blocking. `Guide-Coverage-Skip: Internal AbortSignal cleanup plumbing changes no recipe syntax, authoring contract, or user workflow.`
+- Verification: typecheck, lint, generated OpenTUI native-stub drift, focused interaction/import/build/prompt-driver tests, and repeated relocated compiled/source acceptance passed; base-aware guide drift identified only the documented recipe-guide skip.
+---
