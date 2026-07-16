@@ -1,7 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Effect, Either, Schema } from "effect";
 
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
@@ -21,6 +21,35 @@ const stateError = (message: string, path: string, cause?: unknown): HostProxyTr
     socketPath: path,
     remediation: "Inspect or remove the host-proxy worker state directory, then retry.",
     ...(cause === undefined ? {} : { cause }),
+  });
+
+export type HostProxyWorkerRecordState =
+  | { readonly _tag: "absent" }
+  | { readonly _tag: "current"; readonly record: HostProxyWorkerRecord }
+  | { readonly _tag: "legacy"; readonly record: LegacyHostProxyWorkerRecord }
+  | { readonly _tag: "malformed" };
+
+const CURRENT_WORKER_RECORD_KEYS = ["appRoot", "providerId", "containerUrl", "probeServices"] as const;
+
+export const readWorkerRecordStateAt = (path: string): Effect.Effect<HostProxyWorkerRecordState> =>
+  Effect.promise(async () => {
+    try {
+      const file = Bun.file(path);
+      if (!(await file.exists())) return { _tag: "absent" };
+      const value = await file.json();
+      const current = Schema.decodeUnknownEither(HostProxyWorkerRecord)(value);
+      if (Either.isRight(current)) return { _tag: "current", record: current.right };
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        CURRENT_WORKER_RECORD_KEYS.some((key) => Object.hasOwn(value, key))
+      )
+        return { _tag: "malformed" };
+      const legacy = Schema.decodeUnknownEither(LegacyHostProxyWorkerRecord)(value);
+      return Either.isRight(legacy) ? { _tag: "legacy", record: legacy.right } : { _tag: "malformed" };
+    } catch {
+      return { _tag: "malformed" };
+    }
   });
 
 export const readWorkerRecord = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides) =>

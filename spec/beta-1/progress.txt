@@ -22,6 +22,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Landofile authoring tools must enumerate `presentLandofileLayers` and route each form through the existing YAML/TypeScript loader seam; include refresh must gather authored layers without invoking pin-mode include resolution.
 - Landofile lint validates each authored layer before validating the merged document; merge precedence must not hide a layer shape that runtime loading rejects.
 - Podman imports host certificates for `machine set --import-native-ca` during machine startup; an already-running Lando-owned machine must restart after enabling the setting for trust sync to complete.
+- Host-proxy transport diagnostics discover ownership-valid worker records under `makeLandoPaths().hostProxyRunRoot` and reuse the authenticated `probeWorker` control path; absent worker state is an intentional no-op, not a warning.
 
 ## Durable learnings
 
@@ -333,4 +334,51 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass
 - Review feedback: fixed (surfaced Podman machine failure output; classified WSL guest-import and WSL2 kernel-update create failures as virtualization prerequisites for CI skip)
 - Merge: merged (squash)
+---
+
+## 2026-07-15 22:30 CDT - US-451
+- Doctor now discovers persisted, ownership-valid host-proxy workers and probes their authenticated production control endpoints. Live Unix sockets and Windows loopback/gateway bridges report structured informational findings; unreachable bridges report per-app transport context with `lando restart` remediation, while absent worker state stays silent.
+- Explicit host DNS proxy `mode=none` / `mechanism=skipped` is now an informational no-op instead of a false warning. Text and machine output continue through the existing doctor renderer/redaction seams, and the doctor guide records both behaviors.
+- Verification: typecheck, lint, renderer/redaction/machine-output boundaries, focused doctor and host-proxy tests, guide lint/coverage, and the focused executable guide passed; isolated live, dead, and absent CLI scenarios passed in `lando4-dev` with teardown confirmed.
+- **Learnings for future iterations:**
+  - Reuse detached-worker ownership records and the authenticated identify probe for diagnostics; a second ad hoc socket/DNS protocol would drift from the transport users actually run.
+  - A configured no-op is healthy state. Warn only when owned transport state exists and its authenticated endpoint or declared container gateway is unavailable.
+---
+
+## 2026-07-15 23:22 CDT - US-451 Review
+- Closed the production-transport gaps found by review: Unix checks now require a real mode-0600 socket, TCP checks execute a bounded `app:open --print` round-trip from the persisted eligible service through the exact provider gateway alias, and generated allowlist drift produces its own remediated finding.
+- Persisted only the container endpoint and probe-service evidence needed by doctor, rejected mismatched gateway aliases before provider execution, and redacted record-derived context before text, YAML, JSON, or NDJSON rendering.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs; review-work QA/security passed, while every goal/code/context blocker was confirmed and fixed. Broader renderer refactoring, a synthetic probe container, and new public provider or SDK surface were rejected as unnecessary for this story.
+- Verification: typecheck and lint passed; 58 focused doctor/worker tests, probe/redaction/renderer/machine-output boundaries, guide lint/coverage/public transcripts, and the focused 10-scenario executable guide in `lando4-dev` passed. Guide drift was unavailable outside pull-request context.
+- **Learnings for future iterations:**
+  - A host-side loopback probe cannot prove a container DNS alias; persist the production container endpoint and exercise it from an already-eligible service without creating diagnostic containers.
+  - Generated runtime allowlists need an independent literal-metadata comparison, not only source-level codegen tests.
+---
+
+## 2026-07-15 23:31 CDT - US-451 Review Follow-up
+- Post-commit Bugbot found and review confirmed two transport false negatives: doctor now retains all eligible probe services and accepts the first successful in-container round-trip, while persisted legacy Unix workers use their existing ownership path and authenticated control probe instead of being silently ignored.
+- Verification: typecheck, lint, probe/redaction boundaries, and 28 focused host-proxy doctor/worker tests passed; changed-file diagnostics are clean.
+- **Learnings for future iterations:**
+  - App-level transport health must not depend on one arbitrarily ordered service when the feature is present in several services; probe the bounded persisted candidate set until one succeeds.
+  - A legacy record type used by ownership cleanup is persisted state, not speculative compatibility; diagnostics must either handle it safely or report it explicitly.
+---
+
+## 2026-07-16 00:19 CDT - US-451 Review Repairs
+- Closed the confirmed no-false-alarm and diagnostic gaps: worker state now persists provider ownership and classifies absent/current/legacy/malformed records; malformed state is a redacted structured warning while true absence stays silent; provider-mismatched and pre-upgrade TCP records are informational and never execute through an unproven provider; control and container probe failures are distinct.
+- A schema-valid `app:open` success or error envelope now proves transport reachability regardless of process exit code. The actual host-proxy shim already returns the machine envelope for `open --print`, so adding `--format=json` was rejected as unnecessary.
+- Aggregate diagnosis is deterministic and bounded to 32 sorted workers, 8 sorted probe services, and a 15-second overall budget; cap or budget exhaustion does not manufacture a warning. Legacy Unix probing remains unchanged.
+- Review notes (deferred/rejected): broader generic host-proxy dispatch beyond the generated `app:open` path remains deferred post-4.0; synthetic diagnostic containers, new SDK/provider contracts, renderer refactoring, and compatibility paths beyond persisted worker artifacts remain rejected as out of scope. `spec/beta-1/prd.json` was not changed because US-451 status did not change.
+- Verification: focused host-proxy doctor/worker plus doctor subsystem/report/NDJSON suites, typecheck, lint, renderer/redaction/probe/state-store/machine-output boundaries, focused executable guide, guide lint/coverage/public-transcript checks, base-aware guide drift, and changed-file LSP diagnostics passed.
+- **Learnings for future iterations:**
+  - Provider selection is not worker ownership; persisted workers must carry the provider that planned them before doctor may execute an in-container probe.
+  - Diagnostic bounds are uncertainty boundaries. Exhausting a cap or budget means “not probed,” never evidence that the transport is broken.
+---
+
+## 2026-07-16 01:20 CDT - US-451 Review Finalization
+- Closed the remaining review blockers: current-shaped invalid worker records can no longer downgrade to legacy state; diagnostic filesystem work is behind a core-private service; root discovery and worker probes share a deterministic Effect-clock budget; and stopped/unavailable services stay inconclusive while exit-127 transport evidence is retained until every bounded candidate is tried.
+- Review notes (deferred/rejected): Bugbot's cap-exhaustion warning was rejected because app-level transport health is proven by any eligible service; when persisted candidates remain unvisited, an earlier service failure cannot justify restart remediation and the bounded result must remain informational. Security, goal/constraint, and code-quality review lanes passed after repair.
+- Verification: typecheck, lint, base-aware guide drift, focused executable guide, renderer/redaction/probe/state-store/machine-output boundaries, TypeScript no-excuse audit, and 83 focused doctor/worker tests with 346 assertions passed; changed-file diagnostics are clean.
+- **Learnings for future iterations:**
+  - Persisted schema fallback must discriminate artifact generations before decoding; permissive excess-property handling can otherwise reinterpret a malformed current record as valid legacy state.
+  - App-level diagnostics should retain per-service failures while candidates remain, but cap exhaustion is uncertainty rather than proof that every eligible route is broken.
 ---

@@ -16,12 +16,27 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers are fallback stubs, so each not-ready subsystem reports a warn with a manual remediation; the live layers ship with the global app and @lando/ca-mkcert">
+  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers expose degraded remediation without treating an explicitly disabled host-proxy as broken; the live layers ship with the global app and @lando/ca-mkcert">
     <Step name="subsystem-remediation">
       <Variable name="proxyRemediation" value="Run `lando setup` and start the global app to enable Traefik routing." display="proxy subsystem remediation when the HTTPS reverse proxy is not available" />
       <Variable name="certsRemediation" value="Run `lando setup` to install and trust the dev CA." display="certs subsystem remediation when the certificate authority is not installed" />
-      <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="host-proxy structured status context when DNS resolution is inactive" />
-      <Variable name="solutionKind" value="manual" display="Subsystem remediations are manual; the suggested command is `lando setup`" />
+      <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="an intentionally disabled host-proxy is an informational pass with structured status context" />
+      <Variable name="solutionKind" value="manual" display="Degraded subsystem remediations are manual; the suggested command is `lando setup`" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="doctor-host-proxy-transport" render={false} reason="Host-proxy reachability uses persisted worker ownership plus the authenticated production control endpoint; focused doctor tests exercise Unix-socket and provider-exec TCP bridge outcomes without launching new containers">
+    <Step name="host-proxy-transport">
+      <Variable name="checkName" value="host-proxy-transport" display="One informational or warning check per persisted app host-proxy worker" />
+      <Variable name="transports" value="unix-socket | tcp-host-gateway" display="Unix requires the authenticated endpoint to be a socket with mode 0600; current TCP records run lando open --print in a sorted persisted eligible service against the persisted container URL, and any schema-valid app:open result or error envelope proves transport reachability" />
+      <Variable name="workerState" value="absent | current | legacy | malformed | unreadable" display="A missing worker root or worker.json stays silent; an unreadable worker root or malformed worker.json emits a redacted host-proxy-state warning; legacy Unix behavior is preserved" />
+      <Variable name="ownership" value="persisted providerId" display="A worker owned by another provider is never executed through the selected provider and is reported as informational without remediation" />
+      <Variable name="preUpgradeTcp" value="not-probed" display="Current or legacy TCP records missing provider/container/probe metadata are persisted pre-upgrade artifacts and remain informational without restart remediation" />
+      <Variable name="failureLabels" value="control-probe-failed | container-probe-failed" display="Authenticated worker-control failures are distinct from failed in-container app:open probes" />
+      <Variable name="bounds" value="32 sorted workers, 8 sorted probe services, 15 second aggregate budget" display="Caps and aggregate-budget exhaustion stop diagnosis without turning unprobed work into a warning" />
+      <Variable name="allowlist" value="host-proxy-allowlist" display="A separate warning with codegen remediation appears when the generated runLando allowlist differs from hostProxyAllowed metadata in the literal compiled manifest" />
+      <Variable name="noWorker" value="no transport check" display="With a fresh generated allowlist, no persisted host-proxy worker produces no host-proxy diagnostic" />
+      <Variable name="remediation" value="lando restart" display="An unreachable authenticated bridge reports structured restart remediation" />
     </Step>
   </Scenario>
 
