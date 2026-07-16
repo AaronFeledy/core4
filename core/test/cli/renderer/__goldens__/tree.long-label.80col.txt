@@ -4,4 +4,4 @@
 ⟨dim⟩│   using                                                                      │⟨dim-off⟩⟨reset⟩
 ⟨dim⟩│   LANDO_NETWORK_CA_CERTS=/very/long/path/to/corporate/root/authority.pem     │⟨dim-off⟩⟨reset⟩
 ⟨dim⟩│   with NO_PROXY=github.com,registry.npmjs.org,packages.example.internal      │⟨dim-off⟩⟨reset⟩
-⟨dim⟩⟨cyan⟩╰─ telemetry 1 ONLINE · 0 BLOCKED (1.5s) ──────────────────────────────────────╯⟨dim-off⟩⟨reset⟩
+⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ telemetry 1 ONLINE · 0 BLOCKED (1.5s) ⟨dim-off⟩⟨reset⟩⟨cyan⟩──────────────────────────────────────╯⟨reset⟩

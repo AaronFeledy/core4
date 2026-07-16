@@ -222,6 +222,18 @@ const bodyLine = (text: string, width: number): string => {
   return `│ ${text}${" ".repeat(padding)} │`;
 };
 
+const styleBottomFrame = (line: string): string => {
+  let trailingFrameStart = line.length;
+  if (line.endsWith("╯")) {
+    trailingFrameStart -= 1;
+    while (trailingFrameStart > 2 && line[trailingFrameStart - 1] === "─") trailingFrameStart -= 1;
+  }
+  const content = line.slice(2, trailingFrameStart);
+  const trailingFrame = line.slice(trailingFrameStart);
+  const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.cyan}${trailingFrame}${csi.reset}`;
+  return `${csi.cyan}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.cyan}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
+};
+
 const wrapFrameLines = (
   lines: ReadonlyArray<string>,
   terminalColumns: number | undefined,
@@ -557,7 +569,7 @@ export class LandoTreePainter {
     const logical = this.#renderLogicalFrame();
     return logical.map((line) => {
       if (line.startsWith("╭─")) return `${csi.bold}${csi.cyan}${line}${csi.reset}`;
-      if (line.startsWith("╰─")) return `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
+      if (line.startsWith("╰─")) return styleBottomFrame(line);
       if (line.includes(statusChip("BLOCKED"))) return `${csi.red}${line}${csi.reset}`;
       if (line.includes(statusChip("CACHED"))) return `${csi.cyan}${line}${csi.reset}`;
       if (line.includes(statusChip("SKIPPED")))

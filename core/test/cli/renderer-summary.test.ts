@@ -3,6 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
 import { type SummaryDocument, formatSummary } from "../../src/cli/renderer/summary.ts";
 
+const ESC = String.fromCharCode(27);
+const CYAN = `${ESC}[36m`;
+const DIM = `${ESC}[2m`;
+const DIM_RESET = `${ESC}[22m`;
+const RESET = `${ESC}[0m`;
+
 const linesOf = (text: string): ReadonlyArray<string> => text.split("\n");
 
 const sampleDoc: SummaryDocument = {
@@ -41,6 +47,29 @@ describe("formatSummary", () => {
     const out = stripAnsi(formatSummary(sampleDoc, { columns: 80 }));
     expect(out).toContain("[SKIP]");
     expect(out).toContain("[OK]");
+  });
+
+  test("keeps body borders cyan when row content has a tone", () => {
+    // Given a summary row whose content is painted with a status tone.
+    const bodyLines = linesOf(formatSummary(sampleDoc, { columns: 80 })).filter((line) =>
+      stripAnsi(line).includes("[OK]"),
+    );
+
+    // When the row is framed, then both vertical borders retain the frame color.
+    expect(bodyLines).toHaveLength(1);
+    expect(bodyLines[0]?.startsWith(`${CYAN}│${RESET} `)).toBe(true);
+    expect(bodyLines[0]?.endsWith(` ${CYAN}│${RESET}`)).toBe(true);
+  });
+
+  test("keeps the bottom frame cyan when footer text is dimmed", () => {
+    // Given a grouped summary whose bottom frame contains footer text.
+    const lines = linesOf(formatSummary(sampleDoc, { columns: 80 }));
+    const footer = lines[lines.length - 1];
+
+    // When the footer is styled, then its text style is isolated from both frame segments.
+    expect(footer?.startsWith(`${CYAN}╰─${RESET}${DIM}${CYAN} `)).toBe(true);
+    expect(footer).toContain(`${DIM_RESET}${RESET}${CYAN}─`);
+    expect(footer?.endsWith(`╯${RESET}`)).toBe(true);
   });
 
   test("includes section heading, next steps, and footer", () => {

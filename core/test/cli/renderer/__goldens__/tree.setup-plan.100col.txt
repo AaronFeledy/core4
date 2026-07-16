@@ -3,4 +3,4 @@
 ⟨green⟩│ [ONLINE] ✓ Proxy and CA trust ready (42ms)                                                       │⟨reset⟩
 ⟨cyan⟩│ [RUNNING] · Persist setup readiness summary                                                      │⟨reset⟩
 ⟨dim⟩│   readiness.json updated without secrets                                                         │⟨dim-off⟩⟨reset⟩
-⟨dim⟩⟨cyan⟩╰─ telemetry 1/3 RUNNING ──────────────────────────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩
+⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ telemetry 1/3 RUNNING ⟨dim-off⟩⟨reset⟩⟨cyan⟩──────────────────────────────────────────────────────────────────────────╯⟨reset⟩

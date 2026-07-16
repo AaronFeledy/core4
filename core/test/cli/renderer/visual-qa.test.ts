@@ -88,6 +88,18 @@ describe("task-tree visual golden frames", () => {
     expect(captured.tokenized).toContain("⟨green⟩");
     expect(captured.tokenized).toContain("⟨cyan⟩");
   });
+
+  test("keeps the telemetry footer frame cyan around dimmed text", () => {
+    // Given the live setup task tree with a text-bearing telemetry footer.
+    const fixture = TREE_FIXTURES.find((candidate) => candidate.id === "setup-plan");
+    const captured = captureTreeFrame(fixture?.events ?? [], 100);
+    const footer = captured.tokenized.split("\n").find((line) => line.includes("telemetry"));
+
+    // When the footer is styled, then its text style is isolated from both frame segments.
+    expect(footer?.startsWith("⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ ")).toBe(true);
+    expect(footer).toContain("⟨dim-off⟩⟨reset⟩⟨cyan⟩─");
+    expect(footer?.endsWith("╯⟨reset⟩")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

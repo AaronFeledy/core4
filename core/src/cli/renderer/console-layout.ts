@@ -155,18 +155,25 @@ const capLine = (left: string, title: string, right: string, width: number): str
 /** Top frame line: `╭─ TITLE ──────╮`. */
 export const boxTop = (title: string, width: number): string => capLine("╭─", title, "╮", width);
 
-/** Bottom frame line: `╰─ TITLE ──────╯`. */
-export const boxBottom = (title: string, width: number): string => capLine("╰─", title, "╯", width);
+/** Bottom frame line: `╰─ TITLE ──────╯`, with optionally styled content. */
+export const boxBottom = (title: string, width: number, style?: (content: string) => string): string => {
+  const innerBudget = Math.max(1, width - displayWidth("╰─") - displayWidth("╯") - 2);
+  const fitted = truncateToWidth(title, innerBudget);
+  const content = style === undefined ? ` ${fitted} ` : style(` ${fitted} `);
+  const fill = width - displayWidth(`╰─ ${fitted} `) - displayWidth("╯");
+  return `${csi.cyan}╰─${csi.reset}${content}${csi.cyan}${repeat("─", fill)}╯${csi.reset}`;
+};
 
 /** Mid-frame separator: `├─ TITLE ──────┤`. */
 export const boxSeparator = (title: string, width: number): string => capLine("├─", title, "┤", width);
 
-/** Body line: `│ text<padding> │`, truncated and padded to width with side borders. */
-export const boxBody = (text: string, width: number): string => {
+/** Body line: `│ text<padding> │`, with cyan borders and optionally styled content. */
+export const boxBody = (text: string, width: number, style?: (content: string) => string): string => {
   const innerWidth = Math.max(1, width - 4);
   const fitted = truncateToWidth(text, innerWidth);
   const padding = repeat(" ", innerWidth - displayWidth(fitted));
-  return `│ ${fitted}${padding} │`;
+  const content = style === undefined ? fitted : style(fitted);
+  return `${csi.cyan}│${csi.reset} ${content}${padding} ${csi.cyan}│${csi.reset}`;
 };
 
 export type SummaryTone = "ok" | "warn" | "error" | "info" | "pending" | "skipped";

@@ -1,9 +1,9 @@
 ⟨bold⟩⟨cyan⟩╭─ SETUP READINESS [FAIL]  provider · podman ──────────────────────────────────────────────────────╮⟨reset⟩
 ⟨cyan⟩├─ steps ──────────────────────────────────────────────────────────────────────────────────────────┤⟨reset⟩
-⟨green⟩│ [OK] runtime bundle · verified                                                                   │⟨reset⟩
-⟨red⟩│ [FAIL] proxy · failed                                                                            │⟨reset⟩
-⟨dim⟩⟨cyan⟩│   setup failed: connect to [redacted] failed                                                     │⟨dim-off⟩⟨reset⟩
-⟨amber⟩│ [WAIT] shell integration · not run                                                               │⟨reset⟩
+⟨cyan⟩│⟨reset⟩ ⟨green⟩[OK] runtime bundle · verified⟨reset⟩                                                                   ⟨cyan⟩│⟨reset⟩
+⟨cyan⟩│⟨reset⟩ ⟨red⟩[FAIL] proxy · failed⟨reset⟩                                                                            ⟨cyan⟩│⟨reset⟩
+⟨cyan⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  setup failed: connect to [redacted] failed⟨dim-off⟩⟨reset⟩                                                     ⟨cyan⟩│⟨reset⟩
+⟨cyan⟩│⟨reset⟩ ⟨amber⟩[WAIT] shell integration · not run⟨reset⟩                                                               ⟨cyan⟩│⟨reset⟩
 ⟨cyan⟩├─ next steps ─────────────────────────────────────────────────────────────────────────────────────┤⟨reset⟩
-│   • Resolve the proxy trust error, then rerun `lando setup`.                                     │
-⟨dim⟩⟨cyan⟩╰─ 1 of 3 steps ready ─────────────────────────────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩
+⟨cyan⟩│⟨reset⟩   • Resolve the proxy trust error, then rerun `lando setup`.                                     ⟨cyan⟩│⟨reset⟩
+⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ 1 of 3 steps ready ⟨dim-off⟩⟨reset⟩⟨cyan⟩─────────────────────────────────────────────────────────────────────────────╯⟨reset⟩

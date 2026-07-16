@@ -98,8 +98,7 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
   const pushBody = (raw: string, indent: number, style: ((line: string) => string) | undefined): void => {
     const pad = " ".repeat(indent);
     for (const segment of wrapToWidth(raw, Math.max(1, innerWidth - indent))) {
-      const framed = boxBody(`${pad}${segment}`, width);
-      lines.push(style === undefined ? framed : style(framed));
+      lines.push(boxBody(`${pad}${segment}`, width, style));
     }
   };
 
@@ -131,6 +130,6 @@ export const formatSummary = (doc: SummaryDocument, options: FormatSummaryOption
     for (const step of doc.nextSteps) pushBody(`• ${step}`, 2, undefined);
   }
 
-  lines.push(styleBoxBottom(boxBottom(doc.footer ?? "", width)));
+  lines.push(boxBottom(doc.footer ?? "", width, styleBoxBottom));
   return lines.join("\n");
 };
