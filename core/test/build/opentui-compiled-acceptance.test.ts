@@ -104,6 +104,25 @@ const expectNonLoadingDispatches = async (
   }
 };
 
+const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
+  const taskkill = Bun.spawn({
+    cmd: ["taskkill.exe", "/PID", String(pid), "/T", "/F"],
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    taskkill.exited,
+    new Response(taskkill.stdout).text(),
+    new Response(taskkill.stderr).text(),
+  ]);
+  if (exitCode !== 0) {
+    throw new Error(
+      `Failed to terminate Windows PTY process tree ${String(pid)} (exit ${String(exitCode)}): ${stderr || stdout}`,
+    );
+  }
+};
+
 const runPrompt = async (
   command: ReadonlyArray<string>,
   cwd: string,
@@ -137,10 +156,13 @@ const runPrompt = async (
       if (output.includes("╭") || output.includes("(value or index):")) break;
       await Bun.sleep(20);
     }
-    proc.stdin.write("\x03");
-    await proc.stdin.end();
-    const exited = await Promise.race([proc.exited, Bun.sleep(5_000).then(() => undefined)]);
-    if (exited === undefined) proc.kill();
+    try {
+      await terminateWindowsProcessTree(proc.pid);
+    } catch (cause) {
+      proc.kill();
+      await proc.exited;
+      throw cause;
+    }
     await proc.exited;
     output = `${await stdout}${await stderr}`;
   } else {
@@ -236,7 +258,7 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
       expect(degraded).toContain("(value or index):");
       expect(await readProbe(failureTrace)).toEqual([{ phase: "attempt", specifier: "@opentui/core" }]);
     } finally {
-      await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+      await rm(root, { recursive: true, force: true, maxRetries: 30, retryDelay: 200 });
     }
   }, 120_000);
 });
