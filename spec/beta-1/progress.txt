@@ -317,3 +317,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): An Actions run for local `HEAD` was deferred to Push/Babysit because Review intentionally precedes remote publication; the generated `windows-2022` gate is present and fails closed. Named-pipe server process/identity attestation was rejected as same-user threat-model hardening beyond the existing Docker/Podman IPC contract, not a setup reachability blocker. Shared socket-transport request/response buffering and ordinary-request cancellation limits were rejected from US-461 as pre-existing cross-provider data-plane hardening rather than Windows first-run setup behavior.
 - Verification: typecheck, lint, runtime-bundle manifest, and focused named-pipe, extraction, readiness, workflow, bundle, and Windows acceptance tests passed; the published Windows archive checksum and helper contents matched the committed pins; Cursor Bugbot found no bugs.
 ---
+
+## 2026-07-15 19:30 CDT - US-461 Verify
+- Compiled `core/dist/lando` and ran non-interactive `lando setup --provider=lando` in `lando4-dev`: provider setup succeeded with managed runtime API reachable (`_ping`/`info`, Podman 6.0.1). Adjacent smoke: `--version`, `config --format=json`.
+- Windows interop (cross-compiled `bun-windows-x64` without bytecode): runtime 0.1.4 installed `podman.exe`/`gvproxy.exe`/`win-sshproxy.exe`; machine `lando` created with `ImportNativeCA:true`; `win-sshproxy` and `\\.\pipe\podman-lando` came up; failure remained a tagged `ProviderUnavailableError` naming the pipe (no false success).
+- Full Windows setup→API green path is still blocked on this multi-distro host: guest lacks an auto-started user Podman socket because shared UID-1000 has no usable systemd user session (`user@1000.service` collision). Manually starting `podman system service` on `/run/user/1000/podman/podman.sock` made Windows `podman info` and direct named-pipe HTTP `_ping` succeed — product helper+transport path is sound; environment cannot host a clean first-run green path here. CI `windows-2022` acceptance gate remains the fail-closed green/skip proof.
+- Scenario artifacts torn down (Linux isolate root, Windows machine rm, temp verify tree).
+- **Learnings for future iterations:**
+  - On this host, prove Windows API reachability by (1) helpers present, (2) pipe + win-sshproxy live, (3) optional manual guest `podman system service` then pipe/`podman info`; do not treat guest user-session cgroup collisions as US-461 product regressions.
+  - Re-running setup while trust-manage is active restarts the machine and drops a hand-started guest socket; expect multi-minute readiness failure after that restart when the guest session is broken.
+---
