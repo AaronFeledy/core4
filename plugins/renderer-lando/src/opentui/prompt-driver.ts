@@ -84,11 +84,15 @@ export interface OpenTuiPromptDriverDeps {
   stdout?: NodeJS.WriteStream;
 }
 
-const opentuiSpecifier = "@opentui/" + "core";
-
 const loadOpenTuiModule = async (): Promise<OpenTuiModuleLike> => {
-  const mod = (await import(opentuiSpecifier)) as OpenTuiModuleLike;
-  return mod;
+  const mod: unknown = await import("@opentui/core");
+  return mod as OpenTuiModuleLike;
+};
+
+const makeUnavailableError = (cause?: unknown): Error => {
+  const error = new Error("OpenTUI prompt driver is unavailable for this process.", { cause });
+  error.name = "OpenTuiPromptUnavailableError";
+  return error;
 };
 
 const makePromptCancelledError = (): Error => {
@@ -345,26 +349,48 @@ export const createOpenTuiPromptDriver = (
     ((renderer: RendererLike): void => {
       renderer.start?.();
     });
+  let openTuiAvailable = true;
   return {
     readRaw: async (request: unknown): Promise<string> => {
       const typedRequest = request as PromptDriverRequestLike;
       const type = readPromptType(typedRequest);
       if (isDeclinedType(type)) throw new Error(`driver declines ${type}`);
+      if (!openTuiAvailable) throw makeUnavailableError();
 
-      const mod = await loadModule();
-      const renderer = await (deps.createRenderer?.(mod) ??
-        mod.createCliRenderer({
-          stdin: deps.stdin,
-          stdout: deps.stdout,
-          exitOnCtrlC: false,
-          screenMode: "main-screen",
-          useMouse: false,
-          targetFps: 30,
-        }));
+      let mod: OpenTuiModuleLike;
+      let renderer: RendererLike;
+      try {
+        mod = await loadModule();
+        renderer = await (deps.createRenderer?.(mod) ??
+          mod.createCliRenderer({
+            stdin: deps.stdin,
+            stdout: deps.stdout,
+            exitOnCtrlC: false,
+            screenMode: "main-screen",
+            useMouse: false,
+            targetFps: 30,
+          }));
+      } catch (cause) {
+        openTuiAvailable = false;
+        throw makeUnavailableError(
+          cause instanceof Error
+            ? cause
+            : new Error("OpenTUI initialization failed with a non-Error cause.", { cause }),
+        );
+      }
 
       let cancelListener: ((key: KeyEventLike) => void) | undefined;
       try {
-        startRenderer(renderer);
+        try {
+          startRenderer(renderer);
+        } catch (cause) {
+          openTuiAvailable = false;
+          throw makeUnavailableError(
+            cause instanceof Error
+              ? cause
+              : new Error("OpenTUI startup failed with a non-Error cause.", { cause }),
+          );
+        }
         return await new Promise<string>((resolve, reject) => {
           let settled = false;
           const settle = (callback: () => void): void => {

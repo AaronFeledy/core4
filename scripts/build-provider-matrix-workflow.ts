@@ -48,7 +48,7 @@ const managedLandoSteps = `${landoRootlessPrereqStep}
           bun run --filter='@lando/core' build:manifest
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
 

@@ -268,4 +268,40 @@ describe("OpenTUI prompt driver", () => {
     ).rejects.toThrow("driver declines multiselect");
     expect(created).toBe(false);
   });
+
+  test("missing-native and unsupported-terminal fixtures each latch without another attempt", async () => {
+    const attempts = { load: 0, init: 0 };
+    const request = { prompt: basePrompt, mode: "normal" } as const;
+    const moduleDriver = createOpenTuiPromptDriver({
+      loadModule: async () => {
+        attempts.load += 1;
+        throw new Error("Cannot find package @opentui/core-linux-x64");
+      },
+    });
+    const rendererDriver = createOpenTuiPromptDriver({
+      loadModule: async () => openTui,
+      createRenderer: async () => {
+        attempts.init += 1;
+        throw new Error("Unsupported terminal: dumb");
+      },
+    });
+
+    await expect(moduleDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    await expect(moduleDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    await expect(rendererDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    await expect(rendererDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    expect(attempts).toEqual({ load: 1, init: 1 });
+  });
 });

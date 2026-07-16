@@ -164,7 +164,15 @@ const compiledShimArtifact = async (): Promise<string> => {
 const compiledReleaseBinary = async (): Promise<string> => {
   const output = join(await tempRoot(), "lando");
   const proc = Bun.spawn({
-    cmd: [process.execPath, "build", "core/bin/lando.ts", "--compile", "--outfile", output],
+    cmd: [
+      process.execPath,
+      "run",
+      "scripts/build-compiled-binary.ts",
+      "--target",
+      "linux-x64",
+      "--outfile",
+      output,
+    ],
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -890,7 +898,7 @@ describe("host-proxy runLando physical transport", () => {
     expect(await new Response(proc.stderr).text()).toBe("");
     expect(captured?.argv).toEqual(["open", "--print"]);
     await session.close();
-  });
+  }, 120_000);
 
   test("release-shaped compiled host CLI ignores leaked host-proxy shim env", async () => {
     const artifactPath = await compiledReleaseBinary();
@@ -915,7 +923,7 @@ describe("host-proxy runLando physical transport", () => {
     expect(exitCode).toBe(0);
     expect(stdout.trim()).toBe(CORE_VERSION);
     expect(stderr).toBe("");
-  });
+  }, 120_000);
 });
 
 const rawHttpExchange = (

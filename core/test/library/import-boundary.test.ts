@@ -1,4 +1,4 @@
-import { readFileSync, realpathSync } from "node:fs";
+import { readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
@@ -11,6 +11,8 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
+const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
+const rendererSrc = resolve(pluginsRoot, "renderer-lando/src");
 
 /**
  * Canonical OCLIF code-path location. OCLIF
@@ -36,11 +38,19 @@ const firstPartySourceRoots = [`${coreSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] a
 const isFirstPartySource = (absPath: string): boolean =>
   firstPartySourceRoots.some((root) => absPath.startsWith(root));
 
+const collectTsFiles = (dir: string): ReadonlyArray<string> =>
+  readdirSync(dir).flatMap((entry) => {
+    const path = resolve(dir, entry);
+    return statSync(path).isDirectory() ? collectTsFiles(path) : entry.endsWith(".ts") ? [path] : [];
+  });
+
 const isOclifNpmSpecifier = (specifier: string): boolean =>
   specifier === "@oclif/core" || specifier.startsWith("@oclif/");
 
 const isTuiNpmSpecifier = (specifier: string): boolean =>
   specifier === "opentui" || specifier === "@opentui/core" || specifier.startsWith("@opentui/");
+
+const isTestSource = (absPath: string): boolean => /(?:^|\/)test(?:\/|$)/.test(repoRelative(absPath));
 
 const isEffectNpmSpecifier = (specifier: string): boolean =>
   specifier === "effect" || specifier.startsWith("effect/");
@@ -82,6 +92,7 @@ const classifyTuiImport = (edge: {
   readonly specifier: string;
   readonly resolvedAbs: string | undefined;
 }): string | undefined => {
+  if (isTestSource(edge.importerAbs) && edge.specifier === "@opentui/core/testing") return undefined;
   if (isTuiNpmSpecifier(edge.specifier)) {
     return `imports the TUI npm package "${edge.specifier}"`;
   }
@@ -139,15 +150,6 @@ const resolveFirstParty = (specifier: string, importerAbs: string): string | und
   }
 };
 
-/**
- * Sanctioned lazy-loading boundaries: dynamic imports of otherwise-banned
- * packages that are the DESIGN (constructed specifiers hiding heavy native
- * deps from the bundler). Key format: `<repo-relative importer> -> <specifier>`.
- */
-const DYNAMIC_IMPORT_ALLOWLIST: ReadonlySet<string> = new Set([
-  "plugins/renderer-lando/src/opentui/prompt-driver.ts -> @opentui/core",
-]);
-
 type DynamicViolationFamily = "oclif" | "tui" | "effect";
 
 interface DynamicEdgeRecord {
@@ -197,19 +199,16 @@ const classifyDynamicEdge = (edge: {
  * first-party modules, and classify every dynamic edge against the banned-
  * dependency classifiers. Unlike {@link walkStaticImportGraph} (the eager
  * graph the boundary assertions freeze), this closure exists to catch a
- * banned dependency slipping past the gate via `await import(...)` — the
- * sanctioned lazy boundaries live in {@link DYNAMIC_IMPORT_ALLOWLIST}.
+ * banned dependency slipping past the gate via `await import(...)`.
  */
 const walkLazyModuleGraph = (
   entryAbs: string,
 ): {
   readonly visited: ReadonlySet<string>;
   readonly dynamicViolations: ReadonlyArray<DynamicEdgeRecord>;
-  readonly allowlistedDynamicEdges: ReadonlyArray<DynamicEdgeRecord>;
 } => {
   const visited = new Set<string>();
   const dynamicViolations: DynamicEdgeRecord[] = [];
-  const allowlistedDynamicEdges: DynamicEdgeRecord[] = [];
 
   const visit = (absPath: string): void => {
     if (visited.has(absPath)) return;
@@ -233,31 +232,35 @@ const walkLazyModuleGraph = (
 
     for (const edge of scanDynamicEdges(absPath, source)) {
       const resolvedAbs = followEdge(edge.specifier);
+      const openTuiDriverEdges =
+        absPath === rendererPromptDriver
+          ? scanDynamicEdges(absPath, source).filter((candidate) => candidate.specifier === "@opentui/core")
+          : [];
+      const isLiteralOpenTuiDriverEdge =
+        absPath === rendererPromptDriver &&
+        edge.specifier === "@opentui/core" &&
+        openTuiDriverEdges.length === 1 &&
+        /import\(\s*["']@opentui\/core["']\s*\)/.test(source);
       const classified = classifyDynamicEdge({
         importerAbs: absPath,
         specifier: edge.specifier,
         resolvedAbs,
       });
-      if (classified !== undefined) {
+      if (classified !== undefined && !isLiteralOpenTuiDriverEdge) {
         const record: DynamicEdgeRecord = {
           importerAbs: absPath,
           specifier: edge.specifier,
           family: classified.family,
           reason: classified.reason,
         };
-        const allowKey = `${repoRelative(absPath)} -> ${edge.specifier}`;
-        if (DYNAMIC_IMPORT_ALLOWLIST.has(allowKey)) {
-          allowlistedDynamicEdges.push(record);
-        } else {
-          dynamicViolations.push(record);
-        }
+        dynamicViolations.push(record);
       }
       if (resolvedAbs !== undefined && isFirstPartySource(resolvedAbs)) visit(resolvedAbs);
     }
   };
 
   visit(realpathSync(entryAbs));
-  return { visited, dynamicViolations, allowlistedDynamicEdges };
+  return { visited, dynamicViolations };
 };
 
 /**
@@ -476,6 +479,22 @@ describe("OCLIF import-boundary classifier (detection self-check)", () => {
 });
 
 describe("TUI import-boundary classifier (detection self-check)", () => {
+  test("renderer production source has only the sanctioned OpenTUI module edge", () => {
+    const edges = collectTsFiles(rendererSrc).flatMap((file) =>
+      scanModuleEdges(file, readFileSync(file, "utf8"))
+        .filter((edge) => isTuiNpmSpecifier(edge.specifier))
+        .map((edge) => ({ file, kind: edge.kind, specifier: edge.specifier })),
+    );
+
+    expect(edges).toEqual([
+      {
+        file: rendererPromptDriver,
+        kind: "dynamic-import",
+        specifier: "@opentui/core",
+      },
+    ]);
+  });
+
   test("signal A: flags a direct @opentui/* npm import from anywhere", () => {
     expect(
       classifyTuiImport({
@@ -514,6 +533,23 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
         resolvedAbs: resolve(coreSrc, "cli/renderer/task-tree-tail.ts"),
       }),
     ).toBeUndefined();
+  });
+
+  test("allows @opentui/core/testing only from test source", () => {
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(pluginsRoot, "renderer-lando/test/prompt.test.ts"),
+        specifier: "@opentui/core/testing",
+        resolvedAbs: undefined,
+      }),
+    ).toBeUndefined();
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(pluginsRoot, "renderer-lando/src/prompt.ts"),
+        specifier: "@opentui/core/testing",
+        resolvedAbs: undefined,
+      }),
+    ).toContain("TUI npm package");
   });
 });
 
@@ -856,19 +892,6 @@ describe("dynamic-import and re-export escape hatches", () => {
       expect(relevant.length).toBe(0);
     },
   );
-
-  test("the OpenTUI constructed-specifier boundary is detected AND allowlisted (allowlist stays load-bearing)", () => {
-    const entryAbs = resolveEntrySource("@lando/core/cli");
-    const { allowlistedDynamicEdges } = walkLazyModuleGraph(entryAbs);
-
-    const promptDriverHit = allowlistedDynamicEdges.find(
-      (edge) =>
-        repoRelative(edge.importerAbs) === "plugins/renderer-lando/src/opentui/prompt-driver.ts" &&
-        edge.specifier === "@opentui/core",
-    );
-    expect(promptDriverHit).toBeDefined();
-    expect(promptDriverHit?.family).toBe("tui");
-  });
 });
 
 describe("@lando/core default-entry symbol resolution", () => {

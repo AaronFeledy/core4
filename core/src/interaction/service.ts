@@ -74,7 +74,7 @@ export type ResolveInteractionDriver = (gate: {
 
 /** Adapts the OpenTUI prompt-driver loader to the {@link ResolveInteractionDriver} seam; overrides are test-only. */
 export const makeDefaultResolveInteractionDriver = (
-  overrides: Pick<InteractiveDriverGate, "env" | "importRendererPlugin"> = {},
+  overrides: Pick<InteractiveDriverGate, "debug" | "env" | "importRendererPlugin"> = {},
 ): ResolveInteractionDriver => {
   return (gate) =>
     resolveInteractivePromptDriver({
@@ -85,6 +85,11 @@ export const makeDefaultResolveInteractionDriver = (
       ...(overrides.importRendererPlugin === undefined
         ? {}
         : { importRendererPlugin: overrides.importRendererPlugin }),
+      debug:
+        overrides.debug ??
+        ((message, data) => {
+          Effect.runFork(Effect.logDebug(message).pipe(Effect.annotateLogs(data)));
+        }),
     });
 };
 
@@ -281,8 +286,12 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
     interactive: boolean,
     tty: boolean,
     gate: { readonly yes: boolean; readonly nonInteractive: boolean },
+    rendererOption: Option.Option<RendererService>,
   ): Effect.Effect<PromptDriver | undefined> =>
-    deps.resolveDriver === undefined || !interactive || !tty
+    deps.resolveDriver === undefined ||
+    !interactive ||
+    !tty ||
+    (Option.isSome(rendererOption) && rendererOption.value.id !== "lando")
       ? Effect.succeed(undefined)
       : Effect.promise(() =>
           (deps.resolveDriver as ResolveInteractionDriver)({
@@ -321,7 +330,7 @@ export const makeInteractionService = (deps: InteractionServiceDeps = {}): Inter
                 }),
             });
       const answers: Record<string, string> = { ...fromFile, ...explicit };
-      const driver = yield* resolveDriver(gate.interactive, tty, gate);
+      const driver = yield* resolveDriver(gate.interactive, tty, gate, rendererOption);
       const collect: Omit<CollectPromptsOptions, "io"> = {
         prompts: specs as ReadonlyArray<RecipePrompt>,
         answers,

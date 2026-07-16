@@ -92,7 +92,7 @@ describe("ci workflow", () => {
       "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });\"",
     );
     expect(providerContracts).toContain(
-      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando",
     );
     expect(providerContracts).toContain(
       "      - name: Prepare managed Lando provider from committed manifest",
@@ -243,16 +243,15 @@ describe("ci workflow", () => {
 
     expect(rehearsal).toContain("      - name: Compile all platform binaries");
     expect(rehearsal).toContain("          mkdir -p dist/bundle");
+    expect(rehearsal).toContain('          bun install --frozen-lockfile --os="*" --cpu="*"');
     for (const target of [
-      "bun-linux-x64 --outfile ./dist/bundle/lando-linux-x64",
-      "bun-linux-arm64 --outfile ./dist/bundle/lando-linux-arm64",
-      "bun-darwin-x64 --outfile ./dist/bundle/lando-darwin-x64",
-      "bun-darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64",
-      "bun-windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe",
+      "linux-x64 --outfile ./dist/bundle/lando-linux-x64",
+      "linux-arm64 --outfile ./dist/bundle/lando-linux-arm64",
+      "darwin-x64 --outfile ./dist/bundle/lando-darwin-x64",
+      "darwin-arm64 --outfile ./dist/bundle/lando-darwin-arm64",
+      "windows-x64 --outfile ./dist/bundle/lando-windows-x64.exe",
     ]) {
-      expect(rehearsal).toContain(
-        `          bun build ./core/bin/lando.ts --compile --bytecode --target=${target} --sourcemap=external`,
-      );
+      expect(rehearsal).toContain(`          bun run scripts/build-compiled-binary.ts --target ${target}`);
     }
     expect(rehearsal).toContain(
       "          bun run scripts/sanitize-compiled-binary.ts ./dist/bundle/lando-linux-x64",
@@ -360,6 +359,32 @@ describe("ci workflow", () => {
     expect(workflow).not.toContain("contents: write");
   });
 
+  test("regenerates and drift-checks the OpenTUI native catalog", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    const bundledCodegen = findIndentedBlock(jobs, "bundled-codegen", 2);
+
+    expect(bundledCodegen).toContain("        run: bun run codegen:opentui-native-stubs");
+    expect(bundledCodegen).toContain("scripts/generated/opentui-native");
+  });
+
+  test("runs relocated OpenTUI acceptance on every release-target binary", async () => {
+    const workflow = await readWorkflow();
+    const jobs = findIndentedBlock(workflow, "jobs");
+    for (const [target, binary] of [
+      ["darwin-arm64", "lando"],
+      ["darwin-x64", "lando"],
+      ["linux-arm64", "lando"],
+      ["linux-x64", "lando"],
+      ["windows-x64", "lando-windows-x64.exe"],
+    ] as const) {
+      const build = findIndentedBlock(jobs, `build-${target}`, 2);
+      expect(build).toContain(`          LANDO_RELEASE_TARGET: ${target}`);
+      expect(build).toContain(`          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${binary}`);
+      expect(build).toContain("        run: bun test core/test/build/opentui-compiled-acceptance.test.ts");
+    }
+  });
+
   test("builds and uploads the Linux x64 binary after static and codegen checks", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
@@ -376,7 +401,7 @@ describe("ci workflow", () => {
       "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });\"",
     );
     expect(buildLinux).toContain(
-      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando",
     );
     expect(buildLinux).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildLinux).toContain("          test -f dist/lando");
@@ -412,7 +437,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("    runs-on: macos-15");
     expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
     expect(buildDarwin).toContain(
-      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/lando --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target darwin-arm64 --outfile ./dist/lando",
     );
     expect(buildDarwin).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildDarwin).toContain("          test -f dist/lando");
@@ -455,7 +480,7 @@ describe("ci workflow", () => {
       "          bun -e \"const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });\"",
     );
     expect(buildWindows).toContain(
-      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target windows-x64 --outfile ./dist/lando-windows-x64.exe",
     );
     expect(buildWindows).toContain(
       "          bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe",
@@ -500,7 +525,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("    runs-on: macos-15-intel");
     expect(buildDarwin).toContain("        run: bun run --filter='@lando/core' build:manifest");
     expect(buildDarwin).toContain(
-      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/lando --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target darwin-x64 --outfile ./dist/lando",
     );
     expect(buildDarwin).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildDarwin).toContain("          test -f dist/lando");
@@ -536,7 +561,7 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("    runs-on: ubuntu-24.04-arm");
     expect(buildLinuxArm).toContain("        run: bun run --filter='@lando/core' build:manifest");
     expect(buildLinuxArm).toContain(
-      "          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/lando --sourcemap=external",
+      "          bun run scripts/build-compiled-binary.ts --target linux-arm64 --outfile ./dist/lando",
     );
     expect(buildLinuxArm).toContain("          bun run scripts/sanitize-compiled-binary.ts ./dist/lando");
     expect(buildLinuxArm).toContain("          test -f dist/lando");
@@ -956,7 +981,7 @@ describe("ci workflow", () => {
     expect(workflow).toContain("runs-on: ubuntu-24.04-arm");
     expect(workflow).toContain("runs-on: ubuntu-24.04");
     expect(workflow).toContain("runs-on: windows-2022");
-    expect(workflow).toContain("--target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe");
+    expect(workflow).toContain("--target windows-x64 --outfile ./dist/lando-windows-x64.exe");
     expect(workflow).toContain(
       "bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
     );

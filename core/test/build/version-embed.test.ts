@@ -98,13 +98,14 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
       try {
         const build = await runCommand([
           process.execPath,
-          "build",
-          binaryEntry,
-          "--compile",
-          "--bytecode",
-          `--define=__LANDO_CORE_VERSION__="8.8.8-stamped"`,
-          `--outfile=${outfile}`,
-          "--sourcemap=external",
+          "run",
+          "../scripts/build-compiled-binary.ts",
+          "--target",
+          "linux-x64",
+          "--outfile",
+          outfile,
+          "--version",
+          "8.8.8-stamped",
         ]);
         expect(build.exitCode).toBe(0);
 

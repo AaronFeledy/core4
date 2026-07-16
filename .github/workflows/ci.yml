@@ -207,8 +207,11 @@ jobs:
       - name: Regenerate provider images manifest
         run: bun run codegen:provider-images
 
+      - name: Regenerate OpenTUI native catalog
+        run: bun run codegen:opentui-native-stubs
+
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts scripts/generated/opentui-native
 
       - name: Report job timing
         if: always()
@@ -805,7 +808,7 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-arm64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target darwin-arm64 --outfile ./dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -814,6 +817,12 @@ jobs:
           ./dist/lando --version
           ./dist/lando --help
           ./dist/lando shellenv
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: darwin-arm64
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
       - name: Upload darwin-arm64 binary
         if: always()
@@ -859,7 +868,7 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-darwin-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target darwin-x64 --outfile ./dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -868,6 +877,12 @@ jobs:
           ./dist/lando --version
           ./dist/lando --help
           ./dist/lando shellenv
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: darwin-x64
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
       - name: Upload darwin-x64 binary
         if: always()
@@ -913,7 +928,7 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-arm64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target linux-arm64 --outfile ./dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -922,6 +937,12 @@ jobs:
           ./dist/lando --version
           ./dist/lando --help
           ./dist/lando shellenv
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: linux-arm64
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
       - name: Upload linux-arm64 binary
         if: always()
@@ -967,7 +988,7 @@ jobs:
           bun run --filter='@lando/core' build:host-proxy-shim
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('core/dist/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
 
       - name: Smoke test binary
@@ -976,6 +997,12 @@ jobs:
           ./dist/lando --version
           ./dist/lando --help
           ./dist/lando shellenv
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: linux-x64
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
       - name: Upload linux-x64 binary
         if: always()
@@ -1025,12 +1052,18 @@ jobs:
         run: |
           mkdir -p dist
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('linux-sidecars/host-proxy', 'dist/host-proxy', { recursive: true }); await fs.cp('linux-sidecars/log-file-access', 'dist/log-file-access', { recursive: true });"
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target windows-x64 --outfile ./dist/lando-windows-x64.exe
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando-windows-x64.exe
 
       - name: Smoke test binary
         run: |
           bun run scripts/smoke-windows-binary.ts ./dist/lando-windows-x64.exe
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: windows-x64
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/lando-windows-x64.exe
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
       - name: Upload windows-x64 binary
         if: always()

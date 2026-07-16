@@ -1512,7 +1512,7 @@
         "Lint passes"
       ],
       "priority": 85,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec section 8.9.3 (default renderer implementation contract) and section 17.3.1 (per-target OpenTUI native asset packaging). The ^0.4.3 dependency bump is included in this patch; this story adds the boundary tests, degradation contract, and compiled native packaging."
     },
     {

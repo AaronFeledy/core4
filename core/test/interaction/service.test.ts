@@ -309,6 +309,40 @@ describe("InteractionServiceLive — rich driver wiring (S2)", () => {
   test("the default service is constructed with a rich-driver seam", () => {
     expect(typeof makeDefaultResolveInteractionDriver).toBe("function");
   });
+
+  test.each(["plain", "json"])("renderer %s bypasses the rich driver on an interactive TTY", async (id) => {
+    let resolveAttempts = 0;
+    const ttyStdin = scriptedStdin(["line-answer"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      resolveDriver: async () => {
+        resolveAttempts += 1;
+        return { readRaw: async () => "rich-answer" };
+      },
+    });
+    const renderer = capturingRenderer(id);
+    const baselineStdin = scriptedStdin(["line-answer"]);
+    Object.assign(baselineStdin, { isTTY: true });
+    const baselineService = makeInteractionService({ stdin: baselineStdin });
+    const baselineRenderer = capturingRenderer(id);
+
+    const answer = await runScoped(
+      service
+        .prompt({ name: "name", type: "text", message: "Name?" })
+        .pipe(Effect.provide(Layer.succeed(Renderer, renderer.service))),
+    );
+    const baselineAnswer = await runScoped(
+      baselineService
+        .prompt({ name: "name", type: "text", message: "Name?" })
+        .pipe(Effect.provide(Layer.succeed(Renderer, baselineRenderer.service))),
+    );
+
+    expect(answer).toBe("line-answer");
+    expect(baselineAnswer).toBe("line-answer");
+    expect(resolveAttempts).toBe(0);
+    expect(renderer.out()).toBe(baselineRenderer.out());
+  });
 });
 
 describe("InteractionServiceLive — secret redaction", () => {

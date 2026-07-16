@@ -61,6 +61,7 @@
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",
     "codegen:mutagen-versions": "bun run scripts/build-mutagen-versions.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",
+    "codegen:opentui-native-stubs": "bun run scripts/build-opentui-native-stubs.ts",
     "release": "bun run scripts/release.ts"
   },
   "dependencies": {

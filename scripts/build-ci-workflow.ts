@@ -172,12 +172,18 @@ ${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
         run: |
           mkdir -p dist
 ${renderHostProxyShimBuildCommands(platform)}
-          bun build ./core/bin/lando.ts --compile --bytecode --target=${platform.bunTarget} --outfile ./dist/${platform.binaryName} --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target ${platform.id} --outfile ./dist/${platform.binaryName}
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
       - name: Smoke test binary
         run: |
 ${renderSmokeCommands(platform)}
+
+      - name: Verify relocated OpenTUI binary
+        env:
+          LANDO_RELEASE_TARGET: ${platform.id}
+          LANDO_OPENTUI_ACCEPTANCE_BINARY: ./dist/${platform.binaryName}
+        run: bun test core/test/build/opentui-compiled-acceptance.test.ts
 
       - name: Upload ${platform.id} binary
         if: always()
@@ -677,8 +683,11 @@ ${setupBunSteps}
       - name: Regenerate provider images manifest
         run: bun run codegen:provider-images
 
+      - name: Regenerate OpenTUI native catalog
+        run: bun run codegen:opentui-native-stubs
+
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts
+        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts scripts/generated/opentui-native
 
 ${timingNoticeStep("bundled-codegen", 15)}
 

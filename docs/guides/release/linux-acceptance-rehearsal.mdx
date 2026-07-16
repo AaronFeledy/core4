@@ -23,7 +23,7 @@ tags: [beta, docs, release, acceptance]
       <Variable name="fileSyncReuse" value="core/test/cli/start.scenario.test.ts" display="repeat app:start invocations reuse existing file-sync sessions instead of re-creating them" />
     </Step>
     <Step name="criterion-16">
-      <Variable name="bytecode" value="bun build ./core/bin/lando.ts --compile --bytecode" display="The canonical release and CI compile commands build the compiled binary with Bun bytecode enabled" />
+      <Variable name="bytecode" value="bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando" display="The canonical release and CI wrapper builds the compiled binary with Bun bytecode enabled" />
       <Variable name="versionStamp" value="--define=__LANDO_CORE_VERSION__=<release version>" display="The release compile stamps the real release version into the binary; unstamped builds report the @lando/core workspace package version" />
     </Step>
     <Step name="criterion-17">

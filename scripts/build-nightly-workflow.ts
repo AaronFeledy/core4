@@ -55,7 +55,7 @@ ${renderAssertPodman6Step()}
       - name: Build Linux x64 binary
         run: |
           bun run --filter='@lando/core' build:manifest
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./core/dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./core/dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
           ./core/dist/lando --version
 
@@ -115,7 +115,7 @@ ${landoRootlessPrereqSteps}
         run: |
           mkdir -p dist/cache/runtime-bundle
           bun run --filter='@lando/core' build:manifest
-          bun build ./core/bin/lando.ts --compile --bytecode --target=bun-linux-x64 --outfile ./dist/lando --sourcemap=external
+          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
 
@@ -157,7 +157,7 @@ const distributionBundlePath = (platform: CiPlatform): string =>
 
 const distributionCompileLines = CI_PLATFORMS.map(
   (platform) =>
-    `          bun build ./core/bin/lando.ts --compile --bytecode --target=${platform.bunTarget} --outfile ${distributionBundlePath(platform)} --sourcemap=external`,
+    `          bun run scripts/build-compiled-binary.ts --target ${platform.id} --outfile ${distributionBundlePath(platform)}`,
 ).join("\n");
 
 const distributionSanitizeLines = CI_PLATFORMS.map(
@@ -184,6 +184,7 @@ ${bunSetupStep}
           mkdir -p dist/bundle
           bun run --filter='@lando/core' build:log-file-helper
           bun -e "const fs = await import('node:fs/promises'); await fs.cp('core/dist/log-file-access', 'dist/bundle/log-file-access', { recursive: true });"
+          bun install --frozen-lockfile --os="*" --cpu="*"
 ${distributionCompileLines}
 ${distributionSanitizeLines}
           ${distributionLinuxSmokePath} --version

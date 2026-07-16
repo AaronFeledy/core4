@@ -24,6 +24,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Landofile lint validates each authored layer before validating the merged document; merge precedence must not hide a layer shape that runtime loading rejects.
 - Podman imports host certificates for `machine set --import-native-ca` during machine startup; an already-running Lando-owned machine must restart after enabling the setting for trust sync to complete.
 - Host-proxy transport diagnostics discover ownership-valid worker records under `makeLandoPaths().hostProxyRunRoot` and reuse the authenticated `probeWorker` control path; absent worker state is an intentional no-op, not a warning.
+- Main-binary builds go through `scripts/build-compiled-binary.ts`: OpenTUI requires ESM bytecode, and multi-target release builds must install all locked optional native packages with frozen `--os=* --cpu=*` inputs before compiling.
 
 ## Durable learnings
 
@@ -459,4 +460,20 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint, changed-file diagnostics, and focused lifecycle name/argv, provider-matrix reporting, native-cell policy, and generated-workflow tests passed.
 - **Learnings for future iterations:**
   - Purpose-specific fixed names are not disposable ownership: native destructive acceptance needs a per-invocation unguessable name even when it first asserts the target is absent.
+---
+
+## 2026-07-16 07:07 CDT - Babysit
+- PR: #596 https://github.com/AaronFeledy/core4/pull/596
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for CI/infra-only machine lifecycle acceptance; no user-facing guide change)
+- Merge: merged (squash)
+---
+
+## 2026-07-16 09:37 CDT - US-455
+- The bundled renderer now owns one literal lazy OpenTUI load with process-latched line-mode degradation, while level-none, pre-renderer, non-TTY, plain, and JSON paths stay substrate-free on source and compiled dispatch. Standalone init prompting uses the same renderer-mode gate and the relocated compiled binary renders the native framed picker.
+- Main-binary compilation is centralized behind an ESM-bytecode pruning wrapper. Generated catalog/stubs cover eight native roots, five release mappings, and 35 import-free failure modules; release and CI install locked cross-target optionals, enforce generated drift, and run relocated acceptance on every native build job with exactly one embedded library and no sidecars.
+- Verification: typecheck, lint, renderer/guide/public-transcript gates passed; focused build, release, import, degradation, renderer, interaction, source/compiled PTY, version, and host-proxy tests passed; five cross-target artifacts each embedded one native asset; high-rigor review approved.
+- **Learnings for future iterations:**
+  - Bun bytecode defaults to CommonJS, which cannot bundle OpenTUI 0.4.3's top-level await; the main wrapper must set `format: "esm"`.
+  - A renderer service may be absent from standalone Promise prompt paths, so those paths must consult the lightweight resolved renderer-mode state before installing a rich prompt driver.
 ---
