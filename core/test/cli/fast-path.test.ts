@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import corePackage from "../../package.json";
+import { buildCliBundle } from "../build/cli-bundle.ts";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const binaryEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -18,7 +19,7 @@ interface RunResult {
 
 const runCommand = async (cmd: ReadonlyArray<string>, env: NodeJS.ProcessEnv = {}): Promise<RunResult> => {
   const proc = Bun.spawn({
-    cmd,
+    cmd: [...cmd],
     cwd: repoRoot,
     env: {
       ...process.env,
@@ -45,20 +46,7 @@ const buildBundledCli = async (): Promise<{
   readonly cleanup: () => Promise<void>;
 }> => {
   const root = await mkdtemp(join(tmpdir(), "lando-fast-path-"));
-  const path = join(root, "lando.js");
-
-  const result = await runCommand([
-    process.execPath,
-    "build",
-    binaryEntry,
-    "--outdir",
-    root,
-    "--target",
-    "bun",
-  ]);
-  if (result.exitCode !== 0) {
-    throw new Error(`Unable to build CLI bundle:\n${result.stderr}`);
-  }
+  const path = await buildCliBundle(root);
 
   return {
     path,

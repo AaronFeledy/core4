@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 import corePackage from "../../package.json";
+import { buildCliBundle } from "./cli-bundle.ts";
 
 const coreRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const binaryEntry = resolve(coreRoot, "bin/lando.ts");
 
 interface RunResult {
   readonly exitCode: number;
@@ -34,15 +34,6 @@ const runCommand = async (cmd: ReadonlyArray<string>): Promise<RunResult> => {
   return { exitCode, stdout, stderr };
 };
 
-const buildBundle = async (root: string, define?: string): Promise<string> => {
-  const bundlePath = join(root, "lando.js");
-  const cmd = [process.execPath, "build", binaryEntry, "--outdir", root, "--target", "bun"];
-  if (define !== undefined) cmd.push(`--define=${define}`);
-  const result = await runCommand(cmd);
-  if (result.exitCode !== 0) throw new Error(`Unable to build CLI bundle:\n${result.stderr}`);
-  return bundlePath;
-};
-
 const STAMPED_VERSION = "9.9.9-embed-test";
 
 describe("version embedding (bundled artifact)", () => {
@@ -58,7 +49,7 @@ describe("version embedding (bundled artifact)", () => {
 
   test("embeds the stamped version via --define into the built artifact", async () => {
     const stampedRoot = join(root, "stamped");
-    const bundle = await buildBundle(stampedRoot, `__LANDO_CORE_VERSION__="${STAMPED_VERSION}"`);
+    const bundle = await buildCliBundle(stampedRoot, STAMPED_VERSION);
 
     const versionOut = await runCommand([process.execPath, bundle, "version"]);
     expect(versionOut.exitCode).toBe(0);
@@ -71,7 +62,7 @@ describe("version embedding (bundled artifact)", () => {
 
   test("guards against the 0.0.0 placeholder once a real version is stamped", async () => {
     const guardRoot = join(root, "guard");
-    const bundle = await buildBundle(guardRoot, `__LANDO_CORE_VERSION__="4.1.0-guard"`);
+    const bundle = await buildCliBundle(guardRoot, "4.1.0-guard");
 
     const versionOut = await runCommand([process.execPath, bundle, "version"]);
     expect(versionOut.exitCode).toBe(0);
@@ -81,7 +72,7 @@ describe("version embedding (bundled artifact)", () => {
 
   test("falls back to the workspace package version when no version is stamped", async () => {
     const fallbackRoot = join(root, "fallback");
-    const bundle = await buildBundle(fallbackRoot);
+    const bundle = await buildCliBundle(fallbackRoot);
 
     const versionOut = await runCommand([process.execPath, bundle, "version"]);
     expect(versionOut.exitCode).toBe(0);
