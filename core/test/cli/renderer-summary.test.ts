@@ -4,9 +4,11 @@ import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.t
 import { type SummaryDocument, formatSummary } from "../../src/cli/renderer/summary.ts";
 
 const ESC = String.fromCharCode(27);
-const CYAN = `${ESC}[36m`;
+const BOLD = `${ESC}[1m`;
 const DIM = `${ESC}[2m`;
 const DIM_RESET = `${ESC}[22m`;
+const GREEN = `${ESC}[32m`;
+const PINK = `${ESC}[95m`;
 const RESET = `${ESC}[0m`;
 
 const linesOf = (text: string): ReadonlyArray<string> => text.split("\n");
@@ -49,7 +51,17 @@ describe("formatSummary", () => {
     expect(out).toContain("[OK]");
   });
 
-  test("keeps body borders cyan when row content has a tone", () => {
+  test("renders frame titles and borders bright pink", () => {
+    // Given a grouped summary with titled frame lines.
+    const lines = linesOf(formatSummary(sampleDoc, { columns: 80 }));
+    const separator = lines.find((line) => stripAnsi(line).startsWith("├─ toolchain"));
+
+    // When the frame is styled, then its title-bearing lines use bright pink.
+    expect(lines[0]?.startsWith(`${BOLD}${PINK}╭─ UNINSTALL PLAN`)).toBe(true);
+    expect(separator?.startsWith(`${PINK}├─ toolchain`)).toBe(true);
+  });
+
+  test("keeps body borders pink when row content has a tone", () => {
     // Given a summary row whose content is painted with a status tone.
     const bodyLines = linesOf(formatSummary(sampleDoc, { columns: 80 })).filter((line) =>
       stripAnsi(line).includes("[OK]"),
@@ -57,18 +69,18 @@ describe("formatSummary", () => {
 
     // When the row is framed, then both vertical borders retain the frame color.
     expect(bodyLines).toHaveLength(1);
-    expect(bodyLines[0]?.startsWith(`${CYAN}│${RESET} `)).toBe(true);
-    expect(bodyLines[0]?.endsWith(` ${CYAN}│${RESET}`)).toBe(true);
+    expect(bodyLines[0]?.startsWith(`${PINK}│${RESET} ${GREEN}`)).toBe(true);
+    expect(bodyLines[0]?.endsWith(` ${PINK}│${RESET}`)).toBe(true);
   });
 
-  test("keeps the bottom frame cyan when footer text is dimmed", () => {
+  test("keeps the bottom frame pink when footer text is dimmed", () => {
     // Given a grouped summary whose bottom frame contains footer text.
     const lines = linesOf(formatSummary(sampleDoc, { columns: 80 }));
     const footer = lines[lines.length - 1];
 
     // When the footer is styled, then its text style is isolated from both frame segments.
-    expect(footer?.startsWith(`${CYAN}╰─${RESET}${DIM}${CYAN} `)).toBe(true);
-    expect(footer).toContain(`${DIM_RESET}${RESET}${CYAN}─`);
+    expect(footer?.startsWith(`${PINK}╰─${RESET}${DIM}${PINK} `)).toBe(true);
+    expect(footer).toContain(`${DIM_RESET}${RESET}${PINK}─`);
     expect(footer?.endsWith(`╯${RESET}`)).toBe(true);
   });
 
