@@ -10,18 +10,52 @@ const binaryPath = process.env.LANDO_OPENTUI_ACCEPTANCE_BINARY;
 const releaseTarget = process.env.LANDO_RELEASE_TARGET;
 const enabled = binaryPath !== undefined && releaseTarget !== undefined;
 const repoRoot = resolve(import.meta.dirname, "../../..");
+const probePreload = resolve(import.meta.dirname, "fixtures/opentui-loader-probe-preload.ts");
+
+interface LoaderProbeEvent {
+  readonly phase: "attempt" | "ready";
+  readonly specifier: "@opentui/core";
+  readonly nativeRoot?: string;
+}
+
+const cleanEnv = (root: string): NodeJS.ProcessEnv => {
+  const env = {
+    ...process.env,
+    LANDO_USER_DATA_ROOT: resolve(root, "data"),
+    LANDO_USER_CACHE_ROOT: resolve(root, "cache"),
+    LANDO_USER_CONF_ROOT: resolve(root, "config"),
+    TERM: "xterm-256color",
+  };
+  for (const key of Object.keys(env)) {
+    if (key === "CI" || key === "LANDO_RENDERER" || key === "LANDO_NO_OPENTUI_PROMPTS") {
+      Reflect.deleteProperty(env, key);
+    }
+    if (key === "BUN_OPTIONS" || key.startsWith("LANDO_CONFIG__")) Reflect.deleteProperty(env, key);
+  }
+  return env;
+};
+
+const probeEnv = (env: NodeJS.ProcessEnv, tracePath: string, fail = false): NodeJS.ProcessEnv => ({
+  ...env,
+  BUN_OPTIONS: `--preload=${probePreload}`,
+  LANDO_OPENTUI_PROBE_TRACE: tracePath,
+  ...(fail ? { LANDO_OPENTUI_PROBE_FAIL: "1" } : {}),
+});
+
+const readProbe = async (tracePath: string): Promise<ReadonlyArray<LoaderProbeEvent>> => {
+  const file = Bun.file(tracePath);
+  if (!(await file.exists())) return [];
+  return (await file.text())
+    .split("\n")
+    .filter((line) => line !== "")
+    .map((line) => JSON.parse(line) as LoaderProbeEvent);
+};
 
 const nativeAssetPattern = (target: string): RegExp => {
   if (target.startsWith("darwin-")) return /\/\$bunfs\/root\/libopentui-[a-z0-9]+\.dylib/gu;
   if (target.startsWith("linux-")) return /\/\$bunfs\/root\/libopentui-[a-z0-9]+\.so/gu;
   if (target === "windows-x64") return /B:\/~BUN\/root\/opentui-[a-z0-9]+\.dll/gu;
   throw new Error(`Unsupported OpenTUI acceptance target: ${target}.`);
-};
-
-const promptPrefix = (output: string): string => {
-  const marker = "(value or index):";
-  const end = output.indexOf(marker);
-  return end === -1 ? output : output.slice(0, end + marker.length);
 };
 
 interface RunResult {
@@ -144,25 +178,28 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
     const appRoot = resolve(root, "app");
     await copyFile(sourceBinary, relocatedBinary);
     await mkdir(appRoot);
-    const baseEnv = {
-      ...process.env,
-      LANDO_USER_DATA_ROOT: resolve(root, "data"),
-      LANDO_USER_CACHE_ROOT: resolve(root, "cache"),
-      TERM: "xterm-256color",
-    };
-    Reflect.deleteProperty(baseEnv, "CI");
+    const baseEnv = cleanEnv(root);
     try {
-      const rich = await runPrompt([relocatedBinary], appRoot, ["init"], baseEnv);
+      const bypassTrace = resolve(root, "bypass.jsonl");
+      await expectNonLoadingDispatches([relocatedBinary], appRoot, probeEnv(baseEnv, bypassTrace));
+      expect(await readProbe(bypassTrace)).toEqual([]);
+
+      const richTrace = resolve(root, "rich.jsonl");
+      const rich = await runPrompt([relocatedBinary], appRoot, ["init"], probeEnv(baseEnv, richTrace));
       expect(rich).toContain("Pick a recipe");
       expect(rich).toContain("╭");
-      await expectNonLoadingDispatches([relocatedBinary], appRoot, baseEnv);
+      expect(await readProbe(richTrace)).toEqual([
+        { phase: "attempt", specifier: "@opentui/core" },
+        { phase: "ready", specifier: "@opentui/core", nativeRoot: selectedRoot },
+      ]);
 
       for (const renderer of ["plain", "json"] as const) {
+        const tracePath = resolve(root, `${renderer}.jsonl`);
         const normal = await runPrompt(
           [relocatedBinary],
           appRoot,
           ["init", `--renderer=${renderer}`],
-          baseEnv,
+          probeEnv(baseEnv, tracePath),
         );
         const withoutOpenTui = await runPrompt(
           [relocatedBinary],
@@ -172,8 +209,19 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
         );
         expect(normal).not.toContain("╭");
         expect(normal).toContain("(value or index):");
-        expect(promptPrefix(normal)).toBe(promptPrefix(withoutOpenTui));
+        expect(normal).toBe(withoutOpenTui);
+        expect(await readProbe(tracePath)).toEqual([]);
       }
+
+      const failureTrace = resolve(root, "failure.jsonl");
+      const degraded = await runPrompt(
+        [relocatedBinary],
+        appRoot,
+        ["init"],
+        probeEnv(baseEnv, failureTrace, true),
+      );
+      expect(degraded).toContain("(value or index):");
+      expect(await readProbe(failureTrace)).toEqual([{ phase: "attempt", specifier: "@opentui/core" }]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -185,26 +233,40 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
     const root = await mkdtemp(resolve(tmpdir(), "lando-opentui-source-"));
     const appRoot = resolve(root, "app");
     await mkdir(appRoot);
-    const baseEnv = {
-      ...process.env,
-      LANDO_USER_DATA_ROOT: resolve(root, "data"),
-      LANDO_USER_CACHE_ROOT: resolve(root, "cache"),
-      TERM: "xterm-256color",
-    };
-    Reflect.deleteProperty(baseEnv, "CI");
+    const baseEnv = cleanEnv(root);
     const command = [process.execPath, resolve(repoRoot, "core/bin/lando.ts")];
     try {
-      await expectNonLoadingDispatches(command, appRoot, baseEnv);
+      const bypassTrace = resolve(root, "bypass.jsonl");
+      await expectNonLoadingDispatches(command, appRoot, probeEnv(baseEnv, bypassTrace));
+      expect(await readProbe(bypassTrace)).toEqual([]);
+      const richTrace = resolve(root, "rich.jsonl");
+      const rich = await runPrompt(command, appRoot, ["init"], probeEnv(baseEnv, richTrace));
+      expect(rich).toContain("╭");
+      expect(await readProbe(richTrace)).toEqual([
+        { phase: "attempt", specifier: "@opentui/core" },
+        { phase: "ready", specifier: "@opentui/core" },
+      ]);
       for (const renderer of ["plain", "json"] as const) {
-        const normal = await runPrompt(command, appRoot, ["init", `--renderer=${renderer}`], baseEnv);
+        const tracePath = resolve(root, `${renderer}.jsonl`);
+        const normal = await runPrompt(
+          command,
+          appRoot,
+          ["init", `--renderer=${renderer}`],
+          probeEnv(baseEnv, tracePath),
+        );
         const withoutOpenTui = await runPrompt(command, appRoot, ["init", `--renderer=${renderer}`], {
           ...baseEnv,
           LANDO_NO_OPENTUI_PROMPTS: "1",
         });
         expect(normal).not.toContain("╭");
         expect(normal).toContain("(value or index):");
-        expect(promptPrefix(normal)).toBe(promptPrefix(withoutOpenTui));
+        expect(normal).toBe(withoutOpenTui);
+        expect(await readProbe(tracePath)).toEqual([]);
       }
+      const failureTrace = resolve(root, "failure.jsonl");
+      const degraded = await runPrompt(command, appRoot, ["init"], probeEnv(baseEnv, failureTrace, true));
+      expect(degraded).toContain("(value or index):");
+      expect(await readProbe(failureTrace)).toEqual([{ phase: "attempt", specifier: "@opentui/core" }]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

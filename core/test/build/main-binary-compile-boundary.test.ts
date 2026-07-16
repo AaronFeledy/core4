@@ -6,8 +6,15 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const wrapperPath = resolve(repoRoot, "scripts/build-compiled-binary.ts");
 
 const productionSources = async (): Promise<ReadonlyArray<string>> => {
-  const paths = [resolve(repoRoot, "core/package.json")];
-  for (const pattern of ["scripts/**/*.ts", "core/test/**/*.ts", ".github/workflows/*.{yml,yaml}"]) {
+  const paths = [resolve(repoRoot, "package.json")];
+  for (const pattern of [
+    "{core,sdk,container-runtime}/package.json",
+    "plugins/*/package.json",
+    "{core,sdk,container-runtime}/**/*.{ts,sh,ps1}",
+    "plugins/**/*.{ts,sh,ps1}",
+    "scripts/**/*.{ts,sh,ps1}",
+    ".github/workflows/**/*.{yml,yaml}",
+  ]) {
     for await (const path of new Bun.Glob(pattern).scan({ cwd: repoRoot, absolute: true })) {
       paths.push(path);
     }

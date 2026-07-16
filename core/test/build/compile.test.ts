@@ -44,7 +44,7 @@ const runCommand = async (cmd: Array<string>, cwd = coreRoot): Promise<RunResult
 describe("compiled binary build command", () => {
   test("uses bytecode for the canonical compiled entry", () => {
     expect(corePackage.scripts["build:compile"]).toContain(
-      "bun run ../scripts/build-compiled-binary.ts --outfile ./dist/lando",
+      "bun run ../scripts/build-compiled-binary.ts --outfile ./dist/lando --minify --sourcemap=external",
     );
     expect(corePackage.scripts["build:compile"]).toContain("bun run ../scripts/sanitize-compiled-binary.ts");
   });

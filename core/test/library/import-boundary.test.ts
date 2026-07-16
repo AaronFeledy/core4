@@ -13,6 +13,7 @@ const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
 const rendererSrc = resolve(pluginsRoot, "renderer-lando/src");
+const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
 
 /**
  * Canonical OCLIF code-path location. OCLIF
@@ -50,7 +51,7 @@ const isOclifNpmSpecifier = (specifier: string): boolean =>
 const isTuiNpmSpecifier = (specifier: string): boolean =>
   specifier === "opentui" || specifier === "@opentui/core" || specifier.startsWith("@opentui/");
 
-const isTestSource = (absPath: string): boolean => /(?:^|\/)test(?:\/|$)/.test(repoRelative(absPath));
+const isRendererTestSource = (absPath: string): boolean => absPath.startsWith(`${rendererTest}/`);
 
 const isEffectNpmSpecifier = (specifier: string): boolean =>
   specifier === "effect" || specifier.startsWith("effect/");
@@ -92,7 +93,7 @@ const classifyTuiImport = (edge: {
   readonly specifier: string;
   readonly resolvedAbs: string | undefined;
 }): string | undefined => {
-  if (isTestSource(edge.importerAbs) && edge.specifier === "@opentui/core/testing") return undefined;
+  if (isRendererTestSource(edge.importerAbs) && edge.specifier === "@opentui/core/testing") return undefined;
   if (isTuiNpmSpecifier(edge.specifier)) {
     return `imports the TUI npm package "${edge.specifier}"`;
   }
@@ -536,6 +537,13 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
   });
 
   test("allows @opentui/core/testing only from test source", () => {
+    expect(
+      classifyTuiImport({
+        importerAbs: resolve(coreSrc, "test/other.test.ts"),
+        specifier: "@opentui/core/testing",
+        resolvedAbs: undefined,
+      }),
+    ).toContain("TUI npm package");
     expect(
       classifyTuiImport({
         importerAbs: resolve(pluginsRoot, "renderer-lando/test/prompt.test.ts"),

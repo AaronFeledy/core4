@@ -24,6 +24,7 @@
     "test:unit": "bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts'",
     "test:changed": "bun test --changed",
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
+    "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
     "typecheck": "tsc -b",
     "lint": "biome check . && bun run check:deprecations",
     "format": "biome format --write .",

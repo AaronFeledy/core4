@@ -17,8 +17,19 @@ export interface CompiledBinaryOptions {
 
 export type CompiledBinaryBuildRunner = (config: Bun.BuildConfig) => Promise<Bun.BuildOutput>;
 
+export class CompiledBinaryBuildError extends Error {
+  readonly name = "CompiledBinaryBuildError";
+
+  constructor(readonly diagnostics: ReadonlyArray<Bun.BuildOutput["logs"][number]>) {
+    const details = diagnostics.map((diagnostic) => diagnostic.message).join("\n");
+    super(`Compiled binary build failed.${details === "" ? "" : `\n${details}`}`);
+  }
+}
+
 const platformFor = (target: string): CiPlatform => {
-  const platform = CI_PLATFORMS.find((candidate) => candidate.id === target);
+  const platform = CI_PLATFORMS.find(
+    (candidate) => candidate.id === target || candidate.bunTarget === target,
+  );
   if (platform === undefined) throw new Error(`Unknown Lando release target: ${target}.`);
   return platform;
 };
@@ -39,12 +50,17 @@ const bunTargetFor = (platform: CiPlatform): Bun.Build.CompileTarget => {
 const hostTarget = (): string =>
   `${process.platform === "win32" ? "windows" : process.platform}-${process.arch}`;
 
-export const resolveOpenTuiNativeImport = (target: string, path: string): string | undefined => {
-  if (!opentuiNativeCatalog.rootImportFilter.test(path)) return undefined;
-  const targetNativeRoot = Object.entries(opentuiNativeCatalog.targetToNativeRoot).find(
+const nativeRootFor = (target: string): string => {
+  const root = Object.entries(opentuiNativeCatalog.targetToNativeRoot).find(
     ([candidate]) => candidate === target,
   )?.[1];
-  if (targetNativeRoot === undefined) throw new Error(`Unknown Lando release target: ${target}.`);
+  if (root === undefined) throw new Error(`Unknown Lando release target: ${target}.`);
+  return root;
+};
+
+export const resolveOpenTuiNativeImport = (target: string, path: string): string | undefined => {
+  if (!opentuiNativeCatalog.rootImportFilter.test(path)) return undefined;
+  const targetNativeRoot = nativeRootFor(target);
   if (targetNativeRoot === path) return undefined;
   return opentuiNativeCatalog.stubPathFor(target, path);
 };
@@ -63,20 +79,23 @@ export const buildCompiledBinary = async (
   options: CompiledBinaryOptions,
   build: CompiledBinaryBuildRunner = (config) => Bun.build(config),
 ): Promise<Bun.BuildOutput> => {
-  const target = options.target ?? hostTarget();
-  const platform = platformFor(target);
-  return build({
+  const platform = platformFor(options.target ?? hostTarget());
+  const output = await build({
     entrypoints: [resolve(REPO_ROOT, "core/bin/lando.ts")],
     target: "bun",
     format: "esm",
     compile: { target: bunTargetFor(platform), outfile: options.outfile },
     bytecode: true,
+    minify: true,
     sourcemap: "external",
-    ...(options.version === undefined
-      ? {}
-      : { define: { __LANDO_CORE_VERSION__: JSON.stringify(options.version) } }),
-    plugins: [createOpenTuiPruningPlugin(target)],
+    define: {
+      __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(nativeRootFor(platform.id)),
+      ...(options.version === undefined ? {} : { __LANDO_CORE_VERSION__: JSON.stringify(options.version) }),
+    },
+    plugins: [createOpenTuiPruningPlugin(platform.id)],
   });
+  if (!output.success) throw new CompiledBinaryBuildError(output.logs);
+  return output;
 };
 
 export const parseCompiledBinaryArgs = (args: readonly string[]): CompiledBinaryOptions => {
@@ -87,11 +106,12 @@ export const parseCompiledBinaryArgs = (args: readonly string[]): CompiledBinary
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
     if (arg === "--") continue;
+    if (arg === "--minify") continue;
 
     const equalsIndex = arg.indexOf("=");
     const flag = equalsIndex === -1 ? arg : arg.slice(0, equalsIndex);
     const inlineValue = equalsIndex === -1 ? undefined : arg.slice(equalsIndex + 1);
-    if (flag !== "--target" && flag !== "--outfile" && flag !== "--version") {
+    if (flag !== "--target" && flag !== "--outfile" && flag !== "--version" && flag !== "--sourcemap") {
       throw new Error(`Unknown compiled binary argument: ${arg}`);
     }
     const value = inlineValue ?? args[index + 1];
@@ -99,6 +119,11 @@ export const parseCompiledBinaryArgs = (args: readonly string[]): CompiledBinary
       throw new Error(`${flag} expects a value.`);
     }
     if (inlineValue === undefined) index += 1;
+
+    if (flag === "--sourcemap") {
+      if (value !== "external") throw new Error("--sourcemap must be external.");
+      continue;
+    }
 
     if (flag === "--target") target = platformFor(value).id;
     if (flag === "--outfile") outfile = value;
@@ -113,5 +138,11 @@ export const parseCompiledBinaryArgs = (args: readonly string[]): CompiledBinary
 };
 
 if (import.meta.main) {
-  await buildCompiledBinary(parseCompiledBinaryArgs(Bun.argv.slice(2)));
+  try {
+    await buildCompiledBinary(parseCompiledBinaryArgs(Bun.argv.slice(2)));
+  } catch (error) {
+    if (!(error instanceof CompiledBinaryBuildError)) throw error;
+    console.error(error.message);
+    process.exitCode = 1;
+  }
 }

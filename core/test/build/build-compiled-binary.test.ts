@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  CompiledBinaryBuildError,
   type CompiledBinaryBuildRunner,
   buildCompiledBinary,
   createOpenTuiPruningPlugin,
@@ -73,32 +74,63 @@ describe("compiled binary OpenTUI native pruning", () => {
       runner,
     );
 
-    // Then: compile, bytecode, sourcemap, define, and exactly one pruning plugin are preserved.
+    // Then: compile, bytecode, minification, sourcemap, define, and exactly one pruning plugin are preserved.
     expect(received).toMatchObject({
       target: "bun",
       format: "esm",
       compile: { target: "bun-linux-x64", outfile: "./dist/lando-linux-x64" },
       bytecode: true,
+      minify: true,
       sourcemap: "external",
-      define: { __LANDO_CORE_VERSION__: '"4.0.0-beta.1"' },
+      define: {
+        __LANDO_CORE_VERSION__: '"4.0.0-beta.1"',
+        __LANDO_OPENTUI_NATIVE_ROOT__: JSON.stringify(opentuiNativeCatalog.targetToNativeRoot["linux-x64"]),
+      },
     });
     expect(received?.plugins).toHaveLength(1);
     expect(received?.plugins?.[0]?.name).toBe("opentui-native-pruning");
   });
 
-  test("CLI accepts spaced and equals build inputs", () => {
-    // Given: release-compatible target, outfile, and version flags in both supported forms.
+  test("build rejects with Bun diagnostics when the build output is unsuccessful", async () => {
+    // Given: Bun reports a failed build with a diagnostic instead of rejecting.
+    const diagnostic: Bun.BuildOutput["logs"][number] = {
+      name: "BuildMessage",
+      position: null,
+      message: "Could not resolve the compiled entrypoint.",
+      level: "error",
+    };
+    const runner: CompiledBinaryBuildRunner = async () => ({
+      success: false,
+      logs: [diagnostic],
+      outputs: [],
+    });
+
+    // When: the failed output is returned through the compiled-binary build boundary.
+    const build = buildCompiledBinary({ target: "linux-x64", outfile: "./dist/lando-linux-x64" }, runner);
+
+    // Then: callers receive a typed failure that preserves Bun's diagnostics.
+    await expect(build).rejects.toBeInstanceOf(CompiledBinaryBuildError);
+    await expect(build).rejects.toMatchObject({
+      name: "CompiledBinaryBuildError",
+      diagnostics: [diagnostic],
+    });
+  });
+
+  test("CLI accepts the normative Bun build flags and normalizes the target", () => {
+    // Given: a Bun-prefixed target plus the required optimization flags and mixed value forms.
     const args = [
-      "--target=windows-x64",
+      "--target=bun-windows-x64",
       "--outfile",
       "./dist/lando-windows-x64.exe",
       "--version=4.0.0-beta.2",
+      "--minify",
+      "--sourcemap=external",
     ];
 
     // When: the wrapper parses its CLI arguments.
     const options = parseCompiledBinaryArgs(args);
 
-    // Then: all build inputs retain their caller-provided values.
+    // Then: the target is normalized for platform selection and value inputs are preserved.
     expect(options).toEqual({
       target: "windows-x64",
       outfile: "./dist/lando-windows-x64.exe",

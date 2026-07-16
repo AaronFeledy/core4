@@ -172,7 +172,7 @@ ${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
         run: |
           mkdir -p dist
 ${renderHostProxyShimBuildCommands(platform)}
-          bun run scripts/build-compiled-binary.ts --target ${platform.id} --outfile ./dist/${platform.binaryName}
+          bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ./dist/${platform.binaryName} --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/${platform.binaryName}
 
       - name: Smoke test binary
@@ -219,6 +219,9 @@ ${setupBunSteps}
 
       - name: Restore binary executable bit
         run: chmod +x dist/lando
+
+      - name: Run OpenTUI startup benchmark
+        run: bun run bench:opentui-startup -- --binary dist/lando
 
       - name: Run tooling hot-path benchmark
         run: bun run bench:tooling-hot-path -- --binary dist/lando

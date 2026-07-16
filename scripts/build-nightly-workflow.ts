@@ -55,7 +55,7 @@ ${renderAssertPodman6Step()}
       - name: Build Linux x64 binary
         run: |
           bun run --filter='@lando/core' build:manifest
-          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./core/dist/lando
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./core/dist/lando --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./core/dist/lando
           ./core/dist/lando --version
 
@@ -115,7 +115,7 @@ ${landoRootlessPrereqSteps}
         run: |
           mkdir -p dist/cache/runtime-bundle
           bun run --filter='@lando/core' build:manifest
-          bun run scripts/build-compiled-binary.ts --target linux-x64 --outfile ./dist/lando
+          bun run scripts/build-compiled-binary.ts --target bun-linux-x64 --outfile ./dist/lando --minify --sourcemap=external
           bun run scripts/sanitize-compiled-binary.ts ./dist/lando
           ./dist/lando --version
 
@@ -157,7 +157,7 @@ const distributionBundlePath = (platform: CiPlatform): string =>
 
 const distributionCompileLines = CI_PLATFORMS.map(
   (platform) =>
-    `          bun run scripts/build-compiled-binary.ts --target ${platform.id} --outfile ${distributionBundlePath(platform)}`,
+    `          bun run scripts/build-compiled-binary.ts --target ${platform.bunTarget} --outfile ${distributionBundlePath(platform)} --minify --sourcemap=external`,
 ).join("\n");
 
 const distributionSanitizeLines = CI_PLATFORMS.map(

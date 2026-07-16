@@ -7,7 +7,7 @@ import {
 import { PromptCancelledError } from "../../../src/recipes/prompts/driver.ts";
 import { collectPrompts, createBufferedPromptIO } from "../../../src/recipes/prompts/index.ts";
 
-const fakePlugin = (readRaw: (request: unknown) => Promise<string>) => ({
+const fakePlugin = (readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>) => ({
   loadInteractivePromptDriver: async () => ({ readRaw }),
 });
 
@@ -125,12 +125,24 @@ describe("resolveInteractivePromptDriver — load + adaptation", () => {
   test("first OpenTUI init failure falls back, emits one debug notice, and suppresses later attempts", async () => {
     let importAttempts = 0;
     let readAttempts = 0;
+    let releaseNotice: (() => void) | undefined;
+    let markNoticeStarted: (() => void) | undefined;
+    const noticeStarted = new Promise<void>((resolve) => {
+      markNoticeStarted = resolve;
+    });
+    const noticeReleased = new Promise<void>((resolve) => {
+      releaseNotice = resolve;
+    });
     const notices: string[] = [];
     const io = createBufferedPromptIO({ inputs: ["line-answer"], isTTY: true });
     const gate = {
       isTTY: true,
       env: {},
-      debug: (message: string) => notices.push(message),
+      debug: async (message: string) => {
+        notices.push(message);
+        markNoticeStarted?.();
+        await noticeReleased;
+      },
       importRendererPlugin: async () => {
         importAttempts += 1;
         return fakePlugin(async () => {
@@ -143,11 +155,19 @@ describe("resolveInteractivePromptDriver — load + adaptation", () => {
     };
     const driver = await resolveInteractivePromptDriver(gate);
 
-    const answers = await collectPrompts({
+    let settled = false;
+    const answersPromise = collectPrompts({
       prompts: [{ name: "name", type: "text", message: "App name" }],
       io,
       ...(driver === undefined ? {} : { interactiveDriver: driver }),
+    }).finally(() => {
+      settled = true;
     });
+    await noticeStarted;
+
+    expect(settled).toBe(false);
+    releaseNotice?.();
+    const answers = await answersPromise;
     await expect(
       driver?.readRaw({ prompt: { name: "later", type: "text", message: "Later" }, mode: "normal" }),
     ).rejects.toMatchObject({ name: "OpenTuiPromptUnavailableError" });
@@ -179,6 +199,47 @@ describe("resolveInteractivePromptDriver — load + adaptation", () => {
 
     await expect(driver?.readRaw(promptRequest)).rejects.toBeInstanceOf(PromptCancelledError);
     expect(await resolveInteractivePromptDriver(gate)).toBeDefined();
+    expect(importAttempts).toBe(2);
+  });
+
+  test("forwards AbortSignal cancellation without making later prompts unavailable", async () => {
+    let importAttempts = 0;
+    let readAttempts = 0;
+    let receivedSignal: AbortSignal | undefined;
+    const gate = {
+      isTTY: true,
+      env: {},
+      importRendererPlugin: async () => {
+        importAttempts += 1;
+        return fakePlugin(async (_request, signal) => {
+          readAttempts += 1;
+          receivedSignal = signal;
+          if (readAttempts > 1) return "later-answer";
+          if (signal === undefined) throw new Error("AbortSignal was not forwarded");
+          return new Promise<string>((_resolve, reject) => {
+            signal.addEventListener(
+              "abort",
+              () => {
+                const error = new Error("cancelled");
+                error.name = "PromptCancelledError";
+                reject(error);
+              },
+              { once: true },
+            );
+          });
+        });
+      },
+    };
+    const driver = await resolveInteractivePromptDriver(gate);
+    const controller = new AbortController();
+
+    const answer = driver?.readRaw(promptRequest, controller.signal);
+    controller.abort();
+
+    await expect(answer).rejects.toBeInstanceOf(PromptCancelledError);
+    expect(receivedSignal).toBe(controller.signal);
+    const laterDriver = await resolveInteractivePromptDriver(gate);
+    await expect(laterDriver?.readRaw(promptRequest)).resolves.toBe("later-answer");
     expect(importAttempts).toBe(2);
   });
 

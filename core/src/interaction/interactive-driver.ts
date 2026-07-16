@@ -20,7 +20,7 @@
 import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver.ts";
 
 interface RawPromptDriver {
-  readonly readRaw: (request: unknown) => Promise<string>;
+  readonly readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>;
 }
 
 interface RendererPluginModule {
@@ -33,7 +33,7 @@ export interface InteractiveDriverGate {
   readonly nonInteractive?: boolean;
   readonly env?: NodeJS.ProcessEnv;
   readonly importRendererPlugin?: () => Promise<RendererPluginModule>;
-  readonly debug?: (message: string, data: Readonly<Record<string, unknown>>) => void;
+  readonly debug?: (message: string, data: Readonly<Record<string, unknown>>) => Promise<void>;
 }
 
 const DEGRADATION_NOTICE = "OpenTUI prompts degraded to line input for this process.";
@@ -57,22 +57,22 @@ const unavailableError = (): Error => {
   return error;
 };
 
-const degradeOpenTuiPrompts = (gate: InteractiveDriverGate, cause: unknown): void => {
+const degradeOpenTuiPrompts = async (gate: InteractiveDriverGate, cause: unknown): Promise<void> => {
   if (!openTuiPromptDriverAvailable) return;
   openTuiPromptDriverAvailable = false;
-  gate.debug?.(DEGRADATION_NOTICE, { cause });
+  await gate.debug?.(DEGRADATION_NOTICE, { cause });
 };
 
 const adaptDriver = (raw: RawPromptDriver, gate: InteractiveDriverGate): PromptDriver => ({
-  readRaw: async (request) => {
+  readRaw: async (request, signal) => {
     if (!openTuiPromptDriverAvailable) throw unavailableError();
     try {
-      return await raw.readRaw(request);
+      return await raw.readRaw(request, signal);
     } catch (cause) {
       if (isCancellation(cause)) {
         throw new PromptCancelledError(cause instanceof Error ? cause.message : undefined);
       }
-      if (isUnavailable(cause)) degradeOpenTuiPrompts(gate, cause);
+      if (isUnavailable(cause)) await degradeOpenTuiPrompts(gate, cause);
       throw cause;
     }
   },
@@ -95,12 +95,15 @@ export const resolveInteractivePromptDriver = async (
     const mod = await importPlugin();
     const loader = mod.loadInteractivePromptDriver;
     if (typeof loader !== "function") {
-      degradeOpenTuiPrompts(gate, new Error("Renderer plugin has no interactive prompt driver loader."));
+      await degradeOpenTuiPrompts(
+        gate,
+        new Error("Renderer plugin has no interactive prompt driver loader."),
+      );
       return undefined;
     }
     return adaptDriver(await loader(), gate);
   } catch (cause) {
-    degradeOpenTuiPrompts(
+    await degradeOpenTuiPrompts(
       gate,
       cause instanceof Error
         ? cause

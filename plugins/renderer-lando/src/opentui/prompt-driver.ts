@@ -15,13 +15,25 @@ interface PromptDriverRequestLike {
   choices?: ReadonlyArray<unknown>;
 }
 
-interface KeyEventLike {
-  name?: string;
-  sequence?: string;
-  ctrl?: boolean;
-}
+declare const __LANDO_OPENTUI_NATIVE_ROOT__: string;
 
-type EventListenerLike = (...args: ReadonlyArray<never>) => void;
+const publishLoaderProbe = (phase: "attempt" | "ready"): void => {
+  const probe = Reflect.get(globalThis, Symbol.for("@lando/test/opentui-loader-probe"));
+  if (typeof probe !== "function") return;
+  const nativeRoot =
+    phase === "ready" && typeof __LANDO_OPENTUI_NATIVE_ROOT__ !== "undefined"
+      ? __LANDO_OPENTUI_NATIVE_ROOT__
+      : undefined;
+  Reflect.apply(probe, undefined, [
+    {
+      phase,
+      specifier: "@opentui/core",
+      ...(nativeRoot === undefined ? {} : { nativeRoot }),
+    },
+  ]);
+};
+
+type EventListenerLike = (...args: ReadonlyArray<unknown>) => void;
 
 interface EventEmitterLike {
   on(event: string, listener: EventListenerLike): unknown;
@@ -30,7 +42,7 @@ interface EventEmitterLike {
 }
 
 interface RenderableLike extends EventEmitterLike {
-  add?(child: RenderableLike): unknown;
+  add?(child: unknown): unknown;
   focus?(): unknown;
   destroy?(): unknown;
 }
@@ -41,7 +53,6 @@ interface InputRenderableLike extends RenderableLike {
 
 interface TextareaRenderableLike extends RenderableLike {
   plainText: string;
-  onSubmit?: () => void;
 }
 
 interface SelectRenderableLike extends RenderableLike {
@@ -58,34 +69,36 @@ export interface RendererLike {
   destroy(): unknown | Promise<unknown>;
 }
 
-interface ConstructorLike<T> {
-  new (renderer: RendererLike, options: Record<string, unknown>): T;
+interface ConstructorLike<TRenderer, TRenderable> {
+  new (renderer: TRenderer, options: Record<string, unknown>): TRenderable;
 }
 
-export interface OpenTuiModuleLike {
-  createCliRenderer(config: Record<string, unknown>): Promise<RendererLike>;
-  BoxRenderable: ConstructorLike<RenderableLike>;
-  TextRenderable: ConstructorLike<RenderableLike>;
-  InputRenderable: ConstructorLike<InputRenderableLike>;
-  TextareaRenderable: ConstructorLike<TextareaRenderableLike>;
-  SelectRenderable: ConstructorLike<SelectRenderableLike>;
-  TabSelectRenderable: ConstructorLike<SelectRenderableLike>;
+export interface OpenTuiModuleLike<TRenderer extends RendererLike = RendererLike> {
+  createCliRenderer(config: Record<string, unknown>): Promise<TRenderer>;
+  BoxRenderable: ConstructorLike<TRenderer, RenderableLike>;
+  TextRenderable: ConstructorLike<TRenderer, RenderableLike>;
+  InputRenderable: ConstructorLike<TRenderer, InputRenderableLike>;
+  TextareaRenderable: ConstructorLike<TRenderer, TextareaRenderableLike>;
+  SelectRenderable: ConstructorLike<TRenderer, SelectRenderableLike>;
+  TabSelectRenderable: ConstructorLike<TRenderer, SelectRenderableLike>;
   InputRenderableEvents: { ENTER: string };
   SelectRenderableEvents: { ITEM_SELECTED: string };
   TabSelectRenderableEvents: { ITEM_SELECTED: string };
 }
 
-export interface OpenTuiPromptDriverDeps {
-  loadModule?: () => Promise<OpenTuiModuleLike>;
-  createRenderer?: (mod: OpenTuiModuleLike) => Promise<RendererLike>;
+export interface OpenTuiPromptDriverDeps<TRenderer extends RendererLike = RendererLike> {
+  loadModule?: () => Promise<OpenTuiModuleLike<TRenderer>>;
+  createRenderer?: (mod: OpenTuiModuleLike<TRenderer>) => Promise<TRenderer>;
   /** Production starts the live paint loop; test harness drives frames manually so it injects a no-op. */
-  startRenderer?: (renderer: RendererLike) => void;
+  startRenderer?: (renderer: TRenderer) => void;
   stdin?: NodeJS.ReadStream;
   stdout?: NodeJS.WriteStream;
 }
 
 const loadOpenTuiModule = async (): Promise<OpenTuiModuleLike> => {
+  publishLoaderProbe("attempt");
   const mod: unknown = await import("@opentui/core");
+  publishLoaderProbe("ready");
   return mod as OpenTuiModuleLike;
 };
 
@@ -101,8 +114,15 @@ const makePromptCancelledError = (): Error => {
   return error;
 };
 
-const isCancellationKey = (key: KeyEventLike): boolean =>
-  key.name === "escape" || (key.ctrl === true && key.name === "c") || key.sequence === "\u0003";
+const isAborted = (signal: AbortSignal | undefined): boolean => signal?.aborted === true;
+
+const isCancellationKey = (key: unknown): boolean => {
+  if (key === null || typeof key !== "object") return false;
+  const name = "name" in key && typeof key.name === "string" ? key.name : undefined;
+  const sequence = "sequence" in key && typeof key.sequence === "string" ? key.sequence : undefined;
+  const ctrl = "ctrl" in key && key.ctrl === true;
+  return name === "escape" || (ctrl && name === "c") || sequence === "\u0003";
+};
 
 const removeListener = (emitter: EventEmitterLike, event: string, listener: EventListenerLike): void => {
   if (emitter.off !== undefined) {
@@ -158,9 +178,9 @@ const readPromptType = (request: PromptDriverRequestLike): string => {
 
 const panelWidth = (renderer: RendererLike): number => Math.max(24, Math.min(72, renderer.width - 2));
 
-const addPromptChrome = (
-  mod: OpenTuiModuleLike,
-  renderer: RendererLike,
+const addPromptChrome = <TRenderer extends RendererLike>(
+  mod: OpenTuiModuleLike<TRenderer>,
+  renderer: TRenderer,
   request: PromptDriverRequestLike,
 ): RenderableLike => {
   const panel = new mod.BoxRenderable(renderer, {
@@ -196,9 +216,9 @@ const addPromptChrome = (
   return panel;
 };
 
-const addInputControl = (
-  mod: OpenTuiModuleLike,
-  renderer: RendererLike,
+const addInputControl = <TRenderer extends RendererLike>(
+  mod: OpenTuiModuleLike<TRenderer>,
+  renderer: TRenderer,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
   done: (value: string) => void,
@@ -222,9 +242,9 @@ const addInputControl = (
   input.focus?.();
 };
 
-const addTextareaControl = (
-  mod: OpenTuiModuleLike,
-  renderer: RendererLike,
+const addTextareaControl = <TRenderer extends RendererLike>(
+  mod: OpenTuiModuleLike<TRenderer>,
+  renderer: TRenderer,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
   done: (value: string) => void,
@@ -249,9 +269,9 @@ const addTextareaControl = (
   textarea.focus?.();
 };
 
-const addSelectControl = (
-  mod: OpenTuiModuleLike,
-  renderer: RendererLike,
+const addSelectControl = <TRenderer extends RendererLike>(
+  mod: OpenTuiModuleLike<TRenderer>,
+  renderer: TRenderer,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
   done: (value: string) => void,
@@ -280,14 +300,17 @@ const addSelectControl = (
     selectedDescriptionColor: "#ccfbf1",
     showScrollIndicator: true,
   });
-  select.on(mod.SelectRenderableEvents.ITEM_SELECTED, (index: number) => done(String(index + 1)));
+  select.on(mod.SelectRenderableEvents.ITEM_SELECTED, (...args) => {
+    const index = args[0];
+    if (typeof index === "number") done(String(index + 1));
+  });
   panel.add?.(select);
   select.focus?.();
 };
 
-const addConfirmControl = (
-  mod: OpenTuiModuleLike,
-  renderer: RendererLike,
+const addConfirmControl = <TRenderer extends RendererLike>(
+  mod: OpenTuiModuleLike<TRenderer>,
+  renderer: TRenderer,
   panel: RenderableLike,
   request: PromptDriverRequestLike,
   done: (value: string) => void,
@@ -312,14 +335,17 @@ const addConfirmControl = (
     wrapSelection: true,
   });
   tabs.setSelectedIndex?.(isYesDefault(request.defaultRaw) ? 0 : 1);
-  tabs.on(mod.TabSelectRenderableEvents.ITEM_SELECTED, (index: number) => done(index === 0 ? "y" : "n"));
+  tabs.on(mod.TabSelectRenderableEvents.ITEM_SELECTED, (...args) => {
+    const index = args[0];
+    if (typeof index === "number") done(index === 0 ? "y" : "n");
+  });
   panel.add?.(tabs);
   tabs.focus?.();
 };
 
-const buildPrompt = (
-  mod: OpenTuiModuleLike,
-  renderer: RendererLike,
+const buildPrompt = <TRenderer extends RendererLike>(
+  mod: OpenTuiModuleLike<TRenderer>,
+  renderer: TRenderer,
   request: PromptDriverRequestLike,
   done: (value: string) => void,
 ): void => {
@@ -340,9 +366,15 @@ const buildPrompt = (
   addInputControl(mod, renderer, panel, request, done);
 };
 
-export const createOpenTuiPromptDriver = (
-  deps: OpenTuiPromptDriverDeps = {},
-): { readRaw: (request: unknown) => Promise<string> } => {
+type OpenTuiPromptDriver = {
+  readonly readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>;
+};
+
+export function createOpenTuiPromptDriver(): OpenTuiPromptDriver;
+export function createOpenTuiPromptDriver<TRenderer extends RendererLike>(
+  deps: OpenTuiPromptDriverDeps<TRenderer>,
+): OpenTuiPromptDriver;
+export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): OpenTuiPromptDriver {
   const loadModule = deps.loadModule ?? loadOpenTuiModule;
   const startRenderer =
     deps.startRenderer ??
@@ -351,7 +383,8 @@ export const createOpenTuiPromptDriver = (
     });
   let openTuiAvailable = true;
   return {
-    readRaw: async (request: unknown): Promise<string> => {
+    readRaw: async (request: unknown, signal?: AbortSignal): Promise<string> => {
+      if (isAborted(signal)) throw makePromptCancelledError();
       const typedRequest = request as PromptDriverRequestLike;
       const type = readPromptType(typedRequest);
       if (isDeclinedType(type)) throw new Error(`driver declines ${type}`);
@@ -379,8 +412,13 @@ export const createOpenTuiPromptDriver = (
         );
       }
 
-      let cancelListener: ((key: KeyEventLike) => void) | undefined;
+      let cancelListener: EventListenerLike | undefined;
+      let abortListener: (() => void) | undefined;
+      let promptOutcome:
+        | { readonly ok: true; readonly value: string }
+        | { readonly ok: false; readonly cause: unknown };
       try {
+        if (isAborted(signal)) throw makePromptCancelledError();
         try {
           startRenderer(renderer);
         } catch (cause) {
@@ -391,7 +429,7 @@ export const createOpenTuiPromptDriver = (
               : new Error("OpenTUI startup failed with a non-Error cause.", { cause }),
           );
         }
-        return await new Promise<string>((resolve, reject) => {
+        const value = await new Promise<string>((resolve, reject) => {
           let settled = false;
           const settle = (callback: () => void): void => {
             if (settled) return;
@@ -399,17 +437,72 @@ export const createOpenTuiPromptDriver = (
             callback();
           };
           const done = (value: string): void => settle(() => resolve(value));
-          cancelListener = (key: KeyEventLike): void => {
-            if (isCancellationKey(key)) settle(() => reject(makePromptCancelledError()));
+          const cancel = (): void => settle(() => reject(makePromptCancelledError()));
+          cancelListener = (...args): void => {
+            if (isCancellationKey(args[0])) cancel();
           };
+          if (signal !== undefined) {
+            abortListener = cancel;
+            signal.addEventListener("abort", abortListener, { once: true });
+            if (signal.aborted) {
+              cancel();
+              return;
+            }
+          }
           renderer.keyInput.on("keypress", cancelListener);
           buildPrompt(mod, renderer, typedRequest, done);
           renderer.requestRender?.();
         });
-      } finally {
-        if (cancelListener !== undefined) removeListener(renderer.keyInput, "keypress", cancelListener);
-        await renderer.destroy();
+        promptOutcome = { ok: true, value };
+      } catch (cause) {
+        promptOutcome = {
+          ok: false,
+          cause:
+            cause instanceof Error
+              ? cause
+              : new Error("OpenTUI prompt failed with a non-Error cause.", { cause }),
+        };
       }
+
+      let cleanupFailed = false;
+      let cleanupCause: unknown;
+      try {
+        if (cancelListener !== undefined) removeListener(renderer.keyInput, "keypress", cancelListener);
+      } catch (cause) {
+        cleanupFailed = true;
+        cleanupCause =
+          cause instanceof Error
+            ? cause
+            : new Error("OpenTUI listener cleanup failed with a non-Error cause.", { cause });
+      }
+      try {
+        if (abortListener !== undefined) signal?.removeEventListener("abort", abortListener);
+      } catch (cause) {
+        cleanupFailed = true;
+        cleanupCause ??=
+          cause instanceof Error
+            ? cause
+            : new Error("OpenTUI abort-listener cleanup failed with a non-Error cause.", { cause });
+      }
+      try {
+        await renderer.destroy();
+      } catch (cause) {
+        cleanupFailed = true;
+        cleanupCause ??=
+          cause instanceof Error
+            ? cause
+            : new Error("OpenTUI renderer cleanup failed with a non-Error cause.", { cause });
+      }
+      if (cleanupFailed) openTuiAvailable = false;
+      if (!promptOutcome.ok) throw promptOutcome.cause;
+      if (cleanupFailed) {
+        throw makeUnavailableError(
+          cleanupCause instanceof Error
+            ? cleanupCause
+            : new Error("OpenTUI renderer cleanup failed with a non-Error cause.", { cause: cleanupCause }),
+        );
+      }
+      return promptOutcome.value;
     },
   };
-};
+}

@@ -25,6 +25,8 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Podman imports host certificates for `machine set --import-native-ca` during machine startup; an already-running Lando-owned machine must restart after enabling the setting for trust sync to complete.
 - Host-proxy transport diagnostics discover ownership-valid worker records under `makeLandoPaths().hostProxyRunRoot` and reuse the authenticated `probeWorker` control path; absent worker state is an intentional no-op, not a warning.
 - Main-binary builds go through `scripts/build-compiled-binary.ts`: OpenTUI requires ESM bytecode, and multi-target release builds must install all locked optional native packages with frozen `--os=* --cpu=*` inputs before compiling.
+- Programmatic `Bun.build` may resolve with `success: false`; compile wrappers must inspect the result, preserve diagnostics, and fail the calling release stage instead of trusting promise resolution.
+- Promise-backed interactive drivers must accept the enclosing Effect cancellation signal and settle through their normal cleanup path so interruption destroys terminal renderers and listeners.
 
 ## Durable learnings
 
@@ -476,4 +478,14 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Bun bytecode defaults to CommonJS, which cannot bundle OpenTUI 0.4.3's top-level await; the main wrapper must set `format: "esm"`.
   - A renderer service may be absent from standalone Promise prompt paths, so those paths must consult the lightweight resolved renderer-mode state before installing a rich prompt driver.
+---
+
+## 2026-07-16 11:39 CDT - US-455 Review
+- Closed review blockers in the compiled and interactive paths: unsuccessful `Bun.build` results now fail release compilation with retained diagnostics, Effect interruption cancels the active rich prompt and destroys its renderer/listeners, degradation notices run through the caller's awaited debug logger, and compiled/source acceptance directly observes excluded imports, forced fallback, and the selected native root.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs and the final security lane passed. Shipping the acceptance-only global loader probe was accepted because setting it already requires in-process code execution. A new `apps:list` absolute startup gate was rejected as unrelated pre-existing minimal-bootstrap debt after frozen `origin/main` reproduced the failure and was slower; the OpenTUI gate now uses the normative level-none `--version` 50ms canary while existing renderer first-paint tests cover the rich path.
+- Verification: typecheck, lint, base-aware guide drift, renderer boundary, generated native/workflow idempotence, and focused build/import/release/interaction/first-paint tests passed; rebuilt relocated Linux source/compiled PTY acceptance passed. The isolated WSL sandbox cannot provide absolute latency evidence (current `--version` p95 166ms and frozen `origin/main` 160ms against 50ms), but the strict Linux CI gate remains enabled and the US-455 binary improved `apps:list` by roughly 25ms versus the same-environment baseline.
+- **Learnings for future iterations:**
+  - Promise resolution is not build success in Bun; inspect `BuildOutput.success` before release stages continue.
+  - Effect interruption must cross into Promise-owned terminal resources via `AbortSignal`, then reuse ordinary cleanup rather than abandoning the Promise.
+  - Performance review must compare the story branch with a frozen same-environment baseline before attributing an existing command-class budget miss to a newly lazy dependency.
 ---

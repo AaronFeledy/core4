@@ -1005,11 +1005,13 @@ const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<st
   "run",
   "scripts/build-compiled-binary.ts",
   "--target",
-  platform.id,
+  platform.bunTarget,
   "--outfile",
   releaseBinaryPath(platform),
   "--version",
   version,
+  "--minify",
+  "--sourcemap=external",
 ];
 
 const sanitizeCommand = (platform: CiPlatform): ReadonlyArray<string> => [

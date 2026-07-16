@@ -2312,11 +2312,13 @@ describe("release orchestrator", () => {
       "run",
       "scripts/build-compiled-binary.ts",
       "--target",
-      "windows-x64",
+      "bun-windows-x64",
       "--outfile",
       "./dist/lando-windows-x64.exe",
       "--version",
       "0.0.0",
+      "--minify",
+      "--sourcemap=external",
     ]);
     expect(spawnStages.at(-1)?.cmd).toEqual([
       "bun",
@@ -2360,11 +2362,13 @@ describe("release orchestrator", () => {
             "run",
             "scripts/build-compiled-binary.ts",
             "--target",
-            platform.id,
+            platform.bunTarget,
             "--outfile",
             outfile,
             "--version",
             "0.0.0",
+            "--minify",
+            "--sourcemap=external",
           ],
           ["bun", "run", "scripts/sanitize-compiled-binary.ts", outfile],
         ];
@@ -2419,7 +2423,7 @@ describe("release orchestrator", () => {
       runner: {
         spawn: async ({ stageId, cmd }) => {
           if (stageId !== "7-compile" || cmd[2] !== "scripts/build-compiled-binary.ts") return;
-          now += cmd.includes("linux-x64") ? 600_001 : 10_000;
+          now += cmd.includes("bun-linux-x64") ? 600_001 : 10_000;
         },
         shell: async () => {},
       },
