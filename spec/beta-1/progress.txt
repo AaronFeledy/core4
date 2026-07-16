@@ -336,6 +336,23 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Merge: merged (squash)
 ---
 
+## 2026-07-16 01:21 CDT - US-454
+- Pre-parse and runtime-layer construction failures now share a single pre-command failure seam: standard machine result envelope (or text bug-report), non-zero exit codes, and deliberate exclusion from generic `cli-*-init`/`-run`/`-error` lifecycle events. Compiled flag validation sets `preCommand: true` so a staged invocation cannot leak lifecycle publishes; missing bootstrap on the OCLIF base routes through the same envelope path.
+- Verification: typecheck, lint passed; pre-command failure, command-lifecycle, flag-value, dual-dispatch, and renderer redaction spot checks passed.
+- **Learnings for future iterations:**
+  - Failures before a resolved command identity must not attach an invocation snapshot. Prefer `renderPreCommandFailure` / `runCompiledCommand(..., { preCommand: true })` over `Effect.fail` with a staged invocation.
+  - Runtime-layer build failures already skip lifecycle because `runCommandLifecycle` never starts when `Layer.provide` fails; the envelope still comes from the outer renderer-boundary diagnostic path.
+---
+
+## 2026-07-16 02:29 CDT - US-454 Review
+- Closed the remaining pre-command parity and disclosure gaps: unknown flags now fail before either parser can echo or ignore attached values, renderer/result-format and bootstrap failures use the shared redacted envelope seam, and streaming-capable compiled commands emit the same bare pre-command result envelope as source dispatch. The review also corrected the recording EventService fake to satisfy its generic query contract.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive after two `resource_exhausted` failures; no Bugbot result was treated as approval. `Guide-Coverage-Skip: Internal failure-transport hardening changes no successful CLI workflow or public contract.`
+- Verification: clean changed-file diagnostics; typecheck, lint, guide drift, renderer/machine-output/redaction boundaries, diff check, and focused flag-validation, pre-command, init-hook, lifecycle, and renderer-redaction tests passed; source/compiled parity coverage passed in the implementation lane.
+- **Learnings for future iterations:**
+  - Unknown short flags can carry a secret suffix; retain only the two-character flag token in diagnostics, just as long `--flag=value` diagnostics drop the attached value.
+  - Pre-command machine intent must be derived before renderer validation succeeds, and compiled pre-command failures must not inherit normal command streaming frames.
+---
+
 ## 2026-07-15 22:30 CDT - US-451
 - Doctor now discovers persisted, ownership-valid host-proxy workers and probes their authenticated production control endpoints. Live Unix sockets and Windows loopback/gateway bridges report structured informational findings; unreachable bridges report per-app transport context with `lando restart` remediation, while absent worker state stays silent.
 - Explicit host DNS proxy `mode=none` / `mechanism=skipped` is now an informational no-op instead of a false warning. Text and machine output continue through the existing doctor renderer/redaction seams, and the doctor guide records both behaviors.
@@ -387,5 +404,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - PR: #593 https://github.com/AaronFeledy/core4/pull/593
 - CI outcome: pass
 - Review feedback: fixed (aligned doctor-subsystems-fix recovery test with the PR's intentional contract — a disabled `mode=none`/`skipped` host proxy is a healthy no-op `pass`, so only `certs` remains degraded-manual; production source left unchanged as correct)
+- Merge: merged (squash)
+---
+
+## 2026-07-16 04:31 CDT - Babysit
+- PR: #594 https://github.com/AaronFeledy/core4/pull/594
+- CI outcome: pass
+- Review feedback: fixed (resolved the current-main progress-log conflict, updated the stale deferred-command precedence expectation, and exempted non-strict passthrough commands from command-scoped unknown-flag validation; the isolated startup-performance overage passed on rerun)
 - Merge: merged (squash)
 ---

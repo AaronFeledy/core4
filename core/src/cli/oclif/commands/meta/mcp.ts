@@ -27,11 +27,12 @@ import {
   formatCommandError,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
-import { renderCommandFlagValueValidation } from "../../command-boundary.ts";
+import {
+  preCommandOutputMode,
+  renderCommandFlagValueValidation,
+  renderPreCommandFailure,
+} from "../../command-boundary.ts";
 import { getCommandRuntimeLayer } from "../../hooks/init.ts";
-
-const formatRendererSelectionError = (error: unknown): string =>
-  formatCommandError({ error, commandId: "cli:renderer-selection", rendererMode: "plain" });
 
 export const metaMcpSpec: LandoCommandSpec<McpListResult> = {
   resultSchema: McpListResultSchema,
@@ -83,7 +84,12 @@ export default class MetaMcpCommand extends LandoCommandBase {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        throw new Error(formatRendererSelectionError(error));
+        await renderPreCommandFailure({
+          commandId: "cli:renderer-selection",
+          error,
+          ...preCommandOutputMode({ argv: this.argv, env: process.env }),
+        });
+        return;
       }
       throw error;
     }
@@ -100,7 +106,13 @@ export default class MetaMcpCommand extends LandoCommandBase {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError) {
-        throw new Error(formatRendererSelectionError(error));
+        await renderPreCommandFailure({
+          commandId: "cli:format-selection",
+          error,
+          rendererMode,
+          resultFormat: rendererMode === "json" ? "json" : "text",
+        });
+        return;
       }
       throw error;
     }
@@ -122,10 +134,18 @@ export default class MetaMcpCommand extends LandoCommandBase {
     const flags = mcpFlagsFromParsed((parsed as { flags?: Record<string, unknown> }).flags ?? {});
     const commandRuntime = getCommandRuntimeLayer(MetaMcpCommand);
     if (commandRuntime === undefined) {
-      throw new LandoRuntimeBootstrapError({
-        message: "OCLIF command meta:mcp is missing a valid static bootstrap declaration.",
-        stage: "minimal",
+      await renderPreCommandFailure({
+        commandId: metaMcpSpec.id,
+        error: new LandoRuntimeBootstrapError({
+          message: "OCLIF command meta:mcp is missing a valid static bootstrap declaration.",
+          stage: "minimal",
+        }),
+        rendererMode,
+        resultFormat,
+        resultSchema: metaMcpSpec.resultSchema,
+        deprecationWarnings: deprecationWarnings.enabled,
       });
+      return;
     }
     const retainedRuntime = makeLandoRuntime(
       cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),

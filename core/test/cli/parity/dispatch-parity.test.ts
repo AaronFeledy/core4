@@ -369,6 +369,24 @@ const expectUnknownFlagParity = async (argv: ReadonlyArray<string>, flag: string
   expect(compiled.stderr).toContain(`Nonexistent flag: ${flag}`);
 };
 
+const expectUnknownFlagMachineParity = async (
+  command: string,
+  flag: string,
+  suppliedValue: string,
+): Promise<void> => {
+  const argv = [command, `${flag}=${suppliedValue}`, "--format=json"];
+  const source = await runSourceCli(argv);
+  const compiled = await runCompiledCli(argv);
+  expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(2);
+  expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+  expect(`${source.stdout}${source.stderr}`).not.toContain(suppliedValue);
+  expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(suppliedValue);
+  const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+  const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+  expect(compiledEnvelope).toEqual(sourceEnvelope);
+  expect(sourceEnvelope.code).toBe("UnknownCliFlagError");
+};
+
 const expectHelpParity = async (commandId: string, mustContain: ReadonlyArray<string>): Promise<void> => {
   const source = await runSourceCli([commandId, "--help"]);
   const compiled = await runCompiledCli([commandId, "--help"]);
@@ -1233,6 +1251,70 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
       expect(compiledEnvelope).toEqual(sourceEnvelope);
       expect(sourceEnvelope.code).toBe("McpToolInputError");
+    }, 30_000);
+  });
+
+  describe("pre-command machine failures", () => {
+    test("found commands reject unknown attached values without disclosing them", async () => {
+      await expectUnknownFlagMachineParity("meta:version", "--future", "private-flag-value");
+    }, 30_000);
+
+    test("invalid result formats use matching redacted bare envelopes", async () => {
+      const isolated = makeIsolatedEnv();
+      const secret = "private-format-value";
+      isolated.env.NPM_TOKEN = secret;
+      try {
+        const argv = ["app:logs", `--format=${secret}`, "--renderer=json"];
+        const source = await runSourceCli(argv, { env: isolated.env });
+        const compiled = await runCompiledCli(argv, { env: isolated.env });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(1);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(`${source.stdout}${source.stderr}`).not.toContain(secret);
+        expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(secret);
+        const sourceResult = lastJsonLine(source.stdout || source.stderr) as Record<string, unknown>;
+        const compiledResult = lastJsonLine(compiled.stdout || compiled.stderr) as Record<string, unknown>;
+        expect(sourceResult).not.toHaveProperty("_tag");
+        expect(compiledResult).not.toHaveProperty("_tag");
+        expect(normalizeJsonEnvelope(compiledResult)).toEqual(normalizeJsonEnvelope(sourceResult));
+        expect(normalizeJsonEnvelope(sourceResult).code).toBe("RendererSelectionError");
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("machine-requested renderer selection failures use matching redacted envelopes", async () => {
+      const isolated = makeIsolatedEnv();
+      const secret = "private-renderer-value";
+      isolated.env.NPM_TOKEN = secret;
+      try {
+        const argv = ["meta:version", `--renderer=${secret}`, "--format=json"];
+        const source = await runSourceCli(argv, { env: isolated.env });
+        const compiled = await runCompiledCli(argv, { env: isolated.env });
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(1);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+        expect(`${source.stdout}${source.stderr}`).not.toContain(secret);
+        expect(`${compiled.stdout}${compiled.stderr}`).not.toContain(secret);
+        const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+        const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+        expect(compiledEnvelope).toEqual(sourceEnvelope);
+        expect(sourceEnvelope.code).toBe("RendererSelectionError");
+        expect(sourceEnvelope.commandId).toBe("cli:renderer-selection");
+      } finally {
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("streaming commands use matching bare envelopes for malformed flags", async () => {
+      const argv = ["app:logs", "--tail=not-an-integer", "--format=json"];
+      const source = await runSourceCli(argv);
+      const compiled = await runCompiledCli(argv);
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(2);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(source.exitCode);
+      const sourceResult = lastJsonLine(source.stdout || source.stderr) as Record<string, unknown>;
+      const compiledResult = lastJsonLine(compiled.stdout || compiled.stderr) as Record<string, unknown>;
+      expect(sourceResult).not.toHaveProperty("_tag");
+      expect(compiledResult).not.toHaveProperty("_tag");
+      expect(normalizeJsonEnvelope(compiledResult)).toEqual(normalizeJsonEnvelope(sourceResult));
     }, 30_000);
   });
 

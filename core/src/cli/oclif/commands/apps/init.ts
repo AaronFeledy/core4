@@ -32,7 +32,11 @@ import {
   type LandoCommandSpec,
   resolveTopLevelAliases,
 } from "../../command-base.ts";
-import { renderCommandFlagValueValidation } from "../../command-boundary.ts";
+import {
+  preCommandOutputMode,
+  renderCommandFlagValueValidation,
+  renderPreCommandFailure,
+} from "../../command-boundary.ts";
 
 export interface InitFlags {
   readonly full: boolean;
@@ -151,12 +155,12 @@ export default class InitCommand extends LandoCommandBase {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        const text = formatBugReport({
+        await renderPreCommandFailure({
+          commandId: "cli:renderer-selection",
           error,
-          context: { commandId: "cli:renderer-selection" },
-          rendererMode: "plain",
+          ...preCommandOutputMode({ argv: this.argv, env: process.env }),
         });
-        throw new Error(text);
+        return;
       }
       throw error;
     }
@@ -173,13 +177,13 @@ export default class InitCommand extends LandoCommandBase {
       this.argv.push(...resolution.remainingArgv);
     } catch (error) {
       if (error instanceof RendererSelectionError) {
-        throw new Error(
-          formatBugReport({
-            error,
-            context: { commandId: "cli:format-selection" },
-            rendererMode: "plain",
-          }),
-        );
+        await renderPreCommandFailure({
+          commandId: "cli:format-selection",
+          error,
+          rendererMode,
+          resultFormat: rendererMode === "json" ? "json" : "text",
+        });
+        return;
       }
       throw error;
     }

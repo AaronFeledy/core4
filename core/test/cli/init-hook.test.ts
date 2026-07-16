@@ -5,8 +5,6 @@ import { fileURLToPath } from "node:url";
 import { Config } from "@oclif/core";
 import { runCommand } from "@oclif/test";
 
-import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-
 import { events, resetEvents } from "../fixtures/oclif-init/src/events.ts";
 
 const fixtureRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../fixtures/oclif-init");
@@ -74,7 +72,24 @@ describe("OCLIF init hook", () => {
   test("fails when the command class is missing static bootstrap", async () => {
     const result = await runCommand("missing", { root: fixtureRoot, ignoreManifest: true });
 
-    expect(result.error).toBeInstanceOf(LandoRuntimeBootstrapError);
+    expect(result.error).toMatchObject({ code: "EEXIT" });
+    expect(result.stderr).toContain("LandoRuntimeBootstrapError");
+    process.exitCode = 0;
+  });
+
+  test("missing bootstrap uses the machine pre-command envelope when JSON is requested", async () => {
+    const result = await runCommand(["missing", "--format=json"], {
+      root: fixtureRoot,
+      ignoreManifest: true,
+    });
+
+    expect(result.error).toBeDefined();
+    expect(JSON.parse(result.stdout.trim())).toMatchObject({
+      apiVersion: "v4",
+      command: "missing",
+      ok: false,
+      error: { _tag: "LandoRuntimeBootstrapError" },
+    });
     process.exitCode = 0;
   });
 
@@ -83,7 +98,8 @@ describe("OCLIF init hook", () => {
 
     const result = await runCommand("plain-missing", { root: fixtureRoot, ignoreManifest: true });
 
-    expect(result.error).toBeInstanceOf(LandoRuntimeBootstrapError);
+    expect(result.error).toMatchObject({ code: "EEXIT" });
+    expect(result.stderr).toContain("LandoRuntimeBootstrapError");
     expect(events).toEqual([]);
     process.exitCode = 0;
   });

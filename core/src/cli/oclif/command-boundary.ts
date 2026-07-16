@@ -1,10 +1,13 @@
-import { Effect, Layer, type Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import type { RendererMode } from "../bug-report.ts";
 import { formatBugReport } from "../bug-report.ts";
-import { validateCommandFlagValues } from "../flag-value-validation.ts";
+import { validateCommandCliFlags } from "../flag-value-validation.ts";
 import type { ResultFormat } from "../format-flags.ts";
 import { runWithRendererHandling } from "../renderer-boundary.ts";
+import type { RendererIO } from "../renderer/io.ts";
+
+const EmptyPreCommandResultSchema = Schema.Struct({});
 
 export const extractSpecFlags = (input: unknown): Readonly<Record<string, unknown>> => {
   if (
@@ -24,6 +27,66 @@ export const extractSpecParsedArgv = (input: unknown): ReadonlyArray<string> =>
     ? input.parsedArgv.filter((arg): arg is string => typeof arg === "string")
     : [];
 
+/**
+ * User-facing failures that occur before a resolved command lifecycle
+ * (pre-parse validation, runtime-layer construction) share this seam:
+ * standard machine result envelope or text bug-report, non-zero exit, and
+ * deliberately **no** `cli-<id>-init`/`-run`/`-error` lifecycle events.
+ */
+export interface PreCommandFailureInput {
+  readonly commandId: string;
+  readonly error: unknown;
+  readonly rendererMode: RendererMode;
+  readonly resultFormat: ResultFormat;
+  readonly resultSchema?: Schema.Schema.AnyNoContext;
+  readonly failureExitCode?: number;
+  readonly deprecationWarnings?: boolean;
+  readonly io?: RendererIO;
+  readonly setExitCode?: (code: number) => void;
+}
+
+export const renderPreCommandFailure = async (input: PreCommandFailureInput): Promise<void> => {
+  const exitCode = input.failureExitCode ?? 1;
+  await runWithRendererHandling(Effect.fail(input.error), {
+    runtime: Layer.empty,
+    rendererMode: input.rendererMode,
+    resultFormat: input.resultFormat,
+    command: input.commandId,
+    resultSchema: input.resultSchema ?? EmptyPreCommandResultSchema,
+    ...(input.deprecationWarnings === undefined ? {} : { deprecationWarnings: input.deprecationWarnings }),
+    ...(input.io === undefined ? {} : { io: input.io }),
+    ...(input.setExitCode === undefined ? {} : { setExitCode: input.setExitCode }),
+    failureExitCode: () => exitCode,
+    formatError: (failure) =>
+      formatBugReport({
+        error: failure,
+        context: { commandId: input.commandId },
+        rendererMode: input.rendererMode,
+      }),
+  });
+};
+
+export const preCommandOutputMode = (input: {
+  readonly argv: ReadonlyArray<string>;
+  readonly env: Readonly<Record<string, string | undefined>>;
+}): { readonly rendererMode: RendererMode; readonly resultFormat: ResultFormat } => {
+  const beforeTerminator = input.argv.slice(
+    0,
+    input.argv.indexOf("--") === -1 ? undefined : input.argv.indexOf("--"),
+  );
+  const machineRequested = beforeTerminator.some((arg, index) => {
+    if (arg === "--json" || arg === "-j" || arg === "--format=json" || arg === "--renderer=json") {
+      return true;
+    }
+    if (arg !== "--format" && arg !== "--renderer") return false;
+    return beforeTerminator[index + 1] === "json";
+  });
+  if (machineRequested || input.env.LANDO_RENDERER === "json") {
+    return { rendererMode: "json", resultFormat: "json" };
+  }
+  return { rendererMode: "plain", resultFormat: "text" };
+};
+
 interface CommandFlagValueValidationInput {
   readonly commandId: string;
   readonly argv: ReadonlyArray<string>;
@@ -32,27 +95,27 @@ interface CommandFlagValueValidationInput {
   readonly resultFormat: ResultFormat;
   readonly resultSchema: Schema.Schema.AnyNoContext;
   readonly deprecationWarnings?: boolean;
+  readonly allowUnknownFlags?: boolean;
 }
 
 export const renderCommandFlagValueValidation = async (
   input: CommandFlagValueValidationInput,
 ): Promise<boolean> => {
-  const error = validateCommandFlagValues(input.commandId, input.argv, input.definitions);
+  const error = validateCommandCliFlags({
+    commandId: input.commandId,
+    argv: input.argv,
+    definitions: input.definitions,
+    allowUnknownFlags: input.allowUnknownFlags === true,
+  });
   if (error === undefined) return false;
-  await runWithRendererHandling(Effect.fail(error), {
-    runtime: Layer.empty,
+  await renderPreCommandFailure({
+    commandId: input.commandId,
+    error,
     rendererMode: input.rendererMode,
     resultFormat: input.resultFormat,
-    command: input.commandId,
     resultSchema: input.resultSchema,
+    failureExitCode: 2,
     ...(input.deprecationWarnings === undefined ? {} : { deprecationWarnings: input.deprecationWarnings }),
-    failureExitCode: () => 2,
-    formatError: (failure) =>
-      formatBugReport({
-        error: failure,
-        context: { commandId: input.commandId },
-        rendererMode: input.rendererMode,
-      }),
   });
   return true;
 };

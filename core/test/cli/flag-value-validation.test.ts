@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 
-import { MalformedCliFlagValueError, validateCliFlagValues } from "../../src/cli/flag-value-validation.ts";
+import {
+  MalformedCliFlagValueError,
+  UnknownCliFlagError,
+  validateCliFlagValues,
+  validateCommandCliFlags,
+  validateUnknownCliFlags,
+} from "../../src/cli/flag-value-validation.ts";
 
 const flags = {
   provider: { type: "option" },
@@ -77,5 +83,39 @@ describe("CLI flag-value validation", () => {
 
   test("accepts an explicitly allowed empty option value", () => {
     expect(validateCliFlagValues(["--provider="], flags, ["provider"])).toBeUndefined();
+  });
+
+  test("rejects an unknown flag without retaining its attached value", () => {
+    const error = validateUnknownCliFlags(["--future=private-value"], flags);
+
+    expect(error).toBeInstanceOf(UnknownCliFlagError);
+    expect(error).toMatchObject({
+      _tag: "UnknownCliFlagError",
+      flag: "--future",
+      message: "Nonexistent flag: --future",
+    });
+    expect(JSON.stringify(error)).not.toContain("private-value");
+  });
+
+  test("rejects an unknown short flag without retaining its attached value", () => {
+    const error = validateUnknownCliFlags(["-zprivate-value"], flags);
+
+    expect(error).toMatchObject({
+      _tag: "UnknownCliFlagError",
+      flag: "-z",
+      message: "Nonexistent flag: -z",
+    });
+    expect(JSON.stringify(error)).not.toContain("private-value");
+  });
+
+  test("allows forwarded flags for non-strict passthrough commands", () => {
+    expect(
+      validateCommandCliFlags({
+        commandId: "app:exec",
+        argv: ["appserver", "sh", "-c", "echo hi"],
+        definitions: flags,
+        allowUnknownFlags: true,
+      }),
+    ).toBeUndefined();
   });
 });
