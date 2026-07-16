@@ -116,10 +116,28 @@ const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
     new Response(taskkill.stdout).text(),
     new Response(taskkill.stderr).text(),
   ]);
-  if (exitCode !== 0) {
+  if (exitCode !== 0 && exitCode !== 128) {
     throw new Error(
       `Failed to terminate Windows PTY process tree ${String(pid)} (exit ${String(exitCode)}): ${stderr || stdout}`,
     );
+  }
+};
+
+const removeRelocatedBinaryRoot = async (root: string): Promise<void> => {
+  const retryableCodes = new Set(["EACCES", "EBUSY", "ENOTEMPTY"]);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      await rm(root, { recursive: true, force: true });
+      return;
+    } catch (cause) {
+      const code = cause instanceof Error && "code" in cause ? cause.code : undefined;
+      if (process.platform !== "win32" || typeof code !== "string" || !retryableCodes.has(code)) throw cause;
+      if (attempt === 19) {
+        console.warn(`Unable to remove relocated Windows acceptance binary after retries: ${String(cause)}`);
+        return;
+      }
+      await Bun.sleep(250);
+    }
   }
 };
 
@@ -209,7 +227,8 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
     expect(adjacent).not.toContain("node_modules");
 
     const root = await mkdtemp(resolve(tmpdir(), `lando-opentui-${target}-`));
-    const relocatedBinary = resolve(root, process.platform === "win32" ? "lando.exe" : "lando");
+    const binaryRoot = await mkdtemp(resolve(tmpdir(), `lando-opentui-binary-${target}-`));
+    const relocatedBinary = resolve(binaryRoot, process.platform === "win32" ? "lando.exe" : "lando");
     const appRoot = resolve(root, "app");
     await copyFile(sourceBinary, relocatedBinary);
     await mkdir(appRoot);
@@ -258,7 +277,11 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
       expect(degraded).toContain("(value or index):");
       expect(await readProbe(failureTrace)).toEqual([{ phase: "attempt", specifier: "@opentui/core" }]);
     } finally {
-      await rm(root, { recursive: true, force: true, maxRetries: 30, retryDelay: 200 });
+      try {
+        await rm(root, { recursive: true, force: true });
+      } finally {
+        await removeRelocatedBinaryRoot(binaryRoot);
+      }
     }
   }, 120_000);
 });
