@@ -268,6 +268,8 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
 
 const WINDOWS_MACHINE_PREREQUISITE_FAILURE =
   /(?:hcs\/(?:error_not_supported|hcs_e_service_not_available)|(?:(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)(?:\s+(?:support|features?|prerequisites?))?[\s:=-]+(?:(?:is|are)[\s:=-]+)?(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))|(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))[\s:=-]+(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)))/iu;
+const WINDOWS_MACHINE_CREATE_PREREQUISITE_FAILURE =
+  /(?:wsl\s+import\s+of\s+guest\s+os\s+failed|wsl\s*2\s+requires\s+an?\s+update\s+to\s+its\s+kernel(?:\s+component)?)/iu;
 
 const machineFailure = (
   operation: string,
@@ -280,13 +282,14 @@ const machineFailure = (
           .filter((value): value is string => typeof value === "string")
           .join("\n")
       : cause;
-  const diagnostics = typeof output === "string" ? output.trim() : "";
+  const normalizedOutput = typeof output === "string" ? output.replaceAll("\0", "") : output;
+  const diagnostics = typeof normalizedOutput === "string" ? normalizedOutput.trim() : "";
   const missingHelper =
-    platform === "win32" && typeof output === "string"
+    platform === "win32" && typeof normalizedOutput === "string"
       ? WINDOWS_MACHINE_HELPERS.find(
           (helper) =>
-            output.toLowerCase().includes(helper) &&
-            /not found|could not find|missing|no such/iu.test(output),
+            normalizedOutput.toLowerCase().includes(helper) &&
+            /not found|could not find|missing|no such/iu.test(normalizedOutput),
         )
       : undefined;
   if (missingHelper !== undefined) {
@@ -301,15 +304,16 @@ const machineFailure = (
   }
   if (
     platform === "win32" &&
-    typeof output === "string" &&
-    WINDOWS_MACHINE_PREREQUISITE_FAILURE.test(output)
+    typeof normalizedOutput === "string" &&
+    (WINDOWS_MACHINE_PREREQUISITE_FAILURE.test(normalizedOutput) ||
+      (operation === "create" && WINDOWS_MACHINE_CREATE_PREREQUISITE_FAILURE.test(normalizedOutput)))
   ) {
     return new WindowsMachinePrerequisiteError(cause);
   }
   if (
     platform === "darwin" &&
-    typeof output === "string" &&
-    /virtualization|vfkit|hypervisor|qemu|helper/i.test(output)
+    typeof normalizedOutput === "string" &&
+    /virtualization|vfkit|hypervisor|qemu|helper/i.test(normalizedOutput)
   ) {
     return new PodmanMachinePrerequisiteError(cause);
   }

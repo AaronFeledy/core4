@@ -158,36 +158,50 @@ describe("provider-lando system machine runner argv", () => {
     }
   });
 
-  test("win32 create recognizes Podman's HCS service signal from stdout as a virtualization prerequisite", async () => {
-    const failingSpawn: MachineSpawn = () => ({
-      stdout: streamOf("Wsl/Service/RegisterDistro/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE"),
-      stderr: streamOf("Error: the WSL import of guest OS failed"),
-      exited: Promise.resolve(1),
-    });
+  for (const [name, stdout, stderr] of [
+    [
+      "HCS service signal from stdout",
+      "Wsl/Service/RegisterDistro/CreateVm/HCS/HCS_E_SERVICE_NOT_AVAILABLE",
+      "",
+    ],
+    [
+      "null-interleaved WSL kernel update signal",
+      "",
+      Array.from("WSL 2 requires an update to its kernel component.").join("\0"),
+    ],
+    ["WSL guest OS import failure", "", "Error: the WSL import of guest OS failed: exit status 0xffffffff"],
+  ] as const) {
+    test(`win32 create recognizes Podman's ${name} as a virtualization prerequisite`, async () => {
+      const failingSpawn: MachineSpawn = () => ({
+        stdout: streamOf(stdout),
+        stderr: streamOf(stderr),
+        exited: Promise.resolve(1),
+      });
 
-    const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
+      const exit = await Effect.runPromiseExit(runnerFor("win32", failingSpawn).create);
 
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
-        expect(
-          classifyWindowsManagedSetupResult({
-            exitCode: 1,
-            stdout: JSON.stringify({
-              apiVersion: "v4",
-              command: "meta:setup",
-              ok: false,
-              error: { _tag: failure.value._tag, message: failure.value.message },
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
+          expect(
+            classifyWindowsManagedSetupResult({
+              exitCode: 1,
+              stdout: JSON.stringify({
+                apiVersion: "v4",
+                command: "meta:setup",
+                ok: false,
+                error: { _tag: failure.value._tag, message: failure.value.message },
+              }),
+              stderr: "",
             }),
-            stderr: "",
-          }),
-        ).toMatchObject({ outcome: "skipped", exitCode: 0 });
+          ).toMatchObject({ outcome: "skipped", exitCode: 0 });
+        }
       }
-    }
-  });
+    });
+  }
 
   test("win32 create preserves unclassified Podman output in the structured failure message", async () => {
     const failingSpawn: MachineSpawn = () => ({
