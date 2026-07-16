@@ -495,3 +495,8 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): The missing reference-runner `<50ms` evidence was rejected as a local code blocker because this WSL environment also fails the frozen `origin/main` baseline; the strict native-Linux CI gate remains enabled and Babysit must treat a remote failure as blocking. `Guide-Coverage-Skip: Internal AbortSignal cleanup plumbing changes no recipe syntax, authoring contract, or user workflow.`
 - Verification: typecheck, lint, generated OpenTUI native-stub drift, focused interaction/import/build/prompt-driver tests, and repeated relocated compiled/source acceptance passed; base-aware guide drift identified only the documented recipe-guide skip.
 ---
+
+## 2026-07-16 12:26 CDT - US-455 Review Follow-up
+- Post-fix Bugbot found and review confirmed that teardown failure discarded an already accepted rich-prompt answer. The driver now returns the completed answer, latches the teardown cause, and degrades subsequent prompts instead of asking the same question twice.
+- Verification: typecheck, lint, changed-file diagnostics, and focused prompt-driver, interaction, and interactive-driver tests passed.
+---

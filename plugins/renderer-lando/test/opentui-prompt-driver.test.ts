@@ -491,15 +491,13 @@ describe("OpenTUI prompt driver", () => {
     expect(fixture.createAttempts()).toBe(1);
   });
 
-  test("reports and latches destroy failure after a successful prompt", async () => {
+  test("preserves a successful answer while latching destroy failure", async () => {
     const fixture = makeDestroyFailureFixture(false);
 
+    await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).resolves.toBe("answer");
     await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
       name: "OpenTuiPromptUnavailableError",
       cause: fixture.destroyFailure,
-    });
-    await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
-      name: "OpenTuiPromptUnavailableError",
     });
 
     expect(fixture.createAttempts()).toBe(1);

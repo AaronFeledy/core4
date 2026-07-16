@@ -382,13 +382,14 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
       renderer.start?.();
     });
   let openTuiAvailable = true;
+  let unavailableCause: Error | undefined;
   return {
     readRaw: async (request: unknown, signal?: AbortSignal): Promise<string> => {
       if (isAborted(signal)) throw makePromptCancelledError();
       const typedRequest = request as PromptDriverRequestLike;
       const type = readPromptType(typedRequest);
       if (isDeclinedType(type)) throw new Error(`driver declines ${type}`);
-      if (!openTuiAvailable) throw makeUnavailableError();
+      if (!openTuiAvailable) throw makeUnavailableError(unavailableCause);
 
       let mod: OpenTuiModuleLike;
       let renderer: RendererLike;
@@ -493,15 +494,16 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
             ? cause
             : new Error("OpenTUI renderer cleanup failed with a non-Error cause.", { cause });
       }
-      if (cleanupFailed) openTuiAvailable = false;
-      if (!promptOutcome.ok) throw promptOutcome.cause;
       if (cleanupFailed) {
-        throw makeUnavailableError(
+        openTuiAvailable = false;
+        unavailableCause =
           cleanupCause instanceof Error
             ? cleanupCause
-            : new Error("OpenTUI renderer cleanup failed with a non-Error cause.", { cause: cleanupCause }),
-        );
+            : new Error("OpenTUI renderer cleanup failed with a non-Error cause.", {
+                cause: cleanupCause,
+              });
       }
+      if (!promptOutcome.ok) throw promptOutcome.cause;
       return promptOutcome.value;
     },
   };
