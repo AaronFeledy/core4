@@ -10,8 +10,9 @@ tags: [beta, docs, mcp, agent]
 
 An MCP client starts `lando mcp` as a child process and owns its stdin and stdout
 pipes. The server exchanges one JSON-RPC object per line and runs until the client
-closes stdin. Serve mode writes protocol frames only; it does not wrap startup or
-shutdown in a Lando command-result envelope.
+closes stdin. Keep stdin open until every outstanding request id has answered;
+closing early interrupts in-flight tool calls. Serve mode writes protocol frames
+only; it does not wrap startup or shutdown in a Lando command-result envelope.
 
 <Guide>
   <Scenario id="stdio-conversation" render>
@@ -127,16 +128,37 @@ const frames = [
   },
 ];
 
+const decoder = new TextDecoder();
+let buffer = "";
+const responses = [];
+const pending = new Set([1, 2, 3]);
+const reader = child.stdout.getReader();
+
 for (const frame of frames) await child.stdin.write(JSON.stringify(frame) + "\n");
 await child.stdin.flush();
+
+while (pending.size > 0) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  let nl;
+  while ((nl = buffer.indexOf("\n")) !== -1) {
+    const line = buffer.slice(0, nl).trim();
+    buffer = buffer.slice(nl + 1);
+    if (!line) continue;
+    const message = JSON.parse(line);
+    responses.push(message);
+    if (message.id !== undefined) pending.delete(message.id);
+  }
+}
+
 await child.stdin.end();
-const [stdout, stderr, exitCode] = await Promise.all([
-  new Response(child.stdout).text(),
+reader.releaseLock();
+const [stderr, exitCode] = await Promise.all([
   new Response(child.stderr).text(),
   child.exited,
 ]);
-if (exitCode !== 0) throw new Error(stderr);
-const responses = stdout.trim().split("\n").map((line) => JSON.parse(line));`}
+if (exitCode !== 0) throw new Error(stderr);`}
       />
     </Step>
   </Scenario>

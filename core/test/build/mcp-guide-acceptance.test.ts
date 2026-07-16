@@ -79,10 +79,14 @@ describe("MCP executable guide", () => {
     expect(conversationRun.code).not.toContain("transport.reply");
     expect(conversationRun.displayCode).toContain('Bun.spawn(["lando", "mcp"]');
     expect(conversationRun.displayCode).toContain("await child.stdin.write");
+    expect(conversationRun.displayCode).toContain("pending = new Set([1, 2, 3])");
+    expect(conversationRun.displayCode).toContain("child.stdout.getReader()");
     expect(conversationRun.displayCode).toContain("await child.stdin.end()");
-    expect(conversationRun.displayCode).toContain("new Response(child.stdout).text()");
     expect(conversationRun.displayCode).toContain("new Response(child.stderr).text()");
     expect(conversationRun.displayCode).toContain("child.exited");
+    expect(conversationRun.displayCode.indexOf("pending = new Set([1, 2, 3])")).toBeLessThan(
+      conversationRun.displayCode.indexOf("await child.stdin.end()"),
+    );
 
     const refusals = libraryRun(scenarioById(guide, "startup-refusals"));
     expect(refusals.code).toContain("classifyMcpServeStartup");
