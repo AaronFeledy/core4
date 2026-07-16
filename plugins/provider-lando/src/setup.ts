@@ -267,14 +267,19 @@ export const makeSystemPodmanCommandRunner = (command = "podman"): PodmanCommand
 });
 
 const WINDOWS_MACHINE_PREREQUISITE_FAILURE =
-  /(?:(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)(?:\s+(?:support|features?|prerequisites?))?[\s:=-]+(?:(?:is|are)[\s:=-]+)?(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))|(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))[\s:=-]+(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor))/iu;
+  /(?:hcs\/(?:error_not_supported|hcs_e_service_not_available)|(?:(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)(?:\s+(?:support|features?|prerequisites?))?[\s:=-]+(?:(?:is|are)[\s:=-]+)?(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))|(?:unavailable|disabled|missing|required|not[ -](?:enabled|installed|available|supported))[\s:=-]+(?:virtualization|hyper-v|wsl2?|wslapi|virtual machine platform|hypervisor)))/iu;
 
 const machineFailure = (
   operation: string,
   cause: unknown,
   platform: HostPlatform,
 ): ProviderUnavailableError => {
-  const output = typeof cause === "object" && cause !== null && "stderr" in cause ? cause.stderr : cause;
+  const output =
+    typeof cause === "object" && cause !== null
+      ? ["stdout" in cause ? cause.stdout : undefined, "stderr" in cause ? cause.stderr : undefined]
+          .filter((value): value is string => typeof value === "string")
+          .join("\n")
+      : cause;
   const missingHelper =
     platform === "win32" && typeof output === "string"
       ? WINDOWS_MACHINE_HELPERS.find(
