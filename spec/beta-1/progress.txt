@@ -389,3 +389,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review feedback: fixed (aligned doctor-subsystems-fix recovery test with the PR's intentional contract — a disabled `mode=none`/`skipped` host proxy is a healthy no-op `pass`, so only `certs` remains degraded-manual; production source left unchanged as correct)
 - Merge: merged (squash)
 ---
+
+## 2026-07-16 03:18 CDT - US-452
+- The executable MCP guide now covers client-owned stdio startup, a successful initialize/list/read-only tool conversation, TTY/unusable-descriptor/machine-output refusals, bounded outstanding calls, and the exact `app:config:get` / `app:config:view` projection. Reader examples show a real spawned MCP client while deterministic guide scenarios exercise the production transport, catalog, and startup classifier without adding a public API or guide-harness extension.
+- Verification: typecheck, lint, guide codegen/lint/coverage/public-transcript gates, focused MCP and guide tests passed; compiled `lando mcp` sandbox QA proved read-only get/view calls, catalog exclusion of write tools, clean EOF shutdown, tagged refusal behavior, and complete resource teardown.
+- **Learnings for future iterations:**
+  - Long-running protocol guides can use library-mode scenarios to execute existing production seams while displaying the real subprocess client flow; this keeps guide tests deterministic without widening public exports or adding a one-off interactive harness.
+---

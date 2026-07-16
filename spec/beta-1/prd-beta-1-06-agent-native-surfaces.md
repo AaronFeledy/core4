@@ -173,7 +173,7 @@ These are projections of existing contracts, not side channels. MCP publishes th
 
 | Surface | Guide | Status |
 | --- | --- | --- |
-| `lando mcp` setup and `--list` audit | `docs/guides/agent-native/mcp.mdx` | Planned (new guide, this PRD) |
+| `lando mcp` setup and `--list` audit | `docs/guides/agent-native/mcp.mdx` | Shipped (US-452) |
 | Agent-context env forwarding | `docs/guides/agent-native/agent-env.mdx` | Planned (new guide, this PRD) |
 | `lando doctor` MCP diagnostics | owned by the doctor guide surface | Update and re-run drift gate |
 

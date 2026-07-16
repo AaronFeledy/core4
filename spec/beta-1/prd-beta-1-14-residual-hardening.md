@@ -228,7 +228,7 @@ Scope is hardening and contract parity only: no new commands, flags, service typ
 
 | Surface | Guide | Status |
 | --- | --- | --- |
-| MCP serve / stdio hardening | new MCP guide (US-452) | Pending |
+| MCP serve / stdio hardening | `docs/guides/agent-native/mcp.mdx` | Shipped (US-452) |
 | Host-proxy doctor DNS | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped (US-451) |
 | Public transcripts on clean trees | guide pipeline runbook | Update when US-446 lands |
 
