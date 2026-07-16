@@ -1,3 +1,5 @@
+import { MACHINE_LIFECYCLE_ACCEPTANCE_CELLS } from "./provider-machine-lifecycle-plan.ts";
+
 export type ProviderAcceptanceCellId =
   | "docker-desktop-macos"
   | "docker-engine-linux"
@@ -220,4 +222,3 @@ export const buildProviderAcceptancePlan = (cellId: ProviderAcceptanceCellId): P
   if (cell === undefined) throw new UnknownProviderAcceptanceCellError(cellId);
   return cell;
 };
-import { MACHINE_LIFECYCLE_ACCEPTANCE_CELLS } from "./provider-machine-lifecycle-plan.ts";
