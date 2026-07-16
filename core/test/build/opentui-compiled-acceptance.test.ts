@@ -1,3 +1,4 @@
+// allow: SIZE_OK — cross-platform compiled-binary PTY acceptance is one release-artifact scenario.
 import { copyFile, mkdir, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, extname, resolve } from "node:path";
@@ -121,9 +122,21 @@ const runPrompt = async (
       stdout: "pipe",
       stderr: "pipe",
     });
-    const stdout = new Response(proc.stdout).text();
-    const stderr = new Response(proc.stderr).text();
-    await Bun.sleep(3_000);
+    const consumeOutput = async (stream: ReadableStream<Uint8Array>): Promise<string> => {
+      let text = "";
+      for await (const chunk of stream) {
+        const decoded = new TextDecoder().decode(chunk);
+        text += decoded;
+        output += decoded;
+      }
+      return text;
+    };
+    const stdout = consumeOutput(proc.stdout);
+    const stderr = consumeOutput(proc.stderr);
+    for (let attempt = 0; attempt < 500; attempt += 1) {
+      if (output.includes("╭") || output.includes("(value or index):")) break;
+      await Bun.sleep(20);
+    }
     proc.stdin.write("\x03");
     await proc.stdin.end();
     const exited = await Promise.race([proc.exited, Bun.sleep(5_000).then(() => undefined)]);
@@ -149,9 +162,9 @@ const runPrompt = async (
         await Bun.sleep(20);
       }
     } finally {
-      proc.kill("SIGINT");
-      await proc.exited;
       proc.terminal?.close();
+      proc.kill("SIGKILL");
+      await proc.exited;
     }
   }
   return output.replaceAll("\r\n", "\n");
