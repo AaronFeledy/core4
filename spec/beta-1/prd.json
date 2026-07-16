@@ -1459,7 +1459,7 @@
         "Lint passes"
       ],
       "priority": 82,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: US-440 review deferred creating a new MCP guide because the matrix target did not exist."
     },
     {
