@@ -7,9 +7,12 @@ import { runProbe } from "@lando/sdk/probe";
 import { AppId, CommandResultEnvelope, ServiceName } from "@lando/sdk/schema";
 import type { ExecResult, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths, sanitizeAppName } from "../../config/paths.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
-import { readWorkerRecordAt } from "../../subsystems/host-proxy/worker-state-file.ts";
+import {
+  readLegacyWorkerRecordAt,
+  readWorkerRecordAt,
+} from "../../subsystems/host-proxy/worker-state-file.ts";
 import { probeWorker } from "../../subsystems/host-proxy/worker-state.ts";
 import {
   buildHostProxyAllowlistDoctorCheck,
@@ -101,9 +104,17 @@ export const hostProxyTransportDoctorChecks = (
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       const runDir = resolve(paths.hostProxyRunRoot, entry.name);
-      const record = yield* readWorkerRecordAt(resolve(runDir, "worker.json"));
+      const recordPath = resolve(runDir, "worker.json");
+      const currentRecord = yield* readWorkerRecordAt(recordPath);
+      const legacyRecord =
+        currentRecord === undefined ? yield* readLegacyWorkerRecordAt(recordPath) : undefined;
+      const record = currentRecord ?? legacyRecord;
       if (record === undefined) continue;
-      if (resolve(paths.hostProxyRunDir(record.appId, record.appRoot)) !== runDir) continue;
+      const ownedRunDir =
+        currentRecord === undefined
+          ? resolve(paths.hostProxyRunRoot, sanitizeAppName(record.appId))
+          : resolve(paths.hostProxyRunDir(currentRecord.appId, currentRecord.appRoot));
+      if (ownedRunDir !== runDir) continue;
 
       const probe = yield* probeWorker(record);
       const socketMetadata =
@@ -112,53 +123,59 @@ export const hostProxyTransportDoctorChecks = (
           : undefined;
       const socketReady = socketMetadata?.type === "socket" && socketMetadata.mode === 0o600;
       const gatewayAvailable = options.provider.tcpHostGateway !== undefined;
+      const containerUrl = currentRecord?.containerUrl;
+      const probeServices = currentRecord?.probeServices ?? [];
       const gatewayMatches =
         record.transport === "tcp-host-gateway" &&
-        record.containerUrl !== undefined &&
+        containerUrl !== undefined &&
         options.provider.tcpHostGateway !== undefined &&
-        containerGatewayMatches(record.containerUrl, options.provider.tcpHostGateway);
-      const containerProbeReady =
+        containerGatewayMatches(containerUrl, options.provider.tcpHostGateway);
+      let containerProbeReady = false;
+      if (
         record.transport === "tcp-host-gateway" &&
         probe === "live" &&
         gatewayAvailable &&
         gatewayMatches &&
-        record.containerUrl !== undefined &&
-        record.probeService !== undefined
-          ? yield* runProbe<ExecResult, ProviderError, never>(
-              {
-                id: `doctor:host-proxy:${record.appId}`,
-                policy: { maxAttempts: 1, timeout: Duration.seconds(5), backoff: "fixed" },
-                classify: {
-                  success: (result) =>
-                    typeof result === "object" &&
-                    result !== null &&
-                    "exitCode" in result &&
-                    result.exitCode === 0 &&
-                    "stdout" in result &&
-                    typeof result.stdout === "string" &&
-                    successfulOpenOutput(result.stdout)
-                      ? "green"
-                      : "red",
-                  failure: () => "red",
-                },
+        containerUrl !== undefined
+      ) {
+        for (const probeService of probeServices) {
+          containerProbeReady = yield* runProbe<ExecResult, ProviderError, never>(
+            {
+              id: `doctor:host-proxy:${record.appId}`,
+              policy: { maxAttempts: 1, timeout: Duration.seconds(5), backoff: "fixed" },
+              classify: {
+                success: (result) =>
+                  typeof result === "object" &&
+                  result !== null &&
+                  "exitCode" in result &&
+                  result.exitCode === 0 &&
+                  "stdout" in result &&
+                  typeof result.stdout === "string" &&
+                  successfulOpenOutput(result.stdout)
+                    ? "green"
+                    : "red",
+                failure: () => "red",
               },
-              options.provider.exec(
-                { app: AppId.make(record.appId), service: ServiceName.make(record.probeService) },
-                {
-                  command: ["/usr/local/bin/lando", "open", "--print"],
-                  env: { LANDO_HOST_PROXY_URL: record.containerUrl },
-                  stdin: "ignore",
-                  tty: false,
-                },
-              ),
-            ).pipe(
-              Effect.map((result) => result.outcome === "green"),
-              Effect.catchAll(() => Effect.succeed(false)),
-            )
-          : false;
+            },
+            options.provider.exec(
+              { app: AppId.make(record.appId), service: ServiceName.make(probeService) },
+              {
+                command: ["/usr/local/bin/lando", "open", "--print"],
+                env: { LANDO_HOST_PROXY_URL: containerUrl },
+                stdin: "ignore",
+                tty: false,
+              },
+            ),
+          ).pipe(
+            Effect.map((result) => result.outcome === "green"),
+            Effect.catchAll(() => Effect.succeed(false)),
+          );
+          if (containerProbeReady) break;
+        }
+      }
       const reachable =
         probe === "live" && (record.transport === "unix-socket" ? socketReady : containerProbeReady);
-      const endpoint = record.transport === "unix-socket" ? record.socketPath : record.containerUrl;
+      const endpoint = record.transport === "unix-socket" ? record.socketPath : containerUrl;
       const rawContext: Record<string, string> = {
         providerId: options.provider.id,
         providerKind: options.providerKind,

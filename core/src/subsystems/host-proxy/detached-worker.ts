@@ -69,7 +69,9 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
               const transport: HostProxyTransportKind =
                 ready.transport ??
                 (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
-              const probeService = hostProxyEligibleServices(options.plan)[0]?.name;
+              const probeServices = hostProxyEligibleServices(options.plan).map((service) =>
+                String(service.name),
+              );
               let terminatePromise: Promise<void> | undefined;
               let resolveClosed: () => void = () => undefined;
               const closed = new Promise<void>((resolveClosedPromise) => {
@@ -82,7 +84,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
                 ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
                 ...(ready.url === undefined ? {} : { url: ready.url }),
                 ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
-                ...(probeService === undefined ? {} : { probeService: String(probeService) }),
+                ...(probeServices.length === 0 ? {} : { probeServices }),
                 shimPath: ready.shimPath,
                 transport,
                 protocolVersion: 1,

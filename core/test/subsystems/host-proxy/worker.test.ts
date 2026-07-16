@@ -222,11 +222,13 @@ describe("detached host-proxy worker manager", () => {
     const writes: string[] = [];
     const database = servicePlan("database", "/app", false);
     const appserver = servicePlan("appserver", "/app");
+    const worker = servicePlan("worker", "/app");
     const eligiblePlan: AppPlan = {
       ...plan,
       services: {
         [database.name]: database,
         [appserver.name]: appserver,
+        [worker.name]: worker,
       },
     };
     try {
@@ -267,7 +269,7 @@ describe("detached host-proxy worker manager", () => {
       expect(record).toContain('"controlToken": "control-token"');
       expect(record).toContain('"protocolVersion": 1');
       expect(record).toContain('"containerUrl": "http://host.containers.internal:32123"');
-      expect(record).toContain('"probeService": "appserver"');
+      expect(record).toContain('"probeServices": [\n    "appserver",\n    "worker"\n  ]');
       expect(record).not.toContain("secret-token");
       expect(hostProxyWorkerArgv({ appId: "demo" })).toEqual(expect.arrayContaining(["--app-id", "demo"]));
     } finally {

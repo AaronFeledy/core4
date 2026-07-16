@@ -354,3 +354,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - A host-side loopback probe cannot prove a container DNS alias; persist the production container endpoint and exercise it from an already-eligible service without creating diagnostic containers.
   - Generated runtime allowlists need an independent literal-metadata comparison, not only source-level codegen tests.
 ---
+
+## 2026-07-15 23:31 CDT - US-451 Review Follow-up
+- Post-commit Bugbot found and review confirmed two transport false negatives: doctor now retains all eligible probe services and accepts the first successful in-container round-trip, while persisted legacy Unix workers use their existing ownership path and authenticated control probe instead of being silently ignored.
+- Verification: typecheck, lint, probe/redaction boundaries, and 28 focused host-proxy doctor/worker tests passed; changed-file diagnostics are clean.
+- **Learnings for future iterations:**
+  - App-level transport health must not depend on one arbitrarily ordered service when the feature is present in several services; probe the bounded persisted candidate set until one succeeds.
+  - A legacy record type used by ownership cleanup is persisted state, not speculative compatibility; diagnostics must either handle it safely or report it explicitly.
+---

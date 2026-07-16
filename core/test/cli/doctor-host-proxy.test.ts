@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmod, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -15,6 +15,7 @@ import {
   hostProxyAllowlistFreshness,
 } from "../../src/cli/commands/doctor-host-proxy-allowlist.ts";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
+import { makeLandoPaths, sanitizeAppName } from "../../src/config/paths.ts";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   writeWorkerRecord,
@@ -202,6 +203,57 @@ describe("meta:doctor host-proxy transport reachability", () => {
     });
   });
 
+  test("reports a live legacy Unix-socket worker as reachable", async () => {
+    // Given
+    const root = await tempRoot();
+    const appId = "legacy-demo";
+    const runDir = join(makeLandoPaths({ userDataRoot: root }).hostProxyRunRoot, sanitizeAppName(appId));
+    const socketPath = join(runDir, "host-proxy.sock");
+    const controlToken = "legacy-control-token";
+    const server = createServer((request, response) => {
+      if (request.headers["x-lando-host-proxy-control"] !== controlToken) {
+        response.writeHead(401).end();
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          appId,
+          sessionId: "legacy-session",
+          transport: "unix-socket",
+          protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+          pid: process.pid,
+        }),
+      );
+    });
+    servers.push(server);
+    await mkdir(runDir, { recursive: true });
+    await listenUnix(server, socketPath);
+    await chmod(socketPath, 0o600);
+    await writeFile(
+      join(runDir, "worker.json"),
+      `${JSON.stringify({
+        appId,
+        transport: "unix-socket",
+        socketPath,
+        shimPath: join(runDir, "lando"),
+        protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
+        startedAt: "2026-07-15T00:00:00.000Z",
+        pid: process.pid,
+        controlToken,
+      })}\n`,
+    );
+
+    // When
+    const result = await runDoctor(root);
+
+    // Then
+    expect(result.checks.find((candidate) => candidate.name === "host-proxy-transport")).toMatchObject({
+      status: "pass",
+      context: { appId, transport: "unix-socket", reachability: "reachable" },
+    });
+  });
+
   test("warns when a live Unix endpoint is not a mode-0600 socket", async () => {
     // Given
     const root = await tempRoot();
@@ -371,7 +423,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           url: `http://127.0.0.1:${address.port}`,
           containerUrl,
-          probeService: "appserver",
+          probeServices: ["appserver"],
           shimPath: join(root, "lando.exe"),
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           startedAt: "2026-07-15T00:00:00.000Z",
@@ -481,7 +533,7 @@ describe("meta:doctor host-proxy transport reachability", () => {
           transport: "tcp-host-gateway",
           url: `http://127.0.0.1:${address.port}`,
           containerUrl,
-          probeService: "appserver",
+          probeServices: ["stopped", "appserver"],
           shimPath: join(root, "lando.exe"),
           protocolVersion: HOST_PROXY_WORKER_PROTOCOL_VERSION,
           startedAt: "2026-07-15T00:00:00.000Z",
@@ -506,6 +558,8 @@ describe("meta:doctor host-proxy transport reachability", () => {
         command: Parameters<typeof TestRuntimeProvider.exec>[1],
       ) => {
         calls.push({ target, command });
+        if (target.service === "stopped")
+          return Effect.succeed({ exitCode: 1, stdout: "", stderr: "service is stopped" });
         return Effect.succeed({
           exitCode: 0,
           stdout: JSON.stringify({
@@ -542,6 +596,15 @@ describe("meta:doctor host-proxy transport reachability", () => {
       solutions: [],
     });
     expect(calls).toEqual([
+      {
+        target: { app: "demo", service: "stopped" },
+        command: {
+          command: ["/usr/local/bin/lando", "open", "--print"],
+          env: { LANDO_HOST_PROXY_URL: containerUrl },
+          stdin: "ignore",
+          tty: false,
+        },
+      },
       {
         target: { app: "demo", service: "appserver" },
         command: {
