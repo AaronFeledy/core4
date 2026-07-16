@@ -144,7 +144,7 @@ describe("provider-lando system machine runner argv", () => {
         expect(failure.value).toBeInstanceOf(WindowsMachinePrerequisiteError);
         expect(
           classifyWindowsManagedSetupResult({
-            exitCode: 2,
+            exitCode: 1,
             stdout: JSON.stringify({
               apiVersion: "v4",
               command: "meta:setup",
