@@ -40,4 +40,14 @@ tags: [beta, docs, cli, renderer]
       <Variable name="motion" value="no decorative motion" display="Animation belongs only to live state transitions, never as unrelated ornament" />
     </Step>
   </Scenario>
+  <Scenario id="opentui-substrate-baseline" render={false} reason="Import-boundary, compiled-binary, and PTY tests exercise the native renderer substrate without requiring guide generation to own a terminal">
+    <Step name="lazy-substrate">
+      <Variable name="substrate" value="@opentui/core ^0.4.3" display="The bundled renderer owns the OpenTUI dependency and loads it lazily only for an interactive TTY prompt" />
+      <Variable name="machineModes" value="level-none, plain, json, non-TTY, and CI never load OpenTUI" display="Cold-start and machine-readable paths stay independent of the native renderer substrate" />
+    </Step>
+    <Step name="degradation">
+      <Variable name="fallback" value="line input for the remainder of the process" display="A missing native binding or unsupported terminal never fails the command; one debug notice records the permanent degradation" />
+      <Variable name="compiled" value="one target-matching native library embedded in each release binary" display="Relocated binaries need no node_modules or loose native-library sidecar" />
+    </Step>
+  </Scenario>
 </Guide>

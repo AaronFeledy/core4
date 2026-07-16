@@ -1,14 +1,16 @@
 import { Readable, Writable } from "node:stream";
+import { ReadStream } from "node:tty";
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
-import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted } from "effect";
+import { Cause, Context, Effect, Exit, Fiber, Layer, Option, Redacted, type Scope } from "effect";
 
 import { ChoicesUnavailableError } from "@lando/sdk/errors";
-import { Renderer } from "@lando/sdk/services";
+import { Logger, Renderer } from "@lando/sdk/services";
 
 import { makeRendererServiceLiveForMode } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
+import { resetInteractivePromptDegradationForTest } from "../../src/interaction/interactive-driver.ts";
 import {
   makeDefaultResolveInteractionDriver,
   makeInteractionService,
@@ -57,10 +59,10 @@ const capturingRenderer = (id = "plain") => {
   return { service, out: () => out, err: () => err };
 };
 
-const runScoped = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> =>
+const runScoped = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<A> =>
   Effect.runPromise(Effect.scoped(effect));
 
-const runScopedExit = <A, E>(effect: Effect.Effect<A, E, never>): Promise<Exit.Exit<A, E>> =>
+const runScopedExit = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>): Promise<Exit.Exit<A, E>> =>
   Effect.runPromiseExit(Effect.scoped(effect));
 
 const failureTag = <A, E>(exit: Exit.Exit<A, E>): string | undefined => {
@@ -68,6 +70,10 @@ const failureTag = <A, E>(exit: Exit.Exit<A, E>): string | undefined => {
   const failure = Cause.failureOption(exit.cause);
   return Option.isSome(failure) ? (failure.value as { _tag?: string })._tag : undefined;
 };
+
+afterEach(() => {
+  resetInteractivePromptDegradationForTest();
+});
 
 describe("InteractionServiceLive — answer-source precedence", () => {
   test("explicit answer wins over prompting", async () => {
@@ -278,7 +284,7 @@ describe("InteractionServiceLive — answer-source precedence", () => {
   });
 });
 
-describe("InteractionServiceLive — rich driver wiring (S2)", () => {
+describe("InteractionServiceLive — rich driver wiring", () => {
   test("the default resolver loads the rich driver when an interactive TTY gate passes", async () => {
     const resolve = makeDefaultResolveInteractionDriver({
       env: {},
@@ -288,7 +294,12 @@ describe("InteractionServiceLive — rich driver wiring (S2)", () => {
     });
     const driver = await resolve({ isTTY: true, yes: false, nonInteractive: false });
     expect(driver).toBeDefined();
-    expect(await driver?.readRaw({})).toBe("from-driver");
+    expect(
+      await driver?.readRaw({
+        prompt: { name: "name", type: "text", message: "Name?" },
+        mode: "normal",
+      }),
+    ).toBe("from-driver");
   });
 
   test("the default resolver bypasses the driver under --yes / non-interactive / non-TTY", async () => {
@@ -306,8 +317,95 @@ describe("InteractionServiceLive — rich driver wiring (S2)", () => {
     expect(importAttempts).toBe(0);
   });
 
+  test("awaits one degradation notice through the caller logger runtime", async () => {
+    const ttyStdin = scriptedStdin(["line-answer"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    let releaseNotice: (() => void) | undefined;
+    let markNoticeStarted: (() => void) | undefined;
+    const noticeStarted = new Promise<void>((resolve) => {
+      markNoticeStarted = resolve;
+    });
+    const noticeReleased = new Promise<void>((resolve) => {
+      releaseNotice = resolve;
+    });
+    const notices: string[] = [];
+    const logger: Context.Tag.Service<typeof Logger> = {
+      debug: (message) =>
+        Effect.promise(async () => {
+          notices.push(message);
+          markNoticeStarted?.();
+          await noticeReleased;
+        }),
+      info: () => Effect.void,
+      warn: () => Effect.void,
+      error: () => Effect.void,
+    };
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      stdout: capturingWritable().stream,
+      resolveDriver: async (gate) => {
+        await gate.debug?.("OpenTUI prompts degraded to line input for this process.", {
+          cause: new Error("native renderer init failed"),
+        });
+        return undefined;
+      },
+    });
+    let settled = false;
+
+    const answer = runScoped(
+      service.prompt({ name: "name", type: "text", message: "Name?" }).pipe(
+        Effect.provideService(Logger, logger),
+        Effect.ensuring(
+          Effect.sync(() => {
+            settled = true;
+          }),
+        ),
+      ),
+    );
+    await noticeStarted;
+
+    expect(settled).toBe(false);
+    releaseNotice?.();
+    await expect(answer).resolves.toBe("line-answer");
+    expect(notices).toEqual(["OpenTUI prompts degraded to line input for this process."]);
+  });
+
   test("the default service is constructed with a rich-driver seam", () => {
     expect(typeof makeDefaultResolveInteractionDriver).toBe("function");
+  });
+
+  test.each(["plain", "json"])("renderer %s bypasses the rich driver on an interactive TTY", async (id) => {
+    let resolveAttempts = 0;
+    const ttyStdin = scriptedStdin(["line-answer"]);
+    Object.assign(ttyStdin, { isTTY: true });
+    const service = makeInteractionService({
+      stdin: ttyStdin,
+      resolveDriver: async () => {
+        resolveAttempts += 1;
+        return { readRaw: async () => "rich-answer" };
+      },
+    });
+    const renderer = capturingRenderer(id);
+    const baselineStdin = scriptedStdin(["line-answer"]);
+    Object.assign(baselineStdin, { isTTY: true });
+    const baselineService = makeInteractionService({ stdin: baselineStdin });
+    const baselineRenderer = capturingRenderer(id);
+
+    const answer = await runScoped(
+      service
+        .prompt({ name: "name", type: "text", message: "Name?" })
+        .pipe(Effect.provide(Layer.succeed(Renderer, renderer.service))),
+    );
+    const baselineAnswer = await runScoped(
+      baselineService
+        .prompt({ name: "name", type: "text", message: "Name?" })
+        .pipe(Effect.provide(Layer.succeed(Renderer, baselineRenderer.service))),
+    );
+
+    expect(answer).toBe("line-answer");
+    expect(baselineAnswer).toBe("line-answer");
+    expect(resolveAttempts).toBe(0);
+    expect(renderer.out()).toBe(baselineRenderer.out());
   });
 });
 
@@ -406,6 +504,79 @@ describe("InteractionServiceLive — interruption", () => {
     );
     expect(Exit.isFailure(exit)).toBe(true);
     expect(failureTag(exit)).toBe("InteractionCancelledError");
+  });
+
+  test("Effect.interrupt aborts and awaits pending rich-driver cleanup", async () => {
+    const fakeTty = neverStdin();
+    Object.setPrototypeOf(fakeTty, ReadStream.prototype);
+    Object.assign(fakeTty, { isTTY: true });
+    let receivedSignal: AbortSignal | undefined;
+    let aborts = 0;
+    let markReadStarted: (() => void) | undefined;
+    let markCleanupStarted: (() => void) | undefined;
+    let releaseCleanup: (() => void) | undefined;
+    const readStarted = new Promise<void>((resolve) => {
+      markReadStarted = resolve;
+    });
+    const cleanupStarted = new Promise<void>((resolve) => {
+      markCleanupStarted = resolve;
+    });
+    const cleanupReleased = new Promise<void>((resolve) => {
+      releaseCleanup = resolve;
+    });
+    const service = makeInteractionService({
+      stdin: fakeTty,
+      stdout: capturingWritable().stream,
+      resolveDriver: async () => ({
+        readRaw: async (_request, signal) => {
+          receivedSignal = signal;
+          markReadStarted?.();
+          return new Promise<string>((_resolve, reject) => {
+            signal?.addEventListener(
+              "abort",
+              () => {
+                aborts += 1;
+                markCleanupStarted?.();
+                cleanupReleased.then(() => {
+                  const error = new Error("cancelled after cleanup");
+                  error.name = "PromptCancelledError";
+                  reject(error);
+                });
+              },
+              { once: true },
+            );
+          });
+        },
+      }),
+    });
+
+    let interruptSettled = false;
+    const interrupted = Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          Effect.scoped(
+            service.promptAll([{ name: "app", type: "text", message: "Name?" }], {
+              interactive: true,
+            }),
+          ),
+        );
+        yield* Effect.promise(() => readStarted);
+        return yield* Fiber.interrupt(fiber);
+      }),
+    ).then((exit) => {
+      interruptSettled = true;
+      return exit;
+    });
+    await cleanupStarted;
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(interruptSettled).toBe(false);
+    releaseCleanup?.();
+    const exit = await interrupted;
+
+    expect(failureTag(exit)).toBe("InteractionCancelledError");
+    expect(receivedSignal?.aborted).toBe(true);
+    expect(aborts).toBe(1);
   });
 
   test("interruption restores the prior TTY raw-mode state before propagating", async () => {

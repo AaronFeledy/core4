@@ -79,6 +79,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "opentui-native-stubs",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-opentui-native-stubs.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "ci-workflow",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-ci-workflow.ts`],
     cwd: REPO_ROOT,

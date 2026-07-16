@@ -2,11 +2,15 @@ import { afterEach, describe, expect, test } from "bun:test";
 import * as openTuiModule from "@opentui/core";
 import { ManualClock, createTestRenderer } from "@opentui/core/testing";
 
-import { type OpenTuiModuleLike, createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
+import {
+  type OpenTuiModuleLike,
+  type RendererLike,
+  createOpenTuiPromptDriver,
+} from "../src/opentui/prompt-driver.ts";
 
 type TestSetup = Awaited<ReturnType<typeof createTestRenderer>> & { clock: ManualClock };
 
-const openTui = openTuiModule satisfies OpenTuiModuleLike;
+const openTui = openTuiModule satisfies OpenTuiModuleLike<openTuiModule.CliRenderer>;
 
 const setups: TestSetup[] = [];
 
@@ -40,6 +44,132 @@ const flushInput = async (testSetup: TestSetup): Promise<void> => {
   testSetup.clock.advance(25);
   await Promise.resolve();
   await testSetup.renderOnce();
+};
+
+const makeDestroyFailureFixture = (cancel: boolean) => {
+  class TestRenderable {
+    value = "answer";
+    plainText = "answer";
+
+    add(): void {}
+
+    focus(): void {}
+
+    on(event: string, listener: (...args: ReadonlyArray<unknown>) => void): void {
+      if (event === "enter") Reflect.apply(listener, undefined, []);
+    }
+
+    setSelectedIndex(): void {}
+  }
+
+  let createAttempts = 0;
+  const destroyFailure = new Error("renderer destroy failed");
+  const renderer: RendererLike = {
+    root: {
+      add: () => {},
+      on: () => {},
+    },
+    keyInput: {
+      on: (_event, listener) => {
+        if (cancel) Reflect.apply(listener, undefined, [{ name: "escape" }]);
+      },
+    },
+    width: 60,
+    height: 12,
+    destroy: async () => {
+      throw destroyFailure;
+    },
+  };
+  const module = {
+    createCliRenderer: async () => renderer,
+    BoxRenderable: TestRenderable,
+    TextRenderable: TestRenderable,
+    InputRenderable: TestRenderable,
+    TextareaRenderable: TestRenderable,
+    SelectRenderable: TestRenderable,
+    TabSelectRenderable: TestRenderable,
+    InputRenderableEvents: { ENTER: "enter" },
+    SelectRenderableEvents: { ITEM_SELECTED: "selected" },
+    TabSelectRenderableEvents: { ITEM_SELECTED: "selected" },
+  } satisfies OpenTuiModuleLike;
+  const driver = createOpenTuiPromptDriver({
+    loadModule: async () => module,
+    createRenderer: async () => {
+      createAttempts += 1;
+      return renderer;
+    },
+    startRenderer: () => {},
+  });
+  return { createAttempts: () => createAttempts, destroyFailure, driver };
+};
+
+const makeAbortFixture = () => {
+  class TestRenderable {
+    value = "answer";
+    plainText = "answer";
+
+    add(): void {}
+
+    focus(): void {}
+
+    on(): void {}
+
+    setSelectedIndex(): void {}
+  }
+
+  let keyListener: ((...args: ReadonlyArray<unknown>) => void) | undefined;
+  let markListenerAttached: (() => void) | undefined;
+  const listenerAttached = new Promise<void>((resolve) => {
+    markListenerAttached = resolve;
+  });
+  const cleanup = { listener: 0, renderer: 0, starts: 0 };
+  const renderer: RendererLike = {
+    root: {
+      add: () => {},
+      on: () => {},
+    },
+    keyInput: {
+      on: (_event, listener) => {
+        keyListener = listener;
+        markListenerAttached?.();
+      },
+      off: () => {
+        cleanup.listener += 1;
+      },
+    },
+    width: 60,
+    height: 12,
+    destroy: async () => {
+      cleanup.renderer += 1;
+    },
+  };
+  const module = {
+    createCliRenderer: async () => renderer,
+    BoxRenderable: TestRenderable,
+    TextRenderable: TestRenderable,
+    InputRenderable: TestRenderable,
+    TextareaRenderable: TestRenderable,
+    SelectRenderable: TestRenderable,
+    TabSelectRenderable: TestRenderable,
+    InputRenderableEvents: { ENTER: "enter" },
+    SelectRenderableEvents: { ITEM_SELECTED: "selected" },
+    TabSelectRenderableEvents: { ITEM_SELECTED: "selected" },
+  } satisfies OpenTuiModuleLike;
+  const driver = createOpenTuiPromptDriver({
+    loadModule: async () => module,
+    createRenderer: async () => renderer,
+    startRenderer: () => {
+      cleanup.starts += 1;
+    },
+  });
+  return {
+    cancelByKey: () => {
+      if (keyListener !== undefined) Reflect.apply(keyListener, undefined, [{ name: "escape" }]);
+    },
+    cleanup,
+    driver,
+    listenerAttached,
+  };
 };
 
 afterEach(async () => {
@@ -236,6 +366,49 @@ describe("OpenTUI prompt driver", () => {
     await expect(escAnswer).rejects.toMatchObject({ name: "PromptCancelledError" });
   });
 
+  test("aborting an active read cancels and cleans the listener, renderer, and paint loop exactly once", async () => {
+    const fixture = makeAbortFixture();
+    const controller = new AbortController();
+    let settled = false;
+    const answer = fixture.driver
+      .readRaw({ prompt: basePrompt, mode: "normal" }, controller.signal)
+      .finally(() => {
+        settled = true;
+      });
+    await fixture.listenerAttached;
+
+    controller.abort();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    const settledByAbort = settled;
+    if (!settledByAbort) fixture.cancelByKey();
+
+    await expect(answer).rejects.toMatchObject({ name: "PromptCancelledError" });
+    expect(settledByAbort).toBe(true);
+    expect(fixture.cleanup).toEqual({ listener: 1, renderer: 1, starts: 1 });
+  });
+
+  test("an already-aborted signal cancels before renderer creation", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    let createAttempts = 0;
+    const driver = createOpenTuiPromptDriver({
+      loadModule: async () => openTui,
+      createRenderer: async () => {
+        createAttempts += 1;
+        throw new Error("renderer must not be created");
+      },
+    });
+
+    await expect(
+      driver.readRaw({ prompt: basePrompt, mode: "normal" }, controller.signal),
+    ).rejects.toMatchObject({
+      name: "PromptCancelledError",
+    });
+    expect(createAttempts).toBe(0);
+  });
+
   test("survives test renderer resize and still resolves", async () => {
     const testSetup = await makeSetup(40, 8);
     const driver = await makeDriver(testSetup);
@@ -267,5 +440,66 @@ describe("OpenTUI prompt driver", () => {
       driver.readRaw({ prompt: { ...basePrompt, type: "multiselect" }, mode: "normal" }),
     ).rejects.toThrow("driver declines multiselect");
     expect(created).toBe(false);
+  });
+
+  test("missing-native and unsupported-terminal fixtures each latch without another attempt", async () => {
+    const attempts = { load: 0, init: 0 };
+    const request = { prompt: basePrompt, mode: "normal" } as const;
+    const moduleDriver = createOpenTuiPromptDriver({
+      loadModule: async () => {
+        attempts.load += 1;
+        throw new Error("Cannot find package @opentui/core-linux-x64");
+      },
+    });
+    const rendererDriver = createOpenTuiPromptDriver({
+      loadModule: async () => openTui,
+      createRenderer: async () => {
+        attempts.init += 1;
+        throw new Error("Unsupported terminal: dumb");
+      },
+    });
+
+    await expect(moduleDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    await expect(moduleDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    await expect(rendererDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    await expect(rendererDriver.readRaw(request)).rejects.toHaveProperty(
+      "name",
+      "OpenTuiPromptUnavailableError",
+    );
+    expect(attempts).toEqual({ load: 1, init: 1 });
+  });
+
+  test("preserves cancellation when destroy also fails and latches the destroy failure", async () => {
+    const fixture = makeDestroyFailureFixture(true);
+
+    await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
+      name: "PromptCancelledError",
+    });
+    await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
+      name: "OpenTuiPromptUnavailableError",
+    });
+
+    expect(fixture.createAttempts()).toBe(1);
+  });
+
+  test("preserves a successful answer while latching destroy failure", async () => {
+    const fixture = makeDestroyFailureFixture(false);
+
+    await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).resolves.toBe("answer");
+    await expect(fixture.driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
+      name: "OpenTuiPromptUnavailableError",
+      cause: fixture.destroyFailure,
+    });
+
+    expect(fixture.createAttempts()).toBe(1);
   });
 });

@@ -1,12 +1,12 @@
-⟨bold⟩⟨cyan⟩╭─ UNINSTALL PLAN [WARN]  dry-run · keep-data ─────────────────────────────────╮⟨reset⟩
-⟨cyan⟩├─ toolchain ──────────────────────────────────────────────────────────────────┤⟨reset⟩
-⟨dim⟩│ [SKIP] managed provider runtime · skipped                                    │⟨dim-off⟩⟨reset⟩
-⟨dim⟩⟨cyan⟩│   target : /home/u/.local/share/lando/providers/lando                        │⟨dim-off⟩⟨reset⟩
-⟨dim⟩⟨cyan⟩│   Remove Lando-managed runtime bundles when present.                         │⟨dim-off⟩⟨reset⟩
-⟨green⟩│ [OK] installed binary · owned by Lando                                       │⟨reset⟩
-⟨cyan⟩├─ data ───────────────────────────────────────────────────────────────────────┤⟨reset⟩
-⟨dim⟩│ [SKIP] user data roots · preserved                                           │⟨dim-off⟩⟨reset⟩
-⟨amber⟩│ [WAIT] owned caches · rerun with --purge                                     │⟨reset⟩
-⟨cyan⟩├─ next steps ─────────────────────────────────────────────────────────────────┤⟨reset⟩
-│   • Rerun `lando uninstall --yes` after reviewing this plan.                 │
-⟨dim⟩⟨cyan⟩╰─ 11 steps reviewed ──────────────────────────────────────────────────────────╯⟨dim-off⟩⟨reset⟩
+⟨bold⟩⟨pink⟩╭─ UNINSTALL PLAN [WARN]  dry-run · keep-data ─────────────────────────────────╮⟨reset⟩
+⟨pink⟩├─ toolchain ──────────────────────────────────────────────────────────────────┤⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨dim⟩[SKIP] managed provider runtime · skipped⟨dim-off⟩⟨reset⟩                                    ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  target : /home/u/.local/share/lando/providers/lando⟨dim-off⟩⟨reset⟩                        ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨dim⟩⟨cyan⟩  Remove Lando-managed runtime bundles when present.⟨dim-off⟩⟨reset⟩                         ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨green⟩[OK] installed binary · owned by Lando⟨reset⟩                                       ⟨pink⟩│⟨reset⟩
+⟨pink⟩├─ data ───────────────────────────────────────────────────────────────────────┤⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨dim⟩[SKIP] user data roots · preserved⟨dim-off⟩⟨reset⟩                                           ⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩ ⟨amber⟩[WAIT] owned caches · rerun with --purge⟨reset⟩                                     ⟨pink⟩│⟨reset⟩
+⟨pink⟩├─ next steps ─────────────────────────────────────────────────────────────────┤⟨reset⟩
+⟨pink⟩│⟨reset⟩   • Rerun `lando uninstall --yes` after reviewing this plan.                 ⟨pink⟩│⟨reset⟩
+⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ 11 steps reviewed ⟨dim-off⟩⟨reset⟩⟨pink⟩──────────────────────────────────────────────────────────╯⟨reset⟩

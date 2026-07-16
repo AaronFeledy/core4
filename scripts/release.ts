@@ -1002,13 +1002,15 @@ const windowsSigningCommands = (env: ReleaseEnvironment): ReadonlyArray<Readonly
 
 const compileCommand = (platform: CiPlatform, version: string): ReadonlyArray<string> => [
   "bun",
-  "build",
-  "./core/bin/lando.ts",
-  "--compile",
-  "--bytecode",
-  `--define=__LANDO_CORE_VERSION__=${JSON.stringify(version)}`,
-  `--target=${platform.bunTarget}`,
-  `--outfile=${releaseBinaryPath(platform)}`,
+  "run",
+  "scripts/build-compiled-binary.ts",
+  "--target",
+  platform.bunTarget,
+  "--outfile",
+  releaseBinaryPath(platform),
+  "--version",
+  version,
+  "--minify",
   "--sourcemap=external",
 ];
 
@@ -1023,12 +1025,20 @@ const compileReleaseBinaries = async (context: ReleaseStageContext): Promise<voi
   const artifactFamily = artifactFamilyForStage({ forBinary: true, forLibrary: false }, context.target);
   const version = releaseVersion(context.env);
 
+  await context.runner.spawn({
+    stageId: "7-compile",
+    artifactFamily,
+    summary: "install locked native packages for all release targets",
+    remediation: defaultRemediation,
+    cmd: ["bun", "install", "--frozen-lockfile", "--os=*", "--cpu=*"],
+  });
+
   for (const platform of releasePlatformsForContext(context)) {
     const startedAt = context.now();
     await context.runner.spawn({
       stageId: "7-compile",
       artifactFamily,
-      summary: "bun build --compile --bytecode ./core/bin/lando.ts",
+      summary: "build compiled release binary",
       remediation: defaultRemediation,
       cmd: compileCommand(platform, version),
     });
@@ -1443,11 +1453,11 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   {
     id: "7-compile",
     label: "Compile",
-    description: "bun build --compile --bytecode --target=bun-${T} bin/lando.ts.",
+    description: "Build the main binary through the per-target compiled-binary wrapper.",
     forBinary: true,
     forLibrary: false,
     kind: "spawn",
-    commandSummary: "bun build --compile --bytecode ./core/bin/lando.ts",
+    commandSummary: "bun run scripts/build-compiled-binary.ts",
     remediation: defaultRemediation,
     run: compileReleaseBinaries,
   },

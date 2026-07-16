@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const repoRoot = join(import.meta.dir, "..", "..", "..");
@@ -19,7 +19,7 @@ const collectTsFiles = (dir: string): string[] => {
   return out;
 };
 
-describe("OpenTUI cold-start canary (S11)", () => {
+describe("OpenTUI cold-start canary", () => {
   test("the renderer plugin entry does not statically import OpenTUI or the prompt driver", () => {
     const index = readSource("plugins/renderer-lando/src/index.ts");
     expect(index).not.toMatch(/import\s[^;]*from\s+["']@opentui\/core["']/);
@@ -28,18 +28,50 @@ describe("OpenTUI cold-start canary (S11)", () => {
     expect(index).toMatch(/await import\(["']\.\/opentui\/prompt-driver/);
   });
 
-  test("no production renderer-plugin source imports @opentui/core via a literal specifier", () => {
-    const srcDir = join(repoRoot, "plugins", "renderer-lando", "src");
-    for (const file of collectTsFiles(srcDir)) {
+  test("production source has exactly one lazy literal OpenTUI import", async () => {
+    const pluginSrcDirs = readdirSync(join(repoRoot, "plugins"))
+      .map((entry) => join(repoRoot, "plugins", entry, "src"))
+      .filter((path) => existsSync(path) && statSync(path).isDirectory());
+    const productionDirs = [
+      join(repoRoot, "core", "bin"),
+      join(repoRoot, "core", "src"),
+      join(repoRoot, "sdk", "src"),
+      join(repoRoot, "container-runtime", "src"),
+      ...pluginSrcDirs,
+    ];
+    const opentuiImports: Array<{ readonly file: string; readonly path: string; readonly kind: string }> = [];
+    for (const file of productionDirs.flatMap(collectTsFiles)) {
       const source = readFileSync(file, "utf8");
-      expect(source).not.toMatch(/from\s+["']@opentui\/core["']/);
-      expect(source).not.toMatch(/import\(\s*["']@opentui\/core["']\s*\)/);
+      const imports = new Bun.Transpiler({ loader: "ts" }).scan(source);
+      for (const edge of imports.imports) {
+        if (edge.path.startsWith("@opentui/")) {
+          opentuiImports.push({ file, path: edge.path, kind: edge.kind });
+        }
+      }
     }
+
+    expect(opentuiImports).toEqual([
+      {
+        file: join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "prompt-driver.ts"),
+        path: "@opentui/core",
+        kind: "dynamic-import",
+      },
+    ]);
+  });
+
+  test("renderer tests may statically import the OpenTUI testing harness", () => {
+    const testDir = join(repoRoot, "plugins", "renderer-lando", "test");
+    const testingImports = collectTsFiles(testDir).filter((file) =>
+      /from\s+["']@opentui\/core\/testing["']/.test(readFileSync(file, "utf8")),
+    );
+
+    expect(testingImports.length).toBeGreaterThan(0);
   });
 
   test("the core driver loader reaches the renderer plugin only through a dynamic import", () => {
     const loader = readSource("core/src/interaction/interactive-driver.ts");
     expect(loader).not.toMatch(/import\s[^;]*from\s+["']@lando\/renderer-lando["']/);
-    expect(loader).toMatch(/import\(\s*RENDERER_PLUGIN_SPECIFIER\s*\)/);
+    expect(loader).toMatch(/import\(\s*["']@lando\/renderer-lando["']\s*\)/);
+    expect(loader).not.toMatch(/import\(\s*[A-Za-z_$][\w$]*\s*\)/);
   });
 });
