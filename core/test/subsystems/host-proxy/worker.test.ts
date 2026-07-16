@@ -220,11 +220,20 @@ describe("detached host-proxy worker manager", () => {
   test("starts a detached worker, persists socket-owned state, and keeps session token out of worker.json", async () => {
     const root = await tempRoot();
     const writes: string[] = [];
+    const database = servicePlan("database", "/app", false);
+    const appserver = servicePlan("appserver", "/app");
+    const eligiblePlan: AppPlan = {
+      ...plan,
+      services: {
+        [database.name]: database,
+        [appserver.name]: appserver,
+      },
+    };
     try {
       const session = await Effect.runPromise(
         startDetachedHostProxyWorker({
           app,
-          plan,
+          plan: eligiblePlan,
           paths: { userDataRoot: root },
           shimArtifactPath: await fakeShim(root),
           spawnWorker: (spec) => ({
@@ -240,6 +249,7 @@ describe("detached host-proxy worker manager", () => {
               token: "secret-token",
               controlToken: "control-token",
               socketPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "host-proxy.sock"),
+              containerUrl: "http://host.containers.internal:32123",
               shimPath: join(dirname(workerStatePath(app, { userDataRoot: root })), "lando"),
               transport: "unix-socket" as const,
             }),
@@ -256,6 +266,8 @@ describe("detached host-proxy worker manager", () => {
       expect(writes.join("\n")).not.toContain("secret-token");
       expect(record).toContain('"controlToken": "control-token"');
       expect(record).toContain('"protocolVersion": 1');
+      expect(record).toContain('"containerUrl": "http://host.containers.internal:32123"');
+      expect(record).toContain('"probeService": "appserver"');
       expect(record).not.toContain("secret-token");
       expect(hostProxyWorkerArgv({ appId: "demo" })).toEqual(expect.arrayContaining(["--app-id", "demo"]));
     } finally {

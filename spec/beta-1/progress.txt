@@ -344,3 +344,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Reuse detached-worker ownership records and the authenticated identify probe for diagnostics; a second ad hoc socket/DNS protocol would drift from the transport users actually run.
   - A configured no-op is healthy state. Warn only when owned transport state exists and its authenticated endpoint or declared container gateway is unavailable.
 ---
+
+## 2026-07-15 23:22 CDT - US-451 Review
+- Closed the production-transport gaps found by review: Unix checks now require a real mode-0600 socket, TCP checks execute a bounded `app:open --print` round-trip from the persisted eligible service through the exact provider gateway alias, and generated allowlist drift produces its own remediated finding.
+- Persisted only the container endpoint and probe-service evidence needed by doctor, rejected mismatched gateway aliases before provider execution, and redacted record-derived context before text, YAML, JSON, or NDJSON rendering.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs; review-work QA/security passed, while every goal/code/context blocker was confirmed and fixed. Broader renderer refactoring, a synthetic probe container, and new public provider or SDK surface were rejected as unnecessary for this story.
+- Verification: typecheck and lint passed; 58 focused doctor/worker tests, probe/redaction/renderer/machine-output boundaries, guide lint/coverage/public transcripts, and the focused 10-scenario executable guide in `lando4-dev` passed. Guide drift was unavailable outside pull-request context.
+- **Learnings for future iterations:**
+  - A host-side loopback probe cannot prove a container DNS alias; persist the production container endpoint and exercise it from an already-eligible service without creating diagnostic containers.
+  - Generated runtime allowlists need an independent literal-metadata comparison, not only source-level codegen tests.
+---

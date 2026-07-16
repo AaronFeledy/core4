@@ -601,11 +601,13 @@ export const doctor = (
         ...(provider.capabilities.hostProxy?.tcpHostGateway === undefined
           ? {}
           : { tcpHostGateway: provider.capabilities.hostProxy.tcpHostGateway }),
+        exec: provider.exec,
       },
       providerKind,
       runtimeStatus: runtimeMessage,
       runtime,
       selection,
+      sourceEnv: { ...(options.env ?? process.env) },
     });
 
     return {
@@ -661,7 +663,8 @@ const renderCheck = (check: DoctorCheck): ReadonlyArray<string> => {
     check.name === "setup-readiness" ||
     check.name === "runtime-service" ||
     check.name === "runtime-oom" ||
-    check.name === "host-proxy-transport"
+    check.name === "host-proxy-transport" ||
+    check.name === "host-proxy-allowlist"
   ) {
     for (const [field, value] of Object.entries(check.context)) {
       if (field === "providerId" || field === "providerKind" || field === "providerVersion") continue;

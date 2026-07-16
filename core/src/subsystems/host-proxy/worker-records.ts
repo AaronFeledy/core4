@@ -18,6 +18,8 @@ export type HostProxyControlRecord = typeof HostProxyControlRecord.Type;
 export const HostProxyWorkerRecord = Schema.Struct({
   ...HostProxyControlRecord.fields,
   appRoot: Schema.String,
+  containerUrl: Schema.optional(Schema.String),
+  probeService: Schema.optional(Schema.String),
 });
 export type HostProxyWorkerRecord = typeof HostProxyWorkerRecord.Type;
 

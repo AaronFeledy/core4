@@ -25,11 +25,12 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-host-proxy-transport" render={false} reason="Host-proxy reachability uses persisted worker ownership plus the authenticated production control endpoint; focused doctor tests exercise Unix-socket and Windows TCP bridge outcomes without launching containers">
+  <Scenario id="doctor-host-proxy-transport" render={false} reason="Host-proxy reachability uses persisted worker ownership plus the authenticated production control endpoint; focused doctor tests exercise Unix-socket and provider-exec TCP bridge outcomes without launching new containers">
     <Step name="host-proxy-transport">
       <Variable name="checkName" value="host-proxy-transport" display="One informational or warning check per persisted app host-proxy worker" />
-      <Variable name="transports" value="unix-socket | tcp-host-gateway" display="Unix hosts probe the owned socket; Windows probes the loopback bridge and reports the container gateway name" />
-      <Variable name="noWorker" value="no check" display="Apps without a host-proxy worker do not produce a false alarm" />
+      <Variable name="transports" value="unix-socket | tcp-host-gateway" display="Unix requires the authenticated endpoint to be a socket with mode 0600; TCP also runs lando open --print in the persisted eligible service against the persisted container URL" />
+      <Variable name="allowlist" value="host-proxy-allowlist" display="A separate warning with codegen remediation appears when the generated runLando allowlist differs from hostProxyAllowed metadata in the literal compiled manifest" />
+      <Variable name="noWorker" value="no transport check" display="With a fresh generated allowlist, no persisted host-proxy worker produces no host-proxy diagnostic" />
       <Variable name="remediation" value="lando restart" display="An unreachable authenticated bridge reports structured restart remediation" />
     </Step>
   </Scenario>

@@ -8,6 +8,7 @@ import { makeLandoPaths } from "../../config/paths.ts";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
 import { type HostProxyWorkerSpawner, defaultSpawnWorker, hostProxyWorkerArgv } from "./worker-process.ts";
+import { hostProxyEligibleServices } from "./worker-service-plan.ts";
 import {
   removeOwnedHostProxyWorkerState,
   replaceExistingHostProxyWorker,
@@ -68,6 +69,7 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
               const transport: HostProxyTransportKind =
                 ready.transport ??
                 (makeLandoPaths(options.paths).platform === "win32" ? "tcp-host-gateway" : "unix-socket");
+              const probeService = hostProxyEligibleServices(options.plan)[0]?.name;
               let terminatePromise: Promise<void> | undefined;
               let resolveClosed: () => void = () => undefined;
               const closed = new Promise<void>((resolveClosedPromise) => {
@@ -79,6 +81,8 @@ export const startDetachedHostProxyWorker = (options: DetachedHostProxyWorkerOpt
                 pid: worker.pid,
                 ...(ready.socketPath === undefined ? {} : { socketPath: ready.socketPath }),
                 ...(ready.url === undefined ? {} : { url: ready.url }),
+                ...(ready.containerUrl === undefined ? {} : { containerUrl: ready.containerUrl }),
+                ...(probeService === undefined ? {} : { probeService: String(probeService) }),
                 shimPath: ready.shimPath,
                 transport,
                 protocolVersion: 1,
