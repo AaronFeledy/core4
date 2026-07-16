@@ -56,6 +56,7 @@ export const csi = {
   bold: `${ESC}[1m`,
   reset: `${ESC}[0m`,
   cyan: `${ESC}[36m`,
+  pink: `${ESC}[95m`,
   green: `${ESC}[32m`,
   amber: `${ESC}[33m`,
   red: `${ESC}[31m`,
@@ -222,6 +223,13 @@ const bodyLine = (text: string, width: number): string => {
   return `│ ${text}${" ".repeat(padding)} │`;
 };
 
+const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
+  const hasTrailingFrame = line.endsWith("│");
+  const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
+  const trailingFrame = hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "";
+  return `${csi.pink}${line.slice(0, 1)}${csi.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
+};
+
 const styleBottomFrame = (line: string): string => {
   let trailingFrameStart = line.length;
   if (line.endsWith("╯")) {
@@ -230,8 +238,8 @@ const styleBottomFrame = (line: string): string => {
   }
   const content = line.slice(2, trailingFrameStart);
   const trailingFrame = line.slice(trailingFrameStart);
-  const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.cyan}${trailingFrame}${csi.reset}`;
-  return `${csi.cyan}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.cyan}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
+  const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.pink}${trailingFrame}${csi.reset}`;
+  return `${csi.pink}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.pink}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
 };
 
 const wrapFrameLines = (
@@ -568,16 +576,16 @@ export class LandoTreePainter {
   #renderFrame(): ReadonlyArray<string> {
     const logical = this.#renderLogicalFrame();
     return logical.map((line) => {
-      if (line.startsWith("╭─")) return `${csi.bold}${csi.cyan}${line}${csi.reset}`;
+      if (line.startsWith("╭─")) return `${csi.bold}${csi.pink}${line}${csi.reset}`;
       if (line.startsWith("╰─")) return styleBottomFrame(line);
-      if (line.includes(statusChip("BLOCKED"))) return `${csi.red}${line}${csi.reset}`;
-      if (line.includes(statusChip("CACHED"))) return `${csi.cyan}${line}${csi.reset}`;
+      if (line.includes(statusChip("BLOCKED"))) return styleBodyFrame(line, csi.red, csi.reset);
+      if (line.includes(statusChip("CACHED"))) return styleBodyFrame(line, csi.cyan, csi.reset);
       if (line.includes(statusChip("SKIPPED")))
-        return `${csi.dim}${csi.cyan}${line}${csi.dimReset}${csi.reset}`;
-      if (line.includes(statusChip("ONLINE"))) return `${csi.green}${line}${csi.reset}`;
-      if (line.includes(statusChip("WAIT"))) return `${csi.amber}${line}${csi.reset}`;
-      if (line.includes(statusChip("RUNNING"))) return `${csi.cyan}${line}${csi.reset}`;
-      if (line.startsWith("│")) return `${csi.dim}${line}${csi.dimReset}${csi.reset}`;
+        return styleBodyFrame(line, `${csi.dim}${csi.cyan}`, `${csi.dimReset}${csi.reset}`);
+      if (line.includes(statusChip("ONLINE"))) return styleBodyFrame(line, csi.green, csi.reset);
+      if (line.includes(statusChip("WAIT"))) return styleBodyFrame(line, csi.amber, csi.reset);
+      if (line.includes(statusChip("RUNNING"))) return styleBodyFrame(line, csi.cyan, csi.reset);
+      if (line.startsWith("│")) return styleBodyFrame(line, csi.dim, `${csi.dimReset}${csi.reset}`);
       return line;
     });
   }

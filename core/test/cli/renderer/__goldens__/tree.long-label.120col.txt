@@ -1,5 +1,5 @@
-⟨bold⟩⟨cyan⟩╭─ LANDO OPS [ONLINE] Lando runtime ready after validating proxy and CA configuration (1 ✓ · 0 ✗) (1.5s) ──────────────╮⟨reset⟩
-⟨cyan⟩│ [RUNNING] · Probe corporate proxy and custom CA trust with a long operational label                                  │⟨reset⟩
-⟨dim⟩│   using LANDO_NETWORK_CA_CERTS=/very/long/path/to/corporate/root/authority.pem with                                  │⟨dim-off⟩⟨reset⟩
-⟨dim⟩│   NO_PROXY=github.com,registry.npmjs.org,packages.example.internal                                                   │⟨dim-off⟩⟨reset⟩
-⟨cyan⟩╰─⟨reset⟩⟨dim⟩⟨cyan⟩ telemetry 1 ONLINE · 0 BLOCKED (1.5s) ⟨dim-off⟩⟨reset⟩⟨cyan⟩──────────────────────────────────────────────────────────────────────────────╯⟨reset⟩
+⟨bold⟩⟨pink⟩╭─ LANDO OPS [ONLINE] Lando runtime ready after validating proxy and CA configuration (1 ✓ · 0 ✗) (1.5s) ──────────────╮⟨reset⟩
+⟨pink⟩│⟨reset⟩⟨cyan⟩ [RUNNING] · Probe corporate proxy and custom CA trust with a long operational label                                  ⟨reset⟩⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩⟨dim⟩   using LANDO_NETWORK_CA_CERTS=/very/long/path/to/corporate/root/authority.pem with                                  ⟨dim-off⟩⟨reset⟩⟨pink⟩│⟨reset⟩
+⟨pink⟩│⟨reset⟩⟨dim⟩   NO_PROXY=github.com,registry.npmjs.org,packages.example.internal                                                   ⟨dim-off⟩⟨reset⟩⟨pink⟩│⟨reset⟩
+⟨pink⟩╰─⟨reset⟩⟨dim⟩⟨pink⟩ telemetry 1 ONLINE · 0 BLOCKED (1.5s) ⟨dim-off⟩⟨reset⟩⟨pink⟩──────────────────────────────────────────────────────────────────────────────╯⟨reset⟩
