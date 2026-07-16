@@ -9,6 +9,7 @@ import {
 } from "@lando/provider-lando";
 
 import { liveIntegrationEligibility, liveIntegrationTestName } from "./live-integration.ts";
+import { makeLifecycleMachineName } from "./machine-lifecycle-name.ts";
 
 const machinePlatform =
   process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "win32" : undefined;
@@ -62,7 +63,11 @@ test.skipIf(!managedEligibility.available)(
   liveIntegrationTestName("managed machine start stop destroy", managedEligibility),
   async () => {
     if (machinePlatform === undefined) throw new MachineLifecyclePrerequisiteError();
-    const runner = makeSystemPodmanMachineRunner(podmanCommand, "lando-lifecycle-managed", machinePlatform);
+    const runner = makeSystemPodmanMachineRunner(
+      podmanCommand,
+      makeLifecycleMachineName("managed"),
+      machinePlatform,
+    );
     expect(await Effect.runPromise(runner.inspect)).toBe("missing");
     const ensureMachine =
       machinePlatform === "darwin" ? ensureMacOSPodmanMachine : ensureWindowsPodmanMachine;
@@ -86,7 +91,11 @@ test.skipIf(!systemEligibility.available)(
   liveIntegrationTestName("system Podman machine start stop destroy", systemEligibility),
   async () => {
     if (machinePlatform === undefined) throw new MachineLifecyclePrerequisiteError();
-    const runner = makeSystemPodmanMachineRunner(podmanCommand, "lando-lifecycle-system", machinePlatform);
+    const runner = makeSystemPodmanMachineRunner(
+      podmanCommand,
+      makeLifecycleMachineName("system"),
+      machinePlatform,
+    );
     expect(await Effect.runPromise(runner.inspect)).toBe("missing");
 
     await runLifecycle(runner, runner.create.pipe(Effect.andThen(runner.start)));

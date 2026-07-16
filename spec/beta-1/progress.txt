@@ -452,3 +452,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Native lifecycle acceptance must use unique disposable machines with scoped teardown; never repurpose or destroy a developer-owned default machine.
   - Advisory policy changes the workflow exit decision, not the cell result: a claimed lifecycle failure must still be recorded as `failed`, never rewritten as a skip or pass.
 ---
+
+## 2026-07-16 06:22 CDT - US-453 Review
+- Replaced deterministic lifecycle machine names with UUID-suffixed managed/system names so concurrent or stale acceptance runs cannot target the same disposable machine; host-safe coverage proves uniqueness and exact create/start/stop/teardown argv targeting.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs. Full compiled setup-to-API reachability remains owned by US-461 rather than this lifecycle-only story. `Guide-Coverage-Skip: Internal acceptance safety changed no public provider workflow or contract.`
+- Verification: typecheck, lint, changed-file diagnostics, and focused lifecycle name/argv, provider-matrix reporting, native-cell policy, and generated-workflow tests passed.
+- **Learnings for future iterations:**
+  - Purpose-specific fixed names are not disposable ownership: native destructive acceptance needs a per-invocation unguessable name even when it first asserts the target is absent.
+---
