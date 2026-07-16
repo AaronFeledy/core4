@@ -449,7 +449,7 @@ const windowsManagedSetupSteps = `      - name: Download current-commit Windows 
           LANDO_USER_CACHE_ROOT: \${{ runner.temp }}/lando-cache
           LANDO_USER_CONF_ROOT: \${{ runner.temp }}/lando-config
         run: |
-          powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\bin\\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\config\\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT'`;
+          powershell.exe -NoProfile -Command '$podman = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\bin\\podman.exe"; if (Test-Path $podman) { $env:CONTAINERS_CONF = Join-Path $env:LANDO_USER_DATA_ROOT "runtime\\config\\containers.conf"; & $podman machine rm --force lando; if ($LASTEXITCODE -ne 0) { Write-Warning "managed machine teardown exited $LASTEXITCODE" } }; Remove-Item -Recurse -Force -ErrorAction SilentlyContinue $env:LANDO_USER_DATA_ROOT, $env:LANDO_USER_CACHE_ROOT, $env:LANDO_USER_CONF_ROOT; exit 0'`;
 
 const providerIntegrationSteps = (platform: CiPlatform): string => {
   if (platform.liveProviderIntegration) return landoProviderIntegrationSteps(platform);

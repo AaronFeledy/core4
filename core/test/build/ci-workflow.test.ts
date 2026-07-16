@@ -931,6 +931,8 @@ describe("ci workflow", () => {
     );
     expect(providerIntegration).toContain("      - name: Teardown Windows managed machine");
     expect(providerIntegration).toContain("& $podman machine rm --force lando");
+    expect(providerIntegration).toContain("Remove-Item -Recurse -Force -ErrorAction SilentlyContinue");
+    expect(providerIntegration).toContain("exit 0'");
     expect(providerIntegration).toContain("        if: always()");
     expect(providerIntegration.indexOf("Build local Windows runtime manifest")).toBeLessThan(
       providerIntegration.indexOf("windows-managed-setup-acceptance.ts"),
