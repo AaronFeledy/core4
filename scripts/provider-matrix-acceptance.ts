@@ -53,7 +53,11 @@ const isCellId = (value: string): value is ProviderAcceptanceCellId => {
   switch (value) {
     case "docker-desktop-macos":
     case "docker-engine-linux":
+    case "lando-machine-macos":
+    case "lando-machine-windows":
     case "podman-desktop-macos":
+    case "podman-machine-macos":
+    case "podman-machine-windows":
     case "lando-podman6-linux":
     case "podman-podman6-linux":
     case "lima-macos":

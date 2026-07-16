@@ -55,6 +55,7 @@ export interface ProviderAcceptancePreflightInput {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly platform: NodeJS.Platform;
   readonly isSocket: (path: string) => boolean;
+  readonly isCommand?: (command: string) => boolean;
 }
 
 export interface RunProviderAcceptanceCellInput {
@@ -138,6 +139,7 @@ export const preflightProviderAcceptanceCell = ({
   env,
   platform,
   isSocket,
+  isCommand = (command) => Bun.which(command) !== null,
 }: ProviderAcceptancePreflightInput): ProviderAcceptancePrerequisites => {
   const requiredPlatform = requiredPlatformFor(cell.runsOn);
   if (requiredPlatform !== undefined && platform !== requiredPlatform) {
@@ -145,8 +147,20 @@ export const preflightProviderAcceptanceCell = ({
   }
   if (cell.requiredEnv === undefined) return { available: true };
   const value = env[cell.requiredEnv];
-  if (value === undefined || value.length === 0)
+  if (cell.requiredEnvValue !== undefined) {
+    if (value !== cell.requiredEnvValue) {
+      return { available: false, reason: `${cell.requiredEnv}=${cell.requiredEnvValue} is required.` };
+    }
+  } else if (value === undefined || value.length === 0) {
     return { available: false, reason: `${cell.requiredEnv} was not set.` };
+  }
+  if (cell.requiredCommand !== undefined) {
+    const command = env[cell.requiredCommand.env] || cell.requiredCommand.defaultValue;
+    if (!isCommand(command)) {
+      return { available: false, reason: `${cell.requiredCommand.label} was not found.` };
+    }
+    return { available: true };
+  }
   const socketPath = cell.provider === "docker" ? dockerSocketPath(value) : value;
   return isSocket(socketPath)
     ? { available: true }

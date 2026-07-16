@@ -1,7 +1,13 @@
+import { MACHINE_LIFECYCLE_ACCEPTANCE_CELLS } from "./provider-machine-lifecycle-plan.ts";
+
 export type ProviderAcceptanceCellId =
   | "docker-desktop-macos"
   | "docker-engine-linux"
+  | "lando-machine-macos"
+  | "lando-machine-windows"
   | "podman-desktop-macos"
+  | "podman-machine-macos"
+  | "podman-machine-windows"
   | "lando-podman6-linux"
   | "podman-podman6-linux"
   | "lima-macos"
@@ -22,8 +28,14 @@ export interface ProviderAcceptanceCellPlan {
   readonly provider: ProviderId;
   readonly releaseBlocking: boolean;
   readonly installPodman6: boolean;
-  readonly setup: "advisory" | "docker-engine" | "managed-lando" | "homebrew-podman";
+  readonly setup: "advisory" | "docker-engine" | "managed-lando" | "homebrew-podman" | "machine-lifecycle";
   readonly requiredEnv?: string;
+  readonly requiredEnvValue?: string;
+  readonly requiredCommand?: {
+    readonly env: string;
+    readonly defaultValue: string;
+    readonly label: string;
+  };
   readonly advisorySkipReason?: string;
   readonly checks: readonly ProviderAcceptanceCheckPlan[];
 }
@@ -150,6 +162,7 @@ export const PROVIDER_ACCEPTANCE_CELLS: readonly ProviderAcceptanceCellPlan[] = 
       "Podman Desktop is not installable in GitHub-hosted CI; run this cell on a prepared self-hosted runner.",
     checks: [],
   },
+  ...MACHINE_LIFECYCLE_ACCEPTANCE_CELLS,
   {
     id: "lando-podman6-linux",
     engine: "Lando managed Podman 6",
