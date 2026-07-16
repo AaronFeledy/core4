@@ -13,6 +13,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 
 ## Codebase Patterns
 
+- Env-gated native acceptance preflights host, explicit opt-in, and tooling as structured skips; once prerequisites pass, command failures remain failed outcomes even when release policy makes the cell advisory.
 - Windows managed Podman machines expose the API at `\\.\pipe\podman-lando`; the data-root `runtime/run/podman.sock` endpoint is the native managed-service path, not the win32 machine endpoint.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
 - MCP outbound queue caps do not bound pre-queue JSON serialization; enforce the same byte budget during traversal before retaining the completed JSON string.
@@ -442,4 +443,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass
 - Review feedback: fixed (merged origin/main into the branch to resolve a progress.txt conflict after main advanced)
 - Merge: merged (squash)
+---
+
+## 2026-07-16 05:56 CDT - US-453
+- Added env-gated native machine lifecycle acceptance for managed Lando and system Podman on macOS and Windows. Prepared runners exercise create/start/stop/restart/destroy against unique disposable machines; unsupported hosts, missing opt-in, and absent tooling produce structured skips, while failures after preflight remain failed outcomes. The four native cells are advisory because hosted-runner nested virtualization is not dependable; the existing Linux Docker, Lando, and Podman cells remain release-blocking.
+- Verification: typecheck, lint passed; focused lifecycle, provider-matrix, workflow-codegen, CI-runbook, and adjacent machine tests passed; generated workflow was idempotent and a real acceptance CLI run emitted the expected structured unsupported-host skip.
+- **Learnings for future iterations:**
+  - Native lifecycle acceptance must use unique disposable machines with scoped teardown; never repurpose or destroy a developer-owned default machine.
+  - Advisory policy changes the workflow exit decision, not the cell result: a claimed lifecycle failure must still be recorded as `failed`, never rewritten as a skip or pass.
 ---

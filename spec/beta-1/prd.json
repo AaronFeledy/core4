@@ -1476,7 +1476,7 @@
         "Lint passes"
       ],
       "priority": 83,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-14 residual hardening. Origin: Podman 6 wave and US-432 advisory macOS/Windows skips; machine lifecycle could not be live-exercised from the Linux sandbox."
     },
     {

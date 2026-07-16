@@ -114,6 +114,10 @@ permissions:
 
 jobs:
   provider-contracts:
+    env:
+      LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE }}
+      LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE: \${{ vars.LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE }}
+      LANDO_TEST_PODMAN_COMMAND: \${{ vars.LANDO_TEST_PODMAN_COMMAND }}
     strategy:
       fail-fast: false
       matrix:

@@ -11,6 +11,10 @@ permissions:
 
 jobs:
   provider-contracts:
+    env:
+      LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE: ${{ vars.LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE }}
+      LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE: ${{ vars.LANDO_TEST_PROVIDER_PODMAN_MACHINE_LIFECYCLE }}
+      LANDO_TEST_PODMAN_COMMAND: ${{ vars.LANDO_TEST_PODMAN_COMMAND }}
     strategy:
       fail-fast: false
       matrix:
@@ -42,6 +46,42 @@ jobs:
             setup: advisory
             advisory-skip: true
             notice: "Podman Desktop is not installable in GitHub-hosted CI; run this cell on a prepared self-hosted runner."
+          - cell: lando-machine-macos
+            engine: Lando managed Podman machine on macOS
+            runs-on: macos-15
+            provider: lando
+            release-blocking: false
+            install-podman6: false
+            setup: machine-lifecycle
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
+          - cell: lando-machine-windows
+            engine: Lando managed Podman machine on Windows
+            runs-on: windows-2022
+            provider: lando
+            release-blocking: false
+            install-podman6: false
+            setup: machine-lifecycle
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
+          - cell: podman-machine-macos
+            engine: System Podman machine on macOS
+            runs-on: macos-15
+            provider: podman
+            release-blocking: false
+            install-podman6: false
+            setup: machine-lifecycle
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
+          - cell: podman-machine-windows
+            engine: System Podman machine on Windows
+            runs-on: windows-2022
+            provider: podman
+            release-blocking: false
+            install-podman6: false
+            setup: machine-lifecycle
+            advisory-skip: false
+            notice: "GitHub-hosted CI runtime is available."
           - cell: lando-podman6-linux
             engine: Lando managed Podman 6
             runs-on: ubuntu-24.04
