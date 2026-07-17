@@ -35,7 +35,7 @@ export const normalizeFrame = (frame: string): string => {
   return lines.join("\n");
 };
 
-const mountLines = (renderer: TestRenderer, lines: ReadonlyArray<string>, width: number): void => {
+const mountLines = (renderer: TestRenderer, lines: ReadonlyArray<string>, width: number) => {
   const column = new openTui.BoxRenderable(renderer, { id: "frame-mount", flexDirection: "column", width });
   for (const [index, line] of lines.entries()) {
     column.add?.(
@@ -46,6 +46,7 @@ const mountLines = (renderer: TestRenderer, lines: ReadonlyArray<string>, width:
     );
   }
   renderer.root.add?.(column);
+  return column;
 };
 
 /** Capture the mounted `LandoTreePainter` logical frame for an event sequence at a fixed size. */
@@ -74,12 +75,12 @@ export const captureTreeResizeFrame = async (
   const setup = await createTestRenderer({ width: from, height, clock: new ManualClock() });
   const beforePainter = new LandoTreePainter({ terminalColumns: from });
   for (const event of events) beforePainter.consume(event);
-  mountLines(setup.renderer, beforePainter.snapshot().frameLines, from);
+  const beforeFrame = mountLines(setup.renderer, beforePainter.snapshot().frameLines, from);
   await setup.renderOnce();
   const before = normalizeFrame(setup.captureCharFrame());
 
   setup.resize(to, height);
-  setup.renderer.root.remove("frame-mount");
+  setup.renderer.root.remove(beforeFrame);
   const afterPainter = new LandoTreePainter({ terminalColumns: to });
   for (const event of events) afterPainter.consume(event);
   mountLines(setup.renderer, afterPainter.snapshot().frameLines, to);
