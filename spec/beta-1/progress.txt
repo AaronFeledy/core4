@@ -555,3 +555,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - File-backed tail resize is not just a frame reflow: refresh the active page through the same serialization semaphore as events and input, preserving its end anchor while applying the new line budget.
   - Keep the short redacted event ring for the collapsed footer and the scoped local transcript reader for expanded diagnostics; merging them either leaks local output or silently truncates the full-tail contract.
 ---
+
+## 2026-07-17 03:14 CDT - US-456 Review
+- Returned US-456 to Build with `passes: false`: the real BuildOrchestrator path does not publish transcript-bearing task lifecycle events, transcript acquisition does not enforce the normative user-data-root boundary, callback work escapes the renderer Scope, and expand/collapse publication can precede the fallible screen transition. Cursor Bugbot additionally confirmed eager split-footer acquisition conflicts with interactive prompts and imperative renderer writes are absent from semantic resize replay.
+- Review notes (deferred/rejected): the supplementary security lane found no directly exploitable vulnerability, but its narrower threat model does not override the confirmed correctness and privacy-contract blockers. The hands-on QA lane was inconclusive after its focused suites passed because an extra symlink-harness probe overran the review timebox and was cancelled. `Guide-Coverage-Skip: US-456 returns to Build because its public transcript-path contract and renderer wiring remain incomplete.`
+- Verification: typecheck, lint, focused SDK compatibility guide, guide lint/coverage/public transcripts, and 297 focused renderer/schema tests passed; review-work goal/code/context lanes and Bugbot failed the story on the blockers above. No full test suite or host-native integration was run.
+- **Learnings for future iterations:**
+  - A branded absolute path is data, not filesystem authority; the reader must prove containment against the injected `PathsService` root at acquisition and revalidation time.
+  - The event consumer must acquire OpenTUI lazily on the first task-tree event so prompt-only commands never own two renderer instances on the same terminal.
+---
