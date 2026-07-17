@@ -111,7 +111,7 @@ export const wrapFrameLines = (
   terminalColumns: number | undefined,
 ): ReadonlyArray<string> => {
   const columns = normalizeTerminalColumns(terminalColumns);
-  return lines.flatMap((line) => {
+  const framed = lines.flatMap((line) => {
     if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
     if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
     if (line.startsWith("│")) {
@@ -124,6 +124,7 @@ export const wrapFrameLines = (
     }
     return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
   });
+  return framed.map((line) => takeWidth(line, columns)[0]);
 };
 
 const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
@@ -139,7 +140,7 @@ export const physicalRowsForFrame = (
 ): number => frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
 
 export const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
-  const hasTrailingFrame = line.endsWith("│");
+  const hasTrailingFrame = line.length > 1 && line.endsWith("│");
   const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
   const trailingFrame = hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "";
   return `${csi.pink}${line.slice(0, 1)}${csi.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
