@@ -28,6 +28,10 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Programmatic `Bun.build` may resolve with `success: false`; compile wrappers must inspect the result, preserve diagnostics, and fail the calling release stage instead of trusting promise resolution.
 - Promise-backed interactive drivers must accept the enclosing Effect cancellation signal and settle through their normal cleanup path so interruption destroys terminal renderers and listeners.
 
+- `Renderer.capabilities` is a getter over at most two immutable snapshots per run (initial, optional monotonic promotion); never mutate in place or demote fields.
+- `notify.desktop` is capability-gated at the renderer: drop when `notifications` is false; json still emits the event; never hand-frame OSC sequences — call OpenTUI `triggerNotification`.
+- `HostProxyRequest` has exactly four tags (`openUrl`, `openPath`, `runLando`, `runBun`); container-initiated notify/clipboardCopy is unsupported.
+
 ## Durable learnings
 
 - Business logic stays in pure Effect; filesystem/process/network/terminal/provider/renderer effects belong behind services.
@@ -522,4 +526,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass (after triage)
 - Review feedback: fixed (merged origin/main for OpenTUI 0.4.x conflict; aligned CSI cursor-row expectation with framed output; resize harness removes mount via child object API)
 - Merge: merged (squash)
+---
+
+## 2026-07-16 22:05 CDT - US-458
+- Published the complete four-field `RendererCapabilities` surface with immutable initial/promoted snapshots, `NotifyDesktopEvent` / `NotifyConfig`, and CLI lifecycle `invocationId`/`parentInvocationId` correlation. Fallback plain/json/verbose and the default lando renderer compute the §8.9 capability matrix; TTY runs may promote color/notifications once via a bounded probe without demotion or pre-promotion replay. Desktop notify realization sanitizes title/body then calls OpenTUI `triggerNotification` only when `notifications` is true; json still emits structured events. Removed the unreleased HostProxyRequest `notify`/`clipboardCopy` variants (union is exactly openUrl/openPath/runLando/runBun).
+- Verification: typecheck, lint passed; focused capability/notify/host-proxy/lifecycle/compat and renderer suite spot checks passed.
+- **Learnings for future iterations:**
+  - `Renderer.capabilities` must be a getter over frozen snapshot objects, not a mutable field; promote at most once and never demote.
+  - Capability gating for `notify.desktop` is the renderer's job at point-of-use — drop pre-promotion events rather than buffering for replay.
 ---

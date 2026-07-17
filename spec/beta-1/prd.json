@@ -1565,7 +1565,7 @@
         "Lint passes"
       ],
       "priority": 88,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec section 8.9.7 (foreground-only realization via OpenTUI triggerNotification) and section 10.10.2 (explicit non-goal: container-initiated notify/clipboardCopy relay is unsupported/deferred). SDK-additive; follow sdk/AGENTS.md snapshot discipline."
     },
     {
