@@ -640,6 +640,24 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Notify Config.",
+    "docsPath": "docs/reference/schemas/notify-config.mdx",
+    "id": "NotifyConfig",
+    "jsonSchemaPath": "dist/schemas/notify-config.json",
+    "packageExport": "@lando/sdk/schema#NotifyConfig",
+    "title": "Notify Config"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Capabilities.",
+    "docsPath": "docs/reference/schemas/renderer-capabilities.mdx",
+    "id": "RendererCapabilities",
+    "jsonSchemaPath": "dist/schemas/renderer-capabilities.json",
+    "packageExport": "@lando/sdk/schema#RendererCapabilities",
+    "title": "Renderer Capabilities"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Telemetry Config.",
     "docsPath": "docs/reference/schemas/telemetry-config.mdx",
     "id": "TelemetryConfig",
@@ -2203,6 +2221,222 @@
     "jsonSchemaPath": "dist/schemas/paint-banner-event.json",
     "packageExport": "@lando/sdk/schema#PaintBannerEvent",
     "title": "Paint Banner Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Notify Desktop Event.",
+    "docsPath": "docs/reference/schemas/notify-desktop-event.mdx",
+    "id": "NotifyDesktopEvent",
+    "jsonSchemaPath": "dist/schemas/notify-desktop-event.json",
+    "packageExport": "@lando/sdk/schema#NotifyDesktopEvent",
+    "title": "Notify Desktop Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Command Invocation Correlation.",
+    "docsPath": "docs/reference/schemas/command-invocation-correlation.mdx",
+    "id": "CommandInvocationCorrelation",
+    "jsonSchemaPath": "dist/schemas/command-invocation-correlation.json",
+    "packageExport": "@lando/sdk/schema#CommandInvocationCorrelation",
+    "title": "Command Invocation Correlation"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Code Snippet Event.",
+    "docsPath": "docs/reference/schemas/code-snippet-event.mdx",
+    "id": "CodeSnippetEvent",
+    "jsonSchemaPath": "dist/schemas/code-snippet-event.json",
+    "packageExport": "@lando/sdk/schema#CodeSnippetEvent",
+    "title": "Code Snippet Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Diff Render Event.",
+    "docsPath": "docs/reference/schemas/diff-render-event.mdx",
+    "id": "DiffRenderEvent",
+    "jsonSchemaPath": "dist/schemas/diff-render-event.json",
+    "packageExport": "@lando/sdk/schema#DiffRenderEvent",
+    "title": "Diff Render Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Markdown Block Event.",
+    "docsPath": "docs/reference/schemas/markdown-block-event.mdx",
+    "id": "MarkdownBlockEvent",
+    "jsonSchemaPath": "dist/schemas/markdown-block-event.json",
+    "packageExport": "@lando/sdk/schema#MarkdownBlockEvent",
+    "title": "Markdown Block Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Render Event.",
+    "docsPath": "docs/reference/schemas/render-event.mdx",
+    "id": "RenderEvent",
+    "jsonSchemaPath": "dist/schemas/render-event.json",
+    "packageExport": "@lando/sdk/schema#RenderEvent",
+    "title": "Render Event"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Panel Slot.",
+    "docsPath": "docs/reference/schemas/renderer-panel-slot.mdx",
+    "id": "RendererPanelSlot",
+    "jsonSchemaPath": "dist/schemas/renderer-panel-slot.json",
+    "packageExport": "@lando/sdk/schema#RendererPanelSlot",
+    "title": "Renderer Panel Slot"
+  },
+  {
+    "deprecated": false,
+    "description": "a string matching the pattern ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+    "docsPath": "docs/reference/schemas/renderer-panel-id.mdx",
+    "id": "RendererPanelId",
+    "jsonSchemaPath": "dist/schemas/renderer-panel-id.json",
+    "packageExport": "@lando/sdk/schema#RendererPanelId",
+    "title": "Renderer Panel Id"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Panel Watch.",
+    "docsPath": "docs/reference/schemas/renderer-panel-watch.mdx",
+    "id": "RendererPanelWatch",
+    "jsonSchemaPath": "dist/schemas/renderer-panel-watch.json",
+    "packageExport": "@lando/sdk/schema#RendererPanelWatch",
+    "title": "Renderer Panel Watch"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Panel Manifest Entry.",
+    "docsPath": "docs/reference/schemas/renderer-panel-manifest-entry.mdx",
+    "id": "RendererPanelManifestEntry",
+    "jsonSchemaPath": "dist/schemas/renderer-panel-manifest-entry.json",
+    "packageExport": "@lando/sdk/schema#RendererPanelManifestEntry",
+    "title": "Renderer Panel Manifest Entry"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Styled Span Tone.",
+    "docsPath": "docs/reference/schemas/styled-span-tone.mdx",
+    "id": "StyledSpanTone",
+    "jsonSchemaPath": "dist/schemas/styled-span-tone.json",
+    "packageExport": "@lando/sdk/schema#StyledSpanTone",
+    "title": "Styled Span Tone"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Styled Span.",
+    "docsPath": "docs/reference/schemas/styled-span.mdx",
+    "id": "StyledSpan",
+    "jsonSchemaPath": "dist/schemas/styled-span.json",
+    "packageExport": "@lando/sdk/schema#StyledSpan",
+    "title": "Styled Span"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Panel View.",
+    "docsPath": "docs/reference/schemas/panel-view.mdx",
+    "id": "PanelView",
+    "jsonSchemaPath": "dist/schemas/panel-view.json",
+    "packageExport": "@lando/sdk/schema#PanelView",
+    "title": "Panel View"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Panel Size.",
+    "docsPath": "docs/reference/schemas/renderer-panel-size.mdx",
+    "id": "RendererPanelSize",
+    "jsonSchemaPath": "dist/schemas/renderer-panel-size.json",
+    "packageExport": "@lando/sdk/schema#RendererPanelSize",
+    "title": "Renderer Panel Size"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Panel Context.",
+    "docsPath": "docs/reference/schemas/renderer-panel-context.mdx",
+    "id": "RendererPanelContext",
+    "jsonSchemaPath": "dist/schemas/renderer-panel-context.json",
+    "packageExport": "@lando/sdk/schema#RendererPanelContext",
+    "title": "Renderer Panel Context"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Action Id.",
+    "docsPath": "docs/reference/schemas/renderer-action-id.mdx",
+    "id": "RendererActionId",
+    "jsonSchemaPath": "dist/schemas/renderer-action-id.json",
+    "packageExport": "@lando/sdk/schema#RendererActionId",
+    "title": "Renderer Action Id"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Key Name.",
+    "docsPath": "docs/reference/schemas/renderer-key-name.mdx",
+    "id": "RendererKeyName",
+    "jsonSchemaPath": "dist/schemas/renderer-key-name.json",
+    "packageExport": "@lando/sdk/schema#RendererKeyName",
+    "title": "Renderer Key Name"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Key Chord.",
+    "docsPath": "docs/reference/schemas/renderer-key-chord.mdx",
+    "id": "RendererKeyChord",
+    "jsonSchemaPath": "dist/schemas/renderer-key-chord.json",
+    "packageExport": "@lando/sdk/schema#RendererKeyChord",
+    "title": "Renderer Key Chord"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Renderer Key Binding.",
+    "docsPath": "docs/reference/schemas/renderer-key-binding.mdx",
+    "id": "RendererKeyBinding",
+    "jsonSchemaPath": "dist/schemas/renderer-key-binding.json",
+    "packageExport": "@lando/sdk/schema#RendererKeyBinding",
+    "title": "Renderer Key Binding"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Keymap Config.",
+    "docsPath": "docs/reference/schemas/keymap-config.mdx",
+    "id": "KeymapConfig",
+    "jsonSchemaPath": "dist/schemas/keymap-config.json",
+    "packageExport": "@lando/sdk/schema#KeymapConfig",
+    "title": "Keymap Config"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Keymap Conflict Error.",
+    "docsPath": "docs/reference/schemas/keymap-conflict-error.mdx",
+    "id": "KeymapConflictError",
+    "jsonSchemaPath": "dist/schemas/keymap-conflict-error.json",
+    "packageExport": "@lando/sdk/schema#KeymapConflictError",
+    "title": "Keymap Conflict Error"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Subscriber Selector.",
+    "docsPath": "docs/reference/schemas/subscriber-selector.mdx",
+    "id": "SubscriberSelector",
+    "jsonSchemaPath": "dist/schemas/subscriber-selector.json",
+    "packageExport": "@lando/sdk/schema#SubscriberSelector",
+    "title": "Subscriber Selector"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Subscriber Manifest Entry.",
+    "docsPath": "docs/reference/schemas/subscriber-manifest-entry.mdx",
+    "id": "SubscriberManifestEntry",
+    "jsonSchemaPath": "dist/schemas/subscriber-manifest-entry.json",
+    "packageExport": "@lando/sdk/schema#SubscriberManifestEntry",
+    "title": "Subscriber Manifest Entry"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Published Global Config Key.",
+    "docsPath": "docs/reference/schemas/published-global-config-key.mdx",
+    "id": "PublishedGlobalConfigKey",
+    "jsonSchemaPath": "dist/schemas/published-global-config-key.json",
+    "packageExport": "@lando/sdk/schema#PublishedGlobalConfigKey",
+    "title": "Published Global Config Key"
   },
   {
     "deprecated": false,

@@ -1,7 +1,7 @@
 import { Context, type Effect } from "effect";
 
 import type { EventError, ToolingExecError } from "../errors/index.ts";
-import type { AppPlan } from "../schema/index.ts";
+import type { AppPlan, RendererCapabilities } from "../schema/index.ts";
 import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
 
 /**
@@ -16,11 +16,15 @@ import type { ProviderError, RuntimeProviderShape } from "./provider.ts";
  * and process-level diagnostics. Unlike `message.*`, it performs no glyph or
  * newline injection: results go to `output.stdout`, failure diagnostics go to
  * `output.stderr`, regardless of the active mode.
+ *
+ * `capabilities` is a getter returning the current immutable snapshot object
+ * (at most two snapshots per run: initial, then optional monotonic promotion).
  */
 export class Renderer extends Context.Tag("@lando/core/Renderer")<
   Renderer,
   {
     readonly id: string;
+    readonly capabilities: RendererCapabilities;
     readonly message: {
       readonly info: (body: string) => Effect.Effect<void, EventError>;
       readonly warn: (body: string) => Effect.Effect<void, EventError>;

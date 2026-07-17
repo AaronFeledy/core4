@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "event": {
+          "description": "Exact built-in or generated lifecycle event name.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "description": "Precomputed family: cli-<canonical-id>-run and cli-<canonical-id>-error for every command.",
+          "enum": [
+            "cli-command-terminal"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "family"
+      ],
+      "type": "object"
+    }
+  ]
+}

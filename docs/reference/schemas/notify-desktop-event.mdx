@@ -1,0 +1,17 @@
+---
+title: Notify Desktop Event
+description: Public Lando schema contract for Notify Desktop Event.
+---
+
+# Notify Desktop Event
+
+Public Lando schema contract for Notify Desktop Event.
+
+[JSON Schema artifact](../../../dist/schemas/notify-desktop-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `notify.desktop` | — | — |
+| `title` | Yes | `string` | Notification title (1..256 chars after schema decode). | — | — | — | — |
+| `body` | No | `string` | Optional notification body (up to 4096 chars). | — | — | — | — |
+| `urgency` | No | `string` | Optional urgency hint for presentation consumers. | — | `info`, `success`, `failure` | — | — |

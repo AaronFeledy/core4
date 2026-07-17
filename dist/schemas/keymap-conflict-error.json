@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "KeymapConflictError": {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "KeymapConflictError"
+          ],
+          "type": "string"
+        },
+        "actions": {
+          "additionalItems": false,
+          "description": "Deterministically sorted pair of colliding action ids.",
+          "items": [
+            {
+              "enum": [
+                "tree.focus-prev",
+                "tree.focus-next",
+                "tree.cycle",
+                "tree.expand",
+                "tree.collapse",
+                "prompt.cancel",
+                "viewer.scroll-up",
+                "viewer.scroll-down",
+                "viewer.follow",
+                "viewer.source-next",
+                "viewer.quit",
+                "keymap.help"
+              ],
+              "type": "string"
+            },
+            {
+              "enum": [
+                "tree.focus-prev",
+                "tree.focus-next",
+                "tree.cycle",
+                "tree.expand",
+                "tree.collapse",
+                "prompt.cancel",
+                "viewer.scroll-up",
+                "viewer.scroll-down",
+                "viewer.follow",
+                "viewer.source-next",
+                "viewer.quit",
+                "keymap.help"
+              ],
+              "type": "string"
+            }
+          ],
+          "minItems": 2,
+          "type": "array"
+        },
+        "chord": {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        "message": {
+          "description": "Human-readable description of the same-surface chord collision.",
+          "type": "string"
+        },
+        "remediation": {
+          "description": "Actionable guidance to remove or change one same-surface binding.",
+          "type": "string"
+        },
+        "surface": {
+          "description": "Input surface where the chord collision occurred.",
+          "enum": [
+            "task-tree",
+            "prompt",
+            "viewer",
+            "keymap"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "surface",
+        "chord",
+        "actions",
+        "message",
+        "remediation",
+        "_tag"
+      ],
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/KeymapConflictError",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

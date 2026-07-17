@@ -872,6 +872,13 @@ export const COMPILED_OCLIF_MANIFEST = {
           multiple: false,
           type: "option",
         },
+        "no-viewer": {
+          description:
+            "Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior).",
+          name: "no-viewer",
+          allowNo: false,
+          type: "boolean",
+        },
       },
       hasDynamicHelp: false,
       hidden: false,

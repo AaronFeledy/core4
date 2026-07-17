@@ -3,6 +3,7 @@ import { Effect, Layer } from "effect";
 
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun.ts";
 
+import { newInvocationId } from "../../../command-lifecycle.ts";
 import { runWithRendererHandling } from "../../../renderer-boundary.ts";
 import {
   LandoCommandBase,
@@ -75,6 +76,7 @@ export default class MetaXCommand extends LandoCommandBase {
         args: { spec },
         flags: {},
         cwd: process.cwd(),
+        invocationId: newInvocationId(),
       },
       resultSchema: metaXSpec.resultSchema,
       render: renderMetaXResult,

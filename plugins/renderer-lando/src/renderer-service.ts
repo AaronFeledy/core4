@@ -1,7 +1,7 @@
 import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
-import type { RendererIO } from "@lando/sdk/renderer";
+import type { RendererCapabilities, RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { renderPlainLine } from "./format.ts";
@@ -54,13 +54,19 @@ const makeMessageContract = (io: RendererIO) => {
   };
 };
 
-export const makeLandoService = (io: RendererIO): Layer.Layer<Renderer> =>
+export const makeLandoService = (
+  io: RendererIO,
+  getCapabilities: () => RendererCapabilities,
+): Layer.Layer<Renderer> =>
   Layer.succeed(
     Renderer,
     (() => {
       const output = outputJournalFor(io);
       return {
         id: "lando",
+        get capabilities() {
+          return getCapabilities();
+        },
         message: makeMessageContract(io),
         output: {
           stdout: (chunk: string) => Effect.sync(() => output.writeStdout(chunk)),

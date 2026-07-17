@@ -1,0 +1,24 @@
+---
+title: Render Event
+description: Public Lando schema contract for Render Event.
+---
+
+# Render Event
+
+Public Lando schema contract for Render Event.
+
+[JSON Schema artifact](../../../dist/schemas/render-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `code.snippet`, `diff.render`, `markdown.block`, `notify.desktop` | — | — |
+| `code` | No | `string` | Source code text to render. | — | — | — | — |
+| `language` | No | `string` | Optional tree-sitter language id; plain text when absent or unknown. | — | — | — | — |
+| `path` | No | `string` | Optional display-only origin path (already redacted by the publisher). | — | — | — | — |
+| `startLine` | No | `integer` | Optional 1-based first line number for gutter numbering. | — | — | — | — |
+| `highlightLines` | No | `array` | Optional 1-based line numbers to highlight. | — | — | — | — |
+| `unified` | No | `string` | Standard unified-diff text. | — | — | — | — |
+| `markdown` | No | `string` | Markdown source to render or pass through. | — | — | — | — |
+| `title` | No | `string` | Notification title (1..256 chars after schema decode). | — | — | — | — |
+| `body` | No | `string` | Optional notification body (up to 4096 chars). | — | — | — | — |
+| `urgency` | No | `string` | Optional urgency hint for presentation consumers. | — | `info`, `success`, `failure` | — | — |

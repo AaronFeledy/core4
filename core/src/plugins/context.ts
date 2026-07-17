@@ -10,8 +10,7 @@ import { posix as pathPosix } from "node:path";
 import { Effect } from "effect";
 import type { Context, Scope } from "effect";
 
-import { ManagedFileError } from "@lando/sdk/errors";
-import { StateStoreError } from "@lando/sdk/errors";
+import { EventError, ManagedFileError, StateStoreError } from "@lando/sdk/errors";
 import type {
   AbsolutePath,
   ManagedFile,
@@ -255,7 +254,25 @@ export interface LandoPluginContext {
   readonly id: string;
   readonly managedFiles: PluginManagedFiles;
   readonly stateStore: PluginStateStore;
+  readonly events: {
+    /**
+     * Closed publish-only seam for `RenderEvent` values. Core implementations
+     * redact and schema-decode before forwarding to the internal event bus.
+     * Default stub fails closed until an EventService is wired by the loader.
+     */
+    readonly publishRender: (
+      event: unknown,
+    ) => import("effect").Effect.Effect<void, import("@lando/sdk/errors").EventError>;
+  };
 }
+
+const publishRenderNotWired = () =>
+  Effect.fail(
+    new EventError({
+      message: "publishRender is not wired for this plugin context.",
+      event: "render",
+    }),
+  );
 
 /** Build a `LandoPluginContext` whose plugin host services are scoped to `id`. */
 export const makeLandoPluginContext = (input: {
@@ -263,8 +280,12 @@ export const makeLandoPluginContext = (input: {
   readonly managedFileService: ManagedFileServiceImpl;
   readonly stateStore: StateStoreShape;
   readonly pluginStateRoot: AbsolutePath;
+  readonly publishRender?: LandoPluginContext["events"]["publishRender"];
 }): LandoPluginContext => ({
   id: input.id,
   managedFiles: makePluginManagedFiles(input.id, input.managedFileService),
   stateStore: makePluginStateStore(input.stateStore, input.pluginStateRoot),
+  events: {
+    publishRender: input.publishRender ?? publishRenderNotWired,
+  },
 });

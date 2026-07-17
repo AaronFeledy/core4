@@ -1,3 +1,11 @@
+/**
+ * Box-framing helpers for the task-tree painter. Every width, truncation, and
+ * wrap decision is measured in terminal display cells and split on grapheme
+ * boundaries via the shared primitive, so CJK and emoji content stays framed at
+ * any width — including below 60 columns.
+ */
+import { displayWidth, graphemes, takeWidth, truncateToWidth } from "./terminal-width.ts";
+
 const ESC = String.fromCharCode(27);
 
 export const csi = {
@@ -12,78 +20,126 @@ export const csi = {
   red: `${ESC}[31m`,
 } as const;
 
-const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
 const DEFAULT_TERMINAL_COLUMNS = 80;
-
-const visibleLength = (line: string): number => Bun.stringWidth(line.replace(ansiPattern, ""));
-
-const takeVisibleWidth = (text: string, width: number): string => {
-  let result = "";
-  let cells = 0;
-  for (const character of text) {
-    const next = Bun.stringWidth(character);
-    if (cells + next > width) break;
-    result += character;
-    cells += next;
-  }
-  return result;
-};
 
 const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
   terminalColumns === undefined ? DEFAULT_TERMINAL_COLUMNS : Math.max(1, Math.trunc(terminalColumns));
 
+// A one-word Hangul/Han/Hiragana/Katakana fragment narrow enough to read as an awkward continuation orphan.
+const SHORT_CJK_FRAGMENT = /^[\p{Script=Hangul}\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]+$/u;
+const ORPHAN_MAX_CELLS = 4;
+
+const isShortCjkOrphan = (token: string): boolean =>
+  token.length > 0 && displayWidth(token) <= ORPHAN_MAX_CELLS && SHORT_CJK_FRAGMENT.test(token);
+
+/**
+ * Pull the previous word onto the final line when that line is only a short CJK
+ * fragment, so a semantic tail is never stranded alone — but only when the two
+ * still fit the budget and the preceding line keeps at least one word. ASCII
+ * tails never match, so ordinary wrapping is untouched.
+ */
+const rebalanceCjkOrphan = (lines: ReadonlyArray<string>, budget: number): ReadonlyArray<string> => {
+  if (lines.length < 2) return lines;
+  const last = lines[lines.length - 1] ?? "";
+  if (last.includes(" ") || !isShortCjkOrphan(last)) return lines;
+  const prevWords = (lines[lines.length - 2] ?? "").split(" ");
+  if (prevWords.length < 2) return lines;
+  const combined = `${prevWords[prevWords.length - 1]} ${last}`;
+  if (displayWidth(combined) > budget) return lines;
+  return [...lines.slice(0, -2), prevWords.slice(0, -1).join(" "), combined];
+};
+
 const splitContentToWidth = (content: string, width: number): ReadonlyArray<string> => {
-  if (visibleLength(content) <= width) return [content];
+  const budget = Math.max(1, width);
+  if (displayWidth(content) <= budget) return [content];
   const words = content.split(/(\s+)/).filter((part) => part.length > 0);
   const lines: string[] = [];
   let current = "";
-  const budget = Math.max(1, width);
-
   const pushCurrent = (): void => {
     if (current.length === 0) return;
     lines.push(current.trimEnd());
     current = "";
   };
-
   for (const word of words) {
-    if (visibleLength(current) + visibleLength(word) <= budget) {
+    if (displayWidth(current) + displayWidth(word) <= budget) {
       current += word;
       continue;
     }
     if (current.trim().length > 0) pushCurrent();
     let remaining = word.trimStart();
-    while (visibleLength(current) + visibleLength(remaining) > budget) {
-      const available = Math.max(1, budget - visibleLength(current));
-      const head = takeVisibleWidth(remaining, available);
-      if (head === "") break;
+    while (displayWidth(current) + displayWidth(remaining) > budget) {
+      const available = Math.max(1, budget - displayWidth(current));
+      const [head, rest] = takeWidth(remaining, available);
+      if (head === "") {
+        if (current.length > 0) {
+          pushCurrent();
+          continue;
+        }
+        const parts = graphemes(remaining);
+        current += parts[0] ?? "";
+        remaining = parts.slice(1).join("");
+        pushCurrent();
+        continue;
+      }
       current += head;
-      remaining = remaining.slice(head.length);
+      remaining = rest;
       pushCurrent();
     }
     current += remaining;
   }
-
   if (current.trim().length > 0) lines.push(current.trimEnd());
-  return lines.length === 0 ? [takeVisibleWidth(content, width)] : lines;
+  const wrapped = lines.length === 0 ? [takeWidth(content, budget)[0]] : lines;
+  return rebalanceCjkOrphan(wrapped, budget);
 };
 
 const capLine = (left: string, text: string, right: string, width: number): string => {
-  const maxTextWidth = Math.max(1, width - visibleLength(left) - visibleLength(right) - 2);
-  const fittedText =
-    visibleLength(text) <= maxTextWidth ? text : `${takeVisibleWidth(text, Math.max(1, maxTextWidth - 1))}…`;
+  const maxTextWidth = Math.max(1, width - displayWidth(left) - displayWidth(right) - 2);
+  const fittedText = truncateToWidth(text, maxTextWidth);
   const prefix = `${left} ${fittedText} `;
-  const fill = Math.max(0, width - visibleLength(prefix) - visibleLength(right));
+  const fill = Math.max(0, width - displayWidth(prefix) - displayWidth(right));
   return `${prefix}${"─".repeat(fill)}${right}`;
 };
 
 const bodyLine = (text: string, width: number): string => {
   const bodyWidth = Math.max(1, width - 4);
-  const padding = Math.max(0, bodyWidth - visibleLength(text));
+  const padding = Math.max(0, bodyWidth - displayWidth(text));
   return `│ ${text}${" ".repeat(padding)} │`;
 };
 
+export const wrapFrameLines = (
+  lines: ReadonlyArray<string>,
+  terminalColumns: number | undefined,
+): ReadonlyArray<string> => {
+  const columns = normalizeTerminalColumns(terminalColumns);
+  return lines.flatMap((line) => {
+    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
+    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
+    if (line.startsWith("│")) {
+      const hangingIndent = line.startsWith("│    ") ? "  " : "";
+      const content = line.slice(1).trimStart();
+      const contentWidth = Math.max(1, columns - 4 - displayWidth(hangingIndent));
+      return splitContentToWidth(content, contentWidth).map((segment) =>
+        bodyLine(`${hangingIndent}${segment}`, columns),
+      );
+    }
+    return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
+  });
+};
+
+const physicalRowsForLine = (line: string, terminalColumns: number | undefined): number => {
+  const columns = normalizeTerminalColumns(terminalColumns);
+  return line
+    .split("\n")
+    .reduce((rows, segment) => rows + Math.max(1, Math.ceil(displayWidth(segment) / columns)), 0);
+};
+
+export const physicalRowsForFrame = (
+  frame: ReadonlyArray<string>,
+  terminalColumns: number | undefined,
+): number => frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
+
 export const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
-  const hasTrailingFrame = line.length > 1 && line.endsWith("│");
+  const hasTrailingFrame = line.endsWith("│");
   const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
   const trailingFrame = hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "";
   return `${csi.pink}${line.slice(0, 1)}${csi.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
@@ -99,25 +155,4 @@ export const styleBottomFrame = (line: string): string => {
   const trailingFrame = line.slice(trailingFrameStart);
   const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.pink}${trailingFrame}${csi.reset}`;
   return `${csi.pink}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.pink}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
-};
-
-export const wrapFrameLines = (
-  lines: ReadonlyArray<string>,
-  terminalColumns: number | undefined,
-): ReadonlyArray<string> => {
-  const columns = normalizeTerminalColumns(terminalColumns);
-  const framed = lines.flatMap((line) => {
-    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
-    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
-    if (line.startsWith("│")) {
-      const hangingIndent = line.startsWith("│    ") ? "  " : "";
-      const content = line.slice(1).trimStart();
-      const contentWidth = Math.max(1, columns - 4 - visibleLength(hangingIndent));
-      return splitContentToWidth(content, contentWidth).map((segment) =>
-        bodyLine(`${hangingIndent}${segment}`, columns),
-      );
-    }
-    return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
-  });
-  return framed.map((line) => takeVisibleWidth(line, columns));
 };

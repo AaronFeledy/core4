@@ -78,6 +78,7 @@ describe("EventService typed narrowing", () => {
       args: {},
       flags: {},
       cwd: "/workspace/demo",
+      invocationId: "01jbtestouterinvocation0001",
       exitCode: 0,
       durationMs: 5,
       timestamp: DateTime.unsafeMake("2026-07-13T16:00:00.000Z"),

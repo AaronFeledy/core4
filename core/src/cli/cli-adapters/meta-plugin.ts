@@ -62,6 +62,7 @@ import {
   activeResultFormat,
   commandErrorMessage,
   emitDiagnosticLine,
+  getActiveCommandInvocation,
   globalRuntimeLayer,
   rejectInvalidInvocation,
   resetActiveCommandInvocation,
@@ -227,7 +228,7 @@ export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
     retainedRuntime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
-    invocation: {
+    invocation: getActiveCommandInvocation() ?? {
       commandId: "meta:mcp",
       argv: input.argv,
       args: input.args,

@@ -33,6 +33,12 @@ export const makeInteractionContractRenderer = (id = "plain"): InteractionContra
     stdout: () => out,
     service: {
       id,
+      capabilities: {
+        color: false,
+        interactive: false,
+        animation: false,
+        notifications: false,
+      },
       message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
       output: {
         stdout: (chunk: string) =>

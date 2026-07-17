@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "enum": [
+    "tree.focus-prev",
+    "tree.focus-next",
+    "tree.cycle",
+    "tree.expand",
+    "tree.collapse",
+    "prompt.cancel",
+    "viewer.scroll-up",
+    "viewer.scroll-down",
+    "viewer.follow",
+    "viewer.source-next",
+    "viewer.quit",
+    "keymap.help"
+  ],
+  "type": "string"
+}

@@ -10,13 +10,62 @@
  * reference implementation: it exports a `RendererContribution` named `renderer`
  * built entirely from SDK contracts, without importing core internals.
  *
- * This subpath is type/contract only (like `@lando/sdk/expressions` and
- * `@lando/sdk/template`). It exports no runtime values and never appears in the
- * `Object.keys()` runtime export checks.
+ * Runtime schema exports (`RendererCapabilities` and snapshot constants) are
+ * re-exported for plugin authors; raw OpenTUI probing is never published here.
  */
 import type { Layer } from "effect";
 
 import type { EventService, Renderer } from "../services/index.ts";
+
+export {
+  RENDERER_CAPABILITIES_NONE,
+  RENDERER_CAPABILITIES_TTY_INITIAL,
+  RENDERER_CAPABILITIES_VERBOSE_TTY,
+  RendererCapabilities,
+  type RendererCapabilities as RendererCapabilitiesType,
+} from "../schema/renderer-capabilities.ts";
+
+export {
+  DEFAULT_KEYMAP_BINDINGS,
+  KeymapConfig,
+  RENDERER_ACTION_SURFACE,
+  RendererActionId,
+  RendererKeyBinding,
+  RendererKeyChord,
+  RendererKeyChordPattern,
+  RendererKeyName,
+  decodeKeymapConfig,
+  type KeymapConfig as KeymapConfigType,
+  type KeymapSurface,
+  type RendererActionId as RendererActionIdType,
+  type RendererKeyBinding as RendererKeyBindingType,
+  type RendererKeyChord as RendererKeyChordType,
+  type RendererKeyName as RendererKeyNameType,
+} from "../schema/keymap.ts";
+
+export { validateKeymapConfigConflicts } from "../schema/keymap-conflict.ts";
+
+export {
+  PanelView,
+  RendererPanelId,
+  RendererPanelManifestEntry,
+  RendererPanelSize,
+  RendererPanelSlot,
+  RendererPanelWatch,
+  RendererPanelContext,
+  StyledSpan,
+  StyledSpanTone,
+  type PanelView as PanelViewType,
+  type RendererPanel,
+  type RendererPanelContext as RendererPanelContextType,
+  type RendererPanelId as RendererPanelIdType,
+  type RendererPanelManifestEntry as RendererPanelManifestEntryType,
+  type RendererPanelSize as RendererPanelSizeType,
+  type RendererPanelSlot as RendererPanelSlotType,
+  type RendererPanelWatch as RendererPanelWatchType,
+  type StyledSpan as StyledSpanType,
+  type StyledSpanTone as StyledSpanToneType,
+} from "../schema/renderer-panel.ts";
 
 /**
  * The terminal I/O seam constructed at the CLI command boundary and injected

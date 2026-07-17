@@ -10,6 +10,7 @@ import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import * as compiledRuntime from "../../src/cli/compiled-runtime.ts";
 import {
   activeCommandId,
+  beginNestedCommandInvocation,
   getActiveCommandInvocation,
   resetActiveCommandInvocation,
   setActiveCommandId,
@@ -38,10 +39,14 @@ describe("CLI lifecycle adapters", () => {
 
     // Then
     expect(activeCommandId).toBe("meta:version");
-    expect(getActiveCommandInvocation()).toMatchObject({
+    const invocation = getActiveCommandInvocation();
+    expect(invocation).toMatchObject({
       commandId: "meta:version",
       argv: [],
     });
+    expect(typeof invocation?.invocationId).toBe("string");
+    expect(invocation?.invocationId?.length).toBeGreaterThan(0);
+    expect(invocation?.parentInvocationId).toBeUndefined();
   });
 
   test("dynamic tooling replaces stale invocation identity and retains arguments", async () => {
@@ -81,6 +86,17 @@ describe("CLI lifecycle adapters", () => {
       argv: [],
       args: {},
     });
+  });
+
+  test("nested command invocation carries outer id as parent", () => {
+    resetActiveCommandInvocation("app:start", ["--yes"]);
+    const outer = getActiveCommandInvocation();
+    expect(outer?.invocationId).toBeDefined();
+    const nested = beginNestedCommandInvocation("app:rebuild", []);
+    expect(nested.commandId).toBe("app:rebuild");
+    expect(nested.invocationId).toBeDefined();
+    expect(nested.invocationId).not.toBe(outer?.invocationId);
+    expect(nested.parentInvocationId).toBe(outer?.invocationId);
   });
 
   test("representative command specs retain every lifecycle bootstrap depth", () => {

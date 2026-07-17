@@ -1,0 +1,11 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "an array of at most 32 item(s)",
+  "items": {
+    "type": "string"
+  },
+  "maxItems": 32,
+  "minItems": 1,
+  "title": "maxItems(32)",
+  "type": "array"
+}

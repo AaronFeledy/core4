@@ -55,6 +55,7 @@ import {
 } from "./managed-file.ts";
 import { PostMcpCallEvent, PreMcpCallEvent } from "./mcp.ts";
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "./message.ts";
+import { NotifyDesktopEvent } from "./notify.ts";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "./open.ts";
 import {
   PostProviderApplyEvent,
@@ -63,6 +64,7 @@ import {
   PreProviderExecEvent,
 } from "./provider.ts";
 import { PaintBannerEvent } from "./renderer.ts";
+import { CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent } from "./rich-render.ts";
 import {
   PostDatasetApplyEvent,
   PostDatasetCaptureEvent,
@@ -187,6 +189,10 @@ export const LandoEvent = Schema.Union(
   MessageWarnEvent,
   MessageErrorEvent,
   PaintBannerEvent,
+  NotifyDesktopEvent,
+  CodeSnippetEvent,
+  DiffRenderEvent,
+  MarkdownBlockEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
 

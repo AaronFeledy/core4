@@ -98,6 +98,12 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
 
 export const makeLibraryRenderer = (id: LibraryRendererMode): Context.Tag.Service<typeof Renderer> => ({
   id,
+  capabilities: {
+    color: false,
+    interactive: false,
+    animation: false,
+    notifications: false,
+  },
   message: {
     info: () => Effect.void,
     warn: () => Effect.void,

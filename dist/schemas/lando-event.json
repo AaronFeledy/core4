@@ -8668,6 +8668,14 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
@@ -8679,6 +8687,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp"
       ],
       "type": "object"
@@ -8761,6 +8770,14 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
@@ -8772,6 +8789,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp",
         "exitCode",
         "durationMs"
@@ -8860,7 +8878,15 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
         "message": {
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
           "type": "string"
         },
         "timestamp": {
@@ -8874,6 +8900,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp",
         "exitCode",
         "durationMs",
@@ -9232,6 +9259,136 @@
         "_tag",
         "banner",
         "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "notify.desktop"
+          ],
+          "type": "string"
+        },
+        "body": {
+          "description": "Optional notification body (up to 4096 chars).",
+          "maxLength": 4096,
+          "title": "maxLength(4096)",
+          "type": "string"
+        },
+        "title": {
+          "description": "Notification title (1..256 chars after schema decode).",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "maxLength(256)",
+          "type": "string"
+        },
+        "urgency": {
+          "description": "Optional urgency hint for presentation consumers.",
+          "enum": [
+            "info",
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "title"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "code.snippet"
+          ],
+          "type": "string"
+        },
+        "code": {
+          "description": "Source code text to render.",
+          "type": "string"
+        },
+        "highlightLines": {
+          "description": "Optional 1-based line numbers to highlight.",
+          "items": {
+            "description": "a positive number",
+            "exclusiveMinimum": 0,
+            "title": "positive",
+            "type": "integer"
+          },
+          "type": "array"
+        },
+        "language": {
+          "description": "Optional tree-sitter language id; plain text when absent or unknown.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Optional display-only origin path (already redacted by the publisher).",
+          "type": "string"
+        },
+        "startLine": {
+          "description": "Optional 1-based first line number for gutter numbering.",
+          "exclusiveMinimum": 0,
+          "title": "positive",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "_tag",
+        "code"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "diff.render"
+          ],
+          "type": "string"
+        },
+        "language": {
+          "description": "Optional language hint for future syntax-aware presentation.",
+          "type": "string"
+        },
+        "path": {
+          "description": "Optional display-only path for the diff.",
+          "type": "string"
+        },
+        "unified": {
+          "description": "Standard unified-diff text.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "unified"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "markdown.block"
+          ],
+          "type": "string"
+        },
+        "markdown": {
+          "description": "Markdown source to render or pass through.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "markdown"
       ],
       "type": "object"
     }

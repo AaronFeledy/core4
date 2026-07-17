@@ -1,0 +1,6 @@
+╭─ LANDO OPS [RUNNING] Starting app (1/2 running) ─────────╮
+│ [RUNNING] · appserver                                    │
+│   listening on 0.0.0.0:8080                              │
+│   ! npm warn deprecated foo@1.0.0                        │
+│ [WAIT] ◌ database                                        │
+╰─ telemetry 1/2 RUNNING ──────────────────────────────────╯

@@ -31,6 +31,7 @@
     "./network-trust": "./src/network-trust/index.ts",
     "./probe": "./src/probe/index.ts",
     "./renderer": "./src/renderer/index.ts",
+    "./plugins": "./src/plugins/index.ts",
     "./secrets": "./src/secrets/index.ts",
     "./template": "./src/template/index.ts",
     "./tool-provisioning": "./src/tool-provisioning/index.ts",

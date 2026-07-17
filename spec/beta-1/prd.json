@@ -1547,7 +1547,7 @@
         "Lint passes"
       ],
       "priority": 87,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec sections 8.9.3 (testing, prompt chrome) and 13.1 (Renderer frames layer). Presentation only; no InteractionService changes."
     },
     {
@@ -1565,7 +1565,7 @@
         "Lint passes"
       ],
       "priority": 88,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec section 8.9.7 (foreground-only realization via OpenTUI triggerNotification) and section 10.10.2 (explicit non-goal: container-initiated notify/clipboardCopy relay is unsupported/deferred). SDK-additive; follow sdk/AGENTS.md snapshot discipline."
     },
     {
@@ -1604,7 +1604,7 @@
         "Lint passes"
       ],
       "priority": 90,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec sections 8.9.4-8.9.6, 8.9.8, 9.5, 13.1. Follows the TunnelService/RemoteSource contract-only freeze precedent; implementations are ROADMAP Phase 9 (4.1)."
     }
   ]

@@ -129,10 +129,18 @@ const COVERAGE_MANIFEST: ReadonlyArray<CoverageEntry> = [
   },
 ];
 
-/** Every `make*ContractSuite` export the SDK test surface publishes today. */
+/**
+ * Standalone contract suites that ship from `@lando/sdk/test` but are not part of
+ * the six-abstraction plugin-abstraction kit (or its freeze-surface siblings).
+ * They must remain published without requiring a core built-in kit invocation.
+ */
+const STANDALONE_MAKE_SUITE_EXPORTS = new Set(["makeRendererPanelContractSuite"]);
+
+/** Kit-facing `make*ContractSuite` exports published on `@lando/sdk/test`. */
 const publishedMakeSuiteExports = (): ReadonlyArray<string> =>
   Object.keys(sdkTest as Record<string, unknown>).filter(
-    (name) => name.startsWith("make") && name.endsWith("ContractSuite"),
+    (name) =>
+      name.startsWith("make") && name.endsWith("ContractSuite") && !STANDALONE_MAKE_SUITE_EXPORTS.has(name),
   );
 
 const kitMakeSuiteExports = (): ReadonlySet<string> =>

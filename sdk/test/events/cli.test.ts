@@ -12,6 +12,7 @@ const invocation = {
   flags: { verbose: true },
   cwd: "/workspace/demo",
   app: { kind: "user", id: "demo", root: "/workspace/demo" },
+  invocationId: "01jbtestouterinvocation0001",
   timestamp,
 } as const;
 

@@ -18,6 +18,8 @@ export interface CliInvocationSnapshot {
     readonly id: string;
     readonly root: string;
   };
+  readonly invocationId?: string;
+  readonly parentInvocationId?: string;
 }
 
 export interface CommandLifecycleOptions<A> {
@@ -26,6 +28,13 @@ export interface CommandLifecycleOptions<A> {
   readonly failureExitCode?: (error: unknown) => number | undefined;
   readonly interruptionExitCode?: number;
 }
+
+export const newInvocationId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID().replaceAll("-", "");
+  }
+  return `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+};
 
 export const withCommandEventService = <A, E, R>(
   effect: Effect.Effect<A, E, R | EventService>,
@@ -84,11 +93,17 @@ export const runCommandLifecycle = <A, E, R>(
   withCommandEventService(
     Effect.gen(function* () {
       const startedAt = yield* Clock.currentTimeMillis;
+      const invocationId = options.invocation.invocationId ?? newInvocationId();
+      const parentInvocationId = options.invocation.parentInvocationId;
       const invocation = {
-        ...options.invocation,
+        commandId: options.invocation.commandId,
         argv: summarizeInvocationArgv(options.invocation.argv),
         args: summarizeInvocationRecord(options.invocation.args),
         flags: summarizeInvocationRecord(options.invocation.flags),
+        cwd: options.invocation.cwd,
+        ...(options.invocation.app === undefined ? {} : { app: options.invocation.app }),
+        invocationId,
+        ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
         timestamp: new Date(startedAt).toISOString(),
       };
       yield* publishRedacted(CliCommandInitEvent, {

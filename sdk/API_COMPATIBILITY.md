@@ -18,7 +18,7 @@
 - `FileFormat` (and therefore `ManagedFile.format`) accepts `"javascript"` and `"typescript"` in addition to the prior members; both encode/decode verbatim like `text` and carry a `//` ownership marker so scaffolded code files stay valid. Widening the literal is additive — prior values still decode.
 - `ProviderCapabilities` additively gains optional `hostProxy` structured capabilities with `containerTargets` and optional `tcpHostGateway`, replacing private pre-ship host-proxy provider-extension prefix conventions with Schema-validated fields.
 - `ProviderCapabilities` adds the data-plane capability fields `volumeSnapshot`, `serviceFileCopy`, `artifactExport`, `artifactImport`, and `ephemeralMounts`; `EphemeralRunSpec` adds mount/stdin/stdout/env/remove options; `RuntimeProviderShape` adds `runStream`, the eight data-plane methods, and optional `removeVolumeSnapshot` cleanup. These are additive provider-contract extensions for the §10.11 data plane.
-- `@lando/sdk/renderer` is a type/contract-only subpath (like `@lando/sdk/expressions`). It exports the terminal-renderer contracts `RendererIO` and `RendererContribution`. The bundled `@lando/renderer-lando` plugin now owns the default `lando` renderer implementation (task-tree painter, keybindings, formatters, event routing) and exports it as a finished `RendererContribution`; core resolves that contribution through its bundled-renderer registry. The prior core-injected dependency-injection seam is removed: the `TaskTreePainterOptions`, `TaskTreePainterHandle`, `RendererRuntimePrimitives`, and `RendererContributionFactory` types are dropped (pre-ship, no runtime consumers). It exports no runtime values and so does not appear in the `Object.keys()` runtime export checks.
+- `@lando/sdk/renderer` exports the terminal-renderer contracts `RendererIO` and `RendererContribution` plus the runtime `RendererCapabilities` schema and snapshot constants (`RENDERER_CAPABILITIES_NONE` / `TTY_INITIAL` / `VERBOSE_TTY`). The bundled `@lando/renderer-lando` plugin owns the default `lando` renderer implementation (task-tree view model, keybindings, formatters, event routing) and exports it as a finished `RendererContribution`; core resolves that contribution through its bundled-renderer registry. The prior core-injected dependency-injection seam is removed: the `TaskTreePainterOptions`, `TaskTreePainterHandle`, `RendererRuntimePrimitives`, and `RendererContributionFactory` types are dropped (pre-ship, no runtime consumers). Raw OpenTUI probing is never published here.
 - `RendererIO` additively gains optional `externalOutputStream?: NodeJS.WriteStream` (substrate output-stream seam).
 - `@lando/sdk/verified-stream` is the shared stream → SHA-256 → temp-file → atomic-rename helper used by verified artifact consumers. It exports runtime helpers like `@lando/sdk/landofile`, but no Live layers, service tags, OCLIF imports, or core runtime dependencies.
 - `@lando/sdk/secrets` is the canonical redaction primitive. In addition to the prior `createSecretRedactor` value layer and the `REDACTED` (`[redacted]`) sentinel, it adds the pure runtime helpers `createRedactor(profile, options)` (returning `{ redactString, redactStringBounded?, redactValue }`), the `REDACTION_PROFILES` tuple (`secrets`/`telemetry`/`transcript`) with its `RedactionProfile` type, and the `PATTERN_CLASSES` catalog. `SecretRedactor.redactBounded?` and `Redactor.redactStringBounded?` accept `(text, maxBytes)` and return `undefined` instead of retaining output beyond the UTF-8 byte budget; consumers that require bounded output fail closed when the method is absent or returns `undefined`. `createRedactor("secrets", ...)` supplies the bounded method; the normalization profiles may omit it. The module stays pure and dependency-free (no `@lando/core`, no Effect runtime, no Node/Bun IO); transcript environment roots are supplied by the caller via `options.env` rather than read from `node:os`. `@lando/core/secrets` re-exports this subpath. These are additive Beta helpers and carry no compatibility freeze (the `@lando/sdk/secrets` runtime surface is not part of the frozen schema/service-tag `toEqual` lists below).
@@ -45,6 +45,9 @@
 - `BuildOrchestrator.buildApp(plan)` additively runs the post-apply app build phase through streamed provider exec, and `@lando/sdk/errors` adds `BuildStepFailedError` / `BuildPhaseFailedError` for continue-all aggregation.
 - `BuildStepSkipEvent` is a schema-backed app event emitted for up-to-date cache hits and artifact siblings aborted by fail-fast. Its app ref intentionally carries only redacted `kind`/`id` fields, matching the core event and avoiding raw roots in skip events.
 - `PreGlobalRebuildEvent` and `PostGlobalRebuildEvent` add the schema-backed global rebuild lifecycle events for `meta:global:rebuild`.
+- `RendererCapabilities` is the complete four-field public capability surface (`color`, `interactive`, `animation`, `notifications`) with immutable snapshot constants for none/TTY-initial/verbose-TTY run shapes. `Renderer.capabilities` is a getter returning the current snapshot. `NotifyDesktopEvent` (`notify.desktop`), `NotifyConfig` (global `notify:`), and `CommandInvocationCorrelation` ship as additive contracts; CLI lifecycle events carry `invocationId` / optional `parentInvocationId`. `HostProxyRequest` drops the unreleased `notify`/`clipboardCopy` variants (exactly `openUrl`/`openPath`/`runLando`/`runBun`); `HOST_PROXY_REQUEST_TAGS` freezes that membership. `@lando/sdk/renderer` re-exports `RendererCapabilities` and the snapshot constants as runtime values.
+- `GlobalConfig.notify` is an additive optional field decoding against `NotifyConfig`.
+- Contract-only freeze of the 4.1 renderer surfaces: `@lando/sdk/renderer` additively exports panel/keymap schemas (`RendererPanelSlot`, `RendererPanelId`, `RendererPanelWatch`, `RendererPanelManifestEntry`, `RendererPanelSize`, `RendererPanelContext`, `RendererPanel`, `StyledSpanTone`, `StyledSpan`, `PanelView`, `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, `KeymapConfig`, plus `validateKeymapConfigConflicts` / `decodeKeymapConfig` / `DEFAULT_KEYMAP_BINDINGS`). `@lando/sdk/events` adds `RenderEvent`, `CodeSnippetEvent`, `DiffRenderEvent`, `MarkdownBlockEvent` (and keeps `NotifyDesktopEvent` / `CommandInvocationCorrelation` in the closed `LandoEvent` union). `@lando/sdk/schema` adds `SubscriberManifestEntry`, `SubscriberSelector`, `PublishedGlobalConfigKey` and the renderer/event schemas through the canonical barrel. `@lando/sdk/plugins` is a new subpath exporting `SubscriberFactory`, `LandoPluginContext` (with `events.publishRender` restricted to `RenderEvent`), and the additive `PluginManifest.contributes.rendererPanels` / top-level `PluginManifest.subscribers` fields. `@lando/sdk/errors` adds schema-backed `KeymapConflictError`. The §13.1 Renderer panel contract suite ships from `@lando/sdk/test` (`runRendererPanelContract` / protocol helpers) and is intentionally absent from the §4.2 plugin-abstraction kit. The §8.9.8 interactive log viewer remains prose-only (no schema). No 4.0 implementation ships for rich TTY presentation, panel rendering, keymap remapping, or the log viewer; `app:logs --no-viewer` is accepted as a no-op.
 
 ## Additive Alpha schema exports
 
@@ -330,6 +333,35 @@
 - `McpConfig`
 - `McpServeOptions`
 - `AgentEnvConfig`
+- `NotifyConfig`
+- `NotifyCommandId`
+- `RendererCapabilities`
+- `RendererPanelContext`
+- `RendererPanelId`
+- `RendererPanelManifestEntry`
+- `RendererPanelSize`
+- `RendererPanelSlot`
+- `RendererPanelWatch`
+- `RendererActionId`
+- `RendererKeyBinding`
+- `RendererKeyChord`
+- `RendererKeyName`
+- `KeymapConfig`
+- `PanelView`
+- `StyledSpan`
+- `StyledSpanTone`
+- `SubscriberManifestEntry`
+- `SubscriberSelector`
+- `PublishedGlobalConfigKey`
+- `RENDERER_CAPABILITIES_NONE`
+- `RENDERER_CAPABILITIES_TTY_INITIAL`
+- `RENDERER_CAPABILITIES_VERBOSE_TTY`
+- `HOST_PROXY_REQUEST_TAGS`
+- `DEFAULT_KEYMAP_BINDINGS`
+- `RENDERER_ACTION_SURFACE`
+- `RendererKeyChordPattern`
+- `decodeKeymapConfig`
+- `validateKeymapConfigConflicts`
 
 ## Additive Beta service fields
 
@@ -360,6 +392,7 @@
 - `LandofileShape.agentEnv`
 - `LandofileShape.x-*`
 - `GlobalConfig.agentEnv`
+- `GlobalConfig.notify`
 - `PluginManifest.deprecated`
 - `PluginManifest.requires`
 - `PluginContribution.downloaders` is a new additive optional field.
@@ -375,6 +408,8 @@
 - `StorageInput.key` is a new additive optional field.
 
 ## Additive Alpha errors
+
+- `KeymapConflictError`
 
 - `AppResolveError`
 - `ConfigTranslateError`
