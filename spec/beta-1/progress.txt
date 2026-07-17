@@ -535,3 +535,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - `Renderer.capabilities` must be a getter over frozen snapshot objects, not a mutable field; promote at most once and never demote.
   - Capability gating for `notify.desktop` is the renderer's job at point-of-use — drop pre-promotion events rather than buffering for replay.
 ---
+
+## 2026-07-16 22:27 CDT - US-458 Review
+- Shared one capability snapshot per RendererIO so makeService and makeEventConsumer cannot disagree at the probe boundary; production notify delivery is tracked and flushed on event-consumer teardown so exit-time desktop notifications are not dropped.
+- Review notes (deferred/rejected): Publisher-boundary secret redaction fixture stays with US-459 (the notify-lando policy plugin owns publishRender). Bugbot dual-snapshot and fire-and-forget findings fixed as above.
+- Verification: typecheck, lint passed; focused capability/notify/host-proxy tests passed; base-aware guide drift passed with sdk-compatibility + terminal-ui-polish updates.
+- **Learnings for future iterations:**
+  - When `makeService` and `makeEventConsumer` are separate factories, share probe state by `RendererIO` identity (WeakMap) rather than running two independent probes.
+  - Async OpenTUI delivery must be flushable from the consumer finalizer; a fire-and-forget void promise loses exit-time notifications.
+---

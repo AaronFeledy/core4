@@ -30,6 +30,9 @@ tags: [beta, docs, plugins, compatibility]
       <Variable name="toolProvisioning" value="@lando/sdk/tool-provisioning|ToolManifest|provisionTool" display="Plugins can share the verified tool provisioning helper for per-platform host CLI and agent installs without reimplementing archive extraction or path containment" />
       <Variable name="providerSetupFlags" value="ProviderSetupOptions.setupFlags" display="Providers receive parsed values of the setup flags their plugin contributed via setup.flags on ProviderSetupOptions.setupFlags during lando setup" />
       <Variable name="logFollowTesting" value="@lando/sdk/log-follow" display="Provider and embedding tests can use the SDK log-follow helpers to inject host log-file access; providers leave serviceLogSources disabled when that access is absent" />
+      <Variable name="rendererCapabilities" value="RendererCapabilities|NotifyDesktopEvent|NotifyConfig" display="SDK consumers read the four-field RendererCapabilities snapshot and the notify.desktop / NotifyConfig schemas from @lando/sdk; raw OpenTUI capability probing stays internal to the bundled renderer" />
+      <Variable name="hostProxyRequest" value="openUrl|openPath|runLando|runBun" display="HostProxyRequest is exactly four tagged members; container-initiated notify and clipboardCopy variants are absent with no deprecation shim" />
+      <Variable name="invocationCorrelation" value="invocationId|parentInvocationId" display="CLI lifecycle events carry CommandInvocationCorrelation so nested command: invocations keep a parent id and never independently drive foreground desktop notifications" />
     </Step>
   </Scenario>
 
