@@ -13,6 +13,16 @@ export const safeUtf8End = (bytes: Uint8Array): number => {
   return continuationCount === 0 ? bytes.length : bytes.length - continuationCount;
 };
 
+export const safeUtf8Start = (bytes: Uint8Array): number => {
+  let start = 0;
+  while (start < bytes.length) {
+    const byte = bytes[start];
+    if (byte === undefined || (byte & 0xc0) !== 0x80) return start;
+    start += 1;
+  }
+  return start;
+};
+
 export const lineRanges = (bytes: Uint8Array): ReadonlyArray<readonly [number, number]> => {
   const ranges: Array<readonly [number, number]> = [];
   let start = 0;
