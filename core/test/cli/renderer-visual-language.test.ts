@@ -35,9 +35,9 @@ class RecordingLiveRegion {
   dropLive(): void {}
   resize(): void {}
   enterFullTail(): void {}
-  exitFullTail(): void {}
+  async exitFullTail(): Promise<void> {}
   reset(): void {}
-  dispose(): void {}
+  async dispose(): Promise<void> {}
 }
 
 const substrateIo = (base: ReturnType<typeof createBufferedRendererIO>) => ({
