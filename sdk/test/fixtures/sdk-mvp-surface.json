@@ -21,8 +21,7 @@
       "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>"
     ],
     "BuildOrchestrator": [
-      "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>",
-      "buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildPhaseFailedError | EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
+      "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
     ],
     "CacheService": [
       "invalidate: (key: string) => Effect.Effect<void, CacheError>",
@@ -122,5 +121,8 @@
       "runScript: (path: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
       "interactive: (spec: ShellInteractiveSpec) => Effect.Effect<ShellInteractiveResult, ShellExecError>"
     ]
+  },
+  "provisionalServiceTagMethods": {
+    "BuildOrchestrator": ["buildApp"]
   }
 }
