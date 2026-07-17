@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  LiveRegionController,
   type LiveRegionRendererLike,
   type OpenTuiLiveRegionModuleLike,
   OpenTuiLiveRegionUnavailableError,
@@ -25,6 +26,7 @@ class FakeRenderable {
   readonly children: FakeRenderable[] = [];
   readonly content: string | undefined;
   readonly width: number | undefined;
+  destroyCount = 0;
 
   constructor(_context: unknown, options: RenderableOptions) {
     this.content =
@@ -38,7 +40,9 @@ class FakeRenderable {
     this.children.push(child);
   }
 
-  destroy(): void {}
+  destroy(): void {
+    this.destroyCount += 1;
+  }
 }
 
 type Fixture = ReturnType<typeof makeFixture>;
@@ -56,6 +60,7 @@ const makeFixture = () => {
   const calls: string[] = [];
   const commits: string[] = [];
   const fpsAssignments: number[] = [];
+  const footers: FakeRenderable[] = [];
   const footerWidths: number[] = [];
   let destroyCount = 0;
   let liveRequestCount = 0;
@@ -72,6 +77,7 @@ const makeFixture = () => {
     root: {
       add: (child) => {
         if (!(child instanceof FakeRenderable)) throw new TypeError("Expected a fake footer renderable.");
+        footers.push(child);
         const lines = child.children.map((line) => line.content ?? "");
         footerWidths.push(child.width ?? 0);
         calls.push(`footer:${lines.join("|")}`);
@@ -180,6 +186,7 @@ const makeFixture = () => {
     calls,
     commits,
     fpsAssignments,
+    footers,
     footerWidths,
     module,
     renderer,
@@ -231,6 +238,42 @@ describe("LiveRegionController", () => {
     controller.commitScrollback("\u001b[31mBuild failed\u001b[0m\n\nRemediation: Run lando setup");
 
     expect(fixture.commits).toEqual(["Build failed", "", "Remediation: Run lando setup"]);
+  });
+
+  test("retires an empty split footer and legally reactivates it for later lines", async () => {
+    const fixture = makeFixture();
+    const passthrough: string[] = [];
+    const controller = new LiveRegionController(
+      fixture.module,
+      fixture.renderer,
+      80,
+      24,
+      undefined,
+      (chunk) => passthrough.push(chunk),
+    );
+    controller.setFooter(["building"]);
+    fixture.calls.length = 0;
+
+    controller.setFooter([]);
+    controller.commitScrollback("retired output");
+
+    expect(fixture.footers[0]?.destroyCount).toBe(1);
+    expect(fixture.calls).toEqual(["externalOutputMode:passthrough", "screenMode:main-screen"]);
+    expect(fixture.state()).toMatchObject({ screenMode: "main-screen" });
+    expect(passthrough).toEqual(["retired output\n"]);
+
+    controller.setFooter(["restarted"]);
+
+    expect(fixture.calls).toEqual([
+      "externalOutputMode:passthrough",
+      "screenMode:main-screen",
+      "screenMode:split-footer",
+      "cursor:1,24:false",
+      "externalOutputMode:capture-stdout",
+      "footer:restarted",
+    ]);
+    expect(fixture.footers).toHaveLength(2);
+    expect(fixture.state()).toMatchObject({ footerHeight: 1, screenMode: "split-footer" });
   });
 
   test("balances live requests and caps both frame rates at 30", async () => {

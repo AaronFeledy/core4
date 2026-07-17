@@ -118,6 +118,28 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
     controller.dispose();
   });
 
+  test("retires the split footer without a reserved row and reactivates it", async () => {
+    const { controller, setup } = await createFixture(80, 12);
+    controller.setFooter(["building"]);
+    await setup.renderOnce();
+
+    controller.setFooter([]);
+    await setup.renderOnce();
+
+    expect(setup.renderer.screenMode).toBe("main-screen");
+    expect(setup.renderer.externalOutputMode).toBe("passthrough");
+    expect(setup.captureCharFrame()).not.toContain("building");
+
+    controller.setFooter(["restarted"]);
+    await setup.renderOnce();
+
+    expect(setup.renderer.screenMode).toBe("split-footer");
+    expect(setup.renderer.externalOutputMode).toBe("capture-stdout");
+    expect(setup.renderer.footerHeight).toBe(1);
+    expect(setup.captureCharFrame()).toContain("restarted");
+    controller.dispose();
+  });
+
   test("full-tail transition returns to split-footer with the current frame intact", async () => {
     const { controller, setup } = await createFixture();
     controller.setFooter(["build running", "appserver online"]);

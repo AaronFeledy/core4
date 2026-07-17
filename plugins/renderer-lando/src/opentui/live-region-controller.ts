@@ -55,6 +55,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     width: number,
     height: number,
     private readonly onResize: ((width: number, height: number) => void) | undefined,
+    private readonly writePassthrough: (text: string) => void,
   ) {
     this.width = width;
     this.height = height;
@@ -73,6 +74,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     for (const row of rows) {
       this.scrollbackLines.push(row);
       if (this.renderer.screenMode === "split-footer") this.writeScrollback(row);
+      else if (this.renderer.screenMode === "main-screen") this.writePassthrough(`${row}\n`);
     }
   }
 
@@ -90,7 +92,21 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
 
   setFooter(lines: ReadonlyArray<string>): void {
     this.footerLines = [...lines];
-    this.renderFooter();
+    if (lines.length === 0 && this.renderer.screenMode !== "alternate-screen") {
+      this.footer?.destroy?.();
+      this.footer = undefined;
+      if (this.renderer.screenMode === "split-footer") {
+        this.renderer.externalOutputMode = "passthrough";
+        this.renderer.screenMode = "main-screen";
+      }
+      return;
+    }
+    const reactivating = this.renderer.screenMode === "main-screen";
+    if (reactivating) {
+      this.renderer.externalOutputMode = "passthrough";
+      this.renderer.screenMode = "split-footer";
+    }
+    this.renderFooter(reactivating);
   }
 
   requestLive(): void {
@@ -173,7 +189,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.renderer.externalOutputMode = "capture-stdout";
   }
 
-  private renderFooter(): void {
+  private renderFooter(forcePin = false): void {
     this.footer?.destroy?.();
     const closingLine = this.footerLines.at(-1);
     const visibleLines =
@@ -197,7 +213,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
         }),
       );
     }
-    if (this.renderer.footerHeight !== footerHeight) this.pinSplitFooter(footerHeight);
+    if (forcePin || this.renderer.footerHeight !== footerHeight) this.pinSplitFooter(footerHeight);
     this.renderer.root.add(footer);
     this.footer = footer;
   }
@@ -240,7 +256,16 @@ export async function createLiveRegionController(
     renderer.setCursorPosition(1, Math.max(1, options.height), false);
     renderer.externalOutputMode = "capture-stdout";
 
-    return new LiveRegionController(module, renderer, options.width, options.height, options.onResize);
+    return new LiveRegionController(
+      module,
+      renderer,
+      options.width,
+      options.height,
+      options.onResize,
+      (text) => {
+        options.stdout.write(text);
+      },
+    );
   } catch (cause) {
     renderer?.destroy();
     throw new OpenTuiLiveRegionUnavailableError("initialize", cause);
