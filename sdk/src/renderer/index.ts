@@ -55,7 +55,6 @@ export {
   RendererPanelContext,
   StyledSpan,
   StyledSpanTone,
-  encodedByteLength,
   type PanelView as PanelViewType,
   type RendererPanel,
   type RendererPanelContext as RendererPanelContextType,

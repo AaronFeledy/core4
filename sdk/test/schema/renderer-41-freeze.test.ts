@@ -82,6 +82,17 @@ describe("4.1 renderer surface freeze (schemas)", () => {
     });
     expect(Either.isRight(validateKeymapConfigConflicts(crossSurface))).toBe(true);
 
+    // Override colliding with another action's retained default is still a conflict.
+    const vsDefault = Schema.decodeUnknownSync(KeymapConfig)({
+      "tree.expand": "up",
+    });
+    const defaultConflict = validateKeymapConfigConflicts(vsDefault);
+    expect(Either.isLeft(defaultConflict)).toBe(true);
+    if (Either.isLeft(defaultConflict)) {
+      expect(defaultConflict.left.chord).toBe("up");
+      expect(defaultConflict.left.surface).toBe("task-tree");
+    }
+
     const reserved = decodeKeymapConfig({ "prompt.cancel": "ctrl+c" });
     expect(Either.isLeft(reserved)).toBe(true);
   });

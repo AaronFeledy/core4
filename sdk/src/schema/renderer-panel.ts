@@ -85,8 +85,7 @@ export const StyledSpan = Schema.Struct({
 });
 export type StyledSpan = typeof StyledSpan.Type;
 
-/** UTF-8 byte length of a string (runtime-neutral; Bun/Node `TextEncoder`). */
-export const encodedByteLength = (text: string): number => new TextEncoder().encode(text).length;
+const encodedByteLength = (text: string): number => new TextEncoder().encode(text).length;
 
 /**
  * Bounded rows-of-spans: ≤8 rows, ≤32 spans/row, ≤4096 UTF-8 text bytes total.

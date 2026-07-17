@@ -358,7 +358,6 @@
 - `RENDERER_ACTION_SURFACE`
 - `RendererKeyChordPattern`
 - `decodeKeymapConfig`
-- `encodedByteLength`
 - `validateKeymapConfigConflicts`
 
 ## Additive Beta service fields
