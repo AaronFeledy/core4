@@ -10,13 +10,20 @@
  * reference implementation: it exports a `RendererContribution` named `renderer`
  * built entirely from SDK contracts, without importing core internals.
  *
- * This subpath is type/contract only (like `@lando/sdk/expressions` and
- * `@lando/sdk/template`). It exports no runtime values and never appears in the
- * `Object.keys()` runtime export checks.
+ * Runtime schema exports (`RendererCapabilities` and snapshot constants) are
+ * re-exported for plugin authors; raw OpenTUI probing is never published here.
  */
 import type { Layer } from "effect";
 
 import type { EventService, Renderer } from "../services/index.ts";
+
+export {
+  RENDERER_CAPABILITIES_NONE,
+  RENDERER_CAPABILITIES_TTY_INITIAL,
+  RENDERER_CAPABILITIES_VERBOSE_TTY,
+  RendererCapabilities,
+  type RendererCapabilities as RendererCapabilitiesType,
+} from "../schema/renderer-capabilities.ts";
 
 /**
  * The terminal I/O seam constructed at the CLI command boundary and injected

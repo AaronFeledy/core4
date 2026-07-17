@@ -24,6 +24,12 @@ const CliCommandInvocation = {
   app: Schema.optional(AppRef).annotations({
     description: "Resolved application binding for the command, when applicable.",
   }),
+  invocationId: Schema.String.annotations({
+    description: "ULID unique to this command invocation (outer or nested).",
+  }),
+  parentInvocationId: Schema.optional(Schema.String).annotations({
+    description: "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+  }),
   timestamp: Timestamp,
 };
 const CliCommandTerminal = {

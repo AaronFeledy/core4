@@ -83,6 +83,14 @@
       "required": [],
       "type": "object"
     },
+    "invocationId": {
+      "description": "ULID unique to this command invocation (outer or nested).",
+      "type": "string"
+    },
+    "parentInvocationId": {
+      "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+      "type": "string"
+    },
     "timestamp": {
       "$ref": "#/$defs/DateTimeUtc"
     }
@@ -94,6 +102,7 @@
     "args",
     "flags",
     "cwd",
+    "invocationId",
     "timestamp",
     "exitCode",
     "durationMs"

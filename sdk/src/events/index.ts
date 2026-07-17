@@ -14,6 +14,7 @@ export * from "./open.ts";
 export * from "./host-proxy.ts";
 export * from "./image-pull.ts";
 export * from "./provider.ts";
+export * from "./notify.ts";
 export * from "./renderer.ts";
 export * from "./sync.ts";
 export * from "./task.ts";

@@ -632,6 +632,7 @@ export declare class Renderer extends Context.Tag("@lando/core/Renderer")<
   Renderer,
   {
     readonly id: string;
+    readonly capabilities: import("../schema/renderer-capabilities.ts").RendererCapabilities;
     readonly message: {
       readonly info: (body: string) => Effect.Effect<void, EventError>;
       readonly warn: (body: string) => Effect.Effect<void, EventError>;

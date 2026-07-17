@@ -18,4 +18,6 @@ Public Lando schema contract for Cli Command Init Event.
 | `flags` | Yes | `object` | Parsed flags keyed by their canonical command-spec names. | — | — | — | — |
 | `cwd` | Yes | `string` | Working directory at command invocation. | — | — | — | — |
 | `app` | No | `object` | Resolved application binding for the command, when applicable. | — | — | — | — |
+| `invocationId` | Yes | `string` | ULID unique to this command invocation (outer or nested). | — | — | — | — |
+| `parentInvocationId` | No | `string` | ULID of the enclosing invocation; absent for the outer user/embedding-host invocation. | — | — | — | — |
 | `timestamp` | Yes | `string` | — | — | — | — | — |
