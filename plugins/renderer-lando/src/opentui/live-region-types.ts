@@ -1,4 +1,5 @@
 import type { NativeStyledTextModuleLike } from "./ansi-styled-text.ts";
+import type { LiveRegionSpoolFactory } from "./live-region-spool.ts";
 
 export type LiveRegionScreenMode = "alternate-screen" | "main-screen" | "split-footer";
 type LiveRegionExternalOutputMode = "capture-stdout" | "passthrough";
@@ -69,4 +70,5 @@ export interface LiveRegionControllerOptions {
 export interface LiveRegionControllerDeps<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
   readonly loadModule?: () => Promise<OpenTuiLiveRegionModuleLike<TRenderer>>;
   readonly createRenderer?: (module: OpenTuiLiveRegionModuleLike<TRenderer>) => Promise<TRenderer>;
+  readonly spool?: LiveRegionSpoolFactory;
 }
