@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { constants } from "node:fs";
-import { lstat, mkdir, open } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { lstat, mkdir, open, realpath } from "node:fs/promises";
+import { dirname, join, sep } from "node:path";
 
 import { Effect } from "effect";
 
@@ -48,11 +48,23 @@ const transcriptError = (providerId: string, path: AbsolutePath, cause: unknown)
 export const openBuildTranscript = (
   providerId: string,
   path: AbsolutePath,
+  userDataRoot: string,
 ): Effect.Effect<BuildTranscript, ProviderInternalError, import("effect").Scope.Scope> =>
   Effect.acquireRelease(
     Effect.tryPromise({
       try: async () => {
-        await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+        const directory = dirname(path);
+        await mkdir(directory, { recursive: true, mode: 0o700 });
+        const [canonicalDirectory, canonicalUserDataRoot] = await Promise.all([
+          realpath(directory),
+          realpath(userDataRoot),
+        ]);
+        const userDataPrefix = canonicalUserDataRoot.endsWith(sep)
+          ? canonicalUserDataRoot
+          : `${canonicalUserDataRoot}${sep}`;
+        if (canonicalDirectory !== canonicalUserDataRoot && !canonicalDirectory.startsWith(userDataPrefix)) {
+          throw transcriptError(providerId, path, "Transcript directory escapes the user data root.");
+        }
         if (process.platform === "win32") {
           try {
             if ((await lstat(path)).isSymbolicLink()) {

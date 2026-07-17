@@ -57,7 +57,11 @@ export const runAppBuildStep = (input: AppBuildInput, appStep: AppStep, transcri
     const framers = { stdout: makeLineFramer(), stderr: makeLineFramer() };
     yield* Effect.scoped(
       Effect.gen(function* () {
-        const transcript = yield* openBuildTranscript(input.provider.id, transcriptPath);
+        const transcript = yield* openBuildTranscript(
+          input.provider.id,
+          transcriptPath,
+          input.paths.roots.userDataRoot,
+        );
         yield* input.provider
           .execStream({ app: input.plan.id, service: step.service }, providerCommand(command))
           .pipe(

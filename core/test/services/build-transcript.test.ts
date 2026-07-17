@@ -45,6 +45,42 @@ describe("makeBuildTranscriptPath", () => {
 
 describe("openBuildTranscript", () => {
   test.skipIf(process.platform === "win32")(
+    "rejects an intermediate-directory symlink that escapes the user data root",
+    async () => {
+      // Given
+      const root = await mkdtemp(resolve(tmpdir(), "lando-build-transcript-"));
+      const userDataRoot = resolve(root, "user-data");
+      const escapeRoot = resolve(root, "escape");
+      await mkdir(userDataRoot);
+      await mkdir(escapeRoot);
+      await symlink(escapeRoot, resolve(userDataRoot, "builds"));
+      const path = makeBuildTranscriptPath({
+        userDataRoot,
+        appId: "test-app",
+        phase: "app",
+        serviceName: "web",
+        buildKey: "test-build",
+        scratch: false,
+      });
+      const escapeTarget = resolve(escapeRoot, "test-app", "app", "web", "test-build.log");
+
+      try {
+        // When
+        const result = await Effect.runPromise(
+          Effect.scoped(openBuildTranscript("test-provider", path, userDataRoot)).pipe(Effect.either),
+        );
+
+        // Then
+        expect(result._tag).toBe("Left");
+        if (result._tag === "Left") expect(result.left).toBeInstanceOf(ProviderInternalError);
+        expect(await Bun.file(escapeTarget).exists()).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === "win32")(
     "creates private transcript files and parent directories under a permissive umask",
     async () => {
       // Given
@@ -57,7 +93,7 @@ describe("openBuildTranscript", () => {
         await Effect.runPromise(
           Effect.scoped(
             Effect.gen(function* () {
-              const transcript = yield* openBuildTranscript("test-provider", path);
+              const transcript = yield* openBuildTranscript("test-provider", path, root);
               yield* transcript.append(new TextEncoder().encode("private output"));
             }),
           ),
@@ -89,7 +125,7 @@ describe("openBuildTranscript", () => {
       try {
         // When
         const result = await Effect.runPromise(
-          Effect.scoped(openBuildTranscript("test-provider", path)).pipe(Effect.either),
+          Effect.scoped(openBuildTranscript("test-provider", path, root)).pipe(Effect.either),
         );
 
         // Then
