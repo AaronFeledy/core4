@@ -7,6 +7,7 @@ import {
   renderMetaBunResult,
 } from "../../../commands/bun.ts";
 
+import { newInvocationId } from "../../../command-lifecycle.ts";
 import { runWithRendererHandling } from "../../../renderer-boundary.ts";
 import {
   LandoCommandBase,
@@ -58,6 +59,7 @@ export default class MetaBunCommand extends LandoCommandBase {
         args: {},
         flags: {},
         cwd: process.cwd(),
+        invocationId: newInvocationId(),
       },
       resultSchema: metaBunSpec.resultSchema,
       render: renderMetaBunResult,

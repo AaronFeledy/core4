@@ -78,14 +78,21 @@ export const setActiveCommandInvocation = (
   input: Pick<CompiledCommandInput, "argv" | "args" | "flags">,
   options: { readonly parentInvocationId?: string } = {},
 ): void => {
+  const sameCommand = activeCommandInvocation?.commandId === commandId;
+  const invocationId =
+    sameCommand && activeCommandInvocation?.invocationId !== undefined
+      ? activeCommandInvocation.invocationId
+      : newInvocationId();
+  const parentInvocationId =
+    options.parentInvocationId ?? (sameCommand ? activeCommandInvocation?.parentInvocationId : undefined);
   activeCommandInvocation = {
     commandId,
     argv: input.argv,
     args: input.args,
     flags: input.flags,
     cwd: process.cwd(),
-    invocationId: newInvocationId(),
-    ...(options.parentInvocationId === undefined ? {} : { parentInvocationId: options.parentInvocationId }),
+    invocationId,
+    ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
   };
 };
 

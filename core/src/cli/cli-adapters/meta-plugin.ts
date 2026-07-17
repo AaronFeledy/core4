@@ -6,6 +6,7 @@ import type { RedactionService } from "../../redaction/service.ts";
 
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
+import { newInvocationId } from "../command-lifecycle.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun.ts";
 import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config.ts";
 import { globalDestroy, renderGlobalDestroyResult } from "../commands/meta/global-destroy.ts";
@@ -233,6 +234,7 @@ export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
       args: input.args,
       flags: input.flags,
       cwd: process.cwd(),
+      invocationId: newInvocationId(),
     },
     formatError: (error) => commandErrorMessage(error, "meta:mcp"),
   });

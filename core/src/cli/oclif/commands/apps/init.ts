@@ -10,6 +10,7 @@ import { Effect, Layer } from "effect";
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { formatBugReport } from "../../../bug-report.ts";
+import { newInvocationId } from "../../../command-lifecycle.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
 import { type ResultFormat, resolveResultFormat } from "../../../format-flags.ts";
@@ -225,6 +226,7 @@ export default class InitCommand extends LandoCommandBase {
           args: {},
           flags: Object.fromEntries(Object.entries(parsed.flags)),
           cwd: process.cwd(),
+          invocationId: newInvocationId(),
         },
         resultSchema: initSpec.resultSchema,
         render: (result: InitAppResult) => `Created ${result.appName} at ${result.directory}`,
