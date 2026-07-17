@@ -9382,7 +9382,7 @@
               "type": "string"
             },
             "language": {
-              "description": "Optional language hint for syntax-aware presentation in 4.1.",
+              "description": "Optional language hint for future syntax-aware presentation.",
               "type": "string"
             },
             "path": {

@@ -584,7 +584,7 @@
       "type": "array"
     },
     "rendererPanels": {
-      "description": "Renderer panel contributions for named default-renderer slots (contract-only at 4.0).",
+      "description": "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
       "items": {
         "additionalProperties": false,
         "properties": {

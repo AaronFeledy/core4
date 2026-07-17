@@ -20130,7 +20130,7 @@
           "type": "string"
         },
         "language": {
-          "description": "Optional language hint for syntax-aware presentation in 4.1.",
+          "description": "Optional language hint for future syntax-aware presentation.",
           "type": "string"
         },
         "path": {
@@ -30030,7 +30030,7 @@
               "type": "string"
             },
             "language": {
-              "description": "Optional language hint for syntax-aware presentation in 4.1.",
+              "description": "Optional language hint for future syntax-aware presentation.",
               "type": "string"
             },
             "path": {
@@ -32656,7 +32656,7 @@
           "type": "array"
         },
         "rendererPanels": {
-          "description": "Renderer panel contributions for named default-renderer slots (contract-only at 4.0).",
+          "description": "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -33391,7 +33391,7 @@
               "type": "array"
             },
             "rendererPanels": {
-              "description": "Renderer panel contributions for named default-renderer slots (contract-only at 4.0).",
+              "description": "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
               "items": {
                 "additionalProperties": false,
                 "properties": {
@@ -49283,7 +49283,7 @@
                   "type": "string"
                 },
                 "language": {
-                  "description": "Optional language hint for syntax-aware presentation in 4.1.",
+                  "description": "Optional language hint for future syntax-aware presentation.",
                   "type": "string"
                 },
                 "path": {
@@ -49470,7 +49470,7 @@
               "type": "string"
             },
             "language": {
-              "description": "Optional language hint for syntax-aware presentation in 4.1.",
+              "description": "Optional language hint for future syntax-aware presentation.",
               "type": "string"
             },
             "path": {
