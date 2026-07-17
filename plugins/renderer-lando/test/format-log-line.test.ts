@@ -1,9 +1,8 @@
 /**
- * Defensive `log.line` passthrough (US-456 AC2).
+ * Defensive `log.line` passthrough.
  *
- * `log.line` is not a published `LandoEvent` member today (the typed event is
- * deferred per the US-456 scope decision). The renderer still commits any
- * `log.line`-tagged event to scrollback defensively rather than dropping it, so
+ * `log.line` is not a published `LandoEvent` member today. The renderer still
+ * commits any `log.line`-tagged event to scrollback rather than dropping it, so
  * the split-footer substrate carries it if/when an emitter is added.
  */
 

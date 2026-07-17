@@ -27,17 +27,12 @@ export const redactedBuildContext = (
   plan: AppPlan,
   service: ServicePlan,
 ): RedactedBuildContext => {
-  const appRef = {
-    kind: String(plan.id).startsWith("scratch-") ? ("scratch" as const) : ("user" as const),
-    id: plan.slug,
-    root: plan.root,
-  };
   return {
     appRef: {
-      kind: appRef.kind,
-      id: redactor.redactString(appRef.id),
+      kind: String(plan.id).startsWith("scratch-") ? "scratch" : "user",
+      id: redactor.redactString(plan.slug),
     },
-    appRoot: redactor.redactString(appRef.root),
+    appRoot: redactor.redactString(plan.root),
     serviceName: redactor.redactString(service.name),
     providerId: redactor.redactString(plan.provider),
   };

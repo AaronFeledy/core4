@@ -81,15 +81,9 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
     switch (event._tag) {
       case "task.tree.start": {
         this.#resetTreeState();
-        const seen = new Set<string>();
-        const children = Array.isArray(event.children)
-          ? event.children.filter((child): child is string => typeof child === "string")
+        const uniqueChildren = Array.isArray(event.children)
+          ? [...new Set(event.children.filter((child): child is string => typeof child === "string"))]
           : [];
-        const uniqueChildren = children.filter((child) => {
-          if (seen.has(child)) return false;
-          seen.add(child);
-          return true;
-        });
         this.#tree = {
           parentId: asString(event.parentId) ?? "tree",
           childCount: uniqueChildren.length,
@@ -101,7 +95,6 @@ export class TaskTreeViewModel implements TaskTreeInteractionModel {
           durationMs: undefined,
         };
         for (const childId of uniqueChildren) {
-          if (this.#tasks.has(childId)) continue;
           this.#order.push(childId);
           this.#tasks.set(
             childId,

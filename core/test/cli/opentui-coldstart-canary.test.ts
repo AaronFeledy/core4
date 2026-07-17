@@ -50,7 +50,7 @@ describe("OpenTUI cold-start canary", () => {
       }
     }
 
-    // Import discipline (§8.9.3): only the two renderer substrate modules, each via lazy dynamic import.
+    // Only the two renderer substrate modules may import @opentui/core, each via lazy dynamic import.
     for (const edge of opentuiImports) {
       expect(edge.path).toBe("@opentui/core");
       expect(edge.kind).toBe("dynamic-import");

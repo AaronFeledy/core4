@@ -4,8 +4,8 @@
  * These host tests drive the event consumer against a recording fake live-region
  * controller (no native OpenTUI binding). They prove the routing/ordering, the
  * tree-complete scrollback commit, dispose-on-scope-close, and the two
- * degradation fallbacks. Native split-footer behavior (AC3 resize replay, AC4
- * alt-screen) is validated in the Wave 5 sandbox headless suite.
+ * degradation fallbacks. Native split-footer resize replay and alt-screen
+ * behavior are covered by the sandbox headless OpenTUI suite.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";

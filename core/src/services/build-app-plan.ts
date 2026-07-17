@@ -47,11 +47,10 @@ const stepIdFor = (service: ServicePlan, intent: AppBuildStepIntent, index: numb
 
 const stepFor = (
   service: ServicePlan,
+  intent: AppBuildStepIntent,
   intents: ReadonlyArray<AppBuildStepIntent>,
   index: number,
-): AppStep | undefined => {
-  const intent = intents[index];
-  if (intent === undefined) return undefined;
+): AppStep => {
   const id = stepIdFor(service, intent, index);
   const previous = index === 0 ? undefined : intents[index - 1];
   const dependencies = [
@@ -107,10 +106,7 @@ export const appStepBatches = (steps: ReadonlyArray<AppStep>): AppStepBatchPlan 
 export const appSteps = (plan: AppPlan): ReadonlyArray<AppStep> =>
   Object.values(plan.services).flatMap((service) => {
     const intents = appBuildIntents(service);
-    return intents.flatMap((_, index) => {
-      const appStep = stepFor(service, intents, index);
-      return appStep === undefined ? [] : [appStep];
-    });
+    return intents.map((intent, index) => stepFor(service, intent, intents, index));
   });
 
 export const providerCommand = (command: AppStep["command"]) => ({

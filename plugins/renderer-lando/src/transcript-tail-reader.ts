@@ -200,11 +200,12 @@ const openReader = (userDataRoot: string, path: AbsolutePath, onChange: Effect.E
     yield* Effect.acquireRelease(
       Effect.try({
         try: (): FSWatcher => {
+          const transcriptName = basename(path);
           const watcher = watch(dirname(path), (_eventType, filename) => {
             if (
               filename === null ||
               filename === undefined ||
-              basename(filename.toString()) === basename(path)
+              basename(filename.toString()) === transcriptName
             ) {
               Effect.runSync(Queue.offer(notifications, undefined));
             }

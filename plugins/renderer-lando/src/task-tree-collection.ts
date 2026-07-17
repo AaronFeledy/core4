@@ -103,8 +103,9 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
   }
 
   expandTask(taskId: string): void {
-    this.#selectedModel().expandTask(taskId);
-    if (this.#selectedModel().expandedTaskId === taskId) this.#footerVisible = true;
+    const model = this.#selectedModel();
+    model.expandTask(taskId);
+    if (model.expandedTaskId === taskId) this.#footerVisible = true;
   }
 
   setExpandedTranscript(taskId: string, lines: ReadonlyArray<string>): boolean {
@@ -158,10 +159,9 @@ export class TaskTreeCollection implements TaskTreeInteractionModel {
       case "task.start": {
         const taskId = stringField(event, "taskId");
         const parentId = stringField(event, "parentId");
-        return parentId === undefined
-          ? (this.#entries.get(taskId === undefined ? "" : (this.#taskOwners.get(taskId) ?? "")) ??
-              this.#selectedEntry())
-          : this.#entries.get(parentId);
+        if (parentId !== undefined) return this.#entries.get(parentId);
+        const inferredParentId = taskId === undefined ? "" : (this.#taskOwners.get(taskId) ?? "");
+        return this.#entries.get(inferredParentId) ?? this.#selectedEntry();
       }
       case "task.detail":
       case "task.complete":

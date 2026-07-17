@@ -110,8 +110,6 @@ describe("lando renderer (TTY keybindings)", () => {
     expect(Reflect.get(expand ?? {}, "taskId")).toBe("a");
     expect(Reflect.get(collapse ?? {}, "taskId")).toBe("a");
     expect(tags.indexOf("task.detail.expand")).toBeLessThan(tags.indexOf("task.detail.collapse"));
-
-    // US-456 Wave 5 (sandbox): native alt-screen transition
   });
 
   test("Ctrl-C raises the command-runtime interrupt without publishing a tree key action", async () => {

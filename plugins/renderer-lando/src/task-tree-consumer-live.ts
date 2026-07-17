@@ -215,9 +215,8 @@ export const makeTaskTreeConsumerLive = (
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           unsubscribe?.();
-          const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
-          if (Option.isSome(remaining))
-            for (const event of remaining.value) yield* serialized(consume(event));
+          const remaining = yield* Queue.takeAll(queue);
+          for (const event of remaining) yield* serialized(consume(event));
           yield* Fiber.interrupt(fiber);
           if (active !== undefined) {
             journal.detach(active.controller);
