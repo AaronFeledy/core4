@@ -550,3 +550,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): Bugbot "renderEvents off for most commands" rejected — notification-eligible long commands already enable the event consumer (app-lifecycle/tooling); defaulting every OCLIF command to renderEvents would change task-tree presentation outside this story. Publisher secret fixture remains US-459.
 - Verification: typecheck, lint, focused lifecycle/capability/notify tests passed.
 ---
+
+## 2026-07-17 00:45 CDT - Babysit
+- PR: #599 https://github.com/AaronFeledy/core4/pull/599
+- CI outcome: pass
+- Review feedback: fixed (OpenTUI load through single sanctioned edge + process cache; schema fixture order; CLI event fixtures include invocationId)
+- Merge: merged (squash)
+---
