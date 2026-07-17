@@ -25,7 +25,8 @@ import {
 declare const self: Worker;
 
 const respond = (frame: Uint8Array): void => {
-  const copy = frame.buffer.slice(frame.byteOffset, frame.byteOffset + frame.byteLength);
+  const copy = new ArrayBuffer(frame.byteLength);
+  new Uint8Array(copy).set(frame);
   self.postMessage(copy, [copy]);
 };
 

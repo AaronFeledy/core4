@@ -143,8 +143,19 @@ const main = async (): Promise<void> => {
     await Bun.write(referencePath, page.content);
   }
 
+  // Format by directory roots so Windows command-line length stays bounded as
+  // the public schema corpus grows (listing every artifact path can ENAMETOOLONG).
   const check = Bun.spawn({
-    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT, ...artifactPaths],
+    cmd: [
+      process.execPath,
+      "x",
+      "biome",
+      "check",
+      "--write",
+      OUTPUT,
+      SCHEMA_ARTIFACT_DIR,
+      SCHEMA_REFERENCE_DIR,
+    ],
     cwd: REPO_ROOT,
     stdout: "ignore",
     stderr: "inherit",

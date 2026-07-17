@@ -42,6 +42,13 @@ export type RendererPanelContractInput = {
 
 const workerEntryUrl = (): string => pathToFileURL(join(import.meta.dir, "renderer-panel-worker.ts")).href;
 
+/** Copy bytes into a definite ArrayBuffer for transferable postMessage. */
+const transferableOf = (bytes: Uint8Array): ArrayBuffer => {
+  const copy = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(copy).set(bytes);
+  return copy;
+};
+
 const waitForMessage = (
   worker: Worker,
   timeoutMs: number,
@@ -114,10 +121,7 @@ export const runRendererPanelContract = (
         const readyPromise = waitForMessage(worker, PANEL_READY_DEADLINE_MS);
         const initPayload = encodePanelInitPayload(input.manifestId, pathToFileURL(input.modulePath).href);
         const initRequest = encodePanelRequest(PANEL_OP.init, initPayload);
-        const initCopy = initRequest.buffer.slice(
-          initRequest.byteOffset,
-          initRequest.byteOffset + initRequest.byteLength,
-        );
+        const initCopy = transferableOf(initRequest);
         worker.postMessage(initCopy, [initCopy]);
         const ready = await readyPromise;
         const readyMs = performance.now() - readyStarted;
@@ -159,12 +163,12 @@ export const runRendererPanelContract = (
           if (first !== undefined && second !== undefined) {
             const payload1 = encodePanelContextPayload(first);
             const req1 = encodePanelRequest(PANEL_OP.render, payload1);
-            const copy1 = req1.buffer.slice(req1.byteOffset, req1.byteOffset + req1.byteLength);
+            const copy1 = transferableOf(req1);
             const started = performance.now();
             worker.postMessage(copy1, [copy1]);
             const payload2 = encodePanelContextPayload(second);
             const req2 = encodePanelRequest(PANEL_OP.render, payload2);
-            const copy2 = req2.buffer.slice(req2.byteOffset, req2.byteOffset + req2.byteLength);
+            const copy2 = transferableOf(req2);
             worker.postMessage(copy2, [copy2]);
             const r1 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
             renderMs = Math.max(renderMs, performance.now() - started);
@@ -192,7 +196,7 @@ export const runRendererPanelContract = (
         for (const ctx of contexts) {
           const payload = encodePanelContextPayload(ctx);
           const request = encodePanelRequest(PANEL_OP.render, payload);
-          const copy = request.buffer.slice(request.byteOffset, request.byteOffset + request.byteLength);
+          const copy = transferableOf(request);
           const started = performance.now();
           const responsePromise = waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
           worker.postMessage(copy, [copy]);
