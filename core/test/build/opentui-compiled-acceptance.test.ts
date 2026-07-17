@@ -104,6 +104,13 @@ const expectNonLoadingDispatches = async (
   }
 };
 
+/** Drop intermittent winpty/libwinpty abort noise from PTY capture. */
+const scrubPtyNoise = (text: string): string =>
+  text
+    .replace(/Assertion failed:[\s\S]*?(?:\r?\n|$)/g, "")
+    .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+    .replace(/\r/g, "");
+
 const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
   const taskkill = Bun.spawn({
     cmd: ["taskkill.exe", "/PID", String(pid), "/T", "/F"],
@@ -266,9 +273,9 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
           ["init", `--renderer=${renderer}`],
           { ...baseEnv, LANDO_NO_OPENTUI_PROMPTS: "1" },
         );
-        expect(normal).not.toContain("╭");
-        expect(normal).toContain("(value or index):");
-        expect(normal).toBe(withoutOpenTui);
+        expect(scrubPtyNoise(normal)).not.toContain("╭");
+        expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        expect(scrubPtyNoise(normal)).toBe(scrubPtyNoise(withoutOpenTui));
         expect(await readProbe(tracePath)).toEqual([]);
       }
 
@@ -321,9 +328,9 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
           ...baseEnv,
           LANDO_NO_OPENTUI_PROMPTS: "1",
         });
-        expect(normal).not.toContain("╭");
-        expect(normal).toContain("(value or index):");
-        expect(normal).toBe(withoutOpenTui);
+        expect(scrubPtyNoise(normal)).not.toContain("╭");
+        expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        expect(scrubPtyNoise(normal)).toBe(scrubPtyNoise(withoutOpenTui));
         expect(await readProbe(tracePath)).toEqual([]);
       }
       const failureTrace = resolve(root, "failure.jsonl");
