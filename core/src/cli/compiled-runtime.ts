@@ -18,7 +18,7 @@ import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
-import type { CliInvocationSnapshot } from "./command-lifecycle.ts";
+import { type CliInvocationSnapshot, newInvocationId } from "./command-lifecycle.ts";
 import {
   argDefinitionsForCommand,
   commandSpecForId,
@@ -76,6 +76,7 @@ export const setActiveCommandId = (commandId: string): void => {
 export const setActiveCommandInvocation = (
   commandId: string,
   input: Pick<CompiledCommandInput, "argv" | "args" | "flags">,
+  options: { readonly parentInvocationId?: string } = {},
 ): void => {
   activeCommandInvocation = {
     commandId,
@@ -83,11 +84,36 @@ export const setActiveCommandInvocation = (
     args: input.args,
     flags: input.flags,
     cwd: process.cwd(),
+    invocationId: newInvocationId(),
+    ...(options.parentInvocationId === undefined ? {} : { parentInvocationId: options.parentInvocationId }),
   };
 };
 
-export const resetActiveCommandInvocation = (commandId: string, argv: ReadonlyArray<string>): void => {
-  activeCommandInvocation = { commandId, argv, args: {}, flags: {}, cwd: process.cwd() };
+export const resetActiveCommandInvocation = (
+  commandId: string,
+  argv: ReadonlyArray<string>,
+  options: { readonly parentInvocationId?: string } = {},
+): void => {
+  activeCommandInvocation = {
+    commandId,
+    argv,
+    args: {},
+    flags: {},
+    cwd: process.cwd(),
+    invocationId: newInvocationId(),
+    ...(options.parentInvocationId === undefined ? {} : { parentInvocationId: options.parentInvocationId }),
+  };
+};
+
+export const beginNestedCommandInvocation = (
+  commandId: string,
+  argv: ReadonlyArray<string>,
+): CliInvocationSnapshot => {
+  const parentInvocationId = activeCommandInvocation?.invocationId;
+  resetActiveCommandInvocation(commandId, argv, {
+    ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
+  });
+  return activeCommandInvocation as CliInvocationSnapshot;
 };
 
 export const commandErrorMessage = (error: unknown, commandId: string = activeCommandId): string => {

@@ -29,7 +29,7 @@ export interface CommandLifecycleOptions<A> {
   readonly interruptionExitCode?: number;
 }
 
-const newInvocationId = (): string => {
+export const newInvocationId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID().replaceAll("-", "");
   }

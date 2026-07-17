@@ -17,7 +17,7 @@ const isOpenTuiLike = (value: unknown): value is OpenTuiLike =>
  * Production probe: successful dynamic import of the substrate package promotes
  * color + notifications. Import failure / timeout leaves the initial snapshot.
  */
-export const productionCapabilityProbe = (timeoutMs = 250): CapabilityProbe => ({
+export const productionCapabilityProbe = (timeoutMs = 2000): CapabilityProbe => ({
   timeoutMs,
   run: async () => {
     try {
