@@ -17,6 +17,11 @@ export interface LogsFlags {
   readonly tail?: number;
   readonly since?: string;
   readonly source?: string;
+  /**
+   * Reserved for the interactive log viewer. Accepted as a no-op today so
+   * scripts can pass the flag early without breaking.
+   */
+  readonly "no-viewer"?: boolean;
 }
 
 const flagsFromInput = (input: unknown): LogsFlags =>
@@ -82,6 +87,11 @@ export default class LogsCommand extends LandoCommandBase {
     }),
     source: Flags.string({
       description: "Restrict logs to a single declared source id (or `console` for the engine stream).",
+    }),
+    "no-viewer": Flags.boolean({
+      description:
+        "Reserved for the 4.1 interactive log viewer; accepted as a no-op in 4.0 (does not change follow behavior).",
+      default: false,
     }),
   };
   static override landoSpec: LandoCommandSpec = logsSpec;

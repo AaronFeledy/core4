@@ -595,6 +595,53 @@
           },
           "type": "array"
         },
+        "rendererPanels": {
+          "description": "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "description": "Plugin-local panel id; must match the module's exported RendererPanel.id.",
+                "maxLength": 64,
+                "minLength": 1,
+                "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+                "title": "maxLength(64)",
+                "type": "string"
+              },
+              "module": {
+                "description": "Relative module path under the plugin package root exporting a RendererPanel default.",
+                "type": "string"
+              },
+              "slot": {
+                "description": "Target default-renderer slot (status-bar, task-tree:footer, or doctor:summary).",
+                "enum": [
+                  "status-bar",
+                  "task-tree:footer",
+                  "doctor:summary"
+                ],
+                "type": "string"
+              },
+              "watch": {
+                "description": "an array of at most 32 item(s)",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "minItems": 1,
+                "title": "maxItems(32)",
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "slot",
+              "watch",
+              "module"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
         "renderers": {
           "items": {
             "anyOf": [
@@ -822,6 +869,85 @@
       "properties": {},
       "required": [],
       "type": "object"
+    },
+    "subscribers": {
+      "description": "Event subscribers (shape at manifest read; selector semantics after registration).",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "abortOnError": {
+            "description": "When true, subscriber errors at post-* events abort the step (default false).",
+            "type": "boolean"
+          },
+          "configKey": {
+            "enum": [
+              "notify"
+            ],
+            "type": "string"
+          },
+          "id": {
+            "description": "Subscriber id unique within the contributing plugin.",
+            "type": "string"
+          },
+          "module": {
+            "description": "Relative module path whose default export is a SubscriberFactory.",
+            "type": "string"
+          },
+          "priority": {
+            "description": "Priority in the plugin default band 100..999 (default 500).",
+            "maximum": 999,
+            "minimum": 100,
+            "title": "lessThanOrEqualTo(999)",
+            "type": "integer"
+          },
+          "selectors": {
+            "description": "One or more exact-event or cli-command-terminal family selectors.",
+            "items": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "event": {
+                      "description": "Exact built-in or generated lifecycle event name.",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "event"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "family": {
+                      "description": "Precomputed family: cli-<canonical-id>-run and cli-<canonical-id>-error for every command.",
+                      "enum": [
+                        "cli-command-terminal"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "family"
+                  ],
+                  "type": "object"
+                }
+              ]
+            },
+            "minItems": 1,
+            "title": "minItems(1)",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "selectors",
+          "module"
+        ],
+        "type": "object"
+      },
+      "type": "array"
     },
     "version": {
       "type": "string"

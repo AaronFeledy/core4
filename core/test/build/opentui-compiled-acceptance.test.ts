@@ -104,6 +104,17 @@ const expectNonLoadingDispatches = async (
   }
 };
 
+/** Drop intermittent winpty/libwinpty abort noise and blank-line padding from PTY capture. */
+const scrubPtyNoise = (text: string): string => {
+  const csi = `${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`;
+  return text
+    .replace(/Assertion failed:[\s\S]*?(?:\r?\n|$)/g, "")
+    .replace(new RegExp(csi, "g"), "")
+    .replace(/\r/g, "")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+};
+
 const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
   const taskkill = Bun.spawn({
     cmd: ["taskkill.exe", "/PID", String(pid), "/T", "/F"],
@@ -116,9 +127,14 @@ const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
     new Response(taskkill.stdout).text(),
     new Response(taskkill.stderr).text(),
   ]);
-  if (exitCode !== 0 && exitCode !== 128) {
+  const detail = `${stderr}${stdout}`;
+  // 0 = killed; 128 = process already gone (classic). Windows also returns 255 with
+  // "There is no running instance of the task." when the tree races to exit first.
+  const alreadyGone =
+    exitCode === 128 || (exitCode === 255 && /no running instance of the task/i.test(detail));
+  if (exitCode !== 0 && !alreadyGone) {
     throw new Error(
-      `Failed to terminate Windows PTY process tree ${String(pid)} (exit ${String(exitCode)}): ${stderr || stdout}`,
+      `Failed to terminate Windows PTY process tree ${String(pid)} (exit ${String(exitCode)}): ${detail}`,
     );
   }
 };
@@ -261,9 +277,9 @@ describe.skipIf(!enabled)("compiled OpenTUI release-target acceptance", () => {
           ["init", `--renderer=${renderer}`],
           { ...baseEnv, LANDO_NO_OPENTUI_PROMPTS: "1" },
         );
-        expect(normal).not.toContain("╭");
-        expect(normal).toContain("(value or index):");
-        expect(normal).toBe(withoutOpenTui);
+        expect(scrubPtyNoise(normal)).not.toContain("╭");
+        expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        expect(scrubPtyNoise(normal)).toBe(scrubPtyNoise(withoutOpenTui));
         expect(await readProbe(tracePath)).toEqual([]);
       }
 
@@ -316,9 +332,9 @@ describe.skipIf(process.platform === "win32")("source OpenTUI renderer-mode acce
           ...baseEnv,
           LANDO_NO_OPENTUI_PROMPTS: "1",
         });
-        expect(normal).not.toContain("╭");
-        expect(normal).toContain("(value or index):");
-        expect(normal).toBe(withoutOpenTui);
+        expect(scrubPtyNoise(normal)).not.toContain("╭");
+        expect(scrubPtyNoise(normal)).toContain("(value or index):");
+        expect(scrubPtyNoise(normal)).toBe(scrubPtyNoise(withoutOpenTui));
         expect(await readProbe(tracePath)).toEqual([]);
       }
       const failureTrace = resolve(root, "failure.jsonl");

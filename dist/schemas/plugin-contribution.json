@@ -583,6 +583,53 @@
       },
       "type": "array"
     },
+    "rendererPanels": {
+      "description": "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Plugin-local panel id; must match the module's exported RendererPanel.id.",
+            "maxLength": 64,
+            "minLength": 1,
+            "pattern": "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$",
+            "title": "maxLength(64)",
+            "type": "string"
+          },
+          "module": {
+            "description": "Relative module path under the plugin package root exporting a RendererPanel default.",
+            "type": "string"
+          },
+          "slot": {
+            "description": "Target default-renderer slot (status-bar, task-tree:footer, or doctor:summary).",
+            "enum": [
+              "status-bar",
+              "task-tree:footer",
+              "doctor:summary"
+            ],
+            "type": "string"
+          },
+          "watch": {
+            "description": "an array of at most 32 item(s)",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 32,
+            "minItems": 1,
+            "title": "maxItems(32)",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "slot",
+          "watch",
+          "module"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
     "renderers": {
       "items": {
         "anyOf": [

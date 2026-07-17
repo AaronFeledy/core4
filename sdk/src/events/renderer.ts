@@ -14,3 +14,14 @@ export {
   type CommandInvocationCorrelation as CommandInvocationCorrelationType,
   type NotifyDesktopEvent as NotifyDesktopEventType,
 } from "./notify.ts";
+
+export {
+  CodeSnippetEvent,
+  DiffRenderEvent,
+  MarkdownBlockEvent,
+  RenderEvent,
+  type CodeSnippetEvent as CodeSnippetEventType,
+  type DiffRenderEvent as DiffRenderEventType,
+  type MarkdownBlockEvent as MarkdownBlockEventType,
+  type RenderEvent as RenderEventType,
+} from "./rich-render.ts";

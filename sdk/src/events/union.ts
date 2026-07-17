@@ -64,6 +64,7 @@ import {
   PreProviderExecEvent,
 } from "./provider.ts";
 import { PaintBannerEvent } from "./renderer.ts";
+import { CodeSnippetEvent, DiffRenderEvent, MarkdownBlockEvent } from "./rich-render.ts";
 import {
   PostDatasetApplyEvent,
   PostDatasetCaptureEvent,
@@ -189,6 +190,9 @@ export const LandoEvent = Schema.Union(
   MessageErrorEvent,
   PaintBannerEvent,
   NotifyDesktopEvent,
+  CodeSnippetEvent,
+  DiffRenderEvent,
+  MarkdownBlockEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
 

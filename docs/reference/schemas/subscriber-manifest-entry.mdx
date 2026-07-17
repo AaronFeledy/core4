@@ -1,0 +1,19 @@
+---
+title: Subscriber Manifest Entry
+description: Public Lando schema contract for Subscriber Manifest Entry.
+---
+
+# Subscriber Manifest Entry
+
+Public Lando schema contract for Subscriber Manifest Entry.
+
+[JSON Schema artifact](../../../dist/schemas/subscriber-manifest-entry.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | Subscriber id unique within the contributing plugin. | — | — | — | — |
+| `selectors` | Yes | `array` | One or more exact-event or cli-command-terminal family selectors. | — | — | — | — |
+| `module` | Yes | `string` | Relative module path whose default export is a SubscriberFactory. | — | — | — | — |
+| `priority` | No | `integer` | — | — | — | — | — |
+| `abortOnError` | No | `boolean` | — | — | — | — | — |
+| `configKey` | No | `string` | — | — | `notify` | — | — |

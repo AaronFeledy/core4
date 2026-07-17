@@ -1,0 +1,17 @@
+---
+title: Diff Render Event
+description: Public Lando schema contract for Diff Render Event.
+---
+
+# Diff Render Event
+
+Public Lando schema contract for Diff Render Event.
+
+[JSON Schema artifact](../../../dist/schemas/diff-render-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `diff.render` | — | — |
+| `unified` | Yes | `string` | Standard unified-diff text. | — | — | — | — |
+| `path` | No | `string` | Optional display-only path for the diff. | — | — | — | — |
+| `language` | No | `string` | Optional language hint for future syntax-aware presentation. | — | — | — | — |

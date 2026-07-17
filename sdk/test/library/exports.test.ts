@@ -596,6 +596,13 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makePluginSourceContractSuite).toBeDefined();
   });
 
+  test("test entry point exports the renderer panel contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runRendererPanelContract).toBeDefined();
+    expect(sdkTest.makeRendererPanelContractSuite).toBeDefined();
+  });
+
   test("test entry point export gate lists every make*ContractSuite export", async () => {
     const sdkTest = await import("@lando/sdk/test");
     const testSource = await readFile(import.meta.path, "utf8");

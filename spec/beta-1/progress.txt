@@ -557,3 +557,21 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review feedback: fixed (OpenTUI load through single sanctioned edge + process cache; schema fixture order; CLI event fixtures include invocationId)
 - Merge: merged (squash)
 ---
+
+## 2026-07-17 01:08 CDT - US-460
+- Froze the 4.1 renderer surfaces as buildable-against SDK contract: panel slots/watch/manifest entry, styled panel views, keymap action/chord/binding vocabulary with post-decode same-surface conflict check (`KeymapConflictError`), rich render events (`code.snippet`/`diff.render`/`markdown.block`) in the closed `LandoEvent`/`RenderEvent` unions, and subscriber manifest/selector/`PublishedGlobalConfigKey` schemas. Added `@lando/sdk/plugins` (`SubscriberFactory`, `LandoPluginContext.events.publishRender`) plus `PluginManifest.contributes.rendererPanels` and top-level `subscribers`. Shipped the standalone §13.1 panel contract harness from `@lando/sdk/test` (isolated worker, ready/id handshake, bounded binary protocol) — deliberately not in the §4.2 kit. Bundled renderers honor plain-text rich-event fallbacks; `app:logs --no-viewer` is a reserved 4.0 no-op. No rich TTY, panel paint, keymap remapping, or log viewer implementation ships.
+- Verification: typecheck, lint passed; schema freeze, panel contract, rich-fallback, public-schema-contract, and SDK backward-compat spot checks passed; schema snapshot regenerated.
+- **Learnings for future iterations:**
+  - Exported snapshotted structs must stay filter-free at the root; same-surface keymap collisions belong in a separate post-decode step that raises `KeymapConflictError`.
+  - Panel host/worker frames must arm the message listener before `postMessage`, and context payloads should `decodeUnknown` before `encode` so plain JSON fixtures work.
+  - New public schema fields need description annotations (or exemptions); event/error symbols belong in their own API_COMPATIBILITY sections, not the schema-export list.
+---
+
+## 2026-07-17 01:45 CDT - US-460 Review
+- Closed review blockers on the contract freeze: plugin-loader now path-contains `rendererPanels`/`subscribers` modules and rejects duplicate panel/subscriber ids as `PluginManifestError` without importing modules; panel harness init is binary-only transferable frames; keymap conflict checks resolve against frozen defaults; `encodedByteLength` is no longer a public export; panel contract suite export gate covers `makeRendererPanelContractSuite`; regenerated OCLIF compiled manifest so `app:logs --no-viewer` is accepted on the compiled path.
+- Review notes (deferred/rejected): post-registration `watch` membership against the closed CLI lifecycle event registry is deferred with 4.1 panel host wiring (shape/uniqueness remains schema-owned; path/id checks ship now). Full harness purity/coalescing fixture expansion beyond the binary-init and deadline hardening is deferred as non-blocking. Guide-Coverage-Skip: Contract-only freeze of 4.1 renderer schemas with no 4.0 user-facing behavior requiring guide updates.
+- Verification: typecheck, lint passed; plugin-registry, panel contract, schema freeze, exports, and rich-fallback spot checks passed.
+- **Learnings for future iterations:**
+  - Contract-only freezes that add module-bearing manifest contributions must extend `normalizeExternalContributionModules` the same way RemoteSource/Dataset did.
+  - Same-surface keymap validation must merge overrides onto `DEFAULT_KEYMAP_BINDINGS`, not only inspect provided keys.
+---

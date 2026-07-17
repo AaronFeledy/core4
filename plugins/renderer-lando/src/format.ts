@@ -16,13 +16,19 @@ const isMessageEvent = (event: LandoEvent): boolean =>
 const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
 const isImagePullProgressEvent = (event: LandoEvent): boolean => event._tag === "image-pull-progress";
 const isNotifyDesktopEvent = (event: LandoEvent): boolean => event._tag === "notify.desktop";
+const isCodeSnippetEvent = (event: LandoEvent): boolean => event._tag === "code.snippet";
+const isDiffRenderEvent = (event: LandoEvent): boolean => event._tag === "diff.render";
+const isMarkdownBlockEvent = (event: LandoEvent): boolean => event._tag === "markdown.block";
+const isRichRenderEvent = (event: LandoEvent): boolean =>
+  isCodeSnippetEvent(event) || isDiffRenderEvent(event) || isMarkdownBlockEvent(event);
 
 const isRenderableEvent = (event: LandoEvent): boolean =>
   isTaskTreeEvent(event) ||
   isMessageEvent(event) ||
   isPaintBannerEvent(event) ||
   isImagePullProgressEvent(event) ||
-  isNotifyDesktopEvent(event);
+  isNotifyDesktopEvent(event) ||
+  isRichRenderEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
@@ -100,6 +106,18 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
       const message = stream === undefined ? "" : `: ${stream}`;
       const progress = current === undefined ? "" : ` (${current}${total === undefined ? "" : `/${total}`})`;
       return `↓ Pulling ${reference}${message}${progress}`;
+    }
+    case "code.snippet": {
+      const code = asString(event.code) ?? "";
+      const language = asString(event.language);
+      if (language === undefined || language.length === 0) return code;
+      return `\`\`\`${language}\n${code}\n\`\`\``;
+    }
+    case "diff.render": {
+      return asString(event.unified) ?? "";
+    }
+    case "markdown.block": {
+      return asString(event.markdown) ?? "";
     }
     default:
       return null;
