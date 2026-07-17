@@ -8,7 +8,7 @@ import type { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 
 import { TranscriptPathOutsideRootError, assertTranscriptPathContained } from "./transcript-path-boundary.ts";
-import { decodeRanges, lineRanges, safeUtf8End } from "./transcript-tail-lines.ts";
+import { decodeRanges, lineRanges, safeUtf8End, safeUtf8Start } from "./transcript-tail-lines.ts";
 
 const MAX_PAGE_BYTES = 64 * 1024;
 
@@ -85,8 +85,9 @@ const readEndingAt = (handle: FileHandle, identity: FileIdentity, end: number, l
   Effect.gen(function* () {
     const readStart = Math.max(0, end - MAX_PAGE_BYTES);
     const raw = yield* readBytes(handle, readStart, end - readStart);
-    const firstNewline = readStart === 0 ? -1 : raw.indexOf(0x0a);
-    const prefix = readStart === 0 ? 0 : firstNewline < 0 ? raw.length : firstNewline + 1;
+    const safeStart = readStart === 0 ? 0 : safeUtf8Start(raw);
+    const firstNewline = readStart === 0 ? -1 : raw.indexOf(0x0a, safeStart);
+    const prefix = readStart === 0 ? 0 : firstNewline < 0 ? safeStart : firstNewline + 1;
     const safe = raw.subarray(prefix, safeUtf8End(raw));
     const ranges = lineRanges(safe);
     const selected = lineLimit === 0 ? [] : ranges.slice(-lineLimit);
@@ -109,7 +110,9 @@ const readStartingAt = (handle: FileHandle, identity: FileIdentity, start: numbe
     const ranges = lineRanges(bounded);
     const completeRanges =
       readEnd === identity.size ? ranges : ranges.filter(([, end]) => end < bounded.length);
-    const selected = lineLimit === 0 ? [] : completeRanges.slice(0, lineLimit);
+    const availableRanges =
+      completeRanges.length === 0 && bounded.length > 0 ? ranges.slice(0, 1) : completeRanges;
+    const selected = lineLimit === 0 ? [] : availableRanges.slice(0, lineLimit);
     const last = selected.at(-1);
     let selectedEnd = last?.[1] ?? 0;
     while (bounded[selectedEnd] === 0x0d || bounded[selectedEnd] === 0x0a) selectedEnd += 1;

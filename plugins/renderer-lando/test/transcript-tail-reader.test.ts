@@ -54,6 +54,70 @@ test("the scoped transcript reader pages backward and forward from the file tail
   }
 });
 
+test("latest renders a UTF-8-safe bounded suffix of a single giant line", async () => {
+  // Given
+  const directory = await mkdtemp(join(tmpdir(), "lando-transcript-tail-"));
+  const path = AbsolutePath.make(join(directory, "step.log"));
+  const giantLine = `${"é".repeat(50_000)}x`;
+  await writeFile(path, giantLine);
+
+  try {
+    // When
+    const page = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const reader = yield* TranscriptTailReader;
+          const session = yield* reader.open(path, Effect.void);
+          return yield* session.read("latest", 4);
+        }).pipe(Effect.provide(readerLayer(directory))),
+      ),
+    );
+
+    // Then
+    expect(page.lines).toHaveLength(1);
+    const suffix = page.lines[0] ?? "";
+    expect(suffix.length).toBeGreaterThan(0);
+    expect(giantLine.endsWith(suffix)).toBe(true);
+    expect(new TextEncoder().encode(suffix).length).toBeLessThanOrEqual(64 * 1024);
+    expect(suffix).not.toContain("\ufffd");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("older and newer advance through adjacent bounded windows inside a giant line", async () => {
+  // Given
+  const directory = await mkdtemp(join(tmpdir(), "lando-transcript-tail-"));
+  const path = AbsolutePath.make(join(directory, "step.log"));
+  await writeFile(path, `${"a".repeat(70_000)}${"b".repeat(70_000)}${"c".repeat(70_000)}`);
+
+  try {
+    // When
+    const pages = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const reader = yield* TranscriptTailReader;
+          const session = yield* reader.open(path, Effect.void);
+          const latest = yield* session.read("latest", 4);
+          const older = yield* session.read("older", 4);
+          const newer = yield* session.read("newer", 4);
+          return { latest, older, newer };
+        }).pipe(Effect.provide(readerLayer(directory))),
+      ),
+    );
+
+    // Then
+    expect(pages.latest.lines).toHaveLength(1);
+    expect(pages.older.lines).toHaveLength(1);
+    expect(pages.newer.lines).toHaveLength(1);
+    expect(pages.older.lines).not.toEqual(pages.latest.lines);
+    expect(pages.newer.lines).not.toEqual(pages.older.lines);
+    expect(pages.newer.lines).toEqual(pages.latest.lines);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("refresh recovers from transcript truncation and replacement", async () => {
   const directory = await mkdtemp(join(tmpdir(), "lando-transcript-tail-"));
   const path = AbsolutePath.make(join(directory, "step.log"));
