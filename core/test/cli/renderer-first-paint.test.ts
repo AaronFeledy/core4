@@ -10,14 +10,22 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { type LandoEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
+import {
+  type LandoEvent,
+  TaskCompleteEvent,
+  TaskStartEvent,
+  TaskTreeCompleteEvent,
+  TaskTreeStartEvent,
+} from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
 import { renderPlainLine } from "../../src/cli/renderer/format.ts";
-import type { RendererIO } from "../../src/cli/renderer/io.ts";
+import { type RendererIO, createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { TaskTreeViewModel } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
+import { createTestLiveRegionController, makeLiveRegionFixture } from "./renderer-live-region-test-kit.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
 
@@ -42,6 +50,34 @@ const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent
     ...(parentId === undefined ? {} : { parentId }),
     label,
     timestamp: ts,
+  });
+
+const taskComplete = (taskId: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskCompleteEvent)({
+    _tag: "task.complete",
+    taskId,
+    summary: `${taskId} ready`,
+    durationMs: 10,
+    timestamp: ts,
+  });
+
+const treeComplete = (parentId: string, summary: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskTreeCompleteEvent)({
+    _tag: "task.tree.complete",
+    parentId,
+    summary,
+    succeeded: 1,
+    failed: 0,
+    timestamp: ts,
+  });
+
+const waitForConsumer = (condition: () => boolean): Effect.Effect<void, Error> =>
+  Effect.gen(function* () {
+    for (let attempt = 0; attempt < 1_000; attempt += 1) {
+      if (condition()) return;
+      yield* Effect.yieldNow();
+    }
+    return yield* Effect.fail(new Error("Renderer consumer did not reach the expected ordering point."));
   });
 
 /**
@@ -175,5 +211,60 @@ describe("first paint via fake terminal recorder (buffered degradation)", () => 
     const layer = Layer.provideMerge(landoRenderer.makeEventConsumer(recorder.io), EventServiceLive);
     await Effect.runPromise(Effect.scoped(drive(events).pipe(Effect.provide(layer))));
     expect(recorder.chunks).toEqual(events.map((event) => `${renderPlainLine(event)}\n`));
+  });
+});
+
+describe("first paint via the production TTY consumer and fake OpenTUI substrate", () => {
+  test("publishes the live skeleton before completion, then commits and releases the finished tree", async () => {
+    // Given
+    const fixture = makeLiveRegionFixture();
+    const base = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
+    const io = { ...base, externalOutputStream: process.stdout };
+
+    // When
+    const firstPaintCalls = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(treeStart("app", "Starting app", ["web", "db"]));
+          yield* events.publish(taskStart("web", "web service", "app"));
+          yield* waitForConsumer(() =>
+            fixture.calls.some(
+              (call) => call.startsWith("footer:") && call.includes("web service") && call.includes("◌ db"),
+            ),
+          );
+          const callsBeforeCompletion = [...fixture.calls];
+          yield* events.publish(taskComplete("web"));
+          yield* events.publish(treeComplete("app", "Built app"));
+          yield* waitForConsumer(
+            () =>
+              fixture.calls.some((call) => call.startsWith("scrollback:") && call.includes("Built app")) &&
+              fixture.calls.includes("screenMode:main-screen"),
+          );
+          return callsBeforeCompletion;
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, {
+                createLiveRegion: (options) => createTestLiveRegionController(fixture, options),
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Then
+    const firstFooter = firstPaintCalls.find(
+      (call) => call.startsWith("footer:") && call.includes("web service"),
+    );
+    expect(firstFooter).toContain("Starting app (1/2 running)");
+    expect(firstFooter).toContain("web service");
+    expect(firstFooter).toContain("◌ db");
+    expect(firstPaintCalls.some((call) => call.startsWith("scrollback:"))).toBe(false);
+    expect(firstPaintCalls.join("\n")).not.toMatch(/\u001b\[[0-9;]*(?:A|J)/u);
+    expect(fixture.commits.some((text) => text.includes("Built app"))).toBe(true);
+    expect(fixture.calls).toContain("screenMode:main-screen");
   });
 });
