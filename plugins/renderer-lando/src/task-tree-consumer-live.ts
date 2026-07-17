@@ -158,8 +158,10 @@ export const makeTaskTreeConsumerLive = (
             }
             consumeRenderable(event);
           });
-        handleResize = (width, height) =>
-          runInScope(Effect.sync(() => resize(width, height)).pipe(Effect.zipRight(transcriptTail.refresh)));
+        handleResize = (width, height) => {
+          resize(width, height);
+          runInScope(transcriptTail.refresh);
+        };
         const subscribe = io.subscribeInput;
         if (subscribe !== undefined) {
           unsubscribe = subscribe((raw) => {
@@ -214,6 +216,7 @@ export const makeTaskTreeConsumerLive = (
       );
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
+          handleResize = () => {};
           unsubscribe?.();
           const remaining = yield* Queue.takeAll(queue);
           for (const event of remaining) yield* serialized(consume(event));
