@@ -106,6 +106,8 @@ const normalizeExternalContributionModules = async (
   const remoteSources = manifest.contributes?.remoteSources;
   const datasets = manifest.contributes?.datasets;
   const tunnelServices = manifest.contributes?.tunnelServices;
+  const rendererPanels = manifest.contributes?.rendererPanels;
+  const subscribers = manifest.subscribers;
   if (
     globalServices === undefined &&
     downloaders === undefined &&
@@ -113,7 +115,9 @@ const normalizeExternalContributionModules = async (
     interactionServices === undefined &&
     remoteSources === undefined &&
     datasets === undefined &&
-    tunnelServices === undefined
+    tunnelServices === undefined &&
+    rendererPanels === undefined &&
+    subscribers === undefined
   ) {
     return manifest;
   }
@@ -122,6 +126,33 @@ const normalizeExternalContributionModules = async (
     const resolved = await resolvePluginModulePath(packageRoot, String(manifest.name), modulePath);
     return pathToFileURL(resolved).href;
   };
+
+  const normalizeManifestModulePath = async (modulePath: string, kind: string): Promise<string> => {
+    try {
+      return await normalizeContributionModulePath(modulePath);
+    } catch (cause) {
+      if (cause instanceof PluginLoadError) {
+        throw pluginManifestError(
+          `${kind} module path escapes the plugin package root: ${modulePath}`,
+          cause,
+        );
+      }
+      throw cause;
+    }
+  };
+
+  if (rendererPanels !== undefined) {
+    const seenIds = new Set<string>();
+    for (const panel of rendererPanels) {
+      if (seenIds.has(panel.id)) {
+        throw pluginManifestError(
+          `Duplicate rendererPanels id "${panel.id}" in plugin ${String(manifest.name)}`,
+          panel.id,
+        );
+      }
+      seenIds.add(panel.id);
+    }
+  }
 
   const normalizedGlobalServices =
     globalServices === undefined
@@ -186,9 +217,28 @@ const normalizeExternalContributionModules = async (
             module: await normalizeContributionModulePath(contribution.module),
           })),
         );
+  const normalizedRendererPanels =
+    rendererPanels === undefined
+      ? undefined
+      : await Promise.all(
+          rendererPanels.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeManifestModulePath(contribution.module, "rendererPanels"),
+          })),
+        );
+  const normalizedSubscribers =
+    subscribers === undefined
+      ? undefined
+      : await Promise.all(
+          subscribers.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeManifestModulePath(contribution.module, "subscribers"),
+          })),
+        );
 
   return {
     ...manifest,
+    ...(normalizedSubscribers === undefined ? {} : { subscribers: normalizedSubscribers }),
     contributes: {
       ...manifest.contributes,
       ...(normalizedGlobalServices === undefined ? {} : { globalServices: normalizedGlobalServices }),
@@ -200,6 +250,7 @@ const normalizeExternalContributionModules = async (
       ...(normalizedRemoteSources === undefined ? {} : { remoteSources: normalizedRemoteSources }),
       ...(normalizedDatasets === undefined ? {} : { datasets: normalizedDatasets }),
       ...(normalizedTunnelServices === undefined ? {} : { tunnelServices: normalizedTunnelServices }),
+      ...(normalizedRendererPanels === undefined ? {} : { rendererPanels: normalizedRendererPanels }),
     },
   };
 };

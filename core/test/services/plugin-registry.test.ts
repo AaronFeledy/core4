@@ -876,6 +876,174 @@ describe("PluginRegistryLive", () => {
     );
   });
 
+  test("normalizes rendererPanels and subscribers module paths without importing them", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const packageRoot = join(userPluginsRoot, "@example", "panel-plugin", "1.0.0");
+    await mkdir(join(packageRoot, "src"), { recursive: true });
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/panel-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/panel-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              rendererPanels: [
+                {
+                  id: "build-status",
+                  slot: "status-bar",
+                  watch: ["post-start"],
+                  module: "./src/panel.mjs",
+                },
+              ],
+            },
+            subscribers: [
+              {
+                id: "audit",
+                selectors: [{ event: "post-start" }],
+                module: "./src/subscriber.mjs",
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(packageRoot, "index.js"), "export {};\n");
+    await writeFile(
+      join(packageRoot, "src", "panel.mjs"),
+      "export default { id: 'build-status', render: () => [] };\n",
+    );
+    await writeFile(join(packageRoot, "src", "subscriber.mjs"), "export default () => () => {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/panel-plugin", version: "1.0.0", path: packageRoot },
+    ]);
+
+    const manifest = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.load("@example/panel-plugin")),
+    );
+
+    expect(manifest.contributes?.rendererPanels?.[0]?.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "panel.mjs")).href,
+    );
+    expect(manifest.subscribers?.[0]?.module).toBe(
+      pathToFileURL(join(packageRoot, "src", "subscriber.mjs")).href,
+    );
+  });
+
+  test("rejects escaping rendererPanels modules as PluginManifestError without blocking healthy plugins", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "broken-panel-plugin", "1.0.0");
+    const healthyRoot = await writeInstalledPluginPackage(userPluginsRoot, {
+      name: "@example/healthy-user-plugin",
+      version: "1.1.0",
+      description: "healthy user source",
+    });
+    await mkdir(brokenRoot, { recursive: true });
+    await writeFile(join(userPluginsRoot, "outside.ts"), "export {};\n");
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/broken-panel-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/broken-panel-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              rendererPanels: [
+                {
+                  id: "escape",
+                  slot: "status-bar",
+                  watch: ["post-start"],
+                  module: "../../../outside.ts",
+                },
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(brokenRoot, "index.js"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/broken-panel-plugin", version: "1.0.0", path: brokenRoot },
+      { name: "@example/healthy-user-plugin", version: "1.1.0", path: healthyRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/broken-panel-plugin")).toBeUndefined();
+    expect(manifests.find((manifest) => manifest.name === "@example/healthy-user-plugin")).toMatchObject({
+      version: "1.1.0",
+    });
+    expect(warnings).toEqual([expect.stringContaining("PluginManifestError")]);
+    expect(warnings[0]).toContain("rendererPanels module path escapes");
+  });
+
+  test("rejects duplicate plugin-local rendererPanels ids as PluginManifestError", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "dup-panel-plugin", "1.0.0");
+    await mkdir(join(brokenRoot, "src"), { recursive: true });
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/dup-panel-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/dup-panel-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            contributes: {
+              rendererPanels: [
+                {
+                  id: "build-status",
+                  slot: "status-bar",
+                  watch: ["post-start"],
+                  module: "./src/a.mjs",
+                },
+                {
+                  id: "build-status",
+                  slot: "doctor:summary",
+                  watch: ["post-stop"],
+                  module: "./src/b.mjs",
+                },
+              ],
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(brokenRoot, "index.js"), "export {};\n");
+    await writeFile(join(brokenRoot, "src", "a.mjs"), "export {};\n");
+    await writeFile(join(brokenRoot, "src", "b.mjs"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/dup-panel-plugin", version: "1.0.0", path: brokenRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/dup-panel-plugin")).toBeUndefined();
+    expect(warnings).toEqual([expect.stringContaining("PluginManifestError")]);
+    expect(warnings[0]).toContain('Duplicate rendererPanels id "build-status"');
+  });
+
   test("rejects external contribution modules outside the package root without blocking healthy plugins", async () => {
     const userPluginsRoot = join(userDataRoot, "plugins");
     const brokenRoot = join(userPluginsRoot, "@example", "broken-module-plugin", "1.0.0");
