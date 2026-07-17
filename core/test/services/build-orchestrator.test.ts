@@ -3,7 +3,7 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Effect, Fiber, Layer, Stream } from "effect";
+import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
 import { ProviderInternalError } from "@lando/core/errors";
 import {
@@ -190,6 +190,7 @@ describe("BuildOrchestratorLive", () => {
         Effect.gen(function* () {
           const subscriber = yield* eventService
             .subscribe("*")
+            .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
             .pipe(Stream.take(4), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
@@ -215,6 +216,54 @@ describe("BuildOrchestratorLive", () => {
       ["pre-build", ServiceName.make("db")],
       ["post-build", ServiceName.make("db")],
     ]);
+  });
+
+  test("publishes transcript-bearing task lifecycle events for real service builds", async () => {
+    await withTempUserRoots(async () => {
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+
+      const events = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(plan);
+            return [...(yield* Queue.takeAll(queue))];
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      const treeStart = events.find((event) => event._tag === "task.tree.start");
+      expect(treeStart).toMatchObject({
+        parentId: `build-artifact-${String(plan.id)}`,
+        children: [String(web.name), String(db.name)],
+      });
+      const starts = events.filter((event) => event._tag === "task.start");
+      expect(starts).toHaveLength(2);
+      expect(starts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            taskId: String(web.name),
+            transcriptPath: expect.stringContaining(
+              `/builds/${String(plan.id)}/artifact/${String(web.name)}/`,
+            ),
+          }),
+          expect.objectContaining({
+            taskId: String(db.name),
+            transcriptPath: expect.stringContaining(
+              `/builds/${String(plan.id)}/artifact/${String(db.name)}/`,
+            ),
+          }),
+        ]),
+      );
+      expect(events.filter((event) => event._tag === "task.complete")).toHaveLength(2);
+      expect(events.filter((event) => event._tag === "task.tree.complete")).toHaveLength(1);
+    });
   });
 
   test("short-circuits on the original provider failure", async () => {
@@ -384,6 +433,7 @@ describe("BuildOrchestratorLive", () => {
         Effect.gen(function* () {
           const subscriber = yield* eventService
             .subscribe("*")
+            .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
             .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
@@ -439,6 +489,7 @@ describe("BuildOrchestratorLive", () => {
           Effect.gen(function* () {
             const subscriber = yield* eventService
               .subscribe("*")
+              .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
               .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
             yield* Effect.sleep("10 millis");
             yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
@@ -488,6 +539,7 @@ describe("BuildOrchestratorLive", () => {
           expect(profileReads).toBe(0);
           const subscriber = yield* eventService
             .subscribe("*")
+            .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
             .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* orchestrator.build(secretPlan);

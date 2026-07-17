@@ -1,13 +1,18 @@
-import { mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../../../core/src/config/paths.ts";
 import { TranscriptTailReader, TranscriptTailReaderLive } from "../src/transcript-tail-reader.ts";
+
+const readerLayer = (userDataRoot: string) =>
+  TranscriptTailReaderLive.pipe(Layer.provide(Layer.succeed(PathsService, makeLandoPaths({ userDataRoot }))));
 
 test("the scoped transcript reader pages backward and forward from the file tail", async () => {
   const directory = await mkdtemp(join(tmpdir(), "lando-transcript-tail-"));
@@ -25,7 +30,7 @@ test("the scoped transcript reader pages backward and forward from the file tail
           const resized = yield* session.read("refresh", 5);
           const newer = yield* session.read("newer", 3);
           return { latest, older, resized, newer };
-        }).pipe(Effect.provide(TranscriptTailReaderLive)),
+        }).pipe(Effect.provide(readerLayer(directory))),
       ),
     );
 
@@ -57,7 +62,7 @@ test("refresh recovers from transcript truncation and replacement", async () => 
           yield* Effect.promise(() => rename(replacement, path));
           const replaced = yield* session.read("refresh", 4);
           return { truncated, replaced };
-        }).pipe(Effect.provide(TranscriptTailReaderLive)),
+        }).pipe(Effect.provide(readerLayer(directory))),
       ),
     );
 
@@ -84,7 +89,7 @@ test("bounded reads discard a partial first line and incomplete trailing UTF-8 c
           const reader = yield* TranscriptTailReader;
           const session = yield* reader.open(path, Effect.void);
           return yield* session.read("latest", 4);
-        }).pipe(Effect.provide(TranscriptTailReaderLive)),
+        }).pipe(Effect.provide(readerLayer(directory))),
       ),
     );
 
@@ -108,12 +113,93 @@ test.skipIf(process.platform === "win32")("the reader rejects symlink transcript
           const reader = yield* TranscriptTailReader;
           const session = yield* reader.open(path, Effect.void);
           return yield* Effect.exit(session.read("latest", 4));
-        }).pipe(Effect.provide(TranscriptTailReaderLive)),
+        }).pipe(Effect.provide(readerLayer(directory))),
       ),
     );
 
     expect(exit._tag).toBe("Failure");
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("the reader rejects transcript paths outside the injected user data root", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-transcript-root-"));
+  const outside = await mkdtemp(join(tmpdir(), "lando-transcript-outside-"));
+  const path = AbsolutePath.make(join(outside, "step.log"));
+  await writeFile(path, "must not render\n");
+
+  try {
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const reader = yield* TranscriptTailReader;
+          return yield* Effect.exit(reader.open(path, Effect.void));
+        }).pipe(Effect.provide(readerLayer(root))),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
+  }
+});
+
+test.skipIf(process.platform === "win32")(
+  "the reader rejects a lexical in-root path whose parent symlink escapes the root",
+  async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-transcript-root-"));
+    const outside = await mkdtemp(join(tmpdir(), "lando-transcript-outside-"));
+    await writeFile(join(outside, "step.log"), "must not render\n");
+    await symlink(outside, join(root, "builds"));
+    const path = AbsolutePath.make(join(root, "builds", "step.log"));
+
+    try {
+      const exit = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const reader = yield* TranscriptTailReader;
+            return yield* Effect.exit(reader.open(path, Effect.void));
+          }).pipe(Effect.provide(readerLayer(root))),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+      await rm(outside, { recursive: true, force: true });
+    }
+  },
+);
+
+test.skipIf(process.platform === "win32")("the reader revalidates containment before each read", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-transcript-root-"));
+  const outside = await mkdtemp(join(tmpdir(), "lando-transcript-outside-"));
+  const builds = join(root, "builds");
+  const movedBuilds = join(root, "builds-original");
+  await mkdir(builds);
+  const path = AbsolutePath.make(join(builds, "step.log"));
+  await writeFile(path, "inside\n");
+  await writeFile(join(outside, "step.log"), "outside\n");
+
+  try {
+    const exit = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const reader = yield* TranscriptTailReader;
+          const session = yield* reader.open(path, Effect.void);
+          yield* session.read("latest", 4);
+          yield* Effect.promise(() => rename(builds, movedBuilds));
+          yield* Effect.promise(() => symlink(outside, builds));
+          return yield* Effect.exit(session.read("refresh", 4));
+        }).pipe(Effect.provide(readerLayer(root))),
+      ),
+    );
+
+    expect(exit._tag).toBe("Failure");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });

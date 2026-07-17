@@ -2,9 +2,13 @@ import { type FSWatcher, watch } from "node:fs";
 import { type FileHandle, lstat, open } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 
-import { Context, Data, Effect, Layer, Queue, type Scope } from "effect";
+import { Context, Data, Effect, Layer, Option, Queue, type Scope } from "effect";
 
 import type { AbsolutePath } from "@lando/sdk/schema";
+import { PathsService } from "@lando/sdk/services";
+
+import { TranscriptPathOutsideRootError, assertTranscriptPathContained } from "./transcript-path-boundary.ts";
+import { decodeRanges, lineRanges, safeUtf8End } from "./transcript-tail-lines.ts";
 
 const MAX_PAGE_BYTES = 64 * 1024;
 
@@ -56,42 +60,6 @@ type Cursor = {
   readonly end: number;
   readonly atLatest: boolean;
   readonly page: TranscriptTailPage;
-};
-
-const safeUtf8End = (bytes: Uint8Array): number => {
-  let continuationCount = 0;
-  for (let index = bytes.length - 1; index >= 0 && continuationCount < 3; index -= 1) {
-    const byte = bytes[index];
-    if (byte === undefined) return bytes.length;
-    if ((byte & 0xc0) === 0x80) {
-      continuationCount += 1;
-      continue;
-    }
-    const expected = byte < 0x80 ? 0 : byte < 0xe0 ? 1 : byte < 0xf0 ? 2 : byte < 0xf8 ? 3 : 0;
-    return continuationCount < expected ? index : bytes.length;
-  }
-  return continuationCount === 0 ? bytes.length : bytes.length - continuationCount;
-};
-
-const lineRanges = (bytes: Uint8Array): ReadonlyArray<readonly [number, number]> => {
-  const ranges: Array<readonly [number, number]> = [];
-  let start = 0;
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (bytes[index] !== 0x0a) continue;
-    const end = index > start && bytes[index - 1] === 0x0d ? index - 1 : index;
-    ranges.push([start, end]);
-    start = index + 1;
-  }
-  if (start < bytes.length) ranges.push([start, bytes.length]);
-  return ranges;
-};
-
-const decodeRanges = (
-  bytes: Uint8Array,
-  ranges: ReadonlyArray<readonly [number, number]>,
-): ReadonlyArray<string> => {
-  const decoder = new TextDecoder();
-  return ranges.map(([start, end]) => decoder.decode(bytes.subarray(start, end)));
 };
 
 const readBytes = (handle: FileHandle, position: number, length: number) =>
@@ -155,12 +123,19 @@ const readStartingAt = (handle: FileHandle, identity: FileIdentity, start: numbe
     } satisfies Cursor;
   });
 
-const makeSession = (path: AbsolutePath): TranscriptTailSession => {
+const assertContained = (userDataRoot: string, path: AbsolutePath) =>
+  Effect.tryPromise({
+    try: () => assertTranscriptPathContained(userDataRoot, path),
+    catch: (cause) => new TranscriptTailReadError({ path, cause }),
+  });
+
+const makeSession = (userDataRoot: string, path: AbsolutePath): TranscriptTailSession => {
   let cursor: Cursor | undefined;
   const read = (direction: TranscriptTailPageDirection, lineLimit: number) =>
     Effect.acquireUseRelease(
       Effect.tryPromise({
         try: async () => {
+          await Effect.runPromise(assertContained(userDataRoot, path));
           const before = await lstat(path);
           if (!before.isFile() || before.isSymbolicLink()) throw new InvalidTranscriptFileError(path);
           const handle = await open(path, "r");
@@ -169,6 +144,7 @@ const makeSession = (path: AbsolutePath): TranscriptTailSession => {
             await handle.close();
             throw new InvalidTranscriptFileError(path);
           }
+          await Effect.runPromise(assertContained(userDataRoot, path));
           return handle;
         },
         catch: (cause) => cause,
@@ -213,14 +189,19 @@ const makeSession = (path: AbsolutePath): TranscriptTailSession => {
   return { read };
 };
 
-const openReader = (path: AbsolutePath, onChange: Effect.Effect<void>) =>
+const openReader = (userDataRoot: string, path: AbsolutePath, onChange: Effect.Effect<void>) =>
   Effect.gen(function* () {
+    yield* assertContained(userDataRoot, path);
     const notifications = yield* Queue.dropping<void>(1);
     yield* Effect.acquireRelease(
       Effect.try({
         try: (): FSWatcher => {
           const watcher = watch(dirname(path), (_eventType, filename) => {
-            if (filename === null || basename(filename.toString()) === basename(path)) {
+            if (
+              filename === null ||
+              filename === undefined ||
+              basename(filename.toString()) === basename(path)
+            ) {
               Effect.runSync(Queue.offer(notifications, undefined));
             }
           });
@@ -232,7 +213,27 @@ const openReader = (path: AbsolutePath, onChange: Effect.Effect<void>) =>
       (watcher) => Effect.sync(() => watcher.close()),
     );
     yield* Effect.forkScoped(Effect.forever(Queue.take(notifications).pipe(Effect.zipRight(onChange))));
-    return makeSession(path);
+    return makeSession(userDataRoot, path);
   });
 
-export const TranscriptTailReaderLive = Layer.succeed(TranscriptTailReader, { open: openReader });
+export const TranscriptTailReaderLive = Layer.effect(
+  TranscriptTailReader,
+  Effect.serviceOption(PathsService).pipe(
+    Effect.map((paths) =>
+      Option.isSome(paths)
+        ? {
+            open: (path: AbsolutePath, onChange: Effect.Effect<void>) =>
+              openReader(paths.value.roots.userDataRoot, path, onChange),
+          }
+        : {
+            open: (path: AbsolutePath) =>
+              Effect.fail(
+                new TranscriptTailReadError({
+                  path,
+                  cause: new TranscriptPathOutsideRootError(path),
+                }),
+              ),
+          },
+    ),
+  ),
+);

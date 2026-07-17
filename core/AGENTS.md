@@ -34,6 +34,9 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 - `task.tree.start` first-paints pending child placeholders and must not emit rewind bytes on that first frame; tests assert absence of `cursorUp`/`eraseDown`, not absence of all ANSI SGR.
 - `--tail`/`--no-tail` is still deferred; do not wire a CLI flag. Expand/collapse events remain non-renderable in `format.ts` to avoid publish/consume echo loops.
 - TTY key input is wired inside the renderer Live layer (`makeTaskTreeInputLive`), not command modules; fake input uses `createBufferedRendererIO({ isTTY: true, terminalRows }).injectKey(...)`.
+- The split-footer substrate is acquired LAZILY on the first `task.tree.start` (`task-tree-consumer-live.ts`), not at layer construction; non-tree events (`message.*`, `log.line`) before any tree stay line-mode. Eager acquisition would fight interactive prompts for the same terminal.
+- The alt-screen full-tail reader (`transcript-tail-reader.ts`) requires an injected `PathsService` and fails closed without it. It contains the branded transcript path against `roots.userDataRoot` both lexically and by realpath, revalidating at open and around every read, so a parent-symlink swap after open is rejected. Input-generated `task.detail.expand`/`collapse` publish only AFTER the fallible screen transition succeeds; a failed transition restores view state and suppresses publication.
+- Imperative renderer output (`Renderer.message.*`/`output.*`) routes through `outputJournalFor(io)` — one bounded journal per `RendererIO`. It remembers pre-acquisition writes and, on `attach`, replays them into scrollback exactly once so nothing printed before the tree is lost. Publishing a transcript path on `task.start` is renderer-facing metadata only; producing the transcript file/stream and `task.detail` remain §6.13 producer work, and the reader degrades gracefully (collapse, no false expand) when the file is absent.
 
 ## CLI Dispatch Parity
 

@@ -9,6 +9,9 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Effect, Layer, LogLevel, Logger, Queue, Schema } from "effect";
 
 import {
@@ -22,13 +25,15 @@ import {
 } from "@lando/sdk/events";
 import type { RendererIO } from "@lando/sdk/renderer";
 import { AbsolutePath } from "@lando/sdk/schema";
-import { EventService } from "@lando/sdk/services";
+import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 
 import { createBufferedRendererIO } from "../../../core/src/cli/renderer/io.ts";
+import { makeLandoPaths } from "../../../core/src/config/paths.ts";
 import { EventServiceLive } from "../../../core/src/services/event-service.ts";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
 import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
+import { makeLandoService } from "../src/renderer-service.ts";
 
 type TranscriptTailPageDirection = "latest" | "older" | "newer" | "refresh";
 interface TranscriptTailReaderShape {
@@ -96,6 +101,7 @@ const warn = (body: string): LandoEvent =>
 type ControllerCall =
   | { readonly kind: "setFooter"; readonly lines: ReadonlyArray<string> }
   | { readonly kind: "commitScrollback"; readonly text: string }
+  | { readonly kind: "rememberScrollback"; readonly text: string }
   | { readonly kind: "requestLive" }
   | { readonly kind: "dropLive" }
   | { readonly kind: "enterFullTail" }
@@ -109,6 +115,9 @@ class FakeController {
   }
   commitScrollback(text: string): void {
     this.calls.push({ kind: "commitScrollback", text });
+  }
+  rememberScrollback(text: string): void {
+    this.calls.push({ kind: "rememberScrollback", text });
   }
   requestLive(): void {
     this.calls.push({ kind: "requestLive" });
@@ -214,6 +223,229 @@ afterEach(() => {
 });
 
 describe("makeLandoEventConsumer — split-footer substrate routing", () => {
+  test("acquires the split-footer lazily on the first task tree event", async () => {
+    const { io, stdout } = ttyIo();
+    const controller = new FakeController();
+    let acquisitions = 0;
+    await Effect.runPromise(
+      drive(
+        io,
+        () => {
+          acquisitions += 1;
+          return Promise.resolve(controller);
+        },
+        [warn("prompt-only output")],
+      ),
+    );
+
+    expect(acquisitions).toBe(0);
+    expect(stdout()).toContain("prompt-only output");
+  });
+
+  test("renderer callbacks retained past scope close cannot mutate the live region", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    let resize: ((width: number, height: number) => void) | undefined;
+
+    await Effect.runPromise(
+      drive(
+        io,
+        (options) => {
+          resize = options.onResize;
+          return Promise.resolve(controller);
+        },
+        [treeStart(["web"]), taskStart("web")],
+      ),
+    );
+    const callsAfterClose = controller.calls.length;
+
+    resize?.(40, 12);
+    await Bun.sleep(20);
+
+    expect(controller.calls).toHaveLength(callsAfterClose);
+  });
+
+  test("does not publish expand when the alternate-screen transition fails", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    controller.enterFullTail = () => {
+      throw new Error("alternate screen unavailable");
+    };
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw output"]);
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+
+    const published = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const collector = yield* events.subscribeQueue;
+          yield* events.publish(treeStart(["web"]));
+          yield* events.publish(taskStart("web", transcriptPath));
+          yield* Effect.sleep("20 millis");
+          inject?.("\r");
+          yield* Effect.sleep("20 millis");
+          return [...(yield* Queue.takeAll(collector))];
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(published.some((event) => event._tag === "task.detail.expand")).toBe(false);
+  });
+
+  test("does not publish collapse when restoring split-footer mode fails", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw output"]);
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+
+    const published = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const collector = yield* events.subscribeQueue;
+          yield* events.publish(treeStart(["web"]));
+          yield* events.publish(taskStart("web", transcriptPath));
+          yield* Effect.sleep("20 millis");
+          inject?.("\r");
+          yield* Effect.sleep("20 millis");
+          controller.exitFullTail = () => {
+            throw new Error("split footer unavailable");
+          };
+          inject?.("\x1b");
+          yield* Effect.sleep("20 millis");
+          return [...(yield* Queue.takeAll(collector))];
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(published.some((event) => event._tag === "task.detail.expand")).toBe(true);
+    expect(published.some((event) => event._tag === "task.detail.collapse")).toBe(false);
+  });
+
+  test("the default transcript reader captures the injected PathsService root", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-renderer-transcript-root-"));
+    const builds = join(root, "builds");
+    await mkdir(builds);
+    const transcriptPath = AbsolutePath.make(join(builds, "web.log"));
+    await writeFile(transcriptPath, "persisted output\n");
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    const dependencies = Layer.merge(
+      EventServiceLive,
+      Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: root })),
+    );
+
+    try {
+      await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const events = yield* EventService;
+            yield* events.publish(treeStart(["web"]));
+            yield* events.publish(taskStart("web", transcriptPath));
+            yield* Effect.sleep("20 millis");
+            inject?.("\r");
+            yield* Effect.sleep("20 millis");
+          }).pipe(
+            Effect.provide(
+              Layer.provideMerge(
+                makeLandoEventConsumer(interactiveIo, {
+                  createLiveRegion: () => Promise.resolve(controller),
+                }),
+                dependencies,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+      expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("persisted output");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("journals imperative renderer output for split-footer replay", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const renderer = yield* Renderer;
+          const events = yield* EventService;
+          yield* renderer.message.info("before tree");
+          yield* events.publish(treeStart(["web"]));
+          yield* events.publish(taskStart("web"));
+          yield* Effect.sleep("20 millis");
+          yield* renderer.output.stdout("after tree\n");
+          yield* Effect.sleep("20 millis");
+        }).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              makeLandoService(io),
+              Layer.provideMerge(
+                makeLandoEventConsumer(io, {
+                  createLiveRegion: () => Promise.resolve(controller),
+                }),
+                EventServiceLive,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const remembered = controller.calls.find((call) => call.kind === "rememberScrollback");
+    expect(remembered?.kind === "rememberScrollback" && remembered.text).toContain("before tree");
+    expect(controller.calls).toContainEqual({ kind: "commitScrollback", text: "after tree\n" });
+  });
+
   test("expanded content comes from the transcript reader and live appends refresh it", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();

@@ -12,11 +12,13 @@ import {
   RuntimeProviderRegistry,
   StateStore,
 } from "@lando/sdk/services";
-import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
+import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "../redaction/service.ts";
-import { buildKeyForService, buildStepsFor } from "./build-key.ts";
+import { runProviderBuild, serviceWithArtifact } from "./build-artifact-runner.ts";
+import { buildKeyForService } from "./build-key.ts";
 import { findCompleteBuildResult, openScratchBuildResults, recordBuildResult } from "./build-results.ts";
+import { type BuildTaskProgress, makeBuildTaskProgress } from "./build-task-progress.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
@@ -103,39 +105,6 @@ const publishBuildStepSkip = (
     timestamp: timestamp(),
   });
 
-const runProviderBuild = (
-  provider: RuntimeProviderShape,
-  plan: AppPlan,
-  step: BuildStep,
-): Effect.Effect<ArtifactRef, ProviderError> =>
-  Effect.gen(function* () {
-    const artifact = step.service.artifact;
-    if (artifact?.kind === "ref" && buildStepsFor(step.service).length === 0) {
-      if (provider.capabilities.artifactPull) {
-        const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
-        if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;
-        return { ...pulled, digest: artifact.digest };
-      }
-      return {
-        providerId: plan.provider,
-        ref: artifact.ref,
-        ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
-      };
-    }
-    return yield* Effect.scoped(
-      provider.buildArtifact({ app: plan.id, service: step.service.name, plan, buildKey: step.buildKey }),
-    );
-  });
-
-const serviceWithArtifact = (service: ServicePlan, artifact: ArtifactRef): ServicePlan => ({
-  ...service,
-  artifact: {
-    kind: "ref",
-    ref: artifact.ref,
-    ...(artifact.digest === undefined ? {} : { digest: artifact.digest }),
-  },
-});
-
 const transcriptPathFor = (
   userDataRoot: string,
   plan: AppPlan,
@@ -151,12 +120,13 @@ const buildService = (input: {
   readonly events: Context.Tag.Service<typeof EventService>;
   readonly paths: Context.Tag.Service<typeof PathsService>;
   readonly provider: RuntimeProviderShape;
+  readonly progress: BuildTaskProgress;
   readonly plan: AppPlan;
   readonly service: ServicePlan;
   readonly stateStore: Context.Tag.Service<typeof StateStore>;
 }) =>
   Effect.gen(function* () {
-    const { events, paths, provider, plan, service, stateStore } = input;
+    const { events, paths, progress, provider, plan, service, stateStore } = input;
     const redaction = yield* Effect.serviceOption(RedactionService);
     const redactor =
       redaction._tag === "Some"
@@ -165,6 +135,7 @@ const buildService = (input: {
     const context = redactedBuildContext(redactor, plan, service);
     const step = yield* buildStepFor(provider, service);
     const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
+    yield* progress.startTask(service, transcriptPath);
     const bucket = isScratchPlan(plan)
       ? yield* openScratchBuildResults(stateStore).pipe(
           Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
@@ -186,11 +157,13 @@ const buildService = (input: {
           (service.artifact?.kind === "ref" && service.artifact.ref === complete.artifactRef
             ? service.artifact.digest
             : undefined);
-        return serviceWithArtifact(service, {
+        const cachedService = serviceWithArtifact(service, {
           providerId: plan.provider,
           ref: complete.artifactRef,
           ...(digest === undefined ? {} : { digest }),
         });
+        yield* progress.completeTask(service, `${String(service.name)} cached`, 0);
+        return cachedService;
       }
     }
 
@@ -204,19 +177,23 @@ const buildService = (input: {
     });
 
     const started = performance.now();
-    const artifact = yield* runProviderBuild(provider, plan, step).pipe(
+    const artifact = yield* runProviderBuild(provider, plan, service, step.buildKey).pipe(
       Effect.tapError(() =>
-        bucket === undefined
-          ? Effect.void
-          : recordBuildResult(bucket, {
+        Effect.gen(function* () {
+          const durationMs = performance.now() - started;
+          if (bucket !== undefined) {
+            yield* recordBuildResult(bucket, {
               buildKey: step.buildKey,
               service: service.name,
               phase: step.phase,
               outcome: "fail",
               exitCode: 1,
-              durationMs: performance.now() - started,
+              durationMs,
               transcriptPath,
-            }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause))),
+            }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+          }
+          yield* progress.failTask(service, durationMs);
+        }),
       ),
     );
     if (bucket !== undefined) {
@@ -241,6 +218,7 @@ const buildService = (input: {
       providerId: context.providerId,
       timestamp: timestamp(),
     });
+    yield* progress.completeTask(service, `Built ${String(service.name)}`, performance.now() - started);
     return serviceWithArtifact(service, artifact);
   });
 
@@ -258,13 +236,16 @@ export const BuildOrchestratorLive = Layer.effect(
       build: (plan) =>
         Effect.gen(function* () {
           const provider = yield* registry.select(plan);
+          const servicePlans = Object.values(plan.services);
+          const progress = makeBuildTaskProgress(events, plan);
+          const started = performance.now();
+          yield* progress.startTree;
           const services = yield* Effect.forEach(
-            Object.values(plan.services),
-            (service) => buildService({ events, paths, provider, plan, service, stateStore }),
-            {
-              concurrency: 1,
-            },
-          );
+            servicePlans,
+            (service) => buildService({ events, paths, progress, provider, plan, service, stateStore }),
+            { concurrency: 1 },
+          ).pipe(Effect.tapError(() => progress.failTree(performance.now() - started)));
+          yield* progress.completeTree(performance.now() - started);
           return {
             ...plan,
             services: Object.fromEntries(services.map((service) => [service.name, service])),

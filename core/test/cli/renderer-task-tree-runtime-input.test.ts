@@ -12,6 +12,7 @@ import { EventServiceLive } from "../../src/services/event-service.ts";
 class FakeLiveRegion {
   setFooter(): void {}
   commitScrollback(): void {}
+  rememberScrollback(): void {}
   requestLive(): void {}
   dropLive(): void {}
   resize(): void {}

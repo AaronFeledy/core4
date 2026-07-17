@@ -303,7 +303,7 @@ describe("LiveRegionController", () => {
 
     expect(fixture.calls).toEqual([
       "resize:42x12",
-      "reset:false",
+      "reset:true",
       "externalOutputMode:passthrough",
       "cursor:1,12:false",
       "externalOutputMode:capture-stdout",
@@ -324,7 +324,7 @@ describe("LiveRegionController", () => {
     expect(fixture.state().footerHeight).toBe(3);
   });
 
-  test("resets without replaying scrollback that is already native saved history", async () => {
+  test("destructively resets and semantically replays retained scrollback", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
     controller.resize(8, 4);
@@ -336,7 +336,7 @@ describe("LiveRegionController", () => {
 
     expect(fixture.calls).toEqual([
       "scrollback:kept",
-      "reset:false",
+      "reset:true",
       "scrollback:kept",
       "externalOutputMode:passthrough",
       "cursor:1,4:false",
@@ -344,6 +344,22 @@ describe("LiveRegionController", () => {
       "footer:footer",
     ]);
     expect(fixture.commits).toEqual(["kept", "kept"]);
+  });
+
+  test("destructive replay restores remembered imperative output exactly once", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.resize(20, 5);
+    controller.setFooter(["footer"]);
+    controller.rememberScrollback("imperative message\n");
+    fixture.calls.length = 0;
+
+    controller.reset();
+
+    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual(["reset:true"]);
+    expect(fixture.calls.filter((call) => call === "scrollback:imperative message")).toEqual([
+      "scrollback:imperative message",
+    ]);
   });
 
   test("replays only the bounded visible suffix across repeated resizes", async () => {
@@ -367,7 +383,7 @@ describe("LiveRegionController", () => {
       "scrollback:five",
       "scrollback:six",
     ]);
-    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual(["reset:false", "reset:false"]);
+    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual(["reset:true", "reset:true"]);
   });
 
   test("accounts for display-cell wrapping when bounding the resize suffix", async () => {
@@ -429,7 +445,7 @@ describe("LiveRegionController", () => {
     fixture.emitResize();
 
     expect(fixture.calls).toEqual([
-      "reset:false",
+      "reset:true",
       "scrollback:kept",
       "externalOutputMode:passthrough",
       "cursor:1,12:false",

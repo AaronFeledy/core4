@@ -47,17 +47,24 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   }
 
   commitScrollback(text: string): void {
-    const rows = (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
-    for (const row of rows) {
-      const line = this.replay.line(row);
+    for (const line of this.linesFor(text)) {
       if (this.renderer.screenMode === "alternate-screen") {
         this.deferredLines.push(line);
         continue;
       }
       this.replay.push(line);
       if (this.renderer.screenMode === "split-footer") this.writeScrollback(line);
-      else this.writePassthrough(`${row}\n`);
+      else this.writePassthrough(`${line.chunks.map((chunk) => chunk.text).join("")}\n`);
     }
+  }
+
+  rememberScrollback(text: string): void {
+    for (const line of this.linesFor(text)) this.replay.push(line);
+  }
+
+  private linesFor(text: string): ReadonlyArray<ReplayLine> {
+    const rows = (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
+    return rows.map((row) => this.replay.line(row));
   }
 
   private writeScrollback(line: ReplayLine): void {
@@ -142,7 +149,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   }
 
   private resetReplaySurface(): void {
-    this.renderer.resetSplitFooterForReplay({ clearSavedLines: false });
+    this.renderer.resetSplitFooterForReplay({ clearSavedLines: true });
     for (const line of this.replay.retainedLines()) this.writeScrollback(line);
   }
 

@@ -5,6 +5,7 @@ import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { renderPlainLine } from "./format.ts";
+import { outputJournalFor } from "./renderer-output-journal.ts";
 
 const makeEventConsumerLive = (
   handle: (event: LandoEvent) => void,
@@ -31,10 +32,11 @@ const makeEventConsumerLive = (
 const nowTimestamp = (): DateTime.Utc => DateTime.unsafeMake(new Date().toISOString());
 
 const makeMessageContract = (io: RendererIO) => {
+  const output = outputJournalFor(io);
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
       const line = renderPlainLine(event);
-      if (line !== null) io.writeStdout(`${line}\n`);
+      if (line !== null) output.writeStdout(`${line}\n`);
     });
   return {
     info: (body: string): Effect.Effect<void> =>
@@ -53,14 +55,20 @@ const makeMessageContract = (io: RendererIO) => {
 };
 
 export const makeLandoService = (io: RendererIO): Layer.Layer<Renderer> =>
-  Layer.succeed(Renderer, {
-    id: "lando",
-    message: makeMessageContract(io),
-    output: {
-      stdout: (chunk) => Effect.sync(() => io.writeStdout(chunk)),
-      stderr: (chunk) => Effect.sync(() => io.writeStderr(chunk)),
-    },
-  });
+  Layer.succeed(
+    Renderer,
+    (() => {
+      const output = outputJournalFor(io);
+      return {
+        id: "lando",
+        message: makeMessageContract(io),
+        output: {
+          stdout: (chunk: string) => Effect.sync(() => output.writeStdout(chunk)),
+          stderr: (chunk: string) => Effect.sync(() => output.writeStderr(chunk)),
+        },
+      };
+    })(),
+  );
 
 export const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeEventConsumerLive((event) => {
