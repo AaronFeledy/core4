@@ -231,7 +231,10 @@ describe("TaskTreeViewModel — new tree replaces prior single-tree state", () =
     expect(vm.hasAnimatedAffordance()).toBe(false);
     expect(vm.snapshot().activeTaskIds).toEqual([]);
 
-    const placeholders = vm.frameLines().map(stripAnsi).filter((line) => line.includes("◌"));
+    const placeholders = vm
+      .frameLines()
+      .map(stripAnsi)
+      .filter((line) => line.includes("◌"));
     expect(placeholders).toHaveLength(1);
     expect(placeholders[0]).toContain("◌ apply-db");
   });
