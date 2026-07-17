@@ -143,4 +143,32 @@ describe("appSteps", () => {
       edges: ["web:app:prepare -> web:app:install", "web:app:install -> web:app:prepare"],
     });
   });
+
+  test("keeps valid app steps when an artifact step uses a different command shape", () => {
+    // Given
+    const plan = planWithSteps([
+      { id: "image", phase: "build", command: ["prepare-image"] },
+      { id: "install", phase: "app", command: { command: ["npm", "install"] } },
+    ]);
+
+    // When
+    const steps = appSteps(plan);
+
+    // Then
+    expect(steps.map(({ step }) => step.id)).toEqual(["web:app:install"]);
+  });
+
+  test("ignores malformed app steps without dropping valid app siblings", () => {
+    // Given
+    const plan = planWithSteps([
+      { id: "broken", phase: "app", command: ["not-a-provider-command"] },
+      { id: "install", phase: "app", command: { command: ["npm", "install"] } },
+    ]);
+
+    // When
+    const steps = appSteps(plan);
+
+    // Then
+    expect(steps.map(({ step }) => step.id)).toEqual(["web:app:install"]);
+  });
 });

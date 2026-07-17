@@ -34,8 +34,13 @@ const transcriptPathFor = (input: AppBuildInput, step: BuildStep) =>
     phase: "app",
     serviceName: String(step.service),
     buildKey: step.buildKey,
-    scratch: false,
+    scratch: String(input.plan.id).startsWith("scratch-"),
   });
+
+const appRefFor = (input: AppBuildInput) =>
+  String(input.plan.id).startsWith("scratch-")
+    ? ({ kind: "scratch", id: input.redactor.redactString(input.plan.slug) } as const)
+    : ({ kind: "user", id: input.redactor.redactString(input.plan.slug) } as const);
 
 export const runAppBuild = (input: AppBuildInput) =>
   Effect.gen(function* () {
@@ -101,7 +106,7 @@ export const runAppBuild = (input: AppBuildInput) =>
                 yield* input.events.publish({
                   _tag: "build-step-skip",
                   eventName: "build-step-skip",
-                  appRef: { kind: "user", id: input.redactor.redactString(input.plan.slug) },
+                  appRef: appRefFor(input),
                   serviceName: input.redactor.redactString(step.service),
                   providerId: input.redactor.redactString(input.plan.provider),
                   phase: "app",
@@ -141,7 +146,7 @@ export const runAppBuild = (input: AppBuildInput) =>
                 yield* input.events.publish({
                   _tag: "build-step-skip",
                   eventName: "build-step-skip",
-                  appRef: { kind: "user", id: input.redactor.redactString(input.plan.slug) },
+                  appRef: appRefFor(input),
                   serviceName: input.redactor.redactString(step.service),
                   providerId: input.redactor.redactString(input.plan.provider),
                   phase: "app",
@@ -202,7 +207,11 @@ export const runAppBuild = (input: AppBuildInput) =>
       treeSettled = true;
       if (failures.length > 0) {
         yield* new BuildPhaseFailedError({
-          app: { kind: "user", id: input.plan.id, root: input.plan.root },
+          app: {
+            kind: String(input.plan.id).startsWith("scratch-") ? "scratch" : "user",
+            id: input.plan.id,
+            root: input.plan.root,
+          },
           phase: "app",
           failures,
         });

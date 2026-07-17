@@ -3,7 +3,7 @@ import { expect, test } from "bun:test";
 import { Effect, Queue, Stream } from "effect";
 
 import { BuildOrchestrator, EventService } from "@lando/core/services";
-import { ServiceName } from "@lando/sdk/schema";
+import { AppId, ServiceName } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { makeLayer, planWith, withTempRoots } from "./build-app-runner-test-support.ts";
@@ -105,5 +105,74 @@ test("blocks failed descendants while independent app siblings continue", async 
       succeeded: 1,
       failed: 2,
     });
+  });
+});
+
+test("writes scratch app transcripts under the scratch build namespace", async () => {
+  await withTempRoots(async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      execStream: () => Stream.make({ exitCode: 0 }),
+    } satisfies RuntimeProviderShape;
+    const plan = {
+      ...planWith({
+        web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
+      }),
+      id: AppId.make("scratch-app-build"),
+    };
+
+    // When
+    const events = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          yield* orchestrator.buildApp(plan);
+          return [...(yield* Queue.takeAll(queue))];
+        }),
+      ).pipe(Effect.provide(makeLayer(provider))),
+    );
+
+    // Then
+    const start = events.find((event) => event._tag === "task.start");
+    if (start?._tag !== "task.start") throw new TypeError("scratch task start event is missing");
+    expect(String(start.transcriptPath)).toContain("/builds/scratch/scratch-app-build/app/web/");
+  });
+});
+
+test("labels scratch app build-step-skip events with the scratch identity namespace", async () => {
+  await withTempRoots(async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      execStream: () => Stream.make({ exitCode: 0 }),
+    } satisfies RuntimeProviderShape;
+    const plan = {
+      ...planWith({
+        web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
+      }),
+      id: AppId.make("scratch-app-build"),
+    };
+
+    // When: build twice so the second run short-circuits from the cache and emits a skip.
+    const events = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const orchestrator = yield* BuildOrchestrator;
+          yield* orchestrator.buildApp(plan);
+          const queue = yield* eventService.subscribeQueue;
+          yield* orchestrator.buildApp(plan);
+          return [...(yield* Queue.takeAll(queue))];
+        }),
+      ).pipe(Effect.provide(makeLayer(provider))),
+    );
+
+    // Then
+    const skip = events.find((event) => event._tag === "build-step-skip");
+    if (skip?._tag !== "build-step-skip") throw new TypeError("scratch build-step-skip event is missing");
+    expect(skip.appRef.kind).toBe("scratch");
   });
 });

@@ -32,8 +32,14 @@ export type AppStepBatchPlan =
 const appBuildIntents = (service: ServicePlan): ReadonlyArray<AppBuildStepIntent> => {
   const extension = service.extensions["@lando/core/service-features"];
   if (typeof extension !== "object" || extension === null || !("buildSteps" in extension)) return [];
-  const decoded = Schema.decodeUnknownEither(Schema.Array(AppBuildStepIntent))(extension.buildSteps);
-  return Either.isRight(decoded) ? decoded.right.filter((step) => step.phase === "app") : [];
+  if (!Array.isArray(extension.buildSteps)) return [];
+  return extension.buildSteps.flatMap((entry) => {
+    if (typeof entry !== "object" || entry === null || !("phase" in entry) || entry.phase !== "app") {
+      return [];
+    }
+    const decoded = Schema.decodeUnknownEither(AppBuildStepIntent)(entry);
+    return Either.isRight(decoded) ? [decoded.right] : [];
+  });
 };
 
 const stepIdFor = (service: ServicePlan, intent: AppBuildStepIntent, index: number): string =>

@@ -236,7 +236,7 @@ export const startApp = (
 
           yield* publishTreeComplete(events, {
             parentId: applyParentId,
-            summary: `${plan.name} ready`,
+            summary: `${plan.name} applied`,
             succeeded: serviceList.length,
             failed: 0,
             durationMs: Math.round(performance.now() - applyStart),

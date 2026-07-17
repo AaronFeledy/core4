@@ -377,6 +377,7 @@ const makeStartLayer = (
           events.push(event._tag);
           taskEvents.push(event);
           if (event._tag === "pre-app-start") buildOrder.push("pre-app-start");
+          if (event._tag === "task.tree.complete") buildOrder.push(`tree:${String(event.summary)}`);
         }).pipe(
           Effect.zipRight(
             event._tag === "task.tree.start" &&
@@ -625,7 +626,13 @@ describe("lando start", () => {
       "task.tree.complete",
       "post-app-start",
     ]);
-    expect(harness.buildOrder).toEqual(["pre-app-start", "artifact", "apply", "app"]);
+    expect(harness.buildOrder).toEqual([
+      "pre-app-start",
+      "artifact",
+      "apply",
+      "tree:test-start applied",
+      "app",
+    ]);
     expect(harness.applyPlans).toHaveLength(1);
     expect(plan.services[ServiceName.make("web")]?.environment).toEqual({});
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
@@ -669,7 +676,13 @@ describe("lando start", () => {
     expect(failureOf(exit)).toBe(failure);
     expect(harness.destroyCalls).toHaveLength(0);
     expect(harness.events).toContain("task.tree.complete");
-    expect(harness.buildOrder).toEqual(["pre-app-start", "artifact", "apply", "app"]);
+    expect(harness.buildOrder).toEqual([
+      "pre-app-start",
+      "artifact",
+      "apply",
+      "tree:test-start applied",
+      "app",
+    ]);
   });
 
   test("publishes a task tree around provider.apply with one task per planned service", async () => {
