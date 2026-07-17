@@ -6,6 +6,7 @@ import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } fr
 
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
+  BuildPhaseFailedError,
   FileSyncStartError,
   GlobalAutoStartError,
   GlobalServiceMissingError,
@@ -28,6 +29,7 @@ import {
 } from "@lando/core/schema";
 import {
   AppPlanner,
+  BuildOrchestrator,
   EventService,
   FileSyncEngine,
   type LandoEvent,
@@ -248,6 +250,10 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
+  Layer.succeed(BuildOrchestrator, {
+    build: (appPlan) => Effect.succeed(appPlan),
+    buildApp: () => Effect.void,
+  }),
 );
 
 const fakeHostProxyArtifact = async (): Promise<string> => {
@@ -271,6 +277,7 @@ const makeStartLayer = (
     readonly providerCapabilities?: ProviderCapabilities;
     readonly providerPlatform?: RuntimeProviderShape["platform"];
     readonly pathsService?: ReturnType<typeof makeLandoPaths>;
+    readonly buildAppEffect?: Effect.Effect<void, BuildPhaseFailedError>;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -278,6 +285,7 @@ const makeStartLayer = (
   const events: string[] = [];
   const taskEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const applyPlans: AppPlan[] = [];
+  const buildOrder: string[] = [];
   const destroyCalls: Array<{
     readonly app: string;
     readonly volumes: boolean;
@@ -312,6 +320,7 @@ const makeStartLayer = (
     removeArtifact: () => Effect.void,
     apply: (appPlan, applyOptions) =>
       Effect.sync(() => {
+        buildOrder.push("apply");
         applyPlans.push(appPlan);
         options.signalSeen?.push(applyOptions.signal?.aborted ?? false);
       }).pipe(
@@ -367,6 +376,8 @@ const makeStartLayer = (
         Effect.sync(() => {
           events.push(event._tag);
           taskEvents.push(event);
+          if (event._tag === "pre-app-start") buildOrder.push("pre-app-start");
+          if (event._tag === "task.tree.complete") buildOrder.push(`tree:${String(event.summary)}`);
         }).pipe(
           Effect.zipRight(
             event._tag === "task.tree.start" &&
@@ -383,9 +394,16 @@ const makeStartLayer = (
       query: () => Effect.succeed([]),
     }),
     unusedGlobalServicesLayer,
+    Layer.succeed(BuildOrchestrator, {
+      build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
+      buildApp: () =>
+        Effect.sync(() => void buildOrder.push("app")).pipe(
+          Effect.zipRight(options.buildAppEffect ?? Effect.void),
+        ),
+    }),
   );
 
-  return { layer, events, applyPlans, destroyCalls, taskEvents };
+  return { layer, events, applyPlans, buildOrder, destroyCalls, taskEvents };
 };
 
 const globalServiceType = makeLegacyServiceTypeFake({
@@ -576,6 +594,10 @@ const makeAutoStartLayer = async (options: {
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
+    Layer.succeed(BuildOrchestrator, {
+      build: (appPlan) => Effect.succeed(appPlan),
+      buildApp: () => Effect.void,
+    }),
   );
   return { layer, events, applyPlans };
 };
@@ -604,6 +626,13 @@ describe("lando start", () => {
       "task.tree.complete",
       "post-app-start",
     ]);
+    expect(harness.buildOrder).toEqual([
+      "pre-app-start",
+      "artifact",
+      "apply",
+      "tree:test-start applied",
+      "app",
+    ]);
     expect(harness.applyPlans).toHaveLength(1);
     expect(plan.services[ServiceName.make("web")]?.environment).toEqual({});
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
@@ -629,6 +658,31 @@ describe("lando start", () => {
     expect(harness.taskEvents.find((event) => event._tag === "post-app-start")).toMatchObject({
       appRef: scratchRef,
     });
+  });
+
+  test("preserves app-build failure identity without rolling back a successful apply", async () => {
+    // Given
+    const failure = new BuildPhaseFailedError({
+      app: { kind: "user", id: plan.id, root: plan.root },
+      phase: "app",
+      failures: [],
+    });
+    const harness = makeStartLayer({ buildAppEffect: Effect.fail(failure) });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(failureOf(exit)).toBe(failure);
+    expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.events).toContain("task.tree.complete");
+    expect(harness.buildOrder).toEqual([
+      "pre-app-start",
+      "artifact",
+      "apply",
+      "tree:test-start applied",
+      "app",
+    ]);
   });
 
   test("publishes a task tree around provider.apply with one task per planned service", async () => {

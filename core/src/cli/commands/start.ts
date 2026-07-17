@@ -14,6 +14,7 @@ import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  BuildOrchestrator,
   EventService,
   type FileSystem,
   type GlobalAppService,
@@ -55,6 +56,7 @@ export const StartAppResultSchema = Schema.Struct({
 
 type StartAppServices =
   | AppPlanner
+  | BuildOrchestrator
   | EventService
   | FileSystem
   | GlobalAppService
@@ -117,6 +119,7 @@ export const startApp = (
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
     const events = yield* EventService;
+    const builds = yield* BuildOrchestrator;
 
     const plan =
       target?.plan ??
@@ -153,11 +156,6 @@ export const startApp = (
       ...(managed === undefined ? {} : { managed }),
       use: (applyPlan) =>
         Effect.gen(function* () {
-          const serviceList = Object.values(applyPlan.services);
-          const serviceIds = serviceList.map((service) => String(service.name));
-          const applyParentId = `apply-${plan.id}`;
-          const applyStart = performance.now();
-
           yield* events.publish(
             PreAppStartEvent.make({
               eventName: "pre-app-start",
@@ -166,6 +164,12 @@ export const startApp = (
               timestamp: now(),
             }),
           );
+
+          const builtPlan = yield* builds.build(applyPlan);
+          const serviceList = Object.values(builtPlan.services);
+          const serviceIds = serviceList.map((service) => String(service.name));
+          const applyParentId = `apply-${plan.id}`;
+          const applyStart = performance.now();
 
           yield* publishTreeStart(events, {
             parentId: applyParentId,
@@ -185,7 +189,7 @@ export const startApp = (
           const applyAndInspect = Effect.gen(function* () {
             yield* Ref.set(applyStarted, true);
             yield* Effect.scoped(
-              provider.apply(applyPlan, {
+              provider.apply(builtPlan, {
                 reconcile: options.reconcile ?? false,
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
               }),
@@ -232,11 +236,13 @@ export const startApp = (
 
           yield* publishTreeComplete(events, {
             parentId: applyParentId,
-            summary: `${plan.name} ready`,
+            summary: `${plan.name} applied`,
             succeeded: serviceList.length,
             failed: 0,
             durationMs: Math.round(performance.now() - applyStart),
           });
+
+          yield* builds.buildApp(builtPlan);
 
           yield* startFileSyncSessions(plan, events, managed).pipe(
             Effect.tapError(() =>

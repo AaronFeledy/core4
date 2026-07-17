@@ -8,6 +8,7 @@ import { Effect, Schema } from "effect";
 import type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
 import type {
   AppPlanner,
+  BuildOrchestrator,
   EventService,
   FileSystem,
   GlobalAppService,
@@ -32,6 +33,7 @@ export const RestartAppResultSchema = Schema.Struct({
 
 type RestartAppServices =
   | AppPlanner
+  | BuildOrchestrator
   | EventService
   | FileSystem
   | GlobalAppService

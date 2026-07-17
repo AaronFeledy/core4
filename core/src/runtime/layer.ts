@@ -171,6 +171,7 @@ type ScratchRuntimeServices =
   | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
+  | BuildOrchestrator
   | LandofileService
   | CommandRegistry
   | AppPlanner

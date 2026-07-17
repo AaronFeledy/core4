@@ -13,6 +13,7 @@ import type { Effect, Scope, Stream } from "effect";
 import type {
   AppIdReservedError,
   AppResolveError,
+  BuildPhaseFailedError,
   BunShellScriptEmptyError,
   BunShellScriptFrontMatterError,
   CapabilityError,
@@ -174,6 +175,7 @@ export interface StartAppResult {
 
 export type StartAppError =
   | AppIdReservedError
+  | BuildPhaseFailedError
   | EventError
   | FileSyncDriftError
   | FileSyncStartError

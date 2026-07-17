@@ -111,7 +111,8 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | BETA1-PRD-14 | US-451 | Host-proxy doctor transport reachability and bounded persisted-worker diagnostics | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | BETA1-PRD-14 | US-452 | MCP serve startup, refusal, bounded stdio, and read-only app config | `docs/guides/agent-native/mcp.mdx` | Shipped |
 | BETA1-PRD-15 | US-455 | OpenTUI substrate baseline, import discipline, compiled native packaging, and line-mode degradation | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
-| BETA1-PRD-15 | US-456, US-458 | Split-footer live region and foreground desktop notifications (future ownership; not yet landed in this guide's body) | `docs/guides/cli/terminal-ui-polish.mdx` | Planned |
+| BETA1-PRD-15 | US-456 | Split-footer task-tree live region, resize replay, full-tail transition, and bounded animation | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
+| BETA1-PRD-15 | US-458 | Foreground desktop notifications | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
 | BETA1-PRD-15 | US-457 | Prompt chrome polish and the frame-snapshot harness | `docs/guides/cli/interactive-prompts.mdx` | Shipped |
 | BETA1-PRD-15 | US-457 | Frame-snapshot / visual-QA coverage for the renderer substrate | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
 

@@ -64,6 +64,7 @@ import type {
 } from "../schema/index.ts";
 
 import type {
+  BuildPhaseFailedError,
   CacheError,
   CapabilityError,
   ConfigError,
@@ -510,6 +511,17 @@ export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrc
     ) => Effect.Effect<
       AppPlan,
       EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
+    >;
+    readonly buildApp: (
+      plan: AppPlan,
+    ) => Effect.Effect<
+      void,
+      | BuildPhaseFailedError
+      | EventError
+      | NoProviderInstalledError
+      | ProviderConfigError
+      | ProviderError
+      | ProviderUnavailableError
     >;
   }
 >() {}
