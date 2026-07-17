@@ -263,7 +263,9 @@ describe("first paint via the production TTY consumer and fake OpenTUI substrate
     expect(firstFooter).toContain("web service");
     expect(firstFooter).toContain("◌ db");
     expect(firstPaintCalls.some((call) => call.startsWith("scrollback:"))).toBe(false);
-    expect(firstPaintCalls.join("\n")).not.toMatch(/\u001b\[[0-9;]*(?:A|J)/u);
+    expect(firstPaintCalls.join("\n")).not.toMatch(
+      new RegExp(`${String.fromCharCode(27)}\\[[0-9;]*(?:A|J)`, "u"),
+    );
     expect(fixture.commits.some((text) => text.includes("Built app"))).toBe(true);
     expect(fixture.calls).toContain("screenMode:main-screen");
   });
