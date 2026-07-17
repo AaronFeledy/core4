@@ -53,6 +53,7 @@ export const DEFAULT_KEYMAP: Readonly<Record<KeyToken, KeyAction | null>> = {
 export interface KeyHandleResult {
   readonly events: ReadonlyArray<LandoEvent>;
   readonly changed: boolean;
+  readonly transcriptPage?: "older" | "newer";
 }
 
 export interface TaskTreeInputControllerOptions {
@@ -117,8 +118,7 @@ export class TaskTreeInputController {
 
   #moveFocus(delta: number): KeyHandleResult {
     if (this.#expanded) {
-      const changed = this.#viewModel.scrollExpandedLines(-delta);
-      return changed ? { events: [], changed } : NO_CHANGE;
+      return { events: [], changed: true, transcriptPage: delta < 0 ? "older" : "newer" };
     }
     const count = this.#viewModel.focusableTaskIds().length;
     if (count === 0) return NO_CHANGE;
@@ -130,8 +130,7 @@ export class TaskTreeInputController {
 
   #pageTail(direction: -1 | 1): KeyHandleResult {
     if (!this.#expanded) return NO_CHANGE;
-    const changed = this.#viewModel.scrollExpandedPage(direction);
-    return changed ? { events: [], changed } : NO_CHANGE;
+    return { events: [], changed: true, transcriptPage: direction > 0 ? "older" : "newer" };
   }
 
   #expand(): KeyHandleResult {

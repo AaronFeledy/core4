@@ -58,7 +58,7 @@ describe("OpenTUI cold-start canary", () => {
     const importingFiles = opentuiImports.map((edge) => edge.file).sort();
     expect(importingFiles).toEqual(
       [
-        join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "live-region-controller.ts"),
+        join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "live-region-substrate.ts"),
         join(repoRoot, "plugins", "renderer-lando", "src", "opentui", "prompt-driver.ts"),
       ].sort(),
     );

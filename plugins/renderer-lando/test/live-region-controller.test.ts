@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import {
   LiveRegionController,
@@ -7,6 +7,11 @@ import {
   OpenTuiLiveRegionUnavailableError,
   createLiveRegionController,
 } from "../src/opentui/live-region-controller.ts";
+import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
+
+afterEach(() => {
+  resetOpenTuiSubstrateAvailabilityForTests();
+});
 
 type RenderableOptions = {
   readonly content?: string | FakeStyledText;
@@ -319,9 +324,12 @@ describe("LiveRegionController", () => {
     expect(fixture.state().footerHeight).toBe(3);
   });
 
-  test("resets replay bookkeeping without discarding committed scrollback", async () => {
+  test("resets without replaying scrollback that is already native saved history", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
+    controller.resize(8, 4);
+    controller.setFooter(["footer"]);
+    fixture.calls.length = 0;
     controller.commitScrollback("kept");
 
     controller.reset();
@@ -331,10 +339,66 @@ describe("LiveRegionController", () => {
       "reset:false",
       "scrollback:kept",
       "externalOutputMode:passthrough",
-      "cursor:1,24:false",
+      "cursor:1,4:false",
       "externalOutputMode:capture-stdout",
+      "footer:footer",
     ]);
     expect(fixture.commits).toEqual(["kept", "kept"]);
+  });
+
+  test("replays only the bounded visible suffix across repeated resizes", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.resize(8, 4);
+    controller.setFooter(["footer"]);
+    for (const line of ["one", "two", "three", "four", "five", "six"]) {
+      controller.commitScrollback(line);
+    }
+    fixture.calls.length = 0;
+
+    fixture.emitResize(9, 4);
+    fixture.emitResize(10, 4);
+
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
+      "scrollback:four",
+      "scrollback:five",
+      "scrollback:six",
+      "scrollback:four",
+      "scrollback:five",
+      "scrollback:six",
+    ]);
+    expect(fixture.calls.filter((call) => call.startsWith("reset:"))).toEqual(["reset:false", "reset:false"]);
+  });
+
+  test("accounts for display-cell wrapping when bounding the resize suffix", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.resize(4, 4);
+    controller.setFooter(["footer"]);
+    controller.commitScrollback("old");
+    controller.commitScrollback("123456789");
+    fixture.calls.length = 0;
+
+    fixture.emitResize(5, 4);
+
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual(["scrollback:123456789"]);
+  });
+
+  test("clips a partially visible wide-cell row to the available replay cells", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.resize(4, 3);
+    controller.setFooter(["footer"]);
+    controller.commitScrollback("界界界");
+    controller.commitScrollback("tail");
+    fixture.calls.length = 0;
+
+    fixture.emitResize(5, 3);
+
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
+      "scrollback:界界",
+      "scrollback:tail",
+    ]);
   });
 
   test("enters and exits full tail using legal output-mode ordering", async () => {
@@ -371,6 +435,41 @@ describe("LiveRegionController", () => {
       "cursor:1,12:false",
       "externalOutputMode:capture-stdout",
       "footer:building",
+    ]);
+  });
+
+  test("flushes alternate-screen commits once in sequence after a pending resize", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.resize(8, 4);
+    controller.setFooter(["footer"]);
+    controller.commitScrollback("before-a");
+    controller.commitScrollback("before-b");
+    controller.enterFullTail();
+    fixture.calls.length = 0;
+
+    for (const line of ["during-a", "during-b", "during-c", "during-d"]) {
+      controller.commitScrollback(line);
+    }
+    fixture.emitResize(9, 4);
+    controller.exitFullTail();
+
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
+      "scrollback:before-a",
+      "scrollback:before-b",
+      "scrollback:during-a",
+      "scrollback:during-b",
+      "scrollback:during-c",
+      "scrollback:during-d",
+    ]);
+    fixture.calls.length = 0;
+
+    fixture.emitResize(10, 4);
+
+    expect(fixture.calls.filter((call) => call.startsWith("scrollback:"))).toEqual([
+      "scrollback:during-b",
+      "scrollback:during-c",
+      "scrollback:during-d",
     ]);
   });
 

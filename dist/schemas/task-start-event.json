@@ -25,6 +25,9 @@
     },
     "timestamp": {
       "$ref": "#/$defs/DateTimeUtc"
+    },
+    "transcriptPath": {
+      "type": "string"
     }
   },
   "required": [

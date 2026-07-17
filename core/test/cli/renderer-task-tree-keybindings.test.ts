@@ -8,6 +8,7 @@ import {
   TaskStartEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
 
 import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "../../src/cli/renderer/keybindings.ts";
 import { TASK_DETAIL_TAIL_CAPACITY, TaskTreeViewModel } from "../../src/cli/renderer/task-tree-tail.ts";
@@ -29,6 +30,7 @@ const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent
     taskId,
     ...(parentId === undefined ? {} : { parentId }),
     label,
+    transcriptPath: AbsolutePath.make(`/tmp/lando/builds/${taskId}.log`),
     timestamp: ts,
   });
 
@@ -113,26 +115,32 @@ describe("TaskTreeViewModel — expand / collapse", () => {
     expect(vm.focusableTaskIds()).toEqual(["a", "b"]);
   });
 
-  test("expanding a task surfaces the whole stream tail (more than the 4-line ring)", () => {
+  test("expanding a task surfaces the persisted transcript instead of the 4-line ring", () => {
     const vm = new TaskTreeViewModel();
     seed(vm, "a", 10);
     vm.expandTask("a");
+    vm.setExpandedTranscript(
+      "a",
+      Array.from({ length: 10 }, (_, index) => `transcript-${index}`),
+    );
     expect(vm.expandedTaskId).toBe("a");
-    const panelLines = vm.snapshot().frameLines.filter((l) => l.includes("line-"));
+    const panelLines = vm.snapshot().frameLines.filter((line) => line.includes("transcript-"));
     expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
-    expect(panelLines.some((l) => l.includes("line-0"))).toBe(true);
-    expect(panelLines.some((l) => l.includes("line-9"))).toBe(true);
+    expect(panelLines.some((line) => line.includes("transcript-0"))).toBe(true);
+    expect(panelLines.some((line) => line.includes("transcript-9"))).toBe(true);
   });
 
-  test("expanded tail is bounded by available terminal rows", () => {
+  test("expanded transcript budget is bounded by available terminal rows", () => {
     const vm = new TaskTreeViewModel({ terminalRows: 6 });
     seed(vm, "a", 30);
     vm.expandTask("a");
+    expect(vm.expandedLineBudget()).toBe(3);
+    vm.setExpandedTranscript("a", ["transcript-27", "transcript-28", "transcript-29"]);
     const frameLines = vm.snapshot().frameLines;
-    const panelLines = frameLines.filter((l) => l.includes("line-"));
+    const panelLines = frameLines.filter((line) => line.includes("transcript-"));
     expect(frameLines.length).toBeLessThanOrEqual(6);
     expect(panelLines).toHaveLength(3);
-    expect(panelLines.some((l) => l.includes("line-29"))).toBe(true);
+    expect(panelLines.some((line) => line.includes("transcript-29"))).toBe(true);
   });
 
   test("collapsing restores the 4-line ring", () => {
@@ -244,7 +252,7 @@ describe("TaskTreeInputController", () => {
     expect(second.events).toHaveLength(0);
   });
 
-  test("Enter on a finished task expands its retained tail", () => {
+  test("Enter on a finished task expands its persisted transcript", () => {
     const { vm, controller } = make(["a"]);
     vm.apply(taskComplete("a"));
     const result = controller.handleKey("enter");

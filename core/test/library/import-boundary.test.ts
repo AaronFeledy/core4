@@ -12,11 +12,11 @@ const coreSrc = resolve(repoRoot, "core/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
-const rendererLiveRegionController = resolve(
+const rendererLiveRegionSubstrate = resolve(
   pluginsRoot,
-  "renderer-lando/src/opentui/live-region-controller.ts",
+  "renderer-lando/src/opentui/live-region-substrate.ts",
 );
-const openTuiLiteralImportFiles = [rendererPromptDriver, rendererLiveRegionController];
+const openTuiLiteralImportFiles = [rendererPromptDriver, rendererLiveRegionSubstrate];
 const rendererSrc = resolve(pluginsRoot, "renderer-lando/src");
 const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
 
@@ -495,7 +495,7 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
     expect([...edges].sort((left, right) => left.file.localeCompare(right.file))).toEqual(
       [
         {
-          file: rendererLiveRegionController,
+          file: rendererLiveRegionSubstrate,
           kind: "dynamic-import" as const,
           specifier: "@opentui/core",
         },

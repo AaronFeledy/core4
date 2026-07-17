@@ -8,8 +8,8 @@
  * alt-screen) is validated in the Wave 5 sandbox headless suite.
  */
 
-import { describe, expect, test } from "bun:test";
-import { Effect, Layer, LogLevel, Logger, Schema } from "effect";
+import { afterEach, describe, expect, test } from "bun:test";
+import { Effect, Layer, LogLevel, Logger, Queue, Schema } from "effect";
 
 import {
   type LandoEvent,
@@ -21,12 +21,31 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import type { RendererIO } from "@lando/sdk/renderer";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { createBufferedRendererIO } from "../../../core/src/cli/renderer/io.ts";
 import { EventServiceLive } from "../../../core/src/services/event-service.ts";
 import type { LiveRegionControllerOptions } from "../src/opentui/live-region-controller.ts";
+import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { makeLandoEventConsumer } from "../src/renderer-runtime.ts";
+
+type TranscriptTailPageDirection = "latest" | "older" | "newer" | "refresh";
+interface TranscriptTailReaderShape {
+  readonly open: (
+    path: typeof AbsolutePath.Type,
+    onChange: Effect.Effect<void>,
+  ) => Effect.Effect<
+    {
+      readonly read: (
+        direction: TranscriptTailPageDirection,
+        lineLimit: number,
+      ) => Effect.Effect<{ readonly lines: ReadonlyArray<string> }>;
+    },
+    never,
+    import("effect").Scope.Scope
+  >;
+}
 
 const ts = "2026-05-19T12:00:00.000Z";
 
@@ -38,8 +57,14 @@ const treeStart = (children: ReadonlyArray<string>): LandoEvent =>
     children,
     timestamp: ts,
   });
-const taskStart = (taskId: string): LandoEvent =>
-  Schema.decodeUnknownSync(TaskStartEvent)({ _tag: "task.start", taskId, label: taskId, timestamp: ts });
+const taskStart = (taskId: string, transcriptPath?: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskStartEvent)({
+    _tag: "task.start",
+    taskId,
+    label: taskId,
+    ...(transcriptPath === undefined ? {} : { transcriptPath }),
+    timestamp: ts,
+  });
 const taskComplete = (taskId: string): LandoEvent =>
   Schema.decodeUnknownSync(TaskCompleteEvent)({
     _tag: "task.complete",
@@ -104,6 +129,61 @@ class FakeController {
   }
 }
 
+class FakeTranscriptReader implements TranscriptTailReaderShape {
+  readonly opened: string[] = [];
+  readonly closed: string[] = [];
+  readonly reads: Array<{ readonly direction: TranscriptTailPageDirection; readonly lineLimit: number }> = [];
+  readonly #lines = new Map<string, string[]>();
+  readonly #changes = new Map<string, Effect.Effect<void>>();
+  #lastChange: Effect.Effect<void> = Effect.void;
+
+  set(path: string, lines: ReadonlyArray<string>): void {
+    this.#lines.set(path, [...lines]);
+  }
+
+  append(path: string, line: string): Effect.Effect<void> {
+    this.#lines.get(path)?.push(line);
+    return this.#changes.get(path) ?? Effect.void;
+  }
+
+  fireLateChange(): Effect.Effect<void> {
+    return this.#lastChange;
+  }
+
+  open(path: typeof AbsolutePath.Type, onChange: Effect.Effect<void>) {
+    return Effect.acquireRelease(
+      Effect.sync(() => {
+        this.opened.push(path);
+        this.#changes.set(path, onChange);
+        this.#lastChange = onChange;
+        let end = this.#lines.get(path)?.length ?? 0;
+        let knownLength = end;
+        return {
+          read: (direction: TranscriptTailPageDirection, lineLimit: number) =>
+            Effect.sync(() => {
+              this.reads.push({ direction, lineLimit });
+              const lines = this.#lines.get(path) ?? [];
+              if (direction === "latest" || (direction === "refresh" && end === knownLength)) {
+                end = lines.length;
+              } else if (direction === "older") {
+                end = Math.max(lineLimit, end - lineLimit);
+              } else if (direction === "newer") {
+                end = Math.min(lines.length, end + lineLimit);
+              }
+              knownLength = lines.length;
+              return { lines: lines.slice(Math.max(0, end - lineLimit), end) };
+            }),
+        };
+      }),
+      () =>
+        Effect.sync(() => {
+          this.closed.push(path);
+          this.#changes.delete(path);
+        }),
+    );
+  }
+}
+
 const ttyIo = () => {
   const stdout: string[] = [];
   const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
@@ -129,7 +209,166 @@ const drive = (
     ),
   );
 
+afterEach(() => {
+  resetOpenTuiSubstrateAvailabilityForTests();
+});
+
 describe("makeLandoEventConsumer — split-footer substrate routing", () => {
+  test("expanded content comes from the transcript reader and live appends refresh it", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw secret one"]);
+    let inject: ((raw: string) => void) | undefined;
+    let publishedRawTranscript = false;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      const collector = yield* svc.subscribeQueue;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web", transcriptPath));
+      yield* svc.publish(taskDetail("web", "[redacted]"));
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      yield* transcriptReader.append(transcriptPath, "raw secret two");
+      yield* Effect.sleep("20 millis");
+      publishedRawTranscript = [...(yield* Queue.takeAll(collector))].some((event) =>
+        JSON.stringify(event).includes("raw secret"),
+      );
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("raw secret two");
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).not.toContain("[redacted]");
+    expect(publishedRawTranscript).toBe(false);
+    expect(transcriptReader.closed).toEqual([transcriptPath]);
+  });
+
+  test("collapse ignores a late transcript callback from the closed session", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw output"]);
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    let footerCountAfterCollapse = 0;
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web", transcriptPath));
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      inject?.("\x1b");
+      yield* Effect.sleep("20 millis");
+      footerCountAfterCollapse = controller.calls.filter((call) => call.kind === "setFooter").length;
+      yield* transcriptReader.fireLateChange();
+      yield* Effect.sleep("20 millis");
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(controller.calls.filter((call) => call.kind === "setFooter")).toHaveLength(
+      footerCountAfterCollapse,
+    );
+    expect(transcriptReader.closed).toEqual([transcriptPath]);
+  });
+
+  test("Enter reopens a completed task's persisted transcript after collapse", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["persisted raw output"]);
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web", transcriptPath));
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      inject?.("\x1b");
+      yield* svc.publish(taskComplete("web"));
+      yield* svc.publish(treeComplete());
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(transcriptReader.opened).toEqual([transcriptPath, transcriptPath]);
+    const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("persisted raw output");
+  });
+
   test("task events update the footer; message.* commits to scrollback", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
@@ -163,6 +402,9 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
   test("completion keeps full-tail active until Esc restores the collapsed frame", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw output"]);
     let inject: ((raw: string) => void) | undefined;
     const interactiveIo = {
       ...io,
@@ -176,7 +418,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     const program = Effect.gen(function* () {
       const svc = yield* EventService;
       yield* svc.publish(treeStart(["web"]));
-      yield* svc.publish(taskStart("web"));
+      yield* svc.publish(taskStart("web", transcriptPath));
       yield* Effect.sleep("20 millis");
       inject?.("\r");
       yield* Effect.sleep("20 millis");
@@ -196,7 +438,10 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         program.pipe(
           Effect.provide(
             Layer.provideMerge(
-              makeLandoEventConsumer(interactiveIo, { createLiveRegion: () => Promise.resolve(controller) }),
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
               EventServiceLive,
             ),
           ),
@@ -220,6 +465,9 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
   test("Enter reopens a completed child's tail after tree completion", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw output"]);
     let inject: ((raw: string) => void) | undefined;
     const interactiveIo = {
       ...io,
@@ -230,7 +478,12 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     };
     const program = Effect.gen(function* () {
       const svc = yield* EventService;
-      for (const event of [treeStart(["web"]), taskStart("web"), taskComplete("web"), treeComplete()]) {
+      for (const event of [
+        treeStart(["web"]),
+        taskStart("web", transcriptPath),
+        taskComplete("web"),
+        treeComplete(),
+      ]) {
         yield* svc.publish(event);
       }
       yield* Effect.sleep("20 millis");
@@ -245,7 +498,10 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         program.pipe(
           Effect.provide(
             Layer.provideMerge(
-              makeLandoEventConsumer(interactiveIo, { createLiveRegion: () => Promise.resolve(controller) }),
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
               EventServiceLive,
             ),
           ),
@@ -305,9 +561,78 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     );
   });
 
+  test("repages an expanded transcript when resize changes its row budget", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(
+      transcriptPath,
+      Array.from({ length: 10 }, (_, index) => `detail ${String(index + 1).padStart(2, "0")}`),
+    );
+    let inject: ((raw: string) => void) | undefined;
+    let resize: ((width: number, height: number) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      terminalRows: 6,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web", transcriptPath));
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      resize?.(80, 8);
+      yield* Effect.sleep("20 millis");
+      resize?.(80, 5);
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: (options) => {
+                  const candidate = Reflect.get(options, "onResize");
+                  if (typeof candidate === "function") resize = candidate;
+                  return Promise.resolve(controller);
+                },
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(typeof resize).toBe("function");
+    expect(transcriptReader.reads).toEqual([
+      { direction: "latest", lineLimit: 3 },
+      { direction: "refresh", lineLimit: 5 },
+      { direction: "refresh", lineLimit: 2 },
+    ]);
+    const latest = controller.calls.filter((call) => call.kind === "setFooter").at(-1);
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("detail 10");
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("detail 09");
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).not.toContain("detail 08");
+  });
+
   test("repaints the expanded tail after eventless paging input", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(
+      transcriptPath,
+      Array.from({ length: 10 }, (_, index) => `detail ${String(index + 1).padStart(2, "0")}`),
+    );
     let inject: ((raw: string) => void) | undefined;
     const interactiveIo = {
       ...io,
@@ -321,7 +646,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     const program = Effect.gen(function* () {
       const svc = yield* EventService;
       yield* svc.publish(treeStart(["web"]));
-      yield* svc.publish(taskStart("web"));
+      yield* svc.publish(taskStart("web", transcriptPath));
       for (let index = 1; index <= 10; index += 1) {
         yield* svc.publish(taskDetail("web", `detail ${String(index).padStart(2, "0")}`));
       }
@@ -339,6 +664,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
             Layer.provideMerge(
               makeLandoEventConsumer(interactiveIo, {
                 createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
               }),
               EventServiceLive,
             ),
@@ -446,5 +772,33 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
     );
     expect(stdout()).toContain("web");
     expect(debugMessages).toContain("OpenTUI live region unavailable; degrading to line rendering.");
+  });
+
+  test("two consumers share one failed acquisition attempt and one degradation notice", async () => {
+    const first = ttyIo();
+    const second = ttyIo();
+    const debugMessages: string[] = [];
+    const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
+      if (logLevel === LogLevel.Debug) debugMessages.push(String(message));
+    });
+    let attempts = 0;
+    const createLiveRegion = (): Promise<FakeController> => {
+      attempts += 1;
+      return Promise.reject(new Error("no native binding"));
+    };
+
+    for (const { io } of [first, second]) {
+      await Effect.runPromise(
+        drive(io, createLiveRegion, [treeStart(["web"]), taskStart("web")]).pipe(
+          Logger.withMinimumLogLevel(LogLevel.Debug),
+          Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
+        ),
+      );
+    }
+
+    expect(attempts).toBe(1);
+    expect(debugMessages).toEqual(["OpenTUI live region unavailable; degrading to line rendering."]);
+    expect(first.stdout()).toContain("web");
+    expect(second.stdout()).toContain("web");
   });
 });

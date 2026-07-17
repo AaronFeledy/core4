@@ -28967,6 +28967,9 @@
             },
             "timestamp": {
               "$ref": "#/$defs/DateTimeUtc"
+            },
+            "transcriptPath": {
+              "type": "string"
             }
           },
           "required": ["_tag", "taskId", "label", "timestamp"],
@@ -42598,6 +42601,9 @@
         },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
+        },
+        "transcriptPath": {
+          "type": "string"
         }
       },
       "required": ["_tag", "taskId", "label", "timestamp"],

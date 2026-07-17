@@ -21,6 +21,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import type { AbsolutePath } from "@lando/sdk/schema";
 import type { EventService } from "@lando/sdk/services";
 
 export type ProgressEmitter = Pick<Context.Tag.Service<typeof EventService>, "publish">;
@@ -32,11 +33,7 @@ const publishEvent = (events: ProgressEmitter | undefined, event: LandoEvent): E
 
 const publishEventAsync = async (events: ProgressEmitter | undefined, event: LandoEvent): Promise<void> => {
   if (events === undefined) return;
-  try {
-    await Effect.runPromise(events.publish(event));
-  } catch {
-    // Progress emission is non-essential.
-  }
+  await Effect.runPromiseExit(events.publish(event));
 };
 
 export interface TreeStartArgs {
@@ -65,6 +62,7 @@ export interface TaskStartArgs {
   readonly taskId: string;
   readonly parentId?: string;
   readonly label: string;
+  readonly transcriptPath?: AbsolutePath;
 }
 
 const buildTaskStart = (args: TaskStartArgs): TaskStartEvent =>
@@ -72,6 +70,7 @@ const buildTaskStart = (args: TaskStartArgs): TaskStartEvent =>
     taskId: args.taskId,
     ...(args.parentId === undefined ? {} : { parentId: args.parentId }),
     label: args.label,
+    ...(args.transcriptPath === undefined ? {} : { transcriptPath: args.transcriptPath }),
     timestamp: nowUtc(),
   });
 

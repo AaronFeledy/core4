@@ -19,6 +19,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
@@ -39,11 +40,12 @@ const treeStart = (parentId: string, label: string, children: ReadonlyArray<stri
     timestamp: ts,
   });
 
-const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent =>
+const taskStart = (taskId: string, label: string, parentId?: string, transcriptPath?: string): LandoEvent =>
   Schema.decodeUnknownSync(TaskStartEvent)({
     _tag: "task.start",
     taskId,
     ...(parentId === undefined ? {} : { parentId }),
+    ...(transcriptPath === undefined ? {} : { transcriptPath }),
     label,
     timestamp: ts,
   });
@@ -184,7 +186,8 @@ describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw b
   test("expandTask switches frameLines to the expanded tail; collapse restores the tree; no control bytes", () => {
     const vm = new TaskTreeViewModel();
     vm.apply(treeStart("build", "Building", ["web"]));
-    vm.apply(taskStart("web", "web service", "build"));
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    vm.apply(taskStart("web", "web service", "build", transcriptPath));
     vm.apply(taskDetail("web", "boot line"));
     expect(vm.canExpandTask("web")).toBe(true);
     vm.expandTask("web");
@@ -192,6 +195,8 @@ describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw b
     const expanded = vm.frameLines();
     assertNoControlBytes(expanded);
     expect(expanded.map(stripAnsi).join("\n")).toContain("expanded task tail");
+    expect(expanded.map(stripAnsi).join("\n")).not.toContain("boot line");
+    expect(vm.transcriptPathFor("web")).toBe(transcriptPath);
     vm.collapse();
     expect(vm.expandedTaskId).toBeUndefined();
     assertNoControlBytes(vm.frameLines());

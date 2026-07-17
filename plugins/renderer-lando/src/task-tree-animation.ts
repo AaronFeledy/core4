@@ -53,7 +53,7 @@ export class TaskTreeAnimationController {
     this.clear(taskId);
     const timer = setTimeout(() => {
       this.pending.delete(taskId);
-      if (!this.viewModel.canExpandTask(taskId)) return;
+      if (!this.viewModel.isRunningTask(taskId)) return;
       this.viewModel.showSpinner(taskId);
       this.output.render();
       this.syncLive();

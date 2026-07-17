@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { AbsolutePath } from "../schema/primitives.ts";
 import { Timestamp } from "./_shared.ts";
 
 export const TaskTreeStartEvent = Schema.TaggedStruct("task.tree.start", {
@@ -15,6 +16,7 @@ export const TaskStartEvent = Schema.TaggedStruct("task.start", {
   taskId: Schema.String,
   parentId: Schema.optional(Schema.String),
   label: Schema.String,
+  transcriptPath: Schema.optional(AbsolutePath),
   timestamp: Timestamp,
 });
 export type TaskStartEvent = typeof TaskStartEvent.Type;

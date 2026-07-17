@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Queue, Schema } from "effect";
 
 import { type LandoEvent, TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
@@ -42,6 +43,7 @@ const taskStart = (taskId: string, label: string, parentId: string): LandoEvent 
     taskId,
     parentId,
     label,
+    transcriptPath: AbsolutePath.make(`/tmp/lando/builds/${taskId}.log`),
     timestamp: ts,
   });
 
@@ -53,6 +55,16 @@ const detail = (taskId: string, line: string): LandoEvent =>
     line,
     timestamp: ts,
   });
+
+const transcriptReader = {
+  open: (_path: typeof AbsolutePath.Type, _onChange: Effect.Effect<void>) =>
+    Effect.acquireRelease(
+      Effect.succeed({
+        read: () => Effect.succeed({ lines: [] }),
+      }),
+      () => Effect.void,
+    ),
+};
 
 describe("lando renderer (TTY keybindings)", () => {
   test("Enter expands the focused task and publishes task.detail.expand; Esc collapses and publishes task.detail.collapse", async () => {
@@ -79,7 +91,10 @@ describe("lando renderer (TTY keybindings)", () => {
     });
 
     const layer = Layer.provideMerge(
-      makeLandoEventConsumer(io, { createLiveRegion: () => Promise.resolve(new FakeLiveRegion()) }),
+      makeLandoEventConsumer(io, {
+        createLiveRegion: () => Promise.resolve(new FakeLiveRegion()),
+        transcriptReader,
+      }),
       EventServiceLive,
     );
     const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));

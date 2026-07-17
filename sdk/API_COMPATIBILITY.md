@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
 - `ToolingCompileError` and `ToolingExecError` additively accept optional `remediation` so cache-only routing and task failures can return actionable machine errors.
 - US-442 replaces the placeholder static CLI event tags with canonical dynamic `cli-<command-id>-init|run|error` tags and adds redacted invocation, duration, exit-code, and failure identity fields. `EventFor<Name>` narrows those dynamic tags to their public lifecycle variants.
 - `CommandWarning` additively accepts structured string context so machine warnings can retain actionable source metadata.

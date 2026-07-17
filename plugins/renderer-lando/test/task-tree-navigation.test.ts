@@ -34,7 +34,15 @@ const completedTask = (): TaskTreeViewModel => {
   viewModel.apply(
     event({ _tag: "task.tree.start", parentId: "build", label: "Building", children: ["web"], timestamp }),
   );
-  viewModel.apply(event({ _tag: "task.start", taskId: "web", label: "web", timestamp }));
+  viewModel.apply(
+    event({
+      _tag: "task.start",
+      taskId: "web",
+      label: "web",
+      transcriptPath: "/tmp/lando/builds/web.log",
+      timestamp,
+    }),
+  );
   for (let index = 0; index < 8; index += 1) {
     viewModel.apply(
       event({ _tag: "task.detail", taskId: "web", stream: "stdout", line: `line-${index}`, timestamp }),
@@ -52,20 +60,29 @@ describe("task-tree full-tail navigation", () => {
     expect(DEFAULT_KEYMAP["page-down"]).toBe("detail.page-down");
   });
 
-  test("a completed task remains expandable and pages through its retained full tail", () => {
+  test("a completed task remains expandable without using its redacted detail ring as the full tail", () => {
     const viewModel = completedTask();
     const controller = new TaskTreeInputController(viewModel, { now: () => timestamp });
 
     const expanded = controller.handleKey("enter");
     expect(expanded.events[0]?._tag).toBe("task.detail.expand");
-    expect(viewModel.snapshot().frameLines.join("\n")).toContain("line-7");
+    expect(viewModel.snapshot().frameLines.join("\n")).not.toContain("line-7");
+    expect(controller.handleKey("page-up").transcriptPage).toBe("older");
+    expect(controller.handleKey("page-down").transcriptPage).toBe("newer");
+  });
 
-    expect(controller.handleKey("page-up").changed).toBe(true);
-    const olderPage = viewModel.snapshot().frameLines.join("\n");
-    expect(olderPage).toContain("line-0");
-    expect(olderPage).not.toContain("line-7");
+  test("Enter does not fake a full tail when the task has no transcript path", () => {
+    const viewModel = new TaskTreeViewModel();
+    viewModel.apply(
+      event({ _tag: "task.tree.start", parentId: "build", label: "Building", children: ["web"], timestamp }),
+    );
+    viewModel.apply(event({ _tag: "task.start", taskId: "web", label: "web", timestamp }));
+    const controller = new TaskTreeInputController(viewModel, { now: () => timestamp });
 
-    expect(controller.handleKey("page-down").changed).toBe(true);
-    expect(viewModel.snapshot().frameLines.join("\n")).toContain("line-7");
+    const result = controller.handleKey("enter");
+
+    expect(result.changed).toBe(false);
+    expect(result.events).toEqual([]);
+    expect(viewModel.expandedTaskId).toBeUndefined();
   });
 });

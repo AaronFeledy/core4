@@ -2,11 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import * as openTuiModule from "@opentui/core";
 import { ManualClock, createTestRenderer } from "@opentui/core/testing";
 
+import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
 import {
   type OpenTuiModuleLike,
   type RendererLike,
   createOpenTuiPromptDriver,
 } from "../src/opentui/prompt-driver.ts";
+import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 
 type TestSetup = Awaited<ReturnType<typeof createTestRenderer>> & { clock: ManualClock };
 
@@ -176,6 +178,7 @@ afterEach(async () => {
   for (const testSetup of setups.splice(0)) {
     await testSetup.renderer.destroy();
   }
+  resetOpenTuiSubstrateAvailabilityForTests();
 });
 
 describe("OpenTUI prompt driver", () => {
@@ -467,6 +470,7 @@ describe("OpenTUI prompt driver", () => {
       "name",
       "OpenTuiPromptUnavailableError",
     );
+    resetOpenTuiSubstrateAvailabilityForTests();
     await expect(rendererDriver.readRaw(request)).rejects.toHaveProperty(
       "name",
       "OpenTuiPromptUnavailableError",
@@ -476,6 +480,38 @@ describe("OpenTUI prompt driver", () => {
       "OpenTuiPromptUnavailableError",
     );
     expect(attempts).toEqual({ load: 1, init: 1 });
+  });
+
+  test("a live-region failure prevents a later prompt driver from loading OpenTUI", async () => {
+    const substrateFailure = new Error("no native binding");
+    let promptLoadAttempts = 0;
+    await expect(
+      createLiveRegionController(
+        {
+          stdout: process.stdout,
+          width: 80,
+          height: 24,
+          footerHeight: 12,
+        },
+        {
+          loadModule: async () => {
+            throw substrateFailure;
+          },
+        },
+      ),
+    ).rejects.toHaveProperty("name", "OpenTuiLiveRegionUnavailableError");
+    const driver = createOpenTuiPromptDriver({
+      loadModule: async () => {
+        promptLoadAttempts += 1;
+        throw new Error("prompt loader must not run");
+      },
+    });
+
+    await expect(driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
+      name: "OpenTuiPromptUnavailableError",
+      cause: substrateFailure,
+    });
+    expect(promptLoadAttempts).toBe(0);
   });
 
   test("preserves cancellation when destroy also fails and latches the destroy failure", async () => {

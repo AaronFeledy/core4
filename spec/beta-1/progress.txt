@@ -28,6 +28,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Programmatic `Bun.build` may resolve with `success: false`; compile wrappers must inspect the result, preserve diagnostics, and fail the calling release stage instead of trusting promise resolution.
 - Promise-backed interactive drivers must accept the enclosing Effect cancellation signal and settle through their normal cleanup path so interruption destroys terminal renderers and listeners.
 - Split-footer resize handling must recompute semantic footer content at the new dimensions before replay; eventless input changes such as full-tail paging require an explicit repaint.
+- Expanded transcript resize repages through the serialized event/input seam at the new row budget while preserving the current file-tail anchor.
 
 ## Durable learnings
 
@@ -545,4 +546,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Unresolved architecture blockers return US-456 to Build with `passes: false`: `reset(false)` plus full-history replay duplicates native scrollback and retains unbounded history; full-tail still uses the redacted bounded ring instead of a persisted unredacted transcript; integrated first-paint/three-service performance coverage is missing; substrate degradation is not yet latched process-wide. Closing these requires the scoped Effect transcript reader and bounded visible-window replay identified by architecture review, not review-window compatibility code.
 - Review notes (deferred/rejected): Bugbot's imperative `io.writeStdout` finding was rejected as a false positive because `createStdioRendererIO` dynamically calls the `stdout.write` method that OpenTUI patches. Its Enter/Esc timing finding was rejected because the event consumer is intentionally the sole screen-mode writer; key input mutates local selection state, then serialized expand/collapse publication performs the transition without a competing direct write. `Guide-Coverage-Skip: Internal renderer transport fixes do not change an additional public SDK workflow beyond the updated terminal UI guide.`
 - Verification: TDD red failures were observed for logical-row commits, mixed Ctrl-C chunks, and flowing-state restoration; focused controller/runtime/stdin tests passed on host and the native OpenTUI styling test passed in `lando4-dev`; typecheck, lint, changed-file diagnostics, and the seven-file TypeScript no-excuse audit passed. No full test suite or host-native/PTY integration was run.
+---
+
+## 2026-07-17 02:44 CDT - US-456
+- Closed the remaining split-footer architecture gaps: resize replay retains only the bounded visible scrollback suffix, OpenTUI degradation latches across prompt and live-region surfaces, and alternate-screen expansion reads the scoped persisted transcript rather than the redacted event ring. Expanded transcript resize now repages at the new row budget without losing its current anchor; post-completion reopen, paging, cancellation, and footer retirement remain serialized with event consumption.
+- Verification: typecheck, lint, build, renderer/machine-output boundaries, guide lint/coverage/public transcripts, TypeScript no-excuse audit, and 498 focused renderer/SDK/first-paint/build-orchestrator tests passed. Fresh real-PTY/xterm.js captures at 80 and 40 columns had exact widths, no overflow, aligned borders, preserved scrollback, and correct Korean display cells; independent functional-integrity and visual/CJK reviewers passed with no blockers.
+- **Learnings for future iterations:**
+  - File-backed tail resize is not just a frame reflow: refresh the active page through the same serialization semaphore as events and input, preserving its end anchor while applying the new line budget.
+  - Keep the short redacted event ring for the collapsed footer and the scoped local transcript reader for expanded diagnostics; merging them either leaks local output or silently truncates the full-tail contract.
 ---
