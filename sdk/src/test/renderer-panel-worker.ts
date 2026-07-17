@@ -3,6 +3,7 @@
 /**
  * Isolated panel worker for the §13.1 Renderer panel contract suite.
  * Only this worker imports the panel module; the host never does.
+ * Host↔worker IPC is transferable binary frames only.
  */
 import { pathToFileURL } from "node:url";
 
@@ -14,6 +15,7 @@ import type { RendererPanel } from "../schema/renderer-panel.ts";
 import {
   PANEL_OP,
   decodePanelContextPayload,
+  decodePanelInitPayload,
   decodePanelRequest,
   encodeFailureResponse,
   encodePanelView,
@@ -32,13 +34,19 @@ let panel: RendererPanel | undefined;
 self.onmessage = async (event: MessageEvent<unknown>) => {
   try {
     const data = event.data;
-    if (
-      typeof data === "object" &&
-      data !== null &&
-      "type" in data &&
-      (data as { type: string }).type === "init"
-    ) {
-      const init = data as { type: "init"; moduleUrl: string; manifestId: string };
+    if (!(data instanceof ArrayBuffer) && !(ArrayBuffer.isView(data) && data instanceof Uint8Array)) {
+      respond(encodeFailureResponse("Expected binary panel frame"));
+      return;
+    }
+
+    const frame =
+      data instanceof ArrayBuffer
+        ? new Uint8Array(data)
+        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    const request = decodePanelRequest(frame);
+
+    if (request.op === PANEL_OP.init) {
+      const init = decodePanelInitPayload(request.payload);
       const mod = (await import(init.moduleUrl)) as { default?: RendererPanel };
       const candidate = mod.default;
       if (
@@ -65,16 +73,6 @@ self.onmessage = async (event: MessageEvent<unknown>) => {
       return;
     }
 
-    if (!(data instanceof ArrayBuffer) && !(ArrayBuffer.isView(data) && data instanceof Uint8Array)) {
-      respond(encodeFailureResponse("Expected binary frame or init message"));
-      return;
-    }
-
-    const frame =
-      data instanceof ArrayBuffer
-        ? new Uint8Array(data)
-        : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
-    const request = decodePanelRequest(frame);
     if (request.op !== PANEL_OP.render) {
       respond(encodeFailureResponse(`Unknown op ${request.op}`));
       return;

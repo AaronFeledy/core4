@@ -14,6 +14,7 @@ import {
   decodePanelView,
   decodeReadyResponse,
   encodePanelContextPayload,
+  encodePanelInitPayload,
   encodePanelRequest,
 } from "./renderer-panel-protocol.ts";
 
@@ -111,11 +112,13 @@ export const runRendererPanelContract = (
       try {
         const readyStarted = performance.now();
         const readyPromise = waitForMessage(worker, PANEL_READY_DEADLINE_MS);
-        worker.postMessage({
-          type: "init",
-          moduleUrl: pathToFileURL(input.modulePath).href,
-          manifestId: input.manifestId,
-        });
+        const initPayload = encodePanelInitPayload(input.manifestId, pathToFileURL(input.modulePath).href);
+        const initRequest = encodePanelRequest(PANEL_OP.init, initPayload);
+        const initCopy = initRequest.buffer.slice(
+          initRequest.byteOffset,
+          initRequest.byteOffset + initRequest.byteLength,
+        );
+        worker.postMessage(initCopy, [initCopy]);
         const ready = await readyPromise;
         const readyMs = performance.now() - readyStarted;
         if (!ready.ok) {
@@ -156,18 +159,16 @@ export const runRendererPanelContract = (
           if (first !== undefined && second !== undefined) {
             const payload1 = encodePanelContextPayload(first);
             const req1 = encodePanelRequest(PANEL_OP.render, payload1);
+            const copy1 = req1.buffer.slice(req1.byteOffset, req1.byteOffset + req1.byteLength);
             const started = performance.now();
-            worker.postMessage(req1.buffer.slice(req1.byteOffset, req1.byteOffset + req1.byteLength), [
-              req1.buffer.slice(req1.byteOffset, req1.byteOffset + req1.byteLength),
-            ]);
+            worker.postMessage(copy1, [copy1]);
             const payload2 = encodePanelContextPayload(second);
             const req2 = encodePanelRequest(PANEL_OP.render, payload2);
-            worker.postMessage(req2.buffer.slice(req2.byteOffset, req2.byteOffset + req2.byteLength), [
-              req2.buffer.slice(req2.byteOffset, req2.byteOffset + req2.byteLength),
-            ]);
-            const r1 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS + 50);
+            const copy2 = req2.buffer.slice(req2.byteOffset, req2.byteOffset + req2.byteLength);
+            worker.postMessage(copy2, [copy2]);
+            const r1 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
             renderMs = Math.max(renderMs, performance.now() - started);
-            if (r1.ok) {
+            if (r1.ok && performance.now() - started <= PANEL_RENDER_DEADLINE_MS) {
               try {
                 lastGood = parseRenderResponse(r1.data);
               } catch {
@@ -176,7 +177,7 @@ export const runRendererPanelContract = (
             } else {
               dropped = true;
             }
-            const r2 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS + 50);
+            const r2 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
             if (r2.ok) {
               try {
                 lastGood = parseRenderResponse(r2.data);

@@ -15,6 +15,7 @@ export const PANEL_PROTOCOL_VERSION = 1;
 
 /** Operation codes on the binary channel. */
 export const PANEL_OP = {
+  init: 0,
   ready: 1,
   render: 2,
   failure: 3,
@@ -97,6 +98,37 @@ export const encodePanelContextPayload = (ctx: RendererPanelContextType | unknow
   const decoded = Schema.decodeUnknownSync(RendererPanelContext)(ctx);
   const encoded = Schema.encodeSync(RendererPanelContext)(decoded);
   return encodeUtf8(JSON.stringify(encoded));
+};
+
+/** Binary init payload: u16 BE manifestIdLen | manifestId | u16 BE moduleUrlLen | moduleUrl. */
+export const encodePanelInitPayload = (manifestId: string, moduleUrl: string): Uint8Array => {
+  const idBytes = encodeUtf8(manifestId);
+  const urlBytes = encodeUtf8(moduleUrl);
+  if (idBytes.byteLength > 0xffff || urlBytes.byteLength > 0xffff) {
+    throw new Error("Panel init string exceeds u16 length");
+  }
+  const out = new Uint8Array(4 + idBytes.byteLength + urlBytes.byteLength);
+  const view = new DataView(out.buffer);
+  writeU16BE(view, 0, idBytes.byteLength);
+  out.set(idBytes, 2);
+  writeU16BE(view, 2 + idBytes.byteLength, urlBytes.byteLength);
+  out.set(urlBytes, 4 + idBytes.byteLength);
+  return out;
+};
+
+export const decodePanelInitPayload = (
+  payload: Uint8Array,
+): { readonly manifestId: string; readonly moduleUrl: string } => {
+  if (payload.byteLength < 4) throw new Error("Panel init payload too short");
+  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  const idLen = readU16BE(view, 0);
+  if (2 + idLen + 2 > payload.byteLength) throw new Error("Panel init payload truncated (id)");
+  const manifestId = decodeUtf8(payload.subarray(2, 2 + idLen));
+  const urlLen = readU16BE(view, 2 + idLen);
+  const urlStart = 4 + idLen;
+  if (urlStart + urlLen > payload.byteLength) throw new Error("Panel init payload truncated (url)");
+  const moduleUrl = decodeUtf8(payload.subarray(urlStart, urlStart + urlLen));
+  return { manifestId, moduleUrl };
 };
 
 export const decodePanelContextPayload = (payload: Uint8Array): RendererPanelContextType => {
