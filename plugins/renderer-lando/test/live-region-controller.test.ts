@@ -8,9 +8,18 @@ import {
 } from "../src/opentui/live-region-controller.ts";
 
 type RenderableOptions = {
-  readonly content?: string;
+  readonly content?: string | FakeStyledText;
   readonly width?: number;
 };
+
+type FakeChunk = { readonly __isChunk: true; readonly text: string };
+
+class FakeStyledText {
+  constructor(readonly chunks: FakeChunk[]) {}
+}
+
+const fakeStyle = (input: string | FakeChunk): FakeChunk =>
+  typeof input === "string" ? { __isChunk: true, text: input } : input;
 
 class FakeRenderable {
   readonly children: FakeRenderable[] = [];
@@ -18,7 +27,10 @@ class FakeRenderable {
   readonly width: number | undefined;
 
   constructor(_context: unknown, options: RenderableOptions) {
-    this.content = options.content;
+    this.content =
+      typeof options.content === "string"
+        ? options.content
+        : options.content?.chunks.map((chunk) => chunk.text).join("");
     this.width = options.width;
   }
 
@@ -31,6 +43,15 @@ class FakeRenderable {
 
 type Fixture = ReturnType<typeof makeFixture>;
 
+interface FakeRenderer extends LiveRegionRendererLike {
+  externalOutputMode: "capture-stdout" | "passthrough";
+  readonly terminalWidth: number;
+  readonly terminalHeight: number;
+  setCursorPosition(x: number, y: number, visible: boolean): void;
+  on(event: "resize", listener: () => void): FakeRenderer;
+  off(event: "resize", listener: () => void): FakeRenderer;
+}
+
 const makeFixture = () => {
   const calls: string[] = [];
   const commits: string[] = [];
@@ -41,10 +62,13 @@ const makeFixture = () => {
   let targetFps = 60;
   let maxFps = 60;
   let screenMode: "split-footer" | "alternate-screen" | "main-screen" = "split-footer";
+  let externalOutputMode: "capture-stdout" | "passthrough" = "capture-stdout";
   let footerHeight = 1;
   let width = 80;
+  let height = 24;
+  const resizeListeners = new Set<() => void>();
 
-  const renderer: LiveRegionRendererLike = {
+  const renderer: FakeRenderer = {
     root: {
       add: (child) => {
         if (!(child instanceof FakeRenderable)) throw new TypeError("Expected a fake footer renderable.");
@@ -87,13 +111,41 @@ const makeFixture = () => {
     },
     resize: (nextWidth, nextHeight) => {
       width = nextWidth;
+      height = nextHeight;
       calls.push(`resize:${nextWidth}x${nextHeight}`);
     },
     get screenMode() {
       return screenMode;
     },
     set screenMode(value) {
+      if (screenMode === value) return;
+      calls.push(`screenMode:${value}`);
       screenMode = value;
+    },
+    get externalOutputMode() {
+      return externalOutputMode;
+    },
+    set externalOutputMode(value) {
+      if (externalOutputMode === value) return;
+      calls.push(`externalOutputMode:${value}`);
+      externalOutputMode = value;
+    },
+    get terminalWidth() {
+      return width;
+    },
+    get terminalHeight() {
+      return height;
+    },
+    setCursorPosition: (x, y, visible) => {
+      calls.push(`cursor:${x},${y}:${String(visible)}`);
+    },
+    on: (event, listener) => {
+      if (event === "resize") resizeListeners.add(listener);
+      return renderer;
+    },
+    off: (event, listener) => {
+      if (event === "resize") resizeListeners.delete(listener);
+      return renderer;
     },
     get footerHeight() {
       return footerHeight;
@@ -113,7 +165,16 @@ const makeFixture = () => {
     createCliRenderer: async () => renderer,
     BoxRenderable: FakeRenderable,
     TextRenderable: FakeRenderable,
-  } satisfies OpenTuiLiveRegionModuleLike<LiveRegionRendererLike>;
+    StyledText: FakeStyledText,
+    stringToStyledText: (content: string) => new FakeStyledText([fakeStyle(content)]),
+    bold: fakeStyle,
+    dim: fakeStyle,
+    red: fakeStyle,
+    green: fakeStyle,
+    yellow: fakeStyle,
+    cyan: fakeStyle,
+    brightMagenta: fakeStyle,
+  } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
 
   return {
     calls,
@@ -123,17 +184,26 @@ const makeFixture = () => {
     module,
     renderer,
     state: () => ({ destroyCount, footerHeight, liveRequestCount, maxFps, screenMode, targetFps }),
+    emitResize: (nextWidth = 42, nextHeight = 12) => {
+      width = nextWidth;
+      height = nextHeight;
+      for (const listener of [...resizeListeners]) listener();
+    },
+    resizeListenerCount: () => resizeListeners.size,
   };
 };
 
-const createController = async (fixture: Fixture) =>
-  createLiveRegionController(
+const createController = async (fixture: Fixture) => {
+  const controller = await createLiveRegionController(
     { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
     {
       loadModule: async () => fixture.module,
       createRenderer: async () => fixture.renderer,
     },
   );
+  fixture.calls.length = 0;
+  return controller;
+};
 
 describe("LiveRegionController", () => {
   test("preserves interleaved scrollback and footer update order without loss", async () => {
@@ -170,12 +240,31 @@ describe("LiveRegionController", () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
     controller.setFooter(["one", "two"]);
+    fixture.calls.length = 0;
 
     controller.resize(42, 12);
 
-    expect(fixture.calls.slice(-2)).toEqual(["resize:42x12", "footer:one|two"]);
+    expect(fixture.calls).toEqual([
+      "resize:42x12",
+      "reset:false",
+      "externalOutputMode:passthrough",
+      "cursor:1,12:false",
+      "externalOutputMode:capture-stdout",
+      "footer:one|two",
+    ]);
     expect(fixture.footerWidths).toEqual([80, 42]);
     expect(fixture.state().footerHeight).toBe(2);
+  });
+
+  test("bounds the live footer to terminal rows while preserving its closing line", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.resize(42, 3);
+
+    controller.setFooter(["header", "one", "two", "three", "closing"]);
+
+    expect(fixture.calls.at(-1)).toBe("footer:header|one|closing");
+    expect(fixture.state().footerHeight).toBe(3);
   });
 
   test("resets replay bookkeeping without discarding committed scrollback", async () => {
@@ -185,11 +274,18 @@ describe("LiveRegionController", () => {
 
     controller.reset();
 
-    expect(fixture.calls).toEqual(["scrollback:kept", "reset:true"]);
-    expect(fixture.commits).toEqual(["kept"]);
+    expect(fixture.calls).toEqual([
+      "scrollback:kept",
+      "reset:false",
+      "scrollback:kept",
+      "externalOutputMode:passthrough",
+      "cursor:1,24:false",
+      "externalOutputMode:capture-stdout",
+    ]);
+    expect(fixture.commits).toEqual(["kept", "kept"]);
   });
 
-  test("enters and exits the alternate-screen full tail", async () => {
+  test("enters and exits full tail using legal output-mode ordering", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);
 
@@ -198,6 +294,70 @@ describe("LiveRegionController", () => {
     controller.exitFullTail();
 
     expect(fixture.state().screenMode).toBe("split-footer");
+    expect(fixture.calls).toEqual([
+      "externalOutputMode:passthrough",
+      "screenMode:alternate-screen",
+      "screenMode:split-footer",
+      "cursor:1,24:false",
+      "externalOutputMode:capture-stdout",
+    ]);
+  });
+
+  test("terminal resize resets replay state and restores committed output and footer", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.commitScrollback("kept");
+    controller.setFooter(["building"]);
+    fixture.calls.length = 0;
+
+    fixture.emitResize();
+
+    expect(fixture.calls).toEqual([
+      "reset:false",
+      "scrollback:kept",
+      "externalOutputMode:passthrough",
+      "cursor:1,12:false",
+      "externalOutputMode:capture-stdout",
+      "footer:building",
+    ]);
+  });
+
+  test("dispose removes the resize listener before destroying the renderer", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    expect(fixture.resizeListenerCount()).toBe(1);
+
+    controller.dispose();
+
+    expect(fixture.resizeListenerCount()).toBe(0);
+    expect(fixture.state().destroyCount).toBe(1);
+  });
+
+  test("production renderer enters captured split-footer from a bottom-pinned cursor seed", async () => {
+    const fixture = makeFixture();
+    let config: Record<string, unknown> | undefined;
+    const module = {
+      ...fixture.module,
+      createCliRenderer: async (nextConfig: Record<string, unknown>) => {
+        config = nextConfig;
+        fixture.renderer.externalOutputMode = "passthrough";
+        fixture.calls.length = 0;
+        return fixture.renderer;
+      },
+    } satisfies OpenTuiLiveRegionModuleLike<FakeRenderer>;
+
+    const controller = await createLiveRegionController(
+      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { loadModule: async () => module },
+    );
+
+    expect(config).toMatchObject({
+      screenMode: "split-footer",
+      externalOutputMode: "passthrough",
+      exitOnCtrlC: false,
+    });
+    expect(fixture.calls).toEqual(["cursor:1,24:false", "externalOutputMode:capture-stdout"]);
+    controller.dispose();
   });
 
   test("destroys its renderer exactly once", async () => {
@@ -228,5 +388,25 @@ describe("LiveRegionController", () => {
       },
     );
     expect(initFailure).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("initialize", initCause));
+  });
+
+  test("destroys the renderer when the split-footer transition fails during initialization", async () => {
+    const fixture = makeFixture();
+    const transitionCause = new Error("split-footer transition failed");
+    Object.defineProperty(fixture.renderer, "externalOutputMode", {
+      configurable: true,
+      get: () => "capture-stdout" as const,
+      set: () => {
+        throw transitionCause;
+      },
+    });
+
+    const failure = createLiveRegionController(
+      { stdout: process.stdout, width: 80, height: 24, footerHeight: 1 },
+      { loadModule: async () => fixture.module, createRenderer: async () => fixture.renderer },
+    );
+
+    expect(failure).rejects.toEqual(new OpenTuiLiveRegionUnavailableError("initialize", transitionCause));
+    expect(fixture.state().destroyCount).toBe(1);
   });
 });

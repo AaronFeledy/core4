@@ -4,7 +4,7 @@ import { type LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from 
 
 import type { TaskTreeViewModel } from "./task-tree-tail.ts";
 
-export type KeyToken = "up" | "down" | "enter" | "esc" | "tab" | "unknown";
+export type KeyToken = "up" | "down" | "page-up" | "page-down" | "enter" | "esc" | "tab" | "unknown";
 
 const ESC = String.fromCharCode(27);
 
@@ -14,6 +14,10 @@ export const parseKey = (raw: string): KeyToken => {
       return "up";
     case `${ESC}[B`:
       return "down";
+    case `${ESC}[5~`:
+      return "page-up";
+    case `${ESC}[6~`:
+      return "page-down";
     case "\r":
     case "\n":
       return "enter";
@@ -26,11 +30,20 @@ export const parseKey = (raw: string): KeyToken => {
   }
 };
 
-export type KeyAction = "focus.up" | "focus.down" | "tree.cycle" | "detail.expand" | "detail.collapse";
+export type KeyAction =
+  | "focus.up"
+  | "focus.down"
+  | "tree.cycle"
+  | "detail.expand"
+  | "detail.collapse"
+  | "detail.page-up"
+  | "detail.page-down";
 
 export const DEFAULT_KEYMAP: Readonly<Record<KeyToken, KeyAction | null>> = {
   up: "focus.up",
   down: "focus.down",
+  "page-up": "detail.page-up",
+  "page-down": "detail.page-down",
   tab: "tree.cycle",
   enter: "detail.expand",
   esc: "detail.collapse",
@@ -89,6 +102,10 @@ export class TaskTreeInputController {
         return this.#expand();
       case "detail.collapse":
         return this.#collapse();
+      case "detail.page-up":
+        return this.#pageTail(1);
+      case "detail.page-down":
+        return this.#pageTail(-1);
       default:
         return NO_CHANGE;
     }
@@ -99,12 +116,22 @@ export class TaskTreeInputController {
   }
 
   #moveFocus(delta: number): KeyHandleResult {
+    if (this.#expanded) {
+      const changed = this.#viewModel.scrollExpandedLines(-delta);
+      return changed ? { events: [], changed } : NO_CHANGE;
+    }
     const count = this.#viewModel.focusableTaskIds().length;
     if (count === 0) return NO_CHANGE;
     const next = Math.max(0, Math.min(count - 1, this.#focusIndex + delta));
     if (next === this.#focusIndex) return NO_CHANGE;
     this.#focusIndex = next;
     return { events: [], changed: true };
+  }
+
+  #pageTail(direction: -1 | 1): KeyHandleResult {
+    if (!this.#expanded) return NO_CHANGE;
+    const changed = this.#viewModel.scrollExpandedPage(direction);
+    return changed ? { events: [], changed } : NO_CHANGE;
   }
 
   #expand(): KeyHandleResult {

@@ -60,6 +60,7 @@ const SGR_MARKERS: Record<string, string> = {
  */
 export const tokenizeAnsi = (text: string): string =>
   text.replace(ansiPattern, (match) => {
+    if (!match.endsWith("m")) return "";
     const body = match.slice(2, -1); // strip ESC[ and trailing 'm'
     const codes = body === "" ? ["0"] : body.split(";");
     return codes.map((code) => `⟨${SGR_MARKERS[code] ?? `sgr:${code}`}⟩`).join("");

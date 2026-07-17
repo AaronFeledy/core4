@@ -496,12 +496,12 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
       [
         {
           file: rendererLiveRegionController,
-          kind: "dynamic-import",
+          kind: "dynamic-import" as const,
           specifier: "@opentui/core",
         },
         {
           file: rendererPromptDriver,
-          kind: "dynamic-import",
+          kind: "dynamic-import" as const,
           specifier: "@opentui/core",
         },
       ].sort((left, right) => left.file.localeCompare(right.file)),

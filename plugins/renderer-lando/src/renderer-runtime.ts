@@ -10,6 +10,7 @@ import {
   type LiveRegionControllerOptions,
   createLiveRegionController,
 } from "./opentui/live-region-controller.ts";
+import { TaskTreeAnimationController } from "./task-tree-animation.ts";
 import { TaskTreeViewModel } from "./task-tree-tail.ts";
 
 /** Injectable subset of the split-footer live region the consumer drives (real controller or test fake). */
@@ -25,6 +26,7 @@ interface LiveRegionHandle {
 
 export interface LandoEventConsumerDeps {
   readonly createLiveRegion?: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>;
+  readonly raiseInterrupt?: () => void;
 }
 
 const DEFAULT_FOOTER_HEIGHT = 12 as const;
@@ -118,21 +120,18 @@ const makeLineModeConsumer = (io: RendererIO): Layer.Layer<never, never, EventSe
  * is passthrough committed to scrollback above the footer.
  */
 const makeSubstrateHandler = (io: RendererIO, controller: LiveRegionHandle) => {
+  let terminalColumns = io.terminalColumns;
+  let terminalRows = io.terminalRows;
   const viewModel = new TaskTreeViewModel({
-    getTerminalColumns: () => io.terminalColumns,
-    getTerminalRows: () => io.terminalRows,
+    getTerminalColumns: () => terminalColumns,
+    getTerminalRows: () => terminalRows,
   });
-  let liveActive = false;
-  const syncLive = (): void => {
-    const animated = viewModel.hasAnimatedAffordance();
-    if (animated && !liveActive) {
-      controller.requestLive();
-      liveActive = true;
-    } else if (!animated && liveActive) {
-      controller.dropLive();
-      liveActive = false;
-    }
-  };
+  const renderFooter = (): void => controller.setFooter(viewModel.frameLines());
+  const animation = new TaskTreeAnimationController(viewModel, {
+    render: renderFooter,
+    requestLive: () => controller.requestLive(),
+    dropLive: () => controller.dropLive(),
+  });
   const handle = (event: LandoEvent): void => {
     if (event._tag === "task.detail.expand") {
       controller.enterFullTail();
@@ -145,39 +144,61 @@ const makeSubstrateHandler = (io: RendererIO, controller: LiveRegionHandle) => {
       return;
     }
     if (isRenderableTaskTreeEvent(event)) {
+      const expandedTaskId = viewModel.expandedTaskId;
       viewModel.apply(event);
+      animation.consume(event);
+      if (expandedTaskId !== undefined && viewModel.expandedTaskId === undefined) {
+        controller.exitFullTail();
+      }
       if (event._tag === "task.tree.complete") {
-        for (const line of viewModel.frameLines()) controller.commitScrollback(line);
+        for (const line of viewModel.treeFrameLines()) controller.commitScrollback(line);
+        if (viewModel.expandedTaskId !== undefined) {
+          renderFooter();
+          return;
+        }
         controller.setFooter([]);
-        syncLive();
         return;
       }
-      controller.setFooter(viewModel.frameLines());
-      syncLive();
+      renderFooter();
       return;
     }
     const line = renderPlainLine(event);
     if (line !== null) controller.commitScrollback(line);
   };
-  return { viewModel, handle };
+  const resize = (width: number, height: number): void => {
+    terminalColumns = width;
+    terminalRows = height;
+    renderFooter();
+  };
+  return { viewModel, handle, resize, dispose: () => animation.dispose() };
 };
 
 const makeSubstrateConsumerLive = (
   io: RendererIO,
   stdout: NodeJS.WriteStream,
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<LiveRegionHandle>,
+  raiseInterrupt: () => void,
 ): Layer.Layer<never, never, EventService> =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
       const events = yield* EventService;
+      let handleResize = (_width: number, _height: number): void => {};
       const acquired = yield* Effect.tryPromise(() =>
         createLiveRegion({
           stdout,
           width: io.terminalColumns ?? 80,
           height: io.terminalRows ?? 24,
           footerHeight: DEFAULT_FOOTER_HEIGHT,
+          onResize: (width, height) => handleResize(width, height),
         }),
-      ).pipe(Effect.option);
+      ).pipe(
+        Effect.tapError((cause) =>
+          Effect.logDebug("OpenTUI live region unavailable; degrading to line rendering.").pipe(
+            Effect.annotateLogs({ cause: String(cause) }),
+          ),
+        ),
+        Effect.option,
+      );
       const queue = yield* events.subscribeQueue;
       if (Option.isNone(acquired)) {
         const line = (event: LandoEvent): void => {
@@ -199,7 +220,8 @@ const makeSubstrateConsumerLive = (
         return;
       }
       const controller = acquired.value;
-      const { viewModel, handle } = makeSubstrateHandler(io, controller);
+      const { viewModel, handle, resize, dispose } = makeSubstrateHandler(io, controller);
+      handleResize = resize;
       const fiber = yield* Effect.forkScoped(
         Effect.gen(function* () {
           while (true) handle(yield* Queue.take(queue));
@@ -211,8 +233,13 @@ const makeSubstrateConsumerLive = (
         const runtime = yield* Effect.runtime<never>();
         const input = new TaskTreeInputController(viewModel);
         unsubscribe = subscribe((raw) => {
+          if (raw === "\x03") {
+            raiseInterrupt();
+            return;
+          }
           const result = input.handleInput(raw);
           if (!result.changed) return;
+          if (result.events.length === 0) controller.setFooter(viewModel.frameLines());
           for (const event of result.events) Runtime.runFork(runtime)(events.publish(event));
         });
       }
@@ -222,6 +249,7 @@ const makeSubstrateConsumerLive = (
           const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) for (const event of remaining.value) handle(event);
           yield* Fiber.interrupt(fiber);
+          dispose();
           controller.dispose();
         }),
       );
@@ -236,7 +264,8 @@ const makeLandoEventConsumer = (
   const stdout = io.externalOutputStream;
   if (stdout === undefined) return makeLineModeConsumer(io);
   const createLiveRegion = deps.createLiveRegion ?? ((options) => createLiveRegionController(options));
-  return makeSubstrateConsumerLive(io, stdout, createLiveRegion);
+  const raiseInterrupt = deps.raiseInterrupt ?? (() => process.kill(process.pid, "SIGINT"));
+  return makeSubstrateConsumerLive(io, stdout, createLiveRegion, raiseInterrupt);
 };
 
 export { makeLandoEventConsumer };

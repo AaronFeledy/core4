@@ -128,9 +128,10 @@ describe("TaskTreeViewModel — expand / collapse", () => {
     const vm = new TaskTreeViewModel({ terminalRows: 6 });
     seed(vm, "a", 30);
     vm.expandTask("a");
-    const panelLines = vm.snapshot().frameLines.filter((l) => l.includes("line-"));
-    expect(panelLines.length).toBeLessThanOrEqual(6);
-    expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
+    const frameLines = vm.snapshot().frameLines;
+    const panelLines = frameLines.filter((l) => l.includes("line-"));
+    expect(frameLines.length).toBeLessThanOrEqual(6);
+    expect(panelLines).toHaveLength(3);
     expect(panelLines.some((l) => l.includes("line-29"))).toBe(true);
   });
 
@@ -145,22 +146,22 @@ describe("TaskTreeViewModel — expand / collapse", () => {
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
   });
 
-  test("finished tasks cannot be expanded", () => {
+  test("finished tasks remain expandable", () => {
     const vm = new TaskTreeViewModel();
     seed(vm, "a", 10);
     vm.apply(taskComplete("a"));
-    expect(vm.canExpandTask("a")).toBe(false);
+    expect(vm.canExpandTask("a")).toBe(true);
     vm.expandTask("a");
-    expect(vm.expandedTaskId).toBeUndefined();
+    expect(vm.expandedTaskId).toBe("a");
   });
 
-  test("completion clears the expanded task", () => {
+  test("completion keeps the expanded task visible", () => {
     const vm = new TaskTreeViewModel();
     seed(vm, "a", 10);
     vm.expandTask("a");
     expect(vm.expandedTaskId).toBe("a");
     vm.apply(taskComplete("a"));
-    expect(vm.expandedTaskId).toBeUndefined();
+    expect(vm.expandedTaskId).toBe("a");
   });
 });
 
@@ -214,13 +215,13 @@ describe("TaskTreeInputController", () => {
     expect(vm.expandedTaskId).toBeUndefined();
   });
 
-  test("Esc emits collapse for the expanded task after focus moves", () => {
+  test("arrow input pages the expanded task without moving tree focus", () => {
     const { vm, controller } = make(["a", "b"]);
     controller.handleKey("down");
     controller.handleKey("enter");
     expect(vm.expandedTaskId).toBe("b");
     controller.handleKey("up");
-    expect(controller.focusedTaskId).toBe("a");
+    expect(controller.focusedTaskId).toBe("b");
     const result = controller.handleKey("esc");
     expect(result.events).toHaveLength(1);
     expect(result.events[0]?._tag).toBe("task.detail.collapse");
@@ -243,20 +244,21 @@ describe("TaskTreeInputController", () => {
     expect(second.events).toHaveLength(0);
   });
 
-  test("Enter on a finished task is a no-op", () => {
+  test("Enter on a finished task expands its retained tail", () => {
     const { vm, controller } = make(["a"]);
     vm.apply(taskComplete("a"));
     const result = controller.handleKey("enter");
-    expect(result.changed).toBe(false);
-    expect(result.events).toHaveLength(0);
-    expect(vm.expandedTaskId).toBeUndefined();
+    expect(result.changed).toBe(true);
+    expect(result.events[0]?._tag).toBe("task.detail.expand");
+    expect(vm.expandedTaskId).toBe("a");
   });
 
-  test("completion unlocks the controller for another expansion", () => {
+  test("collapse after completion unlocks the controller for another expansion", () => {
     const { vm, controller } = make(["a", "b"]);
     controller.handleKey("enter");
     expect(vm.expandedTaskId).toBe("a");
     vm.apply(taskComplete("a"));
+    controller.handleKey("esc");
     controller.handleKey("down");
     const result = controller.handleKey("enter");
     expect(result.changed).toBe(true);

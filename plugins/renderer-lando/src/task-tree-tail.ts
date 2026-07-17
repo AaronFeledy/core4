@@ -18,34 +18,15 @@
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { formatDurationSuffix } from "./format.ts";
+import { csi, styleBodyFrame, styleBottomFrame, wrapFrameLines } from "./task-tree-frame.ts";
+
+export { csi } from "./task-tree-frame.ts";
 
 /** Fixed ring-buffer depth for the task-detail tail panel. */
 export const TASK_DETAIL_TAIL_CAPACITY = 4 as const;
 
 /** Retained depth of the expandable full-stream tail (bounded by terminal scroll on render). */
 export const TASK_DETAIL_EXPANDED_CAPACITY = 1000 as const;
-
-const ESC = String.fromCharCode(27);
-
-/**
- * SGR styling sequences used by the task-tree view-model's styled frame mapping.
- * Co-located here because the repo intentionally ships no ANSI dependency. The
- * view-model emits only color/style SGR codes — never cursor-movement or erase
- * sequences; those belong to the substrate live region, not the view-model.
- */
-export const csi = {
-  /** Faint / dim text on (`ESC[2m`). */
-  dim: `${ESC}[2m`,
-  /** Reset faint / dim text (`ESC[22m`). */
-  dimReset: `${ESC}[22m`,
-  bold: `${ESC}[1m`,
-  reset: `${ESC}[0m`,
-  cyan: `${ESC}[36m`,
-  pink: `${ESC}[95m`,
-  green: `${ESC}[32m`,
-  amber: `${ESC}[33m`,
-  red: `${ESC}[31m`,
-} as const;
 
 /**
  * Fixed-capacity ring buffer of the most recent task-detail lines. Wraps
@@ -125,12 +106,7 @@ export interface TaskTreeViewModelSnapshot {
 
 /** Marker for a declared-but-not-yet-started child in the first-paint skeleton. */
 const PENDING_MARKER = "◌";
-
-const ansiPattern = new RegExp(`${ESC}\\[[0-9;]*[A-Za-z]`, "g");
-
-const visibleLength = (line: string): number => line.replace(ansiPattern, "").length;
-
-const DEFAULT_TERMINAL_COLUMNS = 80;
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"] as const;
 
 type VisualStatus = "WAIT" | "RUNNING" | "ONLINE" | "CACHED" | "SKIPPED" | "BLOCKED";
 
@@ -157,97 +133,6 @@ const classifyCompletion = (
   };
 };
 
-const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
-  terminalColumns === undefined ? DEFAULT_TERMINAL_COLUMNS : Math.max(1, Math.trunc(terminalColumns));
-
-const splitContentToWidth = (content: string, width: number): ReadonlyArray<string> => {
-  if (visibleLength(content) <= width) return [content];
-  const words = content.split(/(\s+)/).filter((part) => part.length > 0);
-  const lines: string[] = [];
-  let current = "";
-  const budget = Math.max(1, width);
-
-  const pushCurrent = (): void => {
-    if (current.length === 0) return;
-    lines.push(current.trimEnd());
-    current = "";
-  };
-
-  for (const word of words) {
-    if (visibleLength(current) + visibleLength(word) <= budget) {
-      current += word;
-      continue;
-    }
-    if (current.trim().length > 0) pushCurrent();
-    let remaining = word.trimStart();
-    while (visibleLength(current) + visibleLength(remaining) > budget) {
-      const available = Math.max(1, budget - visibleLength(current));
-      current += remaining.slice(0, available);
-      remaining = remaining.slice(available);
-      pushCurrent();
-    }
-    current += remaining;
-  }
-
-  if (current.trim().length > 0) lines.push(current.trimEnd());
-  return lines.length === 0 ? [content.slice(0, width)] : lines;
-};
-
-const capLine = (left: string, text: string, right: string, width: number): string => {
-  const maxTextWidth = Math.max(1, width - visibleLength(left) - visibleLength(right) - 2);
-  const fittedText =
-    visibleLength(text) <= maxTextWidth ? text : `${text.slice(0, Math.max(1, maxTextWidth - 1))}…`;
-  const prefix = `${left} ${fittedText} `;
-  const fill = Math.max(0, width - visibleLength(prefix) - visibleLength(right));
-  return `${prefix}${"─".repeat(fill)}${right}`;
-};
-
-const bodyLine = (text: string, width: number): string => {
-  const bodyWidth = Math.max(1, width - 4);
-  const padding = Math.max(0, bodyWidth - visibleLength(text));
-  return `│ ${text}${" ".repeat(padding)} │`;
-};
-
-const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
-  const hasTrailingFrame = line.endsWith("│");
-  const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
-  const trailingFrame = hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "";
-  return `${csi.pink}${line.slice(0, 1)}${csi.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
-};
-
-const styleBottomFrame = (line: string): string => {
-  let trailingFrameStart = line.length;
-  if (line.endsWith("╯")) {
-    trailingFrameStart -= 1;
-    while (trailingFrameStart > 2 && line[trailingFrameStart - 1] === "─") trailingFrameStart -= 1;
-  }
-  const content = line.slice(2, trailingFrameStart);
-  const trailingFrame = line.slice(trailingFrameStart);
-  const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.pink}${trailingFrame}${csi.reset}`;
-  return `${csi.pink}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.pink}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
-};
-
-const wrapFrameLines = (
-  lines: ReadonlyArray<string>,
-  terminalColumns: number | undefined,
-): ReadonlyArray<string> => {
-  const columns = normalizeTerminalColumns(terminalColumns);
-  if (columns < 60) return lines;
-  return lines.flatMap((line) => {
-    if (line.startsWith("╭─")) return [capLine("╭─", line.slice(2).trim(), "╮", columns)];
-    if (line.startsWith("╰─")) return [capLine("╰─", line.slice(2).trim(), "╯", columns)];
-    if (line.startsWith("│")) {
-      const hangingIndent = line.startsWith("│    ") ? "  " : "";
-      const content = line.slice(1).trimStart();
-      const contentWidth = Math.max(1, columns - 4 - visibleLength(hangingIndent));
-      return splitContentToWidth(content, contentWidth).map((segment) =>
-        bodyLine(`${hangingIndent}${segment}`, columns),
-      );
-    }
-    return splitContentToWidth(line, columns).map((segment) => bodyLine(segment, columns));
-  });
-};
-
 /**
  * Pure, deterministic view-model for the concurrent task-tree surface. Drive it
  * with the renderable `task.*` events via {@link TaskTreeViewModel.apply}; read
@@ -265,8 +150,11 @@ export class TaskTreeViewModel {
   readonly #getTerminalRows: (() => number | undefined) | undefined;
   readonly #tasks = new Map<string, TaskState>();
   readonly #order: string[] = [];
+  readonly #spinningTaskIds = new Set<string>();
+  #spinnerFrame = 0;
   #tree: TreeState | undefined;
   #expandedTaskId: string | undefined;
+  #expandedScrollOffset = 0;
 
   constructor(options: TaskTreeViewModelOptions = {}) {
     this.#detailCapacity = options.detailCapacity ?? TASK_DETAIL_TAIL_CAPACITY;
@@ -287,9 +175,24 @@ export class TaskTreeViewModel {
     return this.#renderFrame();
   }
 
-  /** True while a running task is on screen; the runtime live-gates continuous rendering on this. */
+  treeFrameLines(): ReadonlyArray<string> {
+    return this.#styleFrame(this.#renderTreeFrame());
+  }
+
   hasAnimatedAffordance(): boolean {
-    return this.#runningCount() > 0;
+    return this.#spinningTaskIds.size > 0;
+  }
+
+  showSpinner(taskId: string): void {
+    if (this.#tasks.get(taskId)?.status === "running") this.#spinningTaskIds.add(taskId);
+  }
+
+  hideSpinner(taskId: string): void {
+    this.#spinningTaskIds.delete(taskId);
+  }
+
+  advanceSpinner(): void {
+    this.#spinnerFrame = (this.#spinnerFrame + 1) % SPINNER_FRAMES.length;
   }
 
   get expandedTaskId(): string | undefined {
@@ -304,18 +207,34 @@ export class TaskTreeViewModel {
   }
 
   canExpandTask(taskId: string): boolean {
-    return this.#tasks.get(taskId)?.status === "running";
+    const status = this.#tasks.get(taskId)?.status;
+    return status !== undefined && status !== "pending";
   }
 
-  /** Focus/expand the given running task's full-stream tail (state only). */
   expandTask(taskId: string): void {
     if (!this.canExpandTask(taskId)) return;
     this.#expandedTaskId = taskId;
+    this.#expandedScrollOffset = 0;
   }
 
   /** Collapse any expanded task back to the concurrent tree view (state only). */
   collapse(): void {
     this.#expandedTaskId = undefined;
+    this.#expandedScrollOffset = 0;
+  }
+
+  scrollExpandedLines(delta: number): boolean {
+    const task = this.#expandedTask();
+    if (task === undefined) return false;
+    const maxOffset = Math.max(0, task.fullStream.count - this.#expandedLineBudget());
+    const next = Math.max(0, Math.min(maxOffset, this.#expandedScrollOffset + delta));
+    if (next === this.#expandedScrollOffset) return false;
+    this.#expandedScrollOffset = next;
+    return true;
+  }
+
+  scrollExpandedPage(direction: -1 | 1): boolean {
+    return this.scrollExpandedLines(direction * this.#expandedLineBudget());
   }
 
   snapshot(): TaskTreeViewModelSnapshot {
@@ -326,7 +245,7 @@ export class TaskTreeViewModel {
   }
 
   #apply(event: LandoEvent): void {
-    const record = event as unknown as Record<string, unknown>;
+    const record = event;
     switch (event._tag) {
       case "task.tree.start": {
         const rawChildren = Array.isArray(record.children)
@@ -392,6 +311,12 @@ export class TaskTreeViewModel {
         const rendered = stream === "stderr" ? `! ${line}` : line;
         task.ring.push(rendered);
         task.fullStream.push(rendered);
+        if (this.#expandedTaskId === id && this.#expandedScrollOffset > 0) {
+          this.#expandedScrollOffset = Math.min(
+            Math.max(0, task.fullStream.count - this.#expandedLineBudget()),
+            this.#expandedScrollOffset + 1,
+          );
+        }
         return;
       }
       case "task.complete": {
@@ -402,7 +327,7 @@ export class TaskTreeViewModel {
         task.status = "done";
         task.summary = asString(record.summary);
         task.durationMs = asNumber(record.durationMs);
-        if (this.#expandedTaskId === id) this.#expandedTaskId = undefined;
+        this.#spinningTaskIds.delete(id);
         return;
       }
       case "task.fail": {
@@ -415,7 +340,7 @@ export class TaskTreeViewModel {
         task.durationMs = asNumber(record.durationMs);
         task.exitCode = asNumber(record.exitCode);
         task.remediation = asString(record.remediation);
-        if (this.#expandedTaskId === id) this.#expandedTaskId = undefined;
+        this.#spinningTaskIds.delete(id);
         return;
       }
       case "task.tree.complete": {
@@ -474,28 +399,46 @@ export class TaskTreeViewModel {
     return `│ ${statusChip("BLOCKED")} ✗ ${label}${exitSuffix}${formatDurationSuffix(task.durationMs)}`;
   }
 
-  #expandedRunningTask(): TaskState | undefined {
+  #expandedTask(): TaskState | undefined {
     if (this.#expandedTaskId === undefined) return undefined;
-    const task = this.#tasks.get(this.#expandedTaskId);
-    return task !== undefined && task.status === "running" ? task : undefined;
+    return this.#tasks.get(this.#expandedTaskId);
   }
 
   #currentTerminalRows(): number | undefined {
     return this.#getTerminalRows?.() ?? this.#terminalRows;
   }
 
+  #expandedLineBudget(): number {
+    const rows = this.#currentTerminalRows();
+    return rows === undefined ? this.#expandedCapacity : Math.max(0, rows - 3);
+  }
+
   #expandedPanelLines(task: TaskState): ReadonlyArray<string> {
     const all = task.fullStream.lines();
-    const rows = this.#currentTerminalRows();
-    if (rows === undefined) return all;
-    const budget = Math.max(1, rows - 1);
-    return all.length <= budget ? all : all.slice(all.length - budget);
+    const budget = this.#expandedLineBudget();
+    if (budget === 0) return [];
+    const end = Math.max(0, all.length - this.#expandedScrollOffset);
+    return all.slice(Math.max(0, end - budget), end);
   }
 
   #renderExpandedFrame(task: TaskState): ReadonlyArray<string> {
+    const status: VisualStatus =
+      task.status === "done"
+        ? classifyCompletion(task.summary, task.label).status
+        : task.status === "failed"
+          ? "BLOCKED"
+          : "RUNNING";
+    const marker =
+      task.status === "done"
+        ? "✓"
+        : task.status === "failed"
+          ? "✗"
+          : this.#spinningTaskIds.has(task.id)
+            ? SPINNER_FRAMES[this.#spinnerFrame]
+            : "·";
     const lines: string[] = [
-      `╭─ LANDO OPS ${statusChip("RUNNING")} expanded task tail`,
-      `│ ${statusChip("RUNNING")} · ${task.label}`,
+      `╭─ LANDO OPS ${statusChip(status)} expanded task tail`,
+      `│ ${statusChip(status)} ${marker} ${task.label}`,
     ];
     for (const detail of this.#expandedPanelLines(task)) {
       lines.push(`│    ${detail}`);
@@ -515,9 +458,13 @@ export class TaskTreeViewModel {
 
   // Logical frame: human content, no control bytes.
   #renderLogicalFrame(): ReadonlyArray<string> {
-    const expanded = this.#expandedRunningTask();
+    const expanded = this.#expandedTask();
     if (expanded !== undefined)
       return wrapFrameLines(this.#renderExpandedFrame(expanded), this.#currentTerminalColumns());
+    return this.#renderTreeFrame();
+  }
+
+  #renderTreeFrame(): ReadonlyArray<string> {
     const lines: string[] = [];
     const parent = this.#parentLine();
     if (parent !== undefined) lines.push(parent);
@@ -530,7 +477,8 @@ export class TaskTreeViewModel {
         continue;
       }
       if (task.status === "running") {
-        lines.push(`│ ${statusChip("RUNNING")} · ${task.label}`);
+        const marker = this.#spinningTaskIds.has(task.id) ? SPINNER_FRAMES[this.#spinnerFrame] : "·";
+        lines.push(`│ ${statusChip("RUNNING")} ${marker} ${task.label}`);
         for (const detail of task.ring.lines()) {
           lines.push(`│    ${detail}`);
         }
@@ -548,7 +496,10 @@ export class TaskTreeViewModel {
 
   // Styled frame: dims the indented detail panel rows.
   #renderFrame(): ReadonlyArray<string> {
-    const logical = this.#renderLogicalFrame();
+    return this.#styleFrame(this.#renderLogicalFrame());
+  }
+
+  #styleFrame(logical: ReadonlyArray<string>): ReadonlyArray<string> {
     return logical.map((line) => {
       if (line.startsWith("╭─")) return `${csi.bold}${csi.pink}${line}${csi.reset}`;
       if (line.startsWith("╰─")) return styleBottomFrame(line);

@@ -9,16 +9,18 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, LogLevel, Logger, Schema } from "effect";
 
 import {
   type LandoEvent,
   MessageWarnEvent,
   TaskCompleteEvent,
+  TaskDetailEvent,
   TaskStartEvent,
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import type { RendererIO } from "@lando/sdk/renderer";
 import { EventService } from "@lando/sdk/services";
 
 import { createBufferedRendererIO } from "../../../core/src/cli/renderer/io.ts";
@@ -44,6 +46,14 @@ const taskComplete = (taskId: string): LandoEvent =>
     taskId,
     summary: `${taskId} ready`,
     durationMs: 10,
+    timestamp: ts,
+  });
+const taskDetail = (taskId: string, line: string): LandoEvent =>
+  Schema.decodeUnknownSync(TaskDetailEvent)({
+    _tag: "task.detail",
+    taskId,
+    stream: "stdout",
+    line,
     timestamp: ts,
   });
 const treeComplete = (): LandoEvent =>
@@ -97,7 +107,7 @@ class FakeController {
 const ttyIo = () => {
   const stdout: string[] = [];
   const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 80, terminalRows: 24 });
-  const streamStub = { write: () => true } as unknown as NodeJS.WriteStream;
+  const streamStub = process.stdout;
   return {
     io: { ...io, externalOutputStream: streamStub, writeStdout: (chunk: string) => stdout.push(chunk) },
     stdout: () => stdout.join(""),
@@ -105,10 +115,10 @@ const ttyIo = () => {
 };
 
 const drive = (
-  io: ReturnType<typeof ttyIo>["io"],
+  io: RendererIO,
   createLiveRegion: (options: LiveRegionControllerOptions) => Promise<FakeController>,
   events: ReadonlyArray<LandoEvent>,
-): Effect.Effect<void> =>
+) =>
   Effect.scoped(
     Effect.gen(function* () {
       const svc = yield* EventService;
@@ -150,6 +160,245 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     expect(lastFooter?.kind === "setFooter" && lastFooter.lines.length).toBe(0);
   });
 
+  test("completion keeps full-tail active until Esc restores the collapsed frame", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    let exitsAfterCompletion = -1;
+    let tailVisibleAfterCompletion = false;
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web"));
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      yield* svc.publish(taskComplete("web"));
+      yield* svc.publish(treeComplete());
+      yield* Effect.sleep("20 millis");
+      exitsAfterCompletion = controller.calls.filter((call) => call.kind === "exitFullTail").length;
+      const latestFooter = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+      tailVisibleAfterCompletion =
+        latestFooter?.kind === "setFooter" &&
+        latestFooter.lines.some((line) => line.includes("expanded task tail"));
+      inject?.("\x1b");
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, { createLiveRegion: () => Promise.resolve(controller) }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const enter = controller.calls.findIndex((call) => call.kind === "enterFullTail");
+    const exit = controller.calls.findIndex((call) => call.kind === "exitFullTail");
+    const restored = controller.calls.findIndex(
+      (call, index) =>
+        index > exit && call.kind === "setFooter" && call.lines.some((line) => line.includes("ready")),
+    );
+    expect(enter).toBeGreaterThanOrEqual(0);
+    expect(exitsAfterCompletion).toBe(0);
+    expect(tailVisibleAfterCompletion).toBe(true);
+    expect(exit).toBeGreaterThan(enter);
+    expect(restored).toBeGreaterThan(exit);
+  });
+
+  test("Enter reopens a completed child's tail after tree completion", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      for (const event of [treeStart(["web"]), taskStart("web"), taskComplete("web"), treeComplete()]) {
+        yield* svc.publish(event);
+      }
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      inject?.("\x1b");
+      yield* Effect.sleep("20 millis");
+    });
+
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, { createLiveRegion: () => Promise.resolve(controller) }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const enter = controller.calls.findIndex((call) => call.kind === "enterFullTail");
+    const exit = controller.calls.findIndex((call) => call.kind === "exitFullTail");
+    const restored = controller.calls.findIndex(
+      (call, index) =>
+        index > exit && call.kind === "setFooter" && call.lines.some((line) => line.includes("done")),
+    );
+    expect(enter).toBeGreaterThanOrEqual(0);
+    expect(exit).toBeGreaterThan(enter);
+    expect(restored).toBeGreaterThan(exit);
+  });
+
+  test("recomputes the live footer when the substrate reports a resize", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    let resize: ((width: number, height: number) => void) | undefined;
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web"));
+      yield* svc.publish(taskDetail("web", "a deliberately long build detail that must reflow"));
+      yield* Effect.sleep("20 millis");
+      resize?.(40, 12);
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, {
+                createLiveRegion: (options) => {
+                  const candidate = Reflect.get(options, "onResize");
+                  if (typeof candidate === "function") resize = candidate;
+                  return Promise.resolve(controller);
+                },
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const footers = controller.calls.filter((call) => call.kind === "setFooter");
+    expect(typeof resize).toBe("function");
+    expect(footers.at(-1)).not.toEqual(footers.at(-2));
+    const latest = footers.at(-1);
+    expect(latest?.kind === "setFooter" && latest.lines.every((line) => Bun.stringWidth(line) <= 40)).toBe(
+      true,
+    );
+  });
+
+  test("repaints the expanded tail after eventless paging input", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      terminalRows: 6,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+    let footerCountBeforePaging = 0;
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web"));
+      for (let index = 1; index <= 10; index += 1) {
+        yield* svc.publish(taskDetail("web", `detail ${String(index).padStart(2, "0")}`));
+      }
+      yield* Effect.sleep("20 millis");
+      inject?.("\r");
+      yield* Effect.sleep("20 millis");
+      footerCountBeforePaging = controller.calls.filter((call) => call.kind === "setFooter").length;
+      inject?.("\x1b[5~");
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    const footers = controller.calls.filter((call) => call.kind === "setFooter");
+    expect(footers).toHaveLength(footerCountBeforePaging + 1);
+    const latest = footers.at(-1);
+    expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("detail 07");
+  });
+
+  test("a running task requests live rendering only after the spinner threshold and drops on progress", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      yield* svc.publish(treeStart(["web"]));
+      yield* svc.publish(taskStart("web"));
+      yield* Effect.sleep("50 millis");
+      expect(controller.calls.some((call) => call.kind === "requestLive")).toBe(false);
+
+      yield* Effect.sleep("70 millis");
+      const footer = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+      expect(controller.calls.filter((call) => call.kind === "requestLive")).toHaveLength(1);
+      expect(footer?.kind === "setFooter" && footer.lines.join("\n")).toMatch(/[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]/u);
+
+      yield* Effect.sleep("40 millis");
+      const nextFooter = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+      expect(nextFooter).not.toEqual(footer);
+
+      yield* svc.publish(
+        Schema.decodeUnknownSync(TaskDetailEvent)({
+          _tag: "task.detail",
+          taskId: "web",
+          stream: "stdout",
+          line: "progress",
+          timestamp: ts,
+        }),
+      );
+      yield* Effect.sleep("20 millis");
+    });
+    await Effect.runPromise(
+      Effect.scoped(
+        program.pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, { createLiveRegion: () => Promise.resolve(controller) }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(controller.calls.filter((call) => call.kind === "dropLive")).toHaveLength(1);
+  });
+
   test("the controller is disposed exactly once when the consumer scope closes", async () => {
     const { io } = ttyIo();
     const controller = new FakeController();
@@ -182,9 +431,20 @@ describe("makeLandoEventConsumer — degradation to line mode", () => {
 
   test("a controller load failure falls back to line output without crashing", async () => {
     const { io, stdout } = ttyIo();
+    const debugMessages: string[] = [];
+    const logger = Logger.make<unknown, void>(({ logLevel, message }) => {
+      if (logLevel === LogLevel.Debug) debugMessages.push(String(message));
+    });
     await Effect.runPromise(
-      drive(io, () => Promise.reject(new Error("no native binding")), [treeStart(["web"]), taskStart("web")]),
+      drive(io, () => Promise.reject(new Error("no native binding")), [
+        treeStart(["web"]),
+        taskStart("web"),
+      ]).pipe(
+        Logger.withMinimumLogLevel(LogLevel.Debug),
+        Effect.provide(Logger.replace(Logger.defaultLogger, logger)),
+      ),
     );
     expect(stdout()).toContain("web");
+    expect(debugMessages).toContain("OpenTUI live region unavailable; degrading to line rendering.");
   });
 });

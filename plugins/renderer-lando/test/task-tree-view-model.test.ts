@@ -130,15 +130,43 @@ describe("TaskTreeViewModel — apply + frameLines content", () => {
     expect(plain).toContain("listening on :80");
     expect(plain).toContain("! warn: slow");
   });
+
+  test("CJK task content stays within the requested terminal cell width", () => {
+    const vm = new TaskTreeViewModel({ terminalColumns: 40 });
+    vm.apply(treeStart("build", "한글 애플리케이션 시작 중입니다", ["웹서버"]));
+    vm.apply(taskStart("웹서버", "웹서버 런타임을 부팅하는 중", "build"));
+    vm.apply(taskDetail("웹서버", "포트 8080 에서 수신 대기 중입니다 지금"));
+
+    for (const line of vm.frameLines().map(stripAnsi))
+      expect(Bun.stringWidth(line), `line exceeded 40 cells: ${line}`).toBeLessThanOrEqual(40);
+  });
+
+  test("frame lines never exceed terminals narrower than the frame chrome", () => {
+    for (let columns = 1; columns <= 6; columns += 1) {
+      const vm = new TaskTreeViewModel({ terminalColumns: columns });
+      vm.apply(treeStart("build", "Building", ["web"]));
+      vm.apply(taskStart("web", "web service", "build"));
+      vm.apply(taskDetail("web", "progress"));
+
+      for (const line of vm.frameLines().map(stripAnsi)) {
+        expect(Bun.stringWidth(line), `${columns}-column frame overflowed: ${line}`).toBeLessThanOrEqual(
+          columns,
+        );
+      }
+    }
+  });
 });
 
 describe("TaskTreeViewModel — hasAnimatedAffordance (30fps live-gating)", () => {
-  test("false with no running tasks, true while a task runs, false again once complete", () => {
+  test("true only while a running task has a visible spinner", () => {
     const vm = new TaskTreeViewModel();
     vm.apply(treeStart("build", "Building", ["web"]));
     expect(vm.hasAnimatedAffordance()).toBe(false);
     vm.apply(taskStart("web", "web service", "build"));
+    expect(vm.hasAnimatedAffordance()).toBe(false);
+    vm.showSpinner("web");
     expect(vm.hasAnimatedAffordance()).toBe(true);
+    expect(vm.frameLines().map(stripAnsi).join("\n")).toContain("⠋ web service");
     vm.apply(taskComplete("web", "web ready", 120));
     expect(vm.hasAnimatedAffordance()).toBe(false);
   });

@@ -27,6 +27,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Main-binary builds go through `scripts/build-compiled-binary.ts`: OpenTUI requires ESM bytecode, and multi-target release builds must install all locked optional native packages with frozen `--os=* --cpu=*` inputs before compiling.
 - Programmatic `Bun.build` may resolve with `success: false`; compile wrappers must inspect the result, preserve diagnostics, and fail the calling release stage instead of trusting promise resolution.
 - Promise-backed interactive drivers must accept the enclosing Effect cancellation signal and settle through their normal cleanup path so interruption destroys terminal renderers and listeners.
+- Split-footer resize handling must recompute semantic footer content at the new dimensions before replay; eventless input changes such as full-tail paging require an explicit repaint.
 
 ## Durable learnings
 
@@ -519,4 +520,22 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - `capture-stdout` is the ordering mechanism: because `createStdioRendererIO.writeStdout` accesses `stdout.write` live (not a cached bound method), OpenTUI's in-place patch auto-orders imperative renderer writes above the footer — no shared Effect service threaded through the separately-composed service/consumer layers.
   - A second production module using the literal `import("@opentui/core")` must be added to BOTH OpenTUI import gates: `opentui-coldstart-canary.test.ts` and `core/test/library/import-boundary.test.ts` (its lazy-closure allowlist and its detection self-check).
   - `log.line` is not a published `LandoEvent`; a defensive tag-based passthrough formatter covers it without adding a typed event (deferred). Verbose TTY is intentionally non-interactive now — it loses the live tree/interactive expand.
+---
+
+## 2026-07-16 18:10 CDT - US-456 Build continuation blocked
+- Repaired the legal split-footer/alternate-screen transition, semantic scrollback replay on resize, expanded-task state restoration, Ctrl-C cancellation routing, terminal-row bounds, and thresholded spinner/live-loop cleanup. Real OpenTUI tests now cover mode transitions, replay, resized frame content, and native frame instrumentation; task-tree width accounting now uses terminal display cells for CJK.
+- Verification: typecheck, lint, renderer/machine-output boundaries, guide lint/coverage/drift/public transcripts, 167 focused renderer tests, 30 adjacent task-tree/build tests, and 33 sandbox-native renderer tests passed. Live Playwright/xterm evidence preserved scrollback and runtime-generated task state at 80 and 40 columns; all QA processes and temporary scripts were removed.
+- Blocked: OpenTUI 0.4.3 intentionally clamps split-footer render offset to published scrollback rows (`min(published_rows, surface_offset)`), so sparse output cannot satisfy the spec's physical bottom-pin requirement through its public API. The live 40-column substrate capture also exposes clipping when ANSI-styled frame strings are passed directly to `TextRenderable`; the pure frame tests do not reproduce it. `passes` remains false and no completion commit was created.
+- **Learnings for future iterations:**
+  - OpenTUI's documented split-footer surface is adjacent to sparse published output, not physically bottom-pinned; closing the stronger Lando contract requires an upstream native change or an explicit spec decision, not blank scrollback padding.
+  - `TextRenderable` converts strings with `stringToStyledText`; ANSI SGR bytes are not a styled-text input contract. The live task tree needs substrate-native `StyledText` chunks before narrow-terminal fidelity can be approved.
+---
+
+## 2026-07-16 20:02 CDT - US-456
+- Completed the OpenTUI split-footer task tree: sparse output now pins to the physical terminal bottom, styled tree content uses native text chunks, passthrough and completion output retain deterministic scrollback order, resize recomputes then replays the live frame, and alternate-screen full-tail navigation restores state with explicit paging repaints. Spinner live mode remains thresholded, static when idle, and capped at 30 fps; non-TTY and substrate-failure paths remain line-oriented.
+- Verification: typecheck, lint, build, renderer/machine-output boundaries, guide lint/coverage/public transcripts, focused renderer and adjacent perf-gate spot checks passed. Fresh real-PTY/xterm.js captures at 80 and 40 columns had exact widths, aligned borders, preserved scrollback, and correct Korean display cells; both independent visual reviewers approved with no blockers.
+- **Learnings for future iterations:**
+  - OpenTUI `TextRenderable` strings are plain text, not ANSI input; convert supported SGR into native `StyledText` chunks and discard terminal-control sequences before rendering.
+  - A substrate resize is both terminal mutation and semantic reflow: update view-model dimensions before resetting/replaying scrollback, including while alternate-screen full-tail is active.
+  - Key actions that mutate only local view state publish no event, so the input boundary must repaint them directly rather than waiting for the event consumer.
 ---

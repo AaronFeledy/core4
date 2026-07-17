@@ -22,7 +22,7 @@ class FakeLiveRegion {
 
 const substrateIo = (base: ReturnType<typeof createBufferedRendererIO>) => ({
   ...base,
-  externalOutputStream: { write: () => true } as unknown as NodeJS.WriteStream,
+  externalOutputStream: process.stdout,
 });
 
 const ts = "2026-05-19T12:00:00.000Z";
@@ -96,5 +96,36 @@ describe("lando renderer (TTY keybindings)", () => {
     expect(tags.indexOf("task.detail.expand")).toBeLessThan(tags.indexOf("task.detail.collapse"));
 
     // US-456 Wave 5 (sandbox): native alt-screen transition
+  });
+
+  test("Ctrl-C raises the command-runtime interrupt without publishing a tree key action", async () => {
+    const base = createBufferedRendererIO({ isTTY: true, terminalRows: 40 });
+    const io = substrateIo(base);
+    let interrupts = 0;
+    const deps = {
+      createLiveRegion: () => Promise.resolve(new FakeLiveRegion()),
+      raiseInterrupt: () => {
+        interrupts += 1;
+      },
+    };
+
+    const program = Effect.gen(function* () {
+      const svc = yield* EventService;
+      const collector = yield* svc.subscribeQueue;
+      yield* svc.publish(treeStart("build", "Building", ["a"]));
+      yield* svc.publish(taskStart("a", "step a", "build"));
+      yield* Effect.sleep("20 millis");
+
+      base.injectKey("\x03");
+      yield* Effect.sleep("20 millis");
+
+      return [...(yield* Queue.takeAll(collector))];
+    });
+    const layer = Layer.provideMerge(makeLandoEventConsumer(io, deps), EventServiceLive);
+    const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
+
+    expect(interrupts).toBe(1);
+    expect(published.some((event) => event._tag === "task.detail.expand")).toBe(false);
+    expect(published.some((event) => event._tag === "task.detail.collapse")).toBe(false);
   });
 });
