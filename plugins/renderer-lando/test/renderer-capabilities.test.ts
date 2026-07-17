@@ -15,7 +15,11 @@ import {
   scheduleCapabilityProbe,
 } from "../src/capabilities.ts";
 import { sanitizeNotificationText } from "../src/notify-sanitize.ts";
-import { makeLandoEventConsumer, makeLandoService } from "../src/renderer-runtime.ts";
+import {
+  makeLandoEventConsumer,
+  makeLandoService,
+  resolveCapabilitySnapshot,
+} from "../src/renderer-runtime.ts";
 
 const runService = async <A>(layer: Layer.Layer<Renderer>, effect: Effect.Effect<A, never, Renderer>) => {
   const runtime = ManagedRuntime.make(layer);
@@ -105,6 +109,50 @@ describe("RendererCapabilities matrix", () => {
     expect(handle.get().notifications).toBe(true);
   });
 
+  test("makeService and makeEventConsumer share one snapshot for the same RendererIO", async () => {
+    const io = {
+      writeStdout: () => undefined,
+      writeStderr: () => undefined,
+      isTTY: true,
+    };
+    const clock = {
+      setTimeout: (_fn: () => void, _ms: number) => 0,
+    };
+    let resolveProbe:
+      | ((value: { kind: "success"; color: boolean; notifications: boolean }) => void)
+      | undefined;
+    const probe: CapabilityProbe = {
+      timeoutMs: 50,
+      run: () =>
+        new Promise((resolve) => {
+          resolveProbe = resolve;
+        }),
+    };
+    const serviceLayer = makeLandoService(io, { capabilityProbe: probe, clock });
+    const serviceCaps = await runService(
+      serviceLayer,
+      Effect.map(Renderer, (r) => r.capabilities),
+    );
+    expect(serviceCaps.notifications).toBe(false);
+
+    const shared = resolveCapabilitySnapshot(io);
+    // Consumer factory without an override reuses the same handle (no second probe).
+    const consumer = makeLandoEventConsumer(io);
+    expect(consumer).toBeDefined();
+    expect(resolveCapabilitySnapshot(io)).toBe(shared);
+
+    resolveProbe?.({ kind: "success", color: true, notifications: true });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(shared.get().notifications).toBe(true);
+    const after = await runService(
+      makeLandoService(io),
+      Effect.map(Renderer, (r) => r.capabilities),
+    );
+    expect(after.notifications).toBe(true);
+  });
+
   test("notify.desktop before promotion is dropped and not replayed after promotion", async () => {
     const calls: Array<{ message: string; title?: string }> = [];
     const handle = createCapabilitySnapshot(RENDERER_CAPABILITIES_TTY_INITIAL);
@@ -117,18 +165,14 @@ describe("RendererCapabilities matrix", () => {
       { writeStdout: () => undefined, writeStderr: () => undefined, isTTY: true },
       { getCapabilities, triggerNotification: trigger },
     );
-    // We exercise the handler path via a local publish simulation by importing internal behavior
-    // through makeLandoEventConsumer is queue-based; unit-test sanitize + capability gate instead.
+    // Pre-promotion: notifications false → no call; no buffering for later replay.
     expect(getCapabilities().notifications).toBe(false);
-    // pre-promotion: notifications false → no call
     if (getCapabilities().notifications) trigger("x");
     expect(calls).toEqual([]);
     promoteFromProbe(handle, { kind: "success", color: true, notifications: true });
-    // no replay of prior events
     expect(calls).toEqual([]);
     if (getCapabilities().notifications) trigger("after");
     expect(calls).toEqual([{ message: "after" }]);
-    // keep consumer reference live for typecheck
     expect(consumer).toBeDefined();
   });
 });

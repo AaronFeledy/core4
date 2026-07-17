@@ -55,7 +55,26 @@ export const productionTriggerNotification = async (message: string, title?: str
   }
 };
 
+/** In-flight production deliveries that must settle before process exit. */
+const pendingNotifications = new Set<Promise<boolean>>();
+
+/**
+ * Sync seam for the event consumer. Accepts the notification for delivery and
+ * tracks the async work so teardown can await completion. The boolean means
+ * "accepted for delivery attempt", not "already delivered".
+ */
 export const productionTriggerNotificationSync = (message: string, title?: string): boolean => {
-  void productionTriggerNotification(message, title);
+  const work = productionTriggerNotification(message, title);
+  pendingNotifications.add(work);
+  void work.finally(() => {
+    pendingNotifications.delete(work);
+  });
   return true;
+};
+
+/** Await every in-flight production notification delivery attempt. */
+export const flushPendingNotifications = async (): Promise<void> => {
+  while (pendingNotifications.size > 0) {
+    await Promise.all([...pendingNotifications]);
+  }
 };

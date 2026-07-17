@@ -5,21 +5,58 @@ import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
 import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY_INITIAL } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
-import { type CapabilityProbe, createCapabilitySnapshot, scheduleCapabilityProbe } from "./capabilities.ts";
+import {
+  type CapabilityProbe,
+  type CapabilitySnapshotHandle,
+  createCapabilitySnapshot,
+  scheduleCapabilityProbe,
+} from "./capabilities.ts";
 import { isRenderableTaskTreeEvent, renderPlainLine } from "./format.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
 import { sanitizeNotificationText } from "./notify-sanitize.ts";
-import { productionCapabilityProbe, productionTriggerNotificationSync } from "./notify-trigger.ts";
+import {
+  flushPendingNotifications,
+  productionCapabilityProbe,
+  productionTriggerNotificationSync,
+} from "./notify-trigger.ts";
 import { LandoTreePainter } from "./task-tree-tail.ts";
 
 export type LandoRendererServiceOptions = {
   readonly capabilityProbe?: CapabilityProbe;
   readonly triggerNotification?: (message: string, title?: string) => boolean;
   readonly clock?: { readonly setTimeout: (fn: () => void, ms: number) => unknown };
+  /** Optional flush for async production notification delivery (tests may inject). */
+  readonly flushNotifications?: () => Promise<void>;
+};
+
+/**
+ * One capability snapshot per RendererIO instance so makeService and
+ * makeEventConsumer share the same initial/promoted objects and never run two
+ * independent probes for the same run.
+ */
+const capabilitySnapshotsByIo = new WeakMap<object, CapabilitySnapshotHandle>();
+
+export const resolveCapabilitySnapshot = (
+  io: RendererIO,
+  options: LandoRendererServiceOptions = {},
+): CapabilitySnapshotHandle => {
+  const key = io as object;
+  const existing = capabilitySnapshotsByIo.get(key);
+  if (existing !== undefined) return existing;
+  const tty = io.isTTY === true;
+  const snapshot = createCapabilitySnapshot(
+    tty ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE,
+  );
+  if (tty) {
+    scheduleCapabilityProbe(snapshot, options.capabilityProbe, options.clock);
+  }
+  capabilitySnapshotsByIo.set(key, snapshot);
+  return snapshot;
 };
 
 const makeEventConsumerLive = (
   handle: (event: LandoEvent) => void,
+  flushNotifications?: () => Promise<void>,
 ): Layer.Layer<never, never, EventService> =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
@@ -36,6 +73,9 @@ const makeEventConsumerLive = (
           const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) handle(event);
+          }
+          if (flushNotifications !== undefined) {
+            yield* Effect.promise(flushNotifications);
           }
           yield* Fiber.interrupt(fiber);
         }),
@@ -106,6 +146,7 @@ const handleNotifyDesktop = (
   const bodyRaw = event.body;
   if (typeof bodyRaw === "string") {
     const body = sanitizeNotificationText(bodyRaw);
+    // OpenTUI: triggerNotification(body ?? title, body === undefined ? undefined : title)
     triggerNotification(body.length === 0 ? title : body, body.length === 0 ? undefined : title);
     return;
   }
@@ -116,13 +157,7 @@ export const makeLandoService = (
   io: RendererIO,
   options: LandoRendererServiceOptions = {},
 ): Layer.Layer<Renderer> => {
-  const tty = io.isTTY === true;
-  const snapshot = createCapabilitySnapshot(
-    tty ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE,
-  );
-  if (tty) {
-    scheduleCapabilityProbe(snapshot, options.capabilityProbe, options.clock);
-  }
+  const snapshot = resolveCapabilitySnapshot(io, options);
   const service = {
     id: "lando" as const,
     get capabilities() {
@@ -140,17 +175,21 @@ export const makeLandoEventConsumer = (
     readonly getCapabilities?: () => { readonly notifications: boolean };
   } = {},
 ): Layer.Layer<never, never, EventService> => {
+  const snapshot = options.getCapabilities === undefined ? resolveCapabilitySnapshot(io, options) : undefined;
   const getCapabilities =
     options.getCapabilities ??
-    (() => (io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE));
+    (() =>
+      snapshot?.get() ??
+      (io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE));
   const trigger = options.triggerNotification;
+  const flush = options.flushNotifications;
 
   if (io.isTTY !== true) {
     return makeEventConsumerLive((event) => {
       handleNotifyDesktop(event, getCapabilities, trigger);
       const line = renderPlainLine(event);
       if (line !== null) io.writeStdout(`${line}\n`);
-    });
+    }, flush);
   }
   const painter = new LandoTreePainter({
     getTerminalColumns: () => io.terminalColumns,
@@ -164,7 +203,7 @@ export const makeLandoEventConsumer = (
     }
     const line = renderPlainLine(event);
     if (line !== null) io.writeStdout(painter.passthrough(line));
-  });
+  }, flush);
   return io.subscribeInput === undefined ? display : Layer.merge(display, makeTaskTreeInputLive(io, painter));
 };
 
@@ -173,19 +212,17 @@ export const landoRendererContribution: RendererContribution = {
   makeService: (io) =>
     makeLandoService(io, io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {}),
   makeEventConsumer: (io) => {
-    // Share capability snapshot by re-reading the Renderer service when available is not
-    // possible from the consumer layer alone; production uses the same probe-shaped gate:
-    // drop until notifications would be true after promotion. The injectable trigger path
-    // realizes OpenTUI triggerNotification when capability is true.
-    const snapshot = createCapabilitySnapshot(
-      io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE,
+    // Reuse the same snapshot/probe as makeService when both run against the same
+    // RendererIO (the production CLI path). Production triggerNotification is
+    // async under the hood; flushPendingNotifications runs in the consumer finalizer.
+    const snapshot = resolveCapabilitySnapshot(
+      io,
+      io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
     );
-    if (io.isTTY === true) {
-      scheduleCapabilityProbe(snapshot, productionCapabilityProbe());
-    }
     return makeLandoEventConsumer(io, {
       getCapabilities: () => snapshot.get(),
       triggerNotification: productionTriggerNotificationSync,
+      flushNotifications: flushPendingNotifications,
     });
   },
 };
