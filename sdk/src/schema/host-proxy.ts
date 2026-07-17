@@ -46,8 +46,8 @@ export type HostProxyRunLandoRequest = typeof HostProxyRunLandoRequest.Type;
  * Canonical host-proxy request union.
  *
  * Exactly four members: `runLando`, `openUrl`, `openPath`, `runBun`.
- * Container-initiated `notify`/`clipboardCopy` are unsupported (§10.10.2) and
- * deliberately absent — there is no deprecation shim.
+ * Container-initiated `notify`/`clipboardCopy` are unsupported and deliberately
+ * absent — there is no deprecation shim.
  */
 export const HostProxyRequest = Schema.Union(
   HostProxyRunLandoRequest,

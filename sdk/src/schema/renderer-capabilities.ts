@@ -1,16 +1,14 @@
 import { Schema } from "effect";
 
-// ====
-// RendererCapabilities — the sole public, renderer-neutral capability surface.
-// SPEC: §8.9
+// RendererCapabilities — public, renderer-neutral capability surface.
 
 /**
  * Boolean capability snapshot every renderer publishes. Owned exclusively by the
  * resolved `Renderer`; no other service or command infers capabilities.
  *
  * Fields default to `false`. The default TTY renderer may promote `color` and
- * `notifications` exactly once after an async substrate probe; `interactive`
- * and `animation` never demote. See §8.9 for the exact run-shape table.
+ * `notifications` exactly once after an async substrate probe. Interactive and
+ * animation never demote.
  */
 export const RendererCapabilities = Schema.Struct({
   color: Schema.Boolean.annotations({ description: "ANSI color output supported." }),
@@ -21,7 +19,7 @@ export const RendererCapabilities = Schema.Struct({
     description: "Continuous/live redraw supported (spinners, progress fill).",
   }),
   notifications: Schema.Boolean.annotations({
-    description: "Desktop-notification path supported (§8.9.7).",
+    description: "Desktop-notification path supported.",
   }),
 });
 export type RendererCapabilities = typeof RendererCapabilities.Type;

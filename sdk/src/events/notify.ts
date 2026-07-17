@@ -1,8 +1,6 @@
 import { Schema } from "effect";
 
-// ====
 // Desktop notification render event + invocation correlation.
-// SPEC: §8.9.7 / §3.5
 
 /**
  * Correlation ids shared across one command invocation's lifecycle triplet

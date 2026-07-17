@@ -1,8 +1,6 @@
 import { Schema } from "effect";
 
-// ====
 // NotifyConfig — global desktop-notification policy.
-// SPEC: §8.9.7 / §7.5
 
 /**
  * Canonical command id shape used by `notify.commands` (e.g. `app:start`).

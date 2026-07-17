@@ -1,7 +1,4 @@
-/**
- * Fixed sanitizer applied to notify.desktop title/body before triggerNotification.
- * SPEC: §8.9.7
- */
+/** Fixed sanitizer applied to notify.desktop title/body before triggerNotification. */
 
 const isC0OrC1 = (code: number): boolean => (code >= 0x00 && code <= 0x1f) || (code >= 0x7f && code <= 0x9f);
 
