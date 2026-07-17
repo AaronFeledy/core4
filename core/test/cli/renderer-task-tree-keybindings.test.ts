@@ -8,9 +8,10 @@ import {
   TaskStartEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
+import { AbsolutePath } from "@lando/sdk/schema";
 
 import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "../../src/cli/renderer/keybindings.ts";
-import { LandoTreePainter, TASK_DETAIL_TAIL_CAPACITY } from "../../src/cli/renderer/task-tree-tail.ts";
+import { TASK_DETAIL_TAIL_CAPACITY, TaskTreeViewModel } from "../../src/cli/renderer/task-tree-tail.ts";
 
 const ts = "2026-05-19T12:00:00.000Z";
 
@@ -29,6 +30,7 @@ const taskStart = (taskId: string, label: string, parentId?: string): LandoEvent
     taskId,
     ...(parentId === undefined ? {} : { parentId }),
     label,
+    transcriptPath: AbsolutePath.make(`/tmp/lando/builds/${taskId}.log`),
     timestamp: ts,
   });
 
@@ -86,81 +88,88 @@ describe("DEFAULT_KEYMAP", () => {
   });
 });
 
-describe("LandoTreePainter — expand / collapse", () => {
-  const seed = (painter: LandoTreePainter, taskId: string, lineCount: number): void => {
-    painter.consume(treeStart("build", "Building", [taskId]));
-    painter.consume(taskStart(taskId, `step ${taskId}`, "build"));
+describe("TaskTreeViewModel — expand / collapse", () => {
+  const seed = (vm: TaskTreeViewModel, taskId: string, lineCount: number): void => {
+    vm.apply(treeStart("build", "Building", [taskId]));
+    vm.apply(taskStart(taskId, `step ${taskId}`, "build"));
     for (let index = 0; index < lineCount; index += 1) {
-      painter.consume(detail(taskId, `line-${index}`));
+      vm.apply(detail(taskId, `line-${index}`));
     }
   };
 
   test("collapsed by default — only the most recent 4 detail lines surface", () => {
-    const painter = new LandoTreePainter();
-    seed(painter, "a", 10);
-    expect(painter.expandedTaskId).toBeUndefined();
-    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
+    const vm = new TaskTreeViewModel();
+    seed(vm, "a", 10);
+    expect(vm.expandedTaskId).toBeUndefined();
+    const panelLines = vm.snapshot().frameLines.filter((l) => l.includes("line-"));
     expect(panelLines.length).toBe(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
     expect(panelLines.some((l) => l.includes("line-9"))).toBe(true);
   });
 
   test("focusableTaskIds lists started tasks in order", () => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", ["a", "b"]));
-    painter.consume(taskStart("a", "step a", "build"));
-    painter.consume(taskStart("b", "step b", "build"));
-    expect(painter.focusableTaskIds()).toEqual(["a", "b"]);
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", ["a", "b"]));
+    vm.apply(taskStart("a", "step a", "build"));
+    vm.apply(taskStart("b", "step b", "build"));
+    expect(vm.focusableTaskIds()).toEqual(["a", "b"]);
   });
 
-  test("expanding a task surfaces the whole stream tail (more than the 4-line ring)", () => {
-    const painter = new LandoTreePainter();
-    seed(painter, "a", 10);
-    painter.expandTask("a");
-    expect(painter.expandedTaskId).toBe("a");
-    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
+  test("expanding a task surfaces the persisted transcript instead of the 4-line ring", () => {
+    const vm = new TaskTreeViewModel();
+    seed(vm, "a", 10);
+    vm.expandTask("a");
+    vm.setExpandedTranscript(
+      "a",
+      Array.from({ length: 10 }, (_, index) => `transcript-${index}`),
+    );
+    expect(vm.expandedTaskId).toBe("a");
+    const panelLines = vm.snapshot().frameLines.filter((line) => line.includes("transcript-"));
     expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
-    expect(panelLines.some((l) => l.includes("line-0"))).toBe(true);
-    expect(panelLines.some((l) => l.includes("line-9"))).toBe(true);
+    expect(panelLines.some((line) => line.includes("transcript-0"))).toBe(true);
+    expect(panelLines.some((line) => line.includes("transcript-9"))).toBe(true);
   });
 
-  test("expanded tail is bounded by available terminal rows", () => {
-    const painter = new LandoTreePainter({ terminalRows: 6 });
-    seed(painter, "a", 30);
-    painter.expandTask("a");
-    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
-    expect(panelLines.length).toBeLessThanOrEqual(6);
-    expect(panelLines.length).toBeGreaterThan(TASK_DETAIL_TAIL_CAPACITY);
-    expect(panelLines.some((l) => l.includes("line-29"))).toBe(true);
+  test("expanded transcript budget is bounded by available terminal rows", () => {
+    const vm = new TaskTreeViewModel({ terminalRows: 6 });
+    seed(vm, "a", 30);
+    vm.expandTask("a");
+    expect(vm.expandedLineBudget()).toBe(3);
+    vm.setExpandedTranscript("a", ["transcript-27", "transcript-28", "transcript-29"]);
+    const frameLines = vm.snapshot().frameLines;
+    const panelLines = frameLines.filter((line) => line.includes("transcript-"));
+    expect(frameLines.length).toBeLessThanOrEqual(6);
+    expect(panelLines).toHaveLength(3);
+    expect(panelLines.some((line) => line.includes("transcript-29"))).toBe(true);
   });
 
   test("collapsing restores the 4-line ring", () => {
-    const painter = new LandoTreePainter();
-    seed(painter, "a", 10);
-    painter.expandTask("a");
-    painter.collapse();
-    expect(painter.expandedTaskId).toBeUndefined();
-    const panelLines = painter.snapshot().frameLines.filter((l) => l.includes("line-"));
+    const vm = new TaskTreeViewModel();
+    seed(vm, "a", 10);
+    vm.expandTask("a");
+    vm.collapse();
+    expect(vm.expandedTaskId).toBeUndefined();
+    const panelLines = vm.snapshot().frameLines.filter((l) => l.includes("line-"));
     expect(panelLines.length).toBe(TASK_DETAIL_TAIL_CAPACITY);
     expect(panelLines.some((l) => l.includes("line-0"))).toBe(false);
   });
 
-  test("finished tasks cannot be expanded", () => {
-    const painter = new LandoTreePainter();
-    seed(painter, "a", 10);
-    painter.consume(taskComplete("a"));
-    expect(painter.canExpandTask("a")).toBe(false);
-    expect(painter.expandTask("a")).toBe("");
-    expect(painter.expandedTaskId).toBeUndefined();
+  test("finished tasks remain expandable", () => {
+    const vm = new TaskTreeViewModel();
+    seed(vm, "a", 10);
+    vm.apply(taskComplete("a"));
+    expect(vm.canExpandTask("a")).toBe(true);
+    vm.expandTask("a");
+    expect(vm.expandedTaskId).toBe("a");
   });
 
-  test("completion clears the expanded task", () => {
-    const painter = new LandoTreePainter();
-    seed(painter, "a", 10);
-    painter.expandTask("a");
-    expect(painter.expandedTaskId).toBe("a");
-    painter.consume(taskComplete("a"));
-    expect(painter.expandedTaskId).toBeUndefined();
+  test("completion keeps the expanded task visible", () => {
+    const vm = new TaskTreeViewModel();
+    seed(vm, "a", 10);
+    vm.expandTask("a");
+    expect(vm.expandedTaskId).toBe("a");
+    vm.apply(taskComplete("a"));
+    expect(vm.expandedTaskId).toBe("a");
   });
 });
 
@@ -168,14 +177,14 @@ describe("TaskTreeInputController", () => {
   const fixedClock = () => "2026-05-19T12:00:00.000Z";
 
   const make = (taskIds: ReadonlyArray<string>) => {
-    const painter = new LandoTreePainter();
-    painter.consume(treeStart("build", "Building", taskIds));
-    for (const id of taskIds) painter.consume(taskStart(id, `step ${id}`, "build"));
+    const vm = new TaskTreeViewModel();
+    vm.apply(treeStart("build", "Building", taskIds));
+    for (const id of taskIds) vm.apply(taskStart(id, `step ${id}`, "build"));
     for (const id of taskIds) {
-      for (let n = 0; n < 8; n += 1) painter.consume(detail(id, `${id}-line-${n}`));
+      for (let n = 0; n < 8; n += 1) vm.apply(detail(id, `${id}-line-${n}`));
     }
-    const controller = new TaskTreeInputController(painter, { now: fixedClock });
-    return { painter, controller };
+    const controller = new TaskTreeInputController(vm, { now: fixedClock });
+    return { vm, controller };
   };
 
   test("focus starts on the first task and moves with down/up", () => {
@@ -192,40 +201,40 @@ describe("TaskTreeInputController", () => {
   });
 
   test("Enter expands the focused task and emits task.detail.expand", () => {
-    const { painter, controller } = make(["a", "b"]);
+    const { vm, controller } = make(["a", "b"]);
     controller.handleKey("down");
     const result = controller.handleKey("enter");
     expect(result.changed).toBe(true);
     expect(result.events).toHaveLength(1);
     expect(result.events[0]?._tag).toBe("task.detail.expand");
     expect((result.events[0] as { taskId: string }).taskId).toBe("b");
-    expect(painter.expandedTaskId).toBe("b");
+    expect(vm.expandedTaskId).toBe("b");
   });
 
   test("Esc collapses and emits task.detail.collapse for the expanded task", () => {
-    const { painter, controller } = make(["a"]);
+    const { vm, controller } = make(["a"]);
     controller.handleKey("enter");
-    expect(painter.expandedTaskId).toBe("a");
+    expect(vm.expandedTaskId).toBe("a");
     const result = controller.handleKey("esc");
     expect(result.changed).toBe(true);
     expect(result.events).toHaveLength(1);
     expect(result.events[0]?._tag).toBe("task.detail.collapse");
     expect((result.events[0] as { taskId: string }).taskId).toBe("a");
-    expect(painter.expandedTaskId).toBeUndefined();
+    expect(vm.expandedTaskId).toBeUndefined();
   });
 
-  test("Esc emits collapse for the expanded task after focus moves", () => {
-    const { painter, controller } = make(["a", "b"]);
+  test("arrow input pages the expanded task without moving tree focus", () => {
+    const { vm, controller } = make(["a", "b"]);
     controller.handleKey("down");
     controller.handleKey("enter");
-    expect(painter.expandedTaskId).toBe("b");
+    expect(vm.expandedTaskId).toBe("b");
     controller.handleKey("up");
-    expect(controller.focusedTaskId).toBe("a");
+    expect(controller.focusedTaskId).toBe("b");
     const result = controller.handleKey("esc");
     expect(result.events).toHaveLength(1);
     expect(result.events[0]?._tag).toBe("task.detail.collapse");
     expect((result.events[0] as { taskId: string }).taskId).toBe("b");
-    expect(painter.expandedTaskId).toBeUndefined();
+    expect(vm.expandedTaskId).toBeUndefined();
   });
 
   test("Esc when not expanded is a no-op (no event, no change)", () => {
@@ -243,26 +252,27 @@ describe("TaskTreeInputController", () => {
     expect(second.events).toHaveLength(0);
   });
 
-  test("Enter on a finished task is a no-op", () => {
-    const { painter, controller } = make(["a"]);
-    painter.consume(taskComplete("a"));
+  test("Enter on a finished task expands its persisted transcript", () => {
+    const { vm, controller } = make(["a"]);
+    vm.apply(taskComplete("a"));
     const result = controller.handleKey("enter");
-    expect(result.changed).toBe(false);
-    expect(result.events).toHaveLength(0);
-    expect(painter.expandedTaskId).toBeUndefined();
+    expect(result.changed).toBe(true);
+    expect(result.events[0]?._tag).toBe("task.detail.expand");
+    expect(vm.expandedTaskId).toBe("a");
   });
 
-  test("completion unlocks the controller for another expansion", () => {
-    const { painter, controller } = make(["a", "b"]);
+  test("collapse after completion unlocks the controller for another expansion", () => {
+    const { vm, controller } = make(["a", "b"]);
     controller.handleKey("enter");
-    expect(painter.expandedTaskId).toBe("a");
-    painter.consume(taskComplete("a"));
+    expect(vm.expandedTaskId).toBe("a");
+    vm.apply(taskComplete("a"));
+    controller.handleKey("esc");
     controller.handleKey("down");
     const result = controller.handleKey("enter");
     expect(result.changed).toBe(true);
     expect(result.events[0]?._tag).toBe("task.detail.expand");
     expect((result.events[0] as { taskId: string }).taskId).toBe("b");
-    expect(painter.expandedTaskId).toBe("b");
+    expect(vm.expandedTaskId).toBe("b");
   });
 
   test("unknown keys are a no-op", () => {
@@ -273,10 +283,10 @@ describe("TaskTreeInputController", () => {
   });
 
   test("handleInput parses raw bytes then drives the state machine", () => {
-    const { painter, controller } = make(["a"]);
+    const { vm, controller } = make(["a"]);
     const result = controller.handleInput("\r");
     expect(result.changed).toBe(true);
     expect(result.events[0]?._tag).toBe("task.detail.expand");
-    expect(painter.expandedTaskId).toBe("a");
+    expect(vm.expandedTaskId).toBe("a");
   });
 });

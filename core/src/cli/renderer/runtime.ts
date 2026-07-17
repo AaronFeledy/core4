@@ -1,4 +1,4 @@
-import { DateTime, Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
+import { DateTime, Effect, Fiber, Layer, Option, Queue } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import {
@@ -10,8 +10,6 @@ import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
 import type { RendererIO } from "./io.ts";
-import { TaskTreeInputController } from "./keybindings.ts";
-import { LandoTreePainter } from "./task-tree-tail.ts";
 
 type LineFormatter = (event: LandoEvent) => string | null;
 
@@ -66,42 +64,8 @@ export const makePlainTaskDetailRendererLive = (io: RendererIO): Layer.Layer<nev
 export const makeJsonRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderJsonLine, io, "stderr");
 
-const makeVerboseTtyRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> => {
-  const painter = new LandoTreePainter({
-    getTerminalColumns: () => io.terminalColumns,
-    getTerminalRows: () => io.terminalRows,
-  });
-  const display = makeEventConsumerRendererLive((event) => {
-    io.writeStdout(painter.passthrough(renderVerboseLine(event)));
-    if (isRenderableTaskTreeEvent(event)) io.writeStdout(painter.consume(event));
-  });
-  if (io.subscribeInput === undefined) return display;
-  return Layer.merge(display, makeTaskTreeInputLive(io, painter));
-};
-
 export const makeVerboseRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
-  io.isTTY === true ? makeVerboseTtyRendererLive(io) : makeRendererLive(renderVerboseLine, io, "stdout");
-
-const makeTaskTreeInputLive = (
-  io: RendererIO,
-  painter: LandoTreePainter,
-): Layer.Layer<never, never, EventService> =>
-  Layer.scopedDiscard(
-    Effect.gen(function* () {
-      const subscribe = io.subscribeInput;
-      if (subscribe === undefined) return;
-      const events = yield* EventService;
-      const runtime = yield* Effect.runtime<never>();
-      const controller = new TaskTreeInputController(painter);
-      const unsubscribe = subscribe((raw) => {
-        const result = controller.handleInput(raw);
-        if (!result.changed) return;
-        if (result.redraw.length > 0) io.writeStdout(result.redraw);
-        for (const event of result.events) Runtime.runFork(runtime)(events.publish(event));
-      });
-      yield* Effect.addFinalizer(() => Effect.sync(unsubscribe));
-    }),
-  );
+  makeRendererLive(renderVerboseLine, io, "stdout");
 
 export const drainRendererSync = (
   formatter: LineFormatter,

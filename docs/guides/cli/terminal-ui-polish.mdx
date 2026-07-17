@@ -40,10 +40,16 @@ tags: [beta, docs, cli, renderer]
       <Variable name="motion" value="no decorative motion" display="Animation belongs only to live state transitions, never as unrelated ornament" />
     </Step>
   </Scenario>
-  <Scenario id="opentui-substrate-baseline" render={false} reason="Import-boundary, compiled-binary, and PTY tests exercise the native renderer substrate without requiring guide generation to own a terminal">
+  <Scenario id="opentui-substrate-baseline" render={false} reason="Import-boundary, compiled-binary, headless frame, and PTY tests exercise the native renderer substrate without requiring guide generation to own a terminal">
     <Step name="lazy-substrate">
-      <Variable name="substrate" value="@opentui/core ^0.4.3" display="The bundled renderer owns the OpenTUI dependency and loads it lazily only for an interactive TTY prompt" />
+      <Variable name="substrate" value="@opentui/core ^0.4.3" display="The bundled renderer owns the OpenTUI dependency and loads it lazily only for an interactive TTY prompt or task tree" />
       <Variable name="machineModes" value="level-none, plain, json, non-TTY, and CI never load OpenTUI" display="Cold-start and machine-readable paths stay independent of the native renderer substrate" />
+    </Step>
+    <Step name="split-footer-task-tree">
+      <Variable name="liveRegion" value="split-footer with captured stdout" display="Running task rows stay pinned at the bottom while messages and completed summaries commit once to native terminal scrollback above them" />
+      <Variable name="resize" value="reset and replay semantic scrollback" display="A terminal resize reflows the current footer and replays retained committed lines without cursor rewinds, duplicates, or torn regions" />
+      <Variable name="fullTail" value="Enter uses alternate screen; Esc restores split-footer" display="Output capture is suspended before the screen-mode transition and restored only after returning to split-footer" />
+      <Variable name="animation" value="100 ms spinner threshold at no more than 30 fps" display="Continuous rendering starts only when a spinner is visible and stops on progress, completion, failure, or scope cleanup" />
     </Step>
     <Step name="degradation">
       <Variable name="fallback" value="line input for the remainder of the process" display="A missing native binding or unsupported terminal never fails the command; one debug notice records the permanent degradation" />

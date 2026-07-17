@@ -16,11 +16,34 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
-import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
+import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererLive, renderPlain } from "../../src/cli/renderer/runtime.ts";
-import { LandoTreePainter } from "../../src/cli/renderer/task-tree-tail.ts";
+import { TaskTreeViewModel } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
+
+class RecordingLiveRegion {
+  readonly footers: string[][] = [];
+  readonly scrollback: string[] = [];
+  setFooter(lines: ReadonlyArray<string>): void {
+    this.footers.push([...lines]);
+  }
+  commitScrollback(text: string): void {
+    this.scrollback.push(text);
+  }
+  requestLive(): void {}
+  dropLive(): void {}
+  resize(): void {}
+  enterFullTail(): void {}
+  exitFullTail(): void {}
+  reset(): void {}
+  dispose(): void {}
+}
+
+const substrateIo = (base: ReturnType<typeof createBufferedRendererIO>) => ({
+  ...base,
+  externalOutputStream: { write: () => true } as unknown as NodeJS.WriteStream,
+});
 
 const ts = "2026-06-18T12:00:00.000Z";
 const escapeChar = String.fromCharCode(27);
@@ -148,9 +171,10 @@ const successEvents = (): ReadonlyArray<LandoEvent> => [
 ];
 
 const drivePainter = (events: ReadonlyArray<LandoEvent>, columns: number): ReadonlyArray<string> => {
-  const painter = new LandoTreePainter({ terminalColumns: columns });
-  for (const event of events) painter.consume(event);
-  return painter.snapshot().frameLines.map(stripAnsi);
+  const vm = new TaskTreeViewModel({ terminalColumns: columns });
+  for (const event of events) vm.apply(event);
+  expect(vm.frameLines().map(stripAnsi)).toEqual([...vm.snapshot().frameLines]);
+  return vm.snapshot().frameLines;
 };
 
 const maxFrameWidth = (lines: ReadonlyArray<string>): number =>
@@ -200,7 +224,8 @@ describe("lando renderer visual language", () => {
   test("TTY lando output includes ANSI accents while non-TTY fallback remains plain", async () => {
     const events = failureEvents();
 
-    const tty = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+    const controller = new RecordingLiveRegion();
+    const tty = substrateIo(createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }));
     const program = Effect.gen(function* () {
       const service = yield* EventService;
       for (const event of events) yield* service.publish(event);
@@ -209,12 +234,18 @@ describe("lando renderer visual language", () => {
     await Effect.runPromise(
       Effect.scoped(
         program.pipe(
-          Effect.provide(Layer.provideMerge(landoRenderer.makeEventConsumer(tty), EventServiceLive)),
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
+              EventServiceLive,
+            ),
+          ),
         ),
       ),
     );
-    expect(tty.stdout()).toContain(`${escapeChar}[`);
-    expect(stripAnsi(tty.stdout())).toContain("LANDO OPS");
+    const substrateOutput = [...controller.footers.flat(), ...controller.scrollback].join("\n");
+    expect(substrateOutput).toContain(`${escapeChar}[`);
+    expect(stripAnsi(substrateOutput)).toContain("LANDO OPS");
 
     const plain = createBufferedRendererIO();
     renderPlain(plain, events);
@@ -237,7 +268,8 @@ describe("lando renderer visual language", () => {
   test("warnings carry a text glyph in TTY output and stay plain in non-TTY fallback", async () => {
     const events = [...successEvents(), messageWarn("runtime bundle checksum is using a placeholder")];
 
-    const tty = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+    const controller = new RecordingLiveRegion();
+    const tty = substrateIo(createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }));
     const program = Effect.gen(function* () {
       const service = yield* EventService;
       for (const event of events) yield* service.publish(event);
@@ -246,11 +278,18 @@ describe("lando renderer visual language", () => {
     await Effect.runPromise(
       Effect.scoped(
         program.pipe(
-          Effect.provide(Layer.provideMerge(landoRenderer.makeEventConsumer(tty), EventServiceLive)),
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(tty, { createLiveRegion: () => Promise.resolve(controller) }),
+              EventServiceLive,
+            ),
+          ),
         ),
       ),
     );
-    expect(stripAnsi(tty.stdout())).toContain("⚠ runtime bundle checksum is using a placeholder");
+    expect(controller.scrollback.map(stripAnsi).join("\n")).toContain(
+      "⚠ runtime bundle checksum is using a placeholder",
+    );
 
     const plain = createBufferedRendererIO();
     renderPlain(plain, events);

@@ -8,6 +8,7 @@ import type {
   RendererLike,
 } from "./prompt-driver-types.ts";
 import { type PromptDisposer, removeListener } from "./prompt-listeners.ts";
+import { getOpenTuiSubstrateAvailability, recordOpenTuiSubstrateFailure } from "./substrate-availability.ts";
 
 export type {
   OpenTuiModuleLike,
@@ -79,15 +80,14 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
     ((renderer: RendererLike): void => {
       renderer.start?.();
     });
-  let openTuiAvailable = true;
-  let unavailableCause: Error | undefined;
   return {
     readRaw: async (request: unknown, signal?: AbortSignal): Promise<string> => {
       if (isAborted(signal)) throw makePromptCancelledError();
       const typedRequest = request as PromptDriverRequestLike;
       const type = readPromptType(typedRequest);
       if (isDeclinedType(type)) throw new Error(`driver declines ${type}`);
-      if (!openTuiAvailable) throw makeUnavailableError(unavailableCause);
+      const availability = getOpenTuiSubstrateAvailability();
+      if (!availability.available) throw makeUnavailableError(availability.cause);
 
       let mod: OpenTuiModuleLike;
       let renderer: RendererLike;
@@ -103,11 +103,12 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
             targetFps: 30,
           }));
       } catch (cause) {
-        openTuiAvailable = false;
         throw makeUnavailableError(
-          cause instanceof Error
-            ? cause
-            : new Error("OpenTUI initialization failed with a non-Error cause.", { cause }),
+          recordOpenTuiSubstrateFailure(
+            cause instanceof Error
+              ? cause
+              : new Error("OpenTUI initialization failed with a non-Error cause.", { cause }),
+          ),
         );
       }
 
@@ -122,11 +123,12 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
         try {
           startRenderer(renderer);
         } catch (cause) {
-          openTuiAvailable = false;
           throw makeUnavailableError(
-            cause instanceof Error
-              ? cause
-              : new Error("OpenTUI startup failed with a non-Error cause.", { cause }),
+            recordOpenTuiSubstrateFailure(
+              cause instanceof Error
+                ? cause
+                : new Error("OpenTUI startup failed with a non-Error cause.", { cause }),
+            ),
           );
         }
         const value = await new Promise<string>((resolve, reject) => {
@@ -186,13 +188,13 @@ export function createOpenTuiPromptDriver(deps: OpenTuiPromptDriverDeps = {}): O
         cleanupCause ??= cause;
       }
       if (cleanupCause !== undefined) {
-        openTuiAvailable = false;
-        unavailableCause =
+        recordOpenTuiSubstrateFailure(
           cleanupCause instanceof Error
             ? cleanupCause
             : new Error("OpenTUI renderer cleanup failed with a non-Error cause.", {
                 cause: cleanupCause,
-              });
+              }),
+        );
       }
       if (!promptOutcome.ok) throw promptOutcome.cause;
       return promptOutcome.value;

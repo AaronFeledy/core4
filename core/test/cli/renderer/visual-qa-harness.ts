@@ -7,7 +7,7 @@
  * that classify spacing, color-token, truncation, and wide-character drift.
  *
  * The harness is provider/network/host free: task-tree frames come from the
- * synchronous `LandoTreePainter.consume` byte return and summaries from
+ * synchronous `TaskTreeViewModel.frameLines` result and summaries from
  * `formatSummary`, both driven by injected, fixed-timestamp render events.
  *
  * Goldens are committed under `__goldens__/` as tokenized text: ANSI SGR codes
@@ -34,7 +34,7 @@ import {
 
 import { displayWidth, stripAnsi } from "../../../src/cli/renderer/console-layout.ts";
 import { type SummaryDocument, formatSummary } from "../../../src/cli/renderer/summary.ts";
-import { LandoTreePainter } from "../../../src/cli/renderer/task-tree-tail.ts";
+import { TaskTreeViewModel } from "../../../src/cli/renderer/task-tree-tail.ts";
 
 export { displayWidth, stripAnsi };
 
@@ -55,15 +55,12 @@ const SGR_MARKERS: Record<string, string> = {
 };
 
 /**
- * Rewrite ANSI escapes into readable inline markers. SGR (color/intensity)
- * codes become `⟨name⟩`; cursor-control codes (used by the painter's
- * whole-frame redraw) are dropped so the golden contains only the visible
- * frame plus its color tokens. No raw escape byte ever survives.
+ * Rewrite ANSI SGR escapes into readable inline markers. No raw escape byte
+ * ever survives.
  */
 export const tokenizeAnsi = (text: string): string =>
   text.replace(ansiPattern, (match) => {
-    const final = match[match.length - 1];
-    if (final !== "m") return ""; // cursor-control / erase: not part of the visible frame
+    if (!match.endsWith("m")) return "";
     const body = match.slice(2, -1); // strip ESC[ and trailing 'm'
     const codes = body === "" ? ["0"] : body.split(";");
     return codes.map((code) => `⟨${SGR_MARKERS[code] ?? `sgr:${code}`}⟩`).join("");
@@ -77,7 +74,7 @@ const splitFrameLines = (frame: string): ReadonlyArray<string> => {
 
 /** Result of capturing a renderer surface: styled bytes, tokenized golden, and stripped lines. */
 export interface CapturedFrame {
-  /** Raw styled frame (ANSI SGR retained, cursor-control removed). */
+  /** Raw styled frame containing ANSI SGR only. */
   readonly styled: string;
   /** Tokenized, human-readable golden text (committed to `__goldens__/`). */
   readonly tokenized: string;
@@ -86,31 +83,21 @@ export interface CapturedFrame {
 }
 
 const buildCaptured = (rawFrame: string): CapturedFrame => {
-  // The painter's whole-frame redraw prefixes each repaint with a clear
-  // sequence (`cursorUp` + carriage-return + `eraseDown`). Drop the bare
-  // carriage return first — it is not an ANSI escape, so it would otherwise
-  // survive as an invisible +1 column on the first line.
-  const withoutCarriage = rawFrame.replace(/\r/g, "");
-  // Drop cursor-control escapes so `styled` is the visible frame only; keep SGR
-  // for the tokenized golden.
-  const styled = withoutCarriage.replace(ansiPattern, (match) =>
-    match[match.length - 1] === "m" ? match : "",
-  );
+  const styled = rawFrame;
   const lines = splitFrameLines(stripAnsi(styled));
-  const tokenized = splitFrameLines(tokenizeAnsi(withoutCarriage)).join("\n");
+  const tokenized = splitFrameLines(tokenizeAnsi(rawFrame)).join("\n");
   return { styled, tokenized, lines };
 };
 
 /**
  * Capture the final task-tree frame for an injected event sequence at a fixed
- * width. Uses the synchronous `LandoTreePainter.consume` return (no event
+ * width. Uses the synchronous `TaskTreeViewModel.frameLines` result (no event
  * service, no timers, no provider) so the result is deterministic.
  */
 export const captureTreeFrame = (events: ReadonlyArray<LandoEvent>, columns: number): CapturedFrame => {
-  const painter = new LandoTreePainter({ terminalColumns: columns });
-  let lastChunk = "";
-  for (const event of events) lastChunk = painter.consume(event);
-  return buildCaptured(lastChunk);
+  const vm = new TaskTreeViewModel({ terminalColumns: columns });
+  for (const event of events) vm.apply(event);
+  return buildCaptured(vm.frameLines().join("\n"));
 };
 
 /** Capture a grouped result summary at a fixed width (already styled by `formatSummary`). */

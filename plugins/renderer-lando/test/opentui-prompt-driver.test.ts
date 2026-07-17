@@ -1,14 +1,19 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { CliRenderer } from "@opentui/core";
 
+import { createLiveRegionController } from "../src/opentui/live-region-controller.ts";
 import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
+import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import { createOpenTuiPromptTestKit } from "./opentui-prompt-test-kit.ts";
 
 describe("OpenTUI prompt driver", () => {
   const { basePrompt, cleanup, flushInput, makeDriver, makeSetup, openTui, waitForBuild } =
     createOpenTuiPromptTestKit();
 
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    resetOpenTuiSubstrateAvailabilityForTests();
+  });
 
   test("select returns a 1-based index after keyboard navigation", async () => {
     const testSetup = await makeSetup();
@@ -225,5 +230,37 @@ describe("OpenTUI prompt driver", () => {
       driver.readRaw({ prompt: { ...basePrompt, type: "secret" }, mode: "normal" }),
     ).rejects.toThrow("driver declines secret");
     expect(created).toBe(false);
+  });
+
+  test("a live-region failure prevents a later prompt driver from loading OpenTUI", async () => {
+    const substrateFailure = new Error("no native binding");
+    let promptLoadAttempts = 0;
+    await expect(
+      createLiveRegionController(
+        {
+          stdout: process.stdout,
+          width: 80,
+          height: 24,
+          footerHeight: 12,
+        },
+        {
+          loadModule: async () => {
+            throw substrateFailure;
+          },
+        },
+      ),
+    ).rejects.toHaveProperty("name", "OpenTuiLiveRegionUnavailableError");
+    const driver = createOpenTuiPromptDriver({
+      loadModule: async () => {
+        promptLoadAttempts += 1;
+        throw new Error("prompt loader must not run");
+      },
+    });
+
+    await expect(driver.readRaw({ prompt: basePrompt, mode: "normal" })).rejects.toMatchObject({
+      name: "OpenTuiPromptUnavailableError",
+      cause: substrateFailure,
+    });
+    expect(promptLoadAttempts).toBe(0);
   });
 });
