@@ -14,7 +14,6 @@ import { RENDERER_MODES, isRendererMode, resolveRendererMode } from "../../src/c
 import { renderVerboseLine } from "../../src/cli/renderer/format.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeVerboseRendererLive } from "../../src/cli/renderer/runtime.ts";
-import { csi } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
@@ -51,11 +50,6 @@ const detail = (taskId: string, line: string): LandoEvent =>
     line,
     timestamp: fixedTimestamp,
   });
-
-const stripCsi = (text: string): string => {
-  const esc = String.fromCharCode(27);
-  return text.replace(new RegExp(`${esc}\\[[0-9;]*[A-Za-z]`, "g"), "");
-};
 
 describe("verbose renderer registration (selection)", () => {
   test("verbose is a registered renderer mode alongside lando, json, plain", () => {
@@ -138,7 +132,7 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     expect(io.stderr()).toBe("");
   });
 
-  test("TTY mode keeps the Lando task tree while tracing every event payload above the live frame", async () => {
+  test("TTY mode emits the flat non-interactive payload trace with no live-frame cursor bytes", async () => {
     const io = createBufferedRendererIO({ isTTY: true });
     const program = Effect.gen(function* () {
       const events = yield* EventService;
@@ -151,14 +145,12 @@ describe("makeVerboseRendererLive — Layer through EventService", () => {
     await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
 
     const stdout = io.stdout();
-    const logical = stripCsi(stdout);
-    expect(stdout).toContain(csi.eraseDown);
-    expect(logical).toContain('"_tag":"task.tree.start"');
-    expect(logical).toContain('"_tag":"task.start"');
-    expect(logical).toContain('"_tag":"task.detail"');
-    expect(logical).toContain("LANDO OPS");
-    expect(logical).toContain("Building (1/1 running)");
-    expect(logical).toContain("· step a");
-    expect(logical).toContain("hello");
+    expect(stdout).toContain('"_tag":"task.tree.start"');
+    expect(stdout).toContain('"_tag":"task.start"');
+    expect(stdout).toContain('"_tag":"task.detail"');
+    expect(stdout).toContain("hello");
+    const esc = String.fromCharCode(27);
+    expect(new RegExp(`${esc}\\[[0-9]*[AJ]`).test(stdout)).toBe(false);
+    expect(stdout).not.toContain("LANDO OPS");
   });
 });

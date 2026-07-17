@@ -5,7 +5,7 @@ import { Schema } from "effect";
 import { TaskDetailEvent, TaskStartEvent, TaskTreeStartEvent } from "@lando/sdk/events";
 
 import { wrapFrameLines } from "../src/task-tree-frame.ts";
-import { LandoTreePainter } from "../src/task-tree-tail.ts";
+import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 
 /** Body-line content between the borders, with the indent and right-hand padding stripped. */
 const innerContent = (line: string): string => line.replace(/^│\s+/, "").replace(/\s*│$/, "").trim();
@@ -53,18 +53,18 @@ const assertBordered = (lines: ReadonlyArray<string>, columns: number): void => 
 
 describe("task-tree framing below 60 columns", () => {
   test("40-column ASCII tree stays bordered and within display width", () => {
-    const painter = new LandoTreePainter({ terminalColumns: 40 });
-    painter.consume(treeStart("Starting application services now", ["appserver", "database"]));
-    painter.consume(start("appserver", "appserver bootstrapping the runtime"));
-    painter.consume(detail("appserver", "listening on 0.0.0.0:8080 for incoming requests"));
+    const painter = new TaskTreeViewModel({ terminalColumns: 40 });
+    painter.apply(treeStart("Starting application services now", ["appserver", "database"]));
+    painter.apply(start("appserver", "appserver bootstrapping the runtime"));
+    painter.apply(detail("appserver", "listening on 0.0.0.0:8080 for incoming requests"));
     assertBordered(painter.snapshot().frameLines, 40);
   });
 
   test("40-column CJK tree counts wide glyphs and stays bordered within display width", () => {
-    const painter = new LandoTreePainter({ terminalColumns: 40 });
-    painter.consume(treeStart("한글 애플리케이션 시작 중입니다 지금", ["웹서버"]));
-    painter.consume(start("웹서버", "웹서버 런타임을 부팅하는 중"));
-    painter.consume(detail("웹서버", "포트 8080 에서 수신 대기 중입니다 지금"));
+    const painter = new TaskTreeViewModel({ terminalColumns: 40 });
+    painter.apply(treeStart("한글 애플리케이션 시작 중입니다 지금", ["웹서버"]));
+    painter.apply(start("웹서버", "웹서버 런타임을 부팅하는 중"));
+    painter.apply(detail("웹서버", "포트 8080 에서 수신 대기 중입니다 지금"));
     const frameLines = painter.snapshot().frameLines;
     assertBordered(frameLines, 40);
     for (const inner of frameLines.slice(1, -1).map(innerContent)) {

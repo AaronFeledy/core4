@@ -6,6 +6,20 @@
  */
 import { displayWidth, graphemes, takeWidth, truncateToWidth } from "./terminal-width.ts";
 
+const ESC = String.fromCharCode(27);
+
+export const csi = {
+  dim: `${ESC}[2m`,
+  dimReset: `${ESC}[22m`,
+  bold: `${ESC}[1m`,
+  reset: `${ESC}[0m`,
+  cyan: `${ESC}[36m`,
+  pink: `${ESC}[95m`,
+  green: `${ESC}[32m`,
+  amber: `${ESC}[33m`,
+  red: `${ESC}[31m`,
+} as const;
+
 const DEFAULT_TERMINAL_COLUMNS = 80;
 
 const normalizeTerminalColumns = (terminalColumns: number | undefined): number =>
@@ -124,26 +138,14 @@ export const physicalRowsForFrame = (
   terminalColumns: number | undefined,
 ): number => frame.reduce((rows, line) => rows + physicalRowsForLine(line, terminalColumns), 0);
 
-export interface TaskTreeFrameStyles {
-  readonly pink: string;
-  readonly reset: string;
-  readonly dim: string;
-  readonly dimReset: string;
-}
-
-export const styleBodyFrame = (
-  line: string,
-  styleStart: string,
-  styleEnd: string,
-  styles: TaskTreeFrameStyles,
-): string => {
+export const styleBodyFrame = (line: string, styleStart: string, styleEnd: string): string => {
   const hasTrailingFrame = line.endsWith("│");
   const content = line.slice(1, hasTrailingFrame ? -1 : undefined);
-  const trailingFrame = hasTrailingFrame ? `${styles.pink}│${styles.reset}` : "";
-  return `${styles.pink}${line.slice(0, 1)}${styles.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
+  const trailingFrame = hasTrailingFrame ? `${csi.pink}│${csi.reset}` : "";
+  return `${csi.pink}${line.slice(0, 1)}${csi.reset}${styleStart}${content}${styleEnd}${trailingFrame}`;
 };
 
-export const styleBottomFrame = (line: string, styles: TaskTreeFrameStyles): string => {
+export const styleBottomFrame = (line: string): string => {
   let trailingFrameStart = line.length;
   if (line.endsWith("╯")) {
     trailingFrameStart -= 1;
@@ -151,7 +153,6 @@ export const styleBottomFrame = (line: string, styles: TaskTreeFrameStyles): str
   }
   const content = line.slice(2, trailingFrameStart);
   const trailingFrame = line.slice(trailingFrameStart);
-  const styledTrailingFrame =
-    trailingFrame.length === 0 ? "" : `${styles.pink}${trailingFrame}${styles.reset}`;
-  return `${styles.pink}${line.slice(0, 2)}${styles.reset}${styles.dim}${styles.pink}${content}${styles.dimReset}${styles.reset}${styledTrailingFrame}`;
+  const styledTrailingFrame = trailingFrame.length === 0 ? "" : `${csi.pink}${trailingFrame}${csi.reset}`;
+  return `${csi.pink}${line.slice(0, 2)}${csi.reset}${csi.dim}${csi.pink}${content}${csi.dimReset}${csi.reset}${styledTrailingFrame}`;
 };

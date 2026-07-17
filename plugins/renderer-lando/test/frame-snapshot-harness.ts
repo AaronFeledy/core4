@@ -5,7 +5,7 @@
  * `captureCharFrame`/`captureSpans`) with no PTY, provider, network, or host
  * mutation.
  *
- * Task-tree frames come from the pure `LandoTreePainter` logical frame mounted
+ * Task-tree frames come from the pure `TaskTreeViewModel` logical frame mounted
  * through the real renderer; prompt frames come from the real
  * `createOpenTuiPromptDriver` building against the same renderer.
  *
@@ -22,7 +22,7 @@ import * as openTuiModule from "@opentui/core";
 import { ManualClock, type TestRenderer, createTestRenderer } from "@opentui/core/testing";
 
 import { type OpenTuiModuleLike, createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
-import { LandoTreePainter } from "../src/task-tree-tail.ts";
+import { TaskTreeViewModel } from "../src/task-tree-tail.ts";
 
 const openTui = openTuiModule satisfies OpenTuiModuleLike<CliRenderer>;
 
@@ -49,14 +49,14 @@ const mountLines = (renderer: TestRenderer, lines: ReadonlyArray<string>, width:
   return column;
 };
 
-/** Capture the mounted `LandoTreePainter` logical frame for an event sequence at a fixed size. */
+/** Capture the mounted `TaskTreeViewModel` logical frame for an event sequence at a fixed size. */
 export const captureTreeFrame = async (
   events: ReadonlyArray<LandoEvent>,
   width: number,
   height: number,
 ): Promise<string> => {
-  const painter = new LandoTreePainter({ terminalColumns: width });
-  for (const event of events) painter.consume(event);
+  const painter = new TaskTreeViewModel({ terminalColumns: width });
+  for (const event of events) painter.apply(event);
   const setup = await createTestRenderer({ width, height, clock: new ManualClock() });
   mountLines(setup.renderer, painter.snapshot().frameLines, width);
   await setup.renderOnce();
@@ -73,16 +73,16 @@ export const captureTreeResizeFrame = async (
   height: number,
 ): Promise<{ readonly before: string; readonly after: string }> => {
   const setup = await createTestRenderer({ width: from, height, clock: new ManualClock() });
-  const beforePainter = new LandoTreePainter({ terminalColumns: from });
-  for (const event of events) beforePainter.consume(event);
+  const beforePainter = new TaskTreeViewModel({ terminalColumns: from });
+  for (const event of events) beforePainter.apply(event);
   const beforeFrame = mountLines(setup.renderer, beforePainter.snapshot().frameLines, from);
   await setup.renderOnce();
   const before = normalizeFrame(setup.captureCharFrame());
 
   setup.resize(to, height);
   setup.renderer.root.remove(beforeFrame);
-  const afterPainter = new LandoTreePainter({ terminalColumns: to });
-  for (const event of events) afterPainter.consume(event);
+  const afterPainter = new TaskTreeViewModel({ terminalColumns: to });
+  for (const event of events) afterPainter.apply(event);
   mountLines(setup.renderer, afterPainter.snapshot().frameLines, to);
   await setup.renderOnce();
   const after = normalizeFrame(setup.captureCharFrame());
