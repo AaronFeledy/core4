@@ -27,6 +27,12 @@ const capturingRendererLayer = (
 ): Layer.Layer<Renderer> =>
   Layer.succeed(Renderer, {
     id,
+    capabilities: {
+      color: false,
+      interactive: false,
+      animation: false,
+      notifications: false,
+    },
     message: {
       info: () => Effect.void,
       warn: (body: string) =>
