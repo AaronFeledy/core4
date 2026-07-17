@@ -1,5 +1,10 @@
 import { ansiToNativeStyledText } from "./ansi-styled-text.ts";
 import { LiveRegionReplay, type ReplayLine, replaySnapshot } from "./live-region-replay.ts";
+import {
+  DeferredScrollback,
+  type LiveRegionSpoolFactory,
+  createLiveRegionSpool,
+} from "./live-region-spool.ts";
 import { acquireLiveRegionSubstrate } from "./live-region-substrate.ts";
 import type {
   LiveRegionControllerDeps,
@@ -14,17 +19,11 @@ export { OpenTuiLiveRegionUnavailableError } from "./live-region-error.ts";
 export type { OpenTuiLiveRegionFailureStage } from "./live-region-error.ts";
 export type * from "./live-region-types.ts";
 
-const MAX_DEFERRED_SCROLLBACK_CHARACTERS = 256 * 1024;
-
-const deferredLineLength = (line: ReplayLine): number =>
-  line.chunks.reduce((total, chunk) => total + chunk.text.length, 0);
-
 export class LiveRegionController<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
   private footer: LiveRegionRenderableLike | undefined;
   private footerLines: ReadonlyArray<string> = [];
   private readonly replay: LiveRegionReplay;
-  private readonly deferredLines: ReplayLine[] = [];
-  private deferredCharacters = 0;
+  private readonly deferred: DeferredScrollback;
   private width: number;
   private height: number;
   private replayPending = false;
@@ -38,9 +37,11 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     height: number,
     private readonly onResize: ((width: number, height: number) => void) | undefined,
     private readonly writePassthrough: (text: string) => void,
+    spoolFactory: LiveRegionSpoolFactory = createLiveRegionSpool,
   ) {
     this.width = width;
     this.height = height;
+    this.deferred = new DeferredScrollback(spoolFactory);
     this.replay = new LiveRegionReplay(module, width, Math.max(0, height - renderer.footerHeight));
     this.renderer.targetFps = Math.min(this.renderer.targetFps, 30);
     this.renderer.maxFps = Math.min(this.renderer.maxFps, 30);
@@ -53,11 +54,12 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   }
 
   commitScrollback(text: string): void {
-    for (const line of this.linesFor(text)) {
+    for (const source of this.rowsFor(text)) {
       if (this.renderer.screenMode === "alternate-screen") {
-        this.pushDeferred(line);
+        this.deferred.push(source);
         continue;
       }
+      const line = this.replay.line(source);
       this.replay.push(line);
       if (this.renderer.screenMode === "split-footer") this.writeScrollback(line);
       else this.writePassthrough(`${line.chunks.map((chunk) => chunk.text).join("")}\n`);
@@ -65,21 +67,11 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   }
 
   rememberScrollback(text: string): void {
-    for (const line of this.linesFor(text)) this.replay.push(line);
+    for (const source of this.rowsFor(text)) this.replay.push(this.replay.line(source));
   }
 
-  private pushDeferred(line: ReplayLine): void {
-    this.deferredLines.push(line);
-    this.deferredCharacters += deferredLineLength(line);
-    while (this.deferredCharacters > MAX_DEFERRED_SCROLLBACK_CHARACTERS && this.deferredLines.length > 0) {
-      const removed = this.deferredLines.shift();
-      if (removed !== undefined) this.deferredCharacters -= deferredLineLength(removed);
-    }
-  }
-
-  private linesFor(text: string): ReadonlyArray<ReplayLine> {
-    const rows = (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
-    return rows.map((row) => this.replay.line(row));
+  private rowsFor(text: string): ReadonlyArray<string> {
+    return (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
   }
 
   private writeScrollback(line: ReplayLine): void {
@@ -138,7 +130,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     this.renderer.screenMode = "alternate-screen";
   }
 
-  exitFullTail(): void {
+  async exitFullTail(): Promise<void> {
     if (this.renderer.screenMode !== "alternate-screen") return;
     this.renderer.screenMode = "split-footer";
     this.renderer.setCursorPosition(1, Math.max(1, this.height), false);
@@ -147,21 +139,21 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     if (replayAfterResize) {
       this.resetReplaySurface();
     }
-    for (const line of this.deferredLines) {
+    for (const source of await this.deferred.drain()) {
+      const line = this.replay.line(source);
       this.writeScrollback(line);
       this.replay.push(line);
     }
-    this.deferredLines.length = 0;
-    this.deferredCharacters = 0;
     if (replayAfterResize) this.pinSplitFooter();
     if (this.footer !== undefined) this.renderFooter();
     this.replayPending = false;
   }
 
-  reset(): void {
+  async reset(): Promise<void> {
     this.resetReplaySurface();
     this.pinSplitFooter();
     if (this.footer !== undefined) this.renderFooter();
+    await this.deferred.clear();
   }
 
   private resetReplaySurface(): void {
@@ -169,7 +161,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     for (const line of this.replay.retainedLines()) this.writeScrollback(line);
   }
 
-  dispose(): void {
+  async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
     try {
@@ -178,12 +170,14 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
     } catch (cause) {
       recordOpenTuiSubstrateFailure(cause);
       throw cause;
+    } finally {
+      await this.deferred.clear();
     }
   }
 
   private replayAfterResize(): void {
     if (this.renderer.screenMode === "split-footer") {
-      this.reset();
+      void this.reset();
       return;
     }
     this.replayPending = true;
@@ -245,7 +239,13 @@ export async function createLiveRegionController(
   deps: LiveRegionControllerDeps = {},
 ): Promise<LiveRegionController> {
   const { module, renderer } = await acquireLiveRegionSubstrate(options, deps);
-  return new LiveRegionController(module, renderer, options.width, options.height, options.onResize, (text) =>
-    options.stdout.write(text),
+  return new LiveRegionController(
+    module,
+    renderer,
+    options.width,
+    options.height,
+    options.onResize,
+    (text) => options.stdout.write(text),
+    deps.spool,
   );
 }
