@@ -6,7 +6,6 @@ import { type CacheError, type ToolingCompileError, ToolingExecError } from "@la
 
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { newInvocationId } from "../command-lifecycle.ts";
 import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh.ts";
 import { appConfigLint, renderConfigLintResult } from "../commands/app-config-lint.ts";
 import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate.ts";
@@ -68,6 +67,7 @@ import {
   commandErrorMessage,
   compiledFormat,
   emitDiagnosticLine,
+  getActiveCommandInvocation,
   rejectInvalidInvocation,
   resetActiveCommandInvocation,
   runCompiledCommand,
@@ -244,13 +244,12 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,
       command: setupSpec.id,
-      invocation: {
+      invocation: getActiveCommandInvocation() ?? {
         commandId: setupSpec.id,
         argv: input.argv,
         args: input.args,
         flags: input.flags,
         cwd: process.cwd(),
-        invocationId: newInvocationId(),
       },
       resultSchema: setupSpec.resultSchema,
       deprecationWarnings: activeDeprecationWarnings,
