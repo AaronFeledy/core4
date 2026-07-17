@@ -116,9 +116,14 @@ const terminateWindowsProcessTree = async (pid: number): Promise<void> => {
     new Response(taskkill.stdout).text(),
     new Response(taskkill.stderr).text(),
   ]);
-  if (exitCode !== 0 && exitCode !== 128) {
+  const detail = `${stderr}${stdout}`;
+  // 0 = killed; 128 = process already gone (classic). Windows also returns 255 with
+  // "There is no running instance of the task." when the tree races to exit first.
+  const alreadyGone =
+    exitCode === 128 || (exitCode === 255 && /no running instance of the task/i.test(detail));
+  if (exitCode !== 0 && !alreadyGone) {
     throw new Error(
-      `Failed to terminate Windows PTY process tree ${String(pid)} (exit ${String(exitCode)}): ${stderr || stdout}`,
+      `Failed to terminate Windows PTY process tree ${String(pid)} (exit ${String(exitCode)}): ${detail}`,
     );
   }
 };
