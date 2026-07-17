@@ -106,7 +106,7 @@ const expectNonLoadingDispatches = async (
 
 /** Drop intermittent winpty/libwinpty abort noise from PTY capture. */
 const scrubPtyNoise = (text: string): string => {
-  const csi = String.fromCharCode(27) + "\\[[0-9;?]*[A-Za-z]";
+  const csi = `${String.fromCharCode(27)}\\[[0-9;?]*[A-Za-z]`;
   return text
     .replace(/Assertion failed:[\s\S]*?(?:\r?\n|$)/g, "")
     .replace(new RegExp(csi, "g"), "")
