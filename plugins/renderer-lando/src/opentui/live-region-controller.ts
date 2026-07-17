@@ -69,9 +69,11 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   }
 
   commitScrollback(text: string): void {
-    this.scrollbackLines.push(text);
-    if (this.renderer.screenMode !== "split-footer") return;
-    this.writeScrollback(text);
+    const rows = (text.endsWith("\n") ? text.slice(0, -1) : text).split("\n");
+    for (const row of rows) {
+      this.scrollbackLines.push(row);
+      if (this.renderer.screenMode === "split-footer") this.writeScrollback(row);
+    }
   }
 
   private writeScrollback(text: string): void {

@@ -104,6 +104,20 @@ describe("LiveRegionController with the OpenTUI test renderer", () => {
     controller.dispose();
   });
 
+  test("commits remediation-shaped multiline styled output as distinct native rows", async () => {
+    const { controller, setup } = await createFixture(80, 12);
+
+    controller.commitScrollback("\u001b[31mBuild failed\u001b[0m\nRemediation: Run lando setup");
+    await setup.renderOnce();
+
+    const commits = setup.externalOutput.take();
+    expect(commits.map((commit) => commit.rows)).toEqual([
+      ["Build failed"],
+      ["Remediation: Run lando setup"],
+    ]);
+    controller.dispose();
+  });
+
   test("full-tail transition returns to split-footer with the current frame intact", async () => {
     const { controller, setup } = await createFixture();
     controller.setFooter(["build running", "appserver online"]);

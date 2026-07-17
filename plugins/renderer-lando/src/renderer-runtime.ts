@@ -233,7 +233,7 @@ const makeSubstrateConsumerLive = (
         const runtime = yield* Effect.runtime<never>();
         const input = new TaskTreeInputController(viewModel);
         unsubscribe = subscribe((raw) => {
-          if (raw === "\x03") {
+          if (raw.includes("\x03")) {
             raiseInterrupt();
             return;
           }

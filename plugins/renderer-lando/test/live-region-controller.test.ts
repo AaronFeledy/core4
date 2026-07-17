@@ -224,6 +224,15 @@ describe("LiveRegionController", () => {
     expect(fixture.commits).toEqual(["first", "second"]);
   });
 
+  test("commits embedded LF as separate styled scrollback rows including semantic blanks", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+
+    controller.commitScrollback("\u001b[31mBuild failed\u001b[0m\n\nRemediation: Run lando setup");
+
+    expect(fixture.commits).toEqual(["Build failed", "", "Remediation: Run lando setup"]);
+  });
+
   test("balances live requests and caps both frame rates at 30", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);

@@ -1531,7 +1531,7 @@
         "Lint passes"
       ],
       "priority": 86,
-      "passes": true,
+      "passes": false,
       "notes": "Origin: spec section 8.9.3 (task-tree live region). Replaces plugins/renderer-lando/src/task-tree-tail.ts whole-frame rewind/erase/repaint painter. Riskiest story of the wave; land after US-457 harness."
     },
     {

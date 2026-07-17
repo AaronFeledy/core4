@@ -128,4 +128,40 @@ describe("lando renderer (TTY keybindings)", () => {
     expect(published.some((event) => event._tag === "task.detail.expand")).toBe(false);
     expect(published.some((event) => event._tag === "task.detail.collapse")).toBe(false);
   });
+
+  test.each(["a\x03", "\x03\x1b[B"])(
+    "a chunk containing Ctrl-C raises exactly one interrupt before key handling: %p",
+    async (raw) => {
+      const base = createBufferedRendererIO({ isTTY: true, terminalRows: 40 });
+      const io = substrateIo(base);
+      let interrupts = 0;
+      const program = Effect.gen(function* () {
+        const svc = yield* EventService;
+        const collector = yield* svc.subscribeQueue;
+        yield* svc.publish(treeStart("build", "Building", ["a"]));
+        yield* svc.publish(taskStart("a", "step a", "build"));
+        yield* Effect.sleep("20 millis");
+
+        base.injectKey(raw);
+        yield* Effect.sleep("20 millis");
+
+        return [...(yield* Queue.takeAll(collector))];
+      });
+      const layer = Layer.provideMerge(
+        makeLandoEventConsumer(io, {
+          createLiveRegion: () => Promise.resolve(new FakeLiveRegion()),
+          raiseInterrupt: () => {
+            interrupts += 1;
+          },
+        }),
+        EventServiceLive,
+      );
+
+      const published = await Effect.runPromise(Effect.scoped(program.pipe(Effect.provide(layer))));
+
+      expect(interrupts).toBe(1);
+      expect(published.some((event) => event._tag === "task.detail.expand")).toBe(false);
+      expect(published.some((event) => event._tag === "task.detail.collapse")).toBe(false);
+    },
+  );
 });
