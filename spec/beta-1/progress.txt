@@ -516,3 +516,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - A character-frame golden proves layout but not styling; pair it with `captureSpans()` when color is part of the contract.
   - Prompt controls that register renderer-level listeners must return a disposer to the driver lifecycle; destroying the renderer is not a substitute for explicit listener ownership.
 ---
+
+## 2026-07-16 19:41 CDT - Babysit
+- PR: #598 https://github.com/AaronFeledy/core4/pull/598
+- CI outcome: pass (after triage)
+- Review feedback: fixed (merged origin/main for OpenTUI 0.4.x conflict; aligned CSI cursor-row expectation with framed output; resize harness removes mount via child object API)
+- Merge: merged (squash)
+---
