@@ -991,6 +991,55 @@ describe("PluginRegistryLive", () => {
     expect(warnings[0]).toContain("rendererPanels module path escapes");
   });
 
+  test("rejects duplicate plugin-local subscribers ids as PluginManifestError", async () => {
+    const userPluginsRoot = join(userDataRoot, "plugins");
+    const brokenRoot = join(userPluginsRoot, "@example", "dup-subscriber-plugin", "1.0.0");
+    await mkdir(join(brokenRoot, "src"), { recursive: true });
+    await writeFile(
+      join(brokenRoot, "package.json"),
+      `${JSON.stringify(
+        {
+          name: "@example/dup-subscriber-plugin",
+          version: "1.0.0",
+          landoPlugin: {
+            name: "@example/dup-subscriber-plugin",
+            version: "1.0.0",
+            api: 4,
+            entry: "index.js",
+            subscribers: [
+              {
+                id: "audit",
+                selectors: [{ event: "post-start" }],
+                module: "./src/a.mjs",
+              },
+              {
+                id: "audit",
+                selectors: [{ event: "post-stop" }],
+                module: "./src/b.mjs",
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    await writeFile(join(brokenRoot, "index.js"), "export {};\n");
+    await writeFile(join(brokenRoot, "src", "a.mjs"), "export {};\n");
+    await writeFile(join(brokenRoot, "src", "b.mjs"), "export {};\n");
+    await writeInstalledPluginRegistry(userPluginsRoot, [
+      { name: "@example/dup-subscriber-plugin", version: "1.0.0", path: brokenRoot },
+    ]);
+
+    const manifests = await runWithPluginRegistry(
+      Effect.flatMap(PluginRegistry, (registry) => registry.list),
+    );
+
+    expect(manifests.find((manifest) => manifest.name === "@example/dup-subscriber-plugin")).toBeUndefined();
+    expect(warnings).toEqual([expect.stringContaining("PluginManifestError")]);
+    expect(warnings[0]).toContain('Duplicate subscribers id "audit"');
+  });
+
   test("rejects duplicate plugin-local rendererPanels ids as PluginManifestError", async () => {
     const userPluginsRoot = join(userDataRoot, "plugins");
     const brokenRoot = join(userPluginsRoot, "@example", "dup-panel-plugin", "1.0.0");

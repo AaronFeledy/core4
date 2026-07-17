@@ -154,6 +154,19 @@ const normalizeExternalContributionModules = async (
     }
   }
 
+  if (subscribers !== undefined) {
+    const seenSubscriberIds = new Set<string>();
+    for (const subscriber of subscribers) {
+      if (seenSubscriberIds.has(subscriber.id)) {
+        throw pluginManifestError(
+          `Duplicate subscribers id "${subscriber.id}" in plugin ${String(manifest.name)}`,
+          subscriber.id,
+        );
+      }
+      seenSubscriberIds.add(subscriber.id);
+    }
+  }
+
   const normalizedGlobalServices =
     globalServices === undefined
       ? undefined
