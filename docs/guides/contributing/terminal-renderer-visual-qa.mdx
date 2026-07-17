@@ -28,6 +28,13 @@ tags: [beta, docs, contributing, renderer]
       <Variable name="testProvider" value="TestRuntimeProvider" display="The gate constructs the pure in-memory provider whose lifecycle methods resolve without a real container runtime, network, signing credentials, or host mutation" />
       <Variable name="injectedEvents" value="injected renderer events" display="Frames are produced from fixed-timestamp task and message events fed through the event service and the bundled lando renderer, so captures are deterministic and need no live command" />
     </Step>
+    <Step name="frame-snapshot-harness">
+      <Variable name="frameHarness" value="plugins/renderer-lando/test/frame-snapshot-harness.ts" display="A headless frame-snapshot harness drives the substrate's own test renderer from @opentui/core/testing (createTestRenderer with memory-buffered captureCharFrame) so every drawn surface is captured with no PTY, provider, or network" />
+      <Variable name="frameSuite" value="plugins/renderer-lando/test/frame-snapshots.test.ts" display="The suite captures task-tree frames across start, detail, complete, and fail transitions, prompt chrome for every prompt type the renderer draws, a 40-column narrow-terminal fixture, and a mid-tree resize, and asserts each capture is stable across repeated runs" />
+      <Variable name="frameFixtures" value="plugins/renderer-lando/test/__frames__/<id>.<cols>col.txt" display="Committed character-frame fixtures a reviewer reads directly; they carry no ANSI escape byte and no machine-specific path, timestamp, or host data so a frame regression shows up as a readable text diff" />
+      <Variable name="treeMount" value="painter frame mounted through the real renderer" display="Task-tree fixtures mount the pure LandoTreePainter logical frame through the real headless renderer, so the harness moves onto the split-footer live region without depending on it yet" />
+      <Variable name="updateFrames" value="LANDO_UPDATE_RENDERER_FRAMES=1 bun test plugins/renderer-lando/test/frame-snapshots.test.ts" display="Regenerate committed frame fixtures after an intentional renderer change, then review the diff; without the flag the gate is read-only and a missing fixture is a hard failure, never a silent create" />
+    </Step>
     <Step name="renderer-only-scope">
       <Variable name="scope" value="renderer output only" display="The visual gate snapshots the decorated TTY renderer surfaces, not machine logs" />
       <Variable name="undecorated" value="json, plain, and non-TTY stay undecorated" display="Regression fixtures prove the json renderer emits plain NDJSON, plain output carries no ANSI or panel framing, and the non-TTY lando renderer degrades to undecorated text" />

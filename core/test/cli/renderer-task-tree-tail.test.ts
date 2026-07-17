@@ -217,10 +217,13 @@ describe("LandoTreePainter — CSI cursor handling", () => {
     painter.consume(treeStart("build", "Run", ["a"]));
     painter.consume(taskStart("a", "a", "build"));
     painter.consume(detail("a", "123456789012345678901\nx"));
+    const previousFrame = painter.snapshot().frameLines;
+    expect(previousFrame).toHaveLength(5);
+    expect(previousFrame.some((line) => line.includes("\n"))).toBe(true);
 
     const collapse = painter.consume(taskComplete("a", "a", 10));
 
-    expect(collapse.startsWith(csi.cursorUp(8))).toBe(true);
+    expect(collapse.startsWith(csi.cursorUp(6))).toBe(true);
     expect(collapse.startsWith(csi.cursorUp(3))).toBe(false);
   });
 

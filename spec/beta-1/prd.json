@@ -1547,7 +1547,7 @@
         "Lint passes"
       ],
       "priority": 87,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec sections 8.9.3 (testing, prompt chrome) and 13.1 (Renderer frames layer). Presentation only; no InteractionService changes."
     },
     {
