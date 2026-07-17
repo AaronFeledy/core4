@@ -575,3 +575,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Contract-only freezes that add module-bearing manifest contributions must extend `normalizeExternalContributionModules` the same way RemoteSource/Dataset did.
   - Same-surface keymap validation must merge overrides onto `DEFAULT_KEYMAP_BINDINGS`, not only inspect provided keys.
 ---
+
+## 2026-07-17 04:45 CDT - Babysit
+- PR: #600 https://github.com/AaronFeledy/core4/pull/600
+- CI outcome: pass (after triage)
+- Review feedback: fixed (schema/command-reference codegen drift; panel suite excluded from §4.2 kit gate; transferable ArrayBuffer typing; schema-snapshot biome path batching for Windows ENAMETOOLONG; OpenTUI Windows PTY scrubber)
+- Merge: merged (squash)
+---
