@@ -23,7 +23,7 @@ import {
   TaskTreeCompleteEvent,
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
-import type { RendererIO } from "@lando/sdk/renderer";
+import { RENDERER_CAPABILITIES_TTY_INITIAL, type RendererIO } from "@lando/sdk/renderer";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 
@@ -130,12 +130,14 @@ class FakeController {
   enterFullTail(): void {
     this.calls.push({ kind: "enterFullTail" });
   }
-  exitFullTail(): void {
+  exitFullTail(): Promise<void> {
     this.calls.push({ kind: "exitFullTail" });
+    return Promise.resolve();
   }
   reset(): void {}
-  dispose(): void {
+  dispose(): Promise<void> {
     this.calls.push({ kind: "dispose" });
+    return Promise.resolve();
   }
 }
 
@@ -482,7 +484,7 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
         }).pipe(
           Effect.provide(
             Layer.mergeAll(
-              makeLandoService(io),
+              makeLandoService(io, () => RENDERER_CAPABILITIES_TTY_INITIAL),
               Layer.provideMerge(
                 makeLandoEventConsumer(io, {
                   createLiveRegion: () => Promise.resolve(controller),

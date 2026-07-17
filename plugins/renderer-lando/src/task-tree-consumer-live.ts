@@ -135,7 +135,7 @@ export const makeTaskTreeConsumerLive = (
               return true;
             }
             if (event._tag !== "task.detail.collapse") return false;
-            const exited = yield* Effect.try({
+            const exited = yield* Effect.tryPromise({
               try: () => controller.exitFullTail(),
               catch: (cause) => recordOpenTuiSubstrateFailure(cause),
             }).pipe(Effect.option);
@@ -156,7 +156,10 @@ export const makeTaskTreeConsumerLive = (
               yield* transition(event);
               return;
             }
-            consumeRenderable(event);
+            yield* Effect.tryPromise({
+              try: () => consumeRenderable(event),
+              catch: (cause) => recordOpenTuiSubstrateFailure(cause),
+            }).pipe(Effect.ignore);
           });
         handleResize = (width, height) => {
           resize(width, height);
@@ -221,11 +224,14 @@ export const makeTaskTreeConsumerLive = (
           const remaining = yield* Queue.takeAll(queue);
           for (const event of remaining) yield* serialized(consume(event));
           yield* Fiber.interrupt(fiber);
-          if (active !== undefined) {
-            journal.detach(active.controller);
-            yield* serialized(active.transcriptTail.close);
-            active.dispose();
-            active.controller.dispose();
+          const substrate = active;
+          if (substrate !== undefined) {
+            journal.detach(substrate.controller);
+            yield* serialized(substrate.transcriptTail.close);
+            substrate.dispose();
+            yield* Effect.promise(() =>
+              substrate.controller.dispose().catch((cause) => recordOpenTuiSubstrateFailure(cause)),
+            );
           }
         }),
       );

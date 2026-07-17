@@ -11,8 +11,8 @@ export interface LiveRegionHandle {
   requestLive(): void;
   dropLive(): void;
   enterFullTail(): void;
-  exitFullTail(): void;
-  dispose(): void;
+  exitFullTail(): Promise<void>;
+  dispose(): Promise<void>;
 }
 
 export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveRegionHandle) => {
@@ -31,12 +31,12 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
     output,
   );
   const renderFooter = output.render;
-  const consume = (event: LandoEvent): void => {
+  const consume = async (event: LandoEvent): Promise<void> => {
     if (isRenderableTaskTreeEvent(event)) {
       const expandedTaskId = viewModel.expandedTaskId;
       const result = viewModel.consume(event);
       if (expandedTaskId !== undefined && viewModel.expandedTaskId === undefined) {
-        controller.exitFullTail();
+        await controller.exitFullTail();
       }
       if (event._tag === "task.tree.complete") {
         for (const line of result.completedLines) controller.commitScrollback(line);

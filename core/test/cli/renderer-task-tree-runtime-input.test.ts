@@ -17,9 +17,13 @@ class FakeLiveRegion {
   dropLive(): void {}
   resize(): void {}
   enterFullTail(): void {}
-  exitFullTail(): void {}
+  exitFullTail(): Promise<void> {
+    return Promise.resolve();
+  }
   reset(): void {}
-  dispose(): void {}
+  dispose(): Promise<void> {
+    return Promise.resolve();
+  }
 }
 
 const substrateIo = (base: ReturnType<typeof createBufferedRendererIO>) => ({
