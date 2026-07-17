@@ -102,6 +102,31 @@ describe("buildKeyForService", () => {
     expect(await key(changedRedirect)).not.toBe(await key(withRedirect));
   });
 
+  test("keeps app-phase commands out of artifact cache identity", async () => {
+    // Given
+    const withInstall = service({
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [{ id: "install", phase: "app", command: { command: ["npm", "install"] } }],
+        },
+      },
+    });
+    const withChangedInstall = service({
+      extensions: {
+        "@lando/core/service-features": {
+          buildSteps: [{ id: "install", phase: "app", command: { command: ["bun", "install"] } }],
+        },
+      },
+    });
+
+    // When
+    const first = await key(withInstall);
+    const changed = await key(withChangedInstall);
+
+    // Then
+    expect(changed).toBe(first);
+  });
+
   test("invalidates on base image, build args, provider identity, and provider-visible env", async () => {
     const context = await mkdtemp(join(tmpdir(), "lando-build-key-args-"));
     await writeFile(join(context, "Dockerfile"), "FROM alpine\n");

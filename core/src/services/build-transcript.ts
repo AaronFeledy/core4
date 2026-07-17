@@ -1,5 +1,7 @@
 import { Buffer } from "node:buffer";
-import { join } from "node:path";
+import { constants } from "node:fs";
+import { lstat, mkdir, open } from "node:fs/promises";
+import { dirname, join } from "node:path";
 
 import { Effect } from "effect";
 
@@ -50,17 +52,46 @@ export const openBuildTranscript = (
   Effect.acquireRelease(
     Effect.tryPromise({
       try: async () => {
-        await Bun.write(path, "");
-        return Bun.file(path).writer();
+        await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+        if (process.platform === "win32") {
+          try {
+            if ((await lstat(path)).isSymbolicLink()) {
+              throw transcriptError(providerId, path, "Final path is a symbolic link.");
+            }
+          } catch (cause) {
+            if (!(cause instanceof Error && "code" in cause && cause.code === "ENOENT")) {
+              throw cause;
+            }
+          }
+        }
+
+        const flags =
+          constants.O_WRONLY |
+          constants.O_CREAT |
+          constants.O_TRUNC |
+          (process.platform === "win32" ? 0 : constants.O_NOFOLLOW);
+        const file = await open(path, flags, 0o600);
+        try {
+          if (process.platform !== "win32") await file.chmod(0o600);
+          return { file, writer: Bun.file(file.fd).writer() };
+        } catch (cause) {
+          await file.close();
+          throw cause;
+        }
       },
-      catch: (cause) => transcriptError(providerId, path, cause),
+      catch: (cause) =>
+        cause instanceof ProviderInternalError ? cause : transcriptError(providerId, path, cause),
     }),
-    (writer) =>
+    ({ file, writer }) =>
       Effect.promise(async () => {
-        await writer.end();
+        try {
+          await writer.end();
+        } finally {
+          await file.close();
+        }
       }),
   ).pipe(
-    Effect.map((writer) => ({
+    Effect.map(({ writer }) => ({
       append: (chunk) =>
         Effect.tryPromise({
           try: async () => {

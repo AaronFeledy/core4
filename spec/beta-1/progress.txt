@@ -593,3 +593,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Keep artifact and app build phases on opposite sides of provider apply: app scripts need running containers, while artifact failures must abort before apply.
   - One event-consumer collection can retain completed and active phase trees; only the selected tree owns animation/live mode, and Tab changes selection without duplicating substrate state.
 ---
+
+## 2026-07-17 10:29 CDT - US-456 Review
+- Fixed confirmed producer regressions: app steps now honor declaration and explicit dependency order, independent branches continue after stream failures, blocked descendants and interrupted work settle their task trees, detail framing is memory-bounded while raw transcripts remain complete, cache identity includes step/artifact/runtime inputs, and restart/rebuild harnesses provide the required orchestrator service. Unredacted transcripts now use private directories/files and reject final-path symlinks.
+- Returned US-456 to Build with `passes: false`: the normative compiled three-service perf fixture is still absent, the first-paint suite did not pass unchanged, `app:rebuild` does not yet invalidate app build results, and the new public producer surface still lacks the complete §6.13 BuildPlan/config/event contract. Global EventService queue backpressure was deferred as cross-subsystem hardening; the new per-line producer retention bound was fixed here.
+- Review notes (deferred/rejected): Bugbot's dependency-order finding and review-work's stream-settlement, cache-identity, transcript, and CLI-harness findings were confirmed and fixed. A token guide edit was rejected; the additive `BuildOrchestrator.buildApp` contract is documented in the owned SDK compatibility guide. `Guide-Coverage-Skip: Internal plugin registry wiring changes no plugin installation, trust, discovery, or embedding workflow.`
+- Verification: typecheck, lint, renderer/redaction/paths/state-store boundaries, base-aware guide drift with the recorded unrelated-surface skip, focused SDK compatibility guide, and 27 app-build/cache/transcript/restart/rebuild spot checks passed. No full test suite or host runtime integration was run.
+- **Learnings for future iterations:**
+  - Continue-all means independent app-build branches drain, while descendants of a failed predecessor remain blocked and settle explicitly; static concurrency batches alone are not a DAG executor.
+  - Raw secret-bearing transcripts need private no-follow creation even when their renderer-facing paths are already containment-checked for reads.
+---

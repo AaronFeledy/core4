@@ -18,7 +18,7 @@
         "Lint passes"
       ],
       "priority": 1,
-      "passes": true,
+      "passes": false,
       "notes": "Origin: PRD-ALPHA4-13 FR-3 ('temp + fsync + rename') — audit found zero fsync calls in either helper; cwd-app-map bypasses the helper entirely."
     },
     {

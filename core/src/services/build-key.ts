@@ -36,6 +36,12 @@ interface StableArtifactBuildInput {
   readonly contentDigest: string | undefined;
 }
 
+interface AppBuildKeyInput {
+  readonly command: unknown;
+  readonly service: ServicePlan;
+  readonly stepId: string;
+}
+
 const SECRET_REFERENCE_PATTERN = /^\$\{secret:([^}]+)\}$/u;
 
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -124,6 +130,26 @@ const mountBuildInput = (mount: ServicePlan["mounts"][number]): unknown => ({
   readOnly: mount.readOnly,
   realization: mount.realization,
 });
+
+export const appBuildKeyForStep = (input: AppBuildKeyInput): string =>
+  stableHash({
+    landoVersion: CORE_VERSION,
+    stepId: input.stepId,
+    command: input.command,
+    service: {
+      name: String(input.service.name),
+      artifact: artifactBuildInput(input.service.artifact, undefined),
+      appMount:
+        input.service.appMount === undefined
+          ? undefined
+          : {
+              target: input.service.appMount.target,
+              readOnly: input.service.appMount.readOnly,
+              realization: input.service.appMount.realization,
+            },
+      mounts: input.service.mounts.map(mountBuildInput),
+    },
+  });
 
 export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   const extension = service.extensions["@lando/core/service-features"];
