@@ -3,12 +3,11 @@ import { Schema } from "effect";
 import { NotifyDesktopEvent } from "./notify.ts";
 
 // ====
-// Rich render events — contract-only freeze for 4.0 (§8.9.4).
-// SPEC: spec/08-cli-and-tooling.md §8.9.4
+// Rich render events — schema surface for code/diff/markdown presentation.
 
 /**
- * Structured code snippet. 4.0 renderers emit verbatim text (optionally fenced);
- * rich TTY presentation lands in 4.1.
+ * Structured code snippet. Bundled renderers emit verbatim text (optionally fenced);
+ * rich TTY presentation is deferred.
  */
 export const CodeSnippetEvent = Schema.TaggedStruct("code.snippet", {
   code: Schema.String.annotations({ description: "Source code text to render." }),
@@ -30,8 +29,8 @@ export const CodeSnippetEvent = Schema.TaggedStruct("code.snippet", {
 export type CodeSnippetEvent = typeof CodeSnippetEvent.Type;
 
 /**
- * Unified-diff render request. 4.0 emitters/renderers keep patch(1)-applicable
- * plain text; colorized hunks land in 4.1.
+ * Unified-diff render request. Emitters/renderers keep patch(1)-applicable
+ * plain text; colorized hunks are deferred.
  */
 export const DiffRenderEvent = Schema.TaggedStruct("diff.render", {
   unified: Schema.String.annotations({ description: "Standard unified-diff text." }),
@@ -39,13 +38,13 @@ export const DiffRenderEvent = Schema.TaggedStruct("diff.render", {
     description: "Optional display-only path for the diff.",
   }),
   language: Schema.optional(Schema.String).annotations({
-    description: "Optional language hint for syntax-aware presentation in 4.1.",
+    description: "Optional language hint for future syntax-aware presentation.",
   }),
 });
 export type DiffRenderEvent = typeof DiffRenderEvent.Type;
 
 /**
- * Markdown block. 4.0 renderers emit the source verbatim; terminal markdown is 4.1.
+ * Markdown block. Bundled renderers emit the source verbatim; terminal markdown is deferred.
  */
 export const MarkdownBlockEvent = Schema.TaggedStruct("markdown.block", {
   markdown: Schema.String.annotations({ description: "Markdown source to render or pass through." }),

@@ -4,11 +4,10 @@ import { LandoEvent } from "../events/union.ts";
 import { AppRef } from "./networking.ts";
 
 // ====
-// Renderer panel slots — contract-only freeze for 4.0 (§8.9.5).
-// SPEC: spec/08-cli-and-tooling.md §8.9.5
+// Renderer panel slots, views, and manifest contribution shapes.
 
 /**
- * Closed 4.0 slot vocabulary for default-renderer panel contributions.
+ * Closed slot vocabulary for default-renderer panel contributions.
  * Renderers that do not implement slots ignore contributions; json/plain/non-TTY never render panels.
  */
 export const RendererPanelSlot = Schema.Literal("status-bar", "task-tree:footer", "doctor:summary");
@@ -131,7 +130,7 @@ export type RendererPanelContext = typeof RendererPanelContext.Type;
 
 /**
  * Pure panel module contract. Default export of a `rendererPanels:` module.
- * 4.0 ships schemas + contract suite only; default-renderer slot wiring is 4.1.
+ * Schemas and the isolated-worker contract suite ship now; default-renderer slot wiring is deferred.
  */
 export interface RendererPanel {
   readonly id: RendererPanelId;

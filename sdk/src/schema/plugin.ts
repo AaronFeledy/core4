@@ -202,7 +202,7 @@ export const PluginContribution = Schema.Struct({
   datasets: Schema.optional(Schema.Array(DatasetContribution)),
   tunnelServices: Schema.optional(Schema.Array(TunnelServiceContribution)),
   rendererPanels: Schema.optional(Schema.Array(RendererPanelManifestEntry)).annotations({
-    description: "Renderer panel contributions for named default-renderer slots (contract-only at 4.0).",
+    description: "Renderer panel contributions for named default-renderer slots (schemas only; host rendering deferred).",
   }),
   setup: Schema.optional(PluginSetupContribution),
 });

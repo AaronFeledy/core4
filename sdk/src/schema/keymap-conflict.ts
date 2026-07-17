@@ -13,7 +13,6 @@ import {
 
 // ====
 // Same-surface keymap conflict check (config-boundary step after KeymapConfig decode).
-// SPEC: spec/08-cli-and-tooling.md §8.9.6
 
 const chordsOf = (binding: string | ReadonlyArray<string>): ReadonlyArray<string> =>
   typeof binding === "string" ? [binding] : binding;

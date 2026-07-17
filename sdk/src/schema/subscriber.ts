@@ -1,8 +1,7 @@
 import { Schema } from "effect";
 
 // ====
-// Subscriber manifest / selector contracts (§9.5, §11.3.1).
-// SPEC: spec/10-plugins.md §9.5; spec/03-architecture.md §11.3.1
+// Subscriber manifest / selector contracts for plugin event handlers.
 
 /**
  * Bounded subscriber selector: exact event name, or the one closed family

@@ -18,7 +18,7 @@ export interface LogsFlags {
   readonly since?: string;
   readonly source?: string;
   /**
-   * Reserved for the 4.1 interactive log viewer. Accepted as a no-op in 4.0 so
+   * Reserved for the interactive log viewer. Accepted as a no-op today so
    * scripts can pass the flag early without breaking.
    */
   readonly "no-viewer"?: boolean;

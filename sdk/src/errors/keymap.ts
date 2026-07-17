@@ -3,8 +3,7 @@ import { Schema } from "effect";
 import { RendererActionId, RendererKeyChord } from "../schema/keymap.ts";
 
 // ====
-// KeymapConflictError — same-surface chord collision (§8.9.6).
-// SPEC: spec/08-cli-and-tooling.md §8.9.6
+// KeymapConflictError — same-surface chord collision after KeymapConfig decode.
 
 /**
  * Raised by the post-decode keymap conflict check when two actions on the same

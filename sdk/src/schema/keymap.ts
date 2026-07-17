@@ -3,8 +3,7 @@ import { Either, Schema } from "effect";
 import { ConfigError } from "../errors/config.ts";
 
 // ====
-// Keymap action vocabulary and bindings — contract-only freeze for 4.0 (§8.9.6).
-// SPEC: spec/08-cli-and-tooling.md §8.9.6
+// Keymap action vocabulary and bindings (override schema + frozen defaults).
 
 /**
  * Closed renderer action ids. Surfaces are mutually exclusive input contexts;

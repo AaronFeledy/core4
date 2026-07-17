@@ -94,7 +94,7 @@ const parseRenderResponse = (buffer: ArrayBuffer): PanelView => {
 };
 
 /**
- * §13.1 Renderer panel contract harness.
+ * Renderer panel contract harness.
  *
  * Starts a persistent isolated worker on first fixture-slot visibility, performs
  * the 1000ms ready/id handshake, and exercises post-ready render round trips with

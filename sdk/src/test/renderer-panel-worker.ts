@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 
 /**
- * Isolated panel worker for the §13.1 Renderer panel contract suite.
+ * Isolated panel worker for the renderer panel contract suite.
  * Only this worker imports the panel module; the host never does.
  * Host↔worker IPC is transferable binary frames only.
  */
