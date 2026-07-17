@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import { createOpenTuiPromptDriver } from "../src/opentui/prompt-driver.ts";
+import { resetOpenTuiSubstrateAvailabilityForTests } from "../src/opentui/substrate-availability.ts";
 import {
   createOpenTuiPromptTestKit,
   makeAbortFixture,
@@ -9,6 +10,8 @@ import {
 
 describe("OpenTUI prompt driver lifecycle", () => {
   const { basePrompt, openTui } = createOpenTuiPromptTestKit();
+
+  afterEach(resetOpenTuiSubstrateAvailabilityForTests);
 
   test("aborting an active read cancels and cleans the listener, renderer, and paint loop exactly once", async () => {
     const fixture = makeAbortFixture();
@@ -76,6 +79,7 @@ describe("OpenTUI prompt driver lifecycle", () => {
       "name",
       "OpenTuiPromptUnavailableError",
     );
+    resetOpenTuiSubstrateAvailabilityForTests();
     await expect(rendererDriver.readRaw(request)).rejects.toHaveProperty(
       "name",
       "OpenTuiPromptUnavailableError",
