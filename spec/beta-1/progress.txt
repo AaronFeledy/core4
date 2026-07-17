@@ -544,3 +544,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - When `makeService` and `makeEventConsumer` are separate factories, share probe state by `RendererIO` identity (WeakMap) rather than running two independent probes.
   - Async OpenTUI delivery must be flushable from the consumer finalizer; a fire-and-forget void promise loses exit-time notifications.
 ---
+
+## 2026-07-16 22:35 CDT - US-458 Review Follow-up
+- Active command snapshots mint invocationId at construction; nested snapshots take the outer id as parentInvocationId. Capability probe default timeout is 2s so cold OpenTUI import can still promote notifications.
+- Review notes (deferred/rejected): Bugbot "renderEvents off for most commands" rejected — notification-eligible long commands already enable the event consumer (app-lifecycle/tooling); defaulting every OCLIF command to renderEvents would change task-tree presentation outside this story. Publisher secret fixture remains US-459.
+- Verification: typecheck, lint, focused lifecycle/capability/notify tests passed.
+---
