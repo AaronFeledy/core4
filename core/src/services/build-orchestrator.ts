@@ -1,4 +1,4 @@
-import { type Context, DateTime, Effect, Layer } from "effect";
+import { type Context, DateTime, Effect, FiberRef, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
@@ -30,6 +30,13 @@ export { BuildOrchestrator } from "@lando/sdk/services";
 const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
 
 const isScratchPlan = (plan: AppPlan): boolean => String(plan.id).startsWith("scratch-");
+
+const selectedProvider = FiberRef.unsafeMake<RuntimeProviderShape | undefined>(undefined);
+
+export const withBuildProvider = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  provider: RuntimeProviderShape,
+): Effect.Effect<A, E, R> => effect.pipe(Effect.locally(selectedProvider, provider));
 
 const buildStepFor = (
   provider: RuntimeProviderShape,
@@ -183,7 +190,7 @@ export const BuildOrchestratorLive = Layer.effect(
     return {
       build: (plan) =>
         Effect.gen(function* () {
-          const provider = yield* registry.select(plan);
+          const provider = (yield* FiberRef.get(selectedProvider)) ?? (yield* registry.select(plan));
           const servicePlans = Object.values(plan.services);
           const progress = makeBuildTaskProgress(events, plan);
           const started = performance.now();
@@ -224,7 +231,7 @@ export const BuildOrchestratorLive = Layer.effect(
         }),
       buildApp: (plan, options) =>
         Effect.gen(function* () {
-          const provider = yield* registry.select(plan);
+          const provider = (yield* FiberRef.get(selectedProvider)) ?? (yield* registry.select(plan));
           const redaction = yield* Effect.serviceOption(RedactionService);
           const redactor =
             redaction._tag === "Some"

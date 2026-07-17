@@ -27,6 +27,7 @@ import {
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "../../redaction/service.ts";
+import { withBuildProvider } from "../../services/build-orchestrator.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
@@ -166,7 +167,7 @@ export const startApp = (
             }),
           );
 
-          const builtPlan = yield* builds.build(applyPlan);
+          const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
           const serviceList = Object.values(builtPlan.services);
           const serviceIds = serviceList.map((service) => String(service.name));
           const applyParentId = `apply-${plan.id}`;
@@ -243,7 +244,10 @@ export const startApp = (
             durationMs: Math.round(performance.now() - applyStart),
           });
 
-          yield* builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined);
+          yield* withBuildProvider(
+            builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined),
+            provider,
+          );
 
           yield* startFileSyncSessions(plan, events, managed).pipe(
             Effect.tapError(() =>
