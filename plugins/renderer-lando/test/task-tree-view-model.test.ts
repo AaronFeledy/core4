@@ -203,6 +203,40 @@ describe("TaskTreeViewModel — focus + expand/collapse (state only, no redraw b
   });
 });
 
+describe("TaskTreeViewModel — new tree replaces prior single-tree state", () => {
+  test("a second tree.start drops the prior tree's completed rows, order, spinner, and expanded state", () => {
+    const vm = new TaskTreeViewModel();
+
+    // First tree: an artifact build that runs and completes.
+    vm.apply(treeStart("build-artifact", "Building artifact", ["artifact-web"]));
+    const artifactPath = AbsolutePath.make("/tmp/lando/builds/artifact-web.log");
+    vm.apply(taskStart("artifact-web", "artifact web", "build-artifact", artifactPath));
+    vm.showSpinner("artifact-web");
+    vm.apply(taskComplete("artifact-web", "artifact web built", 90));
+    vm.expandTask("artifact-web");
+    expect(vm.expandedTaskId).toBe("artifact-web");
+
+    // Second tree: the later apply run must not inherit the prior tree's rows.
+    vm.apply(treeStart("apply", "Applying", ["apply-db"]));
+
+    const plain = vm.frameLines().map(stripAnsi).join("\n");
+    expect(plain).toContain("Applying (0/1 running)");
+    expect(plain).not.toContain("artifact web");
+    expect(plain).not.toContain("artifact web built");
+
+    expect(vm.focusableTaskIds()).toEqual([]);
+    expect(vm.transcriptPathFor("artifact-web")).toBeUndefined();
+    expect(vm.canExpandTask("artifact-web")).toBe(false);
+    expect(vm.expandedTaskId).toBeUndefined();
+    expect(vm.hasAnimatedAffordance()).toBe(false);
+    expect(vm.snapshot().activeTaskIds).toEqual([]);
+
+    const placeholders = vm.frameLines().map(stripAnsi).filter((line) => line.includes("◌"));
+    expect(placeholders).toHaveLength(1);
+    expect(placeholders[0]).toContain("◌ apply-db");
+  });
+});
+
 describe("TaskTreeViewModel — completion + failure summaries", () => {
   test("failed task renders a blocked summary with exit code and remediation", () => {
     const vm = new TaskTreeViewModel();

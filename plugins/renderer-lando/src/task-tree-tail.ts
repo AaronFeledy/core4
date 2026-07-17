@@ -68,6 +68,7 @@ export class TaskTreeViewModel {
   apply(event: LandoEvent): void {
     switch (event._tag) {
       case "task.tree.start": {
+        this.#resetTreeState();
         const seen = new Set<string>();
         const children = Array.isArray(event.children)
           ? event.children.filter((child): child is string => typeof child === "string")
@@ -245,6 +246,15 @@ export class TaskTreeViewModel {
   }
 
   collapse(): void {
+    this.#expandedTaskId = undefined;
+    this.#expandedLines = [];
+  }
+
+  #resetTreeState(): void {
+    this.#tasks.clear();
+    this.#order.length = 0;
+    this.#spinningTaskIds.clear();
+    this.#tree = undefined;
     this.#expandedTaskId = undefined;
     this.#expandedLines = [];
   }
