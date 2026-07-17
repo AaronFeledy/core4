@@ -1,0 +1,17 @@
+---
+title: Renderer Panel Manifest Entry
+description: Public Lando schema contract for Renderer Panel Manifest Entry.
+---
+
+# Renderer Panel Manifest Entry
+
+Public Lando schema contract for Renderer Panel Manifest Entry.
+
+[JSON Schema artifact](../../../dist/schemas/renderer-panel-manifest-entry.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | Plugin-local panel id; must match the module's exported RendererPanel.id. | — | — | — | — |
+| `slot` | Yes | `string` | Target default-renderer slot (status-bar, task-tree:footer, or doctor:summary). | — | `status-bar`, `task-tree:footer`, `doctor:summary` | — | — |
+| `watch` | Yes | `array` | 1..32 unique LandoEvent tags that trigger re-render (membership checked after registration). | — | — | — | — |
+| `module` | Yes | `string` | Relative module path under the plugin package root exporting a RendererPanel default. | — | — | — | — |

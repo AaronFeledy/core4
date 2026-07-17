@@ -44,6 +44,7 @@
 - `PreGlobalRebuildEvent` and `PostGlobalRebuildEvent` add the schema-backed global rebuild lifecycle events for `meta:global:rebuild`.
 - `RendererCapabilities` is the complete four-field public capability surface (`color`, `interactive`, `animation`, `notifications`) with immutable snapshot constants for none/TTY-initial/verbose-TTY run shapes. `Renderer.capabilities` is a getter returning the current snapshot. `NotifyDesktopEvent` (`notify.desktop`), `NotifyConfig` (global `notify:`), and `CommandInvocationCorrelation` ship as additive contracts; CLI lifecycle events carry `invocationId` / optional `parentInvocationId`. `HostProxyRequest` drops the unreleased `notify`/`clipboardCopy` variants (exactly `openUrl`/`openPath`/`runLando`/`runBun`); `HOST_PROXY_REQUEST_TAGS` freezes that membership. `@lando/sdk/renderer` re-exports `RendererCapabilities` and the snapshot constants as runtime values.
 - `GlobalConfig.notify` is an additive optional field decoding against `NotifyConfig`.
+- Contract-only freeze of the 4.1 renderer surfaces: `@lando/sdk/renderer` additively exports panel/keymap schemas (`RendererPanelSlot`, `RendererPanelId`, `RendererPanelWatch`, `RendererPanelManifestEntry`, `RendererPanelSize`, `RendererPanelContext`, `RendererPanel`, `StyledSpanTone`, `StyledSpan`, `PanelView`, `RendererActionId`, `RendererKeyName`, `RendererKeyChordPattern`, `RendererKeyChord`, `RendererKeyBinding`, `KeymapConfig`, plus `validateKeymapConfigConflicts` / `decodeKeymapConfig` / `DEFAULT_KEYMAP_BINDINGS`). `@lando/sdk/events` adds `RenderEvent`, `CodeSnippetEvent`, `DiffRenderEvent`, `MarkdownBlockEvent` (and keeps `NotifyDesktopEvent` / `CommandInvocationCorrelation` in the closed `LandoEvent` union). `@lando/sdk/schema` adds `SubscriberManifestEntry`, `SubscriberSelector`, `PublishedGlobalConfigKey` and the renderer/event schemas through the canonical barrel. `@lando/sdk/plugins` is a new subpath exporting `SubscriberFactory`, `LandoPluginContext` (with `events.publishRender` restricted to `RenderEvent`), and the additive `PluginManifest.contributes.rendererPanels` / top-level `PluginManifest.subscribers` fields. `@lando/sdk/errors` adds schema-backed `KeymapConflictError`. The §13.1 Renderer panel contract suite ships from `@lando/sdk/test` (`runRendererPanelContract` / protocol helpers) and is intentionally absent from the §4.2 plugin-abstraction kit. The §8.9.8 interactive log viewer remains prose-only (no schema). No 4.0 implementation ships for rich TTY presentation, panel rendering, keymap remapping, or the log viewer; `app:logs --no-viewer` is accepted as a no-op.
 
 ## Additive Alpha schema exports
 
@@ -332,10 +333,33 @@
 - `NotifyConfig`
 - `NotifyCommandId`
 - `RendererCapabilities`
+- `RendererPanelContext`
+- `RendererPanelId`
+- `RendererPanelManifestEntry`
+- `RendererPanelSize`
+- `RendererPanelSlot`
+- `RendererPanelWatch`
+- `RendererActionId`
+- `RendererKeyBinding`
+- `RendererKeyChord`
+- `RendererKeyName`
+- `KeymapConfig`
+- `PanelView`
+- `StyledSpan`
+- `StyledSpanTone`
+- `SubscriberManifestEntry`
+- `SubscriberSelector`
+- `PublishedGlobalConfigKey`
 - `RENDERER_CAPABILITIES_NONE`
 - `RENDERER_CAPABILITIES_TTY_INITIAL`
 - `RENDERER_CAPABILITIES_VERBOSE_TTY`
 - `HOST_PROXY_REQUEST_TAGS`
+- `DEFAULT_KEYMAP_BINDINGS`
+- `RENDERER_ACTION_SURFACE`
+- `RendererKeyChordPattern`
+- `decodeKeymapConfig`
+- `encodedByteLength`
+- `validateKeymapConfigConflicts`
 
 ## Additive Beta service fields
 
@@ -382,6 +406,8 @@
 - `StorageInput.key` is a new additive optional field.
 
 ## Additive Alpha errors
+
+- `KeymapConflictError`
 
 - `AppResolveError`
 - `ConfigTranslateError`

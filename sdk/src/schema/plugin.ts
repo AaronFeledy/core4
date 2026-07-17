@@ -6,6 +6,8 @@ import { HttpClientCapabilities } from "./http-client.ts";
 import { PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
 import { DatasetContribution, RemoteSourceContribution } from "./remote-sync.ts";
+import { RendererPanelManifestEntry } from "./renderer-panel.ts";
+import { SubscriberManifestEntry } from "./subscriber.ts";
 import { TunnelServiceContribution } from "./tunnel.ts";
 
 export const EmbeddingPluginPolicyMode = Schema.Literal("none", "bundled-only", "explicit", "discovery");
@@ -199,6 +201,9 @@ export const PluginContribution = Schema.Struct({
   remoteSources: Schema.optional(Schema.Array(RemoteSourceContribution)),
   datasets: Schema.optional(Schema.Array(DatasetContribution)),
   tunnelServices: Schema.optional(Schema.Array(TunnelServiceContribution)),
+  rendererPanels: Schema.optional(Schema.Array(RendererPanelManifestEntry)).annotations({
+    description: "Renderer panel contributions for named default-renderer slots (contract-only at 4.0).",
+  }),
   setup: Schema.optional(PluginSetupContribution),
 });
 export type PluginContribution = typeof PluginContribution.Type;
@@ -213,6 +218,9 @@ export const PluginManifest = Schema.Struct({
   /** Whole-plugin deprecation notice registered by DeprecationService. */
   deprecated: Schema.optional(DeprecationNotice),
   contributes: Schema.optional(PluginContribution),
+  subscribers: Schema.optional(Schema.Array(SubscriberManifestEntry)).annotations({
+    description: "Event subscribers (shape at manifest read; selector semantics after registration).",
+  }),
   /** Entry module path relative to plugin package root. */
   entry: Schema.optional(Schema.String),
   requires: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),

@@ -1604,7 +1604,7 @@
         "Lint passes"
       ],
       "priority": 90,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec sections 8.9.4-8.9.6, 8.9.8, 9.5, 13.1. Follows the TunnelService/RemoteSource contract-only freeze precedent; implementations are ROADMAP Phase 9 (4.1)."
     }
   ]

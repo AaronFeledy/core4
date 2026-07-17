@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "bold": {
+      "description": "Bold weight when true.",
+      "type": "boolean"
+    },
+    "dim": {
+      "description": "Dim intensity when true.",
+      "type": "boolean"
+    },
+    "italic": {
+      "description": "Italic style when true.",
+      "type": "boolean"
+    },
+    "text": {
+      "description": "Span text content (UTF-8).",
+      "type": "string"
+    },
+    "tone": {
+      "description": "Semantic color tone (default muted accent success warning danger).",
+      "enum": [
+        "default",
+        "muted",
+        "accent",
+        "success",
+        "warning",
+        "danger"
+      ],
+      "type": "string"
+    },
+    "underline": {
+      "description": "Underline decoration when true.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "type": "object"
+}

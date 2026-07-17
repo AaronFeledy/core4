@@ -1,0 +1,272 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "keymap.help": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for keymap.help (keymap overlay surface)."
+    },
+    "prompt.cancel": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for prompt.cancel (prompt surface)."
+    },
+    "tree.collapse": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for tree.collapse (task-tree surface)."
+    },
+    "tree.cycle": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for tree.cycle (task-tree surface)."
+    },
+    "tree.expand": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for tree.expand (task-tree surface)."
+    },
+    "tree.focus-next": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for tree.focus-next (task-tree surface)."
+    },
+    "tree.focus-prev": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for tree.focus-prev (task-tree surface)."
+    },
+    "viewer.follow": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for viewer.follow (viewer surface)."
+    },
+    "viewer.quit": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for viewer.quit (viewer surface)."
+    },
+    "viewer.scroll-down": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for viewer.scroll-down (viewer surface)."
+    },
+    "viewer.scroll-up": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for viewer.scroll-up (viewer surface)."
+    },
+    "viewer.source-next": {
+      "anyOf": [
+        {
+          "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+          "type": "string"
+        },
+        {
+          "description": "an array of at most 4 item(s)",
+          "items": {
+            "description": "a string matching the pattern ^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "pattern": "^(ctrl\\+)?(alt\\+)?(shift\\+)?[a-z0-9][a-z0-9-]*$",
+            "type": "string"
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "title": "maxItems(4)",
+          "type": "array"
+        }
+      ],
+      "description": "Optional override chords for viewer.source-next (viewer surface)."
+    }
+  },
+  "required": [],
+  "type": "object"
+}

@@ -12,6 +12,7 @@ export * from "./guide.ts";
 export * from "./healthcheck.ts";
 export * from "./http-client.ts";
 export * from "./interaction.ts";
+export * from "./keymap.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
 export * from "./mcp.ts";

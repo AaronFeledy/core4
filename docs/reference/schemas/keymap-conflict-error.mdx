@@ -1,0 +1,19 @@
+---
+title: Keymap Conflict Error
+description: Public Lando schema contract for Keymap Conflict Error.
+---
+
+# Keymap Conflict Error
+
+Public Lando schema contract for Keymap Conflict Error.
+
+[JSON Schema artifact](../../../dist/schemas/keymap-conflict-error.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `surface` | Yes | `string` | Input surface where the chord collision occurred. | — | `task-tree`, `prompt`, `viewer`, `keymap` | — | — |
+| `chord` | Yes | `string` | Shared chord that collides for two actions on the same surface. | — | — | — | — |
+| `actions` | Yes | `array` | Deterministically sorted pair of colliding action ids. | — | — | — | — |
+| `message` | Yes | `string` | Human-readable description of the same-surface chord collision. | — | — | — | — |
+| `remediation` | Yes | `string` | Actionable guidance to remove or change one same-surface binding. | — | — | — | — |
+| `_tag` | Yes | `string` | — | — | `KeymapConflictError` | — | — |

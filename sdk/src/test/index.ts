@@ -39,3 +39,5 @@ export * from "./redaction-secret-store.ts";
 export * from "./config-translator-route-filter.ts";
 export * from "./doctor-tooling-plugin-source.ts";
 export * from "./http-client-contract.ts";
+export * from "./renderer-panel-protocol.ts";
+export * from "./renderer-panel-contract.ts";

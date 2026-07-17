@@ -1,0 +1,19 @@
+---
+title: Code Snippet Event
+description: Public Lando schema contract for Code Snippet Event.
+---
+
+# Code Snippet Event
+
+Public Lando schema contract for Code Snippet Event.
+
+[JSON Schema artifact](../../../dist/schemas/code-snippet-event.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `code.snippet` | — | — |
+| `code` | Yes | `string` | Source code text to render. | — | — | — | — |
+| `language` | No | `string` | Optional tree-sitter language id; plain text when absent or unknown. | — | — | — | — |
+| `path` | No | `string` | Optional display-only origin path (already redacted by the publisher). | — | — | — | — |
+| `startLine` | No | `integer` | Optional 1-based first line number for gutter numbering. | — | — | — | — |
+| `highlightLines` | No | `array` | Optional 1-based line numbers to highlight. | — | — | — | — |

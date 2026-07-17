@@ -25,6 +25,49 @@ export {
   type RendererCapabilities as RendererCapabilitiesType,
 } from "../schema/renderer-capabilities.ts";
 
+export {
+  DEFAULT_KEYMAP_BINDINGS,
+  KeymapConfig,
+  RENDERER_ACTION_SURFACE,
+  RendererActionId,
+  RendererKeyBinding,
+  RendererKeyChord,
+  RendererKeyChordPattern,
+  RendererKeyName,
+  decodeKeymapConfig,
+  type KeymapConfig as KeymapConfigType,
+  type KeymapSurface,
+  type RendererActionId as RendererActionIdType,
+  type RendererKeyBinding as RendererKeyBindingType,
+  type RendererKeyChord as RendererKeyChordType,
+  type RendererKeyName as RendererKeyNameType,
+} from "../schema/keymap.ts";
+
+export { validateKeymapConfigConflicts } from "../schema/keymap-conflict.ts";
+
+export {
+  PanelView,
+  RendererPanelId,
+  RendererPanelManifestEntry,
+  RendererPanelSize,
+  RendererPanelSlot,
+  RendererPanelWatch,
+  RendererPanelContext,
+  StyledSpan,
+  StyledSpanTone,
+  encodedByteLength,
+  type PanelView as PanelViewType,
+  type RendererPanel,
+  type RendererPanelContext as RendererPanelContextType,
+  type RendererPanelId as RendererPanelIdType,
+  type RendererPanelManifestEntry as RendererPanelManifestEntryType,
+  type RendererPanelSize as RendererPanelSizeType,
+  type RendererPanelSlot as RendererPanelSlotType,
+  type RendererPanelWatch as RendererPanelWatchType,
+  type StyledSpan as StyledSpanType,
+  type StyledSpanTone as StyledSpanToneType,
+} from "../schema/renderer-panel.ts";
+
 /**
  * The terminal I/O seam constructed at the CLI command boundary and injected
  * into a renderer's factories. `isTTY` engages the interactive task-tree tail;

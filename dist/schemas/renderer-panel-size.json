@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "description": "Positive terminal column count for the slot.",
+      "exclusiveMinimum": 0,
+      "title": "positive",
+      "type": "integer"
+    },
+    "rows": {
+      "description": "Positive terminal row count for the slot.",
+      "exclusiveMinimum": 0,
+      "title": "positive",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "columns",
+    "rows"
+  ],
+  "type": "object"
+}
