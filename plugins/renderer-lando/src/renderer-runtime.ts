@@ -2,17 +2,22 @@ import { DateTime, Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
 import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
+import { RENDERER_CAPABILITIES_NONE, RENDERER_CAPABILITIES_TTY_INITIAL } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
+import { type CapabilityProbe, createCapabilitySnapshot, scheduleCapabilityProbe } from "./capabilities.ts";
 import { isRenderableTaskTreeEvent, renderPlainLine } from "./format.ts";
 import { TaskTreeInputController } from "./keybindings.ts";
+import { sanitizeNotificationText } from "./notify-sanitize.ts";
+import { productionCapabilityProbe, productionTriggerNotificationSync } from "./notify-trigger.ts";
 import { LandoTreePainter } from "./task-tree-tail.ts";
 
-/**
- * Wrap a synchronous per-event handler in the `EventService`
- * subscription/drain layer: events are consumed in order and any queued
- * remainder is flushed on scope close before the consumer fiber is interrupted.
- */
+export type LandoRendererServiceOptions = {
+  readonly capabilityProbe?: CapabilityProbe;
+  readonly triggerNotification?: (message: string, title?: string) => boolean;
+  readonly clock?: { readonly setTimeout: (fn: () => void, ms: number) => unknown };
+};
+
 const makeEventConsumerLive = (
   handle: (event: LandoEvent) => void,
 ): Layer.Layer<never, never, EventService> =>
@@ -40,11 +45,6 @@ const makeEventConsumerLive = (
 
 const nowTimestamp = (): DateTime.Utc => DateTime.unsafeMake(new Date().toISOString());
 
-/**
- * Build the `message.{info,warn,error}` contract: each severity is encoded as
- * the canonical `message.*` event, formatted by the plain line formatter, and
- * written to stdout so imperative and published messages render identically.
- */
 const makeMessageContract = (io: RendererIO) => {
   const emit = (event: LandoEvent): Effect.Effect<void> =>
     Effect.sync(() => {
@@ -67,21 +67,11 @@ const makeMessageContract = (io: RendererIO) => {
   };
 };
 
-/**
- * Raw `output.{stdout,stderr}` channel: chunks are written verbatim (no glyph
- * or newline injection), carrying already-formatted command results (stdout)
- * and process-level failure diagnostics (stderr).
- */
 const makeOutputChannel = (io: RendererIO) => ({
   stdout: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStdout(chunk)),
   stderr: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
 });
 
-/**
- * Bind the TTY keyboard-input layer to a painter: raw keypress chunks drive the
- * `TaskTreeInputController`, redraw output is written to stdout, and any emitted
- * focus/expand/collapse events are published back onto the bus.
- */
 const makeTaskTreeInputLive = (
   io: RendererIO,
   painter: LandoTreePainter,
@@ -103,16 +93,61 @@ const makeTaskTreeInputLive = (
     }),
   );
 
-const makeLandoService = (io: RendererIO): Layer.Layer<Renderer> =>
-  Layer.succeed(Renderer, {
-    id: "lando",
+const handleNotifyDesktop = (
+  event: LandoEvent,
+  getCapabilities: () => { readonly notifications: boolean },
+  triggerNotification: ((message: string, title?: string) => boolean) | undefined,
+): void => {
+  if (event._tag !== "notify.desktop") return;
+  if (!getCapabilities().notifications) return;
+  if (triggerNotification === undefined) return;
+  const title = sanitizeNotificationText(String(event.title ?? ""));
+  if (title.length === 0) return;
+  const bodyRaw = event.body;
+  if (typeof bodyRaw === "string") {
+    const body = sanitizeNotificationText(bodyRaw);
+    triggerNotification(body.length === 0 ? title : body, body.length === 0 ? undefined : title);
+    return;
+  }
+  triggerNotification(title);
+};
+
+export const makeLandoService = (
+  io: RendererIO,
+  options: LandoRendererServiceOptions = {},
+): Layer.Layer<Renderer> => {
+  const tty = io.isTTY === true;
+  const snapshot = createCapabilitySnapshot(
+    tty ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE,
+  );
+  if (tty) {
+    scheduleCapabilityProbe(snapshot, options.capabilityProbe, options.clock);
+  }
+  const service = {
+    id: "lando" as const,
+    get capabilities() {
+      return snapshot.get();
+    },
     message: makeMessageContract(io),
     output: makeOutputChannel(io),
-  });
+  };
+  return Layer.succeed(Renderer, service);
+};
 
-const makeLandoEventConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> => {
+export const makeLandoEventConsumer = (
+  io: RendererIO,
+  options: LandoRendererServiceOptions & {
+    readonly getCapabilities?: () => { readonly notifications: boolean };
+  } = {},
+): Layer.Layer<never, never, EventService> => {
+  const getCapabilities =
+    options.getCapabilities ??
+    (() => (io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE));
+  const trigger = options.triggerNotification;
+
   if (io.isTTY !== true) {
     return makeEventConsumerLive((event) => {
+      handleNotifyDesktop(event, getCapabilities, trigger);
       const line = renderPlainLine(event);
       if (line !== null) io.writeStdout(`${line}\n`);
     });
@@ -122,6 +157,7 @@ const makeLandoEventConsumer = (io: RendererIO): Layer.Layer<never, never, Event
     getTerminalRows: () => io.terminalRows,
   });
   const display = makeEventConsumerLive((event) => {
+    handleNotifyDesktop(event, getCapabilities, trigger);
     if (isRenderableTaskTreeEvent(event)) {
       io.writeStdout(painter.consume(event));
       return;
@@ -132,14 +168,24 @@ const makeLandoEventConsumer = (io: RendererIO): Layer.Layer<never, never, Event
   return io.subscribeInput === undefined ? display : Layer.merge(display, makeTaskTreeInputLive(io, painter));
 };
 
-/**
- * The default `lando` renderer contribution: the task-tree painter and event
- * consumer, the `Renderer` service (plain message contract + raw output
- * channel), and the non-TTY plain fallback. This is the maintained first-party
- * reference implementation renderer-plugin authors follow.
- */
 export const landoRendererContribution: RendererContribution = {
   id: "lando",
-  makeService: (io) => makeLandoService(io),
-  makeEventConsumer: (io) => makeLandoEventConsumer(io),
+  makeService: (io) =>
+    makeLandoService(io, io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {}),
+  makeEventConsumer: (io) => {
+    // Share capability snapshot by re-reading the Renderer service when available is not
+    // possible from the consumer layer alone; production uses the same probe-shaped gate:
+    // drop until notifications would be true after promotion. The injectable trigger path
+    // realizes OpenTUI triggerNotification when capability is true.
+    const snapshot = createCapabilitySnapshot(
+      io.isTTY === true ? RENDERER_CAPABILITIES_TTY_INITIAL : RENDERER_CAPABILITIES_NONE,
+    );
+    if (io.isTTY === true) {
+      scheduleCapabilityProbe(snapshot, productionCapabilityProbe());
+    }
+    return makeLandoEventConsumer(io, {
+      getCapabilities: () => snapshot.get(),
+      triggerNotification: productionTriggerNotificationSync,
+    });
+  },
 };

@@ -1,6 +1,11 @@
 import { DateTime, Effect, Fiber, Layer, Option, Queue, Runtime } from "effect";
 
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "@lando/sdk/events";
+import {
+  RENDERER_CAPABILITIES_NONE,
+  RENDERER_CAPABILITIES_VERBOSE_TTY,
+  type RendererCapabilities,
+} from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
@@ -159,20 +164,34 @@ const makeOutputChannel = (io: RendererIO) => ({
   stderr: (chunk: string): Effect.Effect<void> => Effect.sync(() => io.writeStderr(chunk)),
 });
 
+const capabilitiesForFallback = (id: "plain" | "json" | "verbose", io: RendererIO): RendererCapabilities => {
+  if (id === "verbose" && io.isTTY === true) return RENDERER_CAPABILITIES_VERBOSE_TTY;
+  return RENDERER_CAPABILITIES_NONE;
+};
+
 export const makePlainRenderer = (io: RendererIO) => ({
   id: "plain" as const,
+  get capabilities(): RendererCapabilities {
+    return capabilitiesForFallback("plain", io);
+  },
   message: makeMessageContract(renderPlainLine, io, "stdout"),
   output: makeOutputChannel(io),
 });
 
 export const makeJsonRenderer = (io: RendererIO) => ({
   id: "json" as const,
+  get capabilities(): RendererCapabilities {
+    return capabilitiesForFallback("json", io);
+  },
   message: makeMessageContract(renderJsonLine, io, "stderr"),
   output: makeOutputChannel(io),
 });
 
 export const makeVerboseRenderer = (io: RendererIO) => ({
   id: "verbose" as const,
+  get capabilities(): RendererCapabilities {
+    return capabilitiesForFallback("verbose", io);
+  },
   message: makeMessageContract(renderVerboseLine, io, "stdout"),
   output: makeOutputChannel(io),
 });

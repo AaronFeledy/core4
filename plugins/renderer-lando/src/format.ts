@@ -15,12 +15,14 @@ const isMessageEvent = (event: LandoEvent): boolean =>
 
 const isPaintBannerEvent = (event: LandoEvent): boolean => event._tag === "paint.banner";
 const isImagePullProgressEvent = (event: LandoEvent): boolean => event._tag === "image-pull-progress";
+const isNotifyDesktopEvent = (event: LandoEvent): boolean => event._tag === "notify.desktop";
 
 const isRenderableEvent = (event: LandoEvent): boolean =>
   isTaskTreeEvent(event) ||
   isMessageEvent(event) ||
   isPaintBannerEvent(event) ||
-  isImagePullProgressEvent(event);
+  isImagePullProgressEvent(event) ||
+  isNotifyDesktopEvent(event);
 
 const asString = (value: unknown): string | undefined => (typeof value === "string" ? value : undefined);
 const asNumber = (value: unknown): number | undefined => (typeof value === "number" ? value : undefined);
