@@ -33,11 +33,18 @@ const publishLoaderProbe = (phase: "attempt" | "ready"): void => {
   ]);
 };
 
+let loadOpenTuiModulePromise: Promise<OpenTuiModuleLike> | undefined;
+
 export const loadOpenTuiModule = async (): Promise<OpenTuiModuleLike> => {
-  publishLoaderProbe("attempt");
-  const mod: unknown = await import("@opentui/core");
-  publishLoaderProbe("ready");
-  return mod as OpenTuiModuleLike;
+  if (loadOpenTuiModulePromise === undefined) {
+    loadOpenTuiModulePromise = (async () => {
+      publishLoaderProbe("attempt");
+      const mod: unknown = await import("@opentui/core");
+      publishLoaderProbe("ready");
+      return mod as OpenTuiModuleLike;
+    })();
+  }
+  return loadOpenTuiModulePromise;
 };
 
 const makeUnavailableError = (cause?: unknown): Error => {
