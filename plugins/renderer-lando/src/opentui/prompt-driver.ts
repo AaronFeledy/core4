@@ -33,7 +33,7 @@ const publishLoaderProbe = (phase: "attempt" | "ready"): void => {
   ]);
 };
 
-const loadOpenTuiModule = async (): Promise<OpenTuiModuleLike> => {
+export const loadOpenTuiModule = async (): Promise<OpenTuiModuleLike> => {
   publishLoaderProbe("attempt");
   const mod: unknown = await import("@opentui/core");
   publishLoaderProbe("ready");

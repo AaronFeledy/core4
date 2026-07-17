@@ -40846,7 +40846,7 @@
           "type": "boolean"
         },
         "notifications": {
-          "description": "Desktop-notification path supported (§8.9.7).",
+          "description": "Desktop-notification path supported.",
           "type": "boolean"
         }
       },
