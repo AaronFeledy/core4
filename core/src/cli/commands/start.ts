@@ -113,6 +113,7 @@ export const startApp = (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
+  execution: { readonly forceAppBuild?: boolean } = {},
 ): Effect.Effect<StartAppResult, StartAppError, StartAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -242,7 +243,7 @@ export const startApp = (
             durationMs: Math.round(performance.now() - applyStart),
           });
 
-          yield* builds.buildApp(builtPlan);
+          yield* builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined);
 
           yield* startFileSyncSessions(plan, events, managed).pipe(
             Effect.tapError(() =>

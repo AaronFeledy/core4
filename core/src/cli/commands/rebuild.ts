@@ -69,6 +69,7 @@ export const rebuildApp = (
       },
       target,
       managed,
+      { forceAppBuild: true },
     );
     return {
       app: start.app,

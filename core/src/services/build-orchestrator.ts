@@ -222,7 +222,7 @@ export const BuildOrchestratorLive = Layer.effect(
             services: Object.fromEntries(services.map((service) => [service.name, service])),
           };
         }),
-      buildApp: (plan) =>
+      buildApp: (plan, options) =>
         Effect.gen(function* () {
           const provider = yield* registry.select(plan);
           const redaction = yield* Effect.serviceOption(RedactionService);
@@ -230,7 +230,7 @@ export const BuildOrchestratorLive = Layer.effect(
             redaction._tag === "Some"
               ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
               : identityRedactor;
-          yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore });
+          yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore }, options);
         }),
     };
   }),

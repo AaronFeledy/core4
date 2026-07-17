@@ -11,6 +11,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import type { BuildStep } from "@lando/sdk/schema";
+import type { BuildAppOptions } from "@lando/sdk/services";
 
 import { type AppStep, appStepBatches, appSteps } from "./build-app-plan.ts";
 import { type AppBuildInput, runAppBuildStep } from "./build-app-step-runner.ts";
@@ -42,7 +43,7 @@ const appRefFor = (input: AppBuildInput) =>
     ? ({ kind: "scratch", id: input.redactor.redactString(input.plan.slug) } as const)
     : ({ kind: "user", id: input.redactor.redactString(input.plan.slug) } as const);
 
-export const runAppBuild = (input: AppBuildInput) =>
+export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {}) =>
   Effect.gen(function* () {
     const steps = appSteps(input.plan);
     if (steps.length === 0) return;
@@ -133,7 +134,7 @@ export const runAppBuild = (input: AppBuildInput) =>
                   summary,
                 });
               }
-              if (findCompleteBuildResult(cached, step) !== undefined) {
+              if (!options.force && findCompleteBuildResult(cached, step) !== undefined) {
                 yield* input.events.publish(
                   TaskStartEvent.make({
                     taskId: step.id,

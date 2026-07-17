@@ -503,6 +503,10 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
   }
 >() {}
 
+export interface BuildAppOptions {
+  readonly force?: boolean;
+}
+
 export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
   BuildOrchestrator,
   {
@@ -514,6 +518,7 @@ export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrc
     >;
     readonly buildApp: (
       plan: AppPlan,
+      options?: BuildAppOptions,
     ) => Effect.Effect<
       void,
       | BuildPhaseFailedError

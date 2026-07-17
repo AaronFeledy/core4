@@ -22,7 +22,7 @@
     ],
     "BuildOrchestrator": [
       "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>",
-      "buildApp: (plan: AppPlan) => Effect.Effect<void, BuildPhaseFailedError | EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
+      "buildApp: (plan: AppPlan, options?: BuildAppOptions) => Effect.Effect<void, BuildPhaseFailedError | EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
     ],
     "CacheService": [
       "invalidate: (key: string) => Effect.Effect<void, CacheError>",
