@@ -1,6 +1,6 @@
 import { Effect, Exit, Option, Scope } from "effect";
 
-import type { TaskTreeViewModel } from "./task-tree-tail.ts";
+import type { TaskTreeInteractionModel } from "./task-tree-tail.ts";
 import type {
   TranscriptTailPageDirection,
   TranscriptTailReaderShape,
@@ -16,7 +16,7 @@ interface ActiveTranscriptTail {
 
 interface TranscriptTailControllerInput {
   readonly reader: TranscriptTailReaderShape;
-  readonly viewModel: TaskTreeViewModel;
+  readonly viewModel: TaskTreeInteractionModel;
   readonly renderFooter: () => void;
   readonly serialize: <A, E>(effect: Effect.Effect<A, E>) => Effect.Effect<A, E>;
 }

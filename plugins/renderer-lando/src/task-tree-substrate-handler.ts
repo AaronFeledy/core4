@@ -2,8 +2,7 @@ import type { RendererIO } from "@lando/sdk/renderer";
 import type { LandoEvent } from "@lando/sdk/services";
 
 import { isRenderableTaskTreeEvent, renderPlainLine } from "./format.ts";
-import { TaskTreeAnimationController } from "./task-tree-animation.ts";
-import { TaskTreeViewModel } from "./task-tree-tail.ts";
+import { TaskTreeCollection } from "./task-tree-collection.ts";
 
 export interface LiveRegionHandle {
   setFooter(lines: ReadonlyArray<string>): void;
@@ -19,31 +18,33 @@ export interface LiveRegionHandle {
 export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveRegionHandle) => {
   let terminalColumns = io.terminalColumns;
   let terminalRows = io.terminalRows;
-  const viewModel = new TaskTreeViewModel({
-    getTerminalColumns: () => terminalColumns,
-    getTerminalRows: () => terminalRows,
-  });
-  const renderFooter = (): void => controller.setFooter(viewModel.frameLines());
-  const animation = new TaskTreeAnimationController(viewModel, {
-    render: renderFooter,
-    requestLive: () => controller.requestLive(),
-    dropLive: () => controller.dropLive(),
-  });
+  const output = {
+    render: (): void => controller.setFooter(viewModel.frameLines()),
+    requestLive: (): void => controller.requestLive(),
+    dropLive: (): void => controller.dropLive(),
+  };
+  const viewModel = new TaskTreeCollection(
+    {
+      getTerminalColumns: () => terminalColumns,
+      getTerminalRows: () => terminalRows,
+    },
+    output,
+  );
+  const renderFooter = output.render;
   const consume = (event: LandoEvent): void => {
     if (isRenderableTaskTreeEvent(event)) {
       const expandedTaskId = viewModel.expandedTaskId;
-      viewModel.apply(event);
-      animation.consume(event);
+      const result = viewModel.consume(event);
       if (expandedTaskId !== undefined && viewModel.expandedTaskId === undefined) {
         controller.exitFullTail();
       }
       if (event._tag === "task.tree.complete") {
-        for (const line of viewModel.treeFrameLines()) controller.commitScrollback(line);
+        for (const line of result.completedLines) controller.commitScrollback(line);
         if (viewModel.expandedTaskId !== undefined) {
           renderFooter();
           return;
         }
-        controller.setFooter([]);
+        renderFooter();
         return;
       }
       renderFooter();
@@ -57,5 +58,5 @@ export const makeTaskTreeSubstrateHandler = (io: RendererIO, controller: LiveReg
     terminalRows = height;
     renderFooter();
   };
-  return { viewModel, consume, resize, renderFooter, dispose: () => animation.dispose() };
+  return { viewModel, consume, resize, renderFooter, dispose: () => viewModel.dispose() };
 };

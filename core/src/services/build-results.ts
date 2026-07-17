@@ -39,6 +39,23 @@ export const openScratchBuildResults = (
     default: [],
   });
 
+export const openAppBuildResults = (
+  stateStore: StateStoreShape,
+  appId: string,
+): Effect.Effect<StateBucket<ReadonlyArray<BuildResultEntry>>, StateStoreError> =>
+  stateStore.open({
+    root: "userCache",
+    namespace: "build-results",
+    key: `${appId}.bin`,
+    schema: BuildResultEntries,
+    version: BUILD_RESULTS_VERSION,
+    codec: "binary",
+    lock: "advisory",
+    onCorrupt: "quarantine",
+    onVersionMismatch: "discard",
+    default: [],
+  });
+
 export const findCompleteBuildResult = (
   entries: ReadonlyArray<BuildResultEntry>,
   input: Pick<BuildResultEntry, "buildKey" | "phase" | "service">,

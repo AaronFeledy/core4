@@ -375,6 +375,31 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("carries authored build.app scripts into app-phase build steps", async () => {
+    await withTempCwd(async () => {
+      // Given / When
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "app-build",
+          runtime: 4,
+          services: {
+            web: { type: "node:lts", build: { app: ["npm ci", "npm run build"] } },
+          },
+        }),
+      );
+
+      // Then
+      const web = appPlan.services[ServiceName.make("web")];
+      const extension = web?.extensions["@lando/core/service-features"];
+      expect(extension).toMatchObject({
+        buildSteps: [
+          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "npm ci"] } },
+          { id: "authored-app:2", phase: "app", command: { command: ["sh", "-lc", "npm run build"] } },
+        ],
+      });
+    });
+  });
+
   test("emits redirect build steps for nginx bundled log sources", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan(

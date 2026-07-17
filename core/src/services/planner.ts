@@ -1021,10 +1021,37 @@ const planApp = (
           features,
         }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       });
-      const servicePlan = applyAuthoredStorage(
+      const authoredServicePlan = applyAuthoredStorage(
         applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
         service,
       );
+      const authoredAppBuild = service.build?.app;
+      const appBuildScripts =
+        authoredAppBuild === undefined
+          ? []
+          : Array.isArray(authoredAppBuild)
+            ? authoredAppBuild
+            : [authoredAppBuild];
+      const servicePlan: ServicePlan =
+        appBuildScripts.length === 0
+          ? authoredServicePlan
+          : {
+              ...authoredServicePlan,
+              extensions: {
+                ...authoredServicePlan.extensions,
+                [SERVICE_FEATURES_EXTENSION_KEY]: {
+                  ...serviceFeatureExtension(authoredServicePlan.extensions),
+                  buildSteps: [
+                    ...serviceFeatureBuildSteps(authoredServicePlan.extensions),
+                    ...appBuildScripts.map((script, index) => ({
+                      id: `authored-app:${index + 1}`,
+                      phase: "app",
+                      command: { command: ["sh", "-lc", script] },
+                    })),
+                  ],
+                },
+              },
+            };
       plannedServiceDrafts.push({
         name,
         hostnames: service.hostnames ?? [],

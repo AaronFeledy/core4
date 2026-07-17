@@ -1,9 +1,7 @@
-import { join } from "node:path";
-
 import { type Context, DateTime, Effect, Layer } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
-import { AbsolutePath, type AppPlan, type ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import {
   BuildOrchestrator,
@@ -15,45 +13,28 @@ import {
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 import { RedactionService } from "../redaction/service.ts";
+import { runAppBuild } from "./build-app-runner.ts";
+import {
+  type ArtifactBuildStep,
+  publishArtifactBuildStepSkip,
+  redactedBuildContext,
+} from "./build-artifact-events.ts";
 import { runProviderBuild, serviceWithArtifact } from "./build-artifact-runner.ts";
 import { buildKeyForService } from "./build-key.ts";
 import { findCompleteBuildResult, openScratchBuildResults, recordBuildResult } from "./build-results.ts";
 import { type BuildTaskProgress, makeBuildTaskProgress } from "./build-task-progress.ts";
+import { makeBuildTranscriptPath } from "./build-transcript.ts";
 
 export { BuildOrchestrator } from "@lando/sdk/services";
 
 const timestamp = () => DateTime.unsafeMake(new Date().toISOString());
 
-const appRefFor = (plan: AppPlan) => ({
-  kind: String(plan.id).startsWith("scratch-") ? ("scratch" as const) : ("user" as const),
-  id: plan.slug,
-  root: plan.root,
-});
-
 const isScratchPlan = (plan: AppPlan): boolean => String(plan.id).startsWith("scratch-");
-
-type BuildPhase = "artifact" | "app";
-
-interface BuildStep {
-  readonly phase: BuildPhase;
-  readonly service: ServicePlan;
-  readonly buildKey: string;
-}
-
-interface RedactedBuildContext {
-  readonly appRef: {
-    readonly kind: "scratch" | "user";
-    readonly id: string;
-  };
-  readonly appRoot: string;
-  readonly serviceName: string;
-  readonly providerId: string;
-}
 
 const buildStepFor = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
-): Effect.Effect<BuildStep, ProviderInternalError> =>
+): Effect.Effect<ArtifactBuildStep, ProviderInternalError> =>
   buildKeyForService(provider, service).pipe(
     Effect.map((buildKey) => ({
       phase: "artifact" as const,
@@ -70,51 +51,15 @@ const mapBuildCacheError = (providerId: string, cause: unknown) =>
     cause,
   });
 
-const redactedBuildContext = (
-  redactor: Pick<Redactor, "redactString">,
-  plan: AppPlan,
-  service: ServicePlan,
-): RedactedBuildContext => {
-  const appRef = appRefFor(plan);
-  return {
-    appRef: {
-      kind: appRef.kind,
-      id: redactor.redactString(appRef.id),
-    },
-    appRoot: redactor.redactString(appRef.root),
-    serviceName: redactor.redactString(service.name),
-    providerId: redactor.redactString(plan.provider),
-  };
-};
-
-const publishBuildStepSkip = (
-  events: Context.Tag.Service<typeof EventService>,
-  context: RedactedBuildContext,
-  step: BuildStep,
-) =>
-  events.publish({
-    _tag: "build-step-skip",
-    eventName: "build-step-skip",
-    appRef: context.appRef,
-    serviceName: context.serviceName,
-    providerId: context.providerId,
+const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBuildStep) =>
+  makeBuildTranscriptPath({
+    userDataRoot,
+    appId: String(plan.id),
     phase: step.phase,
+    serviceName: String(step.service.name),
     buildKey: step.buildKey,
-    cached: true,
-    reason: "up-to-date",
-    timestamp: timestamp(),
+    scratch: isScratchPlan(plan),
   });
-
-const transcriptPathFor = (
-  userDataRoot: string,
-  plan: AppPlan,
-  step: BuildStep,
-): typeof AbsolutePath.Type => {
-  const appParts = isScratchPlan(plan) ? ["scratch", String(plan.id)] : [String(plan.id)];
-  return AbsolutePath.make(
-    join(userDataRoot, "builds", ...appParts, step.phase, String(step.service.name), `${step.buildKey}.log`),
-  );
-};
 
 const buildService = (input: {
   readonly events: Context.Tag.Service<typeof EventService>;
@@ -135,92 +80,94 @@ const buildService = (input: {
     const context = redactedBuildContext(redactor, plan, service);
     const step = yield* buildStepFor(provider, service);
     const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
-    const bucket = isScratchPlan(plan)
-      ? yield* openScratchBuildResults(stateStore).pipe(
-          Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
-        )
-      : undefined;
-    const cached =
-      bucket === undefined
-        ? undefined
-        : yield* bucket.get.pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
-    yield* progress.startTask(service, transcriptPath);
-    if (bucket !== undefined) {
-      const complete = findCompleteBuildResult(cached ?? [], {
-        buildKey: step.buildKey,
-        phase: step.phase,
-        service: service.name,
-      });
-      if (complete?.artifactRef !== undefined) {
-        yield* publishBuildStepSkip(events, context, step);
-        const digest =
-          complete.artifactDigest ??
-          (service.artifact?.kind === "ref" && service.artifact.ref === complete.artifactRef
-            ? service.artifact.digest
-            : undefined);
-        const cachedService = serviceWithArtifact(service, {
-          providerId: plan.provider,
-          ref: complete.artifactRef,
-          ...(digest === undefined ? {} : { digest }),
-        });
-        yield* progress.completeTask(service, `${String(service.name)} cached`, 0);
-        return cachedService;
-      }
-    }
-
-    yield* events.publish({
-      _tag: "pre-build",
-      eventName: "pre-build",
-      appRef: { ...context.appRef, root: context.appRoot },
-      serviceName: context.serviceName,
-      providerId: context.providerId,
-      timestamp: timestamp(),
-    });
-
     const started = performance.now();
-    const artifact = yield* runProviderBuild(provider, plan, service, step.buildKey).pipe(
-      Effect.tapError(() =>
-        Effect.gen(function* () {
-          const durationMs = performance.now() - started;
-          if (bucket !== undefined) {
-            yield* recordBuildResult(bucket, {
-              buildKey: step.buildKey,
-              service: service.name,
-              phase: step.phase,
-              outcome: "fail",
-              exitCode: 1,
-              durationMs,
-              transcriptPath,
-            }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
-          }
-          yield* progress.failTask(service, durationMs);
-        }),
-      ),
-    );
-    if (bucket !== undefined) {
-      yield* recordBuildResult(bucket, {
-        buildKey: step.buildKey,
-        service: service.name,
-        phase: step.phase,
-        outcome: "complete",
-        exitCode: 0,
-        durationMs: performance.now() - started,
-        artifactRef: artifact.ref,
-        ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
-        transcriptPath,
-      }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
-    }
+    yield* progress.startTask(service, transcriptPath);
+    return yield* Effect.gen(function* () {
+      const bucket = isScratchPlan(plan)
+        ? yield* openScratchBuildResults(stateStore).pipe(
+            Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
+          )
+        : undefined;
+      const cached =
+        bucket === undefined
+          ? undefined
+          : yield* bucket.get.pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+      if (bucket !== undefined) {
+        const complete = findCompleteBuildResult(cached ?? [], {
+          buildKey: step.buildKey,
+          phase: step.phase,
+          service: service.name,
+        });
+        if (complete?.artifactRef !== undefined) {
+          yield* publishArtifactBuildStepSkip(events, context, step);
+          const digest =
+            complete.artifactDigest ??
+            (service.artifact?.kind === "ref" && service.artifact.ref === complete.artifactRef
+              ? service.artifact.digest
+              : undefined);
+          const cachedService = serviceWithArtifact(service, {
+            providerId: plan.provider,
+            ref: complete.artifactRef,
+            ...(digest === undefined ? {} : { digest }),
+          });
+          yield* progress.completeTask(service, `${String(service.name)} cached`, 0);
+          return cachedService;
+        }
+      }
 
-    yield* events.publish({
-      _tag: "post-build",
-      eventName: "post-build",
-      appRef: { ...context.appRef, root: context.appRoot },
-      serviceName: context.serviceName,
-      providerId: context.providerId,
-      timestamp: timestamp(),
-    });
-    yield* progress.completeTask(service, `Built ${String(service.name)}`, performance.now() - started);
-    return serviceWithArtifact(service, artifact);
+      yield* events.publish({
+        _tag: "pre-build",
+        eventName: "pre-build",
+        appRef: { ...context.appRef, root: context.appRoot },
+        serviceName: context.serviceName,
+        providerId: context.providerId,
+        timestamp: timestamp(),
+      });
+
+      const artifact = yield* runProviderBuild(provider, plan, service, step.buildKey).pipe(
+        Effect.tapError(() =>
+          bucket === undefined
+            ? Effect.void
+            : recordBuildResult(bucket, {
+                buildKey: step.buildKey,
+                service: service.name,
+                phase: step.phase,
+                outcome: "fail",
+                exitCode: 1,
+                durationMs: performance.now() - started,
+                transcriptPath,
+              }).pipe(
+                Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
+                Effect.exit,
+                Effect.asVoid,
+              ),
+        ),
+      );
+      if (bucket !== undefined) {
+        yield* recordBuildResult(bucket, {
+          buildKey: step.buildKey,
+          service: service.name,
+          phase: step.phase,
+          outcome: "complete",
+          exitCode: 0,
+          durationMs: performance.now() - started,
+          artifactRef: artifact.ref,
+          ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
+          transcriptPath,
+        }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+      }
+
+      yield* events.publish({
+        _tag: "post-build",
+        eventName: "post-build",
+        appRef: { ...context.appRef, root: context.appRoot },
+        serviceName: context.serviceName,
+        providerId: context.providerId,
+        timestamp: timestamp(),
+      });
+      yield* progress.completeTask(service, `Built ${String(service.name)}`, performance.now() - started);
+      return serviceWithArtifact(service, artifact);
+    }).pipe(Effect.tapError(() => progress.failTask(service, performance.now() - started)));
   });
 
 const identityRedactor: Pick<Redactor, "redactString"> = { redactString: (text) => text };
@@ -244,13 +191,46 @@ export const BuildOrchestratorLive = Layer.effect(
           const services = yield* Effect.forEach(
             servicePlans,
             (service) => buildService({ events, paths, progress, provider, plan, service, stateStore }),
-            { concurrency: 1 },
-          ).pipe(Effect.tapError(() => progress.failTree(performance.now() - started)));
+            { concurrency: 2 },
+          ).pipe(
+            Effect.tapError(() => {
+              const durationMs = performance.now() - started;
+              return Effect.gen(function* () {
+                const redaction = yield* Effect.serviceOption(RedactionService);
+                const redactor =
+                  redaction._tag === "Some"
+                    ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+                    : identityRedactor;
+                for (const service of progress.unsettledServices()) {
+                  const step = yield* buildStepFor(provider, service);
+                  const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
+                  yield* publishArtifactBuildStepSkip(
+                    events,
+                    redactedBuildContext(redactor, plan, service),
+                    step,
+                    "phase-aborted",
+                  );
+                  yield* progress.abortTask(service, transcriptPath, durationMs);
+                }
+                yield* progress.failTree(durationMs);
+              });
+            }),
+          );
           yield* progress.completeTree(performance.now() - started);
           return {
             ...plan,
             services: Object.fromEntries(services.map((service) => [service.name, service])),
           };
+        }),
+      buildApp: (plan) =>
+        Effect.gen(function* () {
+          const provider = yield* registry.select(plan);
+          const redaction = yield* Effect.serviceOption(RedactionService);
+          const redactor =
+            redaction._tag === "Some"
+              ? yield* redaction.value.forProfile("secrets", { sourceEnv: process.env })
+              : identityRedactor;
+          yield* runAppBuild({ events, paths, provider, plan, redactor, stateStore });
         }),
     };
   }),

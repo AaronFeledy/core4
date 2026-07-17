@@ -15,6 +15,7 @@ import { Layer } from "effect";
 
 import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
 import { LandofileServiceLive } from "../../../landofile/service.ts";
+import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";
 import { CommandRegistryLive } from "../../../services/command-registry.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
 import { ShellRunnerLive } from "../../../services/shell-runner.ts";
@@ -24,8 +25,10 @@ import { makeProviderBootstrapLayer } from "./provider.ts";
 
 export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const providerBase = makeProviderBootstrapLayer(inputs);
+  const buildOrchestratorLive = Layer.suspend(() => BuildOrchestratorLive.pipe(Layer.provide(providerBase)));
   return Layer.mergeAll(
     providerBase,
+    buildOrchestratorLive,
     LandofileServiceLive,
     CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, providerBase))),
     AppPlannerLive.pipe(Layer.provide(providerBase)),

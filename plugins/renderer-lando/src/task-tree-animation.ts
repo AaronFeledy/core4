@@ -20,6 +20,7 @@ export class TaskTreeAnimationController {
   private readonly pending = new Map<string, ReturnType<typeof setTimeout>>();
   private frameTimer: ReturnType<typeof setInterval> | undefined;
   private liveActive = false;
+  private visible = true;
 
   constructor(
     private readonly viewModel: TaskTreeViewModel,
@@ -49,15 +50,27 @@ export class TaskTreeAnimationController {
     this.clearAll();
   }
 
+  setVisible(visible: boolean): void {
+    if (this.visible === visible) return;
+    this.visible = visible;
+    if (!visible && this.frameTimer !== undefined) {
+      clearInterval(this.frameTimer);
+      this.frameTimer = undefined;
+    } else if (visible && this.viewModel.hasAnimatedAffordance()) {
+      this.startFrames();
+    }
+    this.syncLive();
+  }
+
   private schedule(taskId: string): void {
     this.clear(taskId);
     const timer = setTimeout(() => {
       this.pending.delete(taskId);
       if (!this.viewModel.isRunningTask(taskId)) return;
       this.viewModel.showSpinner(taskId);
-      this.output.render();
+      if (this.visible) this.output.render();
       this.syncLive();
-      this.startFrames();
+      if (this.visible) this.startFrames();
     }, SPINNER_THRESHOLD_MS);
     this.pending.set(taskId, timer);
   }
@@ -68,7 +81,7 @@ export class TaskTreeAnimationController {
     this.pending.delete(taskId);
     const wasAnimated = this.viewModel.hasAnimatedAffordance();
     this.viewModel.hideSpinner(taskId);
-    if (wasAnimated) this.output.render();
+    if (wasAnimated && this.visible) this.output.render();
     this.stopFramesWhenStatic();
     this.syncLive();
   }
@@ -96,7 +109,7 @@ export class TaskTreeAnimationController {
   }
 
   private syncLive(): void {
-    const animated = this.viewModel.hasAnimatedAffordance();
+    const animated = this.visible && this.viewModel.hasAnimatedAffordance();
     if (animated && !this.liveActive) {
       this.output.requestLive();
       this.liveActive = true;

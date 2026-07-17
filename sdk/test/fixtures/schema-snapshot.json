@@ -17387,7 +17387,6 @@
           "type": "string"
         },
         "cached": {
-          "enum": [true],
           "type": "boolean"
         },
         "eventName": {
@@ -17402,7 +17401,7 @@
           "type": "string"
         },
         "reason": {
-          "enum": ["up-to-date"],
+          "enum": ["up-to-date", "phase-aborted"],
           "type": "string"
         },
         "serviceName": {
@@ -26996,7 +26995,6 @@
               "type": "string"
             },
             "cached": {
-              "enum": [true],
               "type": "boolean"
             },
             "eventName": {
@@ -27011,7 +27009,7 @@
               "type": "string"
             },
             "reason": {
-              "enum": ["up-to-date"],
+              "enum": ["up-to-date", "phase-aborted"],
               "type": "string"
             },
             "serviceName": {

@@ -23,6 +23,12 @@ export interface BuildTaskProgress {
     durationMs: number,
   ) => Effect.Effect<void, EventError>;
   readonly failTask: (service: ServicePlan, durationMs: number) => Effect.Effect<void, EventError>;
+  readonly abortTask: (
+    service: ServicePlan,
+    transcriptPath: AbsolutePath,
+    durationMs: number,
+  ) => Effect.Effect<void, EventError>;
+  readonly unsettledServices: () => ReadonlyArray<ServicePlan>;
   readonly completeTree: (durationMs: number) => Effect.Effect<void, EventError>;
   readonly failTree: (durationMs: number) => Effect.Effect<void, EventError>;
 }
@@ -34,6 +40,8 @@ export const makeBuildTaskProgress = (
   const services = Object.values(plan.services);
   const parentId = `build-artifact-${String(plan.id)}`;
   let succeeded = 0;
+  const started = new Set<string>();
+  const settled = new Set<string>();
   return {
     parentId,
     startTree: events.publish(
@@ -46,15 +54,17 @@ export const makeBuildTaskProgress = (
       }),
     ),
     startTask: (service, transcriptPath) =>
-      events.publish(
-        TaskStartEvent.make({
-          taskId: String(service.name),
-          parentId,
-          label: `Build ${String(service.name)}`,
-          transcriptPath,
-          timestamp: timestamp(),
-        }),
-      ),
+      events
+        .publish(
+          TaskStartEvent.make({
+            taskId: String(service.name),
+            parentId,
+            label: `Build ${String(service.name)}`,
+            transcriptPath,
+            timestamp: timestamp(),
+          }),
+        )
+        .pipe(Effect.tap(() => Effect.sync(() => started.add(String(service.name))))),
     completeTask: (service, summary, durationMs) =>
       events
         .publish(
@@ -69,19 +79,47 @@ export const makeBuildTaskProgress = (
           Effect.tap(() =>
             Effect.sync(() => {
               succeeded += 1;
+              settled.add(String(service.name));
             }),
           ),
         ),
     failTask: (service, durationMs) =>
-      events.publish(
-        TaskFailEvent.make({
-          taskId: String(service.name),
-          summary: `Build ${String(service.name)} failed`,
-          exitCode: 1,
-          durationMs,
-          timestamp: timestamp(),
-        }),
-      ),
+      events
+        .publish(
+          TaskFailEvent.make({
+            taskId: String(service.name),
+            summary: `Build ${String(service.name)} failed`,
+            exitCode: 1,
+            durationMs,
+            timestamp: timestamp(),
+          }),
+        )
+        .pipe(Effect.tap(() => Effect.sync(() => settled.add(String(service.name))))),
+    abortTask: (service, transcriptPath, durationMs) =>
+      Effect.gen(function* () {
+        if (!started.has(String(service.name))) {
+          yield* events.publish(
+            TaskStartEvent.make({
+              taskId: String(service.name),
+              parentId,
+              label: `Build ${String(service.name)}`,
+              transcriptPath,
+              timestamp: timestamp(),
+            }),
+          );
+        }
+        yield* events.publish(
+          TaskFailEvent.make({
+            taskId: String(service.name),
+            summary: `Build ${String(service.name)} aborted`,
+            exitCode: 1,
+            durationMs,
+            timestamp: timestamp(),
+          }),
+        );
+        settled.add(String(service.name));
+      }),
+    unsettledServices: () => services.filter((service) => !settled.has(String(service.name))),
     completeTree: (durationMs) =>
       events.publish(
         TaskTreeCompleteEvent.make({
@@ -99,7 +137,7 @@ export const makeBuildTaskProgress = (
           parentId,
           summary: `${plan.name} build failed`,
           succeeded,
-          failed: 1,
+          failed: services.length - succeeded,
           durationMs,
           timestamp: timestamp(),
         }),

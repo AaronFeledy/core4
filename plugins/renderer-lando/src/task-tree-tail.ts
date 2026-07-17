@@ -36,6 +36,18 @@ export interface TaskTreeViewModelSnapshot {
   readonly activeTaskIds: ReadonlyArray<string>;
 }
 
+export interface TaskTreeInteractionModel {
+  readonly expandedTaskId: string | undefined;
+  focusableTaskIds(): ReadonlyArray<string>;
+  transcriptPathFor(taskId: string): AbsolutePath | undefined;
+  canExpandTask(taskId: string): boolean;
+  expandTask(taskId: string): void;
+  setExpandedTranscript(taskId: string, lines: ReadonlyArray<string>): boolean;
+  expandedLineBudget(): number;
+  collapse(): void;
+  cycleTree(): boolean;
+}
+
 type NewTaskInput = {
   readonly id: string;
   readonly label: string;
@@ -43,7 +55,7 @@ type NewTaskInput = {
   readonly transcriptPath: typeof AbsolutePath.Type | undefined;
 };
 
-export class TaskTreeViewModel {
+export class TaskTreeViewModel implements TaskTreeInteractionModel {
   readonly #detailCapacity: number;
   readonly #terminalColumns: number | undefined;
   readonly #getTerminalColumns: (() => number | undefined) | undefined;
@@ -248,6 +260,10 @@ export class TaskTreeViewModel {
   collapse(): void {
     this.#expandedTaskId = undefined;
     this.#expandedLines = [];
+  }
+
+  cycleTree(): boolean {
+    return false;
   }
 
   #resetTreeState(): void {

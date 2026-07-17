@@ -132,6 +132,9 @@ export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   return Array.isArray(buildSteps) ? buildSteps.map(stableValue) : [];
 };
 
+export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> =>
+  buildStepsFor(service).filter((step) => !isRecord(step) || step.phase !== "app");
+
 const stableBuildInput = (
   provider: RuntimeProviderShape,
   service: ServicePlan,
@@ -161,7 +164,7 @@ const stableBuildInput = (
                 realization: service.appMount.realization,
               },
         mounts: service.mounts.map(mountBuildInput),
-        buildSteps: buildStepsFor(service),
+        buildSteps: artifactBuildStepsFor(service),
       },
     })),
   );

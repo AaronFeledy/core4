@@ -2,7 +2,7 @@ import { Schema } from "effect";
 
 import { type LandoEvent, TaskDetailCollapseEvent, TaskDetailExpandEvent } from "@lando/sdk/events";
 
-import type { TaskTreeViewModel } from "./task-tree-tail.ts";
+import type { TaskTreeInteractionModel } from "./task-tree-tail.ts";
 
 export type KeyToken = "up" | "down" | "page-up" | "page-down" | "enter" | "esc" | "tab" | "unknown";
 
@@ -70,13 +70,13 @@ const collapseEvent = (taskId: string, timestamp: string): LandoEvent =>
   Schema.decodeUnknownSync(TaskDetailCollapseEvent)({ _tag: "task.detail.collapse", taskId, timestamp });
 
 export class TaskTreeInputController {
-  readonly #viewModel: TaskTreeViewModel;
+  readonly #viewModel: TaskTreeInteractionModel;
   readonly #keymap: Readonly<Record<KeyToken, KeyAction | null>>;
   readonly #now: () => string;
   #focusIndex = 0;
   #expanded = false;
 
-  constructor(viewModel: TaskTreeViewModel, options: TaskTreeInputControllerOptions = {}) {
+  constructor(viewModel: TaskTreeInteractionModel, options: TaskTreeInputControllerOptions = {}) {
     this.#viewModel = viewModel;
     this.#keymap = options.keymap ?? DEFAULT_KEYMAP;
     this.#now = options.now ?? (() => new Date().toISOString());
@@ -99,6 +99,8 @@ export class TaskTreeInputController {
         return this.#moveFocus(-1);
       case "focus.down":
         return this.#moveFocus(1);
+      case "tree.cycle":
+        return this.#cycleTree();
       case "detail.expand":
         return this.#expand();
       case "detail.collapse":
@@ -131,6 +133,12 @@ export class TaskTreeInputController {
   #pageTail(direction: -1 | 1): KeyHandleResult {
     if (!this.#expanded) return NO_CHANGE;
     return { events: [], changed: true, transcriptPage: direction > 0 ? "older" : "newer" };
+  }
+
+  #cycleTree(): KeyHandleResult {
+    if (this.#expanded || !this.#viewModel.cycleTree()) return NO_CHANGE;
+    this.#focusIndex = 0;
+    return { events: [], changed: true };
   }
 
   #expand(): KeyHandleResult {

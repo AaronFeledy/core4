@@ -3,7 +3,7 @@ import { Effect } from "effect";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sdk/services";
 
-import { buildStepsFor } from "./build-key.ts";
+import { artifactBuildStepsFor } from "./build-key.ts";
 
 export const runProviderBuild = (
   provider: RuntimeProviderShape,
@@ -13,7 +13,7 @@ export const runProviderBuild = (
 ): Effect.Effect<ArtifactRef, ProviderError> =>
   Effect.gen(function* () {
     const artifact = service.artifact;
-    if (artifact?.kind === "ref" && buildStepsFor(service).length === 0) {
+    if (artifact?.kind === "ref" && artifactBuildStepsFor(service).length === 0) {
       if (provider.capabilities.artifactPull) {
         const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
         if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;

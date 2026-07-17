@@ -29,6 +29,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Promise-backed interactive drivers must accept the enclosing Effect cancellation signal and settle through their normal cleanup path so interruption destroys terminal renderers and listeners.
 - Split-footer resize handling must recompute semantic footer content at the new dimensions before replay; eventless input changes such as full-tail paging require an explicit repaint.
 - Expanded transcript resize repages through the serialized event/input seam at the new row budget while preserving the current file-tail anchor.
+- Build orchestration runs artifact work before provider apply and app work after services are running; app-step output is persisted unredacted under the user data root while only redacted `task.detail` lines cross EventService.
 
 ## Durable learnings
 
@@ -583,4 +584,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Returned US-456 to Build with `passes: false`: the source PRD and normative §13.1 fixture require concurrent three-service execution, per-step `task.detail` output, persisted full transcripts, and the associated fail-fast/continue-all/cache/perf proof. The existing sequential producer and metadata-only transcript paths do not satisfy that contract; multi-tree Tab cycling also remains unimplemented.
 - Review notes (deferred/rejected): the Build-step deferral of producer behavior to §6.13 was rejected because the source PRD explicitly requires the §8.9.2/§13.1 fixture in US-456. `Guide-Coverage-Skip: Review fixes restore internal failure-state consistency without changing a successful public workflow.`
 - Verification: clean changed-file diagnostics; typecheck, lint, renderer/machine-output/redaction/paths boundaries, focused terminal UI guide, and build-orchestrator plus task-tree consumer/navigation/controller/transcript-reader/first-paint spot checks passed. Base-aware guide drift requires the recorded substantive skip reason; the optional TypeScript no-excuse audit script is not present in this repository.
+---
+
+## 2026-07-17 08:30 CDT - US-456
+- Completed the split-footer task tree against its production build surface: artifact work is bounded and fail-fast, app build steps run concurrently after provider apply with continue-all aggregation, each step streams redacted task detail while retaining a full local transcript, successful reruns short-circuit from durable build results, and multiple visible phase trees remain independently selectable with Tab.
+- Verification: typecheck, lint, build, renderer/machine-output/paths/redaction boundaries, generated schema/bootstrap drift, guide lint/coverage/public transcripts, focused guide, producer/cache/failure-policy/first-paint/task-tree suites, and sandbox-native OpenTUI tests passed. A real sandbox `lando start` ran three route-free services with 2s/2s/1s app steps, wrote all three transcripts, and exited 0; fresh xterm.js captures at 80 and 40 columns were width-exact with aligned borders and Korean cells. The stock live full-scaffold cell remained environment-blocked by an unrelated existing port-80 listener.
+- **Learnings for future iterations:**
+  - Keep artifact and app build phases on opposite sides of provider apply: app scripts need running containers, while artifact failures must abort before apply.
+  - One event-consumer collection can retain completed and active phase trees; only the selected tree owns animation/live mode, and Tab changes selection without duplicating substrate state.
 ---
