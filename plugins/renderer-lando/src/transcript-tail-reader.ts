@@ -139,12 +139,16 @@ const makeSession = (userDataRoot: string, path: AbsolutePath): TranscriptTailSe
           const before = await lstat(path);
           if (!before.isFile() || before.isSymbolicLink()) throw new InvalidTranscriptFileError(path);
           const handle = await open(path, "r");
-          const after = await handle.stat();
-          if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino) {
+          try {
+            const after = await handle.stat();
+            if (!after.isFile() || before.dev !== after.dev || before.ino !== after.ino) {
+              throw new InvalidTranscriptFileError(path);
+            }
+            await Effect.runPromise(assertContained(userDataRoot, path));
+          } catch (cause) {
             await handle.close();
-            throw new InvalidTranscriptFileError(path);
+            throw cause;
           }
-          await Effect.runPromise(assertContained(userDataRoot, path));
           return handle;
         },
         catch: (cause) => cause,

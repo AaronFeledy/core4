@@ -1,14 +1,15 @@
-import { mkdir, mkdtemp, rename, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readlink, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { expect, test } from "bun:test";
+import { expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "../../../core/src/config/paths.ts";
+import * as boundary from "../src/transcript-path-boundary.ts";
 import { TranscriptTailReader, TranscriptTailReaderLive } from "../src/transcript-tail-reader.ts";
 
 const readerLayer = (userDataRoot: string) =>
@@ -203,3 +204,64 @@ test.skipIf(process.platform === "win32")("the reader revalidates containment be
     await rm(outside, { recursive: true, force: true });
   }
 });
+
+const countOpenFileDescriptors = async (target: string): Promise<number> => {
+  const entries = await readdir("/proc/self/fd");
+  let open = 0;
+  for (const entry of entries) {
+    try {
+      if ((await readlink(`/proc/self/fd/${entry}`)) === target) open += 1;
+    } catch (cause) {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") continue;
+      throw cause;
+    }
+  }
+  return open;
+};
+
+// Keep last: mock.module mutates the shared module registry, so the finally
+// restore must be the final touch to the boundary module in this file.
+test.skipIf(process.platform === "win32")(
+  "a failed post-open containment revalidation closes the transcript file handle",
+  async () => {
+    const directory = await mkdtemp(join(tmpdir(), "lando-transcript-leak-"));
+    const path = AbsolutePath.make(join(directory, "step.log"));
+    await writeFile(path, "inside\n");
+    const target = await realpath(path);
+
+    const realAssertContained = boundary.assertTranscriptPathContained;
+    const OutsideRootError = boundary.TranscriptPathOutsideRootError;
+    // open() checks once, read() checks twice: the third check is the post-open
+    // revalidation that must fail after the handle is already open.
+    let checks = 0;
+    mock.module("../src/transcript-path-boundary.ts", () => ({
+      TranscriptPathOutsideRootError: OutsideRootError,
+      assertTranscriptPathContained: async (userDataRoot: string, checked: AbsolutePath) => {
+        checks += 1;
+        if (checks >= 3) throw new OutsideRootError(checked);
+        return realAssertContained(userDataRoot, checked);
+      },
+    }));
+
+    try {
+      const exit = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const reader = yield* TranscriptTailReader;
+            const session = yield* reader.open(path, Effect.void);
+            return yield* Effect.exit(session.read("latest", 4));
+          }).pipe(Effect.provide(readerLayer(directory))),
+        ),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      expect(await countOpenFileDescriptors(target)).toBe(0);
+    } finally {
+      mock.module("../src/transcript-path-boundary.ts", () => ({
+        TranscriptPathOutsideRootError: OutsideRootError,
+        assertTranscriptPathContained: realAssertContained,
+      }));
+      await rm(directory, { recursive: true, force: true });
+    }
+  },
+);

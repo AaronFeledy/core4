@@ -360,6 +360,59 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
     expect(published.some((event) => event._tag === "task.detail.collapse")).toBe(false);
   });
 
+  test("a retried Esc collapses once after the first split-footer restore fails", async () => {
+    const { io } = ttyIo();
+    const controller = new FakeController();
+    const transcriptReader = new FakeTranscriptReader();
+    const transcriptPath = AbsolutePath.make("/tmp/lando/builds/web.log");
+    transcriptReader.set(transcriptPath, ["raw output"]);
+    let inject: ((raw: string) => void) | undefined;
+    const interactiveIo = {
+      ...io,
+      subscribeInput: (listener: (raw: string) => void) => {
+        inject = listener;
+        return () => {};
+      },
+    };
+
+    const published = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          const collector = yield* events.subscribeQueue;
+          yield* events.publish(treeStart(["web"]));
+          yield* events.publish(taskStart("web", transcriptPath));
+          yield* Effect.sleep("20 millis");
+          inject?.("\r");
+          yield* Effect.sleep("20 millis");
+          const workingExit = controller.exitFullTail.bind(controller);
+          controller.exitFullTail = () => {
+            throw new Error("split footer unavailable");
+          };
+          inject?.("\x1b");
+          yield* Effect.sleep("20 millis");
+          controller.exitFullTail = workingExit;
+          inject?.("\x1b");
+          yield* Effect.sleep("20 millis");
+          return [...(yield* Queue.takeAll(collector))];
+        }).pipe(
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(interactiveIo, {
+                createLiveRegion: () => Promise.resolve(controller),
+                transcriptReader,
+              }),
+              EventServiceLive,
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(published.filter((event) => event._tag === "task.detail.collapse")).toHaveLength(1);
+    expect(controller.calls.filter((call) => call.kind === "exitFullTail")).toHaveLength(1);
+  });
+
   test("the default transcript reader captures the injected PathsService root", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-renderer-transcript-root-"));
     const builds = join(root, "builds");

@@ -113,7 +113,7 @@ export class TaskTreeInputController {
   }
 
   #syncExpandedState(): void {
-    if (this.#expanded && this.#viewModel.expandedTaskId === undefined) this.#expanded = false;
+    this.#expanded = this.#viewModel.expandedTaskId !== undefined;
   }
 
   #moveFocus(delta: number): KeyHandleResult {

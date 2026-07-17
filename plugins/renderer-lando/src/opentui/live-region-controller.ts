@@ -14,11 +14,17 @@ export { OpenTuiLiveRegionUnavailableError } from "./live-region-error.ts";
 export type { OpenTuiLiveRegionFailureStage } from "./live-region-error.ts";
 export type * from "./live-region-types.ts";
 
+const MAX_DEFERRED_SCROLLBACK_CHARACTERS = 256 * 1024;
+
+const deferredLineLength = (line: ReplayLine): number =>
+  line.chunks.reduce((total, chunk) => total + chunk.text.length, 0);
+
 export class LiveRegionController<TRenderer extends LiveRegionRendererLike = LiveRegionRendererLike> {
   private footer: LiveRegionRenderableLike | undefined;
   private footerLines: ReadonlyArray<string> = [];
   private readonly replay: LiveRegionReplay;
   private readonly deferredLines: ReplayLine[] = [];
+  private deferredCharacters = 0;
   private width: number;
   private height: number;
   private replayPending = false;
@@ -49,7 +55,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
   commitScrollback(text: string): void {
     for (const line of this.linesFor(text)) {
       if (this.renderer.screenMode === "alternate-screen") {
-        this.deferredLines.push(line);
+        this.pushDeferred(line);
         continue;
       }
       this.replay.push(line);
@@ -60,6 +66,15 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
 
   rememberScrollback(text: string): void {
     for (const line of this.linesFor(text)) this.replay.push(line);
+  }
+
+  private pushDeferred(line: ReplayLine): void {
+    this.deferredLines.push(line);
+    this.deferredCharacters += deferredLineLength(line);
+    while (this.deferredCharacters > MAX_DEFERRED_SCROLLBACK_CHARACTERS && this.deferredLines.length > 0) {
+      const removed = this.deferredLines.shift();
+      if (removed !== undefined) this.deferredCharacters -= deferredLineLength(removed);
+    }
   }
 
   private linesFor(text: string): ReadonlyArray<ReplayLine> {
@@ -137,6 +152,7 @@ export class LiveRegionController<TRenderer extends LiveRegionRendererLike = Liv
       this.replay.push(line);
     }
     this.deferredLines.length = 0;
+    this.deferredCharacters = 0;
     if (replayAfterResize) this.pinSplitFooter();
     if (this.footer !== undefined) this.renderFooter();
     this.replayPending = false;

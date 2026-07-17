@@ -577,3 +577,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Acquire OpenTUI lazily on the first task-tree event; eager acquisition fights interactive prompts for the same terminal.
   - Publishing a transcript path is renderer-facing metadata; producing the transcript file/stream is 6.13 producer work. Keep the boundary explicit so a renderer story does not absorb a provider data-plane feature.
 ---
+
+## 2026-07-17 05:41 CDT - US-456 Review
+- Fixed four confirmed review regressions: a failed split-footer restore now leaves Esc able to retry collapse; scratch-cache access failures no longer publish a service `task.start` that can never finish; alternate-screen scrollback retention is hard-capped at 256 KiB; and every rejected post-open transcript handle closes before the containment failure propagates.
+- Returned US-456 to Build with `passes: false`: the source PRD and normative §13.1 fixture require concurrent three-service execution, per-step `task.detail` output, persisted full transcripts, and the associated fail-fast/continue-all/cache/perf proof. The existing sequential producer and metadata-only transcript paths do not satisfy that contract; multi-tree Tab cycling also remains unimplemented.
+- Review notes (deferred/rejected): the Build-step deferral of producer behavior to §6.13 was rejected because the source PRD explicitly requires the §8.9.2/§13.1 fixture in US-456. `Guide-Coverage-Skip: Review fixes restore internal failure-state consistency without changing a successful public workflow.`
+- Verification: clean changed-file diagnostics; typecheck, lint, renderer/machine-output/redaction/paths boundaries, focused terminal UI guide, and build-orchestrator plus task-tree consumer/navigation/controller/transcript-reader/first-paint spot checks passed. Base-aware guide drift requires the recorded substantive skip reason; the optional TypeScript no-excuse audit script is not present in this repository.
+---

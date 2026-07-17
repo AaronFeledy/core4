@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
-import { ProviderInternalError } from "@lando/core/errors";
+import { ProviderInternalError, StateStoreError } from "@lando/core/errors";
 import {
   type ArtifactBuildSpec,
   BuildOrchestrator,
@@ -106,9 +106,9 @@ const registryLayer = (provider = TestRuntimeProvider) =>
     select: () => Effect.succeed(provider),
   });
 
-const layer = (provider = TestRuntimeProvider) => {
+const layer = (provider = TestRuntimeProvider, stateStoreLive = StateStoreLive) => {
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
-  const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), StateStoreLive);
+  const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), stateStoreLive);
   return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
 };
 
@@ -263,6 +263,45 @@ describe("BuildOrchestratorLive", () => {
       );
       expect(events.filter((event) => event._tag === "task.complete")).toHaveLength(2);
       expect(events.filter((event) => event._tag === "task.tree.complete")).toHaveLength(1);
+    });
+  });
+
+  test("does not start a service task when scratch cache access fails", async () => {
+    // Given
+    const cacheFailure = new StateStoreError({ reason: "io", operation: "open" });
+    const scratchPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("scratch-cache-failure"),
+      slug: "scratch-cache-failure",
+      services: { [web.name]: web },
+    };
+    const failingStateStore = Layer.succeed(StateStore, {
+      open: () => Effect.fail(cacheFailure),
+    });
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const error = yield* Effect.flip(orchestrator.build(scratchPlan));
+          return { error, events: [...(yield* Queue.takeAll(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(TestRuntimeProvider, failingStateStore))),
+    );
+
+    // Then
+    expect(result.error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildResults",
+      cause: cacheFailure,
+    });
+    expect(result.events.filter((event) => event._tag === "task.start")).toHaveLength(0);
+    expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
+      succeeded: 0,
+      failed: 1,
     });
   });
 

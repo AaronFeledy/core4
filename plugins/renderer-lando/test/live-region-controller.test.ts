@@ -489,6 +489,41 @@ describe("LiveRegionController", () => {
     ]);
   });
 
+  test("bounds deferred alternate-screen scrollback to a retained tail suffix", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.enterFullTail();
+    fixture.calls.length = 0;
+
+    const committed = 300;
+    for (let index = 0; index < committed; index += 1) {
+      controller.commitScrollback(`L${index}-${"x".repeat(1024)}`);
+    }
+    controller.exitFullTail();
+
+    const retained = fixture.commits;
+    expect(retained.length).toBeGreaterThan(0);
+    expect(retained.length).toBeLessThan(committed);
+    expect(retained.at(-1)?.startsWith(`L${committed - 1}-`)).toBe(true);
+    expect(retained.some((line) => line.startsWith("L0-"))).toBe(false);
+    const indices = retained.map((line) => Number.parseInt(line.slice(1), 10));
+    expect(indices).toEqual([...indices].sort((a, b) => a - b));
+    expect(fixture.state().screenMode).toBe("split-footer");
+  });
+
+  test("drops a sole deferred line that alone exceeds the retention cap", async () => {
+    const fixture = makeFixture();
+    const controller = await createController(fixture);
+    controller.enterFullTail();
+    fixture.calls.length = 0;
+
+    controller.commitScrollback("O".repeat(256 * 1024 + 100));
+    controller.exitFullTail();
+
+    expect(fixture.commits).toEqual([]);
+    expect(fixture.state().screenMode).toBe("split-footer");
+  });
+
   test("dispose removes the resize listener before destroying the renderer", async () => {
     const fixture = makeFixture();
     const controller = await createController(fixture);

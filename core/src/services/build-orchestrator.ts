@@ -135,16 +135,17 @@ const buildService = (input: {
     const context = redactedBuildContext(redactor, plan, service);
     const step = yield* buildStepFor(provider, service);
     const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
-    yield* progress.startTask(service, transcriptPath);
     const bucket = isScratchPlan(plan)
       ? yield* openScratchBuildResults(stateStore).pipe(
           Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
         )
       : undefined;
+    const cached =
+      bucket === undefined
+        ? undefined
+        : yield* bucket.get.pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
+    yield* progress.startTask(service, transcriptPath);
     if (bucket !== undefined) {
-      const cached = yield* bucket.get.pipe(
-        Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)),
-      );
       const complete = findCompleteBuildResult(cached ?? [], {
         buildKey: step.buildKey,
         phase: step.phase,
