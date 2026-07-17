@@ -9,6 +9,7 @@ import type { RedactionService } from "../../../../redaction/service.ts";
 import { cliRuntimeOptions } from "../../../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../../../runtime/layer.ts";
 import type { RendererMode } from "../../../bug-report.ts";
+import { newInvocationId } from "../../../command-lifecycle.ts";
 import {
   type McpListResult,
   McpListResultSchema,
@@ -167,6 +168,7 @@ export default class MetaMcpCommand extends LandoCommandBase {
         args: {},
         flags: Object.fromEntries(Object.entries(flags)),
         cwd: process.cwd(),
+        invocationId: newInvocationId(),
       },
       formatError: (error) => formatCommandError({ error, commandId: "meta:mcp", rendererMode }),
     });

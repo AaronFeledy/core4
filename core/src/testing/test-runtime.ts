@@ -418,6 +418,12 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
 
   const rendererService: Context.Tag.Service<typeof Renderer> = {
     id: "test",
+    capabilities: {
+      color: false,
+      interactive: false,
+      animation: false,
+      notifications: false,
+    },
     message: {
       info: () => Effect.void,
       warn: () => Effect.void,

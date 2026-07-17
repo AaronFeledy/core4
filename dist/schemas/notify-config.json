@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "commands": {
+      "description": "Additional canonical command ids beyond the default notify family (global notify.commands; max 128).",
+      "items": {
+        "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+        "maxLength": 128,
+        "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+        "title": "maxLength(128)",
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "maxItems(128)",
+      "type": "array"
+    },
+    "enabled": {
+      "description": "Master switch for desktop notifications (global notify.enabled; default true).",
+      "type": "boolean"
+    },
+    "thresholdMs": {
+      "description": "Minimum qualifying command duration in ms (global notify.thresholdMs; default 15000; 0 qualifies every eligible command).",
+      "maximum": 3600000,
+      "minimum": 0,
+      "title": "lessThanOrEqualTo(3600000)",
+      "type": "integer"
+    }
+  },
+  "required": [],
+  "type": "object"
+}

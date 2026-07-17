@@ -10,6 +10,7 @@ import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
+import { newInvocationId } from "../command-lifecycle.ts";
 import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
 import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
 import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
@@ -452,6 +453,7 @@ export abstract class LandoCommandBase extends Command {
         args: input.args,
         flags: input.flags,
         cwd: process.cwd(),
+        invocationId: newInvocationId(),
       },
       resultSchema: spec.resultSchema,
       ...(spec.streaming === undefined ? {} : { streaming: spec.streaming }),

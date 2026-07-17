@@ -14158,6 +14158,24 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Notify Config.",
+      "docsPath": "docs/reference/schemas/notify-config.mdx",
+      "id": "NotifyConfig",
+      "jsonSchemaPath": "dist/schemas/notify-config.json",
+      "packageExport": "@lando/sdk/schema#NotifyConfig",
+      "title": "Notify Config"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Renderer Capabilities.",
+      "docsPath": "docs/reference/schemas/renderer-capabilities.mdx",
+      "id": "RendererCapabilities",
+      "jsonSchemaPath": "dist/schemas/renderer-capabilities.json",
+      "packageExport": "@lando/sdk/schema#RendererCapabilities",
+      "title": "Renderer Capabilities"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Telemetry Config.",
       "docsPath": "docs/reference/schemas/telemetry-config.mdx",
       "id": "TelemetryConfig",
@@ -15724,6 +15742,24 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Notify Desktop Event.",
+      "docsPath": "docs/reference/schemas/notify-desktop-event.mdx",
+      "id": "NotifyDesktopEvent",
+      "jsonSchemaPath": "dist/schemas/notify-desktop-event.json",
+      "packageExport": "@lando/sdk/schema#NotifyDesktopEvent",
+      "title": "Notify Desktop Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Command Invocation Correlation.",
+      "docsPath": "docs/reference/schemas/command-invocation-correlation.mdx",
+      "id": "CommandInvocationCorrelation",
+      "jsonSchemaPath": "dist/schemas/command-invocation-correlation.json",
+      "packageExport": "@lando/sdk/schema#CommandInvocationCorrelation",
+      "title": "Command Invocation Correlation"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Prompt Spec.",
       "docsPath": "docs/reference/schemas/prompt-spec.mdx",
       "id": "PromptSpec",
@@ -16013,6 +16049,8 @@
       "IncludeEntry",
       "McpConfig",
       "AgentEnvConfig",
+      "NotifyConfig",
+      "RendererCapabilities",
       "TelemetryConfig",
       "NetworkProxyConfig",
       "NetworkCaConfig",
@@ -16187,6 +16225,8 @@
       "MessageWarnEvent",
       "MessageErrorEvent",
       "PaintBannerEvent",
+      "NotifyDesktopEvent",
+      "CommandInvocationCorrelation",
       "PromptSpec",
       "InteractionServiceContribution",
       "CommandResultFormat",
@@ -17546,7 +17586,15 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
         "message": {
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
           "type": "string"
         },
         "timestamp": {
@@ -17560,6 +17608,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp",
         "exitCode",
         "durationMs",
@@ -17636,11 +17685,19 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
       },
-      "required": ["_tag", "commandId", "argv", "args", "flags", "cwd", "timestamp"],
+      "required": ["_tag", "commandId", "argv", "args", "flags", "cwd", "invocationId", "timestamp"],
       "type": "object"
     },
     "CliCommandRunEvent": {
@@ -17720,6 +17777,14 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
@@ -17731,10 +17796,27 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp",
         "exitCode",
         "durationMs"
       ],
+      "type": "object"
+    },
+    "CommandInvocationCorrelation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        }
+      },
+      "required": ["invocationId"],
       "type": "object"
     },
     "CommandResultEnvelope": {
@@ -21168,6 +21250,37 @@
               },
               "required": [],
               "type": "object"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "notify": {
+          "additionalProperties": false,
+          "properties": {
+            "commands": {
+              "description": "Additional canonical command ids beyond the default notify family (global notify.commands; max 128).",
+              "items": {
+                "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                "maxLength": 128,
+                "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                "title": "maxLength(128)",
+                "type": "string"
+              },
+              "maxItems": 128,
+              "title": "maxItems(128)",
+              "type": "array"
+            },
+            "enabled": {
+              "description": "Master switch for desktop notifications (global notify.enabled; default true).",
+              "type": "boolean"
+            },
+            "thresholdMs": {
+              "description": "Minimum qualifying command duration in ms (global notify.thresholdMs; default 15000; 0 qualifies every eligible command).",
+              "maximum": 3600000,
+              "minimum": 0,
+              "title": "lessThanOrEqualTo(3600000)",
+              "type": "integer"
             }
           },
           "required": [],
@@ -28727,11 +28840,19 @@
               "required": [],
               "type": "object"
             },
+            "invocationId": {
+              "description": "ULID unique to this command invocation (outer or nested).",
+              "type": "string"
+            },
+            "parentInvocationId": {
+              "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+              "type": "string"
+            },
             "timestamp": {
               "$ref": "#/$defs/DateTimeUtc"
             }
           },
-          "required": ["_tag", "commandId", "argv", "args", "flags", "cwd", "timestamp"],
+          "required": ["_tag", "commandId", "argv", "args", "flags", "cwd", "invocationId", "timestamp"],
           "type": "object"
         },
         {
@@ -28804,6 +28925,14 @@
               "required": [],
               "type": "object"
             },
+            "invocationId": {
+              "description": "ULID unique to this command invocation (outer or nested).",
+              "type": "string"
+            },
+            "parentInvocationId": {
+              "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+              "type": "string"
+            },
             "timestamp": {
               "$ref": "#/$defs/DateTimeUtc"
             }
@@ -28815,6 +28944,7 @@
             "args",
             "flags",
             "cwd",
+            "invocationId",
             "timestamp",
             "exitCode",
             "durationMs"
@@ -28895,7 +29025,15 @@
               "required": [],
               "type": "object"
             },
+            "invocationId": {
+              "description": "ULID unique to this command invocation (outer or nested).",
+              "type": "string"
+            },
             "message": {
+              "type": "string"
+            },
+            "parentInvocationId": {
+              "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
               "type": "string"
             },
             "timestamp": {
@@ -28909,6 +29047,7 @@
             "args",
             "flags",
             "cwd",
+            "invocationId",
             "timestamp",
             "exitCode",
             "durationMs",
@@ -29180,6 +29319,35 @@
             }
           },
           "required": ["_tag", "banner", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["notify.desktop"],
+              "type": "string"
+            },
+            "body": {
+              "description": "Optional notification body (up to 4096 chars).",
+              "maxLength": 4096,
+              "title": "maxLength(4096)",
+              "type": "string"
+            },
+            "title": {
+              "description": "Notification title (1..256 chars after schema decode).",
+              "maxLength": 256,
+              "minLength": 1,
+              "title": "maxLength(256)",
+              "type": "string"
+            },
+            "urgency": {
+              "description": "Optional urgency hint for presentation consumers.",
+              "enum": ["info", "success", "failure"],
+              "type": "string"
+            }
+          },
+          "required": ["_tag", "title"],
           "type": "object"
         }
       ]
@@ -31084,6 +31252,68 @@
         }
       },
       "required": [],
+      "type": "object"
+    },
+    "NotifyConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "commands": {
+          "description": "Additional canonical command ids beyond the default notify family (global notify.commands; max 128).",
+          "items": {
+            "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+            "maxLength": 128,
+            "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+            "title": "maxLength(128)",
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "maxItems(128)",
+          "type": "array"
+        },
+        "enabled": {
+          "description": "Master switch for desktop notifications (global notify.enabled; default true).",
+          "type": "boolean"
+        },
+        "thresholdMs": {
+          "description": "Minimum qualifying command duration in ms (global notify.thresholdMs; default 15000; 0 qualifies every eligible command).",
+          "maximum": 3600000,
+          "minimum": 0,
+          "title": "lessThanOrEqualTo(3600000)",
+          "type": "integer"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "NotifyDesktopEvent": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["notify.desktop"],
+          "type": "string"
+        },
+        "body": {
+          "description": "Optional notification body (up to 4096 chars).",
+          "maxLength": 4096,
+          "title": "maxLength(4096)",
+          "type": "string"
+        },
+        "title": {
+          "description": "Notification title (1..256 chars after schema decode).",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "maxLength(256)",
+          "type": "string"
+        },
+        "urgency": {
+          "description": "Optional urgency hint for presentation consumers.",
+          "enum": ["info", "success", "failure"],
+          "type": "string"
+        }
+      },
+      "required": ["_tag", "title"],
       "type": "object"
     },
     "PaintBannerEvent": {
@@ -40599,6 +40829,30 @@
       "required": ["ok"],
       "type": "object"
     },
+    "RendererCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "animation": {
+          "description": "Continuous/live redraw supported (spinners, progress fill).",
+          "type": "boolean"
+        },
+        "color": {
+          "description": "ANSI color output supported.",
+          "type": "boolean"
+        },
+        "interactive": {
+          "description": "Keyboard input honored (task-tree focus/expand, prompts).",
+          "type": "boolean"
+        },
+        "notifications": {
+          "description": "Desktop-notification path supported.",
+          "type": "boolean"
+        }
+      },
+      "required": ["color", "interactive", "animation", "notifications"],
+      "type": "object"
+    },
     "RouteInput": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -42874,6 +43128,37 @@
                   },
                   "required": [],
                   "type": "object"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            "notify": {
+              "additionalProperties": false,
+              "properties": {
+                "commands": {
+                  "description": "Additional canonical command ids beyond the default notify family (global notify.commands; max 128).",
+                  "items": {
+                    "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                    "title": "maxLength(128)",
+                    "type": "string"
+                  },
+                  "maxItems": 128,
+                  "title": "maxItems(128)",
+                  "type": "array"
+                },
+                "enabled": {
+                  "description": "Master switch for desktop notifications (global notify.enabled; default true).",
+                  "type": "boolean"
+                },
+                "thresholdMs": {
+                  "description": "Minimum qualifying command duration in ms (global notify.thresholdMs; default 15000; 0 qualifies every eligible command).",
+                  "maximum": 3600000,
+                  "minimum": 0,
+                  "title": "lessThanOrEqualTo(3600000)",
+                  "type": "integer"
                 }
               },
               "required": [],

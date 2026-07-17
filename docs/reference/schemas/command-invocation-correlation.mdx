@@ -1,0 +1,15 @@
+---
+title: Command Invocation Correlation
+description: Public Lando schema contract for Command Invocation Correlation.
+---
+
+# Command Invocation Correlation
+
+Public Lando schema contract for Command Invocation Correlation.
+
+[JSON Schema artifact](../../../dist/schemas/command-invocation-correlation.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `invocationId` | Yes | `string` | ULID unique to this command invocation (outer or nested). | — | — | — | — |
+| `parentInvocationId` | No | `string` | ULID of the enclosing invocation; absent for the outer user/embedding-host invocation. | — | — | — | — |

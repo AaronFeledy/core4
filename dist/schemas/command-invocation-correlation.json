@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "invocationId": {
+      "description": "ULID unique to this command invocation (outer or nested).",
+      "type": "string"
+    },
+    "parentInvocationId": {
+      "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "invocationId"
+  ],
+  "type": "object"
+}

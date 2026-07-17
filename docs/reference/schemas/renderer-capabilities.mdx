@@ -1,0 +1,17 @@
+---
+title: Renderer Capabilities
+description: Public Lando schema contract for Renderer Capabilities.
+---
+
+# Renderer Capabilities
+
+Public Lando schema contract for Renderer Capabilities.
+
+[JSON Schema artifact](../../../dist/schemas/renderer-capabilities.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `color` | Yes | `boolean` | ANSI color output supported. | — | — | — | — |
+| `interactive` | Yes | `boolean` | Keyboard input honored (task-tree focus/expand, prompts). | — | — | — | — |
+| `animation` | Yes | `boolean` | Continuous/live redraw supported (spinners, progress fill). | — | — | — | — |
+| `notifications` | Yes | `boolean` | Desktop-notification path supported. | — | — | — | — |

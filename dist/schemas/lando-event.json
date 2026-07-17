@@ -8670,6 +8670,14 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
@@ -8681,6 +8689,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp"
       ],
       "type": "object"
@@ -8763,6 +8772,14 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
+          "type": "string"
+        },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
@@ -8774,6 +8791,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp",
         "exitCode",
         "durationMs"
@@ -8862,7 +8880,15 @@
           "required": [],
           "type": "object"
         },
+        "invocationId": {
+          "description": "ULID unique to this command invocation (outer or nested).",
+          "type": "string"
+        },
         "message": {
+          "type": "string"
+        },
+        "parentInvocationId": {
+          "description": "ULID of the enclosing invocation; absent for the outer user/embedding-host invocation.",
           "type": "string"
         },
         "timestamp": {
@@ -8876,6 +8902,7 @@
         "args",
         "flags",
         "cwd",
+        "invocationId",
         "timestamp",
         "exitCode",
         "durationMs",
@@ -9231,6 +9258,44 @@
         "_tag",
         "banner",
         "timestamp"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "notify.desktop"
+          ],
+          "type": "string"
+        },
+        "body": {
+          "description": "Optional notification body (up to 4096 chars).",
+          "maxLength": 4096,
+          "title": "maxLength(4096)",
+          "type": "string"
+        },
+        "title": {
+          "description": "Notification title (1..256 chars after schema decode).",
+          "maxLength": 256,
+          "minLength": 1,
+          "title": "maxLength(256)",
+          "type": "string"
+        },
+        "urgency": {
+          "description": "Optional urgency hint for presentation consumers.",
+          "enum": [
+            "info",
+            "success",
+            "failure"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "title"
       ],
       "type": "object"
     }

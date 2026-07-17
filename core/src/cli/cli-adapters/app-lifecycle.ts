@@ -67,6 +67,7 @@ import {
   commandErrorMessage,
   compiledFormat,
   emitDiagnosticLine,
+  getActiveCommandInvocation,
   rejectInvalidInvocation,
   resetActiveCommandInvocation,
   runCompiledCommand,
@@ -243,7 +244,7 @@ export const runSetup = async (argv: ReadonlyArray<string>): Promise<void> => {
       rendererMode: activeRendererMode,
       resultFormat: activeResultFormat,
       command: setupSpec.id,
-      invocation: {
+      invocation: getActiveCommandInvocation() ?? {
         commandId: setupSpec.id,
         argv: input.argv,
         args: input.args,

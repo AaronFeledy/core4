@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { HostProxyErrorCode, HostProxyRequest, HostProxyResponse } from "../../src/schema/host-proxy.ts";
+import {
+  HOST_PROXY_REQUEST_TAGS,
+  HostProxyErrorCode,
+  HostProxyRequest,
+  HostProxyResponse,
+} from "../../src/schema/host-proxy.ts";
 
 describe("HostProxyRequest", () => {
   test("decodes a runLando request", () => {
@@ -41,6 +46,17 @@ describe("HostProxyRequest", () => {
 
   test("rejects an unknown request tag", () => {
     expect(() => Schema.decodeUnknownSync(HostProxyRequest)({ _tag: "bogus", argv: [] })).toThrow();
+  });
+
+  test("rejects deleted notify and clipboardCopy variants", () => {
+    expect(() => Schema.decodeUnknownSync(HostProxyRequest)({ _tag: "notify", title: "done" })).toThrow();
+    expect(() =>
+      Schema.decodeUnknownSync(HostProxyRequest)({ _tag: "clipboardCopy", text: "secret" }),
+    ).toThrow();
+  });
+
+  test("union membership is exactly openUrl, openPath, runLando, runBun", () => {
+    expect([...HOST_PROXY_REQUEST_TAGS].sort()).toEqual(["openPath", "openUrl", "runBun", "runLando"].sort());
   });
 
   test("rejects a runLando request missing cwd", () => {

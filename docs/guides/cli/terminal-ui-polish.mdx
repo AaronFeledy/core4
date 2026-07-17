@@ -50,4 +50,15 @@ tags: [beta, docs, cli, renderer]
       <Variable name="compiled" value="one target-matching native library embedded in each release binary" display="Relocated binaries need no node_modules or loose native-library sidecar" />
     </Step>
   </Scenario>
+  <Scenario id="desktop-notifications-foreground" render={false} reason="Capability-matrix and notify.desktop unit tests cover promotion, sanitization, and OpenTUI triggerNotification gating without a live desktop session">
+    <Step name="capability-surface">
+      <Variable name="capabilities" value="color, interactive, animation, notifications" display="Every renderer publishes the four-field RendererCapabilities snapshot; the default TTY path may promote color and notifications once after a short substrate probe" />
+      <Variable name="machineModes" value="plain, json, verbose non-TTY, and non-TTY lando report all-false; verbose TTY is color-only" display="Machine and debug modes never claim interactive animation or desktop notification support" />
+    </Step>
+    <Step name="foreground-only">
+      <Variable name="event" value="notify.desktop" display="A desktop notification is a foreground render event from the command that finished, not a container-to-host relay" />
+      <Variable name="gate" value="renderer.capabilities.notifications" display="When notifications is false the event is dropped; when true the default renderer calls OpenTUI triggerNotification after sanitizing title and body" />
+      <Variable name="json" value="structured stderr event" display="json mode still emits notify.desktop as a structured event so agents can present it themselves" />
+    </Step>
+  </Scenario>
 </Guide>

@@ -55,6 +55,7 @@ import {
 } from "./managed-file.ts";
 import { PostMcpCallEvent, PreMcpCallEvent } from "./mcp.ts";
 import { MessageErrorEvent, MessageInfoEvent, MessageWarnEvent } from "./message.ts";
+import { NotifyDesktopEvent } from "./notify.ts";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "./open.ts";
 import {
   PostProviderApplyEvent,
@@ -187,6 +188,7 @@ export const LandoEvent = Schema.Union(
   MessageWarnEvent,
   MessageErrorEvent,
   PaintBannerEvent,
+  NotifyDesktopEvent,
 );
 export type LandoEvent = typeof LandoEvent.Type;
 

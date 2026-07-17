@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { NotifyConfig } from "./notify-config.ts";
 import { AbsolutePath, ProviderId } from "./primitives.ts";
 
 // Global config — the host-level merged config.
@@ -114,6 +115,9 @@ export const GlobalConfig = Schema.Struct({
   }),
   agentEnv: Schema.optional(AgentEnvConfig).annotations({
     description: "Global host agent-context env forwarding policy (global agentEnv).",
+  }),
+  notify: Schema.optional(NotifyConfig).annotations({
+    description: "Global desktop-notification policy (global notify; §8.9.7).",
   }),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

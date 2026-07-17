@@ -44,6 +44,7 @@ const capturingRenderer = (id = "plain") => {
   let err = "";
   const service: RendererService = {
     id,
+    capabilities: { color: false, interactive: false, animation: false, notifications: false },
     message: { info: () => Effect.void, warn: () => Effect.void, error: () => Effect.void },
     output: {
       stdout: (chunk: string) =>

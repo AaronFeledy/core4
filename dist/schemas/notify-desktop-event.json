@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "_tag": {
+      "enum": [
+        "notify.desktop"
+      ],
+      "type": "string"
+    },
+    "body": {
+      "description": "Optional notification body (up to 4096 chars).",
+      "maxLength": 4096,
+      "title": "maxLength(4096)",
+      "type": "string"
+    },
+    "title": {
+      "description": "Notification title (1..256 chars after schema decode).",
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "maxLength(256)",
+      "type": "string"
+    },
+    "urgency": {
+      "description": "Optional urgency hint for presentation consumers.",
+      "enum": [
+        "info",
+        "success",
+        "failure"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "_tag",
+    "title"
+  ],
+  "type": "object"
+}
