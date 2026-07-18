@@ -32,15 +32,33 @@ describe("generated bootstrap layers", () => {
     const scratch = await readFile(resolve(generatedLayersDir, "scratch.ts"), "utf8");
     const app = await readFile(resolve(generatedLayersDir, "app.ts"), "utf8");
 
-    expect(tooling).toContain("makePluginsBootstrapLayer(inputs)");
-    expect(provider).toContain("makePluginsBootstrapLayer(inputs)");
+    expect(tooling).toContain("makePluginsBootstrapBaseLayer(inputs)");
+    expect(provider).toContain("makePluginsBootstrapBaseLayer(inputs)");
     expect(global).toContain("makeProviderBootstrapLayer(inputs)");
     expect(scratch).toContain("makeProviderBootstrapLayer(inputs)");
-    expect(app).toContain("makeProviderBootstrapLayer(inputs)");
+    expect(app).toContain("makeProviderBootstrapBaseLayer(inputs)");
 
     for (const source of [tooling, provider, global, scratch, app]) {
       expect(source).not.toContain("makePluginRegistryLive");
     }
+  });
+
+  test("minimal bootstrap stays plugin-free while final tiers install subscribers", async () => {
+    // Given: generated minimal, plugin, tooling, and app bootstrap modules.
+    const minimal = await readFile(resolve(generatedLayersDir, "minimal.ts"), "utf8");
+    const plugins = await readFile(resolve(generatedLayersDir, "plugins.ts"), "utf8");
+    const tooling = await readFile(resolve(generatedLayersDir, "tooling.ts"), "utf8");
+    const app = await readFile(resolve(generatedLayersDir, "app.ts"), "utf8");
+
+    // When: subscriber registration placement is inspected.
+    // Then: minimal has no plugin discovery and command-aware tiers finalize subscribers.
+    expect(minimal).not.toContain("makePluginRegistryLive");
+    expect(minimal).not.toContain("makeSubscriberRuntimeLive");
+    expect(plugins).toContain("makeSubscriberRuntimeLive");
+    expect(tooling).toContain("CommandRegistryLive");
+    expect(tooling).toContain("makeSubscriberRuntimeLive");
+    expect(app).toContain("CommandRegistryLive");
+    expect(app).toContain("makeSubscriberRuntimeLive");
   });
 
   test("provider bootstrap wires the default UrlScanner", async () => {

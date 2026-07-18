@@ -39,6 +39,7 @@ export interface LandoPaths {
   readonly platform: HostPlatform;
   // userData-scoped
   readonly pluginsDir: string;
+  readonly pluginStateDir: (pluginId: string) => string;
   readonly appPluginsDir: (appId: string) => string;
   readonly pluginAuthFile: string;
   readonly binDir: string;

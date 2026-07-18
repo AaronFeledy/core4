@@ -39,6 +39,7 @@ const repoRoot = resolve(import.meta.dirname, "../../../..");
 const coreRoot = resolve(repoRoot, "core");
 const runSourcePath = resolve(coreRoot, "src/cli/run.ts");
 const compiledRuntimeSourcePath = resolve(coreRoot, "src/cli/compiled-runtime.ts");
+const metaPluginAdapterSourcePath = resolve(coreRoot, "src/cli/cli-adapters/meta-plugin.ts");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
 let compiledBinary = "";
 
@@ -48,6 +49,7 @@ const DEFERRED_IDS: ReadonlyArray<string> = [...DEFERRED_COMMAND_PLANS.keys()].s
 
 const runSource = readFileSync(runSourcePath, "utf-8");
 const compiledRuntimeSource = readFileSync(compiledRuntimeSourcePath, "utf-8");
+const metaPluginAdapterSource = readFileSync(metaPluginAdapterSourcePath, "utf-8");
 
 /**
  * A canonical id has a compiled-dispatch branch when `runCompiledCli` compares
@@ -120,6 +122,21 @@ describe("compiled-binary dispatch parity — structural", () => {
     expect(compiledRuntimeSource.slice(runtimeStart, runtimeEnd)).toContain(
       "deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false",
     );
+  });
+
+  test("compiled global list uses the same plugin bootstrap as source dispatch", () => {
+    // Given: the compiled adapter that owns meta:global:list runtime construction.
+    const start = metaPluginAdapterSource.indexOf("export const runMetaGlobalList =");
+    const end = metaPluginAdapterSource.indexOf("export const runMetaGlobalInfo", start);
+
+    // When: its isolated function body is inspected.
+    const adapter = metaPluginAdapterSource.slice(start, end);
+
+    // Then: notification subscribers are available on the compiled path.
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(adapter).toContain('bootstrap: "plugins"');
+    expect(adapter).not.toContain('bootstrap: "minimal"');
   });
 });
 

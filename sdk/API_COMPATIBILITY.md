@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `LandoPaths.pluginStateDir(pluginId)` additively exposes the canonical durable plugin-state root `<userDataRoot>/plugins/<pluginId>` so plugin contexts never reuse app-plugin installation paths.
 - `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
 - `ToolingCompileError` and `ToolingExecError` additively accept optional `remediation` so cache-only routing and task failures can return actionable machine errors.
 - US-442 replaces the placeholder static CLI event tags with canonical dynamic `cli-<command-id>-init|run|error` tags and adds redacted invocation, duration, exit-code, and failure identity fields. `EventFor<Name>` narrows those dynamic tags to their public lifecycle variants.

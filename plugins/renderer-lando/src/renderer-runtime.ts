@@ -76,7 +76,7 @@ const handleNotifyDesktop = (
   triggerNotification(body.length === 0 ? title : body, body.length === 0 ? undefined : title);
 };
 
-const makeNotificationConsumerLive = (
+export const makeNotificationConsumerLive = (
   getCapabilities: () => { readonly notifications: boolean },
   triggerNotification: ((message: string, title?: string) => boolean) | undefined,
   flushNotifications: (() => Promise<void>) | undefined,
@@ -87,19 +87,18 @@ const makeNotificationConsumerLive = (
       const queue = yield* events.subscribeQueue;
       const consume = (event: LandoEvent): void =>
         handleNotifyDesktop(event, getCapabilities, triggerNotification);
-      const fiber = yield* Effect.forkScoped(
-        Effect.gen(function* () {
-          while (true) consume(yield* Queue.take(queue));
-        }),
-      );
+      const consumer = Effect.gen(function* () {
+        while (true) consume(yield* Queue.take(queue));
+      });
+      const fiber = yield* Effect.forkScoped(consumer);
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
+          yield* Fiber.interrupt(fiber);
           const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) consume(event);
           }
           if (flushNotifications !== undefined) yield* Effect.promise(flushNotifications);
-          yield* Fiber.interrupt(fiber);
         }),
       );
     }),
@@ -143,17 +142,29 @@ export const makeLandoEventConsumer = (
   return Layer.merge(taskTree, notifications);
 };
 
+export const makeLandoNotificationConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> => {
+  const snapshot = resolveCapabilitySnapshot(
+    io,
+    io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
+  );
+  return makeNotificationConsumerLive(
+    () => snapshot.get(),
+    productionTriggerNotificationSync,
+    flushPendingNotifications,
+  );
+};
+
 export const landoRendererContribution: RendererContribution = {
   id: "lando",
   makeService: (io) =>
     makeLandoService(io, io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {}),
   makeEventConsumer: (io) => {
-    const snapshot = resolveCapabilitySnapshot(
-      io,
-      io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
-    );
     return makeLandoEventConsumer(io, {
-      getCapabilities: () => snapshot.get(),
+      getCapabilities: () =>
+        resolveCapabilitySnapshot(
+          io,
+          io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
+        ).get(),
       triggerNotification: productionTriggerNotificationSync,
       flushNotifications: flushPendingNotifications,
     });

@@ -14,11 +14,12 @@
 import { Layer } from "effect";
 
 import { DeprecationPluginRegistryLive } from "../../../deprecation/plugin-registry.ts";
+import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import { makePluginRegistryLive } from "../../../plugins/registry.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { makeMinimalBootstrapLayer } from "./minimal.ts";
 
-export const makePluginsBootstrapLayer = (inputs: BootstrapLayerInputs) => {
+export const makePluginsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {
   const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);
   const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(
     Layer.provide(minimalRuntimeLive),
@@ -27,4 +28,10 @@ export const makePluginsBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive)),
   );
   return Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, deprecationRegistryLive);
+};
+
+export const makePluginsBootstrapLayer = (inputs: BootstrapLayerInputs) => {
+  const pluginsBase = makePluginsBootstrapBaseLayer(inputs);
+  const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(pluginsBase));
+  return Layer.merge(pluginsBase, subscriberRuntimeLive);
 };

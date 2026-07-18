@@ -1,4 +1,4 @@
-import { Cause, type Context, type Duration, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
+import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
 import { type EventFor, EventService, type EventWaitSpec, type LandoEvent } from "@lando/sdk/services";
@@ -32,6 +32,17 @@ type EventServiceConfig = {
   readonly redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>;
 };
 
+export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
+export type EventDispatchRegistration = {
+  readonly hasSubscribers: (eventName: string) => boolean;
+  readonly dispatch: EventDispatcher;
+};
+
+export class EventDispatchControl extends Context.Tag("@lando/core/EventDispatchControl")<
+  EventDispatchControl,
+  { readonly install: (registration: EventDispatchRegistration) => Effect.Effect<void> }
+>() {}
+
 const HISTORY_REDACTION_PROFILE = "secrets" as const;
 
 const historyRedactionOptions = (): RedactionForProfileOptions => ({ sourceEnv: process.env });
@@ -53,7 +64,10 @@ const redactForHistory = (
   });
 };
 
-const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeof EventService> => {
+const makeEventService = (
+  config: EventServiceConfig,
+  getDispatch: () => EventDispatchRegistration,
+): Context.Tag.Service<typeof EventService> => {
   const { pubsub, history, historyCap, redaction } = config;
 
   const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
@@ -94,9 +108,11 @@ const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeo
     );
 
   const service: Context.Tag.Service<typeof EventService> = {
-    publish: (event) =>
-      PubSub.publish(pubsub, event).pipe(
+    publish: (event) => {
+      const registration = getDispatch();
+      return PubSub.publish(pubsub, event).pipe(
         Effect.zipRight(appendHistory(event)),
+        Effect.zipRight(registration.hasSubscribers(event._tag) ? registration.dispatch(event) : Effect.void),
         Effect.asVoid,
         Effect.catchSomeCause((cause) =>
           Cause.isDie(cause)
@@ -105,7 +121,8 @@ const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeo
               )
             : Option.none(),
         ),
-      ),
+      );
+    },
     subscribe: <Name extends string>(name: Name) =>
       Stream.fromPubSub(pubsub).pipe(
         Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
@@ -139,16 +156,30 @@ const makeEventService = (config: EventServiceConfig): Context.Tag.Service<typeo
 
 export const makeEventServiceLive = (
   historyCap = DEFAULT_HISTORY_CAP,
-): Layer.Layer<EventService, never, never> =>
-  Layer.scoped(
-    EventService,
+): Layer.Layer<EventService | EventDispatchControl, never, never> =>
+  Layer.unwrapScoped(
     Effect.gen(function* () {
+      let registration: EventDispatchRegistration = {
+        hasSubscribers: () => false,
+        dispatch: () => Effect.void,
+      };
       const pubsub = yield* PubSub.unbounded<LandoEvent>();
       yield* Effect.addFinalizer(() => PubSub.shutdown(pubsub));
       const history = yield* Ref.make<ReadonlyArray<LandoEvent>>([]);
       const redaction = yield* Effect.serviceOption(RedactionService);
-      return makeEventService({ pubsub, history, historyCap, redaction });
+      const events = Layer.succeed(
+        EventService,
+        makeEventService({ pubsub, history, historyCap, redaction }, () => registration),
+      );
+      const control = Layer.succeed(EventDispatchControl, {
+        install: (next) =>
+          Effect.sync(() => {
+            registration = next;
+          }),
+      });
+      return Layer.merge(events, control);
     }),
   );
 
-export const EventServiceLive = makeEventServiceLive();
+export const EventRuntimeLive = makeEventServiceLive();
+export const EventServiceLive: Layer.Layer<EventService, never, never> = EventRuntimeLive;

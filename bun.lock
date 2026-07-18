@@ -73,6 +73,14 @@
         "@lando/sdk": "workspace:*",
       },
     },
+    "plugins/notify-lando": {
+      "name": "@lando/notify-lando",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
+      },
+    },
     "plugins/provider-docker": {
       "name": "@lando/provider-docker",
       "version": "0.0.0",
@@ -307,6 +315,8 @@
     "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
 
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
+
+    "@lando/notify-lando": ["@lando/notify-lando@workspace:plugins/notify-lando"],
 
     "@lando/provider-docker": ["@lando/provider-docker@workspace:plugins/provider-docker"],
 

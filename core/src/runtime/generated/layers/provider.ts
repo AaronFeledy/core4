@@ -16,24 +16,17 @@ import { Layer } from "effect";
 import { RuntimeProvider } from "@lando/sdk/services";
 import { DataMoverLive } from "../../../data-mover/service.ts";
 import { GlobalAppServiceLive } from "../../../global-app/service.ts";
+import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import { RuntimeProviderRegistryLive } from "../../../providers/registry.ts";
-import { RedactionServiceLive } from "../../../redaction/service.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
-import { EventServiceLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
-import { SecretStoreLive } from "../../../services/secret-store.ts";
 import { UrlScannerLive } from "../../../subsystems/scanner/live.ts";
 import { type BootstrapLayerInputs, runtimeProviderService } from "../../bootstrap-layer-support.ts";
-import { makePluginsBootstrapLayer } from "./plugins.ts";
+import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
 
-export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
-  const pluginsRuntimeLive = makePluginsBootstrapLayer(inputs);
-  const eventServiceLive = EventServiceLive.pipe(
-    Layer.provide(RedactionServiceLive.pipe(Layer.provide(SecretStoreLive))),
-  );
-  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
-    Layer.provide(Layer.mergeAll(pluginsRuntimeLive, eventServiceLive)),
-  );
+export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {
+  const pluginsRuntimeLive = makePluginsBootstrapBaseLayer(inputs);
+  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(Layer.provide(pluginsRuntimeLive));
 
   const runtimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
   const urlScannerLive = UrlScannerLive.pipe(
@@ -42,11 +35,16 @@ export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
 
   return Layer.mergeAll(
     pluginsRuntimeLive,
-    eventServiceLive,
     runtimeProviderLive,
     urlScannerLive,
     DataMoverLive.pipe(Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))),
     providerRegistryLive,
     GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   );
+};
+
+export const makeProviderBootstrapLayer = (inputs: BootstrapLayerInputs) => {
+  const providerBase = makeProviderBootstrapBaseLayer(inputs);
+  const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(providerBase));
+  return Layer.merge(providerBase, subscriberRuntimeLive);
 };

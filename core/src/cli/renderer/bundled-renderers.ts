@@ -1,6 +1,9 @@
 import type { RendererContribution } from "@lando/sdk/renderer";
 
-import { renderer as landoRendererContribution } from "@lando/renderer-lando";
+import {
+  renderer as landoRendererContribution,
+  makeNotificationConsumer as makeLandoNotificationConsumer,
+} from "@lando/renderer-lando";
 
 /**
  * The renderer contributions supplied by bundled renderer plugins. Each plugin
@@ -28,3 +31,4 @@ export const resolveBundledRenderer = (id: string): RendererContribution => {
 };
 
 export const landoRenderer: RendererContribution = resolveBundledRenderer("lando");
+export { makeLandoNotificationConsumer };

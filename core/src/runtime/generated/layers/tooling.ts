@@ -14,15 +14,17 @@
 import { Layer } from "effect";
 
 import { LandofileServiceLive } from "../../../landofile/service.ts";
+import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import { CommandRegistryLive } from "../../../services/command-registry.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
-import { makePluginsBootstrapLayer } from "./plugins.ts";
+import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
 
 export const makeToolingBootstrapLayer = (inputs: BootstrapLayerInputs) => {
-  const pluginsRuntimeLive = makePluginsBootstrapLayer(inputs);
-  return Layer.mergeAll(
-    pluginsRuntimeLive,
-    LandofileServiceLive,
-    CommandRegistryLive.pipe(Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginsRuntimeLive))),
+  const pluginsRuntimeLive = makePluginsBootstrapBaseLayer(inputs);
+  const commandRegistryLive = CommandRegistryLive.pipe(
+    Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginsRuntimeLive)),
   );
+  const toolingBase = Layer.mergeAll(pluginsRuntimeLive, LandofileServiceLive, commandRegistryLive);
+  const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(toolingBase));
+  return Layer.merge(toolingBase, subscriberRuntimeLive);
 };

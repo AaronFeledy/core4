@@ -18,9 +18,10 @@ import {
   type ResolveRendererModeResult,
   resolveRendererMode,
 } from "./renderer-selection.ts";
-import { landoRenderer } from "./renderer/bundled-renderers.ts";
+import { landoRenderer, makeLandoNotificationConsumer } from "./renderer/bundled-renderers.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
 import {
+  makeJsonNotificationRendererLive,
   makeJsonRendererLive,
   makeJsonRendererServiceLive,
   makePlainRendererLive,
@@ -74,6 +75,21 @@ export const makeRendererEventConsumerLiveForMode = (
       return makeVerboseRendererLive(io);
     case "lando":
       return landoRenderer.makeEventConsumer(io);
+  }
+};
+
+const makeRendererNotificationConsumerLiveForMode = (
+  mode: RendererMode,
+  io: RendererIO,
+): Layer.Layer<never, never, EventService> | undefined => {
+  switch (mode) {
+    case "json":
+      return makeJsonNotificationRendererLive(io);
+    case "lando":
+      return makeLandoNotificationConsumer(io);
+    case "plain":
+    case "verbose":
+      return undefined;
   }
 };
 
@@ -444,6 +460,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
               ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
             });
+      if (options.invocation !== undefined) {
+        // Terminal subscribers publish to the command-scoped renderer before its scope closes.
+        yield* Effect.yieldNow();
+      }
       if (
         options.suppressInterruptionDiagnostics === true &&
         Exit.isFailure(commandExit) &&
@@ -474,18 +494,16 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       }
       return { _tag: "success", value: commandExit.value } as const;
     });
-    const executeWithEventConsumer =
+    const eventConsumerLayer =
       options.renderEvents === true
-        ? executeCommand.pipe(
-            Effect.provide(
-              makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
-                ...(options.plainTaskEvents === undefined
-                  ? {}
-                  : { plainTaskEvents: options.plainTaskEvents }),
-              }),
-            ),
-          )
-        : executeCommand;
+        ? makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+            ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
+          })
+        : makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
+    const executeWithEventConsumer =
+      eventConsumerLayer === undefined
+        ? executeCommand
+        : executeCommand.pipe(Effect.provide(eventConsumerLayer));
     const commandOutcome = yield* Effect.exit(
       withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(commandLayer)),
     );

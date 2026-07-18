@@ -27,6 +27,10 @@ export interface BundledPluginEntry {
     readonly proxies?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
     readonly templateEngines?: ReadonlyArray<string>;
+    readonly subscribers?: ReadonlyArray<{
+      readonly id: string;
+      readonly module: string;
+    }>;
   };
 }
 
@@ -66,6 +70,13 @@ export const buildConfig: BuildConfig = {
     },
     { name: "@lando/logger-pretty", path: "plugins/logger-pretty", contributes: { loggers: ["pretty"] } },
     { name: "@lando/renderer-lando", path: "plugins/renderer-lando", contributes: { renderers: ["lando"] } },
+    {
+      name: "@lando/notify-lando",
+      path: "plugins/notify-lando",
+      contributes: {
+        subscribers: [{ id: "notify-command-terminal", module: "@lando/notify-lando/notify" }],
+      },
+    },
     {
       name: "@lando/file-sync-mutagen",
       path: "plugins/file-sync-mutagen",

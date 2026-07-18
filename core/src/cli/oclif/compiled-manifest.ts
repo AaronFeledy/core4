@@ -4053,9 +4053,9 @@ export const COMPILED_OCLIF_MANIFEST = {
           "List every contributed global service, its source plugin, enabled state, and per-service commands.",
         namespace: "meta",
         topLevelAlias: "global:list",
-        bootstrap: "minimal",
+        bootstrap: "plugins",
       },
-      bootstrap: "minimal",
+      bootstrap: "plugins",
       aliasPermutations: ["global:list", "list:global"],
       permutations: [
         "meta:global:list",

@@ -34,6 +34,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - `Renderer.capabilities` is a getter over at most two immutable snapshots per run (initial, optional monotonic promotion); never mutate in place or demote fields.
 - `notify.desktop` is capability-gated at the renderer: drop when `notifications` is false; json still emits the event; never hand-frame OSC sequences — call OpenTUI `triggerNotification`.
 - `HostProxyRequest` has exactly four tags (`openUrl`, `openPath`, `runLando`, `runBun`); container-initiated notify/clipboardCopy is unsupported.
+- After awaited terminal lifecycle subscribers publish renderer events, yield once before closing the command-scoped renderer consumer; compiled adapters must use the same bootstrap tier as their source command specs.
 
 ## Durable learnings
 
@@ -715,4 +716,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint passed; relevant build-orchestrator, renderer live-region, and first-paint spot checks passed.
 - **Learnings for future iterations:**
   - When stacked remediation has merged to main, stale branch-local audit metadata must not reopen the completed implementation.
+---
+
+## 2026-07-18 02:34 CDT - US-459
+- Shipped the bundled notify policy plugin and the bounded subscriber runtime: schema-derived selector/config projection, two-phase command-family indexing, lazy cached factories, plugin-scoped context, publisher-boundary redaction, and exactly one success/failure desktop render event for eligible parentless invocations. Source and compiled command paths now retain terminal notification delivery while non-TTY output remains silent.
+- Verification: typecheck and lint passed; 300 focused notify, lifecycle, renderer, plugin, SDK, bootstrap, and adjacent tests passed; boundary and codegen-idempotence gates passed; source and compiled CLI surfaces emitted the expected structured notification and cleaned up their isolated roots.
+- **Learnings for future iterations:**
+  - Fully awaited event publication can still leave a synchronous consumer fiber runnable in the current scheduler turn; hand off once before closing its scope when terminal subscribers publish final renderer output.
+  - A source command bootstrap change does not update hand-written compiled adapters; lock bootstrap parity with a focused structural regression and a real compiled-binary surface.
 ---

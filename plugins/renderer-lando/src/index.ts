@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import type { RendererContribution } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 
-import { landoRendererContribution } from "./renderer-runtime.ts";
+import { landoRendererContribution, makeLandoNotificationConsumer } from "./renderer-runtime.ts";
 
 export const PLUGIN_NAME = "@lando/renderer-lando" as const;
 
@@ -14,6 +14,8 @@ export const PLUGIN_NAME = "@lando/renderer-lando" as const;
  * renderer from parts.
  */
 export const renderer: RendererContribution = landoRendererContribution;
+
+export const makeNotificationConsumer = makeLandoNotificationConsumer;
 
 export const loadInteractivePromptDriver = async (): Promise<{
   readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>;

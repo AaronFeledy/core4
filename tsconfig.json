@@ -36,6 +36,9 @@
       "path": "./plugins/renderer-lando"
     },
     {
+      "path": "./plugins/notify-lando"
+    },
+    {
       "path": "./plugins/file-sync-mutagen"
     },
     {

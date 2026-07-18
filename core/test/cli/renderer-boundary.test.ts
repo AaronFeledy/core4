@@ -132,6 +132,41 @@ describe("runWithRendererHandling", () => {
     expect(io.stdout()).toBe("[tooling:composer:appserver] installing\n");
   });
 
+  test("json consumes notify.desktop without enabling unrelated event rendering", async () => {
+    // Given: a default command that did not opt into task/event rendering.
+    const io = createBufferedRendererIO();
+
+    // When: its runtime publishes a notification and an unrelated task event.
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish({ _tag: "notify.desktop", title: "Done", urgency: "success" });
+        yield* events.publish({
+          _tag: "task.detail",
+          taskId: "unrelated",
+          stream: "stdout",
+          line: "not rendered",
+          timestamp: "2026-07-18T00:00:00.000Z",
+        });
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "json",
+        resultFormat: "json",
+        io,
+        command: "meta:global:list",
+        render: () => undefined,
+        formatError: () => "should not happen",
+      },
+    );
+
+    // Then: the notification is a structured event and task rendering remains opt-in.
+    const lines = io.stderrLines().map((line) => JSON.parse(line));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatchObject({ _tag: "notify.desktop", title: "Done", urgency: "success" });
+    expect(io.stderr()).not.toContain("not rendered");
+  });
+
   test("json streaming emits chunks, bounded events, and a terminal result frame in order", async () => {
     const io = createBufferedRendererIO();
     const secret = "stream-secret-value";
