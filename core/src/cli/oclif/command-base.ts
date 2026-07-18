@@ -2,7 +2,12 @@ import { Command } from "@oclif/core";
 
 import { Effect, Layer, Schema } from "effect";
 
-import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import {
+  type ConfigError,
+  LandoRuntimeBootstrapError,
+  NotImplementedError,
+  RendererSelectionError,
+} from "@lando/sdk/errors";
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
@@ -436,7 +441,7 @@ export abstract class LandoCommandBase extends Command {
     await runWithRendererHandling(spec.run(input), {
       runtime: runtime as Layer.Layer<
         Exclude<R, EventService | Renderer | StreamFrameSink>,
-        LandoRuntimeBootstrapError
+        ConfigError | LandoRuntimeBootstrapError
       >,
       rendererMode,
       resultFormat,

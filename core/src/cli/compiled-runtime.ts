@@ -1,6 +1,6 @@
 import { Effect, type Layer, type Schema } from "effect";
 
-import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
   AppPlanner,
   BuildOrchestrator,
@@ -309,18 +309,18 @@ export const globalRuntimeLayer = () =>
     | BuildOrchestrator
     | FileSystem
     | EventService,
-    LandoRuntimeBootstrapError
+    ConfigError | LandoRuntimeBootstrapError
   >;
 
 export const scratchRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
-  ) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
+  ) as Layer.Layer<ScratchAppService, ConfigError | LandoRuntimeBootstrapError>;
 
 export const scratchRunRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<
     ScratchAppService | ConfigService | FileSystem | RuntimeProviderRegistry,
-    LandoRuntimeBootstrapError
+    ConfigError | LandoRuntimeBootstrapError
   >;

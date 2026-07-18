@@ -199,6 +199,34 @@ describe("subscriber runtime integration", () => {
     }
   });
 
+  test("commands-tier rejects a below-commands canonical notify command", async () => {
+    // Given: active notify-lando policy naming a canonical command below commands bootstrap.
+    const { layer, root } = await runtime([], "notify:\n  commands:\n    - meta:version\n");
+    const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
+    process.env.LANDO_USER_CONF_ROOT = join(root, "config");
+
+    // When: the commands-tier layer validates notification eligibility.
+    const exit = await Effect.runPromiseExit(
+      Effect.gen(function* () {
+        return yield* EventService;
+      }).pipe(Effect.provide(layer)),
+    );
+    if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+    else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+
+    // Then: canonical selector membership does not make the command notification-eligible.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        const value: unknown = failure.value;
+        expect(value).toBeInstanceOf(ConfigError);
+        if (value instanceof ConfigError) expect(value.path).toBe("notify.commands[0]");
+      }
+    }
+  });
+
   test("renders the terminal lifecycle notification through the command runtime", async () => {
     // Given: the real commands bootstrap and JSON renderer with a zero notification threshold.
     const { layer, root } = await runtime([], "notify:\n  thresholdMs: 0\n");

@@ -1682,6 +1682,86 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
   });
 
   describe("answer-source and interactivity resolution at parity", () => {
+    test("apps:init: invalid notify.commands fails before scaffolding on both paths", async () => {
+      // Given: commands-tier config names a command absent from the final registry.
+      const isolated = makeIsolatedEnv();
+      const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-notify-src-"));
+      const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-notify-cmp-"));
+      const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+      mkdirSync(confRoot, { recursive: true });
+      writeFileSync(join(confRoot, "config.yml"), "notify:\n  commands:\n    - app:missing-command\n");
+      const args = [
+        "apps:init",
+        "--recipe=empty",
+        "--name=invalid-notify-app",
+        "--no-interactive",
+        "--format=json",
+      ] as const;
+
+      try {
+        // When: source and compiled dispatch acquire the declared commands runtime.
+        const source = await runSourceCli(args, { cwd: sourceCwd, env: isolated.env });
+        const compiled = await runCompiledCli(args, { cwd: compiledCwd, env: isolated.env });
+
+        // Then: both reject the same config entry without running init.
+        expect(source.exitCode).toBe(1);
+        expect(compiled.exitCode).toBe(source.exitCode);
+        const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
+        const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
+        expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
+        expect(commandResultEnvelope(sourceFrame)).toMatchObject({
+          command: "apps:init",
+          ok: false,
+          error: {
+            _tag: "ConfigError",
+            message: expect.stringContaining('"app:missing-command" in notify.commands'),
+          },
+        });
+        expect(() => readFileSync(join(sourceCwd, "invalid-notify-app", ".lando.yml"))).toThrow();
+        expect(() => readFileSync(join(compiledCwd, "invalid-notify-app", ".lando.yml"))).toThrow();
+      } finally {
+        rmSync(sourceCwd, { recursive: true, force: true });
+        rmSync(compiledCwd, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
+    test("apps:init: eligible completion reaches notification subscribers on both paths", async () => {
+      // Given: notify-lando selects apps:init with no duration threshold.
+      const isolated = makeIsolatedEnv();
+      const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-subscriber-src-"));
+      const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-subscriber-cmp-"));
+      const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+      mkdirSync(confRoot, { recursive: true });
+      writeFileSync(
+        join(confRoot, "config.yml"),
+        "notify:\n  thresholdMs: 0\n  commands:\n    - apps:init\n",
+      );
+      const args = ["apps:init", "--recipe=empty", "--no-interactive", "--renderer=json"] as const;
+
+      try {
+        // When: each dispatch path completes an init through its command runtime.
+        const source = await runSourceCli([...args, "--name=source-notify-app"], {
+          cwd: sourceCwd,
+          env: isolated.env,
+        });
+        const compiled = await runCompiledCli([...args, "--name=compiled-notify-app"], {
+          cwd: compiledCwd,
+          env: isolated.env,
+        });
+
+        // Then: the command-scoped renderer receives the subscriber event in both cases.
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+        expect(source.stderr).toContain('"_tag":"notify.desktop"');
+        expect(compiled.stderr).toContain('"_tag":"notify.desktop"');
+      } finally {
+        rmSync(sourceCwd, { recursive: true, force: true });
+        rmSync(compiledCwd, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
     test("apps:init: flag answers + --no-interactive scaffold identically", async () => {
       const isolated = makeIsolatedEnv();
       const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-src-"));

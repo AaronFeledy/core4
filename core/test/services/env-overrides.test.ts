@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Cause, Effect, Exit } from "effect";
 
+import { ConfigError } from "@lando/core/errors";
 import { ConfigService } from "@lando/core/services";
 import { mergeLandofiles } from "../../src/landofile/merge.ts";
 import { resolveProviderSelection } from "../../src/providers/precedence.ts";
@@ -16,7 +17,14 @@ import { ConfigServiceLive } from "../../src/services/config.ts";
  */
 const withEnv = async <T>(vars: Record<string, string>, body: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-env-overrides-"));
-  const touched = new Set<string>(["LANDO_USER_CONF_ROOT", "LANDO_USER_DATA_ROOT", ...Object.keys(vars)]);
+  const touched = new Set<string>([
+    "LANDO_USER_CONF_ROOT",
+    "LANDO_USER_DATA_ROOT",
+    "LANDO_NOTIFY_ENABLED",
+    "LANDO_NOTIFY_THRESHOLD_MS",
+    "LANDO_NOTIFY_COMMANDS",
+    ...Object.keys(vars),
+  ]);
   // Also clear any pre-existing LANDO_CONFIG__ vars so the test is hermetic.
   for (const name of Object.keys(process.env)) {
     if (name.startsWith("LANDO_CONFIG__")) touched.add(name);
@@ -164,6 +172,66 @@ describe("LANDO_CONFIG__ generic env overlay", () => {
         expect(config.defaultProviderId).toBe("podman");
       } finally {
         await rm(overlayRoot, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+describe("notify environment overrides", () => {
+  test("canonical aliases map false, zero, and a JSON array to typed notify config", async () => {
+    await withEnv(
+      {
+        LANDO_NOTIFY_ENABLED: "false",
+        LANDO_NOTIFY_THRESHOLD_MS: "0",
+        LANDO_NOTIFY_COMMANDS: '["app:info","app:logs"]',
+      },
+      async () => {
+        const config = await loadConfig();
+
+        expect(config.notify).toEqual({
+          enabled: false,
+          thresholdMs: 0,
+          commands: ["app:info", "app:logs"],
+        });
+      },
+    );
+  });
+
+  test("canonical aliases override equivalent generic overlays", async () => {
+    await withEnv(
+      {
+        LANDO_NOTIFY_ENABLED: "false",
+        LANDO_CONFIG__notify__enabled: "true",
+        LANDO_NOTIFY_THRESHOLD_MS: "0",
+        LANDO_CONFIG__notify__threshold_ms: "15000",
+        LANDO_NOTIFY_COMMANDS: '["app:logs"]',
+        LANDO_CONFIG__notify__commands: '["app:info"]',
+      },
+      async () => {
+        const config = await loadConfig();
+
+        expect(config.notify).toEqual({
+          enabled: false,
+          thresholdMs: 0,
+          commands: ["app:logs"],
+        });
+      },
+    );
+  });
+
+  test("malformed canonical alias values fail through ConfigError decode", async () => {
+    await withEnv({ LANDO_NOTIFY_COMMANDS: "app:info" }, async () => {
+      const exit = await Effect.runPromiseExit(
+        Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
+          Effect.provide(ConfigServiceLive),
+        ),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
       }
     });
   });

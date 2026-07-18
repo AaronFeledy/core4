@@ -14,6 +14,12 @@
 
 export const ENV_OVERLAY_PREFIX = "LANDO_CONFIG__";
 
+const NOTIFY_ENV_OVERLAYS = [
+  ["LANDO_NOTIFY_ENABLED", ["notify", "enabled"]],
+  ["LANDO_NOTIFY_THRESHOLD_MS", ["notify", "thresholdMs"]],
+  ["LANDO_NOTIFY_COMMANDS", ["notify", "commands"]],
+] as const;
+
 // `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.
 const segmentToKey = (segment: string): string =>
   segment.toLowerCase().replace(/_+([a-z0-9])/g, (_match, char: string) => char.toUpperCase());
@@ -81,6 +87,11 @@ export const envOverlay = (
     const segments = rawPath.split("__").filter((segment) => segment.length > 0);
     if (segments.length === 0) continue;
     const path = segments.map(segmentToKey);
+    assignDeep(overlay, path, parseOverlayValue(value, path));
+  }
+  for (const [name, path] of NOTIFY_ENV_OVERLAYS) {
+    const value = env[name];
+    if (value === undefined) continue;
     assignDeep(overlay, path, parseOverlayValue(value, path));
   }
   return overlay;

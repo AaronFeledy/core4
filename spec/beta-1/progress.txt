@@ -774,3 +774,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Re-verifying an already-complete in-flight story should preserve its implementation and prove the committed acceptance surfaces rather than manufacture another code change.
 ---
+
+## 2026-07-18 17:20 CDT - US-459 Review
+- Closed the remaining policy and dispatch gaps: subscriber selectors now close over the complete canonical taxonomy while notification allowlist validation remains commands-tier-only; custom source and compiled `apps:init` dispatch use their declared commands runtime; the documented `LANDO_NOTIFY_*` aliases decode through the standard overlay; runtime casts preserve `ConfigError`; and the owned notification-policy guide is shipped.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs and the security lane found no new vulnerability; the post-4.0 nested `command:` executor, permissive trusted-plugin naming, and subscriber nontermination recovery remain outside this story. `Guide-Coverage-Skip: Notification subscriber wiring is documented in the owned terminal UI guide; unrelated library and Landofile guide behavior did not change.`
+- Verification: typecheck, lint, renderer/machine-output/redaction boundaries, base-aware guide drift, guide lint/coverage/public transcripts, focused lifecycle/subscriber/env/parity tests, and a sandbox source-CLI rejection smoke passed; no full test suite was run.
+- **Learnings for future iterations:**
+  - Keep the closed subscriber event taxonomy separate from feature-specific eligibility sets; policy bootstrap limits must not silently narrow public selector semantics.
+  - A custom command wrapper that declares a bootstrap tier must acquire and provide that runtime on every dispatch path rather than bypassing it with `Layer.empty`.
+---

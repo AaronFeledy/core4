@@ -42,19 +42,20 @@ import {
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
 
+const BELOW_COMMANDS_CANONICAL_IDS: ReadonlySet<string> = new Set(
+  Object.values(COMPILED_OCLIF_MANIFEST.commands)
+    .filter(
+      (entry) =>
+        BOOTSTRAP_RANK[Schema.decodeUnknownSync(BootstrapLevel)(entry.bootstrap)] < BOOTSTRAP_RANK.commands,
+    )
+    .map((entry) => entry.id),
+);
+
 export const canonicalSubscriberCommandIds = (
   manifests: ReadonlyArray<PluginManifest>,
   commands: ReadonlyArray<RegisteredCommand> = [],
 ): ReadonlyArray<string> => {
-  const ids = new Set(
-    Object.values(COMPILED_OCLIF_MANIFEST.commands)
-      .filter(
-        (entry) =>
-          BOOTSTRAP_RANK[Schema.decodeUnknownSync(BootstrapLevel)(entry.bootstrap)] >=
-          BOOTSTRAP_RANK.commands,
-      )
-      .map((entry) => entry.id),
-  );
+  const ids = new Set(Object.values(COMPILED_OCLIF_MANIFEST.commands).map((entry) => entry.id));
   for (const manifest of manifests) {
     for (const command of manifest.contributes?.commands ?? []) ids.add(contributionId(command));
   }
@@ -167,11 +168,14 @@ export const makeSubscriberRuntimeLive = () =>
       const commandRegistry = yield* CommandRegistry;
       const resolvedCommands = yield* commandRegistry.list;
       const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands);
+      const notifyCommandIds = new Set(
+        commandIds.filter((commandId) => !BELOW_COMMANDS_CANONICAL_IDS.has(commandId)),
+      );
       const hasNotifySubscriber = manifests.some((manifest) =>
         manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );
       const notify = hasNotifySubscriber
-        ? yield* resolveNotifyConfig(yield* configService.load, new Set(commandIds))
+        ? yield* resolveNotifyConfig(yield* configService.load, notifyCommandIds)
         : undefined;
       const closure = makeSubscriberRegistrationClosure(manifests);
       const index = yield* closure.close(commandIds);

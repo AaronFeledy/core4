@@ -36,7 +36,7 @@ describe("subscriber runtime", () => {
     expect(ids).toContain("app:custom-tool");
   });
 
-  test("includes only commands+ canonical ids in subscriber closure", () => {
+  test("includes every canonical id in subscriber closure", () => {
     // Given: an app-derived command alongside built-ins from several bootstrap levels.
     const commands: ReadonlyArray<RegisteredCommand> = [
       { id: "app:landofile-command", summary: "Landofile command", hidden: false },
@@ -45,11 +45,41 @@ describe("subscriber runtime", () => {
     // When: canonical subscriber command ids are resolved.
     const ids = new Set(canonicalSubscriberCommandIds([], commands));
 
-    // Then: only commands+ built-ins and app-derived commands participate in subscriber closure.
-    expect(ids.has("meta:version")).toBe(false);
+    // Then: below-commands built-ins, commands+ built-ins, and app-derived commands all participate.
+    expect(ids.has("meta:version")).toBe(true);
     expect(ids.has("apps:init")).toBe(true);
     expect(ids.has("app:landofile-command")).toBe(true);
     expect(ids.has("meta:update")).toBe(true);
+  });
+
+  test("closes exact and terminal selectors over a below-commands canonical id", async () => {
+    // Given: exact and terminal selectors for a canonical command available before commands bootstrap.
+    const closure = makeSubscriberRegistrationClosure([
+      manifest([
+        {
+          id: "terminal",
+          selectors: [{ family: "cli-command-terminal" }],
+          module: "./terminal.ts",
+        },
+        {
+          id: "version",
+          selectors: [{ event: "cli-meta:version-run" }],
+          module: "./version.ts",
+        },
+      ]),
+    ]);
+
+    // When: registration closes against the complete canonical taxonomy.
+    const index = await Effect.runPromise(closure.close(canonicalSubscriberCommandIds([])));
+
+    // Then: exact validation and family expansion both accept the canonical command lifecycle events.
+    expect(index.get("cli-meta:version-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
+      "terminal",
+      "version",
+    ]);
+    expect(index.get("cli-meta:version-error")?.map((subscriber) => subscriber.entry.id)).toEqual([
+      "terminal",
+    ]);
   });
 
   test("expands terminal selectors only when registration closes", async () => {
