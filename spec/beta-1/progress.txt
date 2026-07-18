@@ -758,3 +758,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Split/excise decisions: no absorbed feature was found to split or excise; US-459 remains `passes: false` and returns to Build with the two unresolved production boundaries named above.
 - Verification: typecheck, lint, renderer/redaction boundaries, guide lint/coverage, package typecheck, and focused lifecycle/subscriber/renderer/plugin/bootstrap/parity/event tests passed.
 ---
+
+## 2026-07-18 15:58 CDT - US-459
+- Completed the final commands-tier notification policy: subscriber registration now starts at `commands`, closes against one complete built-in/plugin/Landofile command registry, rejects unknown or lower-tier `notify.commands` entries before registration with actionable `ConfigError` remediation, and preserves the same subscriber runtime through higher bootstrap tiers. `meta:update` now declares `commands` bootstrap in source, generated manifest, and compiled dispatch.
+- Corrected the contract boundary exposed by the final audit: Beta 1 freezes invocation correlation and nested-notification suppression but does not claim a production tooling `command:`-step executor. The schema, compiler, executor, and live nested-invocation proof remain an explicit post-4.0 tooling story.
+- Verification: focused lifecycle, subscriber integration, generated-bootstrap, and source/compiled parity tests passed; root typecheck and lint passed; renderer, managed-file, state-store, probe, redaction, telemetry, guide lint/coverage, public transcript, and generated bootstrap/OCLIF drift gates passed. Source and compiled sandbox QA proved one success notification for `meta:doctor`, one failure notification for `meta:update`, and early `ConfigError` rejection for lower-tier `meta:version`; all sandbox artifacts were removed.
+- **Learnings for future iterations:**
+  - A policy that validates Landofile-derived canonical commands must install only after `CommandRegistry` is complete; tier-conditional fallback validation creates two contracts and cannot prove registration safety.
+  - A normative future command shape is not evidence of a current executor. Keep correlation/suppression schemas frozen while naming unavailable production paths as explicit deferrals.
+---

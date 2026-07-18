@@ -20,7 +20,7 @@ import { makeCommandsBootstrapLayer } from "./commands.ts";
 import { makeGlobalBootstrapLayer } from "./global.ts";
 import { makeMinimalBootstrapLayer } from "./minimal.ts";
 import { noneBootstrapLayer } from "./none.ts";
-import { makePluginsBootstrapLayer } from "./plugins.ts";
+import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
 import { makeProviderBootstrapLayer } from "./provider.ts";
 import { makeScratchBootstrapLayer } from "./scratch.ts";
 import { makeToolingBootstrapLayer } from "./tooling.ts";
@@ -32,7 +32,7 @@ export const makeGeneratedBootstrapLayer = (bootstrap: BootstrapLevel, inputs: B
     case "minimal":
       return makeMinimalBootstrapLayer(inputs);
     case "plugins":
-      return makePluginsBootstrapLayer(inputs);
+      return makePluginsBootstrapBaseLayer(inputs);
     case "commands":
       return makeCommandsBootstrapLayer(inputs);
     case "tooling":

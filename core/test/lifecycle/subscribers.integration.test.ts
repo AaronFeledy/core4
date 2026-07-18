@@ -3,15 +3,16 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
 
+import { ConfigError } from "@lando/sdk/errors";
 import { CliCommandRunEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { makePluginsBootstrapLayer } from "../../src/runtime/generated/layers/plugins.ts";
+import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
 
 const roots: string[] = [];
 
@@ -29,7 +30,7 @@ const runtime = async (disable: ReadonlyArray<string> = [], config?: string) => 
   }
   return {
     root,
-    layer: makePluginsBootstrapLayer({
+    layer: makeCommandsBootstrapLayer({
       loggerMode: "silent",
       rendererMode: "plain",
       telemetryEnabled: false,
@@ -58,20 +59,52 @@ const terminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
 });
 
 describe("subscriber runtime integration", () => {
-  test("bundled notify factory publishes through the command event-service instance", async () => {
-    // Given: plugin bootstrap with bundled subscriber discovery enabled.
-    const { layer } = await runtime();
-
-    // When: an eligible outer terminal event is published.
-    const notifications = await Effect.runPromise(
-      Effect.gen(function* () {
-        const events = yield* EventService;
-        yield* events.publish(terminal);
-        return yield* events.query("notify.desktop");
-      }).pipe(Effect.provide(layer)),
+  test("commands-tier accepts an app-derived notify command and publishes once", async () => {
+    // Given: an isolated app whose notify config selects a Landofile-derived tooling command.
+    const { layer, root } = await runtime(
+      [],
+      "notify:\n  thresholdMs: 0\n  commands:\n    - app:notify-release\n",
     );
+    const appRoot = join(root, "app");
+    await mkdir(appRoot, { recursive: true });
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      ["name: subscriber-fixture", "tooling:", "  notify-release:", "    cmd: echo release", ""].join("\n"),
+    );
+    const appTerminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
+      _tag: "cli-app:notify-release-run",
+      commandId: "app:notify-release",
+      argv: [],
+      args: {},
+      flags: {},
+      cwd: appRoot,
+      invocationId: "outer",
+      timestamp: "2026-07-18T00:00:00.000Z",
+      durationMs: 1,
+      exitCode: 0,
+    });
+    const previousCwd = process.cwd();
+    const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
 
-    // Then: the bundled factory emits exactly one notification before publish returns.
+    // When: the commands-tier runtime is acquired from the app cwd and publishes its terminal event.
+    let notifications: ReadonlyArray<unknown>;
+    try {
+      process.env.LANDO_USER_CONF_ROOT = join(root, "config");
+      process.chdir(appRoot);
+      notifications = await Effect.runPromise(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(appTerminal);
+          return yield* events.query("notify.desktop");
+        }).pipe(Effect.provide(layer)),
+      );
+    } finally {
+      process.chdir(previousCwd);
+      if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+    }
+
+    // Then: final command membership accepts the app command and publishes exactly once.
     expect(notifications).toHaveLength(1);
     expect(notifications[0]).toMatchObject({ _tag: "notify.desktop", urgency: "success" });
   });
@@ -121,41 +154,53 @@ describe("subscriber runtime integration", () => {
     expect(notifications).toEqual([]);
   });
 
-  test("provider-tier subscribers defer notify.commands membership until CommandRegistry exists", async () => {
-    // Given: active notify-lando policy naming a command unavailable at the provider tier.
+  test("commands-tier rejects an unknown notify command before subscriber registration", async () => {
+    // Given: active notify-lando policy naming a command absent from the final commands-tier registry.
     const { layer, root } = await runtime(
       [],
       "notify:\n  thresholdMs: 0\n  commands:\n    - app:missing-command\n",
     );
-    const quickTerminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
-      ...terminal,
-      timestamp: "2026-07-18T00:00:00.000Z",
-      durationMs: 1,
-    });
+    const appRoot = join(root, "app");
+    await mkdir(appRoot, { recursive: true });
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      ["name: subscriber-fixture", "tooling:", "  known-command:", "    cmd: echo known", ""].join("\n"),
+    );
+    const previousCwd = process.cwd();
     const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
-    process.env.LANDO_USER_CONF_ROOT = join(root, "config");
 
-    // When: the provider-tier subscriber handles an eligible built-in terminal event.
-    let notifications: ReadonlyArray<unknown>;
-    try {
-      notifications = await Effect.runPromise(
-        Effect.gen(function* () {
-          const events = yield* EventService;
-          yield* events.publish(quickTerminal);
-          return yield* events.query("notify.desktop");
-        }).pipe(Effect.provide(layer)),
-      );
-    } finally {
-      if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
-      else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+    // When: the commands-tier layer attempts to acquire its event service and close subscriber registration.
+    const exit = await (async () => {
+      try {
+        process.env.LANDO_USER_CONF_ROOT = join(root, "config");
+        process.chdir(appRoot);
+        return await Effect.runPromiseExit(
+          Effect.gen(function* () {
+            return yield* EventService;
+          }).pipe(Effect.provide(layer)),
+        );
+      } finally {
+        process.chdir(previousCwd);
+        if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+        else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+      }
+    })();
+
+    // Then: registration fails with the exact invalid notify.commands entry.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        const value: unknown = failure.value;
+        expect(value).toBeInstanceOf(ConfigError);
+        if (value instanceof ConfigError) expect(value.path).toBe("notify.commands[0]");
+      }
     }
-
-    // Then: tier-limited validation does not block the built-in command or its notification.
-    expect(notifications).toHaveLength(1);
   });
 
   test("renders the terminal lifecycle notification through the command runtime", async () => {
-    // Given: the real plugin bootstrap and JSON renderer with a zero notification threshold.
+    // Given: the real commands bootstrap and JSON renderer with a zero notification threshold.
     const { layer, root } = await runtime([], "notify:\n  thresholdMs: 0\n");
     const io = createBufferedRendererIO();
     const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;

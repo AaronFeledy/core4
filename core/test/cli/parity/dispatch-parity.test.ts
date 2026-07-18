@@ -30,7 +30,9 @@ import { join, resolve } from "node:path";
 
 import { DEFERRED_COMMAND_PLANS, deferredCommandPlan } from "../../../src/cli/deferred-commands.ts";
 import { isCanonicalLandoCommandId, isMvpCommandId } from "../../../src/cli/oclif/command-base.ts";
+import { updateSpec } from "../../../src/cli/oclif/commands/meta/update.ts";
 import compiledCommands from "../../../src/cli/oclif/compiled-commands.ts";
+import { COMPILED_OCLIF_MANIFEST } from "../../../src/cli/oclif/compiled-manifest.ts";
 import { ensureCompiledCli } from "../../_support/compiled-cli.ts";
 import { listTree, pathsOutsidePrefixes } from "../_util/fs-tree.ts";
 import { errorCodeFromStderr, normalizeJsonEnvelope, normalizeOutput } from "./normalize.ts";
@@ -136,6 +138,21 @@ describe("compiled-binary dispatch parity — structural", () => {
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
     expect(adapter).toContain('bootstrap: "minimal"');
+    expect(adapter).not.toContain('bootstrap: "plugins"');
+  });
+
+  test("meta:update uses commands bootstrap in source and compiled dispatch", () => {
+    // Given: source updateSpec, compiled OCLIF manifest, and the run.ts meta:update branch.
+    const start = runSource.indexOf('if (argv[0] === "update" || argv[0] === "meta:update")');
+    const end = runSource.indexOf('if (argv[0] === "global:config:set"', start);
+    const adapter = runSource.slice(start, end);
+
+    // When/Then: source, manifest, and compiled adapter all use commands bootstrap.
+    expect(updateSpec.bootstrap).toBe("commands");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("commands");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(adapter).toContain('bootstrap: "commands"');
     expect(adapter).not.toContain('bootstrap: "plugins"');
   });
 });

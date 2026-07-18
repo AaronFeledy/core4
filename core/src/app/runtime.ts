@@ -9,6 +9,7 @@ import type {
 } from "@lando/sdk/app";
 import {
   type AppResolveError,
+  type ConfigError,
   type LandoRuntimeBootstrapError,
   LandofileParseError,
   ScratchAppError,
@@ -44,7 +45,7 @@ export type OpenLandoRuntimeOptions = LandoRuntimeOptions & {
  */
 export const openLandoRuntime = (
   options: OpenLandoRuntimeOptions,
-): Effect.Effect<LandoRuntime, LandoRuntimeBootstrapError | ScratchAcquireError, Scope.Scope> =>
+): Effect.Effect<LandoRuntime, ConfigError | LandoRuntimeBootstrapError | ScratchAcquireError, Scope.Scope> =>
   Effect.gen(function* () {
     const { scratch: scratchInput, ...runtimeOptions } = options;
     const capturedCwd = (runtimeOptions.cwd ?? process.cwd()) as AbsolutePath;

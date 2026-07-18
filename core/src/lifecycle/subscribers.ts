@@ -3,7 +3,13 @@ import { type Context, Effect, Layer, Schema } from "effect";
 import { EventError, PluginLoadError } from "@lando/sdk/errors";
 import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/events";
-import { AbsolutePath, type NotifyConfig, type PluginManifest } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  BOOTSTRAP_RANK,
+  BootstrapLevel,
+  type NotifyConfig,
+  type PluginManifest,
+} from "@lando/sdk/schema";
 import {
   CommandRegistry,
   ConfigService,
@@ -40,7 +46,15 @@ export const canonicalSubscriberCommandIds = (
   manifests: ReadonlyArray<PluginManifest>,
   commands: ReadonlyArray<RegisteredCommand> = [],
 ): ReadonlyArray<string> => {
-  const ids = new Set(Object.keys(COMPILED_OCLIF_MANIFEST.commands));
+  const ids = new Set(
+    Object.values(COMPILED_OCLIF_MANIFEST.commands)
+      .filter(
+        (entry) =>
+          BOOTSTRAP_RANK[Schema.decodeUnknownSync(BootstrapLevel)(entry.bootstrap)] >=
+          BOOTSTRAP_RANK.commands,
+      )
+      .map((entry) => entry.id),
+  );
   for (const manifest of manifests) {
     for (const command of manifest.contributes?.commands ?? []) ids.add(contributionId(command));
   }
@@ -150,20 +164,17 @@ export const makeSubscriberRuntimeLive = () =>
       const paths = yield* PathsService;
       const redaction = yield* RedactionService;
       const manifests = yield* plugins.list;
-      const commandRegistry = yield* Effect.serviceOption(CommandRegistry);
-      const resolvedCommands = commandRegistry._tag === "Some" ? yield* commandRegistry.value.list : [];
+      const commandRegistry = yield* CommandRegistry;
+      const resolvedCommands = yield* commandRegistry.list;
       const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands);
-      const closure = makeSubscriberRegistrationClosure(manifests);
-      const index = yield* closure.close(commandIds);
-      const hasNotifySubscriber = [...index.values()].some((entries) =>
-        entries.some((subscriber) => subscriber.entry.configKey === "notify"),
+      const hasNotifySubscriber = manifests.some((manifest) =>
+        manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );
       const notify = hasNotifySubscriber
-        ? yield* resolveNotifyConfig(
-            yield* configService.load,
-            commandRegistry._tag === "Some" ? new Set(commandIds) : undefined,
-          )
+        ? yield* resolveNotifyConfig(yield* configService.load, new Set(commandIds))
         : undefined;
+      const closure = makeSubscriberRegistrationClosure(manifests);
+      const index = yield* closure.close(commandIds);
       const handlers = new Map<IndexedSubscriber, Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>>();
       for (const entries of index.values()) {
         for (const subscriber of entries) {

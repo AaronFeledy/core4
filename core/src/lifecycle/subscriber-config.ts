@@ -7,17 +7,16 @@ const DEFAULT_NOTIFY_CONFIG = Schema.decodeSync(NotifyConfigSchema)({});
 
 export const resolveNotifyConfig = (
   config: GlobalConfig,
-  commandIds?: ReadonlySet<string>,
+  commandIds: ReadonlySet<string>,
 ): Effect.Effect<NotifyConfig, ConfigError> => {
   const notify = config.notify ?? DEFAULT_NOTIFY_CONFIG;
-  if (commandIds === undefined) return Effect.succeed(notify);
   const unknownIndex = notify.commands.findIndex((commandId) => !commandIds.has(commandId));
   if (unknownIndex < 0) return Effect.succeed(notify);
   const commandId = notify.commands[unknownIndex];
   return Effect.fail(
     new ConfigError({
       path: `notify.commands[${unknownIndex}]`,
-      message: `Unknown canonical command id "${commandId}" in notify.commands. Remove it or install and enable the plugin that contributes it.`,
+      message: `Unknown or ineligible canonical command id "${commandId}" in notify.commands. Remove it, install and enable the plugin that contributes it, or choose a commands-tier-or-higher command.`,
     }),
   );
 };

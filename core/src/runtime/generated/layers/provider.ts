@@ -22,10 +22,10 @@ import { ConfigServiceLive } from "../../../services/config.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { UrlScannerLive } from "../../../subsystems/scanner/live.ts";
 import { type BootstrapLayerInputs, runtimeProviderService } from "../../bootstrap-layer-support.ts";
-import { makePluginsBootstrapBaseLayer } from "./plugins.ts";
+import { makeCommandsBootstrapBaseLayer } from "./commands.ts";
 
 export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {
-  const pluginsRuntimeLive = makePluginsBootstrapBaseLayer(inputs);
+  const pluginsRuntimeLive = makeCommandsBootstrapBaseLayer(inputs);
   const providerRegistryLive = RuntimeProviderRegistryLive.pipe(Layer.provide(pluginsRuntimeLive));
 
   const runtimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);

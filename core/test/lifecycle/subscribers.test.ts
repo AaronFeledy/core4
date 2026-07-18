@@ -36,6 +36,22 @@ describe("subscriber runtime", () => {
     expect(ids).toContain("app:custom-tool");
   });
 
+  test("includes only commands+ canonical ids in subscriber closure", () => {
+    // Given: an app-derived command alongside built-ins from several bootstrap levels.
+    const commands: ReadonlyArray<RegisteredCommand> = [
+      { id: "app:landofile-command", summary: "Landofile command", hidden: false },
+    ];
+
+    // When: canonical subscriber command ids are resolved.
+    const ids = new Set(canonicalSubscriberCommandIds([], commands));
+
+    // Then: only commands+ built-ins and app-derived commands participate in subscriber closure.
+    expect(ids.has("meta:version")).toBe(false);
+    expect(ids.has("apps:init")).toBe(true);
+    expect(ids.has("app:landofile-command")).toBe(true);
+    expect(ids.has("meta:update")).toBe(true);
+  });
+
   test("expands terminal selectors only when registration closes", async () => {
     // Given: a family subscriber parsed before the complete command registry exists.
     const closure = makeSubscriberRegistrationClosure([
@@ -178,6 +194,8 @@ describe("subscriber runtime", () => {
         expect(failure.value).toBeInstanceOf(ConfigError);
         expect(failure.value.path).toBe("notify.commands[1]");
         expect(failure.value.message).toContain("bad:id");
+        expect(failure.value.message).toContain("Unknown or ineligible canonical command id");
+        expect(failure.value.message).toContain("commands-tier-or-higher");
       }
     }
   });

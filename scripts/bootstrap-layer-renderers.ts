@@ -61,13 +61,29 @@ export const renderMinimal = (): string =>
     "",
   ].join("\n");
 
-export const renderAlias = (level: "commands"): string =>
+export const renderCommands = (): string =>
   [
-    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
-    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
+    'import { Layer } from "effect";',
     "",
-    `export const make${level[0]?.toUpperCase() ?? ""}${level.slice(1)}BootstrapLayer = (inputs: BootstrapLayerInputs) =>`,
-    "  makeMinimalBootstrapLayer(inputs);",
+    'import { LandofileServiceLive } from "../../../landofile/service.ts";',
+    'import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";',
+    'import { CommandRegistryLive } from "../../../services/command-registry.ts";',
+    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
+    'import { makePluginsBootstrapBaseLayer } from "./plugins.ts";',
+    "",
+    "export const makeCommandsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const pluginsBase = makePluginsBootstrapBaseLayer(inputs);",
+    "  const commandRegistryLive = CommandRegistryLive.pipe(",
+    "    Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginsBase)),",
+    "  );",
+    "  return Layer.mergeAll(pluginsBase, LandofileServiceLive, commandRegistryLive);",
+    "};",
+    "",
+    "export const makeCommandsBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
+    "  const commandsBase = makeCommandsBootstrapBaseLayer(inputs);",
+    "  const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(commandsBase));",
+    "  return Layer.merge(commandsBase, subscriberRuntimeLive);",
+    "};",
     "",
   ].join("\n");
 
@@ -84,10 +100,10 @@ export const renderProvider = (): string =>
     'import { FileSystemLive } from "../../../services/file-system.ts";',
     'import { UrlScannerLive } from "../../../subsystems/scanner/live.ts";',
     'import { runtimeProviderService, type BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
-    'import { makePluginsBootstrapBaseLayer } from "./plugins.ts";',
+    'import { makeCommandsBootstrapBaseLayer } from "./commands.ts";',
     "",
     "export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {",
-    "  const pluginsRuntimeLive = makePluginsBootstrapBaseLayer(inputs);",
+    "  const pluginsRuntimeLive = makeCommandsBootstrapBaseLayer(inputs);",
     "  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(",
     "    Layer.provide(pluginsRuntimeLive),",
     "  );",

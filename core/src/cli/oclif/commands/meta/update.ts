@@ -7,7 +7,7 @@ import {
   update,
 } from "../../../commands/update.ts";
 /**
- * `lando meta:update` — OCLIF wrapper.
+ * `lando meta:update` — shared command specification and OCLIF wrapper.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
@@ -29,7 +29,7 @@ export const updateSpec: LandoCommandSpec<UpdateResult> = {
   summary: "Update Lando core and plugins.",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "plugins",
+  bootstrap: "commands",
   run: (input) => update(updateOptionsFromInput(input)),
 };
 
