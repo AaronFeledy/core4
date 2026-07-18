@@ -23,11 +23,23 @@ bun run check:network-boundary
 bun run check:machine-output
 ```
 
-The `unit-tests-linux-x64` job runs the full current static test suite after `static-checks` passes. Keeping it as a separate required status check lets downstream build, guide, provider, and perf jobs start from the portable static gate instead of waiting for the longest unit-test layer. The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
+The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
+
+`bun run test` prints the exact shard commands CI runs:
+
+```bash
+bun run test:unit:shard 1/3
+bun run test:unit:shard 2/3
+bun run test:unit:shard 3/3
+```
+
+The unsharded full pass remains available locally:
 
 ```bash
 bun run test:unit
 ```
+
+Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; workflow drift they used to catch per-PR is covered by the `Verify generated workflows are current` step in `guide-scenarios-linux-x64`.
 
 ## Generated schema and bundled-codegen gates
 

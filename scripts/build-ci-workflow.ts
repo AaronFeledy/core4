@@ -2,6 +2,7 @@ import { resolve } from "node:path";
 
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
+import { UNIT_SHARD_COUNT } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/ci.yml");
@@ -106,10 +107,15 @@ ${timingNoticeStep("static-checks/${{ matrix.platform }}", 35)}
           echo "static-checks platform matrix passed"
 `;
 
-const renderUnitTests = (): string => `  unit-tests-linux-x64:
-    needs: [static-checks]
+const unitShardList = Array.from({ length: UNIT_SHARD_COUNT }, (_, index) => index + 1).join(", ");
+
+const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [${unitShardList}]
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -117,10 +123,24 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
-      - name: Unit test layer
-        run: bun run test:unit
+      - name: Unit test shard
+        run: bun run test:unit:shard \${{ matrix.shard }}/${UNIT_SHARD_COUNT}
 
-${timingNoticeStep("unit-tests-linux-x64", 35)}
+${timingNoticeStep("unit-tests-linux-x64-shard/${{ matrix.shard }}", 25)}
+
+  unit-tests-linux-x64:
+    needs: [unit-tests-linux-x64-shard]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm unit test shard matrix
+        run: |
+          if [[ "\${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then
+            echo "unit test shard matrix result: \${{ needs.unit-tests-linux-x64-shard.result }}"
+            exit 1
+          fi
+          echo "unit test shard matrix passed"
 `;
 
 const renderSmokeCommands = (platform: CiPlatform): string =>
@@ -573,7 +593,14 @@ ${timingStartStep}
 ${setupBunSteps}
 
       - name: Regenerate guide scenarios
-        run: bun run codegen
+        run: bun run codegen${
+          isLinuxX64
+            ? `
+
+      - name: Verify generated workflows are current
+        run: git diff --exit-code -- .github/workflows`
+            : ""
+        }
 
       - name: Typecheck
         run: bun run typecheck

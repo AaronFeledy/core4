@@ -113,10 +113,13 @@ jobs:
           fi
           echo "static-checks platform matrix passed"
 
-  unit-tests-linux-x64:
-    needs: [static-checks]
+  unit-tests-linux-x64-shard:
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
@@ -131,13 +134,27 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Unit test layer
-        run: bun run test:unit
+      - name: Unit test shard
+        run: bun run test:unit:shard ${{ matrix.shard }}/3
 
       - name: Report job timing
         if: always()
         run: |
-          echo "::notice title=ci-timing::unit-tests-linux-x64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 35m)"
+          echo "::notice title=ci-timing::unit-tests-linux-x64-shard/${{ matrix.shard }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
+
+  unit-tests-linux-x64:
+    needs: [unit-tests-linux-x64-shard]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm unit test shard matrix
+        run: |
+          if [[ "${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then
+            echo "unit test shard matrix result: ${{ needs.unit-tests-linux-x64-shard.result }}"
+            exit 1
+          fi
+          echo "unit test shard matrix passed"
 
   schema-snapshot:
     runs-on: ubuntu-24.04
@@ -446,6 +463,9 @@ jobs:
 
       - name: Regenerate guide scenarios
         run: bun run codegen
+
+      - name: Verify generated workflows are current
+        run: git diff --exit-code -- .github/workflows
 
       - name: Typecheck
         run: bun run typecheck

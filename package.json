@@ -20,8 +20,9 @@
   },
   "scripts": {
     "build": "bun run --filter='*' build",
-    "test": "bun test",
+    "test": "bun run scripts/test-shards.ts",
     "test:unit": "bun --no-orphans test --path-ignore-patterns='**/*.integration.test.ts'",
+    "test:unit:shard": "bun run scripts/test-shards.ts --run",
     "test:changed": "bun test --changed",
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
     "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
