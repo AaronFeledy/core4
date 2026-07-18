@@ -108,8 +108,8 @@ describe("subscriber runtime", () => {
     ]);
   });
 
-  test("indexes an unknown exact CLI lifecycle selector while command registration is provisional", async () => {
-    // Given: an exact lifecycle selector contributed before its command reaches CommandRegistry.
+  test("rejects an unknown exact CLI lifecycle selector", async () => {
+    // Given: an exact lifecycle selector whose command is absent from the closed registry.
     const closure = makeSubscriberRegistrationClosure([
       manifest([
         {
@@ -120,29 +120,7 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: registration closes against a provisional command-id set.
-    const index = await Effect.runPromise(closure.close(["app:start"], "provisional"));
-
-    // Then: the exact selector is retained without expanding the family beyond this tier.
-    expect([...index.keys()]).toEqual(["cli-app:plugin-command-run"]);
-    expect(index.get("cli-app:plugin-command-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
-      "plugin-command",
-    ]);
-  });
-
-  test("rejects an unknown exact CLI lifecycle selector when command registration is final", async () => {
-    // Given: an exact lifecycle selector whose command is absent from the final registry.
-    const closure = makeSubscriberRegistrationClosure([
-      manifest([
-        {
-          id: "plugin-command",
-          selectors: [{ event: "cli-app:plugin-command-run" }],
-          module: "./plugin-command.ts",
-        },
-      ]),
-    ]);
-
-    // When: registration closes with the default final completeness.
+    // When: registration closes against the canonical command set.
     const exit = await Effect.runPromiseExit(closure.close(["app:start"]));
 
     // Then: strict membership validation rejects the selector without publishing an index.
@@ -158,7 +136,7 @@ describe("subscriber runtime", () => {
     expect(closure.current()).toBeUndefined();
   });
 
-  test("rejects an invented non-CLI exact selector during provisional close", async () => {
+  test("rejects an invented non-CLI exact selector", async () => {
     // Given: one valid selector followed by an unknown exact selector.
     const closure = makeSubscriberRegistrationClosure([
       manifest([
@@ -167,8 +145,8 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: provisional registration attempts to close.
-    const exit = await Effect.runPromiseExit(closure.close(["app:start"], "provisional"));
+    // When: registration attempts to close.
+    const exit = await Effect.runPromiseExit(closure.close(["app:start"]));
 
     // Then: the tagged manifest failure identifies the subscriber and no index becomes visible.
     expect(Exit.isFailure(exit)).toBe(true);
@@ -202,23 +180,6 @@ describe("subscriber runtime", () => {
         expect(failure.value.message).toContain("bad:id");
       }
     }
-  });
-
-  test("decodes notify config without command membership validation before the registry is final", async () => {
-    // Given: an active notify policy naming a command unavailable in a provisional bootstrap tier.
-    const config = Schema.decodeUnknownSync(GlobalConfig)({
-      notify: { thresholdMs: 0, commands: ["app:plugin-command", "app:start"] },
-    });
-
-    // When: notify config is resolved before CommandRegistry is available.
-    const notify = await Effect.runPromise(resolveNotifyConfig(config));
-
-    // Then: schema defaults and caller-provided selector ordering are preserved.
-    expect(notify).toEqual({
-      enabled: true,
-      thresholdMs: 0,
-      commands: ["app:plugin-command", "app:start"],
-    });
   });
 
   test("loads a subscriber factory lazily and caches its handler exactly once", async () => {

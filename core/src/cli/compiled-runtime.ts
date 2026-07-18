@@ -216,7 +216,7 @@ export const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<s
 
 export const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
-  runtime: Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, RE>,
+  runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>,
   render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
     readonly renderEvents?: boolean;

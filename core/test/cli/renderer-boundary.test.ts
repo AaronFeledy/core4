@@ -224,6 +224,79 @@ describe("runWithRendererHandling", () => {
     });
   });
 
+  test("buffered json streaming replays notify.desktop once without live stderr output", async () => {
+    // Given: buffered JSON streaming with live event rendering disabled.
+    const io = createBufferedRendererIO();
+
+    // When: the command publishes a desktop notification.
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish({ _tag: "notify.desktop", title: "Done", urgency: "success" });
+        return {};
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "json",
+        resultFormat: "json",
+        io,
+        command: "app:logs",
+        resultSchema: Schema.Struct({}),
+        streaming: StreamFrame,
+        renderEvents: false,
+        render: () => undefined,
+        formatError: () => "should not happen",
+      },
+    );
+
+    // Then: history replay emits one event frame and the live stderr consumer stays silent.
+    const frames = io.stdoutLines().map(decodeFrame);
+    const notifications = frames.filter(
+      (frame) => frame._tag === "event" && frame.event === "notify.desktop",
+    );
+    expect(notifications).toHaveLength(1);
+    expect(io.stderr()).toBe("");
+  });
+
+  test("buffered json streaming replays failure notify.desktop once", async () => {
+    // Given: buffered JSON streaming for a command that will fail.
+    const io = createBufferedRendererIO();
+    let exitCode: number | undefined;
+
+    // When: the command publishes a failure notification before failing.
+    await runWithRendererHandling(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* events.publish({ _tag: "notify.desktop", title: "Failed", urgency: "failure" });
+        return yield* Effect.fail("boom");
+      }),
+      {
+        runtime: Layer.empty,
+        rendererMode: "json",
+        resultFormat: "json",
+        io,
+        command: "app:logs",
+        resultSchema: Schema.Struct({}),
+        streaming: StreamFrame,
+        renderEvents: false,
+        render: () => undefined,
+        formatError: String,
+        setExitCode: (code) => {
+          exitCode = code;
+        },
+      },
+    );
+
+    // Then: history replay emits one event frame before the failed result frame.
+    const frames = io.stdoutLines().map(decodeFrame);
+    expect(frames.map((frame) => frame._tag)).toEqual(["event", "result"]);
+    const notification = frames[0];
+    if (notification?._tag !== "event") throw new Error("expected event frame");
+    expect(notification.event).toBe("notify.desktop");
+    expect(io.stderr()).toBe("");
+    expect(exitCode).toBe(1);
+  });
+
   test("writes formatError to stderr and sets exitCode=1 on typed failure", async () => {
     const io = createBufferedRendererIO();
     let exitCode: number | undefined;

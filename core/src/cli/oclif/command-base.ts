@@ -4,7 +4,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
-import type { Renderer } from "@lando/sdk/services";
+import type { EventService, Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
@@ -434,7 +434,10 @@ export abstract class LandoCommandBase extends Command {
     flags.format = resultFormat;
     if (resultFormat === "json") flags.json = true;
     await runWithRendererHandling(spec.run(input), {
-      runtime: runtime as Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, LandoRuntimeBootstrapError>,
+      runtime: runtime as Layer.Layer<
+        Exclude<R, EventService | Renderer | StreamFrameSink>,
+        LandoRuntimeBootstrapError
+      >,
       rendererMode,
       resultFormat,
       command: spec.id,

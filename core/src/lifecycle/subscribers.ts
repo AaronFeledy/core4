@@ -154,18 +154,12 @@ export const makeSubscriberRuntimeLive = () =>
       const resolvedCommands = commandRegistry._tag === "Some" ? yield* commandRegistry.value.list : [];
       const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands);
       const closure = makeSubscriberRegistrationClosure(manifests);
-      const index = yield* closure.close(
-        commandIds,
-        commandRegistry._tag === "Some" ? "final" : "provisional",
-      );
+      const index = yield* closure.close(commandIds);
       const hasNotifySubscriber = [...index.values()].some((entries) =>
         entries.some((subscriber) => subscriber.entry.configKey === "notify"),
       );
       const notify = hasNotifySubscriber
-        ? yield* resolveNotifyConfig(
-            yield* configService.load,
-            commandRegistry._tag === "Some" ? new Set(commandIds) : undefined,
-          )
+        ? yield* resolveNotifyConfig(yield* configService.load, new Set(commandIds))
         : undefined;
       const handlers = new Map<IndexedSubscriber, Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>>();
       for (const entries of index.values()) {

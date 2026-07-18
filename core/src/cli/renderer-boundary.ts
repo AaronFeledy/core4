@@ -172,7 +172,7 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
   ctx?.mode === "lando" && ctx.isTTY === true;
 
 export interface RunWithRendererHandlingOptions<A, R, RE> {
-  readonly runtime: Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, RE>;
+  readonly runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>;
   readonly rendererMode: RendererMode;
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
@@ -380,6 +380,21 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         });
         yield* writeResultLine(line);
       });
+    const replayBufferedEvents = (redactionTokens: ReadonlyArray<string> = []) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor(redactionTokens);
+        const events = yield* Effect.serviceOption(EventService).pipe(
+          Effect.flatMap((service) =>
+            Option.isSome(service) ? service.value.query("*") : Effect.succeed([]),
+          ),
+        );
+        for (const event of events) {
+          const tag = (event as { readonly _tag?: unknown })._tag;
+          if (typeof tag !== "string") continue;
+          const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
+          yield* writeResultLine(line);
+        }
+      });
     const emitStreamingSuccess = (value: A) =>
       Effect.gen(function* () {
         const tokens = options.redactionTokens?.(value) ?? [];
@@ -397,17 +412,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               : yield* encodeStreamStderrFrame(streamFrameOptions);
           yield* writeResultLine(line);
         }
-        const events = yield* Effect.serviceOption(EventService).pipe(
-          Effect.flatMap((service) =>
-            Option.isSome(service) ? service.value.query("*") : Effect.succeed([]),
-          ),
-        );
-        for (const event of events) {
-          const tag = (event as { readonly _tag?: unknown })._tag;
-          if (typeof tag !== "string") continue;
-          const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
-          yield* writeResultLine(line);
-        }
+        yield* replayBufferedEvents(tokens);
         yield* emitStreamResult({ _tag: "success", value }, tokens);
       });
     const setExitCode = (code: number): void => {
@@ -436,8 +441,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
             _tag: "failure",
             error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
           } as const;
-          if (options.streaming !== undefined) yield* emitStreamResult(outcome);
-          else yield* emitJsonResult(outcome);
+          if (options.streaming !== undefined) {
+            if (!liveStreaming) yield* replayBufferedEvents();
+            yield* emitStreamResult(outcome);
+          } else {
+            yield* emitJsonResult(outcome);
+          }
           yield* setFailureExitCode(cause);
           return;
         }
@@ -495,11 +504,13 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       return { _tag: "success", value: commandExit.value } as const;
     });
     const eventConsumerLayer =
-      options.renderEvents === true
-        ? makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
-            ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
-          })
-        : makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
+      streamingJson && !liveStreaming
+        ? undefined
+        : options.renderEvents === true
+          ? makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+              ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
+            })
+          : makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
     const executeWithEventConsumer =
       eventConsumerLayer === undefined
         ? executeCommand
