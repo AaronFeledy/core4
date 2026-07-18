@@ -17,7 +17,7 @@ export const metaGlobalListSpec: LandoCommandSpec<GlobalListResult> = {
     "List every contributed global service, its source plugin, enabled state, and per-service commands.",
   namespace: "meta",
   topLevelAlias: "global:list",
-  bootstrap: "plugins",
+  bootstrap: "minimal",
   run: () => globalList().pipe(Effect.provide(DefaultGlobalListLayer)),
   render: (result, _input, ctx) => renderGlobalListResult(result as GlobalListResult, ctx),
 };
