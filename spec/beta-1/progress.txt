@@ -696,3 +696,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Node's `FileHandle.sync()` is the fsync operation; durability audits must inspect the file-handle call path rather than search only for a literal `fsync` symbol.
 ---
+
+## 2026-07-17 22:14 CDT - US-372 Review
+- Corrected the story note that still repeated the disproven reopening audit after the completion flag was restored; the tracking record now names the existing fsync implementation and atomic cwd-app-map rewrites.
+- Review notes (deferred/rejected): Directory fsync was rejected as a blocker because the source PRD makes it best-effort and an open question, while US-372 requires file fsync before rename; exclusive temp creation, mode preservation, and dual-failure cause preservation are pre-existing hardening outside this audit-only branch and do not block the stated acceptance criteria.
+- Verification: typecheck, lint, guide drift, and state-store boundary passed; focused atomic, cache, cwd-app-map, state-store, and managed-file spot checks passed; Cursor Bugbot found no bugs.
+---
