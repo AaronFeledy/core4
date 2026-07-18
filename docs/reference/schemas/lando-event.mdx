@@ -20,7 +20,7 @@ Public Lando schema contract for Lando Event.
 | `plan` | No | `object` | — | — | — | — | — |
 | `triggeredBy` | No | `string` | a string | — | `meta:global:start`, `apps:poweroff`, `ensure-running`, `meta:setup`, `meta:global:stop` | — | — |
 | `ensuringServices` | No | `array` | — | — | — | — | — |
-| `cached` | No | `boolean` | a boolean | — | `true` | — | — |
+| `cached` | No | `boolean` | a boolean | — | — | — | — |
 | `services` | No | `array` | — | — | — | — | — |
 | `eventName` | No | `string` | — | — | `pre-app-start`, `post-app-start`, `pre-app-stop`, `post-app-stop`, `pre-service-start`, `post-service-start`, `pre-service-stop`, `post-service-stop`, `pre-build`, `post-build`, `build-step-skip`, `pre-managed-file-write`, `post-managed-file-write`, `managed-file-conflict-detected`, `managed-file-skipped`, `pre-download`, `download-progress`, `post-download`, `image-pull-progress`, `pre-http-call`, `post-http-call`, `pre-mcp-call`, `post-mcp-call`, `pre-data-transfer`, `data-transfer-progress`, `post-data-transfer`, `pre-volume-snapshot`, `post-volume-snapshot`, `pre-pull`, `post-pull`, `pre-push`, `post-push`, `pre-dataset-fetch`, `post-dataset-fetch`, `pre-dataset-apply`, `post-dataset-apply`, `pre-dataset-capture`, `post-dataset-capture`, `pre-dataset-send`, `post-dataset-send`, `pre-tunnel-start`, `post-tunnel-start`, `tunnel-ready`, `pre-tunnel-stop`, `post-tunnel-stop`, `tunnel-status` | — | — |
 | `appRef` | No | `object`, `string` | — | — | — | — | — |
@@ -28,7 +28,7 @@ Public Lando schema contract for Lando Event.
 | `serviceName` | No | `string` | a string | — | — | — | — |
 | `phase` | No | `string` | — | — | `artifact`, `app` | — | — |
 | `buildKey` | No | `string` | a string | — | — | — | — |
-| `reason` | No | `string` | — | — | `up-to-date` | — | — |
+| `reason` | No | `string` | — | — | `up-to-date`, `phase-aborted` | — | — |
 | `path` | No | `string` | a string | — | — | — | — |
 | `owner` | No | `string` | a string | — | — | — | — |
 | `action` | No | `string` | — | — | `create`, `update`, `skip-unchanged`, `skip-adopted`, `conflict`, `adopt-detected` | — | — |
@@ -91,6 +91,7 @@ Public Lando schema contract for Lando Event.
 | `children` | No | `array` | — | — | — | — | — |
 | `mode` | No | `string` | — | — | `list`, `grid` | — | — |
 | `taskId` | No | `string` | a string | — | — | — | — |
+| `transcriptPath` | No | `string` | — | — | — | — | — |
 | `line` | No | `string` | a string | — | — | — | — |
 | `remediation` | No | `string` | — | — | — | — | — |
 | `succeeded` | No | `number` | a number | — | — | — | — |

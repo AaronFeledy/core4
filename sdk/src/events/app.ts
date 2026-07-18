@@ -102,8 +102,8 @@ export const BuildStepSkipEvent = Schema.TaggedStruct("build-step-skip", {
   providerId: ProviderId,
   phase: Schema.Literal("artifact", "app"),
   buildKey: Schema.String,
-  cached: Schema.Literal(true),
-  reason: Schema.Literal("up-to-date"),
+  cached: Schema.Boolean,
+  reason: Schema.Literal("up-to-date", "phase-aborted"),
   timestamp: Timestamp,
 });
 export type BuildStepSkipEvent = typeof BuildStepSkipEvent.Type;

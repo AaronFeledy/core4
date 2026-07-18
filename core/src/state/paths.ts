@@ -6,7 +6,7 @@
 // explicit absolute directory for app-scoping and host/test isolation.
 
 import { realpath } from "node:fs/promises";
-import { isAbsolute, relative, resolve, sep } from "node:path";
+import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
 import { Effect } from "effect";
 
@@ -40,17 +40,26 @@ const pathError = (operation: string, path: string, cause?: unknown): StateStore
     remediation: "State paths must stay inside the resolved state root.",
   });
 
-const realpathOrSelf = (path: string): Promise<string> => realpath(path).catch(() => path);
-
-/** Resolve realpath of the deepest existing ancestor of `target`. */
-const realpathDeepestExisting = async (target: string): Promise<string> => {
-  let current = target;
-  // Walk up until a segment resolves (the bucket file usually does not exist yet).
+/**
+ * Resolve `path`'s realpath by walking up to its deepest existing ancestor,
+ * realpath-ing that ancestor, then lexically re-appending the not-yet-created
+ * tail segments. Plain `realpath(path).catch(() => path)` falls back to the
+ * unresolved literal the instant `path` itself doesn't exist yet (e.g. a
+ * root directory nobody has created on this machine), which desyncs from
+ * {@link realpathDeepestExisting}'s ancestor walk used for containment checks
+ * below and produces false-positive "escapes the root" rejections. Walking
+ * from the same starting point with the same existing-ancestor semantics
+ * keeps both sides consistent regardless of what already exists on disk.
+ */
+const realpathOrDeepestExisting = async (path: string): Promise<string> => {
+  const tailSegments: Array<string> = [];
+  let current = path;
   for (;;) {
     const real = await realpath(current).catch(() => null);
-    if (real !== null) return real;
+    if (real !== null) return tailSegments.length === 0 ? real : resolve(real, ...tailSegments.reverse());
     const parent = resolve(current, "..");
-    if (parent === current) return current; // reached filesystem root
+    if (parent === current) return path; // reached filesystem root without resolving anything
+    tailSegments.push(basename(current));
     current = parent;
   }
 };
@@ -95,7 +104,7 @@ export const resolveStatePath = (
         segments.push(sanitizeSegment(namespace, operation, baseDir));
       segments.push(sanitizeSegment(key, operation, baseDir));
 
-      const rootReal = await realpathOrSelf(baseDir);
+      const rootReal = await realpathOrDeepestExisting(baseDir);
       const target = resolve(rootReal, ...segments);
 
       const rel = relative(rootReal, target);
@@ -104,10 +113,12 @@ export const resolveStatePath = (
       }
 
       // Reject a symlinked ancestor that resolves outside the root even though
-      // the lexical path looked contained.
-      const ancestorReal = await realpathDeepestExisting(target);
-      const ancestorRel = relative(rootReal, ancestorReal);
-      if (ancestorRel === ".." || ancestorRel.startsWith(`..${sep}`) || isAbsolute(ancestorRel)) {
+      // the lexical path looked contained. Reconstructed the same way as
+      // `rootReal` above so an ordinary not-yet-created target still compares
+      // equal, and only a genuine symlinked-ancestor escape is rejected.
+      const targetReal = await realpathOrDeepestExisting(target);
+      const targetRel = relative(rootReal, targetReal);
+      if (targetRel === ".." || targetRel.startsWith(`..${sep}`) || isAbsolute(targetRel)) {
         throw pathError(operation, target);
       }
 

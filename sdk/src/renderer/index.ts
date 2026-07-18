@@ -75,6 +75,8 @@ export {
 export interface RendererIO {
   readonly writeStdout: (chunk: string) => void;
   readonly writeStderr: (chunk: string) => void;
+  /** Raw stdout stream patched by the capture-stdout substrate; undefined degrades to line mode. */
+  readonly externalOutputStream?: NodeJS.WriteStream;
   /** `true` engages the interactive task-tree tail; `undefined`/`false` falls back to plain. */
   readonly isTTY?: boolean;
   /** Terminal width used by the TTY tail to account for wrapped rows. */

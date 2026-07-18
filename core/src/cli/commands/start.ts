@@ -14,6 +14,7 @@ import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  BuildOrchestrator,
   EventService,
   type FileSystem,
   type GlobalAppService,
@@ -26,6 +27,7 @@ import {
 } from "@lando/sdk/services";
 
 import type { RedactionService } from "../../redaction/service.ts";
+import { withBuildProvider } from "../../services/build-orchestrator.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
@@ -55,6 +57,7 @@ export const StartAppResultSchema = Schema.Struct({
 
 type StartAppServices =
   | AppPlanner
+  | BuildOrchestrator
   | EventService
   | FileSystem
   | GlobalAppService
@@ -111,12 +114,14 @@ export const startApp = (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,
   managed?: StartManagedScope,
+  execution: { readonly forceAppBuild?: boolean } = {},
 ): Effect.Effect<StartAppResult, StartAppError, StartAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
     const planner = yield* AppPlanner;
     const events = yield* EventService;
+    const builds = yield* BuildOrchestrator;
 
     const plan =
       target?.plan ??
@@ -153,11 +158,6 @@ export const startApp = (
       ...(managed === undefined ? {} : { managed }),
       use: (applyPlan) =>
         Effect.gen(function* () {
-          const serviceList = Object.values(applyPlan.services);
-          const serviceIds = serviceList.map((service) => String(service.name));
-          const applyParentId = `apply-${plan.id}`;
-          const applyStart = performance.now();
-
           yield* events.publish(
             PreAppStartEvent.make({
               eventName: "pre-app-start",
@@ -166,6 +166,12 @@ export const startApp = (
               timestamp: now(),
             }),
           );
+
+          const builtPlan = yield* withBuildProvider(builds.build(applyPlan), provider);
+          const serviceList = Object.values(builtPlan.services);
+          const serviceIds = serviceList.map((service) => String(service.name));
+          const applyParentId = `apply-${plan.id}`;
+          const applyStart = performance.now();
 
           yield* publishTreeStart(events, {
             parentId: applyParentId,
@@ -185,7 +191,7 @@ export const startApp = (
           const applyAndInspect = Effect.gen(function* () {
             yield* Ref.set(applyStarted, true);
             yield* Effect.scoped(
-              provider.apply(applyPlan, {
+              provider.apply(builtPlan, {
                 reconcile: options.reconcile ?? false,
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
               }),
@@ -232,11 +238,16 @@ export const startApp = (
 
           yield* publishTreeComplete(events, {
             parentId: applyParentId,
-            summary: `${plan.name} ready`,
+            summary: `${plan.name} applied`,
             succeeded: serviceList.length,
             failed: 0,
             durationMs: Math.round(performance.now() - applyStart),
           });
+
+          yield* withBuildProvider(
+            builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined),
+            provider,
+          );
 
           yield* startFileSyncSessions(plan, events, managed).pipe(
             Effect.tapError(() =>

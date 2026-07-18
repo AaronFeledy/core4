@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Either, Schema } from "effect";
 
+import { TaskStartEvent } from "../../src/events/task.ts";
 import { JSON_SCHEMA_NAMES, publicSchemaRegistry } from "../../src/schema/index.ts";
 import {
   PUBLIC_SCHEMA_CONTRACT_FIXTURES,
@@ -10,6 +11,25 @@ import {
 } from "./public-schema-contracts.ts";
 
 describe("public schema contracts", () => {
+  test("TaskStartEvent additively decodes old payloads and branded transcript paths", () => {
+    const oldPayload = Schema.decodeUnknownSync(TaskStartEvent)({
+      _tag: "task.start",
+      taskId: "build:web",
+      label: "Build web",
+      timestamp: "2026-06-14T00:00:00.000Z",
+    });
+    const transcriptPayload = Schema.decodeUnknownSync(TaskStartEvent)({
+      _tag: "task.start",
+      taskId: "build:web",
+      label: "Build web",
+      transcriptPath: "/tmp/lando/builds/web.log",
+      timestamp: "2026-06-14T00:00:00.000Z",
+    });
+
+    expect(oldPayload.transcriptPath).toBeUndefined();
+    expect(transcriptPayload.transcriptPath).toBe("/tmp/lando/builds/web.log");
+  });
+
   test("every public schema has a schema contract fixture", () => {
     expect(Object.keys(PUBLIC_SCHEMA_CONTRACT_FIXTURES)).toEqual(JSON_SCHEMA_NAMES);
     expect(() => assertPublicSchemaContractCoverage()).not.toThrow();

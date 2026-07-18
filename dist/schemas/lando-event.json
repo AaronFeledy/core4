@@ -6284,9 +6284,6 @@
           "type": "string"
         },
         "cached": {
-          "enum": [
-            true
-          ],
           "type": "boolean"
         },
         "eventName": {
@@ -6307,7 +6304,8 @@
         },
         "reason": {
           "enum": [
-            "up-to-date"
+            "up-to-date",
+            "phase-aborted"
           ],
           "type": "string"
         },
@@ -8974,6 +8972,9 @@
         },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
+        },
+        "transcriptPath": {
+          "type": "string"
         }
       },
       "required": [

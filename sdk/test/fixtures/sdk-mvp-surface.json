@@ -121,5 +121,8 @@
       "runScript: (path: string, options?: ShellCommandOptions) => Effect.Effect<ProcessResult, ShellExecError>",
       "interactive: (spec: ShellInteractiveSpec) => Effect.Effect<ShellInteractiveResult, ShellExecError>"
     ]
+  },
+  "provisionalServiceTagMethods": {
+    "BuildOrchestrator": ["buildApp"]
   }
 }

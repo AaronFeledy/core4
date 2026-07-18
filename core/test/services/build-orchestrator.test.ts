@@ -3,9 +3,9 @@ import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, DateTime, Effect, Fiber, Layer, Stream } from "effect";
+import { type Context, DateTime, Effect, Fiber, Layer, Queue, Stream } from "effect";
 
-import { ProviderInternalError } from "@lando/core/errors";
+import { ProviderInternalError, StateStoreError } from "@lando/core/errors";
 import {
   type ArtifactBuildSpec,
   BuildOrchestrator,
@@ -32,6 +32,7 @@ import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts"
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
+import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("test");
 const appId = AppId.make("myapp");
@@ -106,9 +107,9 @@ const registryLayer = (provider = TestRuntimeProvider) =>
     select: () => Effect.succeed(provider),
   });
 
-const layer = (provider = TestRuntimeProvider) => {
+const layer = (provider = TestRuntimeProvider, stateStoreLive = StateStoreLive) => {
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
-  const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), StateStoreLive);
+  const dependencies = Layer.mergeAll(EventServiceLive, pathsLive, registryLayer(provider), stateStoreLive);
   return Layer.mergeAll(dependencies, BuildOrchestratorLive.pipe(Layer.provide(dependencies)));
 };
 
@@ -165,7 +166,13 @@ const serviceFeatureExtension = (service: ServicePlan) =>
     | undefined;
 
 describe("BuildOrchestratorLive", () => {
-  test("builds every service sequentially and publishes build events in order", async () => {
+  test("builds three artifact services with the default bounded concurrency", async () => {
+    // Given
+    const cache = { ...db, name: ServiceName.make("cache") } satisfies ServicePlan;
+    const concurrentPlan: AppPlan = {
+      ...plan,
+      services: { [web.name]: web, [db.name]: db, [cache.name]: cache },
+    };
     const calls: string[] = [];
     let active = 0;
     let maxActive = 0;
@@ -173,29 +180,32 @@ describe("BuildOrchestratorLive", () => {
       ...TestRuntimeProvider,
       buildArtifact: (spec: ArtifactBuildSpec) =>
         Effect.gen(function* () {
-          expect(spec.app).toBe(plan.id);
-          expect(spec.plan).toBe(plan);
+          expect(spec.app).toBe(concurrentPlan.id);
+          expect(spec.plan).toBe(concurrentPlan);
           expect(spec.buildKey).toBeString();
           active += 1;
           maxActive = Math.max(maxActive, active);
           calls.push(String(spec.service));
-          yield* Effect.sleep("10 millis");
+          yield* Effect.sleep("30 millis");
           active -= 1;
           return { providerId, ref: `${spec.service}:test` };
         }),
     };
 
+    // When
     const events = await Effect.runPromise(
       Effect.flatMap(EventService, (eventService) =>
         Effect.gen(function* () {
           const subscriber = yield* eventService
             .subscribe("*")
-            .pipe(Stream.take(4), Stream.runCollect, Effect.fork);
+            .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
+            .pipe(Stream.take(6), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) =>
-            Effect.map(orchestrator.build(plan), (builtPlan) => {
+            Effect.map(orchestrator.build(concurrentPlan), (builtPlan) => {
               expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "web:test" });
               expect(builtPlan.services[db.name]?.artifact).toEqual({ kind: "ref", ref: "db:test" });
+              expect(builtPlan.services[cache.name]?.artifact).toEqual({ kind: "ref", ref: "cache:test" });
             }),
           );
           return yield* Fiber.join(subscriber);
@@ -203,18 +213,180 @@ describe("BuildOrchestratorLive", () => {
       ).pipe(Effect.provide(layer(provider))),
     );
 
-    expect(calls).toEqual(["web", "db"]);
-    expect(maxActive).toBe(1);
+    // Then
+    expect(calls).toEqual(["web", "db", "cache"]);
+    expect(maxActive).toBe(2);
     expect(
       Array.from(events)
         .map(buildLifecycleEntry)
         .filter((entry) => entry !== undefined),
+    ).toEqual(
+      expect.arrayContaining([
+        ["pre-build", ServiceName.make("web")],
+        ["post-build", ServiceName.make("web")],
+        ["pre-build", ServiceName.make("db")],
+        ["post-build", ServiceName.make("db")],
+        ["pre-build", ServiceName.make("cache")],
+        ["post-build", ServiceName.make("cache")],
+      ]),
+    );
+  });
+
+  test("publishes transcript-bearing task lifecycle events for real service builds", async () => {
+    await withTempUserRoots(async () => {
+      const provider = {
+        ...TestRuntimeProvider,
+        buildArtifact: (spec: ArtifactBuildSpec) =>
+          Effect.succeed({ providerId, ref: `${spec.service}:test` }),
+      };
+
+      const events = await Effect.runPromise(
+        Effect.scoped(
+          Effect.gen(function* () {
+            const eventService = yield* EventService;
+            const queue = yield* eventService.subscribeQueue;
+            const orchestrator = yield* BuildOrchestrator;
+            yield* orchestrator.build(plan);
+            return [...(yield* Queue.takeAll(queue))];
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      const treeStart = events.find((event) => event._tag === "task.tree.start");
+      expect(treeStart).toMatchObject({
+        parentId: `build-artifact-${String(plan.id)}`,
+        children: [String(web.name), String(db.name)],
+      });
+      const starts = events.filter((event) => event._tag === "task.start");
+      expect(starts).toHaveLength(2);
+      expect(starts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            taskId: String(web.name),
+            transcriptPath: expect.stringContaining(
+              `/builds/${String(plan.id)}/artifact/${String(web.name)}/`,
+            ),
+          }),
+          expect.objectContaining({
+            taskId: String(db.name),
+            transcriptPath: expect.stringContaining(
+              `/builds/${String(plan.id)}/artifact/${String(db.name)}/`,
+            ),
+          }),
+        ]),
+      );
+      expect(events.filter((event) => event._tag === "task.complete")).toHaveLength(2);
+      expect(events.filter((event) => event._tag === "task.tree.complete")).toHaveLength(1);
+    });
+  });
+
+  test("settles every artifact task when scratch cache access fails", async () => {
+    // Given
+    const cacheFailure = new StateStoreError({ reason: "io", operation: "open" });
+    const scratchPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("scratch-cache-failure"),
+      slug: "scratch-cache-failure",
+      services: { [web.name]: web, [db.name]: db },
+    };
+    let cacheOpenCount = 0;
+    const failingStateStore = Layer.succeed(StateStore, {
+      open: () => {
+        cacheOpenCount += 1;
+        return cacheOpenCount === 1 ? Effect.fail(cacheFailure) : Effect.never;
+      },
+    });
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const error = yield* Effect.flip(orchestrator.build(scratchPlan));
+          return { error, events: [...(yield* Queue.takeAll(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(TestRuntimeProvider, failingStateStore))),
+    );
+
+    // Then
+    expect(result.error).toMatchObject({
+      _tag: "ProviderInternalError",
+      operation: "buildResults",
+      cause: cacheFailure,
+    });
+    expect(result.events.find((event) => event._tag === "task.tree.start")).toMatchObject({
+      children: ["web", "db"],
+    });
+    expect(
+      result.events
+        .filter((event) => event._tag === "task.fail")
+        .map((event) => [event.taskId, event.summary])
+        .sort(),
     ).toEqual([
-      ["pre-build", ServiceName.make("web")],
-      ["post-build", ServiceName.make("web")],
-      ["pre-build", ServiceName.make("db")],
-      ["post-build", ServiceName.make("db")],
+      ["db", "Build db aborted"],
+      ["web", "Build web failed"],
     ]);
+    expect(
+      result.events
+        .filter((event) => event._tag === "build-step-skip")
+        .map((event) => [event.serviceName, event.reason]),
+    ).toEqual([["db", "phase-aborted"]]);
+    expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
+      succeeded: 0,
+      failed: 2,
+    });
+  });
+
+  test("preserves the provider failure when recording the scratch failure also fails", async () => {
+    // Given
+    const providerFailure = new ProviderInternalError({
+      providerId: "test",
+      operation: "buildArtifact",
+      message: "build failed",
+    });
+    const cacheFailure = new StateStoreError({ reason: "io", operation: "update" });
+    const scratchPlan: AppPlan = {
+      ...plan,
+      id: AppId.make("scratch-cache-write-failure"),
+      slug: "scratch-cache-write-failure",
+      services: { [web.name]: web },
+    };
+    const testStore = makeTestStateStore();
+    const failingStateStore = Layer.succeed(StateStore, {
+      open: (spec) =>
+        testStore.service.open(spec).pipe(
+          Effect.map((bucket) => ({
+            ...bucket,
+            update: () => Effect.fail(cacheFailure),
+          })),
+        ),
+    });
+    const provider = {
+      ...TestRuntimeProvider,
+      buildArtifact: () => Effect.fail(providerFailure),
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const error = yield* Effect.flip(orchestrator.build(scratchPlan));
+          return { error, events: [...(yield* Queue.takeAll(queue))] };
+        }),
+      ).pipe(Effect.provide(layer(provider, failingStateStore))),
+    );
+
+    // Then
+    expect(result.error).toBe(providerFailure);
+    expect(result.events.find((event) => event._tag === "task.fail")).toMatchObject({
+      taskId: "web",
+      summary: "Build web failed",
+    });
   });
 
   test("short-circuits on the original provider failure", async () => {
@@ -240,7 +412,7 @@ describe("BuildOrchestratorLive", () => {
       ),
     );
 
-    expect(calls).toEqual(["web"]);
+    expect(calls).toEqual(["web", "db"]);
     expect(error).toBe(failure);
   });
 
@@ -384,6 +556,7 @@ describe("BuildOrchestratorLive", () => {
         Effect.gen(function* () {
           const subscriber = yield* eventService
             .subscribe("*")
+            .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
             .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
@@ -439,6 +612,7 @@ describe("BuildOrchestratorLive", () => {
           Effect.gen(function* () {
             const subscriber = yield* eventService
               .subscribe("*")
+              .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
               .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
             yield* Effect.sleep("10 millis");
             yield* Effect.flatMap(BuildOrchestrator, (orchestrator) => orchestrator.build(secretPlan));
@@ -488,6 +662,7 @@ describe("BuildOrchestratorLive", () => {
           expect(profileReads).toBe(0);
           const subscriber = yield* eventService
             .subscribe("*")
+            .pipe(Stream.filter((event) => buildLifecycleEntry(event) !== undefined))
             .pipe(Stream.take(2), Stream.runCollect, Effect.fork);
           yield* Effect.sleep("10 millis");
           yield* orchestrator.build(secretPlan);

@@ -48,6 +48,7 @@ import { initApp } from "../cli/commands/init.ts";
 import { makeLandoPaths } from "../config/paths.ts";
 import { parseLandofile } from "../landofile/parser.ts";
 import { decodeOrFail } from "../schema/decode.ts";
+import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";
 import { ScratchResourceScanner } from "./scanner.ts";
 
@@ -625,13 +626,11 @@ const makeScratchAppService = (
       const builtPlan = yield* Option.match(buildOrchestrator, {
         onNone: () => Effect.succeed(markedPlan),
         onSome: (orchestrator) =>
-          orchestrator
-            .build(markedPlan)
-            .pipe(
-              Effect.mapError((cause) =>
-                scratchAppError("start", `Unable to build scratch app ${scratchId}.`, cause),
-              ),
+          withBuildProvider(orchestrator.build(markedPlan), provider).pipe(
+            Effect.mapError((cause) =>
+              scratchAppError("start", `Unable to build scratch app ${scratchId}.`, cause),
             ),
+          ),
       });
       yield* Effect.scoped(provider.apply(builtPlan, { reconcile: false })).pipe(
         // A failed start can leave a materialized dir and partial provider state; the scope

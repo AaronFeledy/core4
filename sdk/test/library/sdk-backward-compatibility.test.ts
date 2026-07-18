@@ -9,6 +9,7 @@ import * as sdkSchema from "@lando/sdk/schema";
 type FrozenSdkSurface = {
   readonly schemaNames: ReadonlyArray<string>;
   readonly serviceTags: Readonly<Record<string, ReadonlyArray<string>>>;
+  readonly provisionalServiceTagMethods?: Readonly<Record<string, ReadonlyArray<string>>>;
 };
 
 const repoRoot = new URL("../../..", import.meta.url).pathname;
@@ -109,7 +110,11 @@ describe("SDK backward-compatibility surface", () => {
     const serviceTags = currentServiceTagSignatures();
 
     for (const [tagName, expectedSignatures] of Object.entries(frozenSurface.serviceTags)) {
-      expect(serviceTags[tagName]).toEqual(expectedSignatures.map(normalizeSignature).sort());
+      const provisional = new Set(frozenSurface.provisionalServiceTagMethods?.[tagName] ?? []);
+      const comparable = (serviceTags[tagName] ?? []).filter(
+        (signature) => !provisional.has(signature.split(":")[0] ?? ""),
+      );
+      expect(comparable).toEqual(expectedSignatures.map(normalizeSignature).sort());
     }
   });
 

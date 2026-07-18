@@ -64,6 +64,7 @@ import type {
 } from "../schema/index.ts";
 
 import type {
+  BuildPhaseFailedError,
   CacheError,
   CapabilityError,
   ConfigError,
@@ -502,6 +503,10 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
   }
 >() {}
 
+export interface BuildAppOptions {
+  readonly force?: boolean;
+}
+
 export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
   BuildOrchestrator,
   {
@@ -510,6 +515,18 @@ export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrc
     ) => Effect.Effect<
       AppPlan,
       EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError
+    >;
+    readonly buildApp: (
+      plan: AppPlan,
+      options?: BuildAppOptions,
+    ) => Effect.Effect<
+      void,
+      | BuildPhaseFailedError
+      | EventError
+      | NoProviderInstalledError
+      | ProviderConfigError
+      | ProviderError
+      | ProviderUnavailableError
     >;
   }
 >() {}
