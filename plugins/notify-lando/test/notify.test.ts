@@ -6,7 +6,7 @@ import type { RenderEvent } from "@lando/sdk/events";
 import type { LandoPluginContext } from "@lando/sdk/plugins";
 import { NotifyConfig } from "@lando/sdk/schema";
 
-import notify, { DEFAULT_NOTIFY_COMMAND_IDS, resolveNotifyCommandIds } from "../src/notify.ts";
+import notify from "../src/notify.ts";
 
 const context = (published: Array<RenderEvent>): LandoPluginContext => ({
   id: "@lando/notify-lando",
@@ -88,14 +88,17 @@ describe("notify policy", () => {
     expect(published).toEqual([]);
   });
 
-  test("deduplicates defaults before additional command ids in first-seen order", () => {
-    // Given: repeated default and additional command ids.
-    const notifyConfig = config({ commands: ["app:start", "meta:version", "meta:version", "app:stop"] });
+  test("publishes once for an additional command repeated in config", async () => {
+    // Given: an additional eligible command repeated in config.
+    const published: Array<RenderEvent> = [];
+    const handler = notify(context(published), config({ commands: ["meta:version", "meta:version"] }));
 
-    // When: the eligible family is resolved.
-    const ids = resolveNotifyCommandIds(notifyConfig);
+    // When: the additional command completes.
+    await Effect.runPromise(
+      handler(terminal("run", { commandId: "meta:version", _tag: "cli-meta:version-run" })),
+    );
 
-    // Then: defaults remain first and each id occurs once.
-    expect(ids).toEqual([...DEFAULT_NOTIFY_COMMAND_IDS, "meta:version"]);
+    // Then: the policy publishes exactly one notification.
+    expect(published).toHaveLength(1);
   });
 });

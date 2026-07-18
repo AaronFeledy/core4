@@ -5,7 +5,7 @@ import type { LandoEvent } from "@lando/sdk/events";
 import type { SubscriberFactory } from "@lando/sdk/plugins";
 import type { NotifyConfig } from "@lando/sdk/schema";
 
-export const DEFAULT_NOTIFY_COMMAND_IDS = [
+const DEFAULT_NOTIFY_COMMAND_IDS = [
   "app:start",
   "app:stop",
   "app:restart",
@@ -15,7 +15,7 @@ export const DEFAULT_NOTIFY_COMMAND_IDS = [
   "meta:update",
 ] as const;
 
-export const resolveNotifyCommandIds = (config: NotifyConfig): ReadonlyArray<string> => {
+const resolveNotifyCommandIds = (config: NotifyConfig): ReadonlyArray<string> => {
   const ids: string[] = [...DEFAULT_NOTIFY_COMMAND_IDS];
   for (const commandId of config.commands) {
     if (!ids.includes(commandId)) ids.push(commandId);

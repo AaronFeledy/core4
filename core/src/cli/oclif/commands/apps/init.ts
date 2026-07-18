@@ -97,7 +97,7 @@ export const initSpec: LandoCommandSpec<never> = {
   summary: "Generate a new Lando app.",
   namespace: "apps",
   topLevelAlias: true,
-  bootstrap: "commands",
+  bootstrap: "minimal",
   run: () => Effect.die("not yet implemented: apps:init"),
 };
 

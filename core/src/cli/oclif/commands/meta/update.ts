@@ -29,7 +29,7 @@ export const updateSpec: LandoCommandSpec<UpdateResult> = {
   summary: "Update Lando core and plugins.",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "commands",
+  bootstrap: "plugins",
   run: (input) => update(updateOptionsFromInput(input)),
 };
 

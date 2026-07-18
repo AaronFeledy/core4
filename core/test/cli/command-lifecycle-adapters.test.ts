@@ -111,7 +111,7 @@ describe("CLI lifecycle adapters", () => {
     // Then
     expect(declarations).toEqual([
       ["meta:version", "none"],
-      ["meta:update", "commands"],
+      ["meta:update", "plugins"],
       ["meta:doctor", "provider"],
       ["app:start", "app"],
     ]);

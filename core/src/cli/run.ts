@@ -437,7 +437,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
         catch: (error) => error,
       }),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "commands", plugins: { policy: "discovery" } })),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
       (result) => `Created ${result.appName} at ${result.directory}`,
     );
     return;
@@ -770,7 +770,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     const input = compiledCommandInputFromArgv("meta:update", argv.slice(1));
     await runCompiledCommand(
       update(updateOptionsFromInput(input)),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "commands", plugins: { policy: "discovery" } })),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
       () => undefined,
     );
     return;

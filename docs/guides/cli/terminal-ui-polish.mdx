@@ -67,23 +67,4 @@ tags: [beta, docs, cli, renderer]
       <Variable name="json" value="structured stderr event" display="json mode still emits notify.desktop as a structured event so agents can present it themselves" />
     </Step>
   </Scenario>
-  <Scenario id="desktop-notification-policy" render={false} reason="Notify policy unit and lifecycle integration tests cover configuration, command eligibility, and invocation correlation without raising a live desktop notification">
-    <Step name="bundled-defaults">
-      <Variable name="plugin" value="@lando/notify-lando bundled and enabled by default" display="The policy plugin, not core or the renderer, decides when a command completion publishes notify.desktop" />
-      <Variable name="commands" value="app:start, app:stop, app:restart, app:rebuild, app:destroy, meta:setup, meta:update" display="The fixed default family is always eligible before user additions" />
-      <Variable name="threshold" value="durationMs >= 15000" display="The default threshold is 15000 ms; equality qualifies, and thresholdMs 0 qualifies every eligible completed command" />
-    </Step>
-    <Step name="additive-commands">
-      <Variable name="configuration" value="notify.commands adds canonical command ids" display="Entries must pass schema shape and size limits, resolve in the command registry, and require commands-tier-or-higher bootstrap eligibility or config resolution fails with ConfigError" />
-      <Variable name="deduplication" value="defaults first, then first occurrence of each addition" display="Duplicates within notify.commands and entries already in the default family are skipped without reordering the resolved command family" />
-    </Step>
-    <Step name="disablement-and-env">
-      <Variable name="disablement" value="disable @lando/notify-lando or set notify.enabled false" display="Either standard plugin disablement or the notify master switch silences desktop notification policy entirely" />
-      <Variable name="aliases" value="LANDO_NOTIFY_ENABLED, LANDO_NOTIFY_THRESHOLD_MS, LANDO_NOTIFY_COMMANDS" display="Environment overrides map to notify.enabled, notify.thresholdMs, and the JSON-array notify.commands value" />
-    </Step>
-    <Step name="invocation-eligibility">
-      <Variable name="outer" value="outer invocation completion or failure" display="Only the invocation with no parentInvocationId may publish one success or failure notification after meeting command and duration policy" />
-      <Variable name="nested" value="parentInvocationId present means suppressed" display="Nested command invocations remain observable lifecycle events but never independently trigger foreground desktop presentation" />
-    </Step>
-  </Scenario>
 </Guide>

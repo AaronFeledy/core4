@@ -141,19 +141,19 @@ describe("compiled-binary dispatch parity — structural", () => {
     expect(adapter).not.toContain('bootstrap: "plugins"');
   });
 
-  test("meta:update uses commands bootstrap in source and compiled dispatch", () => {
+  test("meta:update uses plugins bootstrap in source and compiled dispatch", () => {
     // Given: source updateSpec, compiled OCLIF manifest, and the run.ts meta:update branch.
     const start = runSource.indexOf('if (argv[0] === "update" || argv[0] === "meta:update")');
     const end = runSource.indexOf('if (argv[0] === "global:config:set"', start);
     const adapter = runSource.slice(start, end);
 
-    // When/Then: source, manifest, and compiled adapter all use commands bootstrap.
-    expect(updateSpec.bootstrap).toBe("commands");
-    expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("commands");
+    // When/Then: source, manifest, and compiled adapter all use plugins bootstrap.
+    expect(updateSpec.bootstrap).toBe("plugins");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
-    expect(adapter).toContain('bootstrap: "commands"');
-    expect(adapter).not.toContain('bootstrap: "plugins"');
+    expect(adapter).toContain('bootstrap: "plugins"');
+    expect(adapter).not.toContain('bootstrap: "commands"');
   });
 });
 
@@ -1682,8 +1682,8 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
   });
 
   describe("answer-source and interactivity resolution at parity", () => {
-    test("apps:init: invalid notify.commands fails before scaffolding on both paths", async () => {
-      // Given: commands-tier config names a command absent from the final registry.
+    test("apps:init: minimal bootstrap ignores notification policy on both paths", async () => {
+      // Given: notification config that commands-tier policy would reject.
       const isolated = makeIsolatedEnv();
       const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-notify-src-"));
       const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-notify-cmp-"));
@@ -1699,62 +1699,21 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       ] as const;
 
       try {
-        // When: source and compiled dispatch acquire the declared commands runtime.
+        // When: source and compiled dispatch run the minimal init surface.
         const source = await runSourceCli(args, { cwd: sourceCwd, env: isolated.env });
         const compiled = await runCompiledCli(args, { cwd: compiledCwd, env: isolated.env });
 
-        // Then: both reject the same config entry without running init.
-        expect(source.exitCode).toBe(1);
-        expect(compiled.exitCode).toBe(source.exitCode);
-        const sourceFrame = lastJsonLine(`${source.stdout}\n${source.stderr}`);
-        const compiledFrame = lastJsonLine(`${compiled.stdout}\n${compiled.stderr}`);
-        expect(normalizeJsonEnvelope(compiledFrame)).toEqual(normalizeJsonEnvelope(sourceFrame));
-        expect(commandResultEnvelope(sourceFrame)).toMatchObject({
-          command: "apps:init",
-          ok: false,
-          error: {
-            _tag: "ConfigError",
-            message: expect.stringContaining('"app:missing-command" in notify.commands'),
-          },
-        });
-        expect(() => readFileSync(join(sourceCwd, "invalid-notify-app", ".lando.yml"))).toThrow();
-        expect(() => readFileSync(join(compiledCwd, "invalid-notify-app", ".lando.yml"))).toThrow();
-      } finally {
-        rmSync(sourceCwd, { recursive: true, force: true });
-        rmSync(compiledCwd, { recursive: true, force: true });
-        isolated.cleanup();
-      }
-    }, 30_000);
-
-    test("apps:init: eligible completion reaches notification subscribers on both paths", async () => {
-      // Given: notify-lando selects apps:init with no duration threshold.
-      const isolated = makeIsolatedEnv();
-      const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-subscriber-src-"));
-      const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-subscriber-cmp-"));
-      const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
-      mkdirSync(confRoot, { recursive: true });
-      writeFileSync(
-        join(confRoot, "config.yml"),
-        "notify:\n  thresholdMs: 0\n  commands:\n    - apps:init\n",
-      );
-      const args = ["apps:init", "--recipe=empty", "--no-interactive", "--renderer=json"] as const;
-
-      try {
-        // When: each dispatch path completes an init through its command runtime.
-        const source = await runSourceCli([...args, "--name=source-notify-app"], {
-          cwd: sourceCwd,
-          env: isolated.env,
-        });
-        const compiled = await runCompiledCli([...args, "--name=compiled-notify-app"], {
-          cwd: compiledCwd,
-          env: isolated.env,
-        });
-
-        // Then: the command-scoped renderer receives the subscriber event in both cases.
+        // Then: subscriber policy cannot block or notify during scaffolding.
         expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
-        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
-        expect(source.stderr).toContain('"_tag":"notify.desktop"');
-        expect(compiled.stderr).toContain('"_tag":"notify.desktop"');
+        expect(compiled.exitCode).toBe(source.exitCode);
+        expect(
+          readFileSync(join(sourceCwd, "invalid-notify-app", ".lando.yml"), "utf8").length,
+        ).toBeGreaterThan(0);
+        expect(
+          readFileSync(join(compiledCwd, "invalid-notify-app", ".lando.yml"), "utf8").length,
+        ).toBeGreaterThan(0);
+        expect(source.stderr).not.toContain('"_tag":"notify.desktop"');
+        expect(compiled.stderr).not.toContain('"_tag":"notify.desktop"');
       } finally {
         rmSync(sourceCwd, { recursive: true, force: true });
         rmSync(compiledCwd, { recursive: true, force: true });

@@ -10,7 +10,7 @@ export interface IndexedSubscriber {
   readonly entry: SubscriberManifestEntry;
 }
 
-export interface SubscriberRegistrationClosure {
+interface SubscriberRegistrationClosure {
   readonly current: () => ReadonlyMap<string, ReadonlyArray<IndexedSubscriber>> | undefined;
   readonly close: (
     commandIds: ReadonlyArray<string>,

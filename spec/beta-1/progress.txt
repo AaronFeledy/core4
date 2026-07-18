@@ -783,3 +783,16 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Keep the closed subscriber event taxonomy separate from feature-specific eligibility sets; policy bootstrap limits must not silently narrow public selector semantics.
   - A custom command wrapper that declares a bootstrap tier must acquire and provide that runtime on every dispatch path rather than bypassing it with `Layer.empty`.
 ---
+
+## 2026-07-18 17:49 CDT - US-459 Drift Audit
+- Trigger: 7 cycles, 2755 changed lines, 12 commits
+- Scope absorption: commands-tier-only notification eligibility and a post-4.0 tooling-executor deferral narrowed the original acceptance contract; restored the original contract and returned the story to `passes: false`.
+- Weakened proofs: source/compiled `apps:init` tests blessed notification policy blocking a normative minimal-tier command; replaced them with a production parity proof that scaffolding remains minimal, non-blocking, and non-notifying.
+- Ceremony modules: no forwarding module warranted deletion, but test-only subscriber, plugin-state, and notify-policy exports were made internal.
+- Collateral edits: excised the `apps:init` and `meta:update` tier escalations plus the cross-story normative/PRD text that laundered the missing nested-command path as deferred work.
+- Contract drift: implementation, progress claims, the executable guide, and the source PRD disagreed on lower-tier command eligibility and live nested correlation; the source contract is authoritative and the guide is Planned again.
+- Deferred-work laundering: a live `command:` executor with correlated nested lifecycle events and an architecture that validates and notifies eligible commands below the commands tier remain unresolved story boundaries.
+- Fixed: restored the original init/update bootstrap tiers and their parity proofs, removed dead exports and premature guide claims, and preserved the scheduler handoff after its command-runtime regression test disproved that deletion.
+- Split/excise decisions: excised the init escalation and deferral rewrite; the tooling command-step executor and lower-tier notification eligibility need an explicit follow-up boundary before this story can pass.
+- Verification: typecheck, lint, full codegen idempotence, renderer/redaction/machine-output boundaries, guide lint/coverage, TypeScript no-excuse audit, and focused lifecycle/subscriber/renderer/plugin/state/env/bootstrap/source+compiled parity spot checks passed; guide drift was unverified without PR context, and no full test suite or host runtime integration was run.
+---

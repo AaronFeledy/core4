@@ -29,8 +29,6 @@ import type {
 
 import { type PluginStateStore, makePluginStateStore } from "./context-state.ts";
 
-export type { PluginStateBucketSpec } from "./context-state.ts";
-
 type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
 
 /** A `ManagedFile` a plugin declares; the `owner` and base are supplied by the surface. */
