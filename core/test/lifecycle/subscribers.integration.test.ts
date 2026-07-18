@@ -199,32 +199,38 @@ describe("subscriber runtime integration", () => {
     }
   });
 
-  test("commands-tier rejects a below-commands canonical notify command", async () => {
-    // Given: active notify-lando policy naming a canonical command below commands bootstrap.
-    const { layer, root } = await runtime([], "notify:\n  commands:\n    - meta:version\n");
+  test("commands-tier accepts a registry-valid lower-tier notify command", async () => {
+    // Given: active notify-lando policy naming a canonical command declared below commands bootstrap.
+    const { layer, root } = await runtime([], "notify:\n  thresholdMs: 0\n  commands:\n    - meta:version\n");
     const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
     process.env.LANDO_USER_CONF_ROOT = join(root, "config");
 
-    // When: the commands-tier layer validates notification eligibility.
-    const exit = await Effect.runPromiseExit(
+    // When: the complete commands-tier registry closes and the lower-tier terminal event is published.
+    const versionTerminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
+      _tag: "cli-meta:version-run",
+      commandId: "meta:version",
+      argv: [],
+      args: {},
+      flags: {},
+      cwd: "/app",
+      invocationId: "outer",
+      timestamp: "2026-07-18T00:00:00.000Z",
+      durationMs: 15_000,
+      exitCode: 0,
+    });
+    const notifications = await Effect.runPromise(
       Effect.gen(function* () {
-        return yield* EventService;
+        const events = yield* EventService;
+        yield* events.publish(versionTerminal);
+        return yield* events.query("notify.desktop");
       }).pipe(Effect.provide(layer)),
     );
     if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
     else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
 
-    // Then: canonical selector membership does not make the command notification-eligible.
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        const value: unknown = failure.value;
-        expect(value).toBeInstanceOf(ConfigError);
-        if (value instanceof ConfigError) expect(value.path).toBe("notify.commands[0]");
-      }
-    }
+    // Then: registry validity, not declared bootstrap depth, controls notification eligibility.
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]).toMatchObject({ _tag: "notify.desktop", urgency: "success" });
   });
 
   test("renders the terminal lifecycle notification through the command runtime", async () => {

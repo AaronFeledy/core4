@@ -463,6 +463,19 @@ describe("LandofileShape — tooling: Alpha schema", () => {
     expect(Either.isLeft(result)).toBe(true);
   });
 
+  test("strict decoding accepts a canonical command step", () => {
+    const decoded = Schema.decodeUnknownSync(ToolingTaskShape)(
+      {
+        cmds: [{ command: "app:inner", raw: ["target"], silent: true, ignoreError: false }],
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(decoded.cmds).toEqual([
+      { command: "app:inner", raw: ["target"], silent: true, ignoreError: false },
+    ]);
+  });
+
   test("ToolingTaskShape exposes every Alpha-supported field as optional", () => {
     const fields = Object.keys(ToolingTaskShape.fields);
     for (const key of ALPHA_TOOLING_FIELDS) {

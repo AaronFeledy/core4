@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Clock, Effect, Exit, FiberRef, Option, Schema } from "effect";
 
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -28,6 +28,25 @@ export interface CommandLifecycleOptions<A> {
   readonly failureExitCode?: (error: unknown) => number | undefined;
   readonly interruptionExitCode?: number;
 }
+
+const currentCommandInvocation = FiberRef.unsafeMake<CliInvocationSnapshot | undefined>(undefined);
+
+export const makeNestedCommandInvocation = (
+  commandId: string,
+  argv: ReadonlyArray<string>,
+): Effect.Effect<CliInvocationSnapshot> =>
+  Effect.gen(function* () {
+    const parent = yield* FiberRef.get(currentCommandInvocation);
+    return {
+      commandId,
+      argv,
+      args: {},
+      flags: {},
+      cwd: parent?.cwd ?? process.cwd(),
+      invocationId: newInvocationId(),
+      ...(parent?.invocationId === undefined ? {} : { parentInvocationId: parent.invocationId }),
+    };
+  });
 
 export const newInvocationId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -95,6 +114,11 @@ export const runCommandLifecycle = <A, E, R>(
       const startedAt = yield* Clock.currentTimeMillis;
       const invocationId = options.invocation.invocationId ?? newInvocationId();
       const parentInvocationId = options.invocation.parentInvocationId;
+      const invocationSnapshot: CliInvocationSnapshot = {
+        ...options.invocation,
+        invocationId,
+        ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
+      };
       const invocation = {
         commandId: options.invocation.commandId,
         argv: summarizeInvocationArgv(options.invocation.argv),
@@ -110,7 +134,9 @@ export const runCommandLifecycle = <A, E, R>(
         _tag: `cli-${options.invocation.commandId}-init`,
         ...invocation,
       });
-      const outcome = yield* Effect.exit(command);
+      const outcome = yield* Effect.exit(command).pipe(
+        Effect.locally(currentCommandInvocation, invocationSnapshot),
+      );
       const finishedAt = yield* Clock.currentTimeMillis;
       const terminal = {
         ...invocation,

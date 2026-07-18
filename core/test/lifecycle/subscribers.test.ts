@@ -224,8 +224,8 @@ describe("subscriber runtime", () => {
         expect(failure.value).toBeInstanceOf(ConfigError);
         expect(failure.value.path).toBe("notify.commands[1]");
         expect(failure.value.message).toContain("bad:id");
-        expect(failure.value.message).toContain("Unknown or ineligible canonical command id");
-        expect(failure.value.message).toContain("commands-tier-or-higher");
+        expect(failure.value.message).toContain("Unknown canonical command id");
+        expect(failure.value.message).toContain("registered command");
       }
     }
   });

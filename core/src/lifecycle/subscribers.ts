@@ -3,13 +3,7 @@ import { type Context, Effect, Layer, Schema } from "effect";
 import { EventError, PluginLoadError } from "@lando/sdk/errors";
 import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/events";
-import {
-  AbsolutePath,
-  BOOTSTRAP_RANK,
-  BootstrapLevel,
-  type NotifyConfig,
-  type PluginManifest,
-} from "@lando/sdk/schema";
+import { AbsolutePath, type NotifyConfig, type PluginManifest } from "@lando/sdk/schema";
 import {
   CommandRegistry,
   ConfigService,
@@ -41,15 +35,6 @@ import {
 
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;
-
-const BELOW_COMMANDS_CANONICAL_IDS: ReadonlySet<string> = new Set(
-  Object.values(COMPILED_OCLIF_MANIFEST.commands)
-    .filter(
-      (entry) =>
-        BOOTSTRAP_RANK[Schema.decodeUnknownSync(BootstrapLevel)(entry.bootstrap)] < BOOTSTRAP_RANK.commands,
-    )
-    .map((entry) => entry.id),
-);
 
 export const canonicalSubscriberCommandIds = (
   manifests: ReadonlyArray<PluginManifest>,
@@ -168,9 +153,7 @@ export const makeSubscriberRuntimeLive = () =>
       const commandRegistry = yield* CommandRegistry;
       const resolvedCommands = yield* commandRegistry.list;
       const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands);
-      const notifyCommandIds = new Set(
-        commandIds.filter((commandId) => !BELOW_COMMANDS_CANONICAL_IDS.has(commandId)),
-      );
+      const notifyCommandIds = new Set(commandIds);
       const hasNotifySubscriber = manifests.some((manifest) =>
         manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );

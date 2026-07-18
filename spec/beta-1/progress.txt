@@ -142,7 +142,6 @@ US-450 no longer asks for a Windows UAC elevation path for managed-machine trust
 US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), covering the OpenTUI `^0.4.3` substrate contract, the split-footer live region, prompt chrome + frame-snapshot harness, the complete `RendererCapabilities`/`notify.desktop`/`NotifyConfig` SDK surface with foreground-only realization, the accidental `HostProxyRequest` `notify`/`clipboardCopy` verb cleanup, the `@lando/notify-lando` bundled policy plugin, and the contract-only freeze of the 4.1 panel/keymap/rich-event surfaces. The `@opentui/core` `^0.4.3` package/lockfile bump for `plugins/renderer-lando` is the only artifact actually present in the tree today. No generated output (`scripts/generated/opentui-native/**`, bootstrap layers, bundled-plugin tables), no `@lando/sdk` schema/service code, no `@lando/notify-lando` plugin package, and no `@lando/renderer-lando` runtime change has landed — this pass is normative spec + PRD text only, establishing the contract the implementation stories still have to satisfy.
 - **Learning:** a dependency bump landing before its consuming spec is fully decision-complete is not itself progress on the PRD; keep the progress log honest about what's spec-only versus implemented so PRD-15 isn't mistaken for shipped work.
 ---
-
 ## 2026-07-15 00:50 CDT - US-444
 - Detached host-proxy startup now sends bounded payload chunks through backpressure-aware writes, enforces a 16 MiB frame limit and 15-second delivery deadline, and closes stdin only after buffered bytes drain. Oversized startup remains a tagged, remediated failure and terminates the child without persisting half-started worker state.
 - Verification: typecheck, lint passed; focused payload/backpressure and host-proxy manager/contract tests passed; scratch-run and toolbox spot checks passed.
@@ -795,4 +794,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Fixed: restored the original init/update bootstrap tiers and their parity proofs, removed dead exports and premature guide claims, and preserved the scheduler handoff after its command-runtime regression test disproved that deletion.
 - Split/excise decisions: excised the init escalation and deferral rewrite; the tooling command-step executor and lower-tier notification eligibility need an explicit follow-up boundary before this story can pass.
 - Verification: typecheck, lint, full codegen idempotence, renderer/redaction/machine-output boundaries, guide lint/coverage, TypeScript no-excuse audit, and focused lifecycle/subscriber/renderer/plugin/state/env/bootstrap/source+compiled parity spot checks passed; guide drift was unverified without PR context, and no full test suite or host runtime integration was run.
+---
+
+## 2026-07-18 18:41 CDT - US-459
+- Completed registry-valid notification policy across lifecycle-producing bootstrap tiers and added the production nested tooling command-step path. Nested target commands now publish correlated lifecycle events through the ambient runtime while only the parentless outer invocation can publish the single desktop notification.
+- Verification: typecheck, lint, monorepo/core build, codegen, renderer/redaction/machine-output boundaries, guide lint/coverage/public transcripts, and focused subscriber, lifecycle, Landofile, tooling, and source/compiled parity tests passed; isolated source and rebuilt compiled CLI fixtures each executed the nested host command and emitted exactly one outer notification with clean teardown.
+- **Learnings for future iterations:**
+  - Preserve static command bootstrap declarations while selecting a notification-effective runtime only when an eligible lower-tier invocation needs the complete subscriber registry.
+  - Nested command lifecycle correlation belongs in fiber-local Effect context; process-global invocation staging is only safe for the outer compiled shell.
 ---

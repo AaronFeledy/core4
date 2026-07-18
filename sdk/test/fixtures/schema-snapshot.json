@@ -1078,7 +1078,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -2016,7 +2064,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -2996,7 +3092,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -4104,7 +4248,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -5042,7 +5234,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -8445,7 +8685,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -9406,7 +9694,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -10367,7 +10703,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -11328,7 +11712,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -12289,7 +12721,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -30935,7 +31415,55 @@
               },
               "cmds": {
                 "items": {
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "args": {
+                          "additionalProperties": {
+                            "$id": "/schemas/unknown",
+                            "title": "unknown"
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "command": {
+                          "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                          "maxLength": 128,
+                          "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                          "title": "maxLength(128)",
+                          "type": "string"
+                        },
+                        "flags": {
+                          "additionalProperties": {
+                            "$id": "/schemas/unknown",
+                            "title": "unknown"
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "ignoreError": {
+                          "type": "boolean"
+                        },
+                        "raw": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "silent": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": ["command"],
+                      "type": "object"
+                    }
+                  ]
                 },
                 "type": "array"
               },
@@ -52735,7 +53263,55 @@
                   },
                   "cmds": {
                     "items": {
-                      "type": "string"
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "args": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "command": {
+                              "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "maxLength": 128,
+                              "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                              "title": "maxLength(128)",
+                              "type": "string"
+                            },
+                            "flags": {
+                              "additionalProperties": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              },
+                              "properties": {},
+                              "required": [],
+                              "type": "object"
+                            },
+                            "ignoreError": {
+                              "type": "boolean"
+                            },
+                            "raw": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "silent": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": ["command"],
+                          "type": "object"
+                        }
+                      ]
                     },
                     "type": "array"
                   },
@@ -53126,7 +53702,55 @@
         },
         "cmds": {
           "items": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "args": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "command": {
+                    "description": "a string matching the pattern ^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                    "maxLength": 128,
+                    "pattern": "^[a-z][a-z0-9-]*(:[a-z][a-z0-9-]*)+$",
+                    "title": "maxLength(128)",
+                    "type": "string"
+                  },
+                  "flags": {
+                    "additionalProperties": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "ignoreError": {
+                    "type": "boolean"
+                  },
+                  "raw": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "silent": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["command"],
+                "type": "object"
+              }
+            ]
           },
           "type": "array"
         },

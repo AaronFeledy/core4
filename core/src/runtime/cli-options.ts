@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { envOverlay, resolveConfigFileRoot } from "../config/overlay.ts";
+import { deepMerge, envOverlay, resolveConfigFileRoot } from "../config/overlay.ts";
 import { resolveUserConfRoot } from "../config/roots.ts";
 import { parseMinimalYaml } from "../config/yaml-min.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
@@ -13,6 +13,50 @@ export interface CliTelemetryState {
   readonly enabled: boolean;
   readonly source: CliTelemetrySource;
 }
+
+const DEFAULT_LOWER_TIER_NOTIFY_COMMANDS = new Set(["meta:update"]);
+
+export const effectiveBootstrapForCommand = (
+  commandId: string,
+  declared: BootstrapLevel,
+  configuredCommands: ReadonlyArray<string>,
+): BootstrapLevel => {
+  if (
+    declared === "none" ||
+    declared === "commands" ||
+    declared === "tooling" ||
+    declared === "provider" ||
+    declared === "global" ||
+    declared === "scratch" ||
+    declared === "app"
+  ) {
+    return declared;
+  }
+  return DEFAULT_LOWER_TIER_NOTIFY_COMMANDS.has(commandId) || configuredCommands.includes(commandId)
+    ? "commands"
+    : declared;
+};
+
+const configuredNotifyCommands = (): ReadonlyArray<string> => {
+  const overlay = envOverlay();
+  const userConfRoot = resolveConfigFileRoot(resolveUserConfRoot(), overlay);
+  const path = join(userConfRoot, "config.yml");
+  const file = existsSync(path) ? parseMinimalYaml(readFileSync(path, "utf8")) : {};
+  const config = deepMerge(file, overlay);
+  const notify = config.notify;
+  if (typeof notify !== "object" || notify === null || Array.isArray(notify)) return [];
+  const value = notify as { readonly enabled?: unknown; readonly commands?: unknown };
+  if (value.enabled === false || !Array.isArray(value.commands)) return [];
+  return value.commands.filter((entry): entry is string => typeof entry === "string");
+};
+
+export const resolveEffectiveCliBootstrap = (commandId: string, declared: BootstrapLevel): BootstrapLevel => {
+  try {
+    return effectiveBootstrapForCommand(commandId, declared, configuredNotifyCommands());
+  } catch {
+    return DEFAULT_LOWER_TIER_NOTIFY_COMMANDS.has(commandId) ? "commands" : declared;
+  }
+};
 
 const telemetryEnabledFromEnvOverlay = (): boolean | undefined => {
   const telemetry = envOverlay().telemetry;

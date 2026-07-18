@@ -141,19 +141,19 @@ describe("compiled-binary dispatch parity — structural", () => {
     expect(adapter).not.toContain('bootstrap: "plugins"');
   });
 
-  test("meta:update uses plugins bootstrap in source and compiled dispatch", () => {
+  test("meta:update retains its declaration and uses the notification-effective compiled runtime", () => {
     // Given: source updateSpec, compiled OCLIF manifest, and the run.ts meta:update branch.
     const start = runSource.indexOf('if (argv[0] === "update" || argv[0] === "meta:update")');
     const end = runSource.indexOf('if (argv[0] === "global:config:set"', start);
     const adapter = runSource.slice(start, end);
 
-    // When/Then: source, manifest, and compiled adapter all use plugins bootstrap.
+    // When/Then: source and manifest retain the declaration while compiled dispatch selects the effective runtime.
     expect(updateSpec.bootstrap).toBe("plugins");
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
-    expect(adapter).toContain('bootstrap: "plugins"');
-    expect(adapter).not.toContain('bootstrap: "commands"');
+    expect(adapter).toContain('bootstrap: "commands"');
+    expect(adapter).not.toContain('bootstrap: "plugins"');
   });
 });
 

@@ -7,7 +7,7 @@ import { Effect, Layer } from "effect";
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { ScratchAppService } from "@lando/sdk/services";
 
-import { cliRuntimeOptions } from "../runtime/cli-options.ts";
+import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
 
@@ -437,7 +437,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
         catch: (error) => error,
       }),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
+      makeLandoRuntime(
+        cliRuntimeOptions({
+          bootstrap: resolveEffectiveCliBootstrap("apps:init", "minimal"),
+          plugins: { policy: "discovery" },
+        }),
+      ),
       (result) => `Created ${result.appName} at ${result.directory}`,
     );
     return;
@@ -770,7 +775,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     const input = compiledCommandInputFromArgv("meta:update", argv.slice(1));
     await runCompiledCommand(
       update(updateOptionsFromInput(input)),
-      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "commands", plugins: { policy: "discovery" } })),
       () => undefined,
     );
     return;

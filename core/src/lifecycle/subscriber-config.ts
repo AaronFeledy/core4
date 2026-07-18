@@ -16,7 +16,7 @@ export const resolveNotifyConfig = (
   return Effect.fail(
     new ConfigError({
       path: `notify.commands[${unknownIndex}]`,
-      message: `Unknown or ineligible canonical command id "${commandId}" in notify.commands. Remove it, install and enable the plugin that contributes it, or choose a commands-tier-or-higher command.`,
+      message: `Unknown canonical command id "${commandId}" in notify.commands. Remove it, install and enable the plugin that contributes it, or choose a registered command.`,
     }),
   );
 };

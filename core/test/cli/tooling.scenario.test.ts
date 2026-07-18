@@ -33,7 +33,9 @@ import {
   writeCachedAppPlan,
 } from "../../src/cache/app-plan.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
+import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
+import { RedactionService, createStandaloneRedactor } from "../../src/redaction/service.ts";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -283,6 +285,10 @@ const recordingEventLayer = (events: LandoEvent[]) =>
       };
     }),
   );
+
+const redactionLayer = Layer.succeed(RedactionService, {
+  forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+});
 
 const runtimeFor = (layer: Layer.Layer<never, never, never>) => Effect.provide(layer);
 
@@ -616,6 +622,47 @@ describe("runTooling — CLI rendering", () => {
     ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("install-out\ntest-out\n");
+  });
+
+  test("runs a command step with correlated nested lifecycle events", async () => {
+    const events: LandoEvent[] = [];
+    const { provider } = makeProvider([{ exitCode: 0, stdout: "nested\n" }]);
+    const landofile: LandofileShape = {
+      name: "scenario",
+      tooling: {
+        outer: { cmds: [{ command: "app:inner" }] },
+        inner: { service: "appserver", cmd: "echo nested" },
+      },
+    };
+    const layer = Layer.mergeAll(
+      makeLayer({ landofile, plan: makePlan([makeService("appserver", true)]), provider }),
+      recordingEventLayer(events),
+      redactionLayer,
+    );
+
+    const outcome = await Effect.runPromise(
+      runCommandLifecycle(runTooling({ name: "outer" }), {
+        invocation: {
+          commandId: "app:outer",
+          argv: [],
+          args: {},
+          flags: {},
+          cwd: "/app",
+          invocationId: "outer-id",
+        },
+      }).pipe(runtimeFor(layer)),
+    );
+
+    expect(outcome._tag).toBe("Success");
+    expect(events.filter((event) => event._tag.startsWith("cli-")).map((event) => event._tag)).toEqual([
+      "cli-app:outer-init",
+      "cli-app:inner-init",
+      "cli-app:inner-run",
+      "cli-app:outer-run",
+    ]);
+    expect(events.find((event) => event._tag === "cli-app:inner-run")).toMatchObject({
+      parentInvocationId: "outer-id",
+    });
   });
 
   test("fails fast with ToolingCompileError on unknown tooling command", async () => {

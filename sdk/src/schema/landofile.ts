@@ -5,6 +5,7 @@ import { BuildScript } from "./artifacts.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
+import { NotifyCommandId } from "./notify-config.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 
@@ -231,12 +232,22 @@ export type ToolingArgShape = typeof ToolingArgShape.Type;
  * `topLevelAlias:`, `namespace:`, `internal:`, `hostProxyAllowed:`,
  * `examples:`, `usage:`.
  */
+export const ToolingCommandStep = Schema.Struct({
+  command: NotifyCommandId,
+  flags: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+  raw: Schema.optional(Schema.Array(Schema.String)),
+  silent: Schema.optional(Schema.Boolean),
+  ignoreError: Schema.optional(Schema.Boolean),
+});
+export type ToolingCommandStep = typeof ToolingCommandStep.Type;
+
 export const ToolingTaskShape = Schema.Struct({
   service: Schema.optional(Schema.String),
   description: Schema.optional(Schema.String),
   summary: Schema.optional(Schema.String),
   cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
-  cmds: Schema.optional(Schema.Array(Schema.String)),
+  cmds: Schema.optional(Schema.Array(Schema.Union(Schema.String, ToolingCommandStep))),
   vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVar })),
   deprecated: Schema.optional(DeprecationNotice),
   flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingFlagShape })),
