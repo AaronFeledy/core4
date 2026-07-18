@@ -31,6 +31,7 @@ import { join, resolve } from "node:path";
 import { DEFERRED_COMMAND_PLANS, deferredCommandPlan } from "../../../src/cli/deferred-commands.ts";
 import { isCanonicalLandoCommandId, isMvpCommandId } from "../../../src/cli/oclif/command-base.ts";
 import compiledCommands from "../../../src/cli/oclif/compiled-commands.ts";
+import { ensureCompiledCli } from "../../_support/compiled-cli.ts";
 import { listTree, pathsOutsidePrefixes } from "../_util/fs-tree.ts";
 import { errorCodeFromStderr, normalizeJsonEnvelope, normalizeOutput } from "./normalize.ts";
 
@@ -39,7 +40,7 @@ const coreRoot = resolve(repoRoot, "core");
 const runSourcePath = resolve(coreRoot, "src/cli/run.ts");
 const compiledRuntimeSourcePath = resolve(coreRoot, "src/cli/compiled-runtime.ts");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
-const compiledBinary = resolve(coreRoot, "dist/lando");
+let compiledBinary = "";
 
 const CANONICAL_IDS: ReadonlyArray<string> = Object.keys(compiledCommands).sort();
 const MVP_IDS: ReadonlyArray<string> = CANONICAL_IDS.filter(isMvpCommandId);
@@ -417,8 +418,7 @@ const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
 describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", () => {
   beforeAll(async () => {
-    const build = await runProcess([process.execPath, "run", "build:compile"], { cwd: coreRoot });
-    expect(build.exitCode, `build:compile failed: ${build.stderr}`).toBe(0);
+    compiledBinary = await ensureCompiledCli();
   }, 240_000);
 
   describe("MVP canonical ids dispatch (not NotImplementedError) at parity", () => {

@@ -8,6 +8,7 @@ import {
 } from "./build-ci-workflow.ts";
 import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
+import { NIGHTLY_TIER_TESTS } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/nightly.yml");
@@ -225,6 +226,17 @@ const renderJob = (job: NightlyJob): string => `
 ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
+const nightlyTierUnitTestsJob = `
+  nightly-tier-unit-tests-linux-x64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+${bunSetupStep}
+
+      - name: Run nightly-tier unit tests
+        run: bun test ${NIGHTLY_TIER_TESTS.join(" ")}`;
+
 const runtimeBundleManifestLiveJob = `
   runtime-bundle-manifest-live:
     runs-on: ubuntu-24.04
@@ -241,6 +253,7 @@ export const renderNightlyWorkflow = (): string => {
     ...JOBS.map(renderJob),
     providerLandoE2eJob,
     publishedManifestSetupJob,
+    nightlyTierUnitTestsJob,
     runtimeBundleManifestLiveJob,
     distributionRehearsalJob,
   ].join("\n");

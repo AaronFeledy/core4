@@ -19,10 +19,11 @@ import AppsScratchLogsCommand from "../../src/cli/oclif/commands/apps/scratch/lo
 import AppsScratchRunCommand from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import AppsScratchStartCommand from "../../src/cli/oclif/commands/apps/scratch/start.ts";
 import AppsScratchStopCommand from "../../src/cli/oclif/commands/apps/scratch/stop.ts";
+import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(repoRoot, "core");
-const binaryPath = resolve(coreRoot, "dist/lando");
+let binaryPath = "";
 
 interface RunResult {
   readonly exitCode: number;
@@ -108,8 +109,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
   "compiled app command aliases",
   () => {
     beforeAll(async () => {
-      const build = await runCommand([process.execPath, "run", "build:compile"], coreRoot);
-      expect(build.exitCode).toBe(0);
+      binaryPath = await ensureCompiledCli();
     }, 120_000);
 
     test("route top-level aliases to the same compiled handlers as their app ids", async () => {

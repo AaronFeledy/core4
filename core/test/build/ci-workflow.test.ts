@@ -343,11 +343,18 @@ describe("ci workflow", () => {
     expect(staticChecks).toContain("            exit 1");
     expect(staticChecks).toContain('          echo "static-checks platform matrix passed"');
 
-    expect(unitTests).toContain("    needs: [static-checks]");
-    expect(unitTests).toContain("    runs-on: ubuntu-24.04");
-    expect(unitTests).toContain("    timeout-minutes: 35");
-    expect(unitTests).toContain("      - name: Unit test layer");
-    expect(unitTests).toContain("        run: bun run test:unit");
+    const unitTestShards = findIndentedBlock(jobs, "unit-tests-linux-x64-shard", 2);
+    expect(unitTestShards).not.toContain("    needs:");
+    expect(unitTestShards).toContain("        shard: [1, 2, 3]");
+    expect(unitTestShards).toContain("    runs-on: ubuntu-24.04");
+    expect(unitTestShards).toContain("    timeout-minutes: 25");
+    expect(unitTestShards).toContain("      - name: Unit test shard");
+    expect(unitTestShards).toContain("        run: bun run test:unit:shard ${{ matrix.shard }}/3");
+    expect(unitTests).toContain("    needs: [unit-tests-linux-x64-shard]");
+    expect(unitTests).toContain("    if: always()");
+    expect(unitTests).toContain(
+      '          if [[ "${{ needs.unit-tests-linux-x64-shard.result }}" != "success" ]]; then',
+    );
   });
 
   test("uses minimal read-only permissions for fork-safe pull requests", async () => {

@@ -49,8 +49,12 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run check:network-boundary");
     expect(runbook).toContain("bun run check:machine-output");
     expect(runbook).toContain("bun run test:unit");
+    expect(runbook).toContain("bun run test:unit:shard 1/3");
     expect(runbook).toContain("Every platform cell runs the fork-safe portable static gates");
-    expect(runbook).toContain("The `unit-tests-linux-x64` job runs the full current static test suite");
+    expect(runbook).toContain(
+      "The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix",
+    );
+    expect(runbook).toContain("nightly-tier-unit-tests-linux-x64");
     expect(runbook).toContain("static-checks-scope");
     expect(runbook).toContain("unit-tests-linux-x64");
     expect(runbook).toContain("US-189");

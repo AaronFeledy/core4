@@ -30,7 +30,15 @@ const deprecationNoticeReferencePath = resolve(repoRoot, "docs/reference/schemas
 const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
   resolve(repoRoot, "dist/schemas", schemaArtifactFilename(schemaName));
 
+// The generator is deterministic, and the CI `schema-snapshot` job already
+// proves the committed outputs are current (regenerate + `git diff
+// --exit-code`). Running it once per test file is enough for the artifact
+// assertions below; re-running it per test only re-pays the same ~2s spawn.
+let generatorRan = false;
 const runGenerator = (): void => {
+  if (generatorRan) {
+    return;
+  }
   const proc = Bun.spawnSync([process.execPath, generatorPath], {
     cwd: repoRoot,
     stdout: "pipe",
@@ -42,17 +50,10 @@ const runGenerator = (): void => {
     stdout: proc.stdout.toString(),
     stderr: proc.stderr.toString(),
   }).toMatchObject({ exitCode: 0 });
+  generatorRan = true;
 };
 
 describe("schema snapshot gate", () => {
-  test("generator is idempotent", async () => {
-    const before = await readFile(snapshotPath, "utf8");
-
-    runGenerator();
-
-    expect(await readFile(snapshotPath, "utf8")).toBe(before);
-  });
-
   test("snapshot scope is SDK schemas plus bundled plugin manifests", async () => {
     const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as {
       readonly scope: {

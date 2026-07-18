@@ -281,7 +281,7 @@ describe("ci workflow codegen", () => {
       const versionFileMatches = (workflow.match(/bun-version-file: .bun-version/g) ?? []).length;
       expect(versionFileMatches).toBe(23);
       expect(workflow).not.toContain("bun-version: ");
-      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(8);
+      expect((nightlyWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(9);
       expect(nightlyWorkflow).not.toContain("bun-version: ");
       expect((releaseWorkflow.match(/bun-version-file: .bun-version/g) ?? []).length).toBe(2);
       expect(releaseWorkflow).not.toContain("bun-version: ");
@@ -432,7 +432,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("follow-up portability effort");
       expect(workflow).not.toContain("if: ${{ matrix.platform == 'linux-x64' }}");
       expect(workflow).toContain("unit-tests-linux-x64:");
-      expect(workflow).toContain("- name: Unit test layer");
+      expect(workflow).toContain("unit-tests-linux-x64-shard:");
+      expect(workflow).toContain("- name: Unit test shard");
       expect(workflow).not.toContain(
         "- name: Effect service, CLI, and scenario test layers (linux-x64 full static scope)",
       );
