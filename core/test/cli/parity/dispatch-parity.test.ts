@@ -124,7 +124,7 @@ describe("compiled-binary dispatch parity — structural", () => {
     );
   });
 
-  test("compiled global list uses the same plugin bootstrap as source dispatch", () => {
+  test("compiled global list uses the same minimal bootstrap as source dispatch", () => {
     // Given: the compiled adapter that owns meta:global:list runtime construction.
     const start = metaPluginAdapterSource.indexOf("export const runMetaGlobalList =");
     const end = metaPluginAdapterSource.indexOf("export const runMetaGlobalInfo", start);
@@ -132,11 +132,11 @@ describe("compiled-binary dispatch parity — structural", () => {
     // When: its isolated function body is inspected.
     const adapter = metaPluginAdapterSource.slice(start, end);
 
-    // Then: notification subscribers are available on the compiled path.
+    // Then: plugin and subscriber failures cannot block the compiled inventory read.
     expect(start).toBeGreaterThanOrEqual(0);
     expect(end).toBeGreaterThan(start);
-    expect(adapter).toContain('bootstrap: "plugins"');
-    expect(adapter).not.toContain('bootstrap: "minimal"');
+    expect(adapter).toContain('bootstrap: "minimal"');
+    expect(adapter).not.toContain('bootstrap: "plugins"');
   });
 });
 

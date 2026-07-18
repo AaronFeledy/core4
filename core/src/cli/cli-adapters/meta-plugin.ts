@@ -116,7 +116,7 @@ export const runMetaGlobalStatus = (argv: ReadonlyArray<string>): Promise<void> 
 export const runMetaGlobalList = (): Promise<void> =>
   runCompiledCommand(
     globalList().pipe(Effect.provide(DefaultGlobalListLayer)),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value, ctx) => renderGlobalListResult(value, ctx),
   );
 
