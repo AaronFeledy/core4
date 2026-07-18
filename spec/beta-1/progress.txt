@@ -747,3 +747,14 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - A helper-level nested-correlation test is not production evidence; trace at least one real tooling `command:` step through target lifecycle publication before marking foreground-notification correlation complete.
 ---
+
+## 2026-07-18 14:44 CDT - US-459 Drift Audit
+- Trigger: 3 cycles, 2215 changed lines, 8 commits
+- Weakened proofs: the provider-tier test characterizes deferred `notify.commands` validation instead of proving the required final-registry path, and nested tooling command correlation still has no production-path proof.
+- Review scar tissue: conditional validation with and without `CommandRegistry` remains a dual path; removed an unnecessary exported renderer helper while retaining the internal implementation.
+- Contract drift: the guide claimed US-459 was shipped while `passes` remained false and registry validation was incomplete; restored the guide row to Planned and removed the premature policy step.
+- Deferred-work laundering: nested lifecycle dispatch, one final command-registry validation point, and the generated-layer error channel are branch-owned completion work; plugin-name normalization, a public SDK test harness, and subscriber defect/nontermination recovery remain outside this story.
+- Fixed: deleted the dead export and premature shipped-guide claims without adding another runtime fallback.
+- Split/excise decisions: no absorbed feature was found to split or excise; US-459 remains `passes: false` and returns to Build with the two unresolved production boundaries named above.
+- Verification: typecheck, lint, renderer/redaction boundaries, guide lint/coverage, package typecheck, and focused lifecycle/subscriber/renderer/plugin/bootstrap/parity/event tests passed.
+---

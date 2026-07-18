@@ -76,7 +76,7 @@ const handleNotifyDesktop = (
   triggerNotification(body.length === 0 ? title : body, body.length === 0 ? undefined : title);
 };
 
-export const makeNotificationConsumerLive = (
+const makeNotificationConsumerLive = (
   getCapabilities: () => { readonly notifications: boolean },
   triggerNotification: ((message: string, title?: string) => boolean) | undefined,
   flushNotifications: (() => Promise<void>) | undefined,
