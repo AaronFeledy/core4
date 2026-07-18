@@ -4,9 +4,11 @@ import { dirname, join, resolve } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
+import { ensureCompiledCli } from "../_support/compiled-cli.ts";
+
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sourceCliPath = resolve(coreRoot, "bin/lando.ts");
-const compiledBinaryPath = resolve(coreRoot, "dist/lando");
+let compiledBinaryPath = "";
 const bunBinDir = dirname(process.execPath);
 const spawnPath = `${bunBinDir}:${process.env.PATH ?? ""}`;
 
@@ -144,8 +146,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
   "US-038: bug-report diagnostics on failure (compiled $bunfs CLI parity)",
   () => {
     beforeAll(async () => {
-      const build = await runCommand([process.execPath, "run", "build:compile"]);
-      expect(build.exitCode).toBe(0);
+      compiledBinaryPath = await ensureCompiledCli();
     }, 120_000);
     test("compiled NotImplementedError plain output mirrors source", async () => {
       const result = await runCommand([compiledBinaryPath, "meta:plugin:login"], isolationEnv());

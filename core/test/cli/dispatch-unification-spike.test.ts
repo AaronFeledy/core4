@@ -20,12 +20,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
+import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 import { errorCodeFromStderr, normalizeJsonEnvelope, normalizeOutput } from "./parity/normalize.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(repoRoot, "core");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
-const compiledBinary = resolve(coreRoot, "dist/lando");
+let compiledBinary = "";
 const probeSource = resolve(coreRoot, "test/cli/parity/oclif-static-probe.ts");
 
 /** A command id that remains in the deferred-command registry. */
@@ -76,10 +77,7 @@ const lastJsonLine = (output: string): unknown => {
 
 describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
   beforeAll(async () => {
-    if (!(await Bun.file(compiledBinary).exists())) {
-      const build = await runProcess([process.execPath, "run", "build:compile"], { cwd: coreRoot });
-      expect(build.exitCode, `build:compile failed: ${build.stderr}`).toBe(0);
-    }
+    compiledBinary = await ensureCompiledCli();
   }, 240_000);
 
   describe("Arm A — OCLIF execute() cannot dispatch inside a compiled binary", () => {
