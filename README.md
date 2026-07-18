@@ -147,6 +147,20 @@ bun test
 | `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
 | `bun run release` | 13-stage release orchestrator (compile, sign, SBOM, provenance, publish) |
 
+### Executable guides vs integration tests
+
+Both run in CI, but they guard different contracts. **Executable guides**
+(MDX under `docs/guides/**` and `recipes/<id>/README.mdx`, spec §19) are
+documentation first: each guide compiles into generated scenario tests that
+prove every command, output, and verification shown to readers actually works,
+and failures source-map back to the MDX line. A failing guide means *a promise
+we publish to users is broken*. **Integration tests**
+(`*.integration.test.ts`, env-gated, serial) verify our code against real
+external systems — a failing one means *our model of the outside world is
+broken*. Coverage that validates a user-visible workflow belongs in a guide
+scenario; boundary checks and regressions with no docs home belong in
+integration or standalone fixture-scenario tests, not in a rendered page.
+
 CI failures can be reproduced locally with the [CI runbook](./docs/ci-runbook.md).
 Embedding `@lando/core` as a library? See the [embedding guide](./docs/embedding.md).
 Installing an alpha build or filing bug reports? See [alpha install and bug
