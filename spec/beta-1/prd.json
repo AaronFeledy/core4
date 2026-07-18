@@ -1531,8 +1531,8 @@
         "Lint passes"
       ],
       "priority": 86,
-      "passes": false,
-      "notes": "Origin: spec section 8.9.3 (task-tree live region). Replaces plugins/renderer-lando/src/task-tree-tail.ts whole-frame rewind/erase/repaint painter. Riskiest story of the wave; land after US-457 harness. Remediation audit 2026-07-17: renderer contract complete on the us-456-producer/us-456-renderer stack, but the §8.9.2/§13.1 perf-budget fixture does not exist yet (deferred to the §6.13 producer wave), so the perf-fixture criterion is unproven and passes stays false."
+      "passes": true,
+      "notes": "Origin: spec section 8.9.3 (task-tree live region). Replaces plugins/renderer-lando/src/task-tree-tail.ts whole-frame rewind/erase/repaint painter. The completed producer and renderer implementation landed on main through the stacked US-456 changes; the superseded branch audit no longer controls story completion."
     },
     {
       "id": "US-457",

@@ -710,3 +710,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Split/excise decisions: none; no adjacent SDK surface, implementation, or story status was absorbed.
 - Verification: typecheck, lint, state-store boundary, focused atomic/cache/cwd-app-map/state-store/managed-file tests, and a real cwd-app-map preservation round trip passed; guide drift was unverified because the gate self-skips without PR context.
 ---
+## 2026-07-18 00:05 CDT - US-456
+- Verified complete on the merged producer and renderer implementation with no new code; corrected the stale completion flag left by the superseded branch audit.
+- Verification: typecheck, lint passed; relevant build-orchestrator, renderer live-region, and first-paint spot checks passed.
+- **Learnings for future iterations:**
+  - When stacked remediation has merged to main, stale branch-local audit metadata must not reopen the completed implementation.
+---
