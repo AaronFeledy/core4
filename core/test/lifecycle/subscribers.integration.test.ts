@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Effect, Schema } from "effect";
 
 import { CliCommandRunEvent } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
@@ -121,35 +121,37 @@ describe("subscriber runtime integration", () => {
     expect(notifications).toEqual([]);
   });
 
-  test("provider-tier subscribers reject an unknown notify.commands id", async () => {
-    // Given: active notify-lando policy naming a command outside the canonical command set.
+  test("provider-tier subscribers defer notify.commands membership until CommandRegistry exists", async () => {
+    // Given: active notify-lando policy naming a command unavailable at the provider tier.
     const { layer, root } = await runtime(
       [],
       "notify:\n  thresholdMs: 0\n  commands:\n    - app:missing-command\n",
     );
+    const quickTerminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
+      ...terminal,
+      timestamp: "2026-07-18T00:00:00.000Z",
+      durationMs: 1,
+    });
     const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
     process.env.LANDO_USER_CONF_ROOT = join(root, "config");
 
-    // When: the provider-tier subscriber runtime loads its projected config.
-    const exit = await (async () => {
-      try {
-        return await Effect.runPromiseExit(EventService.pipe(Effect.provide(layer)));
-      } finally {
-        if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
-        else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
-      }
-    })();
-
-    // Then: strict membership validation fails before subscriber dispatch becomes active.
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        if (failure.value._tag !== "ConfigError") throw new Error("expected ConfigError");
-        expect(failure.value.path).toBe("notify.commands[0]");
-      }
+    // When: the provider-tier subscriber handles an eligible built-in terminal event.
+    let notifications: ReadonlyArray<unknown>;
+    try {
+      notifications = await Effect.runPromise(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(quickTerminal);
+          return yield* events.query("notify.desktop");
+        }).pipe(Effect.provide(layer)),
+      );
+    } finally {
+      if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
     }
+
+    // Then: tier-limited validation does not block the built-in command or its notification.
+    expect(notifications).toHaveLength(1);
   });
 
   test("renders the terminal lifecycle notification through the command runtime", async () => {
