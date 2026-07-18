@@ -767,3 +767,10 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - A policy that validates Landofile-derived canonical commands must install only after `CommandRegistry` is complete; tier-conditional fallback validation creates two contracts and cannot prove registration safety.
   - A normative future command shape is not evidence of a current executor. Keep correlation/suppression schemas frozen while naming unavailable production paths as explicit deferrals.
 ---
+
+## 2026-07-18 16:26 CDT - US-459
+- Verified the completed notification policy on the existing story branch with no new product code: the commands-tier registry closes before subscriber installation, lower-tier policy entries fail early, and the explicit post-4.0 nested-command deferral remains aligned across the spec and PRD.
+- Verification: typecheck, lint, monorepo build, renderer/redaction boundaries, focused lifecycle/subscriber/renderer/plugin/bootstrap/parity spot checks, and clean LSP diagnostics passed; isolated source and rebuilt compiled CLI runs each emitted exactly one success notification and matching lower-tier `ConfigError` failures, with all QA resources removed.
+- **Learnings for future iterations:**
+  - Re-verifying an already-complete in-flight story should preserve its implementation and prove the committed acceptance surfaces rather than manufacture another code change.
+---
