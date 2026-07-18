@@ -159,10 +159,7 @@ export const makeSubscriberRuntimeLive = () =>
         entries.some((subscriber) => subscriber.entry.configKey === "notify"),
       );
       const notify = hasNotifySubscriber
-        ? yield* resolveNotifyConfig(
-            yield* configService.load,
-            commandRegistry._tag === "Some" ? new Set(commandIds) : undefined,
-          )
+        ? yield* resolveNotifyConfig(yield* configService.load, new Set(commandIds))
         : undefined;
       const handlers = new Map<IndexedSubscriber, Effect.Effect<RuntimeSubscriberHandler, PluginLoadError>>();
       for (const entries of index.values()) {

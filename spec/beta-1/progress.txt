@@ -738,3 +738,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Bootstrap tiers without CommandRegistry can close selector membership strictly from the compiled OCLIF manifest plus enabled plugin command contributions, but notify.commands membership must wait for CommandRegistry because Landofile-derived command ids are not visible earlier.
   - Command specs should declare the tier their effect actually requires; hidden source-only escalation breaks subscriber activation and source/compiled parity.
 ---
+
+## 2026-07-18 14:16 CDT - US-459 Review
+- Restored strict `notify.commands` membership validation before subscriber registration at every bootstrap tier; unknown canonical ids again fail with `ConfigError` instead of silently bypassing the published policy contract.
+- Returned US-459 to Build with `passes: false`: nested tooling `command:` steps have no production lifecycle-dispatch path, so their target commands cannot yet publish the required correlated init/run/error triplet with a fresh `invocationId` and enclosing `parentInvocationId`.
+- Review notes (deferred/rejected): plugin-state traversal was rejected as pre-existing `PluginName` hardening rather than a new privilege boundary because installed plugins already execute with user filesystem authority; subscriber `die`/nontermination isolation was rejected because it adds speculative recovery for plugins violating the typed Effect contract. `Guide-Coverage-Skip: Strict config validation now matches the existing notification policy guide; unrelated ownership maps need no token edit.`
+- Verification: typecheck, lint, renderer/redaction boundaries, TypeScript no-excuse audit, 48 host-safe focused QA checks, and subscriber integration/unit reruns passed; Cursor Bugbot found no bugs. Base-aware guide drift reported only the two cross-owned surfaces covered by the skip reason; no full test suite or host runtime integration was run.
+- **Learnings for future iterations:**
+  - A helper-level nested-correlation test is not production evidence; trace at least one real tooling `command:` step through target lifecycle publication before marking foreground-notification correlation complete.
+---
