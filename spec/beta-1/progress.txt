@@ -689,3 +689,24 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Producer fixes: `lando rebuild` now forces app build steps to rerun (cached successes no longer short-circuit rebuild; plain `start` keeps its `up-to-date` skip), and transcript writes verify realpath containment of the final directory under the user data root before opening, closing the intermediate-directory symlink gap.
 - Renderer fixes: alternate-screen deferred scrollback now spools losslessly to a scoped 0600 temp file (memory stays bounded; exitFullTail commits every line in order — silent eviction removed), resize completes the semantic footer reflow synchronously before the destructive replay (no-sleep production-wiring regression added), unterminated transcript lines larger than one page render a bounded UTF-8-safe window with guaranteed paging progress, and the narrow-terminal frame clamp lost in the origin/main merge is restored. First-paint coverage again drives the real TTY consumer path (lazy substrate acquisition, streamed footer before completion, no destructive bytes on first paint) instead of only the buffered degradation path.
 - Honestly deferred: the §13.1/§8.9.2 compiled three-service concurrent-build perf fixture does not exist yet and remains deferred to the §6.13 producer completion wave; US-456's "perf-budget fixture passes unchanged" criterion is therefore not yet provable and the PRD flag must reflect the audit outcome recorded at final QA.
+
+## 2026-07-17 22:02 CDT - US-372
+- Verified complete on the existing durable-write implementation with no new code: both atomic helpers flush their temp file before rename, flush failure prevents publication and cleans up the temp, and both cwd-app-map rewrite paths use the atomic cache helper. The reopening audit changed only story tracking and was contradicted by its parent source state.
+- Verification: typecheck, lint, state-store boundary, focused atomic/cache tests, and adjacent state-store/managed-file spot checks passed; a real cwd-app-map write/read/delete-rewrite round-trip preserved the remaining entry and left no temp files.
+- **Learnings for future iterations:**
+  - Node's `FileHandle.sync()` is the fsync operation; durability audits must inspect the file-handle call path rather than search only for a literal `fsync` symbol.
+---
+
+## 2026-07-17 22:14 CDT - US-372 Review
+- Corrected the story note that still repeated the disproven reopening audit after the completion flag was restored; the tracking record now names the existing fsync implementation and atomic cwd-app-map rewrites.
+- Review notes (deferred/rejected): Directory fsync was rejected as a blocker because the source PRD makes it best-effort and an open question, while US-372 requires file fsync before rename; exclusive temp creation, mode preservation, and dual-failure cause preservation are pre-existing hardening outside this audit-only branch and do not block the stated acceptance criteria.
+- Verification: typecheck, lint, guide drift, and state-store boundary passed; focused atomic, cache, cwd-app-map, state-store, and managed-file spot checks passed; Cursor Bugbot found no bugs.
+---
+
+## 2026-07-17 22:29 CDT - US-372 Drift Audit
+- Trigger: 3 cycles, 17 changed lines, 2 commits
+- Findings by category: none; the branch contains only the US-372 tracking correction, while the inherited implementation and production-path proofs remain aligned with the source acceptance criteria.
+- Fixed: no code changes were required; the existing completion flag and tracking note are accurate.
+- Split/excise decisions: none; no adjacent SDK surface, implementation, or story status was absorbed.
+- Verification: typecheck, lint, state-store boundary, focused atomic/cache/cwd-app-map/state-store/managed-file tests, and a real cwd-app-map preservation round trip passed; guide drift was unverified because the gate self-skips without PR context.
+---
