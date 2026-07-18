@@ -66,5 +66,10 @@ tags: [beta, docs, cli, renderer]
       <Variable name="gate" value="renderer.capabilities.notifications" display="When notifications is false the event is dropped; when true the default renderer calls OpenTUI triggerNotification after sanitizing title and body" />
       <Variable name="json" value="structured stderr event" display="json mode still emits notify.desktop as a structured event so agents can present it themselves" />
     </Step>
+    <Step name="notification-policy">
+      <Variable name="defaults" value="notify.enabled: true; notify.thresholdMs: 15000" display="Desktop notifications are enabled by default and only qualify after the outer command has run for at least 15 seconds; set thresholdMs to 0 to qualify every eligible completion" />
+      <Variable name="commands" value="app:start, app:stop, app:restart, app:rebuild, app:destroy, meta:setup, meta:update" display="The fixed default family is extended by notify.commands; additional canonical command ids are registry-validated and deduplicated in declaration order" />
+      <Variable name="disable" value="notify.enabled: false or disable @lando/notify-lando" display="Either policy switch silences desktop notification publication; renderer capability gating still prevents presentation in non-TTY and CI runs" />
+    </Step>
   </Scenario>
 </Guide>

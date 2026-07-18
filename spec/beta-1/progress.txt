@@ -725,3 +725,15 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Fully awaited event publication can still leave a synchronous consumer fiber runnable in the current scheduler turn; hand off once before closing its scope when terminal subscribers publish final renderer output.
   - A source command bootstrap change does not update hand-written compiled adapters; lock bootstrap parity with a focused structural regression and a real compiled-binary surface.
 ---
+
+## 2026-07-18 12:46 CDT - US-459 Review
+- Corrected notification registration at incomplete bootstrap tiers: command membership now remains provisional until a final CommandRegistry exists, disabled notification plugins do not impose policy semantics, overlapping selectors dispatch once, and meta:setup declares its real provider bootstrap on both source and compiled paths. Added the owned executable guide coverage for notify defaults, allowlists, and disablement.
+- Review notes (deferred/rejected): end-to-end nested-command wiring was rejected as a blocker because no current production nested CLI reentry exists; lifecycle correlation propagation and notification suppression are implemented and covered at their active seams.
+- Review notes (deferred/rejected): plugin-name path normalization was rejected as cross-SDK hardening of the pre-existing permissive PluginName contract; installed plugins already execute with host permissions, so it is not a new subscriber security boundary.
+- Review notes (deferred/rejected): widening makeLandoRuntime's generated-layer error channel was deferred as a cross-runtime typing refactor; preserving the required ConfigError at final notify command validation is the story behavior.
+- Review notes (deferred/rejected): Guide-Coverage-Skip: Bundled subscriber wiring changes no Landofile authoring or embedding-runtime behavior; the US-459 notification policy guide was updated directly.
+- Verification: typecheck, lint, renderer boundary, guide lint/coverage, the focused executable guide, TypeScript no-excuse audit, lifecycle/subscriber/setup/bootstrap/parity/event spot checks, and sandbox source-CLI notification QA passed; base-aware guide drift reported only the two cross-owned surfaces covered by the skip line above.
+- **Learnings for future iterations:**
+  - Bootstrap tiers without CommandRegistry may build a provisional subscriber index, but canonical command membership must become strict when tooling/app supplies the final registry.
+  - Command specs should declare the tier their effect actually requires; hidden source-only escalation breaks subscriber activation and source/compiled parity.
+---

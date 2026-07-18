@@ -165,6 +165,7 @@ The surfaces were written into the normative spec first (§8.9.3–§8.9.8, §9.
 | --- | --- | --- |
 | OpenTUI substrate, split-footer live region, degradation (US-455, US-456) | `docs/guides/cli/terminal-ui-polish.mdx` | Update when US-455/US-456 land |
 | Desktop notifications, foreground renderer realization (US-458) | `docs/guides/cli/terminal-ui-polish.mdx` | Update when US-458 lands |
+| Desktop notification policy and `notify:` configuration (US-459) | `docs/guides/cli/terminal-ui-polish.mdx` | Update when US-459 lands |
 | Prompt chrome + frame-snapshot harness (US-457) | `docs/guides/cli/interactive-prompts.mdx` | Update when US-457 lands |
 | Frame-snapshot / visual-QA coverage (US-457) | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Update when US-457 lands |
 | Contract-only 4.1 freeze (US-460) | — | No guide impact; nothing renders in 4.0 |

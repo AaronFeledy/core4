@@ -7,8 +7,6 @@ import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 import type { Renderer } from "@lando/sdk/services";
 
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import { newInvocationId } from "../command-lifecycle.ts";
 import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
@@ -403,14 +401,7 @@ export abstract class LandoCommandBase extends Command {
 
     const parsed = await this.parse(this.ctor);
 
-    // `meta:setup` registers at bootstrap `minimal` so `lando setup` stays listable/runnable
-    // before the provider is prepared, but its effect needs the provider tier (RuntimeProviderRegistry)
-    // to call `provider.setup()`. Escalate the runtime to `provider` here; the compiled dispatch path
-    // (`run.ts`) does the same, keeping both paths in parity.
-    const runtime =
-      spec.id === "meta:setup"
-        ? makeLandoRuntime(cliRuntimeOptions({ bootstrap: "provider", plugins: { policy: "discovery" } }))
-        : getCommandRuntimeLayer(this.ctor);
+    const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
       await renderPreCommandFailure({
         commandId: spec.id,

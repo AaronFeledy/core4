@@ -84,7 +84,81 @@ describe("subscriber runtime", () => {
     ]);
   });
 
-  test("rejects an unknown exact selector without exposing a partial index", async () => {
+  test("deduplicates a subscriber selected by both family and exact selectors", async () => {
+    // Given: one subscriber overlaps family and exact selectors around another equal-priority subscriber.
+    const closure = makeSubscriberRegistrationClosure([
+      manifest([
+        {
+          id: "overlap",
+          selectors: [{ family: "cli-command-terminal" }, { event: "cli-app:start-run" }],
+          module: "./overlap.ts",
+          priority: 100,
+        },
+        { id: "next", selectors: [{ event: "cli-app:start-run" }], module: "./next.ts", priority: 100 },
+      ]),
+    ]);
+
+    // When: selector expansion closes against the final command ordering.
+    const index = await Effect.runPromise(closure.close(["app:start"]));
+
+    // Then: each subscriber/event pair occurs once and declaration order remains stable.
+    expect(index.get("cli-app:start-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
+      "overlap",
+      "next",
+    ]);
+  });
+
+  test("indexes an unknown exact CLI lifecycle selector while command registration is provisional", async () => {
+    // Given: an exact lifecycle selector contributed before its command reaches CommandRegistry.
+    const closure = makeSubscriberRegistrationClosure([
+      manifest([
+        {
+          id: "plugin-command",
+          selectors: [{ event: "cli-app:plugin-command-run" }],
+          module: "./plugin-command.ts",
+        },
+      ]),
+    ]);
+
+    // When: registration closes against a provisional command-id set.
+    const index = await Effect.runPromise(closure.close(["app:start"], "provisional"));
+
+    // Then: the exact selector is retained without expanding the family beyond this tier.
+    expect([...index.keys()]).toEqual(["cli-app:plugin-command-run"]);
+    expect(index.get("cli-app:plugin-command-run")?.map((subscriber) => subscriber.entry.id)).toEqual([
+      "plugin-command",
+    ]);
+  });
+
+  test("rejects an unknown exact CLI lifecycle selector when command registration is final", async () => {
+    // Given: an exact lifecycle selector whose command is absent from the final registry.
+    const closure = makeSubscriberRegistrationClosure([
+      manifest([
+        {
+          id: "plugin-command",
+          selectors: [{ event: "cli-app:plugin-command-run" }],
+          module: "./plugin-command.ts",
+        },
+      ]),
+    ]);
+
+    // When: registration closes with the default final completeness.
+    const exit = await Effect.runPromiseExit(closure.close(["app:start"]));
+
+    // Then: strict membership validation rejects the selector without publishing an index.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(PluginManifestError);
+        expect(failure.value.message).toContain("cli-app:plugin-command-run");
+      }
+    }
+    expect(closure.current()).toBeUndefined();
+  });
+
+  test("rejects an invented non-CLI exact selector during provisional close", async () => {
     // Given: one valid selector followed by an unknown exact selector.
     const closure = makeSubscriberRegistrationClosure([
       manifest([
@@ -93,8 +167,8 @@ describe("subscriber runtime", () => {
       ]),
     ]);
 
-    // When: registration attempts to close.
-    const exit = await Effect.runPromiseExit(closure.close(["app:start"]));
+    // When: provisional registration attempts to close.
+    const exit = await Effect.runPromiseExit(closure.close(["app:start"], "provisional"));
 
     // Then: the tagged manifest failure identifies the subscriber and no index becomes visible.
     expect(Exit.isFailure(exit)).toBe(true);
@@ -128,6 +202,23 @@ describe("subscriber runtime", () => {
         expect(failure.value.message).toContain("bad:id");
       }
     }
+  });
+
+  test("decodes notify config without command membership validation before the registry is final", async () => {
+    // Given: an active notify policy naming a command unavailable in a provisional bootstrap tier.
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      notify: { thresholdMs: 0, commands: ["app:plugin-command", "app:start"] },
+    });
+
+    // When: notify config is resolved before CommandRegistry is available.
+    const notify = await Effect.runPromise(resolveNotifyConfig(config));
+
+    // Then: schema defaults and caller-provided selector ordering are preserved.
+    expect(notify).toEqual({
+      enabled: true,
+      thresholdMs: 0,
+      commands: ["app:plugin-command", "app:start"],
+    });
   });
 
   test("loads a subscriber factory lazily and caches its handler exactly once", async () => {

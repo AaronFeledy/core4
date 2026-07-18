@@ -7,9 +7,10 @@ const DEFAULT_NOTIFY_CONFIG = Schema.decodeSync(NotifyConfigSchema)({});
 
 export const resolveNotifyConfig = (
   config: GlobalConfig,
-  commandIds: ReadonlySet<string>,
+  commandIds?: ReadonlySet<string>,
 ): Effect.Effect<NotifyConfig, ConfigError> => {
   const notify = config.notify ?? DEFAULT_NOTIFY_CONFIG;
+  if (commandIds === undefined) return Effect.succeed(notify);
   const unknownIndex = notify.commands.findIndex((commandId) => !commandIds.has(commandId));
   if (unknownIndex < 0) return Effect.succeed(notify);
   const commandId = notify.commands[unknownIndex];

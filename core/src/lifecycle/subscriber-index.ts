@@ -10,10 +10,13 @@ export interface IndexedSubscriber {
   readonly entry: SubscriberManifestEntry;
 }
 
+export type SubscriberRegistrationCompleteness = "final" | "provisional";
+
 export interface SubscriberRegistrationClosure {
   readonly current: () => ReadonlyMap<string, ReadonlyArray<IndexedSubscriber>> | undefined;
   readonly close: (
     commandIds: ReadonlyArray<string>,
+    completeness?: SubscriberRegistrationCompleteness,
   ) => Effect.Effect<ReadonlyMap<string, ReadonlyArray<IndexedSubscriber>>, PluginManifestError>;
 }
 
@@ -36,6 +39,8 @@ const manifestError = (subscriber: IndexedSubscriber, event: string): PluginMani
     issues: [event],
   });
 
+const isCliLifecycleEvent = (event: string): boolean => /^cli-.+-(?:init|run|error)$/u.test(event);
+
 export const makeSubscriberRegistrationClosure = (
   manifests: ReadonlyArray<PluginManifest>,
 ): SubscriberRegistrationClosure => {
@@ -46,7 +51,7 @@ export const makeSubscriberRegistrationClosure = (
 
   return {
     current: () => index,
-    close: (commandIds) => {
+    close: (commandIds, completeness = "final") => {
       if (index !== undefined) return Effect.succeed(index);
       return Effect.gen(function* () {
         const known = new Set(builtInEventNames());
@@ -59,14 +64,18 @@ export const makeSubscriberRegistrationClosure = (
         const mutable = new Map<string, Array<IndexedSubscriber>>();
         for (const subscriber of subscribers) {
           for (const selector of subscriber.entry.selectors) {
-            const events =
-              "event" in selector
-                ? [selector.event]
-                : commandIds.flatMap((commandId) => [`cli-${commandId}-run`, `cli-${commandId}-error`]);
+            const isExact = "event" in selector;
+            const events = isExact
+              ? [selector.event]
+              : commandIds.flatMap((commandId) => [`cli-${commandId}-run`, `cli-${commandId}-error`]);
             for (const event of events) {
-              if (!known.has(event)) return yield* Effect.fail(manifestError(subscriber, event));
+              const membershipDeferred =
+                completeness === "provisional" && isExact && isCliLifecycleEvent(event);
+              if (!known.has(event) && !membershipDeferred) {
+                return yield* Effect.fail(manifestError(subscriber, event));
+              }
               const entries = mutable.get(event) ?? [];
-              entries.push(subscriber);
+              if (!entries.includes(subscriber)) entries.push(subscriber);
               mutable.set(event, entries);
             }
           }

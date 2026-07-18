@@ -93,6 +93,67 @@ describe("subscriber runtime integration", () => {
     expect(notifications).toEqual([]);
   });
 
+  test("disabled notify-lando bypasses notify command membership validation", async () => {
+    // Given: notify-lando is disabled and notify.commands names a command absent from this tier.
+    const { layer, root } = await runtime(
+      ["@lando/notify-lando"],
+      "notify:\n  commands:\n    - app:missing-command\n",
+    );
+    const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
+    process.env.LANDO_USER_CONF_ROOT = join(root, "config");
+
+    // When: an otherwise eligible terminal event is published.
+    let notifications: ReadonlyArray<unknown>;
+    try {
+      notifications = await Effect.runPromise(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(terminal);
+          return yield* events.query("notify.desktop");
+        }).pipe(Effect.provide(layer)),
+      );
+    } finally {
+      if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+    }
+
+    // Then: disabled subscriber semantics do not reject unrelated global config loading.
+    expect(notifications).toEqual([]);
+  });
+
+  test("provider-tier subscribers receive decoded notify config before CommandRegistry is available", async () => {
+    // Given: active notify-lando policy with a provisional command id and zero threshold.
+    const { layer, root } = await runtime(
+      [],
+      "notify:\n  thresholdMs: 0\n  commands:\n    - app:missing-command\n",
+    );
+    const quickTerminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
+      ...terminal,
+      timestamp: "2026-07-18T00:00:00.000Z",
+      durationMs: 1,
+    });
+    const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
+    process.env.LANDO_USER_CONF_ROOT = join(root, "config");
+
+    // When: the provider-tier subscriber handles a quick terminal event.
+    let notifications: ReadonlyArray<unknown>;
+    try {
+      notifications = await Effect.runPromise(
+        Effect.gen(function* () {
+          const events = yield* EventService;
+          yield* events.publish(quickTerminal);
+          return yield* events.query("notify.desktop");
+        }).pipe(Effect.provide(layer)),
+      );
+    } finally {
+      if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+    }
+
+    // Then: decoded policy is projected without premature command membership validation.
+    expect(notifications).toHaveLength(1);
+  });
+
   test("renders the terminal lifecycle notification through the command runtime", async () => {
     // Given: the real plugin bootstrap and JSON renderer with a zero notification threshold.
     const { layer, root } = await runtime([], "notify:\n  thresholdMs: 0\n");
