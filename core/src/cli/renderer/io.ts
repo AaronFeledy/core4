@@ -2,13 +2,25 @@ import type { RendererIO } from "@lando/sdk/renderer";
 
 export type { RendererIO } from "@lando/sdk/renderer";
 
+interface RendererInputStream {
+  readonly isTTY?: boolean;
+  readonly isRaw?: boolean;
+  isPaused(): boolean;
+  setRawMode(mode: boolean): void;
+  resume(): void;
+  pause(): void;
+  on(event: "data", listener: (chunk: Buffer | string) => void): void;
+  off(event: "data", listener: (chunk: Buffer | string) => void): void;
+}
+
 export const createStdioRendererIO = (
   stdout: NodeJS.WriteStream = process.stdout,
   stderr: NodeJS.WriteStream = process.stderr,
-  stdin: NodeJS.ReadStream = process.stdin,
+  stdin: RendererInputStream = process.stdin,
 ): RendererIO => ({
   writeStdout: (chunk) => stdout.write(chunk),
   writeStderr: (chunk) => stderr.write(chunk),
+  externalOutputStream: stdout,
   isTTY: stdout.isTTY === true,
   get terminalColumns() {
     return typeof stdout.columns === "number" ? stdout.columns : undefined;
@@ -20,13 +32,15 @@ export const createStdioRendererIO = (
     if (stdin.isTTY !== true) return () => {};
     const listener = (chunk: Buffer | string): void => onKey(chunk.toString("utf8"));
     const previousRaw = stdin.isRaw === true;
+    const previousPaused = stdin.isPaused();
     stdin.setRawMode(true);
     stdin.resume();
     stdin.on("data", listener);
     return () => {
       stdin.off("data", listener);
       stdin.setRawMode(previousRaw);
-      stdin.pause();
+      if (previousPaused) stdin.pause();
+      else stdin.resume();
     };
   },
 });

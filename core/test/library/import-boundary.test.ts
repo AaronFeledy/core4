@@ -12,6 +12,11 @@ const coreSrc = resolve(repoRoot, "core/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
+const rendererLiveRegionSubstrate = resolve(
+  pluginsRoot,
+  "renderer-lando/src/opentui/live-region-substrate.ts",
+);
+const openTuiLiteralImportFiles = [rendererPromptDriver, rendererLiveRegionSubstrate];
 const rendererSrc = resolve(pluginsRoot, "renderer-lando/src");
 const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
 
@@ -233,12 +238,12 @@ const walkLazyModuleGraph = (
 
     for (const edge of scanDynamicEdges(absPath, source)) {
       const resolvedAbs = followEdge(edge.specifier);
-      const openTuiDriverEdges =
-        absPath === rendererPromptDriver
-          ? scanDynamicEdges(absPath, source).filter((candidate) => candidate.specifier === "@opentui/core")
-          : [];
+      const isOpenTuiSubstrateModule = openTuiLiteralImportFiles.includes(absPath);
+      const openTuiDriverEdges = isOpenTuiSubstrateModule
+        ? scanDynamicEdges(absPath, source).filter((candidate) => candidate.specifier === "@opentui/core")
+        : [];
       const isLiteralOpenTuiDriverEdge =
-        absPath === rendererPromptDriver &&
+        isOpenTuiSubstrateModule &&
         edge.specifier === "@opentui/core" &&
         openTuiDriverEdges.length === 1 &&
         /import\(\s*["']@opentui\/core["']\s*\)/.test(source);
@@ -487,13 +492,20 @@ describe("TUI import-boundary classifier (detection self-check)", () => {
         .map((edge) => ({ file, kind: edge.kind, specifier: edge.specifier })),
     );
 
-    expect(edges).toEqual([
-      {
-        file: rendererPromptDriver,
-        kind: "dynamic-import",
-        specifier: "@opentui/core",
-      },
-    ]);
+    expect([...edges].sort((left, right) => left.file.localeCompare(right.file))).toEqual(
+      [
+        {
+          file: rendererLiveRegionSubstrate,
+          kind: "dynamic-import" as const,
+          specifier: "@opentui/core",
+        },
+        {
+          file: rendererPromptDriver,
+          kind: "dynamic-import" as const,
+          specifier: "@opentui/core",
+        },
+      ].sort((left, right) => left.file.localeCompare(right.file)),
+    );
   });
 
   test("signal A: flags a direct @opentui/* npm import from anywhere", () => {

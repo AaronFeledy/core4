@@ -4,6 +4,7 @@ import { Effect, Layer } from "effect";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { makeLandoEventConsumer } from "../../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { landoRenderer } from "../../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../../src/cli/renderer/io.ts";
 import { makeJsonRendererLive, renderPlain } from "../../../src/cli/renderer/runtime.ts";
@@ -199,7 +200,10 @@ describe("provider-free injected-event pipeline", () => {
       Effect.scoped(TestRuntimeProvider.destroy(undefined as never, undefined as never)),
     );
 
-    const io = createBufferedRendererIO({ isTTY: true, terminalColumns: 100 });
+    const io = {
+      ...createBufferedRendererIO({ isTTY: true, terminalColumns: 100 }),
+      externalOutputStream: process.stdout,
+    };
     const events = TREE_FIXTURES.find((f) => f.id === "build-failure")?.events ?? [];
     const program = Effect.gen(function* () {
       const service = yield* EventService;
@@ -209,7 +213,23 @@ describe("provider-free injected-event pipeline", () => {
     await Effect.runPromise(
       Effect.scoped(
         program.pipe(
-          Effect.provide(Layer.provideMerge(landoRenderer.makeEventConsumer(io), EventServiceLive)),
+          Effect.provide(
+            Layer.provideMerge(
+              makeLandoEventConsumer(io, {
+                createLiveRegion: async () => ({
+                  commitScrollback: (line) => io.writeStdout(`${line}\n`),
+                  setFooter: (lines) => io.writeStdout(`${lines.join("\n")}\n`),
+                  requestLive: () => {},
+                  dropLive: () => {},
+                  enterFullTail: () => {},
+                  exitFullTail: async () => {},
+                  dispose: async () => {},
+                }),
+                raiseInterrupt: () => {},
+              }),
+              EventServiceLive,
+            ),
+          ),
         ),
       ),
     );

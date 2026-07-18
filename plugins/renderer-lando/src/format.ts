@@ -125,6 +125,10 @@ export const formatPlainEvent = (event: RenderableEvent): string | null => {
 };
 
 export const renderPlainLine = (event: LandoEvent): string | null => {
+  const record = event as unknown as Record<string, unknown>;
+  if (record._tag === "log.line") {
+    return asString(record.line) ?? asString(record.message) ?? "";
+  }
   if (!isRenderableEvent(event)) return null;
   return formatPlainEvent(event);
 };
