@@ -20,7 +20,11 @@ interface SubscriberRegistrationClosure {
   >;
 }
 
-type BootstrapEventLevel = "minimal" | "plugins" | "commands" | "tooling" | "provider" | "app";
+type BootstrapEventTag = Extract<LandoEvent["_tag"], `${"pre" | "post"}-bootstrap-${string}`>;
+type BootstrapLevelFromTag<Tag extends string> = Tag extends `${"pre" | "post"}-bootstrap-${infer Level}`
+  ? Level
+  : never;
+type BootstrapEventLevel = BootstrapLevelFromTag<BootstrapEventTag>;
 
 type RegisteredSubscriber = IndexedSubscriber & {
   readonly declaredLevel: BootstrapLevel;
@@ -39,7 +43,7 @@ const BOOTSTRAP_EVENT_LEVELS: Readonly<Record<string, BootstrapEventLevel>> = {
   "post-bootstrap-provider": "provider",
   "pre-bootstrap-app": "app",
   "post-bootstrap-app": "app",
-};
+} satisfies Record<BootstrapEventTag, BootstrapEventLevel>;
 
 const BOOTSTRAP_EVENT_COVERAGE = {
   none: [],

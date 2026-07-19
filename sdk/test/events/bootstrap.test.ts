@@ -46,9 +46,13 @@ describe("bootstrap lifecycle event schemas", () => {
     const decoded = Schema.decodeUnknownEither(PostBootstrapEvent)(payload, {
       onExcessProperty: "error",
     });
+    const unionDecoded = Schema.decodeUnknownEither(LandoEvent)(payload, {
+      onExcessProperty: "error",
+    });
 
     // Then: aggregate completion remains a public member of the closed event union.
     expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    expect(Either.isRight(unionDecoded), String(Either.getLeft(unionDecoded))).toBe(true);
     expect(
       Either.isLeft(
         Schema.decodeUnknownEither(PostBootstrapEvent)(

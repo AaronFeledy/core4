@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
 
-import { ConfigError, PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
+import {
+  ConfigError,
+  PluginLoadError,
+  PluginManifestError,
+  SubscriberLevelMismatchError,
+} from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 
@@ -201,36 +206,38 @@ describe("subscriber runtime", () => {
     if (Exit.isSuccess(exit)) expect([...exit.value.keys()]).toEqual(covered);
   });
 
-  test("default app bootstrap rejects tooling with a fully populated mismatch error atomically", async () => {
-    // Given: an omitted declaration defaults to app and selects a tooling bootstrap event.
-    const closure = makeSubscriberRegistrationClosure([
-      bootstrapManifest(undefined, ["pre-bootstrap-minimal", "pre-bootstrap-tooling"]),
-    ]);
+  for (const event of ["pre-bootstrap-tooling", "post-bootstrap-tooling"] as const) {
+    test(`default app bootstrap rejects ${event} with a fully populated mismatch error atomically`, async () => {
+      // Given: an omitted declaration defaults to app and selects a tooling bootstrap event.
+      const closure = makeSubscriberRegistrationClosure([
+        bootstrapManifest(undefined, ["pre-bootstrap-minimal", event]),
+      ]);
 
-    // When: subscriber registration closes.
-    const exit = await Effect.runPromiseExit(closure.close([]));
+      // When: subscriber registration closes.
+      const exit = await Effect.runPromiseExit(closure.close([]));
 
-    // Then: the typed failure is complete and no partially validated index is published.
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      const failure = Cause.failureOption(exit.cause);
-      expect(failure._tag).toBe("Some");
-      if (failure._tag === "Some") {
-        expect(failure.value).toMatchObject({
-          _tag: "SubscriberLevelMismatchError",
-          pluginName: "@example/bootstrap-subscribers",
-          subscriberId: "bootstrap-1",
-          selectedEvent: "pre-bootstrap-tooling",
-          declaredLevel: "app",
-          eventLevel: "tooling",
-          message:
-            'Subscriber "bootstrap-1" from @example/bootstrap-subscribers cannot select "pre-bootstrap-tooling" at declared bootstrap level "app".',
-          remediation: 'Declare bootstrap: "tooling" or select an event covered by bootstrap level "app".',
-        });
+      // Then: the concrete tagged failure is complete and no partial index is published.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(SubscriberLevelMismatchError);
+          expect(failure.value).toMatchObject({
+            _tag: "SubscriberLevelMismatchError",
+            pluginName: "@example/bootstrap-subscribers",
+            subscriberId: "bootstrap-1",
+            selectedEvent: event,
+            declaredLevel: "app",
+            eventLevel: "tooling",
+            message: `Subscriber "bootstrap-1" from @example/bootstrap-subscribers cannot select "${event}" at declared bootstrap level "app".`,
+            remediation: 'Declare bootstrap: "tooling" or select an event covered by bootstrap level "app".',
+          });
+        }
       }
-    }
-    expect(closure.current()).toBeUndefined();
-  });
+      expect(closure.current()).toBeUndefined();
+    });
+  }
 
   for (const event of ["pre-bootstrap-provider", "post-bootstrap-app"] as const) {
     test(`tooling bootstrap rejects uncovered ${event} atomically`, async () => {

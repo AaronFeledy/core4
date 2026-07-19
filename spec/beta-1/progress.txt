@@ -885,3 +885,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the local agent requires authentication; no Bugbot finding was treated as approval. `Guide-Coverage-Skip: US-463 changes generated SDK schema references, not an owned executable-guide workflow.`
 - Verification: typecheck, lint passed; 380 focused story tests and the adjacent 15-test renderer spot check passed; changed-file diagnostics and TypeScript no-excuse audit clean.
 ---
+
+## 2026-07-19 17:18 CDT - US-463 Drift Audit
+- Trigger: 2 cycles, 2599 changed lines, 2 commits
+- Weakened proofs: restored both defaulted tooling-phase rejection cases, direct aggregate-union membership, concrete tagged-error identity, and accurate public-schema test ownership.
+- Review scar tissue: made the parallel bootstrap tag-to-level map compile-time exhaustive against the closed event union so future taxonomy additions cannot silently bypass validation.
+- Contract drift: re-examined the unavailable Bugbot check and guide skip; neither hid branch-owned work, and the guide skip remains valid under the PRD's internal-contract classification rather than generated-file fanout alone.
+- Fixed: strengthened the existing production-closure tests and replaced a drift-prone string map contract without adding public surface or runtime paths.
+- Split/excise decisions: none; bootstrap event emission remains isolated to US-464 and US-463 stays passing.
+- Verification: schema snapshot codegen, typecheck, lint, 396 focused tests, changed-file diagnostics, diff check, and the Bun library driver passed.
+---
