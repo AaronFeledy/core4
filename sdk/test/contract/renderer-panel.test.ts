@@ -41,6 +41,37 @@ describe("Renderer panel contract suite", () => {
     }
   });
 
+  test("normative render deadline still drops a late panel", async () => {
+    const exit = await Effect.runPromiseExit(
+      runRendererPanelContract({
+        modulePath: join(fixturesDir, "status-delayed.ts"),
+        manifestId: "status-delayed",
+        contexts: [makeCtx() as never],
+      }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.dropped).toBe(true);
+      expect(exit.value.lastGood).toBeUndefined();
+    }
+  });
+
+  test("test-scoped render deadline allows a timely panel response", async () => {
+    const exit = await Effect.runPromiseExit(
+      runRendererPanelContract({
+        modulePath: join(fixturesDir, "status-delayed.ts"),
+        manifestId: "status-delayed",
+        contexts: [makeCtx() as never],
+        renderDeadlineMs: 100,
+      }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.dropped).toBe(false);
+      expect(exit.value.lastGood?.[0]?.[0]?.text).toBe("delayed");
+    }
+  });
+
   test("invalid oversize PanelView drops the panel (never clips)", async () => {
     const exit = await Effect.runPromiseExit(
       runRendererPanelContract({
