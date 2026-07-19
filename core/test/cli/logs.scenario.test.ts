@@ -19,7 +19,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { EmptyResultSchema } from "../../src/cli/oclif/command-base.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
@@ -230,14 +230,6 @@ const makeLogsLayer = (
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(defaultProviderCapabilities),
       select: () => Effect.succeed(provider),
-    }),
-    Layer.succeed(EventService, {
-      publish: () => Effect.void,
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
     }),
   );
 
