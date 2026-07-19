@@ -28,6 +28,7 @@ describe("Renderer panel contract suite", () => {
         modulePath: join(fixturesDir, "status-ok.ts"),
         manifestId: "status-ok",
         contexts: [makeCtx() as never, makeCtx() as never],
+        renderDeadlineMs: 100,
       }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
