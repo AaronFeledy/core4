@@ -95,6 +95,19 @@ describe("BUNDLED_PLUGINS", () => {
     }
   });
 
+  test("every bundled plugin manifest receives the omitted app bootstrap default", () => {
+    // Given: bundled manifests remain unchanged and omit bootstrap declarations.
+    const manifests = EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.manifest);
+
+    // When: their decoded bootstrap levels are inspected.
+    const bootstrapLevels = manifests.map(
+      (manifest) => Object.getOwnPropertyDescriptor(manifest, "bootstrap")?.value,
+    );
+
+    // Then: all bundled plugins retain app-level subscriber coverage by default.
+    expect(bootstrapLevels).toEqual(manifests.map(() => "app"));
+  });
+
   test("generated bundled plugin module is idempotent", async () => {
     const before = await readFile(bundledModulePath, "utf8");
     const proc = Bun.spawnSync([process.execPath, generatorPath], {

@@ -1,0 +1,21 @@
+---
+title: Subscriber Level Mismatch Error
+description: Public Lando schema contract for Subscriber Level Mismatch Error.
+---
+
+# Subscriber Level Mismatch Error
+
+Public Lando schema contract for Subscriber Level Mismatch Error.
+
+[JSON Schema artifact](../../../dist/schemas/subscriber-level-mismatch-error.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `message` | Yes | `string` | a string | — | — | — | — |
+| `remediation` | Yes | `string` | a string | — | — | — | — |
+| `pluginName` | Yes | `string` | a string | — | — | — | — |
+| `subscriberId` | Yes | `string` | a string | — | — | — | — |
+| `selectedEvent` | Yes | `string` | a string | — | — | — | — |
+| `declaredLevel` | Yes | `string` | — | — | `none`, `minimal`, `plugins`, `commands`, `tooling`, `provider`, `global`, `scratch`, `app` | — | — |
+| `eventLevel` | Yes | `string` | — | — | `minimal`, `plugins`, `commands`, `tooling`, `provider`, `app` | — | — |
+| `_tag` | Yes | `string` | — | — | `SubscriberLevelMismatchError` | — | — |

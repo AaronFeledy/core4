@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "SubscriberLevelMismatchError": {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "SubscriberLevelMismatchError"
+          ],
+          "type": "string"
+        },
+        "declaredLevel": {
+          "enum": [
+            "none",
+            "minimal",
+            "plugins",
+            "commands",
+            "tooling",
+            "provider",
+            "global",
+            "scratch",
+            "app"
+          ],
+          "type": "string"
+        },
+        "eventLevel": {
+          "enum": [
+            "minimal",
+            "plugins",
+            "commands",
+            "tooling",
+            "provider",
+            "app"
+          ],
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "pluginName": {
+          "type": "string"
+        },
+        "remediation": {
+          "type": "string"
+        },
+        "selectedEvent": {
+          "type": "string"
+        },
+        "subscriberId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "message",
+        "remediation",
+        "pluginName",
+        "subscriberId",
+        "selectedEvent",
+        "declaredLevel",
+        "eventLevel",
+        "_tag"
+      ],
+      "type": "object"
+    }
+  },
+  "$ref": "#/$defs/SubscriberLevelMismatchError",
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}

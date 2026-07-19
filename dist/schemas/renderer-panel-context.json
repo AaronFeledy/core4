@@ -291,18 +291,7 @@
           "properties": {
             "_tag": {
               "enum": [
-                "pre-bootstrap"
-              ],
-              "type": "string"
-            },
-            "level": {
-              "enum": [
-                "minimal",
-                "plugins",
-                "commands",
-                "provider",
-                "app",
-                "tooling"
+                "pre-bootstrap-minimal"
               ],
               "type": "string"
             },
@@ -312,7 +301,215 @@
           },
           "required": [
             "_tag",
-            "level",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "post-bootstrap-minimal"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "pre-bootstrap-plugins"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "post-bootstrap-plugins"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "pre-bootstrap-commands"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "post-bootstrap-commands"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "pre-bootstrap-provider"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "post-bootstrap-provider"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "pre-bootstrap-app"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "post-bootstrap-app"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "pre-bootstrap-tooling"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
+            "timestamp"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": [
+                "post-bootstrap-tooling"
+              ],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": [
+            "_tag",
             "timestamp"
           ],
           "type": "object"
@@ -326,24 +523,12 @@
               ],
               "type": "string"
             },
-            "level": {
-              "enum": [
-                "minimal",
-                "plugins",
-                "commands",
-                "provider",
-                "app",
-                "tooling"
-              ],
-              "type": "string"
-            },
             "timestamp": {
               "$ref": "#/$defs/DateTimeUtc"
             }
           },
           "required": [
             "_tag",
-            "level",
             "timestamp"
           ],
           "type": "object"

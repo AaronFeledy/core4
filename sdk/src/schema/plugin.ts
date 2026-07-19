@@ -3,7 +3,7 @@ import { Schema } from "effect";
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
 import { HttpClientCapabilities } from "./http-client.ts";
-import { PluginName } from "./primitives.ts";
+import { BootstrapLevel, PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
 import { DatasetContribution, RemoteSourceContribution } from "./remote-sync.ts";
 import { RendererPanelManifestEntry } from "./renderer-panel.ts";
@@ -213,6 +213,7 @@ export const PluginManifest = Schema.Struct({
   name: PluginName,
   version: Schema.String,
   api: Schema.Literal(4),
+  bootstrap: Schema.optionalWith(BootstrapLevel, { default: () => "app" as const }),
   description: Schema.optional(Schema.String),
   enabled: Schema.optional(Schema.Boolean),
   bundled: Schema.optional(Schema.Boolean),

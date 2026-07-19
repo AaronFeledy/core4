@@ -16,6 +16,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Env-gated native acceptance preflights host, explicit opt-in, and tooling as structured skips; once prerequisites pass, command failures remain failed outcomes even when release policy makes the cell advisory.
 - Windows managed Podman machines expose the API at `\\.\pipe\podman-lando`; the data-root `runtime/run/podman.sock` endpoint is the native managed-service path, not the win32 machine endpoint.
 - Bun subprocess `FileSink.write()` completion values are not partial-write offsets. Send each bounded chunk once, await `write`/`flush`, and await `end` before treating stdin delivery as complete.
+- Bootstrap-event subscriber coverage follows bootstrap paths, not numeric rank: `tooling` and `provider` branch after `commands`, while default `app` covers the standard non-tooling path.
 - MCP outbound queue caps do not bound pre-queue JSON serialization; enforce the same byte budget during traversal before retaining the completed JSON string.
 - Built-in OCLIF wrappers must not parse before `LandoCommandBase.runEffect`; shared renderer-aware flag validation and parsing live in the base command.
 - A clean-tree inventory gate may bootstrap only when its generated corpus is wholly empty; partial corpora must remain strict so missing-artifact diagnostics are not repaired away.
@@ -869,4 +870,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Review feedback: fixed (preserve EventService publish identity/accept encoded+type shapes; stabilize renderer-panel contract harness deadline under CI load; Guide-Coverage-Skip for test-only panel harness)
 - Drift check: skipped (PR already squash-merged when babysit returned to Phase 4)
 - Merge: merged (squash)
+---
+
+## 2026-07-19 16:52 CDT - US-463
+- Replaced the broad bootstrap event shapes with level-specific pre/post schemas plus aggregate completion, defaulted plugin bootstrap participation to `app`, and closed exact bootstrap selectors against the plugin's actual bootstrap path with a tagged, remediated mismatch error. Bundled manifests remain unchanged and decode to the default; terminal command-family selectors remain bootstrap-free.
+- Verification: typecheck, lint passed; focused event, manifest, export, registration-closure, bundled-plugin, SDK compatibility, tagged-error, and schema-snapshot spot checks passed; a Bun library driver proved default rejection and explicit tooling acceptance with clean teardown.
+- **Learnings for future iterations:**
+  - `BOOTSTRAP_RANK` cannot validate subscriber coverage because tooling and provider are sibling branches; model the covered event levels explicitly.
+  - The generated-artifact inventory gate reads `git ls-files`, so newly generated schema files must be staged before that focused gate can pass.
 ---

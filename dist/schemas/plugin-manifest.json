@@ -52,6 +52,20 @@
       ],
       "type": "number"
     },
+    "bootstrap": {
+      "enum": [
+        "none",
+        "minimal",
+        "plugins",
+        "commands",
+        "tooling",
+        "provider",
+        "global",
+        "scratch",
+        "app"
+      ],
+      "type": "string"
+    },
     "bundled": {
       "type": "boolean"
     },
@@ -871,7 +885,6 @@
       "type": "object"
     },
     "subscribers": {
-      "description": "Event subscribers (shape at manifest read; selector semantics after registration).",
       "items": {
         "additionalProperties": false,
         "properties": {

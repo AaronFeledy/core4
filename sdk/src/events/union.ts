@@ -13,7 +13,23 @@ import {
   PreServiceStartEvent,
   PreServiceStopEvent,
 } from "./app.ts";
-import { BeforeExitEvent, PostBootstrapEvent, PreBootstrapEvent, ReadyEvent } from "./bootstrap.ts";
+import {
+  BeforeExitEvent,
+  PostBootstrapAppEvent,
+  PostBootstrapCommandsEvent,
+  PostBootstrapEvent,
+  PostBootstrapMinimalEvent,
+  PostBootstrapPluginsEvent,
+  PostBootstrapProviderEvent,
+  PostBootstrapToolingEvent,
+  PreBootstrapAppEvent,
+  PreBootstrapCommandsEvent,
+  PreBootstrapMinimalEvent,
+  PreBootstrapPluginsEvent,
+  PreBootstrapProviderEvent,
+  PreBootstrapToolingEvent,
+  ReadyEvent,
+} from "./bootstrap.ts";
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "./cli.ts";
 import {
   DataTransferProgressEvent,
@@ -99,7 +115,18 @@ import {
 } from "./tunnel.ts";
 
 export const LandoEvent = Schema.Union(
-  PreBootstrapEvent,
+  PreBootstrapMinimalEvent,
+  PostBootstrapMinimalEvent,
+  PreBootstrapPluginsEvent,
+  PostBootstrapPluginsEvent,
+  PreBootstrapCommandsEvent,
+  PostBootstrapCommandsEvent,
+  PreBootstrapProviderEvent,
+  PostBootstrapProviderEvent,
+  PreBootstrapAppEvent,
+  PostBootstrapAppEvent,
+  PreBootstrapToolingEvent,
+  PostBootstrapToolingEvent,
   PostBootstrapEvent,
   ReadyEvent,
   BeforeExitEvent,

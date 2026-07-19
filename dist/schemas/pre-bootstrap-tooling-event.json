@@ -10,7 +10,7 @@
   "properties": {
     "_tag": {
       "enum": [
-        "post-bootstrap"
+        "pre-bootstrap-tooling"
       ],
       "type": "string"
     },
