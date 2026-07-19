@@ -183,7 +183,20 @@ describe("@lando/sdk package exports", () => {
       "LandofileExpressionForbiddenError",
       "LandofileExpressionEvalError",
       "LandoEvent",
-      "PreBootstrapEvent",
+      "PreBootstrapMinimalEvent",
+      "PostBootstrapMinimalEvent",
+      "PreBootstrapPluginsEvent",
+      "PostBootstrapPluginsEvent",
+      "PreBootstrapCommandsEvent",
+      "PostBootstrapCommandsEvent",
+      "PreBootstrapProviderEvent",
+      "PostBootstrapProviderEvent",
+      "PreBootstrapAppEvent",
+      "PostBootstrapAppEvent",
+      "PreBootstrapToolingEvent",
+      "PostBootstrapToolingEvent",
+      "PostBootstrapEvent",
+      "SubscriberLevelMismatchError",
       "DeprecationUsedEvent",
       "TaskDetailEvent",
       "RemoteCapabilities",
@@ -340,12 +353,12 @@ describe("@lando/sdk package exports", () => {
     expect(errors.DeprecatedSurfaceError).toBeDefined();
     expect(errors.DeprecationContradictionError).toBeDefined();
     expect(errors.StateStoreError).toBeDefined();
+    expect(errors).toHaveProperty("SubscriberLevelMismatchError");
   });
 
   test("events entry point exports lifecycle event schemas and union", async () => {
     const events = await import("@lando/sdk/events");
 
-    expect(events.PreBootstrapEvent).toBeDefined();
     expect(events.PostBootstrapEvent).toBeDefined();
     expect(events.ReadyEvent).toBeDefined();
     expect(events.BeforeExitEvent).toBeDefined();
@@ -388,6 +401,28 @@ describe("@lando/sdk package exports", () => {
     expect(events.TunnelStatusEvent).toBeDefined();
     expect(events.DeprecationUsedEvent).toBeDefined();
     expect(events.LandoEvent).toBeDefined();
+    for (const level of ["Minimal", "Plugins", "Commands", "Provider", "App", "Tooling"] as const) {
+      expect(events).toHaveProperty(`PreBootstrap${level}Event`);
+      expect(events).toHaveProperty(`PostBootstrap${level}Event`);
+    }
+    expect(events).not.toHaveProperty("PreBootstrapEvent");
+  });
+
+  test("root namespaces own the bootstrap subscriber contract on their canonical entry points", async () => {
+    // Given: consumers import the package root namespaces.
+    const sdk = await import("@lando/sdk");
+
+    // When: bootstrap manifest, event, and failure contracts are resolved.
+    const manifest = Object.getOwnPropertyDescriptor(sdk.Schema, "PluginManifest")?.value;
+    const event = Object.getOwnPropertyDescriptor(sdk.Events, "PreBootstrapToolingEvent")?.value;
+    const error = Object.getOwnPropertyDescriptor(sdk.Errors, "SubscriberLevelMismatchError")?.value;
+
+    // Then: each contract is owned by its canonical public namespace.
+    expect(manifest).toBeDefined();
+    expect(event).toBeDefined();
+    expect(error).toBeDefined();
+    expect(sdk.Schema).not.toHaveProperty("PreBootstrapToolingEvent");
+    expect(sdk.Schema).not.toHaveProperty("SubscriberLevelMismatchError");
   });
 
   test("services entry point exports the canonical Effect service tags", async () => {

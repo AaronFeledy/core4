@@ -1,3 +1,5 @@
+import { describe, expect, test } from "bun:test";
+
 import { Either, Schema } from "effect";
 
 import { PluginManifest, getJsonSchema } from "@lando/sdk/schema";
@@ -136,6 +138,52 @@ describe("PluginManifest", () => {
       { onExcessProperty: "error" },
     );
 
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("defaults an omitted plugin bootstrap declaration to app", () => {
+    // Given: a plugin manifest with no explicit bootstrap declaration.
+    const encoded = { name: "@lando/default-bootstrap", version: "1.0.0", api: 4 };
+
+    // When: the public manifest schema decodes it.
+    const decoded = Schema.decodeUnknownSync(PluginManifest)(encoded);
+
+    // Then: subscriber validation receives the documented app-level default.
+    expect(decoded).toHaveProperty("bootstrap", "app");
+  });
+
+  test("preserves every valid explicit plugin bootstrap declaration", () => {
+    for (const bootstrap of [
+      "none",
+      "minimal",
+      "plugins",
+      "commands",
+      "tooling",
+      "provider",
+      "global",
+      "scratch",
+      "app",
+    ] as const) {
+      // Given: a plugin manifest declaring one existing bootstrap level.
+      const encoded = { name: `@lando/bootstrap-${bootstrap}`, version: "1.0.0", api: 4, bootstrap };
+
+      // When: strict manifest decoding is applied.
+      const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+
+      // Then: the declaration is accepted and preserved for closure validation.
+      expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+      if (Either.isRight(decoded)) expect(decoded.right).toHaveProperty("bootstrap", bootstrap);
+    }
+  });
+
+  test("rejects an unknown plugin bootstrap declaration", () => {
+    // Given: a plugin manifest declaring a level outside BootstrapLevel.
+    const encoded = { name: "@lando/bootstrap-invalid", version: "1.0.0", api: 4, bootstrap: "fast" };
+
+    // When: strict manifest decoding is applied.
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+
+    // Then: invalid declarations cannot reach subscriber registration.
     expect(Either.isLeft(decoded)).toBe(true);
   });
 });

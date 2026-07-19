@@ -14,11 +14,12 @@ Public Lando schema contract for Plugin Manifest.
 | `name` | Yes | `string` | a string | — | — | — | — |
 | `version` | Yes | `string` | a string | — | — | — | — |
 | `api` | Yes | `number` | — | — | `4` | — | — |
+| `bootstrap` | No | `string` | — | — | `none`, `minimal`, `plugins`, `commands`, `tooling`, `provider`, `global`, `scratch`, `app` | — | — |
 | `description` | No | `string` | — | — | — | — | — |
 | `enabled` | No | `boolean` | — | — | — | — | — |
 | `bundled` | No | `boolean` | — | — | — | — | — |
 | `deprecated` | No | `object` | — | — | — | — | — |
 | `contributes` | No | `object` | — | — | — | — | — |
-| `subscribers` | No | `array` | Event subscribers (shape at manifest read; selector semantics after registration). | — | — | — | — |
+| `subscribers` | No | `array` | — | — | — | — | — |
 | `entry` | No | `string` | — | — | — | — | — |
 | `requires` | No | `object` | — | — | — | — | — |

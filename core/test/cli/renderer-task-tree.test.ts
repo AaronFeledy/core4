@@ -6,6 +6,7 @@ import { Deferred, Effect, Layer, Schema } from "effect";
 
 import {
   type LandoEvent,
+  PreBootstrapMinimalEvent,
   TaskCompleteEvent,
   TaskDetailEvent,
   TaskFailEvent,
@@ -158,7 +159,10 @@ describe("json renderer", () => {
   });
 
   test("renderJsonLine returns null for non-renderable events", () => {
-    const event = { _tag: "pre-bootstrap", level: "minimal" } as LandoEvent;
+    const event = Schema.decodeUnknownSync(PreBootstrapMinimalEvent)({
+      _tag: "pre-bootstrap-minimal",
+      timestamp: "2026-07-19T00:00:00.000Z",
+    });
     expect(renderJsonLine(event)).toBeNull();
   });
 

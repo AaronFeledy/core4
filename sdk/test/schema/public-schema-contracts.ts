@@ -12,6 +12,7 @@ import {
 
 const ISO_TIMESTAMP = "2026-06-14T00:00:00.000Z";
 const PUBLIC_SCHEMA_CONTRACT_TEST_FILE = "sdk/test/schema/public-schema-contracts.test.ts";
+const BOOTSTRAP_EVENT_CONTRACT_TEST_FILE = "sdk/test/events/bootstrap.test.ts";
 
 export type PublicSchemaContractFixture = {
   readonly testFile: `sdk/test/${string}.test.ts`;
@@ -23,6 +24,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   LandofileExpressionParseError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileExpressionForbiddenError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   LandofileExpressionEvalError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  SubscriberLevelMismatchError: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   GuideFrontmatter: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   GuideProps: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ScenarioProps: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -189,8 +191,19 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   UpdateManifestChecksums: "sdk/test/schema/update-manifest.test.ts",
   UpdateManifestSchema: "sdk/test/schema/update-manifest.test.ts",
   LandoEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  PreBootstrapEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
-  PostBootstrapEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PreBootstrapMinimalEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapMinimalEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PreBootstrapPluginsEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapPluginsEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PreBootstrapCommandsEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapCommandsEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PreBootstrapProviderEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapProviderEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PreBootstrapAppEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapAppEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PreBootstrapToolingEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapToolingEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
+  PostBootstrapEvent: BOOTSTRAP_EVENT_CONTRACT_TEST_FILE,
   ReadyEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   BeforeExitEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PreInitEvent: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

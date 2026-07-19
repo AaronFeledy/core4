@@ -1640,7 +1640,7 @@
         "Lint passes"
       ],
       "priority": 92,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: US-459 review - SubscriberLevelMismatchError exists only in spec section 3.5; PluginManifest has no bootstrap declaration and the SDK taxonomy uses a single pre-bootstrap/post-bootstrap pair with a level field instead of the spec'd per-level names."
     },
     {

@@ -10,18 +10,7 @@
   "properties": {
     "_tag": {
       "enum": [
-        "pre-bootstrap"
-      ],
-      "type": "string"
-    },
-    "level": {
-      "enum": [
-        "minimal",
-        "plugins",
-        "commands",
-        "provider",
-        "app",
-        "tooling"
+        "pre-bootstrap-plugins"
       ],
       "type": "string"
     },
@@ -31,7 +20,6 @@
   },
   "required": [
     "_tag",
-    "level",
     "timestamp"
   ],
   "type": "object"

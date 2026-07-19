@@ -3,6 +3,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "fileSyncEngines": ["mutagen"]
         },
@@ -20,6 +21,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "loggers": ["pretty"]
         },
@@ -37,6 +39,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "description": "Bundled Lando desktop-notification policy plugin.",
         "enabled": true,
         "entry": "./src/index.ts",
@@ -65,6 +68,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "providers": ["docker"]
         },
@@ -82,6 +86,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "providers": ["lando"],
           "setup": {
@@ -113,6 +118,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "providers": ["podman"]
         },
@@ -130,6 +136,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "globalServices": [
             {
@@ -158,6 +165,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "renderers": ["lando"]
         },
@@ -175,6 +183,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "globalServices": [
             {
@@ -264,6 +273,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "templateEngines": ["handlebars"]
         },
@@ -281,6 +291,7 @@
     {
       "manifest": {
         "api": 4,
+        "bootstrap": "app",
         "contributes": {
           "templateEngines": ["mustache"]
         },
@@ -13592,6 +13603,15 @@
     },
     {
       "deprecated": false,
+      "description": "Public Lando schema contract for Subscriber Level Mismatch Error.",
+      "docsPath": "docs/reference/schemas/subscriber-level-mismatch-error.mdx",
+      "id": "SubscriberLevelMismatchError",
+      "jsonSchemaPath": "dist/schemas/subscriber-level-mismatch-error.json",
+      "packageExport": "@lando/sdk/schema#SubscriberLevelMismatchError",
+      "title": "Subscriber Level Mismatch Error"
+    },
+    {
+      "deprecated": false,
       "description": "Alpha 2 executable guide frontmatter.",
       "docsPath": "docs/reference/schemas/guide-frontmatter.mdx",
       "id": "GuideFrontmatter",
@@ -15086,12 +15106,111 @@
     },
     {
       "deprecated": false,
-      "description": "Public Lando schema contract for Pre Bootstrap Event.",
-      "docsPath": "docs/reference/schemas/pre-bootstrap-event.mdx",
-      "id": "PreBootstrapEvent",
-      "jsonSchemaPath": "dist/schemas/pre-bootstrap-event.json",
-      "packageExport": "@lando/sdk/schema#PreBootstrapEvent",
-      "title": "Pre Bootstrap Event"
+      "description": "Public Lando schema contract for Pre Bootstrap Minimal Event.",
+      "docsPath": "docs/reference/schemas/pre-bootstrap-minimal-event.mdx",
+      "id": "PreBootstrapMinimalEvent",
+      "jsonSchemaPath": "dist/schemas/pre-bootstrap-minimal-event.json",
+      "packageExport": "@lando/sdk/schema#PreBootstrapMinimalEvent",
+      "title": "Pre Bootstrap Minimal Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Bootstrap Minimal Event.",
+      "docsPath": "docs/reference/schemas/post-bootstrap-minimal-event.mdx",
+      "id": "PostBootstrapMinimalEvent",
+      "jsonSchemaPath": "dist/schemas/post-bootstrap-minimal-event.json",
+      "packageExport": "@lando/sdk/schema#PostBootstrapMinimalEvent",
+      "title": "Post Bootstrap Minimal Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Bootstrap Plugins Event.",
+      "docsPath": "docs/reference/schemas/pre-bootstrap-plugins-event.mdx",
+      "id": "PreBootstrapPluginsEvent",
+      "jsonSchemaPath": "dist/schemas/pre-bootstrap-plugins-event.json",
+      "packageExport": "@lando/sdk/schema#PreBootstrapPluginsEvent",
+      "title": "Pre Bootstrap Plugins Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Bootstrap Plugins Event.",
+      "docsPath": "docs/reference/schemas/post-bootstrap-plugins-event.mdx",
+      "id": "PostBootstrapPluginsEvent",
+      "jsonSchemaPath": "dist/schemas/post-bootstrap-plugins-event.json",
+      "packageExport": "@lando/sdk/schema#PostBootstrapPluginsEvent",
+      "title": "Post Bootstrap Plugins Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Bootstrap Commands Event.",
+      "docsPath": "docs/reference/schemas/pre-bootstrap-commands-event.mdx",
+      "id": "PreBootstrapCommandsEvent",
+      "jsonSchemaPath": "dist/schemas/pre-bootstrap-commands-event.json",
+      "packageExport": "@lando/sdk/schema#PreBootstrapCommandsEvent",
+      "title": "Pre Bootstrap Commands Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Bootstrap Commands Event.",
+      "docsPath": "docs/reference/schemas/post-bootstrap-commands-event.mdx",
+      "id": "PostBootstrapCommandsEvent",
+      "jsonSchemaPath": "dist/schemas/post-bootstrap-commands-event.json",
+      "packageExport": "@lando/sdk/schema#PostBootstrapCommandsEvent",
+      "title": "Post Bootstrap Commands Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Bootstrap Provider Event.",
+      "docsPath": "docs/reference/schemas/pre-bootstrap-provider-event.mdx",
+      "id": "PreBootstrapProviderEvent",
+      "jsonSchemaPath": "dist/schemas/pre-bootstrap-provider-event.json",
+      "packageExport": "@lando/sdk/schema#PreBootstrapProviderEvent",
+      "title": "Pre Bootstrap Provider Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Bootstrap Provider Event.",
+      "docsPath": "docs/reference/schemas/post-bootstrap-provider-event.mdx",
+      "id": "PostBootstrapProviderEvent",
+      "jsonSchemaPath": "dist/schemas/post-bootstrap-provider-event.json",
+      "packageExport": "@lando/sdk/schema#PostBootstrapProviderEvent",
+      "title": "Post Bootstrap Provider Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Bootstrap App Event.",
+      "docsPath": "docs/reference/schemas/pre-bootstrap-app-event.mdx",
+      "id": "PreBootstrapAppEvent",
+      "jsonSchemaPath": "dist/schemas/pre-bootstrap-app-event.json",
+      "packageExport": "@lando/sdk/schema#PreBootstrapAppEvent",
+      "title": "Pre Bootstrap App Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Bootstrap App Event.",
+      "docsPath": "docs/reference/schemas/post-bootstrap-app-event.mdx",
+      "id": "PostBootstrapAppEvent",
+      "jsonSchemaPath": "dist/schemas/post-bootstrap-app-event.json",
+      "packageExport": "@lando/sdk/schema#PostBootstrapAppEvent",
+      "title": "Post Bootstrap App Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Pre Bootstrap Tooling Event.",
+      "docsPath": "docs/reference/schemas/pre-bootstrap-tooling-event.mdx",
+      "id": "PreBootstrapToolingEvent",
+      "jsonSchemaPath": "dist/schemas/pre-bootstrap-tooling-event.json",
+      "packageExport": "@lando/sdk/schema#PreBootstrapToolingEvent",
+      "title": "Pre Bootstrap Tooling Event"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Post Bootstrap Tooling Event.",
+      "docsPath": "docs/reference/schemas/post-bootstrap-tooling-event.mdx",
+      "id": "PostBootstrapToolingEvent",
+      "jsonSchemaPath": "dist/schemas/post-bootstrap-tooling-event.json",
+      "packageExport": "@lando/sdk/schema#PostBootstrapToolingEvent",
+      "title": "Post Bootstrap Tooling Event"
     },
     {
       "deprecated": false,
@@ -16210,6 +16329,7 @@
       "LandofileExpressionParseError",
       "LandofileExpressionForbiddenError",
       "LandofileExpressionEvalError",
+      "SubscriberLevelMismatchError",
       "GuideFrontmatter",
       "GuideProps",
       "ScenarioProps",
@@ -16376,7 +16496,18 @@
       "UpdateManifestChecksums",
       "UpdateManifestSchema",
       "LandoEvent",
-      "PreBootstrapEvent",
+      "PreBootstrapMinimalEvent",
+      "PostBootstrapMinimalEvent",
+      "PreBootstrapPluginsEvent",
+      "PostBootstrapPluginsEvent",
+      "PreBootstrapCommandsEvent",
+      "PostBootstrapCommandsEvent",
+      "PreBootstrapProviderEvent",
+      "PostBootstrapProviderEvent",
+      "PreBootstrapAppEvent",
+      "PostBootstrapAppEvent",
+      "PreBootstrapToolingEvent",
+      "PostBootstrapToolingEvent",
       "PostBootstrapEvent",
       "ReadyEvent",
       "BeforeExitEvent",
@@ -22990,18 +23121,168 @@
           "additionalProperties": false,
           "properties": {
             "_tag": {
-              "enum": ["pre-bootstrap"],
-              "type": "string"
-            },
-            "level": {
-              "enum": ["minimal", "plugins", "commands", "provider", "app", "tooling"],
+              "enum": ["pre-bootstrap-minimal"],
               "type": "string"
             },
             "timestamp": {
               "$ref": "#/$defs/DateTimeUtc"
             }
           },
-          "required": ["_tag", "level", "timestamp"],
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-bootstrap-minimal"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-bootstrap-plugins"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-bootstrap-plugins"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-bootstrap-commands"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-bootstrap-commands"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-bootstrap-provider"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-bootstrap-provider"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-bootstrap-app"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-bootstrap-app"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["pre-bootstrap-tooling"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["post-bootstrap-tooling"],
+              "type": "string"
+            },
+            "timestamp": {
+              "$ref": "#/$defs/DateTimeUtc"
+            }
+          },
+          "required": ["_tag", "timestamp"],
           "type": "object"
         },
         {
@@ -23011,15 +23292,11 @@
               "enum": ["post-bootstrap"],
               "type": "string"
             },
-            "level": {
-              "enum": ["minimal", "plugins", "commands", "provider", "app", "tooling"],
-              "type": "string"
-            },
             "timestamp": {
               "$ref": "#/$defs/DateTimeUtc"
             }
           },
-          "required": ["_tag", "level", "timestamp"],
+          "required": ["_tag", "timestamp"],
           "type": "object"
         },
         {
@@ -32949,6 +33226,20 @@
           "enum": [4],
           "type": "number"
         },
+        "bootstrap": {
+          "enum": [
+            "none",
+            "minimal",
+            "plugins",
+            "commands",
+            "tooling",
+            "provider",
+            "global",
+            "scratch",
+            "app"
+          ],
+          "type": "string"
+        },
         "bundled": {
           "type": "boolean"
         },
@@ -33663,7 +33954,6 @@
           "type": "object"
         },
         "subscribers": {
-          "description": "Event subscribers (shape at manifest read; selector semantics after registration).",
           "items": {
             "additionalProperties": false,
             "properties": {
@@ -33997,6 +34287,48 @@
       "required": ["_tag", "eventName", "appRef", "providerId", "timestamp"],
       "type": "object"
     },
+    "PostBootstrapAppEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-bootstrap-app"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PostBootstrapCommandsEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-bootstrap-commands"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
     "PostBootstrapEvent": {
       "$defs": {
         "DateTimeUtc": {
@@ -34011,15 +34343,95 @@
           "enum": ["post-bootstrap"],
           "type": "string"
         },
-        "level": {
-          "enum": ["minimal", "plugins", "commands", "provider", "app", "tooling"],
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PostBootstrapMinimalEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-bootstrap-minimal"],
           "type": "string"
         },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
       },
-      "required": ["_tag", "level", "timestamp"],
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PostBootstrapPluginsEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-bootstrap-plugins"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PostBootstrapProviderEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-bootstrap-provider"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PostBootstrapToolingEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["post-bootstrap-tooling"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
       "type": "object"
     },
     "PostBuildEvent": {
@@ -37354,7 +37766,7 @@
       "required": ["_tag", "eventName", "appRef", "providerId", "timestamp"],
       "type": "object"
     },
-    "PreBootstrapEvent": {
+    "PreBootstrapAppEvent": {
       "$defs": {
         "DateTimeUtc": {
           "description": "a string to be decoded into a DateTime.Utc",
@@ -37365,18 +37777,119 @@
       "additionalProperties": false,
       "properties": {
         "_tag": {
-          "enum": ["pre-bootstrap"],
-          "type": "string"
-        },
-        "level": {
-          "enum": ["minimal", "plugins", "commands", "provider", "app", "tooling"],
+          "enum": ["pre-bootstrap-app"],
           "type": "string"
         },
         "timestamp": {
           "$ref": "#/$defs/DateTimeUtc"
         }
       },
-      "required": ["_tag", "level", "timestamp"],
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PreBootstrapCommandsEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-bootstrap-commands"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PreBootstrapMinimalEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-bootstrap-minimal"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PreBootstrapPluginsEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-bootstrap-plugins"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PreBootstrapProviderEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-bootstrap-provider"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
+      "type": "object"
+    },
+    "PreBootstrapToolingEvent": {
+      "$defs": {
+        "DateTimeUtc": {
+          "description": "a string to be decoded into a DateTime.Utc",
+          "type": "string"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": ["pre-bootstrap-tooling"],
+          "type": "string"
+        },
+        "timestamp": {
+          "$ref": "#/$defs/DateTimeUtc"
+        }
+      },
+      "required": ["_tag", "timestamp"],
       "type": "object"
     },
     "PreBuildEvent": {
@@ -42159,18 +42672,168 @@
               "additionalProperties": false,
               "properties": {
                 "_tag": {
-                  "enum": ["pre-bootstrap"],
-                  "type": "string"
-                },
-                "level": {
-                  "enum": ["minimal", "plugins", "commands", "provider", "app", "tooling"],
+                  "enum": ["pre-bootstrap-minimal"],
                   "type": "string"
                 },
                 "timestamp": {
                   "$ref": "#/$defs/DateTimeUtc"
                 }
               },
-              "required": ["_tag", "level", "timestamp"],
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["post-bootstrap-minimal"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["pre-bootstrap-plugins"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["post-bootstrap-plugins"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["pre-bootstrap-commands"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["post-bootstrap-commands"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["pre-bootstrap-provider"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["post-bootstrap-provider"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["pre-bootstrap-app"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["post-bootstrap-app"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["pre-bootstrap-tooling"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "_tag": {
+                  "enum": ["post-bootstrap-tooling"],
+                  "type": "string"
+                },
+                "timestamp": {
+                  "$ref": "#/$defs/DateTimeUtc"
+                }
+              },
+              "required": ["_tag", "timestamp"],
               "type": "object"
             },
             {
@@ -42180,15 +42843,11 @@
                   "enum": ["post-bootstrap"],
                   "type": "string"
                 },
-                "level": {
-                  "enum": ["minimal", "plugins", "commands", "provider", "app", "tooling"],
-                  "type": "string"
-                },
                 "timestamp": {
                   "$ref": "#/$defs/DateTimeUtc"
                 }
               },
-              "required": ["_tag", "level", "timestamp"],
+              "required": ["_tag", "timestamp"],
               "type": "object"
             },
             {
@@ -51189,6 +51848,65 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "enum": ["default", "muted", "accent", "success", "warning", "danger"],
       "type": "string"
+    },
+    "SubscriberLevelMismatchError": {
+      "$defs": {
+        "SubscriberLevelMismatchError": {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "enum": ["SubscriberLevelMismatchError"],
+              "type": "string"
+            },
+            "declaredLevel": {
+              "enum": [
+                "none",
+                "minimal",
+                "plugins",
+                "commands",
+                "tooling",
+                "provider",
+                "global",
+                "scratch",
+                "app"
+              ],
+              "type": "string"
+            },
+            "eventLevel": {
+              "enum": ["minimal", "plugins", "commands", "tooling", "provider", "app"],
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "pluginName": {
+              "type": "string"
+            },
+            "remediation": {
+              "type": "string"
+            },
+            "selectedEvent": {
+              "type": "string"
+            },
+            "subscriberId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "message",
+            "remediation",
+            "pluginName",
+            "subscriberId",
+            "selectedEvent",
+            "declaredLevel",
+            "eventLevel",
+            "_tag"
+          ],
+          "type": "object"
+        }
+      },
+      "$ref": "#/$defs/SubscriberLevelMismatchError",
+      "$schema": "http://json-schema.org/draft-07/schema#"
     },
     "SubscriberManifestEntry": {
       "$schema": "http://json-schema.org/draft-07/schema#",

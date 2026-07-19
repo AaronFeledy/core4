@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit, Schema } from "effect";
 
-import { ConfigError, PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
+import {
+  ConfigError,
+  PluginLoadError,
+  PluginManifestError,
+  SubscriberLevelMismatchError,
+} from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 
@@ -27,6 +32,19 @@ const commandManifest = () =>
     version: "1.0.0",
     api: 4,
     contributes: { commands: ["example:release"] },
+  });
+
+const bootstrapManifest = (bootstrap: "app" | "tooling" | undefined, selectors: ReadonlyArray<string>) =>
+  Schema.decodeUnknownSync(PluginManifest)({
+    name: "@example/bootstrap-subscribers",
+    version: "1.0.0",
+    api: 4,
+    ...(bootstrap === undefined ? {} : { bootstrap }),
+    subscribers: selectors.map((event, index) => ({
+      id: `bootstrap-${index}`,
+      selectors: [{ event }],
+      module: `./bootstrap-${index}.ts`,
+    })),
   });
 
 describe("subscriber runtime", () => {
@@ -153,6 +171,128 @@ describe("subscriber runtime", () => {
       "overlap",
       "next",
     ]);
+  });
+
+  test("app bootstrap covers minimal plugins commands provider and app paths", async () => {
+    // Given: an app-level plugin selecting both phases of every covered bootstrap path.
+    const covered = ["minimal", "plugins", "commands", "provider", "app"].flatMap((level) => [
+      `pre-bootstrap-${level}`,
+      `post-bootstrap-${level}`,
+    ]);
+    const closure = makeSubscriberRegistrationClosure([bootstrapManifest("app", covered)]);
+
+    // When: subscriber registration closes.
+    const exit = await Effect.runPromiseExit(closure.close([]));
+
+    // Then: every covered event is indexed atomically.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) expect([...exit.value.keys()]).toEqual(covered);
+    expect(closure.current()).toEqual(Exit.isSuccess(exit) ? exit.value : undefined);
+  });
+
+  test("tooling bootstrap covers minimal plugins commands and tooling paths", async () => {
+    // Given: a tooling-level plugin selecting both phases of every covered bootstrap path.
+    const covered = ["minimal", "plugins", "commands", "tooling"].flatMap((level) => [
+      `pre-bootstrap-${level}`,
+      `post-bootstrap-${level}`,
+    ]);
+    const closure = makeSubscriberRegistrationClosure([bootstrapManifest("tooling", covered)]);
+
+    // When: subscriber registration closes.
+    const exit = await Effect.runPromiseExit(closure.close([]));
+
+    // Then: tooling registration does not require provider or app paths.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) expect([...exit.value.keys()]).toEqual(covered);
+  });
+
+  for (const event of ["pre-bootstrap-tooling", "post-bootstrap-tooling"] as const) {
+    test(`default app bootstrap rejects ${event} with a fully populated mismatch error atomically`, async () => {
+      // Given: an omitted declaration defaults to app and selects a tooling bootstrap event.
+      const closure = makeSubscriberRegistrationClosure([
+        bootstrapManifest(undefined, ["pre-bootstrap-minimal", event]),
+      ]);
+
+      // When: subscriber registration closes.
+      const exit = await Effect.runPromiseExit(closure.close([]));
+
+      // Then: the concrete tagged failure is complete and no partial index is published.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(SubscriberLevelMismatchError);
+          expect(failure.value).toMatchObject({
+            _tag: "SubscriberLevelMismatchError",
+            pluginName: "@example/bootstrap-subscribers",
+            subscriberId: "bootstrap-1",
+            selectedEvent: event,
+            declaredLevel: "app",
+            eventLevel: "tooling",
+            message: `Subscriber "bootstrap-1" from @example/bootstrap-subscribers cannot select "${event}" at declared bootstrap level "app".`,
+            remediation: 'Declare bootstrap: "tooling" or select an event covered by bootstrap level "app".',
+          });
+        }
+      }
+      expect(closure.current()).toBeUndefined();
+    });
+  }
+
+  for (const event of ["pre-bootstrap-provider", "post-bootstrap-app"] as const) {
+    test(`tooling bootstrap rejects uncovered ${event} atomically`, async () => {
+      // Given: a tooling plugin selecting one covered event before an uncovered branch event.
+      const closure = makeSubscriberRegistrationClosure([
+        bootstrapManifest("tooling", ["post-bootstrap-commands", event]),
+      ]);
+
+      // When: subscriber registration closes.
+      const exit = await Effect.runPromiseExit(closure.close([]));
+
+      // Then: mismatch rejection leaves the registration closure unpublished.
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toMatchObject({
+            _tag: "SubscriberLevelMismatchError",
+            pluginName: "@example/bootstrap-subscribers",
+            subscriberId: "bootstrap-1",
+            selectedEvent: event,
+            declaredLevel: "tooling",
+            eventLevel: event.replace(/^pre-bootstrap-|^post-bootstrap-/, ""),
+          });
+          expect(failure.value).toHaveProperty("message");
+          expect(failure.value).toHaveProperty("remediation");
+        }
+      }
+      expect(closure.current()).toBeUndefined();
+    });
+  }
+
+  test("cli-command-terminal remains limited to run and error for a tooling plugin", async () => {
+    // Given: a tooling-level plugin using only the terminal command family.
+    const plugin = Schema.decodeUnknownSync(PluginManifest)({
+      name: "@example/tooling-terminal",
+      version: "1.0.0",
+      api: 4,
+      bootstrap: "tooling",
+      subscribers: [
+        {
+          id: "terminal",
+          selectors: [{ family: "cli-command-terminal" }],
+          module: "./terminal.ts",
+        },
+      ],
+    });
+    const closure = makeSubscriberRegistrationClosure([plugin]);
+
+    // When: registration closes over one canonical command.
+    const index = await Effect.runPromise(closure.close(["app:start"]));
+
+    // Then: the family adds no init or bootstrap event entries.
+    expect([...index.keys()]).toEqual(["cli-app:start-run", "cli-app:start-error"]);
   });
 
   test("rejects an unknown exact CLI lifecycle selector", async () => {

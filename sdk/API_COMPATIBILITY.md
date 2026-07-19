@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- The bootstrap event contract replaces the unreleased level-bearing `PreBootstrapEvent` with explicit `PreBootstrapMinimalEvent` / `PostBootstrapMinimalEvent`, `PreBootstrapPluginsEvent` / `PostBootstrapPluginsEvent`, `PreBootstrapCommandsEvent` / `PostBootstrapCommandsEvent`, `PreBootstrapProviderEvent` / `PostBootstrapProviderEvent`, `PreBootstrapAppEvent` / `PostBootstrapAppEvent`, and `PreBootstrapToolingEvent` / `PostBootstrapToolingEvent` schemas. Aggregate `PostBootstrapEvent` remains and no longer carries `level`. `PluginManifest.bootstrap` defaults to `app`, and `SubscriberLevelMismatchError` reports exact bootstrap-selector coverage failures.
 - `LandoPaths.pluginStateDir(pluginId)` additively exposes the canonical durable plugin-state root `<userDataRoot>/plugins/<pluginId>` so plugin contexts never reuse app-plugin installation paths.
 - `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
 - `ToolingCompileError` and `ToolingExecError` additively accept optional `remediation` so cache-only routing and task failures can return actionable machine errors.
@@ -396,6 +397,7 @@
 - `GlobalConfig.agentEnv`
 - `GlobalConfig.notify`
 - `PluginManifest.deprecated`
+- `PluginManifest.bootstrap`
 - `PluginManifest.requires`
 - `PluginContribution.downloaders` is a new additive optional field.
 - `PluginContribution.interactionServices` is a new additive optional field.
@@ -409,10 +411,25 @@
 - `StorageInput.kind` is a new additive optional field.
 - `StorageInput.key` is a new additive optional field.
 
+## Additive Beta event exports
+
+- `PostBootstrapAppEvent`
+- `PostBootstrapCommandsEvent`
+- `PostBootstrapMinimalEvent`
+- `PostBootstrapPluginsEvent`
+- `PostBootstrapProviderEvent`
+- `PostBootstrapToolingEvent`
+- `PreBootstrapAppEvent`
+- `PreBootstrapCommandsEvent`
+- `PreBootstrapMinimalEvent`
+- `PreBootstrapPluginsEvent`
+- `PreBootstrapProviderEvent`
+- `PreBootstrapToolingEvent`
+
 ## Additive Alpha errors
 
+- `SubscriberLevelMismatchError`
 - `KeymapConflictError`
-
 - `AppResolveError`
 - `ConfigTranslateError`
 - `AgentEnvPatternError`
