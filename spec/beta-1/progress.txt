@@ -862,3 +862,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - This supersedes the build entry's `Schema.is` guidance: `Schema.is` accepts excess properties and publishing the original object retains them. For an already-decoded Effect Schema value, strict `Schema.encodeUnknown(..., { onExcessProperty: "error" })` followed by strict decode validates the type side and produces a closed canonical event without breaking transformed fields such as `DateTime`.
 ---
+
+## 2026-07-19 16:18 CDT - Babysit
+- PR: #610 https://github.com/AaronFeledy/core4/pull/610
+- CI outcome: pass
+- Review feedback: fixed (preserve EventService publish identity/accept encoded+type shapes; stabilize renderer-panel contract harness deadline under CI load; Guide-Coverage-Skip for test-only panel harness)
+- Drift check: skipped (PR already squash-merged when babysit returned to Phase 4)
+- Merge: merged (squash)
+---
