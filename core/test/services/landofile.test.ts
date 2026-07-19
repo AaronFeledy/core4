@@ -882,17 +882,10 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
     );
   });
 
-  test("loads a canonical command step", async () => {
-    await withTempCwd(async (dir) => {
-      await writeFile(
-        join(dir, ".lando.yml"),
-        ["name: myapp", "tooling:", "  build:", "    cmds:", "      - command: app:start", ""].join("\n"),
-      );
-      process.chdir(dir);
-
-      const landofile = await discover();
-
-      expect(landofile.tooling?.build?.cmds).toEqual([{ command: "app:start" }]);
-    });
+  test("rejects step-object `cmds[].command` entry with remediation", async () => {
+    await assertRejectsLandofile(
+      ["name: myapp", "tooling:", "  build:", "    cmds:", "      - command: app:start", ""],
+      "not supported yet",
+    );
   });
 });

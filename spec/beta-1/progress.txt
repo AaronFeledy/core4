@@ -813,3 +813,16 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - A nested command proof must invoke a registered canonical command program, not recursively reinterpret the canonical id as a Landofile tooling name.
   - Captured app targets and execution-user restrictions are authority boundaries and must propagate through every nested tooling call.
 ---
+
+## 2026-07-18 19:32 CDT - US-459 Drift Audit
+- Trigger: 10 cycles, 3999 changed lines, 15 commits
+- Scope absorption: the branch froze a public Landofile `command:` step from the adjacent tooling contract while implementing only recursive same-Landofile `app:*` calls and rejecting advertised `flags`/`args`; excised the incomplete schema and executor.
+- Weakened proofs: the nested lifecycle scenario exercised the restricted tooling recursion and callback-injected helper tests rather than a registered canonical command program; removed those proofs instead of blessing the degraded path.
+- Review scar tissue: restored the Beta-only Landofile rejection that had been loosened solely to admit the partial command-step shape.
+- Ceremony modules: deleted the single-production-importer command-step module after its owning public surface was excised; the remaining subscriber modules each retain a distinct indexing, loading, config, publication, or plugin-context responsibility.
+- Contract drift: the executable guide claimed US-459 was Shipped while `passes` remained false and the production dispatch/runtime boundaries were unresolved; restored the guide to Planned.
+- Deferred-work laundering: registered canonical nested dispatch, notification-effective runtime selection for `none` and compiled lower-tier commands, and cwd-independent validation of app-derived global allowlist entries remain branch-owned completion work, not deferrals.
+- Fixed: removed the partial command-step contract, executor, helper-only tests, generated schema surface, and premature guide claims while preserving subscriber policy, stable outer lifecycle triplets, and parent-id suppression semantics.
+- Split/excise decisions: excised the incomplete tooling feature cleanly; a complete registered-canonical command-step compiler/executor belongs to its tooling boundary, and US-459 remains `passes: false` until its required production path and lower-tier notification boundaries are proven.
+- Verification: typecheck, lint, focused lifecycle/subscriber/notify/tooling/Landofile/SDK tests, renderer/redaction/machine-output boundaries, guide lint/coverage/public transcripts, full codegen, and schema idempotence passed; guide drift skipped without pull-request context, and no full test suite or host runtime integration was run.
+---

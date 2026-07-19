@@ -375,44 +375,6 @@ describe("resolveApp", () => {
     });
   });
 
-  test("nested app tooling uses the captured target after host cwd changes", async () => {
-    await withTempUserCache(async () => {
-      const left = await realpath(await mkdtemp(join(tmpdir(), "lando-nested-tooling-left-")));
-      const right = await realpath(await mkdtemp(join(tmpdir(), "lando-nested-tooling-right-")));
-      const original = process.cwd();
-      await Bun.write(
-        join(left, ".lando.yml"),
-        `${landofileYaml("embedded-app")}tooling:\n  outer:\n    cmds:\n      - command: app:inner\n  inner:\n    service: web\n    cmd: make inner\n`,
-      );
-      await Bun.write(join(right, ".lando.yml"), landofileYaml("other-app"));
-      process.chdir(left);
-      try {
-        // Given: an app handle captured from the left app and ambient cwd moved to the right app.
-        // When: nested tooling runs after the cwd change.
-        const result = await Effect.runPromise(
-          Effect.scoped(
-            openLandoRuntime({
-              plugins: { policy: "bundled-only", layers: testProviderLayers },
-            }).pipe(
-              Effect.flatMap((runtime) => runtime.app()),
-              Effect.flatMap((app) =>
-                Effect.sync(() => process.chdir(right)).pipe(Effect.zipRight(app.tooling("outer"))),
-              ),
-            ),
-          ).pipe(Effect.ensuring(Effect.sync(() => process.chdir(left)))),
-        );
-
-        // Then: the nested task resolves from the captured left app instead of ambient cwd.
-        expect(result.tool).toBe("inner");
-        expect(result.exitCode).toBe(0);
-      } finally {
-        process.chdir(original);
-        await rm(left, { recursive: true, force: true });
-        await rm(right, { recursive: true, force: true });
-      }
-    });
-  });
-
   test("reusing one retained runtime shares bootstrap services across operations", async () => {
     await withTempUserCache(async () => {
       await withTempApp(async () => {

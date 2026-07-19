@@ -5,12 +5,12 @@ import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sd
 
 import { runDynamicTooling } from "../../src/cli/cli-adapters/app-lifecycle.ts";
 import { resolveCanonicalCommandId, runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
-import { makeNestedCommandInvocation, runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import * as compiledRuntime from "../../src/cli/compiled-runtime.ts";
 import {
   activeCommandId,
+  beginNestedCommandInvocation,
   getActiveCommandInvocation,
   resetActiveCommandInvocation,
   setActiveCommandId,
@@ -89,39 +89,15 @@ describe("CLI lifecycle adapters", () => {
     });
   });
 
-  test("nested command invocation carries the fiber-local outer id as parent", async () => {
-    const outer = {
-      commandId: "app:wrapper",
-      argv: [],
-      args: {},
-      flags: {},
-      cwd: "/app",
-      invocationId: "outer",
-    };
-
-    const outcome = await Effect.runPromise(
-      runCommandLifecycle(makeNestedCommandInvocation("app:inner", []), { invocation: outer }).pipe(
-        Effect.provide(
-          Layer.succeed(EventService, {
-            publish: () => Effect.void,
-            subscribe: () => Stream.empty,
-            subscribeQueue: Effect.gen(function* () {
-              return yield* Queue.unbounded<LandoEvent>();
-            }),
-            waitFor: () => Effect.never,
-            waitForAny: () => Effect.never,
-            query: () => Effect.succeed([]),
-          }),
-        ),
-      ),
-    );
-
-    expect(outcome._tag).toBe("Success");
-    if (outcome._tag === "Success") {
-      expect(outcome.value.commandId).toBe("app:inner");
-      expect(outcome.value.invocationId).not.toBe("outer");
-      expect(outcome.value.parentInvocationId).toBe("outer");
-    }
+  test("nested command invocation carries outer id as parent", () => {
+    resetActiveCommandInvocation("app:start", ["--yes"]);
+    const outer = getActiveCommandInvocation();
+    expect(outer?.invocationId).toBeDefined();
+    const nested = beginNestedCommandInvocation("app:rebuild", []);
+    expect(nested.commandId).toBe("app:rebuild");
+    expect(nested.invocationId).toBeDefined();
+    expect(nested.invocationId).not.toBe(outer?.invocationId);
+    expect(nested.parentInvocationId).toBe(outer?.invocationId);
   });
 
   test("representative command specs retain every lifecycle bootstrap depth", () => {

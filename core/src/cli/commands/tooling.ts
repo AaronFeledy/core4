@@ -31,9 +31,7 @@ import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserv
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
 
-import type { RedactionService } from "../../redaction/service.ts";
 import { runHostScript } from "../../services/host-tooling-engine.ts";
-import { isToolingCommandStep, runToolingCommandSteps } from "./tooling-command-step.ts";
 
 export interface RunToolingOptions {
   readonly name: string;
@@ -56,7 +54,6 @@ type RunToolingServices =
   | EventService
   | LandofileService
   | RuntimeProviderRegistry
-  | RedactionService
   | ToolingEngine;
 
 const HOST_SERVICE = ":host";
@@ -71,13 +68,11 @@ const normalizeCommands = (
 ): ReadonlyArray<ReadonlyArray<string>> => {
   const cmds = task.cmds;
   if (cmds !== undefined && cmds.length > 0) {
-    return cmds
-      .filter((cmd): cmd is string => typeof cmd === "string")
-      .map((cmd, index) => {
-        const lastIndex = cmds.length - 1;
-        const tail = index === lastIndex && args.length > 0 ? ` ${joinShell(args)}` : "";
-        return ["sh", "-c", `${cmd}${tail}`];
-      });
+    return cmds.map((cmd, index) => {
+      const lastIndex = cmds.length - 1;
+      const tail = index === lastIndex && args.length > 0 ? ` ${joinShell(args)}` : "";
+      return ["sh", "-c", `${cmd}${tail}`];
+    });
   }
   if (task.cmd !== undefined) {
     if (typeof task.cmd === "string") {
@@ -334,21 +329,6 @@ export const runTooling = (
           message: `Tooling command ${options.name} does not define cmd or cmds.`,
           tool: options.name,
         }),
-      );
-    }
-
-    const commandSteps = task.cmds?.filter(isToolingCommandStep) ?? [];
-    if (commandSteps.length > 0) {
-      if (task.cmd !== undefined || commandSteps.length !== task.cmds?.length) {
-        return yield* Effect.fail(
-          new ToolingCompileError({
-            message: `Tooling command ${options.name} cannot mix command steps with shell commands.`,
-            tool: options.name,
-          }),
-        );
-      }
-      return yield* runToolingCommandSteps(commandSteps, options, (nestedOptions) =>
-        runTooling(nestedOptions, target),
       );
     }
 
