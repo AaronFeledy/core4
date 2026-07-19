@@ -12,20 +12,14 @@
  * The Live layer is registered lazily (`Layer.suspend`, level `plugins`):
  * nothing constructs it unless `meta:mcp` or a library host requests it.
  */
-import { Cause, Context, Deferred, Effect, type Exit, Fiber, Layer, Option, Ref } from "effect";
+import { Cause, Context, Deferred, Effect, Fiber, Layer, Option, Ref } from "effect";
 
-import { McpTransportError } from "@lando/sdk/errors";
+import type { McpTransportError } from "@lando/sdk/errors";
 import type { LandoEvent } from "@lando/sdk/events";
 import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/schema";
-import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
-import { makeNestedCommandInvocation, runCommandLifecycle } from "../cli/command-lifecycle.ts";
-import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
-import { RuntimeCwd } from "../runtime/cwd.ts";
-import { redactBoundedJsonValue } from "./bounded-json.ts";
 import {
   emptyCompletedRequestIds,
   forgetCompletedRequestId,
@@ -34,8 +28,9 @@ import {
 } from "./cancellation.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "./catalog.ts";
 import { type McpDispatchDeps, type McpNotify, dispatchTool } from "./dispatch.ts";
+import { makeNestedExecute } from "./execute.ts";
+import { makeStreamFrameSink } from "./framing.ts";
 import type { McpCommandEntry } from "./registry.ts";
-import { projectMcpProgressFrame } from "./result-inspector.ts";
 import { McpTransport, type McpTransportRequest } from "./transport.ts";
 
 /** Default in-flight tool-call cap (config `mcp.maxConcurrent`). */
@@ -132,73 +127,12 @@ const makeService = (
             (incoming: McpTransportRequest): McpNotify =>
             (frame) =>
               transport.notify({ id: incoming.id, frame });
-          const encodeProgressFrame = (
-            frame: unknown,
-            redactorForFrame: Redactor,
-          ): Effect.Effect<unknown, McpTransportError> =>
-            Effect.try({
-              try: () => projectMcpProgressFrame(frame),
-              catch: (cause) =>
-                cause instanceof McpTransportError
-                  ? cause
-                  : new McpTransportError({
-                      message: "MCP progress payload could not be safely inspected.",
-                      remediation:
-                        "Emit a plain stdout or stderr frame with string chunk and service fields.",
-                    }),
-            }).pipe(
-              Effect.flatMap((projected) =>
-                redactBoundedJsonValue(projected, redactorForFrame, "MCP progress payload"),
-              ),
-            );
-          const streamSinkFor = (
-            notify: McpNotify,
-            redactorForFrame: Redactor,
-          ): Context.Tag.Service<typeof StreamFrameSink> => ({
-            emit: (frame: StreamFrameSinkFrame) =>
-              encodeProgressFrame(frame, redactorForFrame).pipe(Effect.flatMap(notify), Effect.orDie),
-          });
-          const outcomeFromExit = (
-            exit: Exit.Exit<unknown, unknown>,
-          ): Effect.Effect<CommandResultOutcome> => {
-            if (exit._tag === "Success") {
-              return Effect.succeed({ _tag: "success", value: exit.value } satisfies CommandResultOutcome);
-            }
-            if (Cause.isInterruptedOnly(exit.cause)) return Effect.interrupt;
-            return Effect.succeed({
-              _tag: "failure",
-              error: Cause.squash(exit.cause),
-            } satisfies CommandResultOutcome);
-          };
           const depsFor = (incoming: McpTransportRequest): McpDispatchDeps => ({
             registry,
             effective: effective.ids,
             allowlistSource: options.tooling === true ? `${effective.source}+tooling` : effective.source,
             redactor,
-            execute: (entry, runInput) =>
-              Effect.gen(function* () {
-                const command = entry.spec.run(runInput);
-                const rootAwareCommand =
-                  runInput.appPath === undefined
-                    ? command
-                    : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
-                const invocation = yield* makeNestedCommandInvocation(entry.spec.id, {
-                  argv: runInput.argv,
-                  args: runInput.args,
-                  flags: runInput.flags,
-                  ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
-                });
-                const exit = yield* runCommandLifecycle(rootAwareCommand, {
-                  invocation,
-                  ...(entry.spec.successExitCode === undefined
-                    ? {}
-                    : { successExitCode: (value) => entry.spec.successExitCode?.(value, runInput) }),
-                });
-                return yield* outcomeFromExit(exit);
-              }).pipe(
-                Effect.provide(runtimeContext),
-                Effect.provideService(StreamFrameSink, streamSinkFor(notifyFor(incoming), redactor)),
-              ) as Effect.Effect<CommandResultOutcome, never>,
+            execute: makeNestedExecute(runtimeContext, makeStreamFrameSink(notifyFor(incoming), redactor)),
             notify: notifyFor(incoming),
             ...(publish === undefined ? {} : { publish }),
           });
