@@ -837,3 +837,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - When Build, Review, and Drift Audit disagree cycle after cycle, the defect is an ambiguous contract, not the code: adjudicate the boundary, write it into the spec first, and only then run one build cycle against the pinned text.
   - Global-config validity must never depend on cwd; deriving a cwd-independent registry requires capturing plugin provenance before app-source merging, because merged manifests erase where a command came from.
 ---
+
+## 2026-07-19 02:30 CDT - Babysit
+- PR: #608 https://github.com/AaronFeledy/core4/pull/608
+- CI outcome: pass
+- Review feedback: fixed (OCLIF-free command-ids boundary; logs tests use renderer-boundary EventService; Guide-Coverage-Skip for internal bootstrap/registry wiring)
+- Drift check: clean
+- Merge: merged (squash)
+---
