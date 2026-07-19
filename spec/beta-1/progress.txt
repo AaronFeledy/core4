@@ -879,3 +879,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - `BOOTSTRAP_RANK` cannot validate subscriber coverage because tooling and provider are sibling branches; model the covered event levels explicitly.
   - The generated-artifact inventory gate reads `git ls-files`, so newly generated schema files must be staged before that focused gate can pass.
 ---
+
+## 2026-07-19 17:02 CDT - US-463 Review
+- Replaced the final stale test-only level-bearing bootstrap event with the canonical decoded per-level event, so adjacent renderer coverage no longer bypasses the closed event union.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the local agent requires authentication; no Bugbot finding was treated as approval. `Guide-Coverage-Skip: US-463 changes generated SDK schema references, not an owned executable-guide workflow.`
+- Verification: typecheck, lint passed; 380 focused story tests and the adjacent 15-test renderer spot check passed; changed-file diagnostics and TypeScript no-excuse audit clean.
+---
