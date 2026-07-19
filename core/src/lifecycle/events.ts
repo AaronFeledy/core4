@@ -9,8 +9,9 @@
  *     against the closed `LandoEvent` union before the bus/history/dispatch,
  *     and the bounded redacted history buffer.
  *   - `core/src/lifecycle/subscribers.ts` owns manifest-subscriber
- *     registration-closure indexing and the §11.6 failure policy: `pre-*`
- *     errors abort the step, `post-*` errors warn unless `abortOnError`,
- *     and `cli-*` errors log at debug without changing exit codes.
+ *     registration-closure indexing and the subscriber failure policy:
+ *     `pre-*` errors abort the step, `post-*` errors warn unless
+ *     `abortOnError`, and `cli-*` errors log at debug without changing
+ *     exit codes.
  */
 export { EventService } from "@lando/sdk/services";
