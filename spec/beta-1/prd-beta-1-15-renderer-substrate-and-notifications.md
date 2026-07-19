@@ -125,6 +125,51 @@ The surfaces were written into the normative spec first (§8.9.3–§8.9.8, §9.
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+### US-462: `EventService.publish` contract parity — payload validation and the zero-subscriber fast path
+
+**Description:** As a tooling-command user on the hot path, publishing an event nobody listens to performs no payload schema decode, no `Effect.PubSub` enqueue, and no subscriber-dispatch fiber scheduling — and an event that does not decode against the closed `LandoEvent` taxonomy can never reach subscribers.
+
+**Acceptance Criteria:**
+
+- [ ] On the delivering (non-short-circuit) path, `EventService.publish` validates the published event against the closed `LandoEvent` discriminated union before `PubSub` enqueue, history append, or subscriber dispatch; an unknown `_tag` or a payload that fails schema decode fails with a tagged `EventError` naming the event and reaches neither the bus, the manifest-subscriber index, nor the redacted history buffer.
+- [ ] Per §11.1's zero-subscriber contract, `publish` short-circuits to a no-op when the event name has zero registered subscribers in the current runtime: with no manifest-registered subscriber for the `_tag` (the `hasSubscribers` map) and no active dynamic consumer (`subscribe` / `subscribeQueue` / `waitFor` / `waitForAny`, tracked by an active-consumer count around scoped subscription acquisition), the publish performs no payload schema validation, no `Effect.PubSub` enqueue, and no subscriber-dispatch fiber scheduling. The redacted event-history append is its own §3.5 contract (redacted before buffering; zero-allocation no-op at `historyCap: 0`) and is unchanged by the short-circuit.
+- [ ] Regression tests cover: a consumer registered before publish still receives matching events; a publish with zero manifest subscribers and zero active consumers takes the short-circuit path (observable via an instrumented seam or the PubSub subscription count, not timing); after the last active consumer releases, publishes return to the short-circuit path.
+- [ ] Manifest-subscriber dispatch continues to route through the registration-closure index; `hasSubscribers` stays a single O(1) map-keyed lookup populated at registration closure, and no selector evaluation ever happens at publish time (§3.5 step 2 unchanged).
+- [ ] The stale `Status: stub` header in `core/src/lifecycle/events.ts` is removed and the module doc matches shipped behavior (publish-time validation, the short-circuit, and §11.6 failure handling) or moves to the module that owns that behavior.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-463: Bootstrap-level subscriber validation and per-level bootstrap event names (`SubscriberLevelMismatchError`)
+
+**Description:** As a tooling-command user, a plugin that does not participate in the tooling fast path can never register a subscriber that forces event work onto it: level-mismatched bootstrap-event registrations are rejected at manifest validation with `SubscriberLevelMismatchError`, keeping the tooling `hasSubscribers` entries empty by construction (§3.5).
+
+**Acceptance Criteria:**
+
+- [ ] The SDK bootstrap-event taxonomy conforms to §3.5's event names: per-level `pre-bootstrap-<level>` / `post-bootstrap-<level>` tagged events for each of `minimal`, `plugins`, `commands`, `provider`, `app`, and `tooling` replace the current single `pre-bootstrap` / `post-bootstrap` tags carrying a `level` payload field, while the aggregate `post-bootstrap` and `ready` events (after all required levels complete) remain. The closed `LandoEvent` union, generated schema snapshot (`bun run codegen:schema-snapshot`), and `sdk/API_COMPATIBILITY.md` are updated per `sdk/AGENTS.md`. No production code currently publishes the old shapes, so no publisher migration is owed here; emitting the per-level events is US-464.
+- [ ] `PluginManifest` gains an optional `bootstrap:` declaration decoding against the existing `BootstrapLevel` schema; omitted defaults to `app`, so by default a plugin may select every non-tooling bootstrap event but never `pre-bootstrap-tooling` / `post-bootstrap-tooling` — matching §3.5's "MUST NOT … unless they declare `bootstrap: tooling` themselves" and keeping the tooling fast path's `hasSubscribers` map empty in the common case by construction.
+- [ ] `SubscriberLevelMismatchError` ships from `@lando/sdk/errors` as a `Schema.TaggedError` carrying the plugin name, subscriber id, selected event, declared level, and event level, with human remediation; it is exported, recorded in `sdk/API_COMPATIBILITY.md`, and schema-snapshot-tracked.
+- [ ] The registration-closure pass (the same §3.5 step-2 validation that closes the event-name registry in `makeSubscriberRegistrationClosure`) rejects an exact selector naming a bootstrap event whose level the subscribing plugin's declared (or defaulted) bootstrap level does not cover, with `SubscriberLevelMismatchError`; concretely, a plugin without `bootstrap: tooling` selecting `pre-bootstrap-tooling` or `post-bootstrap-tooling` is rejected. The `cli-command-terminal` family never expands to bootstrap events and is unaffected.
+- [ ] Bundled plugin manifests (including `@lando/notify-lando`) remain valid without edits; tests cover acceptance at a covered level, rejection with the fully populated tagged error, and the omitted-declaration default.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-464: The runtime emits the §11.4 bootstrap lifecycle events
+
+**Description:** As a plugin author, my declared bootstrap-event subscribers actually fire: each completed bootstrap level emits its `pre-bootstrap-<level>` / `post-bootstrap-<level>` pair, and every run emits `post-bootstrap`, `ready`, and `before-exit` per the §11.4 standard cold-start sequence.
+
+**Acceptance Criteria:**
+
+- [ ] The runtime bootstrap driver publishes `pre-bootstrap-<level>` / `post-bootstrap-<level>` through `EventService` for each level it actually completes, from the point `EventService` exists onward; level `none` emits nothing (below the `EventService` construction threshold by design, §3.2). After all required levels complete, the aggregate `post-bootstrap` and `ready` events fire, and `before-exit` fires with the process exit code before `Scope` finalizers run.
+- [ ] Publishing these events on subscriber-less runs rides the US-462 zero-subscriber short-circuit: a test proves a level-`minimal` invocation with no bootstrap subscribers performs no payload validation, `PubSub` enqueue, or dispatch scheduling for them, protecting the §2.1 cold-start budgets.
+- [ ] With `historyCap > 0`, the emitted sequence is observable via `EventService.query` (and therefore MCP history replay) in §11.4 order.
+- [ ] An integration test registers a fixture plugin subscriber on a per-level bootstrap event (for example `post-bootstrap-app`) and proves it receives exactly one correctly-typed event per run, in sequence position, and that a `bootstrap: tooling`-declared fixture receives `pre-bootstrap-tooling` / `post-bootstrap-tooling` on a tooling-level run.
+- [ ] Source and compiled CLI dispatch paths emit the same sequence (parity coverage where command routing differs).
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
 ## Non-Goals
 
 - Implementing panel-slot rendering, keymap remapping, the bindings overlay, rich render-event presentation, rich-event core emitters, or the interactive log viewer — all 4.1 (ROADMAP Phase 9).
@@ -134,6 +179,8 @@ The surfaces were written into the normative spec first (§8.9.3–§8.9.8, §9.
 - **Container-initiated terminal notification and clipboard relay through `HostProxyService`.** A container process already attached to a PTY can use terminal protocols directly without any host round-trip; a container process with no PTY has no terminal for a host-side response to write to either. No detached-worker notification/clipboard broker ships in 4.0, and none is planned — see §10.10.2's non-goal statement.
 - Adopting `@opentui/react`/`@opentui/solid` or alternate-screen-first rendering.
 - Implementing the §8.5.2.1 tooling `command:` step compiler/executor — a frozen producer contract governed by the same nested-invocation correlation rules, independently scoped from this PRD; US-459 proves nested correlation and notification suppression through the existing `meta:mcp` dispatch of registered canonical command programs.
+- Routing core-internal subscribers through the manifest-subscriber dispatch index in the `critical`/`late` priority bands. §11.3's "internal core code may register inline subscribers" is a MAY with no Beta 1 consumer; the `SubscriberPriority` band constants remain published SDK surface, and the dispatch index stays manifest-only until a core built-in actually needs a band.
+- Static enforcement of the §3.5 "a factory MUST NOT perform IO at the outer call" rule — it stays a documented plugin-author contract; the loader cannot verify it statically.
 
 ## Technical Considerations
 
@@ -170,6 +217,7 @@ The surfaces were written into the normative spec first (§8.9.3–§8.9.8, §9.
 | Prompt chrome + frame-snapshot harness (US-457) | `docs/guides/cli/interactive-prompts.mdx` | Update when US-457 lands |
 | Frame-snapshot / visual-QA coverage (US-457) | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Update when US-457 lands |
 | Contract-only 4.1 freeze (US-460) | — | No guide impact; nothing renders in 4.0 |
+| Event-subsystem spec parity (US-462..US-464) | — | No guide impact; internal `EventService`/loader contracts with no user-facing surface beyond tagged errors |
 
 There is no host-proxy guide row: `HostProxyService` (§10.10) gains no new surface from this PRD — `notify`/`clipboardCopy` container-initiated relay is explicitly out of scope (see Non-Goals) — so `docs/guides/subsystems/host-proxy.mdx` is unaffected.
 

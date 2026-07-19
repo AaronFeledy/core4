@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Phase 5 Beta 1",
   "branchName": "ralph/beta-1",
-  "description": "Phase 5 Beta 1 runs through US-460 and includes a closure wave plus residual-hardening wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps (with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence); and US-444..US-454 close review-time hardening deferrals that remained after the closure wave before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria. US-455..US-460 (PRD-15) land the renderer-substrate wave: the OpenTUI ^0.4.3 substrate contract with per-target compiled native packaging, the split-footer task-tree live region, prompt chrome plus the frame-snapshot harness, foreground-only desktop notifications realized via OpenTUI's triggerNotification (notify.desktop + @lando/notify-lando; container-initiated notify/clipboard relay through HostProxyService is explicitly deferred/unsupported), and the contract-only freeze of the 4.1 renderer surfaces.",
+  "description": "Phase 5 Beta 1 runs through US-464 and includes a closure wave plus residual-hardening wave. US-372..US-395 close post-Alpha-4 remediation and spec parity gaps; US-396..US-409 land the agent-native feature wave; US-410..US-412 cover runtime-bundle publishing; US-413..US-424 cover the Podman 6 runtime contract; US-425..US-429 add service log sources; US-430..US-443 are explicit Beta 1 closure work for residual progress/review gaps (with US-430 independently covering the corrected local-engine Linux runtime bundle, manifest repin, and zero-override managed setup evidence); and US-444..US-454 close review-time hardening deferrals that remained after the closure wave before feature freeze. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria. US-455..US-460 (PRD-15) land the renderer-substrate wave: the OpenTUI ^0.4.3 substrate contract with per-target compiled native packaging, the split-footer task-tree live region, prompt chrome plus the frame-snapshot harness, foreground-only desktop notifications realized via OpenTUI's triggerNotification (notify.desktop + @lando/notify-lando; container-initiated notify/clipboard relay through HostProxyService is explicitly deferred/unsupported), and the contract-only freeze of the 4.1 renderer surfaces. US-462..US-464 (also PRD-15) close event-subsystem spec parity gaps found reviewing US-459: publish-time payload validation plus the section 11.1 zero-subscriber fast path, bootstrap-level subscriber validation (SubscriberLevelMismatchError) with per-level bootstrap event names, and actual emission of the section 11.4 bootstrap lifecycle events.",
   "userStories": [
     {
       "id": "US-372",
@@ -1606,6 +1606,60 @@
       "priority": 90,
       "passes": true,
       "notes": "Origin: spec sections 8.9.4-8.9.6, 8.9.8, 9.5, 13.1. Follows the TunnelService/RemoteSource contract-only freeze precedent; implementations are ROADMAP Phase 9 (4.1)."
+    },
+    {
+      "id": "US-462",
+      "title": "EventService.publish contract parity - payload validation and the zero-subscriber fast path",
+      "description": "As a tooling-command user on the hot path, publishing an event nobody listens to performs no payload schema decode, no PubSub enqueue, and no subscriber-dispatch fiber scheduling - and an event that does not decode against the closed LandoEvent taxonomy can never reach subscribers.",
+      "acceptanceCriteria": [
+        "On the delivering (non-short-circuit) path, EventService.publish validates the published event against the closed LandoEvent discriminated union before PubSub enqueue, history append, or subscriber dispatch; an unknown _tag or a payload that fails schema decode fails with a tagged EventError naming the event and reaches neither the bus, the manifest-subscriber index, nor the redacted history buffer.",
+        "Per section 11.1's zero-subscriber contract, publish short-circuits to a no-op when the event name has zero registered subscribers in the current runtime: with no manifest-registered subscriber for the _tag (the hasSubscribers map) and no active dynamic consumer (subscribe / subscribeQueue / waitFor / waitForAny, tracked by an active-consumer count around scoped subscription acquisition), the publish performs no payload schema validation, no PubSub enqueue, and no subscriber-dispatch fiber scheduling. The redacted event-history append is its own section 3.5 contract (redacted before buffering; zero-allocation no-op at historyCap 0) and is unchanged by the short-circuit.",
+        "Regression tests cover: a consumer registered before publish still receives matching events; a publish with zero manifest subscribers and zero active consumers takes the short-circuit path (observable via an instrumented seam or the PubSub subscription count, not timing); after the last active consumer releases, publishes return to the short-circuit path.",
+        "Manifest-subscriber dispatch continues to route through the registration-closure index; hasSubscribers stays a single O(1) map-keyed lookup populated at registration closure, and no selector evaluation ever happens at publish time (section 3.5 step 2 unchanged).",
+        "The stale 'Status: stub' header in core/src/lifecycle/events.ts is removed and the module doc matches shipped behavior (publish-time validation, the short-circuit, and section 11.6 failure handling) or moves to the module that owns that behavior.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 91,
+      "passes": false,
+      "notes": "Origin: US-459 review - spec section 3.5 line-level contract (publish MUST short-circuit; payload validation before the bus) vs core/src/services/event-service.ts, which currently gates only manifest-subscriber dispatch on hasSubscribers and never validates payloads."
+    },
+    {
+      "id": "US-463",
+      "title": "Bootstrap-level subscriber validation and per-level bootstrap event names (SubscriberLevelMismatchError)",
+      "description": "As a tooling-command user, a plugin that does not participate in the tooling fast path can never register a subscriber that forces event work onto it: level-mismatched bootstrap-event registrations are rejected at manifest validation with SubscriberLevelMismatchError, keeping the tooling hasSubscribers entries empty by construction (section 3.5).",
+      "acceptanceCriteria": [
+        "The SDK bootstrap-event taxonomy conforms to section 3.5's event names: per-level pre-bootstrap-<level> / post-bootstrap-<level> tagged events for each of minimal, plugins, commands, provider, app, and tooling replace the current single pre-bootstrap / post-bootstrap tags carrying a level payload field, while the aggregate post-bootstrap and ready events (after all required levels complete) remain. The closed LandoEvent union, generated schema snapshot (bun run codegen:schema-snapshot), and sdk/API_COMPATIBILITY.md are updated per sdk/AGENTS.md. No production code currently publishes the old shapes, so no publisher migration is owed here; emitting the per-level events is US-464.",
+        "PluginManifest gains an optional bootstrap: declaration decoding against the existing BootstrapLevel schema; omitted defaults to app, so by default a plugin may select every non-tooling bootstrap event but never pre-bootstrap-tooling / post-bootstrap-tooling - matching section 3.5's 'MUST NOT ... unless they declare bootstrap: tooling themselves' and keeping the tooling fast path's hasSubscribers map empty in the common case by construction.",
+        "SubscriberLevelMismatchError ships from @lando/sdk/errors as a Schema.TaggedError carrying the plugin name, subscriber id, selected event, declared level, and event level, with human remediation; it is exported, recorded in sdk/API_COMPATIBILITY.md, and schema-snapshot-tracked.",
+        "The registration-closure pass (the same section 3.5 step-2 validation that closes the event-name registry in makeSubscriberRegistrationClosure) rejects an exact selector naming a bootstrap event whose level the subscribing plugin's declared (or defaulted) bootstrap level does not cover, with SubscriberLevelMismatchError; concretely, a plugin without bootstrap: tooling selecting pre-bootstrap-tooling or post-bootstrap-tooling is rejected. The cli-command-terminal family never expands to bootstrap events and is unaffected.",
+        "Bundled plugin manifests (including @lando/notify-lando) remain valid without edits; tests cover acceptance at a covered level, rejection with the fully populated tagged error, and the omitted-declaration default.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 92,
+      "passes": false,
+      "notes": "Origin: US-459 review - SubscriberLevelMismatchError exists only in spec section 3.5; PluginManifest has no bootstrap declaration and the SDK taxonomy uses a single pre-bootstrap/post-bootstrap pair with a level field instead of the spec'd per-level names."
+    },
+    {
+      "id": "US-464",
+      "title": "The runtime emits the section 11.4 bootstrap lifecycle events",
+      "description": "As a plugin author, my declared bootstrap-event subscribers actually fire: each completed bootstrap level emits its pre-bootstrap-<level> / post-bootstrap-<level> pair, and every run emits post-bootstrap, ready, and before-exit per the section 11.4 standard cold-start sequence.",
+      "acceptanceCriteria": [
+        "The runtime bootstrap driver publishes pre-bootstrap-<level> / post-bootstrap-<level> through EventService for each level it actually completes, from the point EventService exists onward; level none emits nothing (below the EventService construction threshold by design, section 3.2). After all required levels complete, the aggregate post-bootstrap and ready events fire, and before-exit fires with the process exit code before Scope finalizers run.",
+        "Publishing these events on subscriber-less runs rides the US-462 zero-subscriber short-circuit: a test proves a level-minimal invocation with no bootstrap subscribers performs no payload validation, PubSub enqueue, or dispatch scheduling for them, protecting the section 2.1 cold-start budgets.",
+        "With historyCap > 0, the emitted sequence is observable via EventService.query (and therefore MCP history replay) in section 11.4 order.",
+        "An integration test registers a fixture plugin subscriber on a per-level bootstrap event (for example post-bootstrap-app) and proves it receives exactly one correctly-typed event per run, in sequence position, and that a bootstrap: tooling-declared fixture receives pre-bootstrap-tooling / post-bootstrap-tooling on a tooling-level run.",
+        "Source and compiled CLI dispatch paths emit the same sequence (parity coverage where command routing differs).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 93,
+      "passes": false,
+      "notes": "Origin: US-459 review - spec section 3.5 says levels minimal..app each emit pre/post bootstrap events and core emits post-bootstrap and ready, but no production code publishes any of them. Depends on US-462 (fast path) and US-463 (per-level taxonomy)."
     }
   ]
 }
