@@ -1,23 +1,16 @@
 /**
- * `EventService` Live Layer — `Effect.PubSub`-backed.
+ * Re-export of the public `EventService` tag. The shipped behavior lives in
+ * the modules that own it:
  *
- * The Live implementation:
- *   1. Holds a `PubSub.PubSub<LandoEvent>` keyed by event `_tag`.
- *   2. Publishes are validated against the discriminated `LandoEvent` union
- *      *before* hitting the bus, so unknown events are rejected with
- *      `EventError` rather than reaching subscribers.
- *   3. Subscribers register through plugin manifests; core provides built-in
- *      `critical` and `late` priority subscribers; plugin subscribers default
- *      to `default`.
- *
- * Subscriber failure handling:
- *   - `pre-*` errors abort the lifecycle step with the subscriber's tagged
- *     error.
- *   - `post-*` errors are logged at warn level and do not abort by default.
- *   - `cli-*` errors are logged at debug level; they don't change exit codes.
- *   - Subscribers may opt into "abort on error" at `post-*` events via
- *     `manifest.subscribers[].abortOnError: true`.
- *
- * Status: stub.
+ *   - `core/src/services/event-service.ts` owns the `Effect.PubSub`-backed
+ *     Live layer: the zero-subscriber short-circuit (no payload validation,
+ *     `PubSub` enqueue, or dispatch when no manifest subscriber and no active
+ *     dynamic consumer exist), publish-time validation of the delivering path
+ *     against the closed `LandoEvent` union before the bus/history/dispatch,
+ *     and the bounded redacted history buffer.
+ *   - `core/src/lifecycle/subscribers.ts` owns manifest-subscriber
+ *     registration-closure indexing and the §11.6 failure policy: `pre-*`
+ *     errors abort the step, `post-*` errors warn unless `abortOnError`,
+ *     and `cli-*` errors log at debug without changing exit codes.
  */
 export { EventService } from "@lando/sdk/services";

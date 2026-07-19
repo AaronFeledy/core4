@@ -1,6 +1,7 @@
-import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
+import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Schema, Stream } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
+import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { type EventFor, EventService, type EventWaitSpec, type LandoEvent } from "@lando/sdk/services";
 
 import {
@@ -70,6 +71,19 @@ const makeEventService = (
 ): Context.Tag.Service<typeof EventService> => {
   const { pubsub, history, historyCap, redaction } = config;
 
+  let activeConsumers = 0;
+  const trackedSubscribe = Effect.acquireRelease(
+    Effect.sync(() => {
+      activeConsumers += 1;
+    }),
+    () =>
+      Effect.sync(() => {
+        activeConsumers -= 1;
+      }),
+  ).pipe(Effect.zipRight(PubSub.subscribe(pubsub)));
+
+  const isDeliverableEvent = Schema.is(LandoEventSchema);
+
   const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
     if (historyCap <= 0) return Effect.void;
     return Effect.gen(function* () {
@@ -87,7 +101,7 @@ const makeEventService = (
   ): Effect.Effect<A, EventError> =>
     Effect.scoped(
       Effect.gen(function* () {
-        const queue = yield* PubSub.subscribe(pubsub);
+        const queue = yield* trackedSubscribe;
         const awaited = Stream.fromQueue(queue).pipe(
           Stream.filter(predicate),
           Stream.runHead,
@@ -108,11 +122,19 @@ const makeEventService = (
     );
 
   const service: Context.Tag.Service<typeof EventService> = {
-    publish: (event) => {
-      const registration = getDispatch();
-      return PubSub.publish(pubsub, event).pipe(
-        Effect.zipRight(appendHistory(event)),
-        Effect.zipRight(registration.hasSubscribers(event._tag) ? registration.dispatch(event) : Effect.void),
+    publish: (event) =>
+      Effect.suspend(() => {
+        const registration = getDispatch();
+        const hasManifest = registration.hasSubscribers(event._tag);
+        if (!hasManifest && activeConsumers === 0) return appendHistory(event);
+        if (!isDeliverableEvent(event)) {
+          return Effect.fail(eventError(event._tag, `Event failed schema validation: ${event._tag}`));
+        }
+        return PubSub.publish(pubsub, event).pipe(
+          Effect.zipRight(appendHistory(event)),
+          Effect.zipRight(hasManifest ? registration.dispatch(event) : Effect.void),
+        );
+      }).pipe(
         Effect.asVoid,
         Effect.catchSomeCause((cause) =>
           Cause.isDie(cause)
@@ -121,13 +143,16 @@ const makeEventService = (
               )
             : Option.none(),
         ),
-      );
-    },
-    subscribe: <Name extends string>(name: Name) =>
-      Stream.fromPubSub(pubsub).pipe(
-        Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
       ),
-    subscribeQueue: PubSub.subscribe(pubsub),
+    subscribe: <Name extends string>(name: Name) =>
+      Stream.unwrapScoped(
+        Effect.map(trackedSubscribe, (queue) =>
+          Stream.fromQueue(queue).pipe(
+            Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
+          ),
+        ),
+      ),
+    subscribeQueue: trackedSubscribe,
     waitFor: (name, options) =>
       waitForMatch<EventFor<typeof name>>(
         name,

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { Cause, Effect, Exit, Fiber, Layer, Stream, TestClock, TestContext } from "effect";
+import { Cause, Effect, Exit, Fiber, Layer, Schema, Stream, TestClock, TestContext } from "effect";
 
+import { DownloadProgressEvent } from "@lando/sdk/events";
 import { EventService, SecretStore } from "@lando/sdk/services";
 
 import { RedactionServiceLive } from "../../src/redaction/service.ts";
@@ -11,6 +12,15 @@ const progressEvent = (bytes: number): { readonly _tag: "download-progress"; rea
   _tag: "download-progress",
   bytes,
 });
+
+const canonicalProgress = (bytesDownloaded: number): DownloadProgressEvent =>
+  Schema.decodeUnknownSync(DownloadProgressEvent)({
+    _tag: "download-progress",
+    eventName: "download-progress",
+    urlOrigin: "https://example.com",
+    bytesDownloaded,
+    timestamp: "2026-05-11T07:30:00Z",
+  });
 
 const secretEvent = (token: string) => ({
   _tag: "pre-download",
@@ -36,17 +46,17 @@ describe("EventService waitFor", () => {
       Effect.flatMap(EventService, (events) =>
         Effect.gen(function* () {
           const waiter = yield* events
-            .waitFor("download-progress", { filter: (event) => event.bytes >= 2 })
+            .waitFor("download-progress", { filter: (event) => event.bytesDownloaded >= 2 })
             .pipe(Effect.fork);
           yield* Effect.sleep("10 millis");
-          yield* events.publish(progressEvent(1));
-          yield* events.publish(progressEvent(2));
+          yield* events.publish(canonicalProgress(1));
+          yield* events.publish(canonicalProgress(2));
           return yield* Fiber.join(waiter);
         }),
       ).pipe(Effect.provide(EventServiceLive)),
     );
 
-    expect(received).toEqual(progressEvent(2));
+    expect(received).toEqual(canonicalProgress(2));
   });
 
   test("times out via Clock with EventError reason 'timeout'", async () => {
@@ -99,13 +109,13 @@ describe("EventService waitForAny", () => {
             .waitForAny([{ name: "pre-download" }, { name: "download-progress" }])
             .pipe(Effect.fork);
           yield* Effect.sleep("10 millis");
-          yield* events.publish(progressEvent(7));
+          yield* events.publish(canonicalProgress(7));
           return yield* Fiber.join(waiter);
         }),
       ).pipe(Effect.provide(EventServiceLive)),
     );
 
-    expect(received).toEqual(progressEvent(7));
+    expect(received).toEqual(canonicalProgress(7));
   });
 
   test("honors the timeout contract", async () => {
@@ -271,7 +281,7 @@ describe("EventService regression", () => {
           const scopedFiber = yield* Effect.scoped(
             events.subscribe("download-progress").pipe(Stream.take(1), Stream.runCollect, Effect.forkScoped),
           );
-          yield* events.publish(progressEvent(1));
+          yield* events.publish(canonicalProgress(1));
           return yield* Fiber.await(scopedFiber);
         }),
       ).pipe(Effect.provide(EventServiceLive)),
