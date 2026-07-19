@@ -895,3 +895,9 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Split/excise decisions: none; bootstrap event emission remains isolated to US-464 and US-463 stays passing.
 - Verification: schema snapshot codegen, typecheck, lint, 396 focused tests, changed-file diagnostics, diff check, and the Bun library driver passed.
 ---
+## [2026-07-19 18:00 CDT] - Babysit
+- PR: #611 https://github.com/AaronFeledy/core4/pull/611
+- CI outcome: pass
+- Review feedback: fixed (documented bootstrap subscriber level contract in sdk-compatibility guide for guide-drift)
+- Merge: merged (squash)
+---
