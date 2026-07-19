@@ -215,7 +215,6 @@ export default class InitCommand extends LandoCommandBase {
         rendererMode,
         resultFormat,
         resultSchema: initSpec.resultSchema,
-        failureExitCode: 1,
         deprecationWarnings: deprecationWarnings.enabled,
       });
       return;

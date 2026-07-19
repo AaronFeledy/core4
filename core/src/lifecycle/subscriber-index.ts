@@ -17,7 +17,7 @@ interface SubscriberRegistrationClosure {
   ) => Effect.Effect<ReadonlyMap<string, ReadonlyArray<IndexedSubscriber>>, PluginManifestError>;
 }
 
-const builtInEventNames = (): ReadonlySet<string> => {
+const builtInEventNames = (): Set<string> => {
   const names = new Set<string>();
   if (!AST.isUnion(LandoEvent.ast)) return names;
   for (const member of LandoEvent.ast.types) {
@@ -49,7 +49,7 @@ export const makeSubscriberRegistrationClosure = (
     close: (commandIds) => {
       if (index !== undefined) return Effect.succeed(index);
       return Effect.gen(function* () {
-        const known = new Set(builtInEventNames());
+        const known = builtInEventNames();
         for (const commandId of commandIds) {
           known.add(`cli-${commandId}-init`);
           known.add(`cli-${commandId}-run`);

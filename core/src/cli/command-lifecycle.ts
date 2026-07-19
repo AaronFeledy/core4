@@ -123,7 +123,6 @@ export const runCommandLifecycle = <A, E, R>(
       const invocationSnapshot: CliInvocationSnapshot = {
         ...options.invocation,
         invocationId,
-        ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
       };
       const invocation = {
         commandId: options.invocation.commandId,

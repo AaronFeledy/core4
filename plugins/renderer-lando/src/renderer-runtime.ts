@@ -87,10 +87,11 @@ const makeNotificationConsumerLive = (
       const queue = yield* events.subscribeQueue;
       const consume = (event: LandoEvent): void =>
         handleNotifyDesktop(event, getCapabilities, triggerNotification);
-      const consumer = Effect.gen(function* () {
-        while (true) consume(yield* Queue.take(queue));
-      });
-      const fiber = yield* Effect.forkScoped(consumer);
+      const fiber = yield* Effect.forkScoped(
+        Effect.gen(function* () {
+          while (true) consume(yield* Queue.take(queue));
+        }),
+      );
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
           yield* Fiber.interrupt(fiber);
@@ -158,8 +159,8 @@ export const landoRendererContribution: RendererContribution = {
   id: "lando",
   makeService: (io) =>
     makeLandoService(io, io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {}),
-  makeEventConsumer: (io) => {
-    return makeLandoEventConsumer(io, {
+  makeEventConsumer: (io) =>
+    makeLandoEventConsumer(io, {
       getCapabilities: () =>
         resolveCapabilitySnapshot(
           io,
@@ -167,6 +168,5 @@ export const landoRendererContribution: RendererContribution = {
         ).get(),
       triggerNotification: productionTriggerNotificationSync,
       flushNotifications: flushPendingNotifications,
-    });
-  },
+    }),
 };

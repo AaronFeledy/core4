@@ -15,14 +15,6 @@ const DEFAULT_NOTIFY_COMMAND_IDS = [
   "meta:update",
 ] as const;
 
-const resolveNotifyCommandIds = (config: NotifyConfig): ReadonlyArray<string> => {
-  const ids: string[] = [...DEFAULT_NOTIFY_COMMAND_IDS];
-  for (const commandId of config.commands) {
-    if (!ids.includes(commandId)) ids.push(commandId);
-  }
-  return ids;
-};
-
 type Terminal =
   | { readonly kind: "success"; readonly event: CliCommandRunEvent }
   | { readonly kind: "failure"; readonly event: CliCommandErrorEvent };
@@ -35,14 +27,14 @@ const terminalFrom = (event: LandoEvent): Terminal | undefined => {
 
 const notify: SubscriberFactory<NotifyConfig> = (ctx, config) => {
   if (!config.enabled) return () => Effect.void;
-  const eligible = resolveNotifyCommandIds(config);
+  const eligible = new Set([...DEFAULT_NOTIFY_COMMAND_IDS, ...config.commands]);
   return (event) => {
     const terminal = terminalFrom(event);
     if (
       terminal === undefined ||
       terminal.event.parentInvocationId !== undefined ||
       terminal.event.durationMs < config.thresholdMs ||
-      !eligible.includes(terminal.event.commandId)
+      !eligible.has(terminal.event.commandId)
     ) {
       return Effect.void;
     }

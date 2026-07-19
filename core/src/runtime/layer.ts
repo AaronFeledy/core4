@@ -188,8 +188,6 @@ type RuntimeLayer =
   | Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<CommandRuntimeServices>
   | Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
-  | Layer.Layer<ToolingRuntimeServices>
-  | Layer.Layer<ToolingRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
   | Layer.Layer<ProviderRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<GlobalRuntimeServices>

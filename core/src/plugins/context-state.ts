@@ -16,21 +16,20 @@ const stateRootPathOf = (root: unknown): string | undefined => {
   return typeof path === "string" ? path : undefined;
 };
 
-const pluginStatePathError = (pluginStateRoot: AbsolutePath): StateStoreError =>
-  new StateStoreError({
-    reason: "path",
-    operation: "open",
-    path: pluginStateRoot,
-    remediation: "Plugins are confined to their host-assigned durable-state subtree.",
-  });
-
 export const makePluginStateStore = (
   store: StateStoreShape,
   pluginStateRoot: AbsolutePath,
 ): PluginStateStore => {
   const open: PluginStateStore["open"] = (spec) => {
     if ("root" in spec && stateRootPathOf(spec.root) !== pluginStateRoot) {
-      return Effect.fail(pluginStatePathError(pluginStateRoot));
+      return Effect.fail(
+        new StateStoreError({
+          reason: "path",
+          operation: "open",
+          path: pluginStateRoot,
+          remediation: "Plugins are confined to their host-assigned durable-state subtree.",
+        }),
+      );
     }
     return store.open({ ...spec, root: { path: pluginStateRoot } });
   };

@@ -6,9 +6,6 @@ import {
   UpdateResultSchema,
   update,
 } from "../../../commands/update.ts";
-/**
- * `lando meta:update` — shared command specification and OCLIF wrapper.
- */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 
 export const updateOptionsFromInput = (input: unknown): UpdateOptions => {

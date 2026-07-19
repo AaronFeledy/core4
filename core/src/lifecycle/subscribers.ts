@@ -34,16 +34,15 @@ import {
   makeCachedSubscriberHandler,
 } from "./subscriber-loader.ts";
 
-const contributionId = (entry: string | { readonly id: string }): string =>
-  typeof entry === "string" ? entry : entry.id;
-
 export const canonicalSubscriberCommandIds = (
   manifests: ReadonlyArray<PluginManifest>,
   commands: ReadonlyArray<RegisteredCommand> = [],
 ): ReadonlyArray<string> => {
   const ids = new Set(Object.values(COMPILED_OCLIF_MANIFEST.commands).map((entry) => entry.id));
   for (const manifest of manifests) {
-    for (const command of manifest.contributes?.commands ?? []) ids.add(contributionId(command));
+    for (const command of manifest.contributes?.commands ?? []) {
+      ids.add(typeof command === "string" ? command : command.id);
+    }
   }
   for (const command of commands) ids.add(command.id);
   return [...ids];

@@ -389,9 +389,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
           ),
         );
         for (const event of events) {
-          const tag = (event as { readonly _tag?: unknown })._tag;
-          if (typeof tag !== "string") continue;
-          const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
+          const line = yield* encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
           yield* writeResultLine(line);
         }
       });
@@ -503,14 +501,16 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       }
       return { _tag: "success", value: commandExit.value } as const;
     });
-    const eventConsumerLayer =
-      streamingJson && !liveStreaming
-        ? undefined
-        : options.renderEvents === true
-          ? makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
-              ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
-            })
-          : makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
+    let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
+    if (!(streamingJson && !liveStreaming)) {
+      if (options.renderEvents === true) {
+        eventConsumerLayer = makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+          ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
+        });
+      } else {
+        eventConsumerLayer = makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
+      }
+    }
     const executeWithEventConsumer =
       eventConsumerLayer === undefined
         ? executeCommand

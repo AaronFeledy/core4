@@ -44,9 +44,9 @@ const configuredNotifyCommands = (): ReadonlyArray<string> => {
   const config = deepMerge(file, overlay);
   const notify = config.notify;
   if (typeof notify !== "object" || notify === null || Array.isArray(notify)) return [];
-  const value = notify as { readonly enabled?: unknown; readonly commands?: unknown };
-  if (value.enabled === false || !Array.isArray(value.commands)) return [];
-  return value.commands.filter((entry): entry is string => typeof entry === "string");
+  if (("enabled" in notify && notify.enabled === false) || !("commands" in notify)) return [];
+  if (!Array.isArray(notify.commands)) return [];
+  return notify.commands.filter((entry): entry is string => typeof entry === "string");
 };
 
 export const resolveEffectiveCliBootstrap = (commandId: string, declared: BootstrapLevel): BootstrapLevel => {
