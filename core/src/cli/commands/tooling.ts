@@ -347,7 +347,9 @@ export const runTooling = (
           }),
         );
       }
-      return yield* runToolingCommandSteps(commandSteps, options, runTooling);
+      return yield* runToolingCommandSteps(commandSteps, options, (nestedOptions) =>
+        runTooling(nestedOptions, target),
+      );
     }
 
     const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));

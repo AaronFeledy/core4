@@ -1585,7 +1585,7 @@
         "Lint passes"
       ],
       "priority": 89,
-      "passes": true,
+      "passes": false,
       "notes": "Origin: spec sections 8.9.7, 1.4, and 11.3.1 (bounded subscriber selectors and factories). This story owns implementing the newly frozen subscribers: manifest/context surface (lazy-loaded, cached SubscriberFactory invocation), using notify-lando as the first real consumer and reference example."
     },
     {

@@ -10,6 +10,7 @@ export const resolveNotifyConfig = (
   commandIds: ReadonlySet<string>,
 ): Effect.Effect<NotifyConfig, ConfigError> => {
   const notify = config.notify ?? DEFAULT_NOTIFY_CONFIG;
+  if (!notify.enabled) return Effect.succeed(notify);
   const unknownIndex = notify.commands.findIndex((commandId) => !commandIds.has(commandId));
   if (unknownIndex < 0) return Effect.succeed(notify);
   const commandId = notify.commands[unknownIndex];

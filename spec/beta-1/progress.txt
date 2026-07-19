@@ -803,3 +803,13 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Preserve static command bootstrap declarations while selecting a notification-effective runtime only when an eligible lower-tier invocation needs the complete subscriber registry.
   - Nested command lifecycle correlation belongs in fiber-local Effect context; process-global invocation staging is only safe for the outer compiled shell.
 ---
+
+## 2026-07-18 18:58 CDT - US-459 Review
+- Fixed confirmed review regressions in the new nested tooling path: interruption now propagates despite `ignoreError`, nonzero target exits publish failure and stop later steps by default, captured app targets and requested users survive recursion, and the incomplete command-step schema is no longer an accidental runtime SDK export. Disabled notification policy now bypasses dormant allowlist membership validation.
+- Returned US-459 to Build with `passes: false`: `command:` still dispatches only same-Landofile `app:*` tooling instead of registered built-in/plugin/tooling canonical programs, and notification-effective runtime selection remains inconsistent for `none` plus several compiled lower-tier commands. App-derived global allowlist entries can also fail default eligible commands outside an app because registry validity is cwd-dependent.
+- Review notes (deferred/rejected): the QA lane's pass was rejected because its synthetic lower-tier event and tooling-to-tooling fixture did not exercise the real compiled dispatch or canonical command program. `Guide-Coverage-Skip: Internal subscriber and nested-tooling corrections do not change library embedding or Landofile authoring contracts; notification policy is covered by the owned terminal UI guide.`
+- Verification: typecheck, lint, focused app-handle/tooling/lifecycle/subscriber/notify/Landofile/SDK compatibility tests, schema-snapshot codegen, and the owned terminal UI guide passed; base-aware guide drift reported only the cross-owned surfaces covered by the skip reason. No full test suite or host runtime integration was run.
+- **Learnings for future iterations:**
+  - A nested command proof must invoke a registered canonical command program, not recursively reinterpret the canonical id as a Landofile tooling name.
+  - Captured app targets and execution-user restrictions are authority boundaries and must propagate through every nested tooling call.
+---

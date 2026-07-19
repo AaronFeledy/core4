@@ -1,4 +1,4 @@
-import { Effect, Exit, FiberRef } from "effect";
+import { Cause, Effect, Exit, FiberRef } from "effect";
 
 import { ToolingCompileError, ToolingExecError } from "@lando/sdk/errors";
 import type { ToolingCommandStep } from "@lando/sdk/schema";
@@ -16,7 +16,7 @@ export const runToolingCommandSteps = <E, R>(
   steps: ReadonlyArray<ToolingCommandStep>,
   options: RunToolingOptions,
   run: (options: RunToolingOptions) => Effect.Effect<RunToolingResult, E, R>,
-): Effect.Effect<RunToolingResult, E | ToolingCompileError, R | RedactionService> =>
+): Effect.Effect<RunToolingResult, E | ToolingCompileError | ToolingExecError, R | RedactionService> =>
   Effect.gen(function* () {
     const stack = yield* FiberRef.get(toolingCommandStack);
     let last: RunToolingResult | undefined;
@@ -49,6 +49,7 @@ export const runToolingCommandSteps = <E, R>(
       const outcome = yield* run({
         name: step.command.slice("app:".length),
         args: step.raw ?? [],
+        ...(options.user === undefined ? {} : { user: options.user }),
         ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
         ...(options.env === undefined ? {} : { env: options.env }),
         ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
@@ -57,15 +58,29 @@ export const runToolingCommandSteps = <E, R>(
           : options.renderProgress === undefined
             ? {}
             : { renderProgress: options.renderProgress }),
-      }).pipe(Effect.locally(toolingCommandStack, [...stack, step.command]), (effect) =>
-        runCommandLifecycle(effect, {
-          invocation: nested,
-          successExitCode: (result) => result.exitCode,
-          failureExitCode: (error) => (error instanceof ToolingExecError ? error.exitCode : undefined),
-        }),
+      }).pipe(
+        Effect.flatMap((result) =>
+          result.exitCode === 0
+            ? Effect.succeed(result)
+            : Effect.fail(
+                new ToolingExecError({
+                  message: `Tooling command step ${step.command} failed with exit code ${result.exitCode}.`,
+                  tool: step.command,
+                  exitCode: result.exitCode,
+                  remediation: `Inspect the ${step.command} output, fix the target command, and rerun ${options.name}.`,
+                }),
+              ),
+        ),
+        Effect.locally(toolingCommandStack, [...stack, step.command]),
+        (effect) =>
+          runCommandLifecycle(effect, {
+            invocation: nested,
+            successExitCode: (result) => result.exitCode,
+            failureExitCode: (error) => (error instanceof ToolingExecError ? error.exitCode : undefined),
+          }),
       );
       if (Exit.isFailure(outcome)) {
-        if (step.ignoreError === true) continue;
+        if (step.ignoreError === true && !Cause.isInterruptedOnly(outcome.cause)) continue;
         return yield* Effect.failCause(outcome.cause);
       }
       last = outcome.value;

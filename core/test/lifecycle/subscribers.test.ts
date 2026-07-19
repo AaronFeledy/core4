@@ -230,6 +230,19 @@ describe("subscriber runtime", () => {
     }
   });
 
+  test("disabled notification policy bypasses command membership validation", async () => {
+    // Given: the master switch is off and the dormant allowlist contains an unknown id.
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      notify: { enabled: false, commands: ["bad:id"] },
+    });
+
+    // When: subscriber configuration is projected from the closed registry.
+    const exit = await Effect.runPromiseExit(resolveNotifyConfig(config, new Set()));
+
+    // Then: disabled policy configuration cannot block unrelated commands.
+    expect(Exit.isSuccess(exit)).toBe(true);
+  });
+
   test("loads a subscriber factory lazily and caches its handler exactly once", async () => {
     // Given: a factory loader that records module and factory evaluation.
     let loads = 0;

@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Layer, Queue, Stream } from "effect";
+import { Cause, DateTime, Effect, Layer, Queue, Stream } from "effect";
 
 import { runTooling } from "@lando/core/cli/operations";
 import { ProviderUnavailableError } from "@lando/core/errors";
@@ -34,6 +34,7 @@ import {
 } from "../../src/cache/app-plan.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
+import { runToolingCommandSteps } from "../../src/cli/commands/tooling-command-step.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { RedactionService, createStandaloneRedactor } from "../../src/redaction/service.ts";
 import { ProviderExecToolingEngineLive } from "../../src/services/tooling-engine.ts";
@@ -663,6 +664,68 @@ describe("runTooling — CLI rendering", () => {
     expect(events.find((event) => event._tag === "cli-app:inner-run")).toMatchObject({
       parentInvocationId: "outer-id",
     });
+  });
+
+  test("propagates command step interruption when ignoreError is enabled", async () => {
+    // Given: a command step configured to ignore ordinary target failures.
+    const steps = [{ command: "app:inner", ignoreError: true }] as const;
+
+    // When: the nested target is interrupted.
+    const exit = await Effect.runPromiseExit(
+      runToolingCommandSteps(steps, { name: "outer" }, () => Effect.interrupt).pipe(
+        Effect.provide(redactionLayer),
+      ),
+    );
+
+    // Then: cancellation propagates instead of being converted into parent success.
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+  });
+
+  test("stops command steps after a nonzero target exit by default", async () => {
+    // Given: two nested command steps whose first target exits nonzero.
+    let calls = 0;
+    const steps = [{ command: "app:first" }, { command: "app:second" }] as const;
+
+    // When: the command-step sequence runs without ignoreError.
+    const exit = await Effect.runPromiseExit(
+      runToolingCommandSteps(steps, { name: "outer" }, (options) => {
+        calls += 1;
+        return Effect.succeed({
+          tool: options.name,
+          service: ":command",
+          exitCode: 7,
+          stdout: "",
+          stderr: "failed",
+        });
+      }).pipe(Effect.provide(redactionLayer)),
+    );
+
+    // Then: the first target fails the parent sequence and the second target never runs.
+    expect(exit._tag).toBe("Failure");
+    expect(calls).toBe(1);
+  });
+
+  test("preserves the requested user for nested command steps", async () => {
+    // Given: a nested command step with an explicit execution user.
+    let nestedUser: string | undefined;
+
+    // When: the command-step runner invokes the nested target.
+    await Effect.runPromise(
+      runToolingCommandSteps([{ command: "app:inner" }], { name: "outer", user: "www-data" }, (options) => {
+        nestedUser = options.user;
+        return Effect.succeed({
+          tool: options.name,
+          service: ":command",
+          exitCode: 0,
+          stdout: "",
+          stderr: "",
+        });
+      }).pipe(Effect.provide(redactionLayer)),
+    );
+
+    // Then: nested provider execution retains the outer user restriction.
+    expect(nestedUser).toBe("www-data");
   });
 
   test("fails fast with ToolingCompileError on unknown tooling command", async () => {
