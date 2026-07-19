@@ -4,6 +4,7 @@ import type { RendererContribution } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 
 import { landoRendererContribution } from "./renderer-runtime.ts";
+export { makeLandoNotificationConsumer as makeNotificationConsumer } from "./renderer-runtime.ts";
 
 export const PLUGIN_NAME = "@lando/renderer-lando" as const;
 

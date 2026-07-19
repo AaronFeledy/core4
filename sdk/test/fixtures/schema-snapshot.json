@@ -37,6 +37,34 @@
     {
       "manifest": {
         "api": 4,
+        "description": "Bundled Lando desktop-notification policy plugin.",
+        "enabled": true,
+        "entry": "./src/index.ts",
+        "name": "@lando/notify-lando",
+        "requires": {
+          "@lando/core": "^4.0.0"
+        },
+        "subscribers": [
+          {
+            "abortOnError": false,
+            "configKey": "notify",
+            "id": "notify-command-terminal",
+            "module": "./src/notify.ts",
+            "priority": 900,
+            "selectors": [
+              {
+                "family": "cli-command-terminal"
+              }
+            ]
+          }
+        ],
+        "version": "0.0.0"
+      },
+      "name": "@lando/notify-lando"
+    },
+    {
+      "manifest": {
+        "api": 4,
         "contributes": {
           "providers": ["docker"]
         },
@@ -16078,6 +16106,7 @@
     "bundledPluginManifests": [
       "@lando/file-sync-mutagen",
       "@lando/logger-pretty",
+      "@lando/notify-lando",
       "@lando/provider-docker",
       "@lando/provider-lando",
       "@lando/provider-podman",

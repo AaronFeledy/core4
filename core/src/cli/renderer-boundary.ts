@@ -18,9 +18,10 @@ import {
   type ResolveRendererModeResult,
   resolveRendererMode,
 } from "./renderer-selection.ts";
-import { landoRenderer } from "./renderer/bundled-renderers.ts";
+import { landoRenderer, makeLandoNotificationConsumer } from "./renderer/bundled-renderers.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
 import {
+  makeJsonNotificationRendererLive,
   makeJsonRendererLive,
   makeJsonRendererServiceLive,
   makePlainRendererLive,
@@ -74,6 +75,21 @@ export const makeRendererEventConsumerLiveForMode = (
       return makeVerboseRendererLive(io);
     case "lando":
       return landoRenderer.makeEventConsumer(io);
+  }
+};
+
+const makeRendererNotificationConsumerLiveForMode = (
+  mode: RendererMode,
+  io: RendererIO,
+): Layer.Layer<never, never, EventService> | undefined => {
+  switch (mode) {
+    case "json":
+      return makeJsonNotificationRendererLive(io);
+    case "lando":
+      return makeLandoNotificationConsumer(io);
+    case "plain":
+    case "verbose":
+      return undefined;
   }
 };
 
@@ -156,7 +172,7 @@ export const isDecoratedContext = (ctx?: RenderContext): boolean =>
   ctx?.mode === "lando" && ctx.isTTY === true;
 
 export interface RunWithRendererHandlingOptions<A, R, RE> {
-  readonly runtime: Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, RE>;
+  readonly runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>;
   readonly rendererMode: RendererMode;
   readonly resultFormat?: ResultFormat;
   readonly command?: string;
@@ -364,6 +380,19 @@ export const runWithRendererHandling = async <A, E, R, RE>(
         });
         yield* writeResultLine(line);
       });
+    const replayBufferedEvents = (redactionTokens: ReadonlyArray<string> = []) =>
+      Effect.gen(function* () {
+        const redactor = yield* jsonRedactor(redactionTokens);
+        const events = yield* Effect.serviceOption(EventService).pipe(
+          Effect.flatMap((service) =>
+            Option.isSome(service) ? service.value.query("*") : Effect.succeed([]),
+          ),
+        );
+        for (const event of events) {
+          const line = yield* encodeStreamEventFrame({ event: event._tag, payload: event, redactor });
+          yield* writeResultLine(line);
+        }
+      });
     const emitStreamingSuccess = (value: A) =>
       Effect.gen(function* () {
         const tokens = options.redactionTokens?.(value) ?? [];
@@ -381,17 +410,7 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               : yield* encodeStreamStderrFrame(streamFrameOptions);
           yield* writeResultLine(line);
         }
-        const events = yield* Effect.serviceOption(EventService).pipe(
-          Effect.flatMap((service) =>
-            Option.isSome(service) ? service.value.query("*") : Effect.succeed([]),
-          ),
-        );
-        for (const event of events) {
-          const tag = (event as { readonly _tag?: unknown })._tag;
-          if (typeof tag !== "string") continue;
-          const line = yield* encodeStreamEventFrame({ event: tag, payload: event, redactor });
-          yield* writeResultLine(line);
-        }
+        yield* replayBufferedEvents(tokens);
         yield* emitStreamResult({ _tag: "success", value }, tokens);
       });
     const setExitCode = (code: number): void => {
@@ -420,8 +439,12 @@ export const runWithRendererHandling = async <A, E, R, RE>(
             _tag: "failure",
             error: failure._tag === "Some" ? failure.value : Cause.pretty(cause),
           } as const;
-          if (options.streaming !== undefined) yield* emitStreamResult(outcome);
-          else yield* emitJsonResult(outcome);
+          if (options.streaming !== undefined) {
+            if (!liveStreaming) yield* replayBufferedEvents();
+            yield* emitStreamResult(outcome);
+          } else {
+            yield* emitJsonResult(outcome);
+          }
           yield* setFailureExitCode(cause);
           return;
         }
@@ -444,6 +467,10 @@ export const runWithRendererHandling = async <A, E, R, RE>(
               ...(options.failureExitCode === undefined ? {} : { failureExitCode: options.failureExitCode }),
               ...(options.suppressInterruptionDiagnostics === true ? { interruptionExitCode: 0 } : {}),
             });
+      if (options.invocation !== undefined) {
+        // Terminal subscribers publish to the command-scoped renderer before its scope closes.
+        yield* Effect.yieldNow();
+      }
       if (
         options.suppressInterruptionDiagnostics === true &&
         Exit.isFailure(commandExit) &&
@@ -474,18 +501,20 @@ export const runWithRendererHandling = async <A, E, R, RE>(
       }
       return { _tag: "success", value: commandExit.value } as const;
     });
+    let eventConsumerLayer: Layer.Layer<never, never, EventService> | undefined;
+    if (!(streamingJson && !liveStreaming)) {
+      if (options.renderEvents === true) {
+        eventConsumerLayer = makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
+          ...(options.plainTaskEvents === undefined ? {} : { plainTaskEvents: options.plainTaskEvents }),
+        });
+      } else {
+        eventConsumerLayer = makeRendererNotificationConsumerLiveForMode(options.rendererMode, io);
+      }
+    }
     const executeWithEventConsumer =
-      options.renderEvents === true
-        ? executeCommand.pipe(
-            Effect.provide(
-              makeRendererEventConsumerLiveForMode(options.rendererMode, io, {
-                ...(options.plainTaskEvents === undefined
-                  ? {}
-                  : { plainTaskEvents: options.plainTaskEvents }),
-              }),
-            ),
-          )
-        : executeCommand;
+      eventConsumerLayer === undefined
+        ? executeCommand
+        : executeCommand.pipe(Effect.provide(eventConsumerLayer));
     const commandOutcome = yield* Effect.exit(
       withCommandEventService(executeWithEventConsumer).pipe(Effect.provide(commandLayer)),
     );

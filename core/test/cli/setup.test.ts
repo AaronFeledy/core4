@@ -211,9 +211,10 @@ describe("meta:setup command", () => {
     }
   });
 
-  test("is registered at the minimal bootstrap level with the top-level setup alias", () => {
-    expect(setupSpec.bootstrap).toBe("minimal");
-    expect(SetupCommand.bootstrap).toBe("minimal");
+  test("is registered at the provider bootstrap level with the top-level setup alias", () => {
+    expect(setupSpec.bootstrap).toBe("provider");
+    expect(SetupCommand.bootstrap).toBe("provider");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.bootstrap).toBe("provider");
     expect(SetupCommand.aliases).toContain("setup");
   });
 

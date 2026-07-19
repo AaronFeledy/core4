@@ -34,6 +34,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - `Renderer.capabilities` is a getter over at most two immutable snapshots per run (initial, optional monotonic promotion); never mutate in place or demote fields.
 - `notify.desktop` is capability-gated at the renderer: drop when `notifications` is false; json still emits the event; never hand-frame OSC sequences — call OpenTUI `triggerNotification`.
 - `HostProxyRequest` has exactly four tags (`openUrl`, `openPath`, `runLando`, `runBun`); container-initiated notify/clipboardCopy is unsupported.
+- After awaited terminal lifecycle subscribers publish renderer events, yield once before closing the command-scoped renderer consumer; compiled adapters must use the same bootstrap tier as their source command specs.
 
 ## Durable learnings
 
@@ -141,7 +142,6 @@ US-450 no longer asks for a Windows UAC elevation path for managed-machine trust
 US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), covering the OpenTUI `^0.4.3` substrate contract, the split-footer live region, prompt chrome + frame-snapshot harness, the complete `RendererCapabilities`/`notify.desktop`/`NotifyConfig` SDK surface with foreground-only realization, the accidental `HostProxyRequest` `notify`/`clipboardCopy` verb cleanup, the `@lando/notify-lando` bundled policy plugin, and the contract-only freeze of the 4.1 panel/keymap/rich-event surfaces. The `@opentui/core` `^0.4.3` package/lockfile bump for `plugins/renderer-lando` is the only artifact actually present in the tree today. No generated output (`scripts/generated/opentui-native/**`, bootstrap layers, bundled-plugin tables), no `@lando/sdk` schema/service code, no `@lando/notify-lando` plugin package, and no `@lando/renderer-lando` runtime change has landed — this pass is normative spec + PRD text only, establishing the contract the implementation stories still have to satisfy.
 - **Learning:** a dependency bump landing before its consuming spec is fully decision-complete is not itself progress on the PRD; keep the progress log honest about what's spec-only versus implemented so PRD-15 isn't mistaken for shipped work.
 ---
-
 ## 2026-07-15 00:50 CDT - US-444
 - Detached host-proxy startup now sends bounded payload chunks through backpressure-aware writes, enforces a 16 MiB frame limit and 15-second delivery deadline, and closes stdin only after buffered bytes drain. Oversized startup remains a tagged, remediated failure and terminates the child without persisting half-started worker state.
 - Verification: typecheck, lint passed; focused payload/backpressure and host-proxy manager/contract tests passed; scratch-run and toolbox spot checks passed.
@@ -715,4 +715,125 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Verification: typecheck, lint passed; relevant build-orchestrator, renderer live-region, and first-paint spot checks passed.
 - **Learnings for future iterations:**
   - When stacked remediation has merged to main, stale branch-local audit metadata must not reopen the completed implementation.
+---
+
+## 2026-07-18 02:34 CDT - US-459
+- Shipped the bundled notify policy plugin and the bounded subscriber runtime: schema-derived selector/config projection, two-phase command-family indexing, lazy cached factories, plugin-scoped context, publisher-boundary redaction, and exactly one success/failure desktop render event for eligible parentless invocations. Source and compiled command paths now retain terminal notification delivery while non-TTY output remains silent.
+- Verification: typecheck and lint passed; 300 focused notify, lifecycle, renderer, plugin, SDK, bootstrap, and adjacent tests passed; boundary and codegen-idempotence gates passed; source and compiled CLI surfaces emitted the expected structured notification and cleaned up their isolated roots.
+- **Learnings for future iterations:**
+  - Fully awaited event publication can still leave a synchronous consumer fiber runnable in the current scheduler turn; hand off once before closing its scope when terminal subscribers publish final renderer output.
+  - A source command bootstrap change does not update hand-written compiled adapters; lock bootstrap parity with a focused structural regression and a real compiled-binary surface.
+---
+
+## 2026-07-18 12:46 CDT - US-459 Review
+- Corrected notification registration at incomplete bootstrap tiers: every tier closes selector membership strictly against the complete compiled-command plus enabled-plugin contribution set, while notify-command membership waits for a real CommandRegistry so Landofile-derived ids cannot block unrelated provider/plugin commands. Disabled notification plugins do not impose policy semantics, overlapping selectors dispatch once, meta:setup declares its real provider bootstrap on both source and compiled paths, and meta:global:list retains its minimal bootstrap on both paths so subscriber failures cannot block inventory reads. Buffered streaming JSON replays success and failure notifications exactly once without duplicate stderr output. Added the owned executable guide coverage for notify defaults, allowlists, and disablement.
+- Review notes (deferred/rejected): end-to-end nested-command wiring was rejected as a blocker because no current production nested CLI reentry exists; lifecycle correlation propagation and notification suppression are implemented and covered at their active seams.
+- Review notes (deferred/rejected): plugin-name path normalization was rejected as cross-SDK hardening of the pre-existing permissive PluginName contract; installed plugins already execute with host permissions, so it is not a new subscriber security boundary.
+- Review notes (deferred/rejected): widening makeLandoRuntime's generated-layer error channel was deferred as a cross-runtime typing refactor; preserving the required ConfigError at final notify command validation is the story behavior.
+- Review notes (deferred/rejected): publishing a reusable subscriber harness from @lando/sdk/test was rejected as a US-459 blocker because this story's SDK export inventory names the subscriber contracts and factory, while the concrete notify-lando reference invocation covers the required selector/config behavior; adding another public test API is separate contract-inventory work.
+- Review notes (deferred/rejected): Guide-Coverage-Skip: Bundled subscriber wiring changes no Landofile authoring or embedding-runtime behavior; the US-459 notification policy guide was updated directly.
+- Verification: typecheck, lint, renderer boundary, guide lint/coverage, the focused executable guide, TypeScript no-excuse audit, lifecycle/subscriber/setup/bootstrap/parity/event spot checks, and sandbox source-CLI notification QA passed; base-aware guide drift reported only the two cross-owned surfaces covered by the skip line above.
+- **Learnings for future iterations:**
+  - Bootstrap tiers without CommandRegistry can close selector membership strictly from the compiled OCLIF manifest plus enabled plugin command contributions, but notify.commands membership must wait for CommandRegistry because Landofile-derived command ids are not visible earlier.
+  - Command specs should declare the tier their effect actually requires; hidden source-only escalation breaks subscriber activation and source/compiled parity.
+---
+
+## 2026-07-18 14:16 CDT - US-459 Review
+- Returned US-459 to Build with `passes: false`: nested tooling `command:` steps have no production lifecycle-dispatch path, so their target commands cannot yet publish the required correlated init/run/error triplet with a fresh `invocationId` and enclosing `parentInvocationId`.
+- Strict `notify.commands` validation is also unresolved: plugins/provider bootstrap has no app-derived `CommandRegistry`, so validating against only compiled/plugin ids rejects valid Landofile commands and can abort unrelated setup/update runs, while deferring validation conflicts with the source spec's before-registration requirement.
+- Review notes (deferred/rejected): plugin-state traversal was rejected as pre-existing `PluginName` hardening rather than a new privilege boundary because installed plugins already execute with user filesystem authority; subscriber `die`/nontermination isolation was rejected because it adds speculative recovery for plugins violating the typed Effect contract. `Guide-Coverage-Skip: Review records an unresolved notification config contract; no guide should document incomplete behavior.`
+- Verification: typecheck, lint, renderer/redaction boundaries, TypeScript no-excuse audit, 48 host-safe focused QA checks, and subscriber integration/unit reruns passed. Initial Cursor Bugbot found no bugs; post-fix Bugbot exposed and prevented the unsafe lower-tier strict-validation change. Base-aware guide drift reported only the two cross-owned surfaces covered by the skip reason; no full test suite or host runtime integration was run.
+- **Learnings for future iterations:**
+  - A helper-level nested-correlation test is not production evidence; trace at least one real tooling `command:` step through target lifecycle publication before marking foreground-notification correlation complete.
+---
+
+## 2026-07-18 14:44 CDT - US-459 Drift Audit
+- Trigger: 3 cycles, 2215 changed lines, 8 commits
+- Weakened proofs: the provider-tier test characterizes deferred `notify.commands` validation instead of proving the required final-registry path, and nested tooling command correlation still has no production-path proof.
+- Review scar tissue: conditional validation with and without `CommandRegistry` remains a dual path; removed an unnecessary exported renderer helper while retaining the internal implementation.
+- Contract drift: the guide claimed US-459 was shipped while `passes` remained false and registry validation was incomplete; restored the guide row to Planned and removed the premature policy step.
+- Deferred-work laundering: nested lifecycle dispatch, one final command-registry validation point, and the generated-layer error channel are branch-owned completion work; plugin-name normalization, a public SDK test harness, and subscriber defect/nontermination recovery remain outside this story.
+- Fixed: deleted the dead export and premature shipped-guide claims without adding another runtime fallback.
+- Split/excise decisions: no absorbed feature was found to split or excise; US-459 remains `passes: false` and returns to Build with the two unresolved production boundaries named above.
+- Verification: typecheck, lint, renderer/redaction boundaries, guide lint/coverage, package typecheck, and focused lifecycle/subscriber/renderer/plugin/bootstrap/parity/event tests passed.
+---
+
+## 2026-07-18 15:58 CDT - US-459
+- Completed the final commands-tier notification policy: subscriber registration now starts at `commands`, closes against one complete built-in/plugin/Landofile command registry, rejects unknown or lower-tier `notify.commands` entries before registration with actionable `ConfigError` remediation, and preserves the same subscriber runtime through higher bootstrap tiers. `meta:update` now declares `commands` bootstrap in source, generated manifest, and compiled dispatch.
+- Corrected the contract boundary exposed by the final audit: Beta 1 freezes invocation correlation and nested-notification suppression but does not claim a production tooling `command:`-step executor. The schema, compiler, executor, and live nested-invocation proof remain an explicit post-4.0 tooling story.
+- Verification: focused lifecycle, subscriber integration, generated-bootstrap, and source/compiled parity tests passed; root typecheck and lint passed; renderer, managed-file, state-store, probe, redaction, telemetry, guide lint/coverage, public transcript, and generated bootstrap/OCLIF drift gates passed. Source and compiled sandbox QA proved one success notification for `meta:doctor`, one failure notification for `meta:update`, and early `ConfigError` rejection for lower-tier `meta:version`; all sandbox artifacts were removed.
+- **Learnings for future iterations:**
+  - A policy that validates Landofile-derived canonical commands must install only after `CommandRegistry` is complete; tier-conditional fallback validation creates two contracts and cannot prove registration safety.
+  - A normative future command shape is not evidence of a current executor. Keep correlation/suppression schemas frozen while naming unavailable production paths as explicit deferrals.
+---
+
+## 2026-07-18 16:26 CDT - US-459
+- Verified the completed notification policy on the existing story branch with no new product code: the commands-tier registry closes before subscriber installation, lower-tier policy entries fail early, and the explicit post-4.0 nested-command deferral remains aligned across the spec and PRD.
+- Verification: typecheck, lint, monorepo build, renderer/redaction boundaries, focused lifecycle/subscriber/renderer/plugin/bootstrap/parity spot checks, and clean LSP diagnostics passed; isolated source and rebuilt compiled CLI runs each emitted exactly one success notification and matching lower-tier `ConfigError` failures, with all QA resources removed.
+- **Learnings for future iterations:**
+  - Re-verifying an already-complete in-flight story should preserve its implementation and prove the committed acceptance surfaces rather than manufacture another code change.
+---
+
+## 2026-07-18 17:20 CDT - US-459 Review
+- Closed the remaining policy and dispatch gaps: subscriber selectors now close over the complete canonical taxonomy while notification allowlist validation remains commands-tier-only; custom source and compiled `apps:init` dispatch use their declared commands runtime; the documented `LANDO_NOTIFY_*` aliases decode through the standard overlay; runtime casts preserve `ConfigError`; and the owned notification-policy guide is shipped.
+- Review notes (deferred/rejected): Cursor Bugbot found no bugs and the security lane found no new vulnerability; the post-4.0 nested `command:` executor, permissive trusted-plugin naming, and subscriber nontermination recovery remain outside this story. `Guide-Coverage-Skip: Notification subscriber wiring is documented in the owned terminal UI guide; unrelated library and Landofile guide behavior did not change.`
+- Verification: typecheck, lint, renderer/machine-output/redaction boundaries, base-aware guide drift, guide lint/coverage/public transcripts, focused lifecycle/subscriber/env/parity tests, and a sandbox source-CLI rejection smoke passed; no full test suite was run.
+- **Learnings for future iterations:**
+  - Keep the closed subscriber event taxonomy separate from feature-specific eligibility sets; policy bootstrap limits must not silently narrow public selector semantics.
+  - A custom command wrapper that declares a bootstrap tier must acquire and provide that runtime on every dispatch path rather than bypassing it with `Layer.empty`.
+---
+
+## 2026-07-18 17:49 CDT - US-459 Drift Audit
+- Trigger: 7 cycles, 2755 changed lines, 12 commits
+- Scope absorption: commands-tier-only notification eligibility and a post-4.0 tooling-executor deferral narrowed the original acceptance contract; restored the original contract and returned the story to `passes: false`.
+- Weakened proofs: source/compiled `apps:init` tests blessed notification policy blocking a normative minimal-tier command; replaced them with a production parity proof that scaffolding remains minimal, non-blocking, and non-notifying.
+- Ceremony modules: no forwarding module warranted deletion, but test-only subscriber, plugin-state, and notify-policy exports were made internal.
+- Collateral edits: excised the `apps:init` and `meta:update` tier escalations plus the cross-story normative/PRD text that laundered the missing nested-command path as deferred work.
+- Contract drift: implementation, progress claims, the executable guide, and the source PRD disagreed on lower-tier command eligibility and live nested correlation; the source contract is authoritative and the guide is Planned again.
+- Deferred-work laundering: a live `command:` executor with correlated nested lifecycle events and an architecture that validates and notifies eligible commands below the commands tier remain unresolved story boundaries.
+- Fixed: restored the original init/update bootstrap tiers and their parity proofs, removed dead exports and premature guide claims, and preserved the scheduler handoff after its command-runtime regression test disproved that deletion.
+- Split/excise decisions: excised the init escalation and deferral rewrite; the tooling command-step executor and lower-tier notification eligibility need an explicit follow-up boundary before this story can pass.
+- Verification: typecheck, lint, full codegen idempotence, renderer/redaction/machine-output boundaries, guide lint/coverage, TypeScript no-excuse audit, and focused lifecycle/subscriber/renderer/plugin/state/env/bootstrap/source+compiled parity spot checks passed; guide drift was unverified without PR context, and no full test suite or host runtime integration was run.
+---
+
+## 2026-07-18 18:41 CDT - US-459
+- Completed registry-valid notification policy across lifecycle-producing bootstrap tiers and added the production nested tooling command-step path. Nested target commands now publish correlated lifecycle events through the ambient runtime while only the parentless outer invocation can publish the single desktop notification.
+- Verification: typecheck, lint, monorepo/core build, codegen, renderer/redaction/machine-output boundaries, guide lint/coverage/public transcripts, and focused subscriber, lifecycle, Landofile, tooling, and source/compiled parity tests passed; isolated source and rebuilt compiled CLI fixtures each executed the nested host command and emitted exactly one outer notification with clean teardown.
+- **Learnings for future iterations:**
+  - Preserve static command bootstrap declarations while selecting a notification-effective runtime only when an eligible lower-tier invocation needs the complete subscriber registry.
+  - Nested command lifecycle correlation belongs in fiber-local Effect context; process-global invocation staging is only safe for the outer compiled shell.
+---
+
+## 2026-07-18 18:58 CDT - US-459 Review
+- Fixed confirmed review regressions in the new nested tooling path: interruption now propagates despite `ignoreError`, nonzero target exits publish failure and stop later steps by default, captured app targets and requested users survive recursion, and the incomplete command-step schema is no longer an accidental runtime SDK export. Disabled notification policy now bypasses dormant allowlist membership validation.
+- Returned US-459 to Build with `passes: false`: `command:` still dispatches only same-Landofile `app:*` tooling instead of registered built-in/plugin/tooling canonical programs, and notification-effective runtime selection remains inconsistent for `none` plus several compiled lower-tier commands. App-derived global allowlist entries can also fail default eligible commands outside an app because registry validity is cwd-dependent.
+- Review notes (deferred/rejected): the QA lane's pass was rejected because its synthetic lower-tier event and tooling-to-tooling fixture did not exercise the real compiled dispatch or canonical command program. `Guide-Coverage-Skip: Internal subscriber and nested-tooling corrections do not change library embedding or Landofile authoring contracts; notification policy is covered by the owned terminal UI guide.`
+- Verification: typecheck, lint, focused app-handle/tooling/lifecycle/subscriber/notify/Landofile/SDK compatibility tests, schema-snapshot codegen, and the owned terminal UI guide passed; base-aware guide drift reported only the cross-owned surfaces covered by the skip reason. No full test suite or host runtime integration was run.
+- **Learnings for future iterations:**
+  - A nested command proof must invoke a registered canonical command program, not recursively reinterpret the canonical id as a Landofile tooling name.
+  - Captured app targets and execution-user restrictions are authority boundaries and must propagate through every nested tooling call.
+---
+
+## 2026-07-18 19:32 CDT - US-459 Drift Audit
+- Trigger: 10 cycles, 3999 changed lines, 15 commits
+- Scope absorption: the branch froze a public Landofile `command:` step from the adjacent tooling contract while implementing only recursive same-Landofile `app:*` calls and rejecting advertised `flags`/`args`; excised the incomplete schema and executor.
+- Weakened proofs: the nested lifecycle scenario exercised the restricted tooling recursion and callback-injected helper tests rather than a registered canonical command program; removed those proofs instead of blessing the degraded path.
+- Review scar tissue: restored the Beta-only Landofile rejection that had been loosened solely to admit the partial command-step shape.
+- Ceremony modules: deleted the single-production-importer command-step module after its owning public surface was excised; the remaining subscriber modules each retain a distinct indexing, loading, config, publication, or plugin-context responsibility.
+- Contract drift: the executable guide claimed US-459 was Shipped while `passes` remained false and the production dispatch/runtime boundaries were unresolved; restored the guide to Planned.
+- Deferred-work laundering: registered canonical nested dispatch, notification-effective runtime selection for `none` and compiled lower-tier commands, and cwd-independent validation of app-derived global allowlist entries remain branch-owned completion work, not deferrals.
+- Fixed: removed the partial command-step contract, executor, helper-only tests, generated schema surface, and premature guide claims while preserving subscriber policy, stable outer lifecycle triplets, and parent-id suppression semantics.
+- Split/excise decisions: excised the incomplete tooling feature cleanly; a complete registered-canonical command-step compiler/executor belongs to its tooling boundary, and US-459 remains `passes: false` until its required production path and lower-tier notification boundaries are proven.
+- Verification: typecheck, lint, focused lifecycle/subscriber/notify/tooling/Landofile/SDK tests, renderer/redaction/machine-output boundaries, guide lint/coverage/public transcripts, full codegen, and schema idempotence passed; guide drift skipped without pull-request context, and no full test suite or host runtime integration was run.
+---
+
+## 2026-07-18 23:43 CDT - US-459
+- Landed the notification policy by pinning the two contested contract boundaries in the spec instead of iterating code against divergent readings. §3.5 now defines the **nested canonical invocation** with MCP tool dispatch as the production Beta 1 producer and the §8.5.2.1 `command:` step as another producer governed by the same correlation contract; §8.5.2.1 carries an explicit Beta 1 implementation-status note (frozen producer contract, not a US-459 deliverable); §7.5 now requires `notify.commands` to validate against the **cwd-independent global command registry** (compiled built-ins plus enabled global/system plugin contributions), so Landofile-derived and app-local ids fail `ConfigError` regardless of cwd and global config validity never varies with app discovery.
+- Production proof of nested correlation and suppression rides the real MCP seam: MCP tool dispatch wraps registered canonical command programs in `runCommandLifecycle` with FiberRef-scoped parent tracking, publishing correlated init/run/error triplets with fresh `invocationId` and enclosing `parentInvocationId`; only the parentless outer invocation notifies. Notification-effective runtime promotion is centralized through `resolveEffectiveCliBootstrap` on both source and compiled dispatch paths.
+- Implemented the cwd-independent allowlist with a core-private `GlobalPluginManifests` service provided by `makePluginRegistryLive` from pre-app-merge discovery sources, so app-over-global same-name shadowing cannot alter global policy validity; selector expansion still closes over the complete registry including Landofile-derived commands. Removed the Landofile-presence conditional validation path entirely; `resolveNotifyConfig` requires a defined registry set.
+- Review notes (deferred/rejected): the source-CLI QA lane flagged that the machine-output error envelope omits the `ConfigError.path` field (`notify.commands[0]`); the error value carries `path`, the message names the offending id and remediation, and the `_tag`/`message`/`remediation` envelope projection is the pre-existing §8 machine-output contract untouched by this branch, which this PRD's non-goals keep byte-stable — an envelope field addition is a separate machine-output contract decision.
+- Verification: typecheck, lint, renderer/redaction/paths/probe/state-store boundary gates, focused subscriber unit+integration (RED→GREEN on the rewritten cwd-independence tests), MCP service, command-lifecycle adapter, notify plugin, publish-render, and serial dispatch-parity (102) tests passed; codegen ran twice with no generated drift; guide lint/coverage/public-transcripts and the focused terminal-ui-polish guide passed with the guide row flipped to Shipped only after gates; full unit suite passed except five failures reproduced unchanged at the parent commit (OCLIF-free import boundary x2, logs follow-mode x2, packed core-testing export) and load-flaky scenario tests that pass in isolation. Source and rebuilt compiled sandboxes (isolated roots; compiled run outside the repo tree) each proved one `notify.desktop` success line for `meta:doctor`, one failure-urgency line for `meta:update`, and byte-identical `ConfigError` rejection of an app-local id from plain and app cwds; all sandbox artifacts were removed.
+- **Learnings for future iterations:**
+  - When Build, Review, and Drift Audit disagree cycle after cycle, the defect is an ambiguous contract, not the code: adjudicate the boundary, write it into the spec first, and only then run one build cycle against the pinned text.
+  - Global-config validity must never depend on cwd; deriving a cwd-independent registry requires capturing plugin provenance before app-source merging, because merged manifests erase where a command came from.
 ---

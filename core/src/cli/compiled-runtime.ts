@@ -1,6 +1,6 @@
-import { Effect, type Layer, type Schema } from "effect";
+import { Effect, Layer, type Schema } from "effect";
 
-import type { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
   AppPlanner,
   BuildOrchestrator,
@@ -14,7 +14,8 @@ import type {
   ScratchAppService,
 } from "@lando/sdk/services";
 
-import { cliRuntimeOptions } from "../runtime/cli-options.ts";
+import type { BootstrapLevel } from "../runtime/bootstrap.ts";
+import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 
 import { type BugReportContext, type RendererMode, formatBugReport } from "./bug-report.ts";
@@ -214,9 +215,28 @@ export const rejectInvalidInvocation = (commandId: string, argv: ReadonlyArray<s
   return true;
 };
 
+export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
+  commandId: string,
+  declaredBootstrap: BootstrapLevel,
+  runtime: Layer.Layer<ROut, E, RIn>,
+) => {
+  const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap);
+  return effectiveBootstrap === declaredBootstrap
+    ? runtime
+    : Layer.merge(
+        runtime,
+        makeLandoRuntime(
+          cliRuntimeOptions({
+            bootstrap: effectiveBootstrap,
+            plugins: { policy: "discovery" },
+          }),
+        ),
+      );
+};
+
 export const runCompiledCommand = <A, E, R, RE>(
   operation: Effect.Effect<A, E, R>,
-  runtime: Layer.Layer<Exclude<R, Renderer | StreamFrameSink>, RE>,
+  runtime: Layer.Layer<Exclude<R, EventService | Renderer | StreamFrameSink>, RE>,
   render: (value: A, ctx: RenderContext) => string | undefined,
   options: {
     readonly renderEvents?: boolean;
@@ -232,6 +252,10 @@ export const runCompiledCommand = <A, E, R, RE>(
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
+  const effectiveRuntime =
+    spec?.bootstrap === undefined
+      ? runtime
+      : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime);
   const redactionTokens = spec?.redactionTokens;
   const successExitCode =
     options.successExitCode ??
@@ -240,7 +264,7 @@ export const runCompiledCommand = <A, E, R, RE>(
       : (value: A) => spec.successExitCode?.(value, activeCommandInvocation));
   const invocation = activeCommandInvocation;
   const rendererOptions = {
-    runtime,
+    runtime: effectiveRuntime,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     command: activeCommandId,
@@ -309,18 +333,18 @@ export const globalRuntimeLayer = () =>
     | BuildOrchestrator
     | FileSystem
     | EventService,
-    LandoRuntimeBootstrapError
+    ConfigError | LandoRuntimeBootstrapError
   >;
 
 export const scratchRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
-  ) as Layer.Layer<ScratchAppService, LandoRuntimeBootstrapError>;
+  ) as Layer.Layer<ScratchAppService, ConfigError | LandoRuntimeBootstrapError>;
 
 export const scratchRunRuntimeLayer = () =>
   makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "scratch", plugins: { policy: "discovery" } }),
   ) as Layer.Layer<
     ScratchAppService | ConfigService | FileSystem | RuntimeProviderRegistry,
-    LandoRuntimeBootstrapError
+    ConfigError | LandoRuntimeBootstrapError
   >;

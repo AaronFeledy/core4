@@ -18,7 +18,7 @@ import { makePluginRegistryLive } from "../../../plugins/registry.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { makeMinimalBootstrapLayer } from "./minimal.ts";
 
-export const makePluginsBootstrapLayer = (inputs: BootstrapLayerInputs) => {
+export const makePluginsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {
   const minimalRuntimeLive = makeMinimalBootstrapLayer(inputs);
   const pluginRegistryLive = makePluginRegistryLive(inputs.pluginDiscovery).pipe(
     Layer.provide(minimalRuntimeLive),

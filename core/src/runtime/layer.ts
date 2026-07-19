@@ -17,7 +17,7 @@
  */
 import { Effect, Either, Layer, Schema } from "effect";
 
-import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import { type ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { AbsolutePath, EmbeddingPluginPolicy, ProviderId } from "@lando/sdk/schema";
 import type {
   AppPlanner,
@@ -140,6 +140,7 @@ type MinimalRuntimeServices =
   | Renderer
   | Telemetry
   | ConfigService
+  | EventService
   | PathsService
   | FileSystem
   | CacheService
@@ -154,10 +155,10 @@ type MinimalRuntimeServices =
   | HttpClient
   | Downloader;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
-type ToolingRuntimeServices = MinimalRuntimeServices | PluginRegistry | LandofileService | CommandRegistry;
+type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
+type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
-  | MinimalRuntimeServices
-  | PluginRegistry
+  | CommandRuntimeServices
   | RuntimeProvider
   | RuntimeProviderRegistry
   | DataMover
@@ -185,17 +186,17 @@ type RuntimeLayer =
   | Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>
   | Layer.Layer<PluginRuntimeServices>
   | Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>
-  | Layer.Layer<ToolingRuntimeServices>
-  | Layer.Layer<ToolingRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<CommandRuntimeServices>
+  | Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<ProviderRuntimeServices>
-  | Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<ProviderRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<GlobalRuntimeServices>
-  | Layer.Layer<GlobalRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<GlobalRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<ScratchRuntimeServices>
-  | Layer.Layer<ScratchRuntimeServices, LandoRuntimeBootstrapError>
+  | Layer.Layer<ScratchRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
   | Layer.Layer<AppRuntimeServices>
-  | Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>
-  | Layer.Layer<unknown, LandoRuntimeBootstrapError>;
+  | Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>
+  | Layer.Layer<unknown, ConfigError | LandoRuntimeBootstrapError>;
 
 const collectEmbeddingPluginLayers = (
   entries: ReadonlyArray<unknown>,
@@ -299,22 +300,22 @@ export function makeLandoRuntime(
 ): Layer.Layer<PluginRuntimeServices, LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"commands">,
-): Layer.Layer<MinimalRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<CommandRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"tooling">,
-): Layer.Layer<ToolingRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<ToolingRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"provider">,
-): Layer.Layer<ProviderRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<ProviderRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"global">,
-): Layer.Layer<GlobalRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<GlobalRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"scratch">,
-): Layer.Layer<ScratchRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<ScratchRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(
   options: LandoRuntimeOptionsFor<"app">,
-): Layer.Layer<AppRuntimeServices, LandoRuntimeBootstrapError>;
+): Layer.Layer<AppRuntimeServices, ConfigError | LandoRuntimeBootstrapError>;
 export function makeLandoRuntime(options: unknown): RuntimeLayer;
 export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const decoded = Schema.decodeUnknownEither(LandoRuntimeOptions)(options);

@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Fiber, Layer, Schema } from "effect";
+import { Effect, Fiber, Layer, Queue, Schema, Stream } from "effect";
 
+import { NotImplementedError } from "@lando/sdk/errors";
 import type { McpServeOptions } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
+import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
+import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
+import { versionSpec } from "../../src/cli/oclif/commands/meta/version.ts";
 import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
@@ -41,6 +45,20 @@ const configLayer = (config: McpRuntimeConfigShape) => Layer.succeed(McpRuntimeC
 
 const serviceLayer = (config: McpRuntimeConfigShape, redactedValues: ReadonlyArray<string> = []) =>
   McpServiceLive.pipe(Layer.provide(Layer.mergeAll(configLayer(config), redactionLayer(redactedValues))));
+
+const recordingEventLayer = (events: LandoEvent[]) => {
+  const service: EventServiceShape = {
+    publish: (event) => Effect.sync(() => events.push(event)),
+    subscribe: () => Stream.empty,
+    subscribeQueue: Effect.gen(function* () {
+      return yield* Queue.unbounded<LandoEvent>();
+    }),
+    waitFor: () => Effect.never,
+    waitForAny: () => Effect.never,
+    query: () => Effect.succeed([]),
+  };
+  return Layer.succeed(EventService, service);
+};
 
 const dispatchAndCollectReplies = ({
   config,
@@ -106,6 +124,128 @@ describe("McpService.catalog", () => {
 });
 
 describe("McpService.serve", () => {
+  test("dispatches real meta:version with stable nested lifecycle correlation", async () => {
+    // Given: the production meta:version spec served beneath one outer meta:mcp invocation.
+    const events: LandoEvent[] = [];
+    const eventLayer = recordingEventLayer(events);
+    const runtimeLayer = Layer.mergeAll(eventLayer, redactionLayer());
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: versionSpec }],
+      defaultAllowlist: [versionSpec.id],
+      runtimeLayer,
+    };
+    const layer = Layer.mergeAll(eventLayer, redactionLayer(), serviceLayer(config));
+
+    // When: MCP dispatches the real canonical program and the transport closes.
+    const replies = await Effect.runPromise(
+      Effect.gen(function* () {
+        const inmem = yield* makeInMemoryTransport();
+        const service = yield* McpService;
+        const fiber = yield* runCommandLifecycle(
+          service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, inmem.transport)),
+          {
+            invocation: {
+              commandId: "meta:mcp",
+              argv: [],
+              args: {},
+              flags: {},
+              cwd: "/workspace",
+              invocationId: "outer-id",
+            },
+          },
+        ).pipe(Effect.forkScoped);
+        yield* inmem.push({ toolId: versionSpec.id });
+        while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+        const observed = yield* inmem.replies;
+        yield* inmem.close;
+        yield* Fiber.join(fiber);
+        return observed;
+      }).pipe(Effect.scoped, Effect.provide(layer)),
+    );
+
+    // Then: the inner lifecycle has one fresh id correlated to the stable outer id.
+    expect(replies[0]).toMatchObject({ ok: true, result: { ok: true } });
+    const lifecycle = events.filter((event) => event._tag.startsWith("cli-"));
+    expect(lifecycle.map((event) => event._tag)).toEqual([
+      "cli-meta:mcp-init",
+      "cli-meta:version-init",
+      "cli-meta:version-run",
+      "cli-meta:mcp-run",
+    ]);
+    expect(lifecycle[0]).toMatchObject({ invocationId: "outer-id" });
+    expect(lifecycle[0]?.parentInvocationId).toBeUndefined();
+    expect(lifecycle[3]).toMatchObject({ invocationId: "outer-id" });
+    expect(lifecycle[3]?.parentInvocationId).toBeUndefined();
+    const nestedId = lifecycle[1]?.invocationId;
+    expect(nestedId).toBeDefined();
+    expect(nestedId).not.toBe("outer-id");
+    expect(lifecycle[1]).toMatchObject({ invocationId: nestedId, parentInvocationId: "outer-id" });
+    expect(lifecycle[2]).toMatchObject({ invocationId: nestedId, parentInvocationId: "outer-id" });
+  });
+
+  test("keeps nested init and error correlation stable when MCP canonical execution fails", async () => {
+    // Given: a registered canonical program that fails with an existing tagged error.
+    const events: LandoEvent[] = [];
+    const eventLayer = recordingEventLayer(events);
+    const runtimeLayer = Layer.mergeAll(eventLayer, redactionLayer());
+    const failing = spec("app:info", () =>
+      Effect.fail(
+        new NotImplementedError({
+          commandId: "app:info",
+          message: "Fixture command failed.",
+          remediation: "Use the successful fixture command.",
+        }),
+      ),
+    );
+    const config: McpRuntimeConfigShape = {
+      commandEntries: [{ spec: failing }],
+      defaultAllowlist: [failing.id],
+      runtimeLayer,
+    };
+    const layer = Layer.mergeAll(eventLayer, redactionLayer(), serviceLayer(config));
+
+    // When: MCP executes the failing program beneath the outer invocation.
+    const replies = await Effect.runPromise(
+      Effect.gen(function* () {
+        const inmem = yield* makeInMemoryTransport();
+        const service = yield* McpService;
+        const fiber = yield* runCommandLifecycle(
+          service.serve({ transport: "stdio" }).pipe(Effect.provideService(McpTransport, inmem.transport)),
+          {
+            invocation: {
+              commandId: "meta:mcp",
+              argv: [],
+              args: {},
+              flags: {},
+              cwd: "/workspace",
+              invocationId: "outer-id",
+            },
+          },
+        ).pipe(Effect.forkScoped);
+        yield* inmem.push({ toolId: failing.id });
+        while ((yield* inmem.replies).length < 1) yield* Effect.sleep("10 millis");
+        const observed = yield* inmem.replies;
+        yield* inmem.close;
+        yield* Fiber.join(fiber);
+        return observed;
+      }).pipe(Effect.scoped, Effect.provide(layer)),
+    );
+
+    // Then: the command failure is observable and correlated without failing the MCP transport.
+    expect(replies[0]).toMatchObject({ ok: true, result: { ok: false } });
+    const lifecycle = events.filter((event) => event._tag.startsWith("cli-"));
+    expect(lifecycle.map((event) => event._tag)).toEqual([
+      "cli-meta:mcp-init",
+      "cli-app:info-init",
+      "cli-app:info-error",
+      "cli-meta:mcp-run",
+    ]);
+    const nestedId = lifecycle[1]?.invocationId;
+    expect(nestedId).toBeDefined();
+    expect(lifecycle[1]).toMatchObject({ invocationId: nestedId, parentInvocationId: "outer-id" });
+    expect(lifecycle[2]).toMatchObject({ invocationId: nestedId, parentInvocationId: "outer-id" });
+  });
+
   test("dispatches tooling entries when tooling is enabled", async () => {
     const config: McpRuntimeConfigShape = {
       commandEntries: [],

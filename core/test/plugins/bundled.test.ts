@@ -7,6 +7,7 @@ import { Context, Effect, Layer } from "effect";
 
 import * as fileSyncMutagen from "@lando/file-sync-mutagen";
 import * as loggerPretty from "@lando/logger-pretty";
+import * as notifyLando from "@lando/notify-lando";
 import * as providerDocker from "@lando/provider-docker";
 import * as providerLando from "@lando/provider-lando";
 import * as providerPodman from "@lando/provider-podman";
@@ -28,6 +29,7 @@ const EXPECTED_BUNDLED_PLUGINS = [
   { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
   { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
   { name: "@lando/renderer-lando", layer: Layer.empty, manifest: rendererLando.manifest },
+  { name: "@lando/notify-lando", layer: Layer.empty, manifest: notifyLando.manifest },
   {
     name: "@lando/file-sync-mutagen",
     layer: fileSyncMutagen.engine,
@@ -48,10 +50,11 @@ const EXPECTED_BUNDLED_PLUGINS = [
 
 const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundled.ts");
 const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundled-plugins.ts");
+const notifyIndexPath = resolve(import.meta.dirname, "../../../plugins/notify-lando/src/index.ts");
 
 describe("BUNDLED_PLUGINS", () => {
-  test("exports all bundled plugins with real layer and manifest references", () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(10);
+  test("exports all bundled plugins with real layer and manifest references", async () => {
+    expect(BUNDLED_PLUGINS).toHaveLength(11);
     expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
     );
@@ -81,6 +84,9 @@ describe("BUNDLED_PLUGINS", () => {
     expect(mustacheEntry?.templateEngines?.get("mustache")).toBe(
       templateMustache.templateEngines.get("mustache"),
     );
+    const notifyEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/notify-lando");
+    const notifyFactory = await notifyEntry?.subscriberFactoryLoaders?.get("notify-command-terminal")?.();
+    expect(typeof notifyFactory).toBe("function");
   });
 
   test("every bundled plugin manifest declares the @lando/core compatibility range", () => {
@@ -100,6 +106,22 @@ describe("BUNDLED_PLUGINS", () => {
     const after = await readFile(bundledModulePath, "utf8");
 
     expect(after).toBe(before);
+  });
+
+  test("bundled subscriber module remains lazy behind a Bun-traceable literal importer", async () => {
+    // Given: the package index and generated compiled-bundle table.
+    const [indexSource, bundledSource] = await Promise.all([
+      readFile(notifyIndexPath, "utf8"),
+      readFile(bundledModulePath, "utf8"),
+    ]);
+
+    // When: their subscriber loading edges are inspected.
+    const importsPolicyAtIndex = indexSource.includes('from "./notify.ts"');
+    const hasLiteralLazyImport = bundledSource.includes('import("@lando/notify-lando/notify")');
+
+    // Then: manifest loading is side-effect free and Bun can trace the lazy policy module.
+    expect(importsPolicyAtIndex).toBe(false);
+    expect(hasLiteralLazyImport).toBe(true);
   });
 
   test("PluginRegistryLive lists and loads bundled manifests when external registries are empty", async () => {

@@ -282,7 +282,7 @@ export const setupSpec: LandoCommandSpec<
   summary: "Run host setup (provider, CA, proxy, shell integration).",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "minimal",
+  bootstrap: "provider",
   run: (input) =>
     Effect.gen(function* () {
       const configService = yield* ConfigService;

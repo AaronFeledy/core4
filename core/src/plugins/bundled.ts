@@ -18,16 +18,17 @@ import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 import type { TemplateEngine } from "@lando/sdk/template";
 
-import * as plugin6 from "@lando/file-sync-mutagen";
+import * as plugin7 from "@lando/file-sync-mutagen";
 import * as plugin4 from "@lando/logger-pretty";
+import * as plugin6 from "@lando/notify-lando";
 import * as plugin1 from "@lando/provider-docker";
 import * as plugin0 from "@lando/provider-lando";
 import * as plugin2 from "@lando/provider-podman";
-import * as plugin7 from "@lando/proxy-traefik";
+import * as plugin8 from "@lando/proxy-traefik";
 import * as plugin5 from "@lando/renderer-lando";
 import * as plugin3 from "@lando/service-lando";
-import * as plugin8 from "@lando/template-handlebars";
-import * as plugin9 from "@lando/template-mustache";
+import * as plugin9 from "@lando/template-handlebars";
+import * as plugin10 from "@lando/template-mustache";
 interface BundledPluginModule {
   readonly [key: string]: unknown;
 }
@@ -123,6 +124,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly appFeatures?: ReadonlyMap<string, AppFeatureDefinition>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
+  readonly subscriberFactoryLoaders?: ReadonlyMap<string, () => Promise<unknown>>;
 }> = [
   {
     name: "@lando/provider-lando",
@@ -185,18 +187,24 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...templateEnginesFrom({ ...plugin5 }),
   },
   {
-    name: "@lando/file-sync-mutagen",
-    layer: plugin6.engine,
+    name: "@lando/notify-lando",
+    layer: Layer.empty,
     manifest: plugin6.manifest,
     ...serviceTypesFrom({ ...plugin6 }),
     ...serviceFeaturesFrom({ ...plugin6 }),
     ...appFeaturesFrom({ ...plugin6 }),
     ...globalServicesFrom({ ...plugin6 }),
     ...templateEnginesFrom({ ...plugin6 }),
+    subscriberFactoryLoaders: new Map([
+      [
+        "notify-command-terminal",
+        () => import("@lando/notify-lando/notify").then((module) => module.default),
+      ],
+    ]),
   },
   {
-    name: "@lando/proxy-traefik",
-    layer: plugin7.proxy,
+    name: "@lando/file-sync-mutagen",
+    layer: plugin7.engine,
     manifest: plugin7.manifest,
     ...serviceTypesFrom({ ...plugin7 }),
     ...serviceFeaturesFrom({ ...plugin7 }),
@@ -205,8 +213,8 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...templateEnginesFrom({ ...plugin7 }),
   },
   {
-    name: "@lando/template-handlebars",
-    layer: plugin8.templateEngine,
+    name: "@lando/proxy-traefik",
+    layer: plugin8.proxy,
     manifest: plugin8.manifest,
     ...serviceTypesFrom({ ...plugin8 }),
     ...serviceFeaturesFrom({ ...plugin8 }),
@@ -215,7 +223,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...templateEnginesFrom({ ...plugin8 }),
   },
   {
-    name: "@lando/template-mustache",
+    name: "@lando/template-handlebars",
     layer: plugin9.templateEngine,
     manifest: plugin9.manifest,
     ...serviceTypesFrom({ ...plugin9 }),
@@ -223,5 +231,15 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...appFeaturesFrom({ ...plugin9 }),
     ...globalServicesFrom({ ...plugin9 }),
     ...templateEnginesFrom({ ...plugin9 }),
+  },
+  {
+    name: "@lando/template-mustache",
+    layer: plugin10.templateEngine,
+    manifest: plugin10.manifest,
+    ...serviceTypesFrom({ ...plugin10 }),
+    ...serviceFeaturesFrom({ ...plugin10 }),
+    ...appFeaturesFrom({ ...plugin10 }),
+    ...globalServicesFrom({ ...plugin10 }),
+    ...templateEnginesFrom({ ...plugin10 }),
   },
 ];

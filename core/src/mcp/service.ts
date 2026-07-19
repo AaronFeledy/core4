@@ -20,6 +20,7 @@ import type { McpCatalog, McpCatalogOptions, McpServeOptions } from "@lando/sdk/
 import type { Redactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
+import { makeNestedCommandInvocation, runCommandLifecycle } from "../cli/command-lifecycle.ts";
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
 import { StreamFrameSink, type StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
@@ -174,19 +175,30 @@ const makeService = (
             effective: effective.ids,
             allowlistSource: options.tooling === true ? `${effective.source}+tooling` : effective.source,
             redactor,
-            execute: (entry, runInput) => {
-              const command = entry.spec.run(runInput) as Effect.Effect<unknown, unknown, unknown>;
-              const rootAwareCommand =
-                runInput.appPath === undefined
-                  ? command
-                  : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
-              return rootAwareCommand.pipe(
+            execute: (entry, runInput) =>
+              Effect.gen(function* () {
+                const command = entry.spec.run(runInput);
+                const rootAwareCommand =
+                  runInput.appPath === undefined
+                    ? command
+                    : command.pipe(Effect.provideService(RuntimeCwd, runInput.appPath));
+                const invocation = yield* makeNestedCommandInvocation(entry.spec.id, {
+                  argv: runInput.argv,
+                  args: runInput.args,
+                  flags: runInput.flags,
+                  ...(runInput.appPath === undefined ? {} : { cwd: runInput.appPath }),
+                });
+                const exit = yield* runCommandLifecycle(rootAwareCommand, {
+                  invocation,
+                  ...(entry.spec.successExitCode === undefined
+                    ? {}
+                    : { successExitCode: (value) => entry.spec.successExitCode?.(value, runInput) }),
+                });
+                return yield* outcomeFromExit(exit);
+              }).pipe(
                 Effect.provide(runtimeContext),
                 Effect.provideService(StreamFrameSink, streamSinkFor(notifyFor(incoming), redactor)),
-                Effect.exit,
-                Effect.flatMap(outcomeFromExit),
-              ) as Effect.Effect<CommandResultOutcome, never>;
-            },
+              ) as Effect.Effect<CommandResultOutcome, never>,
             notify: notifyFor(incoming),
             ...(publish === undefined ? {} : { publish }),
           });

@@ -5,9 +5,9 @@
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
 import { Flags } from "@oclif/core";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 
-import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
+import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { formatBugReport } from "../../../bug-report.ts";
 import { newInvocationId } from "../../../command-lifecycle.ts";
@@ -38,6 +38,7 @@ import {
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
 } from "../../command-boundary.ts";
+import { getCommandRuntimeLayer } from "../../hooks/init.ts";
 
 export interface InitFlags {
   readonly full: boolean;
@@ -96,7 +97,7 @@ export const initSpec: LandoCommandSpec<never> = {
   summary: "Generate a new Lando app.",
   namespace: "apps",
   topLevelAlias: true,
-  bootstrap: "commands",
+  bootstrap: "minimal",
   run: () => Effect.die("not yet implemented: apps:init"),
 };
 
@@ -203,6 +204,21 @@ export default class InitCommand extends LandoCommandBase {
       return;
 
     const parsed = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
+    const runtime = getCommandRuntimeLayer(this.ctor);
+    if (runtime === undefined) {
+      await renderPreCommandFailure({
+        commandId: initSpec.id,
+        error: new LandoRuntimeBootstrapError({
+          message: `OCLIF command ${this.id ?? initSpec.id} is missing a valid static bootstrap declaration.`,
+          stage: "minimal",
+        }),
+        rendererMode,
+        resultFormat,
+        resultSchema: initSpec.resultSchema,
+        deprecationWarnings: deprecationWarnings.enabled,
+      });
+      return;
+    }
 
     const options = {
       ...initOptionsFromInput(parsed),
@@ -215,7 +231,7 @@ export default class InitCommand extends LandoCommandBase {
     await runWithRendererHandling(
       Effect.tryPromise({ try: () => initApp(options), catch: (error) => error }),
       {
-        runtime: Layer.empty,
+        runtime,
         rendererMode,
         resultFormat,
         command: initSpec.id,

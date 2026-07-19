@@ -30,7 +30,9 @@ import { join, resolve } from "node:path";
 
 import { DEFERRED_COMMAND_PLANS, deferredCommandPlan } from "../../../src/cli/deferred-commands.ts";
 import { isCanonicalLandoCommandId, isMvpCommandId } from "../../../src/cli/oclif/command-base.ts";
+import { updateSpec } from "../../../src/cli/oclif/commands/meta/update.ts";
 import compiledCommands from "../../../src/cli/oclif/compiled-commands.ts";
+import { COMPILED_OCLIF_MANIFEST } from "../../../src/cli/oclif/compiled-manifest.ts";
 import { ensureCompiledCli } from "../../_support/compiled-cli.ts";
 import { listTree, pathsOutsidePrefixes } from "../_util/fs-tree.ts";
 import { errorCodeFromStderr, normalizeJsonEnvelope, normalizeOutput } from "./normalize.ts";
@@ -39,6 +41,7 @@ const repoRoot = resolve(import.meta.dirname, "../../../..");
 const coreRoot = resolve(repoRoot, "core");
 const runSourcePath = resolve(coreRoot, "src/cli/run.ts");
 const compiledRuntimeSourcePath = resolve(coreRoot, "src/cli/compiled-runtime.ts");
+const metaPluginAdapterSourcePath = resolve(coreRoot, "src/cli/cli-adapters/meta-plugin.ts");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
 let compiledBinary = "";
 
@@ -48,6 +51,7 @@ const DEFERRED_IDS: ReadonlyArray<string> = [...DEFERRED_COMMAND_PLANS.keys()].s
 
 const runSource = readFileSync(runSourcePath, "utf-8");
 const compiledRuntimeSource = readFileSync(compiledRuntimeSourcePath, "utf-8");
+const metaPluginAdapterSource = readFileSync(metaPluginAdapterSourcePath, "utf-8");
 
 /**
  * A canonical id has a compiled-dispatch branch when `runCompiledCli` compares
@@ -121,6 +125,37 @@ describe("compiled-binary dispatch parity — structural", () => {
       "deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false",
     );
   });
+
+  test("compiled global list uses the same minimal bootstrap as source dispatch", () => {
+    // Given: the compiled adapter that owns meta:global:list runtime construction.
+    const start = metaPluginAdapterSource.indexOf("export const runMetaGlobalList =");
+    const end = metaPluginAdapterSource.indexOf("export const runMetaGlobalInfo", start);
+
+    // When: its isolated function body is inspected.
+    const adapter = metaPluginAdapterSource.slice(start, end);
+
+    // Then: plugin and subscriber failures cannot block the compiled inventory read.
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(adapter).toContain('bootstrap: "minimal"');
+    expect(adapter).not.toContain('bootstrap: "plugins"');
+  });
+
+  test("meta:update retains its declaration and relies on centralized compiled runtime promotion", () => {
+    // Given: source updateSpec, compiled OCLIF manifest, and the run.ts meta:update branch.
+    const start = runSource.indexOf('if (argv[0] === "update" || argv[0] === "meta:update")');
+    const end = runSource.indexOf('if (argv[0] === "global:config:set"', start);
+    const adapter = runSource.slice(start, end);
+
+    // When/Then: every surface retains the declaration while the compiled boundary selects the effective runtime.
+    expect(updateSpec.bootstrap).toBe("plugins");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    expect(adapter).toContain('bootstrap: "plugins"');
+    expect(adapter).not.toContain('bootstrap: "commands"');
+    expect(compiledRuntimeSource).toContain("resolveEffectiveCliBootstrap");
+  });
 });
 
 interface RunResult {
@@ -164,6 +199,33 @@ const runSourceCli = (args: ReadonlyArray<string>, opts?: RunProcessOptions) =>
 
 const runCompiledCli = (args: ReadonlyArray<string>, opts?: RunProcessOptions) =>
   runProcess([compiledBinary, ...args], opts);
+
+const runMcpProcess = async (
+  cmd: ReadonlyArray<string>,
+  stdin: string,
+  env: Record<string, string>,
+): Promise<RunResult> => {
+  const proc = Bun.spawn({ cmd: [...cmd], env, stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+  proc.stdin.write(stdin);
+  const stderrPromise = new Response(proc.stderr).text();
+  const reader = proc.stdout.getReader();
+  const decoder = new TextDecoder();
+  let stdout = "";
+  while (!stdout.includes("\n")) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    stdout += decoder.decode(chunk.value, { stream: true });
+  }
+  proc.stdin.end();
+  for (;;) {
+    const chunk = await reader.read();
+    if (chunk.done) break;
+    stdout += decoder.decode(chunk.value, { stream: true });
+  }
+  stdout += decoder.decode();
+  const [exitCode, stderr] = await Promise.all([proc.exited, stderrPromise]);
+  return { exitCode, stdout, stderr };
+};
 
 /**
  * Throwaway `LANDO_USER_*` roots so uninstall planning reads test-owned dirs,
@@ -420,6 +482,119 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
   beforeAll(async () => {
     compiledBinary = await ensureCompiledCli();
   }, 240_000);
+
+  test("configured lower-tier notify commands activate subscribers on both dispatch paths", async () => {
+    // Given: one configured command at each lower bootstrap tier.
+    const isolated = makeIsolatedEnv();
+    const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+    mkdirSync(confRoot, { recursive: true });
+    writeFileSync(
+      join(confRoot, "config.yml"),
+      [
+        "notify:",
+        "  thresholdMs: 0",
+        "  commands:",
+        "    - meta:version",
+        "    - apps:list",
+        "    - meta:mcp",
+        "",
+      ].join("\n"),
+    );
+    const commands = [
+      ["meta:version", "--renderer=json"],
+      ["apps:list", "--renderer=json"],
+      ["meta:mcp", "--list", "--renderer=json"],
+    ] as const;
+
+    try {
+      // When: source and compiled dispatch execute every configured lower-tier command.
+      for (const argv of commands) {
+        const source = await runSourceCli(argv, { env: isolated.env });
+        const compiled = await runCompiledCli(argv, { env: isolated.env });
+
+        // Then: both paths complete and publish exactly one notification event.
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+        const sourceNotifications = source.stderr
+          .split("\n")
+          .filter((line) => line.includes('"_tag":"notify.desktop"'));
+        const compiledNotifications = compiled.stderr
+          .split("\n")
+          .filter((line) => line.includes('"_tag":"notify.desktop"'));
+        expect(sourceNotifications, `${argv[0]} source stderr: ${source.stderr}`).toHaveLength(1);
+        expect(compiledNotifications, `${argv[0]} compiled stderr: ${compiled.stderr}`).toHaveLength(1);
+      }
+    } finally {
+      isolated.cleanup();
+    }
+  }, 120_000);
+
+  test("unconfigured lower-tier commands preserve cold dispatch on both paths", async () => {
+    // Given: notification policy names only an app-derived command unavailable in this cwd.
+    const isolated = makeIsolatedEnv();
+    const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+    mkdirSync(confRoot, { recursive: true });
+    writeFileSync(
+      join(confRoot, "config.yml"),
+      "notify:\n  thresholdMs: 0\n  commands:\n    - app:project-release\n",
+    );
+    const commands = [
+      ["meta:version", "--renderer=json"],
+      ["apps:list", "--renderer=json"],
+      ["meta:mcp", "--list", "--renderer=json"],
+    ] as const;
+
+    try {
+      // When: source and compiled dispatch execute commands absent from the configured family.
+      for (const argv of commands) {
+        const source = await runSourceCli(argv, { env: isolated.env });
+        const compiled = await runCompiledCli(argv, { env: isolated.env });
+
+        // Then: both paths succeed without loading notification subscribers for the command.
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+        expect(source.stderr).not.toContain('"_tag":"notify.desktop"');
+        expect(compiled.stderr).not.toContain('"_tag":"notify.desktop"');
+      }
+    } finally {
+      isolated.cleanup();
+    }
+  }, 120_000);
+
+  test("meta:mcp dispatches a nested canonical command on both real stdio paths", async () => {
+    // Given: both the MCP host and nested real meta:version command are notification-eligible.
+    const isolated = makeIsolatedEnv();
+    const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+    mkdirSync(confRoot, { recursive: true });
+    writeFileSync(
+      join(confRoot, "config.yml"),
+      "notify:\n  thresholdMs: 0\n  commands:\n    - meta:mcp\n    - meta:version\n",
+    );
+    const stdin = `${JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: { name: "meta:version", arguments: {} },
+    })}\n`;
+    const argv = ["meta:mcp", "--allow=meta:version"];
+
+    try {
+      // When: each real stdio surface dispatches meta:version and receives EOF.
+      const source = await runMcpProcess([process.execPath, sourceCli, ...argv], stdin, isolated.env);
+      const compiled = await runMcpProcess([compiledBinary, ...argv], stdin, isolated.env);
+
+      // Then: the nested command succeeds identically and non-TTY presentation stays silent.
+      expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+      expect(compiled.exitCode, `compiled stderr: ${compiled.stderr}`).toBe(0);
+      expect(normalizeJsonEnvelope(lastJsonLine(compiled.stdout))).toEqual(
+        normalizeJsonEnvelope(lastJsonLine(source.stdout)),
+      );
+      expect(source.stderr).not.toContain('"_tag":"notify.desktop"');
+      expect(compiled.stderr).not.toContain('"_tag":"notify.desktop"');
+    } finally {
+      isolated.cleanup();
+    }
+  }, 120_000);
 
   describe("MVP canonical ids dispatch (not NotImplementedError) at parity", () => {
     test("meta:version: both paths exit 0 with the same version line", async () => {
@@ -1648,6 +1823,45 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
   });
 
   describe("answer-source and interactivity resolution at parity", () => {
+    test("apps:init: minimal bootstrap ignores notification policy on both paths", async () => {
+      // Given: notification config that commands-tier policy would reject.
+      const isolated = makeIsolatedEnv();
+      const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-notify-src-"));
+      const compiledCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-notify-cmp-"));
+      const confRoot = envPath(isolated.env, "LANDO_USER_CONF_ROOT");
+      mkdirSync(confRoot, { recursive: true });
+      writeFileSync(join(confRoot, "config.yml"), "notify:\n  commands:\n    - app:missing-command\n");
+      const args = [
+        "apps:init",
+        "--recipe=empty",
+        "--name=invalid-notify-app",
+        "--no-interactive",
+        "--format=json",
+      ] as const;
+
+      try {
+        // When: source and compiled dispatch run the minimal init surface.
+        const source = await runSourceCli(args, { cwd: sourceCwd, env: isolated.env });
+        const compiled = await runCompiledCli(args, { cwd: compiledCwd, env: isolated.env });
+
+        // Then: subscriber policy cannot block or notify during scaffolding.
+        expect(source.exitCode, `source stderr: ${source.stderr}`).toBe(0);
+        expect(compiled.exitCode).toBe(source.exitCode);
+        expect(
+          readFileSync(join(sourceCwd, "invalid-notify-app", ".lando.yml"), "utf8").length,
+        ).toBeGreaterThan(0);
+        expect(
+          readFileSync(join(compiledCwd, "invalid-notify-app", ".lando.yml"), "utf8").length,
+        ).toBeGreaterThan(0);
+        expect(source.stderr).not.toContain('"_tag":"notify.desktop"');
+        expect(compiled.stderr).not.toContain('"_tag":"notify.desktop"');
+      } finally {
+        rmSync(sourceCwd, { recursive: true, force: true });
+        rmSync(compiledCwd, { recursive: true, force: true });
+        isolated.cleanup();
+      }
+    }, 30_000);
+
     test("apps:init: flag answers + --no-interactive scaffold identically", async () => {
       const isolated = makeIsolatedEnv();
       const sourceCwd = mkdtempSync(join(tmpdir(), "lando-parity-init-src-"));

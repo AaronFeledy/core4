@@ -56,7 +56,9 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
   // (resolved via the bundled-renderer registry), not as a runtime `Layer`, so
   // their bundled-table `layer` slot carries `Layer.empty`. That requires a
   // value import of `Layer`.
-  const usesLayerValue = entries.some((entry) => entry.contributes?.renderers !== undefined);
+  const usesLayerValue = entries.some(
+    (entry) => entry.contributes?.renderers !== undefined || entry.contributes?.subscribers !== undefined,
+  );
   const imports: Array<string> = [
     usesLayerValue
       ? 'import { Effect, Layer } from "effect";'
@@ -74,7 +76,9 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     const moduleName = `plugin${index}`;
     pluginImports.push({ name: entry.name, statement: `import * as ${moduleName} from "${entry.name}";` });
     const layerValue =
-      entry.contributes?.renderers !== undefined ? "Layer.empty" : `${moduleName}.${layerExportFor(entry)}`;
+      entry.contributes?.renderers !== undefined || entry.contributes?.subscribers !== undefined
+        ? "Layer.empty"
+        : `${moduleName}.${layerExportFor(entry)}`;
     tableRows.push(
       [
         "  {",
@@ -86,6 +90,16 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
         `    ...appFeaturesFrom({ ...${moduleName} }),`,
         `    ...globalServicesFrom({ ...${moduleName} }),`,
         `    ...templateEnginesFrom({ ...${moduleName} }),`,
+        ...(entry.contributes?.subscribers === undefined
+          ? []
+          : [
+              "    subscriberFactoryLoaders: new Map([",
+              ...entry.contributes.subscribers.map(
+                (subscriber) =>
+                  `      ["${subscriber.id}", () => import("${subscriber.module}").then((module) => module.default)],`,
+              ),
+              "    ]),",
+            ]),
         "  },",
       ].join("\n"),
     );
@@ -193,6 +207,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "  readonly appFeatures?: ReadonlyMap<string, AppFeatureDefinition>;",
     "  readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;",
     "  readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;",
+    "  readonly subscriberFactoryLoaders?: ReadonlyMap<string, () => Promise<unknown>>;",
     "}> = [",
     tableRows.join("\n"),
     "];",

@@ -6,6 +6,7 @@ import { EventError } from "@lando/core/errors";
 import { EventService } from "@lando/core/services";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import { EventServiceLive } from "../../src/services/event-service.ts";
+import { EventDispatchControl, EventRuntimeLive } from "../../src/services/event-service.ts";
 
 const appRefFixture = {
   kind: "user",
@@ -133,5 +134,55 @@ describe("EventServiceLive", () => {
     );
 
     expect(Exit.isInterrupted(exit)).toBe(true);
+  });
+
+  test("awaits the dispatcher attached to the same event-service instance", async () => {
+    // Given: an internal dispatcher installed on one event runtime.
+    const dispatched: string[] = [];
+
+    // When: the public EventService publishes an event through that runtime.
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const control = yield* EventDispatchControl;
+        const events = yield* EventService;
+        yield* control.install({
+          hasSubscribers: () => true,
+          dispatch: (event) =>
+            Effect.sync(() => {
+              dispatched.push(event._tag);
+            }),
+        });
+        yield* events.publish(preAppStartEvent);
+      }).pipe(Effect.provide(EventRuntimeLive)),
+    );
+
+    // Then: publish does not complete before dispatcher delivery.
+    expect(dispatched).toEqual(["pre-app-start"]);
+  });
+
+  test("subscriber membership fast path skips dispatch without suppressing the public event bus", async () => {
+    // Given: a closed plugin-subscriber membership predicate with no match.
+    let dispatches = 0;
+
+    // When: an ordinary public event is published.
+    const retained = await Effect.runPromise(
+      Effect.gen(function* () {
+        const control = yield* EventDispatchControl;
+        const events = yield* EventService;
+        yield* control.install({
+          hasSubscribers: () => false,
+          dispatch: () =>
+            Effect.sync(() => {
+              dispatches += 1;
+            }),
+        });
+        yield* events.publish(preAppStartEvent);
+        return yield* events.query("pre-app-start");
+      }).pipe(Effect.provide(EventRuntimeLive)),
+    );
+
+    // Then: plugin dispatch is skipped while history/public consumers still receive the event.
+    expect(dispatches).toBe(0);
+    expect(retained).toEqual([preAppStartEvent]);
   });
 });

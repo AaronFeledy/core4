@@ -437,7 +437,12 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
         try: () => initApp({ ...initOptionsFromInput(input), onWarn: emitDiagnosticLine }),
         catch: (error) => error,
       }),
-      Layer.empty,
+      makeLandoRuntime(
+        cliRuntimeOptions({
+          bootstrap: "minimal",
+          plugins: { policy: "discovery" },
+        }),
+      ),
       (result) => `Created ${result.appName} at ${result.directory}`,
     );
     return;

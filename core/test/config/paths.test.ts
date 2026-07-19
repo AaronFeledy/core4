@@ -166,6 +166,31 @@ describe("resolveLandoRoots platform-default matrix", () => {
   });
 });
 
+describe("plugin state paths", () => {
+  test("derives durable plugin state below userData/plugins on every platform", () => {
+    // Given: deterministic POSIX and Windows user-data roots.
+    const linux = makeLandoPaths({ platform: "linux", home: "/home/tester", env: noEnv });
+    const windows = makeLandoPaths({
+      platform: "win32",
+      home: "C:\\Users\\tester",
+      env: {
+        APPDATA: "C:\\Users\\tester\\AppData\\Roaming",
+        LOCALAPPDATA: "C:\\Users\\tester\\AppData\\Local",
+        PROGRAMDATA: "C:\\ProgramData",
+      },
+    });
+
+    // When: plugin state roots are derived.
+    // Then: they use the canonical durable-state subtree, not the app-plugin directory.
+    expect(linux.pluginStateDir("@lando/notify-lando")).toBe(
+      "/home/tester/.local/share/lando/plugins/@lando/notify-lando",
+    );
+    expect(windows.pluginStateDir("notify-lando")).toBe(
+      "C:\\Users\\tester\\AppData\\Local\\Lando\\Data\\plugins\\notify-lando",
+    );
+  });
+});
+
 describe("resolveLandoRoots precedence order", () => {
   const home = "/home/tester";
 

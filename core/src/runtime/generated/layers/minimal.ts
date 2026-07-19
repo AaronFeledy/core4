@@ -26,7 +26,7 @@ import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { RedactionServiceLive } from "../../../redaction/service.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
-import { EventServiceLive } from "../../../services/event-service.ts";
+import { EventRuntimeLive } from "../../../services/event-service.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
 import { PrivilegeServiceLive } from "../../../services/privilege.ts";
 import { ProcessRunnerLive } from "../../../services/process-runner.ts";
@@ -38,12 +38,12 @@ import { type BootstrapLayerInputs, makeLibraryRenderer } from "../../bootstrap-
 export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const telemetryLive = makeTelemetryLayer(inputs.telemetryEnabled);
   const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
-  const eventServiceLive = EventServiceLive.pipe(Layer.provide(redactionLive));
+  const eventServiceLive = EventRuntimeLive.pipe(Layer.provide(redactionLive));
   const httpClientLive = HttpClientLive.pipe(
     Layer.provide(Layer.mergeAll(ConfigServiceLive, eventServiceLive)),
   );
 
-  return Layer.mergeAll(
+  const minimalRuntimeLive = Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
     Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides)),
@@ -67,4 +67,5 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     httpClientLive,
     DownloaderLive.pipe(Layer.provide(httpClientLive)),
   );
+  return minimalRuntimeLive;
 };

@@ -28,11 +28,11 @@ const makeEventConsumerRendererLive = (
       const fiber = yield* Effect.forkScoped(consumer);
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
+          yield* Fiber.interrupt(fiber);
           const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) handle(event);
           }
-          yield* Fiber.interrupt(fiber);
         }),
       );
     }),
@@ -63,6 +63,9 @@ export const makePlainTaskDetailRendererLive = (io: RendererIO): Layer.Layer<nev
 
 export const makeJsonRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderJsonLine, io, "stderr");
+
+export const makeJsonNotificationRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
+  makeRendererLive((event) => (event._tag === "notify.desktop" ? JSON.stringify(event) : null), io, "stderr");
 
 export const makeVerboseRendererLive = (io: RendererIO): Layer.Layer<never, never, EventService> =>
   makeRendererLive(renderVerboseLine, io, "stdout");

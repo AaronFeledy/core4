@@ -13,6 +13,7 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 const CORE_ROOT = resolve(REPO_ROOT, "core");
 const JSON_OUTPUT = resolve(CORE_ROOT, "oclif.manifest.json");
 const TS_OUTPUT = resolve(CORE_ROOT, "src/cli/oclif/compiled-manifest.ts");
+const COMMAND_IDS_OUTPUT = resolve(CORE_ROOT, "src/cli/generated/command-ids.ts");
 
 const renderCompiledManifestModule = (manifest: Interfaces.Manifest): string => `/**
  * **GENERATED FILE** — do not edit by hand.
@@ -26,6 +27,14 @@ const renderCompiledManifestModule = (manifest: Interfaces.Manifest): string => 
 import type { Interfaces } from "@oclif/core";
 
 export const COMPILED_OCLIF_MANIFEST = ${JSON.stringify(manifest, null, 2)} satisfies Interfaces.Manifest;
+`;
+
+const renderCommandIdsModule = (commandIds: ReadonlyArray<string>): string => `/**
+ * **GENERATED FILE** — do not edit by hand.
+ *
+ * Regenerate via \`bun run scripts/build-oclif-manifest.ts\`.
+ */
+export const BUILT_IN_COMMAND_IDS = ${JSON.stringify(commandIds, null, 2)} as const;
 `;
 
 const cacheDefaultValue = async (flag: Interfaces.OptionFlag<unknown>): Promise<unknown> => {
@@ -130,8 +139,9 @@ const main = async (): Promise<void> => {
 
   await writeFormattedOutput(JSON_OUTPUT, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFormattedOutput(TS_OUTPUT, renderCompiledManifestModule(manifest));
+  await writeFormattedOutput(COMMAND_IDS_OUTPUT, renderCommandIdsModule(Object.keys(commands)));
   console.log(
-    `[build-oclif-manifest] wrote ${JSON_OUTPUT} + ${TS_OUTPUT} (${Object.keys(manifest.commands).length} commands)`,
+    `[build-oclif-manifest] wrote ${JSON_OUTPUT} + ${TS_OUTPUT} + ${COMMAND_IDS_OUTPUT} (${Object.keys(manifest.commands).length} commands)`,
   );
 };
 

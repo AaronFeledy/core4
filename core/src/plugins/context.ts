@@ -10,7 +10,8 @@ import { posix as pathPosix } from "node:path";
 import { Effect } from "effect";
 import type { Context, Scope } from "effect";
 
-import { EventError, ManagedFileError, StateStoreError } from "@lando/sdk/errors";
+import { EventError, ManagedFileError } from "@lando/sdk/errors";
+import type { RenderEvent } from "@lando/sdk/events";
 import type {
   AbsolutePath,
   ManagedFile,
@@ -23,20 +24,12 @@ import type {
   ManagedFileApplyOptions,
   ManagedFileSelector,
   ManagedFileService,
-  StateBucket,
-  StateBucketSpec,
   StateStoreShape,
 } from "@lando/sdk/services";
 
+import { type PluginStateStore, makePluginStateStore } from "./context-state.ts";
+
 type ManagedFileServiceImpl = Context.Tag.Service<typeof ManagedFileService>;
-
-/** A plugin declares a state bucket; the root is supplied by the host surface. */
-export type PluginStateBucketSpec<A, I> = Omit<StateBucketSpec<A, I>, "root">;
-
-/** The plugin-scoped `StateStore` view a plugin operates through. */
-export interface PluginStateStore {
-  readonly open: <A, I>(spec: PluginStateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
-}
 
 /** A `ManagedFile` a plugin declares; the `owner` and base are supplied by the surface. */
 export type PluginManagedFile = Omit<ManagedFile, "owner" | "base"> & {
@@ -52,6 +45,7 @@ export type PluginManagedFileSelector = Omit<ManagedFileSelector, "owner" | "bas
 
 /** The owner-scoped `ManagedFileService` view a plugin operates through. */
 export interface PluginManagedFiles {
+  readonly pluginId: string;
   readonly plan: (
     files: ReadonlyArray<PluginManagedFile>,
   ) => Effect.Effect<ManagedFilePlan, ManagedFileError>;
@@ -214,39 +208,7 @@ export const makePluginManagedFiles = (
     );
   };
 
-  return { plan, apply, remove, status, adopt, release };
-};
-
-const stateRootPathOf = (root: unknown): string | undefined => {
-  if (typeof root !== "object" || root === null || !("path" in root)) return undefined;
-  const path = root.path;
-  return typeof path === "string" ? path : undefined;
-};
-
-const pluginStatePathError = (pluginStateRoot: AbsolutePath): StateStoreError =>
-  new StateStoreError({
-    reason: "path",
-    operation: "open",
-    path: pluginStateRoot,
-    remediation: "Plugins are confined to their host-assigned durable-state subtree.",
-  });
-
-/**
- * Build a `StateStore` view that injects the plugin's state root on every open.
- * A foreign `root` supplied by an untyped caller is rejected instead of ignored.
- */
-export const makePluginStateStore = (
-  store: StateStoreShape,
-  pluginStateRoot: AbsolutePath,
-): PluginStateStore => {
-  const open: PluginStateStore["open"] = (spec) => {
-    if ("root" in spec && stateRootPathOf(spec.root) !== pluginStateRoot) {
-      return Effect.fail(pluginStatePathError(pluginStateRoot));
-    }
-    return store.open({ ...spec, root: { path: pluginStateRoot } });
-  };
-
-  return { open };
+  return { pluginId: ownerId, plan, apply, remove, status, adopt, release };
 };
 
 /** Constrained context a plugin receives at runtime. */
@@ -261,7 +223,7 @@ export interface LandoPluginContext {
      * Default stub fails closed until an EventService is wired by the loader.
      */
     readonly publishRender: (
-      event: unknown,
+      event: RenderEvent,
     ) => import("effect").Effect.Effect<void, import("@lando/sdk/errors").EventError>;
   };
 }

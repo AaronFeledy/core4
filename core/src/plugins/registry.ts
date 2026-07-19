@@ -2,7 +2,7 @@ import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { type Context, Effect, Either, Layer, Schema } from "effect";
+import { Context, Effect, Either, Layer, Schema } from "effect";
 
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -14,6 +14,7 @@ import { resolveUserDataRoot } from "../config/roots.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";
 import { BUNDLED_PLUGINS } from "./bundled.ts";
+import { GlobalPluginManifests } from "./global-manifests.ts";
 import { readInstalledPluginRegistry } from "./installed-registry.ts";
 
 type PluginSourceKind = "system" | "user" | "app";
@@ -23,6 +24,11 @@ interface PluginRegistryDiscoveryOptions {
   readonly user?: boolean;
   readonly app?: boolean;
   readonly disable?: ReadonlyArray<string>;
+}
+
+interface PluginRegistryServices {
+  readonly registry: Context.Tag.Service<typeof PluginRegistry>;
+  readonly globalManifests: Context.Tag.Service<typeof GlobalPluginManifests>;
 }
 
 interface DiscoveredPlugin {
@@ -447,9 +453,9 @@ const makePluginRegistry = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   logger: Context.Tag.Service<typeof Logger> | undefined,
   discovery: PluginRegistryDiscoveryOptions,
-): Context.Tag.Service<typeof PluginRegistry> => {
+): PluginRegistryServices => {
   const disabled = new Set(discovery.disable ?? []);
-  const discoverPlugins = Effect.gen(function* () {
+  const discoverGlobalPlugins = Effect.gen(function* () {
     const bundledPlugins = (discovery.bundled === false ? [] : systemPlugins).filter(
       (plugin) => !disabled.has(plugin.manifest.name),
     );
@@ -461,18 +467,27 @@ const makePluginRegistry = (
       discovery.user === false || userDataRoot === undefined
         ? []
         : yield* discoverInstalledPlugins("user", makeLandoPaths({ userDataRoot }).pluginsDir, logger);
+    return yield* mergeDiscoveredPlugins([bundledPlugins, userPlugins], logger);
+  });
+  const discoverPlugins = Effect.gen(function* () {
+    const globalPlugins = yield* discoverGlobalPlugins;
     const appRoot =
       discovery.app === false ? undefined : yield* Effect.promise(() => findAppRoot(process.cwd()));
     const appPlugins =
       appRoot === undefined
         ? []
         : yield* discoverInstalledPlugins("app", join(appRoot, ".lando", "plugins"), logger);
-    const manifests = yield* mergeDiscoveredPlugins([bundledPlugins, userPlugins, appPlugins], logger);
+    const manifests = yield* mergeDiscoveredPlugins([globalPlugins, appPlugins], logger);
     return manifests.filter((plugin) => !disabled.has(plugin.manifest.name));
   });
   const discover = discoverPlugins.pipe(Effect.map((plugins) => plugins.map((plugin) => plugin.manifest)));
+  const discoverGlobal = discoverGlobalPlugins.pipe(
+    Effect.map((plugins) =>
+      plugins.filter((plugin) => !disabled.has(plugin.manifest.name)).map((plugin) => plugin.manifest),
+    ),
+  );
 
-  return {
+  const registry: Context.Tag.Service<typeof PluginRegistry> = {
     list: discover,
     load: (name) =>
       Effect.gen(function* () {
@@ -570,20 +585,23 @@ const makePluginRegistry = (
         );
       }),
   };
+  return { registry, globalManifests: { list: discoverGlobal } };
 };
 
 export { PluginRegistry };
 
 export const makePluginRegistryLive = (discovery: PluginRegistryDiscoveryOptions = {}) =>
-  Layer.effect(
-    PluginRegistry,
+  Layer.effectContext(
     Effect.gen(function* () {
       const configService = yield* Effect.serviceOption(ConfigService);
       const logger = yield* Effect.serviceOption(Logger);
-      return makePluginRegistry(
+      const services = makePluginRegistry(
         configService._tag === "Some" ? configService.value : undefined,
         logger._tag === "Some" ? logger.value : undefined,
         discovery,
+      );
+      return Context.make(PluginRegistry, services.registry).pipe(
+        Context.add(GlobalPluginManifests, services.globalManifests),
       );
     }),
   );

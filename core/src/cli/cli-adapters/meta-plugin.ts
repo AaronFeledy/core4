@@ -66,6 +66,7 @@ import {
   globalRuntimeLayer,
   rejectInvalidInvocation,
   resetActiveCommandInvocation,
+  resolveCompiledCommandRuntime,
   runCompiledCommand,
   runWithProcessAbortSignal,
   setActiveCommandId,
@@ -215,8 +216,10 @@ export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
     compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
   );
   const flags = mcpFlagsFromParsed(input.flags);
-  const commandRuntime = makeLandoRuntime(
-    cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } }),
+  const commandRuntime = resolveCompiledCommandRuntime(
+    "meta:mcp",
+    "plugins",
+    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "plugins", plugins: { policy: "discovery" } })),
   ) as Layer.Layer<ConfigService | RedactionService, LandoRuntimeBootstrapError>;
   const retainedRuntime = makeLandoRuntime(
     cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } }),

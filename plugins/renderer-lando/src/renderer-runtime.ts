@@ -94,12 +94,12 @@ const makeNotificationConsumerLive = (
       );
       yield* Effect.addFinalizer(() =>
         Effect.gen(function* () {
+          yield* Fiber.interrupt(fiber);
           const remaining = yield* Queue.takeAll(queue).pipe(Effect.option);
           if (Option.isSome(remaining)) {
             for (const event of remaining.value) consume(event);
           }
           if (flushNotifications !== undefined) yield* Effect.promise(flushNotifications);
-          yield* Fiber.interrupt(fiber);
         }),
       );
     }),
@@ -143,19 +143,30 @@ export const makeLandoEventConsumer = (
   return Layer.merge(taskTree, notifications);
 };
 
+export const makeLandoNotificationConsumer = (io: RendererIO): Layer.Layer<never, never, EventService> => {
+  const snapshot = resolveCapabilitySnapshot(
+    io,
+    io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
+  );
+  return makeNotificationConsumerLive(
+    () => snapshot.get(),
+    productionTriggerNotificationSync,
+    flushPendingNotifications,
+  );
+};
+
 export const landoRendererContribution: RendererContribution = {
   id: "lando",
   makeService: (io) =>
     makeLandoService(io, io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {}),
-  makeEventConsumer: (io) => {
-    const snapshot = resolveCapabilitySnapshot(
-      io,
-      io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
-    );
-    return makeLandoEventConsumer(io, {
-      getCapabilities: () => snapshot.get(),
+  makeEventConsumer: (io) =>
+    makeLandoEventConsumer(io, {
+      getCapabilities: () =>
+        resolveCapabilitySnapshot(
+          io,
+          io.isTTY === true ? { capabilityProbe: productionCapabilityProbe() } : {},
+        ).get(),
       triggerNotification: productionTriggerNotificationSync,
       flushNotifications: flushPendingNotifications,
-    });
-  },
+    }),
 };
