@@ -33,6 +33,8 @@ export type RendererPanelContractInput = {
   readonly manifestId: string;
   /** Contexts to render after ready (in order). */
   readonly contexts: ReadonlyArray<RendererPanelContext>;
+  /** Test-scoped render deadline override; defaults to the normative 8ms deadline. */
+  readonly renderDeadlineMs?: number;
   /**
    * When true, fire two contexts back-to-back while the first is in flight to
    * assert coalescing (at most one extra render after the in-flight one).
@@ -105,7 +107,8 @@ const parseRenderResponse = (buffer: ArrayBuffer): PanelView => {
  *
  * Starts a persistent isolated worker on first fixture-slot visibility, performs
  * the 1000ms ready/id handshake, and exercises post-ready render round trips with
- * an 8ms wall-clock deadline. Never imports the panel module in-process.
+ * the normative 8ms wall-clock deadline unless a contract test supplies an
+ * explicit override. Never imports the panel module in-process.
  */
 export const runRendererPanelContract = (
   input: RendererPanelContractInput,
@@ -113,6 +116,7 @@ export const runRendererPanelContract = (
   Effect.tryPromise({
     try: async () => {
       const worker = new Worker(workerEntryUrl());
+      const renderDeadlineMs = input.renderDeadlineMs ?? PANEL_RENDER_DEADLINE_MS;
       let lastGood: PanelView | undefined;
       let dropped = false;
       let coalesced = false;
@@ -170,9 +174,9 @@ export const runRendererPanelContract = (
             const req2 = encodePanelRequest(PANEL_OP.render, payload2);
             const copy2 = transferableOf(req2);
             worker.postMessage(copy2, [copy2]);
-            const r1 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
+            const r1 = await waitForMessage(worker, renderDeadlineMs);
             renderMs = Math.max(renderMs, performance.now() - started);
-            if (r1.ok && performance.now() - started <= PANEL_RENDER_DEADLINE_MS) {
+            if (r1.ok && performance.now() - started <= renderDeadlineMs) {
               try {
                 lastGood = parseRenderResponse(r1.data);
               } catch {
@@ -181,7 +185,7 @@ export const runRendererPanelContract = (
             } else {
               dropped = true;
             }
-            const r2 = await waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
+            const r2 = await waitForMessage(worker, renderDeadlineMs);
             if (r2.ok) {
               try {
                 lastGood = parseRenderResponse(r2.data);
@@ -198,12 +202,12 @@ export const runRendererPanelContract = (
           const request = encodePanelRequest(PANEL_OP.render, payload);
           const copy = transferableOf(request);
           const started = performance.now();
-          const responsePromise = waitForMessage(worker, PANEL_RENDER_DEADLINE_MS);
+          const responsePromise = waitForMessage(worker, renderDeadlineMs);
           worker.postMessage(copy, [copy]);
           const response = await responsePromise;
           const elapsed = performance.now() - started;
           renderMs = Math.max(renderMs, elapsed);
-          if (!response.ok || elapsed > PANEL_RENDER_DEADLINE_MS) {
+          if (!response.ok || elapsed > renderDeadlineMs) {
             worker.terminate();
             dropped = true;
             // Timeout preserves last-good

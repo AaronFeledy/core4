@@ -28,6 +28,7 @@ describe("Renderer panel contract suite", () => {
         modulePath: join(fixturesDir, "status-ok.ts"),
         manifestId: "status-ok",
         contexts: [makeCtx() as never, makeCtx() as never],
+        renderDeadlineMs: 100,
       }),
     );
     expect(Exit.isSuccess(exit)).toBe(true);
@@ -37,6 +38,37 @@ describe("Renderer panel contract suite", () => {
       expect(exit.value.lastGood?.[0]?.[0]?.text).toContain("ok:80x1");
       // Determinism: two identical contexts yield identical last-good content
       expect(exit.value.lastGood?.[0]?.[0]?.tone).toBe("success");
+    }
+  });
+
+  test("normative render deadline still drops a late panel", async () => {
+    const exit = await Effect.runPromiseExit(
+      runRendererPanelContract({
+        modulePath: join(fixturesDir, "status-delayed.ts"),
+        manifestId: "status-delayed",
+        contexts: [makeCtx() as never],
+      }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.dropped).toBe(true);
+      expect(exit.value.lastGood).toBeUndefined();
+    }
+  });
+
+  test("test-scoped render deadline allows a timely panel response", async () => {
+    const exit = await Effect.runPromiseExit(
+      runRendererPanelContract({
+        modulePath: join(fixturesDir, "status-delayed.ts"),
+        manifestId: "status-delayed",
+        contexts: [makeCtx() as never],
+        renderDeadlineMs: 100,
+      }),
+    );
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.dropped).toBe(false);
+      expect(exit.value.lastGood?.[0]?.[0]?.text).toBe("delayed");
     }
   });
 

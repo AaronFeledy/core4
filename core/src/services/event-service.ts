@@ -1,6 +1,7 @@
-import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
+import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Schema, Stream } from "effect";
 
 import { EventError } from "@lando/sdk/errors";
+import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import { type EventFor, EventService, type EventWaitSpec, type LandoEvent } from "@lando/sdk/services";
 
 import {
@@ -18,6 +19,39 @@ const eventError = (event: string, message: string, cause?: unknown): EventError
 const timeoutEventError = (event: string): EventError =>
   new EventError({ message: `Timed out waiting for event: ${event}`, event, reason: "timeout" });
 
+const DeliverableEventSchema = Schema.Union(
+  Schema.encodedSchema(LandoEventSchema),
+  Schema.typeSchema(LandoEventSchema),
+);
+
+const readEventName = (event: LandoEvent): Effect.Effect<string, EventError> =>
+  Effect.try({
+    try: () => event._tag,
+    catch: (cause) => eventError("<unknown>", "Event failed schema validation: <unknown>", cause),
+  }).pipe(
+    Effect.flatMap((eventName) =>
+      typeof eventName === "string"
+        ? Effect.succeed(eventName)
+        : Effect.fail(eventError("<unknown>", "Event failed schema validation: <unknown>")),
+    ),
+  );
+
+const decodeDeliverableEvent = (
+  event: LandoEvent,
+  eventName: string,
+): Effect.Effect<LandoEvent, EventError> =>
+  Schema.decodeUnknown(DeliverableEventSchema)(event, { onExcessProperty: "error" }).pipe(
+    Effect.mapError((cause) => eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
+    Effect.catchSomeCause((cause) =>
+      Cause.isDie(cause)
+        ? Option.some(
+            Effect.fail(eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
+          )
+        : Option.none(),
+    ),
+    Effect.as(event),
+  );
+
 const matchesName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
 
 const matchesSpec = (spec: EventWaitSpec, event: LandoEvent): boolean => {
@@ -30,7 +64,12 @@ type EventServiceConfig = {
   readonly history: Ref.Ref<ReadonlyArray<LandoEvent>>;
   readonly historyCap: number;
   readonly redaction: Option.Option<Context.Tag.Service<typeof RedactionService>>;
+  readonly instrumentation: EventServiceInstrumentation;
 };
+
+export interface EventServiceInstrumentation {
+  readonly onPubSubPublish?: () => void;
+}
 
 export type EventDispatcher = (event: LandoEvent) => Effect.Effect<void, EventError>;
 export type EventDispatchRegistration = {
@@ -68,7 +107,18 @@ const makeEventService = (
   config: EventServiceConfig,
   getDispatch: () => EventDispatchRegistration,
 ): Context.Tag.Service<typeof EventService> => {
-  const { pubsub, history, historyCap, redaction } = config;
+  const { pubsub, history, historyCap, redaction, instrumentation } = config;
+
+  let activeConsumers = 0;
+  const trackedSubscribe = Effect.acquireRelease(
+    Effect.sync(() => {
+      activeConsumers += 1;
+    }),
+    () =>
+      Effect.sync(() => {
+        activeConsumers -= 1;
+      }),
+  ).pipe(Effect.zipRight(PubSub.subscribe(pubsub)));
 
   const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
     if (historyCap <= 0) return Effect.void;
@@ -80,6 +130,11 @@ const makeEventService = (
     });
   };
 
+  const publishToBus = (event: LandoEvent): Effect.Effect<boolean> =>
+    Effect.sync(() => instrumentation.onPubSubPublish?.()).pipe(
+      Effect.zipRight(PubSub.publish(pubsub, event)),
+    );
+
   const waitForMatch = <A>(
     label: string,
     predicate: (event: LandoEvent) => boolean,
@@ -87,7 +142,7 @@ const makeEventService = (
   ): Effect.Effect<A, EventError> =>
     Effect.scoped(
       Effect.gen(function* () {
-        const queue = yield* PubSub.subscribe(pubsub);
+        const queue = yield* trackedSubscribe;
         const awaited = Stream.fromQueue(queue).pipe(
           Stream.filter(predicate),
           Stream.runHead,
@@ -108,26 +163,42 @@ const makeEventService = (
     );
 
   const service: Context.Tag.Service<typeof EventService> = {
-    publish: (event) => {
-      const registration = getDispatch();
-      return PubSub.publish(pubsub, event).pipe(
-        Effect.zipRight(appendHistory(event)),
-        Effect.zipRight(registration.hasSubscribers(event._tag) ? registration.dispatch(event) : Effect.void),
-        Effect.asVoid,
-        Effect.catchSomeCause((cause) =>
-          Cause.isDie(cause)
-            ? Option.some(
-                Effect.fail(eventError(event._tag, `Failed to publish event: ${event._tag}`, cause)),
-              )
-            : Option.none(),
+    publish: (event) =>
+      readEventName(event).pipe(
+        Effect.flatMap((eventName) =>
+          Effect.suspend(() => {
+            const registration = getDispatch();
+            const hasManifest = registration.hasSubscribers(eventName);
+            if (!hasManifest && activeConsumers === 0) return appendHistory(event);
+            return decodeDeliverableEvent(event, eventName).pipe(
+              Effect.flatMap((decoded) =>
+                publishToBus(decoded).pipe(
+                  Effect.zipRight(appendHistory(decoded)),
+                  Effect.zipRight(hasManifest ? registration.dispatch(decoded) : Effect.void),
+                ),
+              ),
+            );
+          }).pipe(
+            Effect.catchSomeCause((cause) =>
+              Cause.isDie(cause)
+                ? Option.some(
+                    Effect.fail(eventError(eventName, `Failed to publish event: ${eventName}`, cause)),
+                  )
+                : Option.none(),
+            ),
+          ),
         ),
-      );
-    },
-    subscribe: <Name extends string>(name: Name) =>
-      Stream.fromPubSub(pubsub).pipe(
-        Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
+        Effect.asVoid,
       ),
-    subscribeQueue: PubSub.subscribe(pubsub),
+    subscribe: <Name extends string>(name: Name) =>
+      Stream.unwrapScoped(
+        Effect.map(trackedSubscribe, (queue) =>
+          Stream.fromQueue(queue).pipe(
+            Stream.filter((event): event is EventFor<Name> => matchesName(name, event)),
+          ),
+        ),
+      ),
+    subscribeQueue: trackedSubscribe,
     waitFor: (name, options) =>
       waitForMatch<EventFor<typeof name>>(
         name,
@@ -156,6 +227,7 @@ const makeEventService = (
 
 export const makeEventServiceLive = (
   historyCap = DEFAULT_HISTORY_CAP,
+  instrumentation: EventServiceInstrumentation = {},
 ): Layer.Layer<EventService | EventDispatchControl, never, never> =>
   Layer.unwrapScoped(
     Effect.gen(function* () {
@@ -169,7 +241,7 @@ export const makeEventServiceLive = (
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = Layer.succeed(
         EventService,
-        makeEventService({ pubsub, history, historyCap, redaction }, () => registration),
+        makeEventService({ pubsub, history, historyCap, redaction, instrumentation }, () => registration),
       );
       const control = Layer.succeed(EventDispatchControl, {
         install: (next) =>

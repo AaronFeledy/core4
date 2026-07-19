@@ -1622,7 +1622,7 @@
         "Lint passes"
       ],
       "priority": 91,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: US-459 review - spec section 3.5 line-level contract (publish MUST short-circuit; payload validation before the bus) vs core/src/services/event-service.ts, which currently gates only manifest-subscriber dispatch on hasSubscribers and never validates payloads."
     },
     {

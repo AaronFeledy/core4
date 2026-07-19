@@ -845,3 +845,20 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - Drift check: clean
 - Merge: merged (squash)
 ---
+
+## 2026-07-19 13:55 CDT - US-462
+- `EventService.publish` now honors the section 11.1 zero-subscriber contract and validates the delivering path. When no manifest subscriber and no active dynamic consumer exist, publish short-circuits: no payload validation, no PubSub enqueue, no dispatch scheduling — only the unchanged redacted history append. When a manifest subscriber or any live `subscribe`/`subscribeQueue`/`waitFor`/`waitForAny` consumer is present, the event is validated against the closed `LandoEvent` union before the bus, history, or dispatch; an unknown `_tag` or a bad payload fails with a tagged `EventError` naming the event and reaches none of them. Dynamic consumers are tracked by an acquire/release refcount around scoped subscription acquisition, so releasing the last consumer returns publish to the short-circuit path. Manifest dispatch still routes through the O(1) registration-closure `hasSubscribers` lookup with no publish-time selector evaluation.
+- Verification: typecheck, lint (biome + deprecations) passed; focused event-service, waitfor/query, and publish-render tests plus lifecycle/subscribers, deprecation, telemetry, host-shell, renderer-lando, downloader, mcp, http-client, build-orchestrator, command-lifecycle, and start/shell scenario spot checks passed; changed-file LSP diagnostics clean.
+- **Learnings for future iterations:**
+  - Validate the delivering path with `Schema.is(LandoEvent)` and publish the original value; `Schema.decodeUnknown` round-trips already-decoded events (DateTime fields) and would reject valid live events.
+  - The bundled renderer holds a `subscribeQueue` consumer for the whole run, so delivering-path validation is effectively always on in production — every core publisher must emit a closed-union event. `pre-shell-exec`/`post-shell-exec` are not in the union and are published fire-and-forget via `Effect.ignore`, so they now short-circuit or drop silently without breaking their fake-EventService tests.
+  - The short-circuit deliberately keeps the history append (its own section 3.5 contract), so a loose event published with zero consumers is still recorded unvalidated; only the delivering path gates history on validity.
+---
+
+## 2026-07-19 14:52 CDT - US-462 Review
+- Closed two publish-boundary blockers: malformed runtime values and throwing accessors now fail as tagged `EventError`s without unsafe recovery reads, while delivering events round-trip through strict encode/decode so excess properties cannot bypass the closed union or enter PubSub/history. Added direct instrumentation proving the zero-subscriber path never invokes `PubSub.publish`, and split the focused publish-contract coverage out of the oversized general service test.
+- Review notes (deferred/rejected): zero-subscriber history retention of an unvalidated loose event is the explicit US-462 §3.5/§11.1 contract, so the reported history-poisoning concern was rejected for that path rather than silently adding validation; a suspected interruption counter leak was not reproducible; Cursor Bugbot was inconclusive because the local agent requires authentication. `Guide-Coverage-Skip: Internal EventService boundary hardening changes no documented user workflow or public CLI contract.`
+- Verification: typecheck, lint, guide drift with `origin/main` base, redaction and telemetry boundaries passed; focused publish-contract, event-service, waitFor/query, subscriber, and publish-render spot checks passed; changed-file diagnostics clean.
+- **Learnings for future iterations:**
+  - This supersedes the build entry's `Schema.is` guidance: `Schema.is` accepts excess properties and publishing the original object retains them. For an already-decoded Effect Schema value, strict `Schema.encodeUnknown(..., { onExcessProperty: "error" })` followed by strict decode validates the type side and produces a closed canonical event without breaking transformed fields such as `DateTime`.
+---
