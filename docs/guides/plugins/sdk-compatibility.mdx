@@ -34,6 +34,8 @@ tags: [beta, docs, plugins, compatibility]
       <Variable name="rendererCapabilities" value="RendererCapabilities|NotifyDesktopEvent|NotifyConfig" display="SDK consumers read the four-field RendererCapabilities snapshot and the notify.desktop / NotifyConfig schemas from @lando/sdk; raw OpenTUI capability probing stays internal to the bundled renderer" />
       <Variable name="hostProxyRequest" value="openUrl|openPath|runLando|runBun" display="HostProxyRequest is exactly four tagged members; container-initiated notify and clipboardCopy variants are absent with no deprecation shim" />
       <Variable name="invocationCorrelation" value="invocationId|parentInvocationId" display="CLI lifecycle events carry CommandInvocationCorrelation so nested command: invocations keep a parent id and never independently drive foreground desktop notifications" />
+      <Variable name="bootstrapEventNames" value="pre-bootstrap-{minimal|plugins|commands|tooling|provider|app}|post-bootstrap-{minimal|plugins|commands|tooling|provider|app}" display="Bootstrap lifecycle subscriptions use a level-specific event tag for each subscribable bootstrap level instead of shared pre-bootstrap and post-bootstrap tags" />
+      <Variable name="bootstrapSubscriberLevel" value="SubscriberLevelMismatchError" display="A subscriber must declare the same bootstrap level as every selected level-specific bootstrap event; core rejects mismatches before loading the subscriber module and reports the plugin, subscriber, selected event, declared level, event level, and remediation" />
     </Step>
   </Scenario>
 
