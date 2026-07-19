@@ -1,4 +1,4 @@
-import { Cause, Clock, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Clock, Effect, Exit, FiberRef, Option, Schema } from "effect";
 
 import { CliCommandErrorEvent, CliCommandInitEvent, CliCommandRunEvent } from "@lando/sdk/events";
 import { EventService, type LandoEvent, Logger } from "@lando/sdk/services";
@@ -28,6 +28,31 @@ export interface CommandLifecycleOptions<A> {
   readonly failureExitCode?: (error: unknown) => number | undefined;
   readonly interruptionExitCode?: number;
 }
+
+const currentCommandInvocation = FiberRef.unsafeMake<CliInvocationSnapshot | undefined>(undefined);
+
+export interface NestedCommandInvocationInput {
+  readonly argv: ReadonlyArray<string>;
+  readonly args: Readonly<Record<string, unknown>>;
+  readonly flags: Readonly<Record<string, unknown>>;
+  readonly cwd?: string;
+}
+
+export const makeNestedCommandInvocation = (
+  commandId: string,
+  input: NestedCommandInvocationInput,
+): Effect.Effect<CliInvocationSnapshot> =>
+  FiberRef.get(currentCommandInvocation).pipe(
+    Effect.map((parent) => ({
+      commandId,
+      argv: input.argv,
+      args: input.args,
+      flags: input.flags,
+      cwd: input.cwd ?? parent?.cwd ?? process.cwd(),
+      invocationId: newInvocationId(),
+      ...(parent?.invocationId === undefined ? {} : { parentInvocationId: parent.invocationId }),
+    })),
+  );
 
 export const newInvocationId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -95,6 +120,11 @@ export const runCommandLifecycle = <A, E, R>(
       const startedAt = yield* Clock.currentTimeMillis;
       const invocationId = options.invocation.invocationId ?? newInvocationId();
       const parentInvocationId = options.invocation.parentInvocationId;
+      const invocationSnapshot: CliInvocationSnapshot = {
+        ...options.invocation,
+        invocationId,
+        ...(parentInvocationId === undefined ? {} : { parentInvocationId }),
+      };
       const invocation = {
         commandId: options.invocation.commandId,
         argv: summarizeInvocationArgv(options.invocation.argv),
@@ -110,7 +140,9 @@ export const runCommandLifecycle = <A, E, R>(
         _tag: `cli-${options.invocation.commandId}-init`,
         ...invocation,
       });
-      const outcome = yield* Effect.exit(command);
+      const outcome = yield* Effect.exit(command).pipe(
+        Effect.locally(currentCommandInvocation, invocationSnapshot),
+      );
       const finishedAt = yield* Clock.currentTimeMillis;
       const terminal = {
         ...invocation,

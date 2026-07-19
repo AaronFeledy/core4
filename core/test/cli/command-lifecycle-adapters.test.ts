@@ -15,6 +15,7 @@ import {
   resetActiveCommandInvocation,
   setActiveCommandId,
 } from "../../src/cli/compiled-runtime.ts";
+import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { effectiveBootstrapForCommand } from "../../src/runtime/cli-options.ts";
@@ -116,13 +117,25 @@ describe("CLI lifecycle adapters", () => {
       ["meta:doctor", "provider"],
       ["app:start", "app"],
     ]);
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:version"]?.bootstrap).toBe("none");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");
+    expect(COMPILED_OCLIF_MANIFEST.commands["meta:mcp"]?.bootstrap).toBe("plugins");
+    expect(COMPILED_OCLIF_MANIFEST.commands["apps:list"]?.bootstrap).toBe("minimal");
   });
 
-  test("notification policy promotes only eligible lifecycle-producing lower tiers", () => {
+  test("notification policy promotes configured lower tiers without changing cold declarations", () => {
+    // Given: representative commands declared at each lifecycle-producing lower tier.
+    const configured = ["meta:version", "apps:list", "meta:mcp"];
+
+    // When/Then: configured commands promote, while unconfigured declarations remain cold.
+    expect(effectiveBootstrapForCommand("meta:version", "none", configured)).toBe("commands");
+    expect(effectiveBootstrapForCommand("apps:list", "minimal", configured)).toBe("commands");
+    expect(effectiveBootstrapForCommand("meta:mcp", "plugins", configured)).toBe("commands");
+    expect(effectiveBootstrapForCommand("meta:version", "none", [])).toBe("none");
+    expect(effectiveBootstrapForCommand("apps:list", "minimal", [])).toBe("minimal");
+    expect(effectiveBootstrapForCommand("meta:mcp", "plugins", [])).toBe("plugins");
     expect(effectiveBootstrapForCommand("meta:update", "plugins", [])).toBe("commands");
-    expect(effectiveBootstrapForCommand("apps:init", "minimal", ["apps:init"])).toBe("commands");
-    expect(effectiveBootstrapForCommand("apps:init", "minimal", [])).toBe("minimal");
-    expect(effectiveBootstrapForCommand("meta:version", "none", ["meta:version"])).toBe("none");
+    expect(effectiveBootstrapForCommand("app:start", "app", ["app:start"])).toBe("app");
   });
 
   test("every result-driven nonzero exit declares its lifecycle exit-code policy", () => {

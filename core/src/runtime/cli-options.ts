@@ -22,7 +22,6 @@ export const effectiveBootstrapForCommand = (
   configuredCommands: ReadonlyArray<string>,
 ): BootstrapLevel => {
   if (
-    declared === "none" ||
     declared === "commands" ||
     declared === "tooling" ||
     declared === "provider" ||

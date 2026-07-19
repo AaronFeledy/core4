@@ -4,7 +4,6 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import { ConfigError, PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
 import { MessageInfoEvent } from "@lando/sdk/events";
 import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
-import type { RegisteredCommand } from "@lando/sdk/services";
 
 import { resolveNotifyConfig } from "../../src/lifecycle/subscriber-config.ts";
 import { makeSubscriberRegistrationClosure } from "../../src/lifecycle/subscriber-index.ts";
@@ -22,34 +21,36 @@ const manifest = (subscribers: ReadonlyArray<Record<string, unknown>>) =>
     subscribers,
   });
 
-describe("subscriber runtime", () => {
-  test("includes the final resolved CommandRegistry entries before selector closure", () => {
-    // Given: an app tooling command that exists only in the final command registry.
-    const commands: ReadonlyArray<RegisteredCommand> = [
-      { id: "app:custom-tool", summary: "custom", hidden: false },
-    ];
-
-    // When: canonical subscriber command ids are resolved.
-    const ids = canonicalSubscriberCommandIds([], commands);
-
-    // Then: the Landofile/script command participates in family expansion and config validation.
-    expect(ids).toContain("app:custom-tool");
+const commandManifest = () =>
+  Schema.decodeUnknownSync(PluginManifest)({
+    name: "@example/commands",
+    version: "1.0.0",
+    api: 4,
+    contributes: { commands: ["example:release"] },
   });
 
-  test("includes every canonical id in subscriber closure", () => {
-    // Given: an app-derived command alongside built-ins from several bootstrap levels.
-    const commands: ReadonlyArray<RegisteredCommand> = [
-      { id: "app:landofile-command", summary: "Landofile command", hidden: false },
-    ];
+describe("subscriber runtime", () => {
+  test("builds global notify membership from compiled built-ins and plugin manifests", () => {
+    // Given: an enabled global plugin contributing a canonical command.
+    const plugin = commandManifest();
 
-    // When: canonical subscriber command ids are resolved.
-    const ids = new Set(canonicalSubscriberCommandIds([], commands));
+    // When: cwd-independent command membership is built.
+    const ids = new Set(canonicalSubscriberCommandIds([plugin]));
 
-    // Then: below-commands built-ins, commands+ built-ins, and app-derived commands all participate.
+    // Then: compiled built-ins and plugin-contributed commands are both present.
     expect(ids.has("meta:version")).toBe(true);
-    expect(ids.has("apps:init")).toBe(true);
-    expect(ids.has("app:landofile-command")).toBe(true);
-    expect(ids.has("meta:update")).toBe(true);
+    expect(ids.has("example:release")).toBe(true);
+  });
+
+  test("excludes Landofile-derived ids from global notify membership", () => {
+    // Given: only cwd-independent manifests contribute to global membership.
+    const plugin = commandManifest();
+
+    // When: global command membership is built without an app registry.
+    const ids = new Set(canonicalSubscriberCommandIds([plugin]));
+
+    // Then: an app-local-shaped id absent from global manifests is not admitted.
+    expect(ids.has("app:landofile-command")).toBe(false);
   });
 
   test("closes exact and terminal selectors over a below-commands canonical id", async () => {
@@ -227,6 +228,49 @@ describe("subscriber runtime", () => {
         expect(failure.value.message).toContain("Unknown canonical command id");
         expect(failure.value.message).toContain("registered command");
       }
+    }
+  });
+
+  test("rejects an app-local-shaped notify id without consulting an app registry", async () => {
+    // Given: a defined cwd-independent registry and an app-local-shaped notify entry.
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      notify: { commands: ["meta:version", "example:release", "app:myscript"] },
+    });
+    const globalCommandIds = new Set(canonicalSubscriberCommandIds([commandManifest()]));
+
+    // When: subscriber configuration resolves with no app registry input.
+    const exit = await Effect.runPromiseExit(resolveNotifyConfig(config, globalCommandIds));
+
+    // Then: the offending index and remediation are reported as ConfigError.
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) {
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag === "Some") {
+        expect(failure.value).toBeInstanceOf(ConfigError);
+        if (failure.value instanceof ConfigError) {
+          expect(failure.value.path).toBe("notify.commands[2]");
+          expect(failure.value.message).toContain("app:myscript");
+          expect(failure.value.message).toContain("install and enable the plugin");
+        }
+      }
+    }
+  });
+
+  test("accepts compiled built-in and plugin-contributed notify ids", async () => {
+    // Given: notify entries that both belong to the cwd-independent global registry.
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      notify: { commands: ["meta:version", "example:release"] },
+    });
+    const globalCommandIds = new Set(canonicalSubscriberCommandIds([commandManifest()]));
+
+    // When: subscriber configuration validates global command membership.
+    const exit = await Effect.runPromiseExit(resolveNotifyConfig(config, globalCommandIds));
+
+    // Then: both entries remain eligible.
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.commands).toEqual(["meta:version", "example:release"]);
     }
   });
 

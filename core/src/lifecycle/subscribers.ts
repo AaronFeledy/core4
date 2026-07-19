@@ -19,6 +19,7 @@ import {
 import { COMPILED_OCLIF_MANIFEST } from "../cli/oclif/compiled-manifest.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
+import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
 import { makePublishRender } from "./publish-render.ts";
@@ -141,6 +142,7 @@ export const makeSubscriberRuntimeLive = () =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
       const plugins = yield* PluginRegistry;
+      const globalPlugins = yield* GlobalPluginManifests;
       const configService = yield* ConfigService;
       const events = yield* EventService;
       const dispatchControl = yield* EventDispatchControl;
@@ -150,10 +152,11 @@ export const makeSubscriberRuntimeLive = () =>
       const paths = yield* PathsService;
       const redaction = yield* RedactionService;
       const manifests = yield* plugins.list;
+      const globalManifests = yield* globalPlugins.list;
       const commandRegistry = yield* CommandRegistry;
       const resolvedCommands = yield* commandRegistry.list;
       const commandIds = canonicalSubscriberCommandIds(manifests, resolvedCommands);
-      const notifyCommandIds = new Set(commandIds);
+      const notifyCommandIds = new Set(canonicalSubscriberCommandIds(globalManifests));
       const hasNotifySubscriber = manifests.some((manifest) =>
         manifest.subscribers?.some((subscriber) => subscriber.configKey === "notify"),
       );

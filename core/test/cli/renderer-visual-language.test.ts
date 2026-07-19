@@ -31,6 +31,9 @@ class RecordingLiveRegion {
   commitScrollback(text: string): void {
     this.scrollback.push(text);
   }
+  rememberScrollback(text: string): void {
+    this.scrollback.push(text);
+  }
   requestLive(): void {}
   dropLive(): void {}
   resize(): void {}
@@ -345,6 +348,26 @@ describe("renderer visual language docs", () => {
       "no SaaS-purple gradients",
       "no dense ASCII art",
       "no decorative motion",
+    ]) {
+      expect(guide).toContain(token);
+    }
+  });
+
+  test("terminal UI polish guide publishes desktop notification policy", () => {
+    // Given: the guide owned by the renderer and notification stories.
+    const guide = readFileSync(resolve(repoRoot, "docs/guides/cli/terminal-ui-polish.mdx"), "utf8");
+
+    // When/Then: the stable policy boundaries remain documented for users and plugin authors.
+    for (const token of [
+      "@lando/notify-lando",
+      "notify.commands",
+      "notify.enabled",
+      "notify.thresholdMs",
+      "LANDO_NOTIFY_COMMANDS",
+      "parentInvocationId",
+      "renderer.capabilities.notifications",
+      "cwd-independent global built-in/global-plugin command registry",
+      "declared bootstrap",
     ]) {
       expect(guide).toContain(token);
     }
