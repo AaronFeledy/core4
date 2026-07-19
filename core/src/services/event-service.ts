@@ -19,6 +19,11 @@ const eventError = (event: string, message: string, cause?: unknown): EventError
 const timeoutEventError = (event: string): EventError =>
   new EventError({ message: `Timed out waiting for event: ${event}`, event, reason: "timeout" });
 
+const DeliverableEventSchema = Schema.Union(
+  Schema.encodedSchema(LandoEventSchema),
+  Schema.typeSchema(LandoEventSchema),
+);
+
 const readEventName = (event: LandoEvent): Effect.Effect<string, EventError> =>
   Effect.try({
     try: () => event._tag,
@@ -35,10 +40,7 @@ const decodeDeliverableEvent = (
   event: LandoEvent,
   eventName: string,
 ): Effect.Effect<LandoEvent, EventError> =>
-  Schema.encodeUnknown(LandoEventSchema)(event, { onExcessProperty: "error" }).pipe(
-    Effect.flatMap((encoded) =>
-      Schema.decodeUnknown(LandoEventSchema)(encoded, { onExcessProperty: "error" }),
-    ),
+  Schema.decodeUnknown(DeliverableEventSchema)(event, { onExcessProperty: "error" }).pipe(
     Effect.mapError((cause) => eventError(eventName, `Event failed schema validation: ${eventName}`, cause)),
     Effect.catchSomeCause((cause) =>
       Cause.isDie(cause)
@@ -47,6 +49,7 @@ const decodeDeliverableEvent = (
           )
         : Option.none(),
     ),
+    Effect.as(event),
   );
 
 const matchesName = (name: string, event: LandoEvent): boolean => name === "*" || event._tag === name;
