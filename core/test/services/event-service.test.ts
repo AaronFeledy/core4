@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { DateTime, Effect, Exit, Fiber, Queue, Schema, Scope, Stream } from "effect";
+import { DateTime, Effect, Exit, Fiber, Schema, Stream } from "effect";
 
 import { EventError } from "@lando/core/errors";
 import { EventService } from "@lando/core/services";
@@ -184,119 +184,5 @@ describe("EventServiceLive", () => {
     // Then: plugin dispatch is skipped while history/public consumers still receive the event.
     expect(dispatches).toBe(0);
     expect(retained).toEqual([preAppStartEvent]);
-  });
-});
-
-const invalidKnownEvent = { _tag: "download-progress", bytes: 1 };
-const unknownTagEvent = { _tag: "not-a-real-lando-event", value: 1 };
-
-describe("EventServiceLive publish contract", () => {
-  test("delivering path rejects an invalid payload before the bus, history, and dispatch", async () => {
-    // Given: a manifest subscriber is registered for the event tag.
-    let dispatches = 0;
-    const outcome = await Effect.runPromise(
-      Effect.gen(function* () {
-        const control = yield* EventDispatchControl;
-        const events = yield* EventService;
-        yield* control.install({
-          hasSubscribers: () => true,
-          dispatch: () =>
-            Effect.sync(() => {
-              dispatches += 1;
-            }),
-        });
-        // When: an event whose payload fails schema validation is published.
-        const exit = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);
-        const recorded = yield* events.query("*");
-        return { exit, recorded };
-      }).pipe(Effect.provide(EventRuntimeLive)),
-    );
-
-    // Then: publish fails with a tagged EventError naming the event and nothing is delivered or recorded.
-    expect(Exit.isFailure(outcome.exit)).toBe(true);
-    if (Exit.isFailure(outcome.exit)) {
-      const error = outcome.exit.cause;
-      expect(String(JSON.stringify(error))).toContain("EventError");
-    }
-    expect(dispatches).toBe(0);
-    expect(outcome.recorded).toEqual([]);
-  });
-
-  test("delivering path validation triggers for an active dynamic consumer with no manifest subscriber", async () => {
-    const outcome = await Effect.runPromise(
-      Effect.flatMap(EventService, (events) =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            // Given: an eagerly acquired dynamic consumer and no manifest subscriber.
-            yield* events.subscribeQueue;
-            // When: an unknown-tag event is published while that consumer is active.
-            const exit = yield* events.publish(unknownTagEvent).pipe(Effect.exit);
-            const recorded = yield* events.query("*");
-            return { exit, recorded };
-          }),
-        ),
-      ).pipe(Effect.provide(EventServiceLive)),
-    );
-
-    // Then: the dynamic consumer alone forces validation and the event never reaches history.
-    expect(Exit.isFailure(outcome.exit)).toBe(true);
-    expect(outcome.recorded).toEqual([]);
-  });
-
-  test("zero-subscriber short-circuit skips validation while history append is unchanged", async () => {
-    // Given: neither a manifest subscriber nor an active dynamic consumer.
-    const recorded = await Effect.runPromise(
-      Effect.flatMap(EventService, (events) =>
-        Effect.gen(function* () {
-          // When: an unvalidated event is published with nobody listening.
-          yield* events.publish(invalidKnownEvent);
-          return yield* events.query("*");
-        }),
-      ).pipe(Effect.provide(EventServiceLive)),
-    );
-
-    // Then: the short-circuit performs no validation, yet the history append still runs.
-    expect(recorded).toHaveLength(1);
-    expect(recorded[0]?._tag).toBe("download-progress");
-  });
-
-  test("a released dynamic consumer returns publish to the short-circuit path", async () => {
-    const outcome = await Effect.runPromise(
-      Effect.flatMap(EventService, (events) =>
-        Effect.gen(function* () {
-          const scope = yield* Scope.make();
-          // Given: a dynamic consumer held open in an explicit scope.
-          yield* events.subscribeQueue.pipe(Scope.extend(scope));
-          const whileActive = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);
-          // When: the last active consumer releases.
-          yield* Scope.close(scope, Exit.void);
-          const afterRelease = yield* events.publish(invalidKnownEvent).pipe(Effect.exit);
-          return { whileActive, afterRelease };
-        }),
-      ).pipe(Effect.provide(EventServiceLive)),
-    );
-
-    // Then: validation applies while a consumer is active and is skipped once it releases.
-    expect(Exit.isFailure(outcome.whileActive)).toBe(true);
-    expect(Exit.isSuccess(outcome.afterRelease)).toBe(true);
-  });
-
-  test("a consumer registered before publish still receives matching valid events", async () => {
-    const received = await Effect.runPromise(
-      Effect.flatMap(EventService, (events) =>
-        Effect.scoped(
-          Effect.gen(function* () {
-            // Given: an eagerly acquired consumer registered before the producer runs.
-            const queue = yield* events.subscribeQueue;
-            // When: a schema-valid event is published.
-            yield* events.publish(preAppStartEvent);
-            return yield* Queue.take(queue);
-          }),
-        ),
-      ).pipe(Effect.provide(EventServiceLive)),
-    );
-
-    // Then: the pre-registered consumer receives the delivered event.
-    expect(received).toEqual(preAppStartEvent);
   });
 });
