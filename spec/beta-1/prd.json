@@ -1658,7 +1658,7 @@
         "Lint passes"
       ],
       "priority": 93,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: US-459 review - spec section 3.5 says levels minimal..app each emit pre/post bootstrap events and core emits post-bootstrap and ready, but no production code publishes any of them. Depends on US-462 (fast path) and US-463 (per-level taxonomy)."
     }
   ]

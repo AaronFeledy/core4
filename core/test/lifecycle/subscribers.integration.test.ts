@@ -23,7 +23,9 @@ import {
 } from "../../src/mcp/service.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
+import { makeBootstrapLifecycleTracker } from "../../src/runtime/bootstrap-lifecycle.ts";
 import { makeCommandsBootstrapLayer } from "../../src/runtime/generated/layers/commands.ts";
+import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 const roots: string[] = [];
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -46,6 +48,7 @@ const runtime = async (
   }
   const makeLayer = () =>
     makeCommandsBootstrapLayer({
+      lifecycle: makeBootstrapLifecycleTracker(),
       loggerMode: "silent",
       rendererMode: "plain",
       telemetryEnabled: false,
@@ -117,6 +120,53 @@ const writeCommandSubscriberPlugin = async (
   );
 };
 
+const writeToolingBootstrapSubscriberPlugin = async (
+  pluginsRoot: string,
+  markerPath: string,
+): Promise<void> => {
+  const name = "@example/tooling-bootstrap-subscriber";
+  const version = "1.0.0";
+  const packageRoot = join(pluginsRoot, name, version);
+  await mkdir(join(packageRoot, "src"), { recursive: true });
+  await writeFile(
+    join(packageRoot, "package.json"),
+    `${JSON.stringify({
+      name,
+      version,
+      landoPlugin: {
+        name,
+        version,
+        api: 4,
+        entry: "index.js",
+        bootstrap: "tooling",
+        subscribers: [
+          {
+            id: "tooling-bootstrap-marker",
+            selectors: [{ event: "pre-bootstrap-tooling" }, { event: "post-bootstrap-tooling" }],
+            module: "./src/subscriber.mjs",
+          },
+        ],
+      },
+    })}\n`,
+  );
+  await writeFile(join(packageRoot, "index.js"), "export {};\n");
+  const effectModuleUrl = pathToFileURL(join(repoRoot, "node_modules/effect/dist/esm/index.js")).href;
+  await writeFile(
+    join(packageRoot, "src", "subscriber.mjs"),
+    [
+      `import { Effect } from ${JSON.stringify(effectModuleUrl)};`,
+      'import { appendFileSync } from "node:fs";',
+      `export default () => (event) => Effect.sync(() => appendFileSync(${JSON.stringify(markerPath)}, \`${"${event._tag}"}\\n\`));`,
+      "",
+    ].join("\n"),
+  );
+  await mkdir(pluginsRoot, { recursive: true });
+  await writeFile(
+    join(pluginsRoot, "registry.json"),
+    `${JSON.stringify({ [name]: { name, version, path: packageRoot } })}\n`,
+  );
+};
+
 const terminal = Schema.decodeUnknownSync(CliCommandRunEvent)({
   _tag: "cli-app:start-run",
   commandId: "app:start",
@@ -145,6 +195,42 @@ const versionTerminal = (cwd: string) =>
   });
 
 describe("subscriber runtime integration", () => {
+  test("delivers tooling bootstrap events to a tooling-declared plugin", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-tooling-bootstrap-subscriber-"));
+    roots.push(root);
+    const absolute = (suffix: string) => Schema.decodeUnknownSync(AbsolutePath)(join(root, suffix));
+    const markerPath = join(root, "tooling-bootstrap-events.txt");
+    await writeToolingBootstrapSubscriberPlugin(join(root, "data", "plugins"), markerPath);
+    const layer = makeLandoRuntime({
+      bootstrap: "tooling",
+      plugins: { discovery: { bundled: false, user: true, app: false } },
+      config: {
+        userDataRoot: absolute("data"),
+        userConfRoot: absolute("config"),
+        userCacheRoot: absolute("cache"),
+        systemPluginRoot: absolute("system"),
+      },
+    });
+    const previousConfigRoot = process.env.LANDO_USER_CONF_ROOT;
+    const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
+    process.env.LANDO_USER_CONF_ROOT = join(root, "config");
+    process.env.LANDO_USER_DATA_ROOT = join(root, "data");
+
+    try {
+      await Effect.runPromise(EventService.pipe(Effect.provide(layer)));
+    } finally {
+      if (previousConfigRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CONF_ROOT");
+      else process.env.LANDO_USER_CONF_ROOT = previousConfigRoot;
+      if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
+      else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
+    }
+
+    expect((await readFile(markerPath, "utf8")).trim().split("\n")).toEqual([
+      "pre-bootstrap-tooling",
+      "post-bootstrap-tooling",
+    ]);
+  });
+
   test("rejects a Landofile-derived global notify id outside an app", async () => {
     // Given: global notification policy references a Landofile-derived id.
     const { layer, root } = await runtime(

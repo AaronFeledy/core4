@@ -11,8 +11,9 @@
  * generated output.
  */
 
-import { Layer } from "effect";
+import { Context, Layer } from "effect";
 
+import { EventService } from "@lando/sdk/services";
 import { DeprecationPluginRegistryLive } from "../../../deprecation/plugin-registry.ts";
 import { makePluginRegistryLive } from "../../../plugins/registry.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
@@ -26,5 +27,7 @@ export const makePluginsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {
   const deprecationRegistryLive = DeprecationPluginRegistryLive.pipe(
     Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive)),
   );
-  return Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, deprecationRegistryLive);
+  return Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, deprecationRegistryLive).pipe(
+    Layer.tap((context) => inputs.lifecycle.complete("plugins", Context.get(context, EventService))),
+  );
 };

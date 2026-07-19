@@ -11,9 +11,10 @@
  * generated output.
  */
 
-import { Layer } from "effect";
+import { Context, Layer } from "effect";
 
 import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
+import { EventService } from "@lando/sdk/services";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
@@ -34,5 +35,7 @@ export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     FileSyncEngineLive.pipe(Layer.provide(providerBase)),
   );
   const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(appBase));
-  return Layer.merge(appBase, subscriberRuntimeLive);
+  return Layer.merge(appBase, subscriberRuntimeLive).pipe(
+    Layer.tap((context) => inputs.lifecycle.complete("app", Context.get(context, EventService))),
+  );
 };

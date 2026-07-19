@@ -5,6 +5,7 @@ import { ProviderCapabilities } from "@lando/sdk/schema";
 import type { Renderer, RootOverrides, RuntimeProvider, Telemetry } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
+import type { BootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
 
 export type LibraryRendererMode = "json" | "plain" | "verbose" | "lando";
 
@@ -16,6 +17,7 @@ export interface BootstrapLayerPluginDiscovery {
 }
 
 export interface BootstrapLayerInputs {
+  readonly lifecycle: BootstrapLifecycleTracker;
   readonly loggerMode: LoggerMode;
   readonly rendererMode: LibraryRendererMode;
   readonly telemetryEnabled: boolean;

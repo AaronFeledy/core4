@@ -11,8 +11,9 @@
  * generated output.
  */
 
-import { Layer } from "effect";
+import { Context, Layer } from "effect";
 
+import { EventService } from "@lando/sdk/services";
 import { LandofileServiceLive } from "../../../landofile/service.ts";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import { CommandRegistryLive } from "../../../services/command-registry.ts";
@@ -24,7 +25,9 @@ export const makeCommandsBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => 
   const commandRegistryLive = CommandRegistryLive.pipe(
     Layer.provide(Layer.mergeAll(LandofileServiceLive, pluginsBase)),
   );
-  return Layer.mergeAll(pluginsBase, LandofileServiceLive, commandRegistryLive);
+  return Layer.mergeAll(pluginsBase, LandofileServiceLive, commandRegistryLive).pipe(
+    Layer.tap((context) => inputs.lifecycle.complete("commands", Context.get(context, EventService))),
+  );
 };
 
 export const makeCommandsBootstrapLayer = (inputs: BootstrapLayerInputs) => {
