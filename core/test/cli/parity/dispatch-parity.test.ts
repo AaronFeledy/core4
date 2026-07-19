@@ -42,6 +42,11 @@ const coreRoot = resolve(repoRoot, "core");
 const runSourcePath = resolve(coreRoot, "src/cli/run.ts");
 const compiledRuntimeSourcePath = resolve(coreRoot, "src/cli/compiled-runtime.ts");
 const metaPluginAdapterSourcePath = resolve(coreRoot, "src/cli/cli-adapters/meta-plugin.ts");
+// The compiled-dispatch branches are grouped by topic into these modules; each
+// `runCompiledCli` topic dispatcher (invoked as the single entry) lives here.
+const dispatchAppSourcePath = resolve(coreRoot, "src/cli/dispatch-app.ts");
+const dispatchAppsSourcePath = resolve(coreRoot, "src/cli/dispatch-apps.ts");
+const dispatchMetaSourcePath = resolve(coreRoot, "src/cli/dispatch-meta.ts");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
 let compiledBinary = "";
 
@@ -52,6 +57,12 @@ const DEFERRED_IDS: ReadonlyArray<string> = [...DEFERRED_COMMAND_PLANS.keys()].s
 const runSource = readFileSync(runSourcePath, "utf-8");
 const compiledRuntimeSource = readFileSync(compiledRuntimeSourcePath, "utf-8");
 const metaPluginAdapterSource = readFileSync(metaPluginAdapterSourcePath, "utf-8");
+const dispatchAppsSource = readFileSync(dispatchAppsSourcePath, "utf-8");
+const dispatchMetaSource = readFileSync(dispatchMetaSourcePath, "utf-8");
+// The full compiled-dispatch branch surface: run.ts's entry plus the three
+// topic dispatchers it delegates to.
+const dispatchSource =
+  runSource + readFileSync(dispatchAppSourcePath, "utf-8") + dispatchAppsSource + dispatchMetaSource;
 
 /**
  * A canonical id has a compiled-dispatch branch when `runCompiledCli` compares
@@ -66,7 +77,7 @@ const metaPluginAdapterSource = readFileSync(metaPluginAdapterSourcePath, "utf-8
  */
 const hasCompiledDispatchBranch = (id: string): boolean => {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`argv\\[0\\]\\s*===\\s*"${escaped}"`).test(runSource);
+  return new RegExp(`argv\\[0\\]\\s*===\\s*"${escaped}"`).test(dispatchSource);
 };
 
 describe("compiled-binary dispatch parity — structural", () => {
@@ -112,15 +123,15 @@ describe("compiled-binary dispatch parity — structural", () => {
   });
 
   test("compiled scratch commands thread resolved deprecation suppression into the renderer boundary", () => {
-    const scratchStart = runSource.indexOf("const runScratchEffect =");
-    const scratchEnd = runSource.indexOf("export const parseScratchStartArgv", scratchStart);
+    const scratchStart = dispatchAppsSource.indexOf("const runScratchEffect =");
+    const scratchEnd = dispatchAppsSource.indexOf("export const parseScratchStartArgv", scratchStart);
     const runtimeStart = compiledRuntimeSource.indexOf("export const runCompiledCommand =");
     const runtimeEnd = compiledRuntimeSource.indexOf("export const runWithProcessAbortSignal", runtimeStart);
     expect(scratchStart).toBeGreaterThanOrEqual(0);
     expect(scratchEnd).toBeGreaterThan(scratchStart);
     expect(runtimeStart).toBeGreaterThanOrEqual(0);
     expect(runtimeEnd).toBeGreaterThan(runtimeStart);
-    expect(runSource.slice(scratchStart, scratchEnd)).toContain("runCompiledCommand(");
+    expect(dispatchAppsSource.slice(scratchStart, scratchEnd)).toContain("runCompiledCommand(");
     expect(compiledRuntimeSource.slice(runtimeStart, runtimeEnd)).toContain(
       "deprecationWarnings: activeDeprecationWarnings && options.deprecationWarnings !== false",
     );
@@ -143,9 +154,9 @@ describe("compiled-binary dispatch parity — structural", () => {
 
   test("meta:update retains its declaration and relies on centralized compiled runtime promotion", () => {
     // Given: source updateSpec, compiled OCLIF manifest, and the run.ts meta:update branch.
-    const start = runSource.indexOf('if (argv[0] === "update" || argv[0] === "meta:update")');
-    const end = runSource.indexOf('if (argv[0] === "global:config:set"', start);
-    const adapter = runSource.slice(start, end);
+    const start = dispatchMetaSource.indexOf('if (argv[0] === "update" || argv[0] === "meta:update")');
+    const end = dispatchMetaSource.indexOf('if (argv[0] === "global:config:set"', start);
+    const adapter = dispatchMetaSource.slice(start, end);
 
     // When/Then: every surface retains the declaration while the compiled boundary selects the effective runtime.
     expect(updateSpec.bootstrap).toBe("plugins");

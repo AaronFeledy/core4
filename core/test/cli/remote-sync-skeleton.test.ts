@@ -162,7 +162,7 @@ describe("remote sync command skeleton", () => {
   });
 
   test("compiled remote renderers forward RenderContext", async () => {
-    const runSource = await Bun.file(join(import.meta.dir, "../../src/cli/run.ts")).text();
+    const dispatchSource = await Bun.file(join(import.meta.dir, "../../src/cli/dispatch-app.ts")).text();
     const adapterSource = await Bun.file(
       join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
     ).text();
@@ -174,9 +174,9 @@ describe("remote sync command skeleton", () => {
     expect(adapterSource).toContain('renderRemoteMutationResult(value, "removed", options.format, ctx)');
     expect(adapterSource).toContain("renderRemoteTestResult(value, options.format, ctx)");
     expect(adapterSource).toContain("renderRemoteEnvListResult(value, options.format, ctx)");
-    expect(runSource).toContain('argv[0] === "pull:app"');
-    expect(runSource).toContain('argv[0] === "remote:list:app"');
-    expect(runSource).toContain('argv[0] === "remote:list:env:app"');
+    expect(dispatchSource).toContain('argv[0] === "pull:app"');
+    expect(dispatchSource).toContain('argv[0] === "remote:list:app"');
+    expect(dispatchSource).toContain('argv[0] === "remote:list:env:app"');
     expect(remoteSource).not.toContain('ctx?.mode === "json"');
     expect(remoteSource).not.toContain('format === "json"');
   });
