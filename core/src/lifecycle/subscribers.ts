@@ -16,7 +16,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { COMPILED_OCLIF_MANIFEST } from "../cli/oclif/compiled-manifest.ts";
+import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids.ts";
 import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
 import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
@@ -38,7 +38,7 @@ export const canonicalSubscriberCommandIds = (
   manifests: ReadonlyArray<PluginManifest>,
   commands: ReadonlyArray<RegisteredCommand> = [],
 ): ReadonlyArray<string> => {
-  const ids = new Set(Object.values(COMPILED_OCLIF_MANIFEST.commands).map((entry) => entry.id));
+  const ids = new Set<string>(BUILT_IN_COMMAND_IDS);
   for (const manifest of manifests) {
     for (const command of manifest.contributes?.commands ?? []) {
       ids.add(typeof command === "string" ? command : command.id);
