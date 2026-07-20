@@ -94,12 +94,7 @@ export const runCompiledCommand = <A, E, R, RE>(
   const effectiveRuntime =
     spec?.bootstrap === undefined
       ? runtime
-      : resolveCompiledCommandRuntime(
-          activeCommandId,
-          spec.bootstrap,
-          runtime,
-          ...(options.runtimeForBootstrap === undefined ? [] : [options.runtimeForBootstrap]),
-        );
+      : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
   const redactionTokens = spec?.redactionTokens;
   const successExitCode =
     options.successExitCode ??

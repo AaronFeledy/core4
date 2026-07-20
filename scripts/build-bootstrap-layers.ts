@@ -90,7 +90,7 @@ const renderTooling = (): string =>
 
 const renderGlobal = (): string =>
   [
-    'import { Context, Layer } from "effect";',
+    'import { Layer } from "effect";',
     "",
     'import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";',
     'import { AppPlannerLive } from "../../../services/planner.ts";',

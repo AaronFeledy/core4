@@ -12,21 +12,26 @@ import {
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { makeEventServiceLive } from "../../src/services/event-service.ts";
 
-const makeRecordingEventLayer = (tags: string[]): Layer.Layer<EventService> => {
-  const service: EventServiceShape = {
-    publish: (event) => Effect.sync(() => tags.push(event._tag)),
-    subscribe: () => Stream.empty,
-    subscribeQueue: Effect.gen(function* () {
-      const queue = yield* Queue.unbounded<LandoEvent>();
-      yield* Effect.addFinalizer(() => Queue.shutdown(queue));
-      return queue;
-    }),
-    waitFor: () => Effect.never,
-    waitForAny: () => Effect.never,
-    query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
-  };
-  return Layer.succeed(EventService, service);
-};
+const stubEventService = (
+  publish: (event: LandoEvent) => Effect.Effect<void, EventError>,
+): EventServiceShape => ({
+  publish,
+  subscribe: () => Stream.empty,
+  subscribeQueue: Effect.gen(function* () {
+    const queue = yield* Queue.unbounded<LandoEvent>();
+    yield* Effect.addFinalizer(() => Queue.shutdown(queue));
+    return queue;
+  }),
+  waitFor: () => Effect.never,
+  waitForAny: () => Effect.never,
+  query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
+});
+
+const makeRecordingEventLayer = (tags: string[]): Layer.Layer<EventService> =>
+  Layer.succeed(
+    EventService,
+    stubEventService((event) => Effect.sync(() => tags.push(event._tag))),
+  );
 
 describe("runtime bootstrap lifecycle", () => {
   test("emits the app bootstrap sequence and before-exit before host finalizers", async () => {
@@ -125,23 +130,12 @@ describe("runtime bootstrap lifecycle", () => {
     const previousExitCode = process.exitCode;
     process.exitCode = 0;
     const events: LandoEvent[] = [];
-    const service: EventServiceShape = {
-      publish: (event) => {
-        events.push(event);
-        return event._tag === "before-exit"
-          ? Effect.void
-          : Effect.fail(new EventError({ event: event._tag, message: "subscriber rejected bootstrap" }));
-      },
-      subscribe: () => Stream.empty,
-      subscribeQueue: Effect.gen(function* () {
-        const queue = yield* Queue.unbounded<LandoEvent>();
-        yield* Effect.addFinalizer(() => Queue.shutdown(queue));
-        return queue;
-      }),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
-    };
+    const service = stubEventService((event) => {
+      events.push(event);
+      return event._tag === "before-exit"
+        ? Effect.void
+        : Effect.fail(new EventError({ event: event._tag, message: "subscriber rejected bootstrap" }));
+    });
     const tracker = makeBootstrapLifecycleTracker();
     await Effect.runPromise(tracker.complete("minimal", service));
 
@@ -199,23 +193,12 @@ describe("runtime bootstrap lifecycle", () => {
 
   test("partial failure emits before-exit when completed-level publication aborts", async () => {
     const events: LandoEvent[] = [];
-    const service: EventServiceShape = {
-      publish: (event) => {
-        events.push(event);
-        return event._tag === "before-exit"
-          ? Effect.void
-          : Effect.fail(new EventError({ event: event._tag, message: "subscriber aborted bootstrap" }));
-      },
-      subscribe: () => Stream.empty,
-      subscribeQueue: Effect.gen(function* () {
-        const queue = yield* Queue.unbounded<LandoEvent>();
-        yield* Effect.addFinalizer(() => Queue.shutdown(queue));
-        return queue;
-      }),
-      waitFor: () => Effect.never,
-      waitForAny: () => Effect.never,
-      query: <Name extends string>() => Effect.succeed<ReadonlyArray<EventFor<Name>>>([]),
-    };
+    const service = stubEventService((event) => {
+      events.push(event);
+      return event._tag === "before-exit"
+        ? Effect.void
+        : Effect.fail(new EventError({ event: event._tag, message: "subscriber aborted bootstrap" }));
+    });
     const tracker = makeBootstrapLifecycleTracker();
     await Effect.runPromise(tracker.complete("minimal", service));
 
