@@ -35,6 +35,14 @@ import {
 } from "../../command-boundary.ts";
 import { getCommandRuntimeLayer } from "../../hooks/init.ts";
 
+type CompiledCommandMap = Record<string, { readonly landoSpec?: LandoCommandSpec }>;
+
+let compiledCommandMapSource: CompiledCommandMap = {};
+
+export const injectMcpCompiledCommands = (compiledCommands: CompiledCommandMap): void => {
+  compiledCommandMapSource = compiledCommands;
+};
+
 export const metaMcpSpec: LandoCommandSpec<McpListResult> = {
   resultSchema: McpListResultSchema,
   id: "meta:mcp",
@@ -69,10 +77,7 @@ export default class MetaMcpCommand extends LandoCommandBase {
   static override bootstrap = metaMcpSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const { default: compiled } = await import("../../compiled-commands.ts");
-    const registry = mcpRegistryFromCompiled(
-      compiled as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-    );
+    const registry = mcpRegistryFromCompiled(compiledCommandMapSource);
 
     let rendererMode: RendererMode;
     try {

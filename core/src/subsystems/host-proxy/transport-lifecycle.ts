@@ -14,8 +14,8 @@ export const cleanupHostProxyRunLandoState = (
   paths?: RootOverrides,
 ): Effect.Effect<void, never> =>
   Effect.promise(async () => {
-    const { removeHostProxyWorkerState } = await import("./worker.ts");
-    await Effect.runPromise(removeHostProxyWorkerState(app, paths));
+    const { removeOwnedHostProxyWorkerState } = await import("./worker-ownership.ts");
+    await Effect.runPromise(removeOwnedHostProxyWorkerState(app, paths));
   }).pipe(Effect.catchAll(() => Effect.void));
 
 export const removeSessionState = (paths: HostProxySessionPaths, socketOwned: boolean): Effect.Effect<void> =>

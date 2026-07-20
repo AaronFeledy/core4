@@ -9,7 +9,7 @@ import type { AppRef } from "@lando/sdk/schema";
 import type { RootOverrides } from "../../config/paths.ts";
 import { writeFileAtomicScoped } from "../../state-store/atomic.ts";
 import { withAdvisoryLock } from "../../state/lock.ts";
-import { hostProxyRunLandoStateDir } from "./transport.ts";
+import { hostProxyRunLandoStateDir } from "./transport-session.ts";
 import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-records.ts";
 
 export const workerStatePath = (app: Pick<AppRef, "id" | "root">, paths?: RootOverrides): string =>

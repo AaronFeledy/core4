@@ -15,6 +15,7 @@ export type ModuleEdgeKind = "import" | "dynamic-import" | "require" | "re-expor
 
 export interface ModuleEdge {
   readonly kind: ModuleEdgeKind;
+  readonly typeOnly: boolean;
   /**
    * The module specifier, when it is statically resolvable. Dynamic
    * `import()` / `require()` arguments that cannot be evaluated at scan time
@@ -146,6 +147,29 @@ const namedReExportNames = (exportClause: ts.NamedExportBindings | undefined): R
   return exportClause.elements.map((element) => element.propertyName?.text ?? element.name.text);
 };
 
+const isTypeOnlyImport = (importClause: ts.ImportClause | undefined): boolean => {
+  if (importClause?.phaseModifier === ts.SyntaxKind.TypeKeyword) return true;
+  const bindings = importClause?.namedBindings;
+  return (
+    importClause?.name === undefined &&
+    bindings !== undefined &&
+    ts.isNamedImports(bindings) &&
+    bindings.elements.length > 0 &&
+    bindings.elements.every((element) => element.isTypeOnly)
+  );
+};
+
+const isTypeOnlyReExport = (declaration: ts.ExportDeclaration): boolean => {
+  if (declaration.isTypeOnly) return true;
+  const clause = declaration.exportClause;
+  return (
+    clause !== undefined &&
+    ts.isNamedExports(clause) &&
+    clause.elements.length > 0 &&
+    clause.elements.every((element) => element.isTypeOnly)
+  );
+};
+
 const isRequireCall = (node: ts.CallExpression): boolean =>
   ts.isIdentifier(node.expression) && node.expression.text === "require";
 
@@ -172,14 +196,16 @@ export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyA
     if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
       edges.push({
         kind: "import",
+        typeOnly: isTypeOnlyImport(node.importClause),
         specifier: node.moduleSpecifier.text,
         line: lineOf(node),
         names: namedImportNames(node.importClause),
       });
     } else if (ts.isExportDeclaration(node) && node.moduleSpecifier !== undefined) {
-      if (ts.isStringLiteral(node.moduleSpecifier) && !node.isTypeOnly) {
+      if (ts.isStringLiteral(node.moduleSpecifier)) {
         edges.push({
           kind: "re-export",
+          typeOnly: isTypeOnlyReExport(node),
           specifier: node.moduleSpecifier.text,
           line: lineOf(node),
           names: namedReExportNames(node.exportClause),
@@ -194,6 +220,7 @@ export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyA
         if (specifier !== undefined) {
           edges.push({
             kind: isDynamicImport ? "dynamic-import" : "require",
+            typeOnly: false,
             specifier,
             line: lineOf(node),
             names: [],
