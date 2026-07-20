@@ -1660,6 +1660,24 @@
       "priority": 93,
       "passes": true,
       "notes": "Origin: US-459 review - spec section 3.5 says levels minimal..app each emit pre/post bootstrap events and core emits post-bootstrap and ready, but no production code publishes any of them. Depends on US-462 (fast path) and US-463 (per-level taxonomy)."
+    },
+    {
+      "id": "US-465",
+      "title": "Bounded EventService delivery queue with non-blocking publish",
+      "description": "As a user running a long command while a slow or stalled event consumer is attached, the EventService bus never grows memory without bound and never stalls the producing command, because each subscriber delivery queue is bounded and publish stays non-blocking on the hot path.",
+      "acceptanceCriteria": [
+        "makeEventServiceLive constructs the bus from a bounded Effect.PubSub instead of PubSub.unbounded (core/src/services/event-service.ts), with a fixed small default capacity and a host-configurable override on the same GlobalConfig seam other event tunables use.",
+        "publish never suspends the publishing fiber waiting for a full subscriber queue to drain: a stalled or slow dynamic consumer (subscribe / subscribeQueue) cannot block or delay the producing command's hot path (section 2.1). A regression test attaches a consumer that never dequeues, publishes past the configured capacity, and proves publish completes promptly and the producing effect is not suspended on the full queue.",
+        "Queue overflow is observable, not silent: the bus records dropped-event accounting readable by a host or lando doctor rather than discarding events with no signal. A test asserts the accounting increments when a bounded subscriber queue overflows.",
+        "The section 11.1 zero-subscriber short-circuit is unchanged and still bypasses the queue entirely; the redacted history buffer (section 3.5) and its historyCap-0 zero-allocation no-op are unaffected. A test proves the zero-subscriber path performs no enqueue regardless of the bound.",
+        "spec/03-architecture.md section 11.1 bounded-delivery contract and this behavior agree; no new EventService SDK surface is added (this is internal hardening, not a freeze-surface change).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 94,
+      "passes": false,
+      "notes": "Origin: US-456 review - 'Global EventService queue backpressure was deferred as cross-subsystem hardening.' The bus currently uses PubSub.unbounded (core/src/services/event-service.ts:240), so a dynamic consumer that stops draining grows the bus without bound. Internal hardening only (no new SDK surface); does not violate feature freeze. Open question: the exact overflow strategy (sliding drop-oldest vs dropping drop-newest) is left to implementation, but publish MUST stay non-blocking and overflow MUST be observable."
     }
   ]
 }

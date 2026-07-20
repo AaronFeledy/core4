@@ -170,6 +170,21 @@ The surfaces were written into the normative spec first (§8.9.3–§8.9.8, §9.
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+### US-465: Bounded `EventService` delivery queue with non-blocking publish
+
+**Description:** As a user running a long command while a slow or stalled event consumer is attached, the `EventService` bus never grows memory without bound and never stalls the producing command, because each subscriber delivery queue is bounded and `publish` stays non-blocking on the hot path.
+
+**Acceptance Criteria:**
+
+- [ ] `makeEventServiceLive` constructs the bus from a **bounded** `Effect.PubSub` instead of `PubSub.unbounded` (`core/src/services/event-service.ts`), with a fixed small default capacity and a host-configurable override on the same `GlobalConfig` seam other event tunables use.
+- [ ] `publish` never suspends the publishing fiber waiting for a full subscriber queue to drain: a stalled or slow dynamic consumer (`subscribe` / `subscribeQueue`) cannot block or delay the producing command's hot path (§2.1). A regression test attaches a consumer that never dequeues, publishes past the configured capacity, and proves `publish` completes promptly and the producing effect is not suspended on the full queue.
+- [ ] Queue overflow is **observable, not silent**: the bus records dropped-event accounting readable by a host or `lando doctor` rather than discarding events with no signal. A test asserts the accounting increments when a bounded subscriber queue overflows.
+- [ ] The §11.1 zero-subscriber short-circuit is unchanged and still bypasses the queue entirely; the redacted history buffer (§3.5) and its `historyCap: 0` zero-allocation no-op are unaffected. A test proves the zero-subscriber path performs no enqueue regardless of the bound.
+- [ ] `spec/03-architecture.md` §11.1 bounded-delivery contract and this behavior agree; no new `EventService` SDK surface is added (this is internal hardening, not a freeze-surface change).
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
 ## Non-Goals
 
 - Implementing panel-slot rendering, keymap remapping, the bindings overlay, rich render-event presentation, rich-event core emitters, or the interactive log viewer — all 4.1 (ROADMAP Phase 9).
@@ -218,6 +233,7 @@ The surfaces were written into the normative spec first (§8.9.3–§8.9.8, §9.
 | Frame-snapshot / visual-QA coverage (US-457) | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Update when US-457 lands |
 | Contract-only 4.1 freeze (US-460) | — | No guide impact; nothing renders in 4.0 |
 | Event-subsystem spec parity (US-462..US-464) | — | No guide impact; internal `EventService`/loader contracts with no user-facing surface beyond tagged errors |
+| Bounded `EventService` delivery queue (US-465) | — | No guide impact; internal bus hardening with no user-facing surface |
 
 There is no host-proxy guide row: `HostProxyService` (§10.10) gains no new surface from this PRD — `notify`/`clipboardCopy` container-initiated relay is explicitly out of scope (see Non-Goals) — so `docs/guides/subsystems/host-proxy.mdx` is unaffected.
 
