@@ -1,6 +1,6 @@
 import { Cause, Context, type Duration, Effect, Layer, Option, PubSub, Ref, Stream } from "effect";
 
-import type { ConfigError, EventError } from "@lando/sdk/errors";
+import type { EventError } from "@lando/sdk/errors";
 import { ConfigService, type EventFor, EventService, type LandoEvent } from "@lando/sdk/services";
 
 import {
@@ -278,11 +278,11 @@ export const makeEventServiceLive = (
 
 export const makeEventRuntimeLive = (
   deliveryQueueCapacity?: number,
-): Layer.Layer<EventService | EventDispatchControl | EventDeliveryMetrics, ConfigError, ConfigService> =>
+): Layer.Layer<EventService | EventDispatchControl | EventDeliveryMetrics, never, ConfigService> =>
   Layer.unwrapScoped(
     Effect.gen(function* () {
       const config = yield* ConfigService;
-      const eventConfig = yield* config.get("events");
+      const eventConfig = yield* config.get("events").pipe(Effect.orElseSucceed(() => undefined));
       return makeEventServiceLive(
         DEFAULT_HISTORY_CAP,
         {},
