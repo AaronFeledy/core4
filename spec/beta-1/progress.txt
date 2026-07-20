@@ -918,3 +918,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - **Learnings for future iterations:**
   - Effective bootstrap promotion must select one final runtime before lifecycle supervision; merging already-supervised levels creates isolated scopes and event histories.
 ---
+
+## 2026-07-19 23:09 CDT - US-465
+- Event delivery now uses a small bounded dropping queue, so stalled dynamic consumers cannot retain unbounded events or suspend publishers. A validated `events.deliveryQueueCapacity` host override controls the bound, while read-only core delivery metrics expose capacity and cumulative drops without widening the SDK EventService contract.
+- The zero-subscriber fast path and redacted history remain independent of delivery: no-subscriber publishes bypass the bus, dropped live deliveries remain queryable in history, and manifest subscribers still dispatch normally.
+- Verification: typecheck, lint passed; focused EventService, runtime/bootstrap, library-entry, GlobalConfig/schema, and adjacent contract spot checks passed; an isolated library runtime loaded capacity 1 from config, retained one live event, and reported one drop with clean teardown.
+- **Learnings for future iterations:**
+  - Effect `PubSub.bounded` backpressures publishers; use `PubSub.dropping` when a bounded queue must remain non-blocking, and count each `false` publish result explicitly.
+  - Keep `EventRuntimeLive` self-contained for direct internal consumers; generated production bootstrap uses the config-aware factory with `ConfigService` provided directly.
+---

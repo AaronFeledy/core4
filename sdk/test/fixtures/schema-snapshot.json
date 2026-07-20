@@ -21611,6 +21611,19 @@
             }
           ]
         },
+        "events": {
+          "additionalProperties": false,
+          "properties": {
+            "deliveryQueueCapacity": {
+              "description": "Positive per-subscriber event delivery queue capacity (global events.deliveryQueueCapacity; default 64).",
+              "exclusiveMinimum": 0,
+              "title": "positive",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
         "mcp": {
           "additionalProperties": false,
           "properties": {
@@ -52606,6 +52619,19 @@
                   "type": "null"
                 }
               ]
+            },
+            "events": {
+              "additionalProperties": false,
+              "properties": {
+                "deliveryQueueCapacity": {
+                  "description": "Positive per-subscriber event delivery queue capacity (global events.deliveryQueueCapacity; default 64).",
+                  "exclusiveMinimum": 0,
+                  "title": "positive",
+                  "type": "integer"
+                }
+              },
+              "required": [],
+              "type": "object"
             },
             "mcp": {
               "additionalProperties": false,
