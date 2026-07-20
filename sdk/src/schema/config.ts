@@ -122,9 +122,9 @@ export const GlobalConfig = Schema.Struct({
   events: Schema.optional(
     Schema.Struct({
       deliveryQueueCapacity: Schema.optional(
-        Schema.Number.pipe(Schema.int(), Schema.positive()).annotations({
+        Schema.Number.pipe(Schema.int(), Schema.positive(), Schema.lessThanOrEqualTo(65_536)).annotations({
           description:
-            "Positive per-subscriber event delivery queue capacity (global events.deliveryQueueCapacity; default 64).",
+            "Positive per-subscriber event delivery queue capacity up to 65536 (global events.deliveryQueueCapacity; default 64).",
         }),
       ),
     }),

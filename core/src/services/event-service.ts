@@ -22,7 +22,8 @@ const DEFAULT_DELIVERY_QUEUE_CAPACITY = 64;
 const EMPTY_HISTORY: ReadonlyArray<LandoEvent> = Object.freeze([]);
 
 type EventServiceConfig = {
-  readonly pubsub: PubSub.PubSub<LandoEvent>;
+  readonly subscribers: Set<PubSub.PubSub<LandoEvent>>;
+  readonly deliveryQueueCapacity: number;
   readonly history: Ref.Ref<ReadonlyArray<LandoEvent>>;
   readonly historyCap: number;
   readonly droppedEvents: Ref.Ref<number>;
@@ -37,6 +38,7 @@ export interface EventServiceInstrumentation {
 
 export interface EventDeliveryMetricsSnapshot {
   readonly capacity: number;
+  /** Number of event deliveries rejected by full subscriber queues. */
   readonly droppedEvents: number;
 }
 
@@ -81,18 +83,30 @@ const makeEventService = (
   config: EventServiceConfig,
   getDispatch: () => EventDispatchRegistration,
 ): Context.Tag.Service<typeof EventService> => {
-  const { pubsub, history, historyCap, droppedEvents, redaction, instrumentation } = config;
+  const {
+    subscribers,
+    deliveryQueueCapacity,
+    history,
+    historyCap,
+    droppedEvents,
+    redaction,
+    instrumentation,
+  } = config;
 
-  let activeConsumers = 0;
-  const trackedSubscribe = Effect.acquireRelease(
-    Effect.sync(() => {
-      activeConsumers += 1;
-    }),
-    () =>
+  const trackedSubscribe = Effect.gen(function* () {
+    const pubsub = yield* PubSub.dropping<LandoEvent>(deliveryQueueCapacity);
+    const queue = yield* PubSub.subscribe(pubsub);
+    yield* Effect.acquireRelease(
       Effect.sync(() => {
-        activeConsumers -= 1;
+        subscribers.add(pubsub);
       }),
-  ).pipe(Effect.zipRight(PubSub.subscribe(pubsub)));
+      () =>
+        Effect.sync(() => {
+          subscribers.delete(pubsub);
+        }).pipe(Effect.zipRight(PubSub.shutdown(pubsub))),
+    );
+    return queue;
+  });
 
   const appendHistory = (event: LandoEvent): Effect.Effect<void> => {
     if (historyCap <= 0) return Effect.void;
@@ -104,10 +118,20 @@ const makeEventService = (
     });
   };
 
-  const publishToBus = (event: LandoEvent): Effect.Effect<boolean> =>
-    Effect.sync(() => instrumentation.onPubSubPublish?.()).pipe(
-      Effect.zipRight(PubSub.publish(pubsub, event)),
-      Effect.tap((accepted) => (accepted ? Effect.void : Ref.update(droppedEvents, (total) => total + 1))),
+  const publishToBus = (event: LandoEvent): Effect.Effect<void> =>
+    Effect.sync(() => {
+      instrumentation.onPubSubPublish?.();
+      let rejectedDeliveries = 0;
+      for (const pubsub of subscribers) {
+        if (!pubsub.unsafeOffer(event)) rejectedDeliveries += 1;
+      }
+      return rejectedDeliveries;
+    }).pipe(
+      Effect.flatMap((rejectedDeliveries) =>
+        rejectedDeliveries === 0
+          ? Effect.void
+          : Ref.update(droppedEvents, (total) => total + rejectedDeliveries),
+      ),
     );
 
   const waitForMatch = <A>(
@@ -144,7 +168,7 @@ const makeEventService = (
           Effect.suspend(() => {
             const registration = getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
-            if (!hasManifest && activeConsumers === 0) return appendHistory(event);
+            if (!hasManifest && subscribers.size === 0) return appendHistory(event);
             return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
               Effect.zipRight(decodeDeliverableEvent(event, eventName)),
               Effect.flatMap((decoded) =>
@@ -212,15 +236,23 @@ export const makeEventServiceLive = (
         hasSubscribers: () => false,
         dispatch: () => Effect.void,
       };
-      const pubsub = yield* PubSub.dropping<LandoEvent>(deliveryQueueCapacity);
-      yield* Effect.addFinalizer(() => PubSub.shutdown(pubsub));
+      const subscribers = new Set<PubSub.PubSub<LandoEvent>>();
+      yield* Effect.addFinalizer(() => Effect.forEach(subscribers, PubSub.shutdown, { discard: true }));
       const history = yield* Ref.make<ReadonlyArray<LandoEvent>>([]);
       const droppedEvents = yield* Ref.make(0);
       const redaction = yield* Effect.serviceOption(RedactionService);
       const events = Layer.succeed(
         EventService,
         makeEventService(
-          { pubsub, history, historyCap, droppedEvents, redaction, instrumentation },
+          {
+            subscribers,
+            deliveryQueueCapacity,
+            history,
+            historyCap,
+            droppedEvents,
+            redaction,
+            instrumentation,
+          },
           () => registration,
         ),
       );

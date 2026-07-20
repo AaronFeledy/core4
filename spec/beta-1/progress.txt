@@ -927,3 +927,12 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Effect `PubSub.bounded` backpressures publishers; use `PubSub.dropping` when a bounded queue must remain non-blocking, and count each `false` publish result explicitly.
   - Keep `EventRuntimeLive` self-contained for direct internal consumers; generated production bootstrap uses the config-aware factory with `ConfigService` provided directly.
 ---
+
+## 2026-07-19 23:37 CDT - US-465 Review
+- Replaced the shared dropping ring with one scoped bounded `Effect.PubSub` per dynamic subscriber, so a stalled consumer drops only its own deliveries while healthy consumers continue receiving. Drop metrics now count rejected subscriber deliveries, and the host-configurable capacity is capped at 65536 to prevent pathological bootstrap allocation.
+- Review notes (deferred/rejected): A local full-suite demand was rejected because the Review host contract explicitly reserves bare `bun test` for CI. The replacement security lane found no security blocker. Cursor Bugbot found no bugs. `Guide-Coverage-Skip: Internal EventService per-subscriber queue hardening changes no documented user workflow; PRD-15 explicitly declares no guide impact.`
+- Verification: typecheck and lint passed; focused delivery, publish-contract, wait/query, bootstrap-lifecycle, and GlobalConfig/schema spot checks passed; schema and bootstrap codegen are idempotent; changed-file diagnostics are clean.
+- **Learnings for future iterations:**
+  - Effect's bounded `PubSub` uses one shared ring across its subscribers, so one stalled subscriber can force global drops; independent bounded delivery requires one dropping PubSub per dynamic subscriber.
+  - Register a per-subscriber PubSub only after its subscription exists, remove it before shutdown, and deliver through one synchronous `unsafeOffer` pass to avoid acquisition and finalizer races.
+---

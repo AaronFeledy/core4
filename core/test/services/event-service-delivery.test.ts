@@ -77,7 +77,7 @@ describe("EventService bounded delivery", () => {
     expect(outcome.snapshot).toEqual({ capacity: 2, droppedEvents: 1 });
   });
 
-  test("overflow accounting increments once per dropped event", async () => {
+  test("overflow accounting increments once per rejected subscriber delivery", async () => {
     const layer = makeEventServiceLive(0, {}, 1);
 
     const snapshot = await Effect.runPromise(
@@ -94,6 +94,49 @@ describe("EventService bounded delivery", () => {
         );
         return yield* metrics.snapshot;
       }).pipe(Effect.provide(layer)),
+    );
+
+    expect(snapshot).toEqual({ capacity: 1, droppedEvents: 2 });
+  });
+
+  test("a draining subscriber continues receiving while another subscriber stalls", async () => {
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        return yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* events.subscribeQueue;
+            const draining = yield* events.subscribeQueue;
+            yield* events.publish(progressEvent(1));
+            const first = yield* Queue.take(draining);
+            const secondTake = yield* Queue.take(draining).pipe(Effect.fork);
+            yield* events.publish(progressEvent(2));
+            yield* Effect.yieldNow();
+            return { first, second: yield* Fiber.poll(secondTake) };
+          }),
+        );
+      }).pipe(Effect.provide(makeEventServiceLive(0, {}, 1))),
+    );
+
+    expect(outcome.first.bytesDownloaded).toBe(1);
+    expect(Option.isSome(outcome.second)).toBe(true);
+  });
+
+  test("one overflow rejected by two stalled subscribers increments accounting by two", async () => {
+    const snapshot = await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        const metrics = yield* EventDeliveryMetrics;
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            yield* events.subscribeQueue;
+            yield* events.subscribeQueue;
+            yield* events.publish(progressEvent(1));
+            yield* events.publish(progressEvent(2));
+          }),
+        );
+        return yield* metrics.snapshot;
+      }).pipe(Effect.provide(makeEventServiceLive(0, {}, 1))),
     );
 
     expect(snapshot).toEqual({ capacity: 1, droppedEvents: 2 });
@@ -154,5 +197,28 @@ describe("EventService bounded delivery", () => {
     expect(publishCalls).toBe(0);
     expect(outcome.snapshot.droppedEvents).toBe(0);
     expect(outcome.history).toEqual([]);
+  });
+
+  test("scoped subscriber cleanup restores the zero-subscriber bypass", async () => {
+    let publishCalls = 0;
+    const layer = makeEventServiceLive(
+      0,
+      {
+        onPubSubPublish: () => {
+          publishCalls += 1;
+        },
+      },
+      1,
+    );
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const events = yield* EventService;
+        yield* Effect.scoped(events.subscribeQueue);
+        yield* events.publish(progressEvent(1));
+      }).pipe(Effect.provide(layer)),
+    );
+
+    expect(publishCalls).toBe(0);
   });
 });
