@@ -936,3 +936,11 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
   - Effect's bounded `PubSub` uses one shared ring across its subscribers, so one stalled subscriber can force global drops; independent bounded delivery requires one dropping PubSub per dynamic subscriber.
   - Register a per-subscriber PubSub only after its subscription exists, remove it before shutdown, and deliver through one synchronous `unsafeOffer` pass to avoid acquisition and finalizer races.
 ---
+
+## [2026-07-20 00:29 CDT] - Babysit
+- PR: #613 https://github.com/AaronFeledy/core4/pull/613
+- CI outcome: pass
+- Review feedback: fixed (telemetry startup no longer requires valid global config; documented events.deliveryQueueCapacity in testing-runtime guide)
+- Drift check: clean
+- Merge: merged (squash)
+---
