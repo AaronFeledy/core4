@@ -11,9 +11,9 @@
  * generated output.
  */
 
-import { Layer } from "effect";
+import { Context, Layer } from "effect";
 
-import { PathsService, Renderer } from "@lando/sdk/services";
+import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
 import { makeLandoPaths } from "../../../config/paths.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
@@ -38,7 +38,10 @@ import { type BootstrapLayerInputs, makeLibraryRenderer } from "../../bootstrap-
 export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const telemetryLive = makeTelemetryLayer(inputs.telemetryEnabled);
   const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
-  const eventServiceLive = EventRuntimeLive.pipe(Layer.provide(redactionLive));
+  const eventServiceLive = EventRuntimeLive.pipe(
+    Layer.provide(redactionLive),
+    Layer.tap((context) => inputs.lifecycle.useBaseEventService(Context.get(context, EventService))),
+  );
   const httpClientLive = HttpClientLive.pipe(
     Layer.provide(Layer.mergeAll(ConfigServiceLive, eventServiceLive)),
   );
@@ -67,5 +70,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     httpClientLive,
     DownloaderLive.pipe(Layer.provide(httpClientLive)),
   );
-  return minimalRuntimeLive;
+  return minimalRuntimeLive.pipe(
+    Layer.tap((context) => inputs.lifecycle.complete("minimal", Context.get(context, EventService))),
+  );
 };

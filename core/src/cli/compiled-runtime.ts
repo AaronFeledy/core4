@@ -1,4 +1,4 @@
-import { type Effect, Layer, type Schema } from "effect";
+import type { Effect, Layer, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
@@ -33,6 +33,11 @@ import { activeRendererMode } from "./renderer-mode-state.ts";
 import type { RendererIO } from "./renderer/io.ts";
 import type { StreamFrameSink } from "./stream-frame-sink.ts";
 
+type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
+
+const makeCompiledRuntime: CompiledRuntimeFactory = (bootstrap) =>
+  makeLandoRuntime(cliRuntimeOptions({ bootstrap, plugins: { policy: "discovery" } }));
+
 export { activeRendererMode, setActiveRendererMode } from "./renderer-mode-state.ts";
 export {
   type CompiledCommandInput,
@@ -61,19 +66,10 @@ export const resolveCompiledCommandRuntime = <ROut, E, RIn>(
   commandId: string,
   declaredBootstrap: BootstrapLevel,
   runtime: Layer.Layer<ROut, E, RIn>,
+  runtimeForBootstrap: CompiledRuntimeFactory = makeCompiledRuntime,
 ) => {
   const effectiveBootstrap = resolveEffectiveCliBootstrap(commandId, declaredBootstrap);
-  return effectiveBootstrap === declaredBootstrap
-    ? runtime
-    : Layer.merge(
-        runtime,
-        makeLandoRuntime(
-          cliRuntimeOptions({
-            bootstrap: effectiveBootstrap,
-            plugins: { policy: "discovery" },
-          }),
-        ),
-      );
+  return effectiveBootstrap === declaredBootstrap ? runtime : runtimeForBootstrap(effectiveBootstrap);
 };
 
 export const runCompiledCommand = <A, E, R, RE>(
@@ -91,13 +87,14 @@ export const runCompiledCommand = <A, E, R, RE>(
     readonly streamingMode?: "live";
     readonly preCommand?: boolean;
     readonly io?: RendererIO;
+    readonly runtimeForBootstrap?: CompiledRuntimeFactory;
   } = {},
 ): Promise<void> => {
   const spec = landoSpecForId(activeCommandId);
   const effectiveRuntime =
     spec?.bootstrap === undefined
       ? runtime
-      : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime);
+      : resolveCompiledCommandRuntime(activeCommandId, spec.bootstrap, runtime, options.runtimeForBootstrap);
   const redactionTokens = spec?.redactionTokens;
   const successExitCode =
     options.successExitCode ??
@@ -106,7 +103,10 @@ export const runCompiledCommand = <A, E, R, RE>(
       : (value: A) => spec.successExitCode?.(value, getActiveCommandInvocation()));
   const invocation = getActiveCommandInvocation();
   const rendererOptions = {
-    runtime: effectiveRuntime,
+    runtime: effectiveRuntime as Layer.Layer<
+      Exclude<R, EventService | Renderer | StreamFrameSink>,
+      RE | ConfigError | LandoRuntimeBootstrapError
+    >,
     rendererMode: activeRendererMode,
     resultFormat: activeResultFormat,
     command: activeCommandId,

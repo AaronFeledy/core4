@@ -68,6 +68,7 @@ type EventServiceConfig = {
 };
 
 export interface EventServiceInstrumentation {
+  readonly onPayloadDecode?: () => void;
   readonly onPubSubPublish?: () => void;
 }
 
@@ -170,7 +171,8 @@ const makeEventService = (
             const registration = getDispatch();
             const hasManifest = registration.hasSubscribers(eventName);
             if (!hasManifest && activeConsumers === 0) return appendHistory(event);
-            return decodeDeliverableEvent(event, eventName).pipe(
+            return Effect.sync(() => instrumentation.onPayloadDecode?.()).pipe(
+              Effect.zipRight(decodeDeliverableEvent(event, eventName)),
               Effect.flatMap((decoded) =>
                 publishToBus(decoded).pipe(
                   Effect.zipRight(appendHistory(decoded)),

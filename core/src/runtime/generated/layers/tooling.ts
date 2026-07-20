@@ -11,8 +11,9 @@
  * generated output.
  */
 
-import { Layer } from "effect";
+import { Context, Layer } from "effect";
 
+import { EventService } from "@lando/sdk/services";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { makeCommandsBootstrapBaseLayer } from "./commands.ts";
@@ -20,5 +21,7 @@ import { makeCommandsBootstrapBaseLayer } from "./commands.ts";
 export const makeToolingBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const toolingBase = makeCommandsBootstrapBaseLayer(inputs);
   const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(toolingBase));
-  return Layer.merge(toolingBase, subscriberRuntimeLive);
+  return Layer.merge(toolingBase, subscriberRuntimeLive).pipe(
+    Layer.tap((context) => inputs.lifecycle.complete("tooling", Context.get(context, EventService))),
+  );
 };

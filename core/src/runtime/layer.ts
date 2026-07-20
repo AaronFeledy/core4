@@ -56,6 +56,7 @@ import { InteractionService as InteractionServiceTag } from "@lando/sdk/services
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service.ts";
 import type { LoggerMode } from "../logging/service.ts";
 import type { RedactionService } from "../redaction/service.ts";
+import { type BootstrapLifecycleTracker, makeBootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
 import { RuntimeCwd } from "./cwd.ts";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index.ts";
@@ -143,8 +144,10 @@ const runtimeLayerFor = (
   telemetryEnabled: boolean,
   pluginPolicy: NormalizedPluginPolicy,
   rootOverrides: RootOverrides,
+  lifecycle: BootstrapLifecycleTracker,
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
+    lifecycle,
     loggerMode,
     rendererMode,
     telemetryEnabled,
@@ -200,6 +203,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
 
   const pluginPolicy = normalizePluginPolicy(decoded.right.plugins);
   const capturedCwd = decoded.right.cwd ?? process.cwd();
+  const lifecycle = makeBootstrapLifecycleTracker();
   const baseLayer = runtimeLayerFor(
     decoded.right.bootstrap ?? "app",
     decoded.right.logger === "pretty" ? "pretty" : "silent",
@@ -207,6 +211,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
     decoded.right.telemetry ?? decoded.right.config?.telemetry?.enabled ?? false,
     pluginPolicy,
     rootOverridesFromConfig(decoded.right.config),
+    lifecycle,
   );
   const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);
 
@@ -238,5 +243,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   return mergeRuntimeWithHostLayers(
     baseLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
     hostLayers,
+    decoded.right.bootstrap ?? "app",
+    lifecycle,
   ) as RuntimeLayer;
 }

@@ -19,7 +19,7 @@ import { basename, resolve } from "node:path";
 import { BOOTSTRAP_RANK } from "@lando/sdk/schema";
 
 import { writeFormattedOutput } from "./_codegen-output.ts";
-import { renderCommands, renderMinimal, renderProvider } from "./bootstrap-layer-renderers.ts";
+import { renderCommands, renderIndex, renderMinimal, renderProvider } from "./bootstrap-layer-renderers.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT_DIR = resolve(REPO_ROOT, "core/src/runtime/generated/layers");
@@ -46,8 +46,9 @@ const levelOrder = Object.keys(BOOTSTRAP_RANK).sort(
 
 const renderPlugins = (): string =>
   [
-    'import { Layer } from "effect";',
+    'import { Context, Layer } from "effect";',
     "",
+    'import { EventService } from "@lando/sdk/services";',
     'import { DeprecationPluginRegistryLive } from "../../../deprecation/plugin-registry.ts";',
     'import { makePluginRegistryLive } from "../../../plugins/registry.ts";',
     'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
@@ -61,15 +62,18 @@ const renderPlugins = (): string =>
     "  const deprecationRegistryLive = DeprecationPluginRegistryLive.pipe(",
     "    Layer.provide(Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive)),",
     "  );",
-    "  return Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, deprecationRegistryLive);",
+    "  return Layer.mergeAll(minimalRuntimeLive, pluginRegistryLive, deprecationRegistryLive).pipe(",
+    '    Layer.tap((context) => inputs.lifecycle.complete("plugins", Context.get(context, EventService))),',
+    "  );",
     "};",
     "",
   ].join("\n");
 
 const renderTooling = (): string =>
   [
-    'import { Layer } from "effect";',
+    'import { Context, Layer } from "effect";',
     "",
+    'import { EventService } from "@lando/sdk/services";',
     'import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";',
     'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
     'import { makeCommandsBootstrapBaseLayer } from "./commands.ts";',
@@ -77,7 +81,9 @@ const renderTooling = (): string =>
     "export const makeToolingBootstrapLayer = (inputs: BootstrapLayerInputs) => {",
     "  const toolingBase = makeCommandsBootstrapBaseLayer(inputs);",
     "  const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(toolingBase));",
-    "  return Layer.merge(toolingBase, subscriberRuntimeLive);",
+    "  return Layer.merge(toolingBase, subscriberRuntimeLive).pipe(",
+    '    Layer.tap((context) => inputs.lifecycle.complete("tooling", Context.get(context, EventService))),',
+    "  );",
     "};",
     "",
   ].join("\n");
@@ -139,9 +145,10 @@ const renderScratch = (): string =>
 
 const renderApp = (): string =>
   [
-    'import { Layer } from "effect";',
+    'import { Context, Layer } from "effect";',
     "",
     'import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";',
+    'import { EventService } from "@lando/sdk/services";',
     'import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";',
     'import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";',
     'import { AppPlannerLive } from "../../../services/planner.ts";',
@@ -162,59 +169,15 @@ const renderApp = (): string =>
     "    FileSyncEngineLive.pipe(Layer.provide(providerBase)),",
     "  );",
     "  const subscriberRuntimeLive = makeSubscriberRuntimeLive().pipe(Layer.provide(appBase));",
-    "  return Layer.merge(appBase, subscriberRuntimeLive);",
+    "  return Layer.merge(appBase, subscriberRuntimeLive).pipe(",
+    '    Layer.tap((context) => inputs.lifecycle.complete("app", Context.get(context, EventService))),',
+    "  );",
     "};",
     "",
   ].join("\n");
 
 const renderNone = (): string =>
   ['import { Layer } from "effect";', "", "export const noneBootstrapLayer = Layer.empty;", ""].join("\n");
-
-const renderIndex = (): string =>
-  [
-    'import { Layer } from "effect";',
-    "",
-    'import type { BootstrapLevel } from "@lando/sdk/schema";',
-    'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
-    'import { noneBootstrapLayer } from "./none.ts";',
-    'import { makeMinimalBootstrapLayer } from "./minimal.ts";',
-    'import { makePluginsBootstrapBaseLayer } from "./plugins.ts";',
-    'import { makeCommandsBootstrapLayer } from "./commands.ts";',
-    'import { makeToolingBootstrapLayer } from "./tooling.ts";',
-    'import { makeProviderBootstrapLayer } from "./provider.ts";',
-    'import { makeGlobalBootstrapLayer } from "./global.ts";',
-    'import { makeScratchBootstrapLayer } from "./scratch.ts";',
-    'import { makeAppBootstrapLayer } from "./app.ts";',
-    "",
-    "export const makeGeneratedBootstrapLayer = (bootstrap: BootstrapLevel, inputs: BootstrapLayerInputs) => {",
-    "  switch (bootstrap) {",
-    '    case "none":',
-    "      return noneBootstrapLayer;",
-    '    case "minimal":',
-    "      return makeMinimalBootstrapLayer(inputs);",
-    '    case "plugins":',
-    "      return makePluginsBootstrapBaseLayer(inputs);",
-    '    case "commands":',
-    "      return makeCommandsBootstrapLayer(inputs);",
-    '    case "tooling":',
-    "      return makeToolingBootstrapLayer(inputs);",
-    '    case "provider":',
-    "      return makeProviderBootstrapLayer(inputs);",
-    '    case "global":',
-    "      return makeGlobalBootstrapLayer(inputs);",
-    '    case "scratch":',
-    "      return makeScratchBootstrapLayer(inputs);",
-    '    case "app":',
-    "      return makeAppBootstrapLayer(inputs);",
-    "  }",
-    "};",
-    "",
-    "export const mergeRuntimeWithHostLayers = (",
-    "  baseLayer: Layer.Layer<unknown, unknown, unknown>,",
-    "  hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,",
-    ") => (hostLayers.length === 0 ? baseLayer : Layer.mergeAll(baseLayer, ...hostLayers));",
-    "",
-  ].join("\n");
 
 const renderers: Record<string, () => string> = {
   none: renderNone,

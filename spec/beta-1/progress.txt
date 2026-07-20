@@ -31,6 +31,7 @@ Origin: 2026-07-02 post-Alpha-4 gap audit (see prd-beta-1-00-index.md traceabili
 - Split-footer resize handling must recompute semantic footer content at the new dimensions before replay; eventless input changes such as full-tail paging require an explicit repaint.
 - Expanded transcript resize repages through the serialized event/input seam at the new row budget while preserving the current file-tail anchor.
 - Build orchestration runs artifact work before provider apply and app work after services are running; app-step output is persisted unredacted under the user data root while only redacted `task.detail` lines cross EventService.
+- Bootstrap lifecycle supervision owns a child runtime `Scope`: record each generated level only after acquisition, retain base/effective `EventService` identities separately, and publish `before-exit` before closing retained runtime resources.
 
 - `Renderer.capabilities` is a getter over at most two immutable snapshots per run (initial, optional monotonic promotion); never mutate in place or demote fields.
 - `notify.desktop` is capability-gated at the renderer: drop when `notifications` is false; json still emits the event; never hand-frame OSC sequences — call OpenTUI `triggerNotification`.
@@ -900,4 +901,20 @@ US-455..US-460 are explicit Beta 1 work as **PRD-15** (`passes: false`), coverin
 - CI outcome: pass
 - Review feedback: fixed (documented bootstrap subscriber level contract in sdk-compatibility guide for guide-drift)
 - Merge: merged (squash)
+---
+
+## 2026-07-19 18:51 CDT - US-464
+- The runtime now records every completed bootstrap level from the EventService construction threshold, publishes the ordered per-level pairs followed by aggregate `post-bootstrap` and `ready`, and guarantees `before-exit` with the final exit code before retained runtime resources finalize. Partial bootstrap failures preserve completed-level history, still emit `before-exit`, and honor an acquired host EventService override.
+- Verification: typecheck, lint passed; 110 focused runtime, subscriber, EventService, source/compiled parity, and codegen spot checks passed; source and compiled `meta:config --format json` produced byte-identical exit-0 envelopes in the isolated dev sandbox with clean teardown.
+- **Learnings for future iterations:**
+  - Capture the base EventService as soon as it acquires, before minimal bootstrap can fail; capture host overrides independently so later base checkpoints cannot overwrite the effective service.
+  - On partial failure, guarantee `before-exit` independently of completed-level subscriber success; an aborting pre-bootstrap subscriber must not suppress shutdown lifecycle publication.
+---
+
+## 2026-07-19 19:21 CDT - US-464 Review
+- Fixed compiled effective-bootstrap promotion to replace the declared runtime with one effective runtime instead of merging two independently supervised runtimes; promoted commands now emit one canonical bootstrap sequence with source-dispatch parity.
+- Review notes (deferred/rejected): Requiring manifest subscriber dispatch from a bare `plugins` runtime was rejected because §11.3.1 closes the subscriber index only after the command registry completes; app/tooling delivery remains the US-464 contract. Cursor Bugbot found no bugs. `Guide-Coverage-Skip: Internal bootstrap event emission has no guide-owned workflow; PRD-15 explicitly records no guide impact.`
+- Verification: typecheck, lint passed; focused bootstrap lifecycle, source/compiled promotion parity, compiled failure, and subscriber integration spot checks passed; guide drift and generated bootstrap-layer idempotence passed; changed-file diagnostics clean.
+- **Learnings for future iterations:**
+  - Effective bootstrap promotion must select one final runtime before lifecycle supervision; merging already-supervised levels creates isolated scopes and event histories.
 ---
