@@ -80,6 +80,7 @@ tags: [beta, docs, library, testing]
       <Variable name="waitFor" value="typed live wait" display="EventService.waitFor(name, { filter, timeout }) waits for the first typed event match and reports EventError reason timeout when the test clock reaches the deadline" />
       <Variable name="waitForAny" value="typed race" display="EventService.waitForAny([{ name, filter }], { timeout }) waits for the first matching event across several event names under one timeout" />
       <Variable name="query" value="bounded redacted history" display="EventService.query(name, filter?) snapshots matching events from the bounded redacted in-memory history without blocking" />
+      <Variable name="deliveryQueueCapacity" value="events.deliveryQueueCapacity (default 64)" display="GlobalConfig sets the positive per-subscriber delivery queue capacity; a full subscriber queue drops only that delivery so publish remains non-blocking" />
       <Variable name="expectEvent" value="default timeout" display="@lando/core/testing exports expectEvent(name, options?) with a five second default timeout so missing test events fail fast" />
       <Variable name="waitForEvent" value="caller timeout" display="@lando/core/testing exports waitForEvent(name, options?) for tests that need the EventService waitFor contract without the expectEvent default timeout" />
       <Variable name="recordedEvents" value="query star" display="@lando/core/testing exports recordedEvents() as a snapshot of EventService.query('*') for assertions against emitted runtime history" />
