@@ -48,6 +48,7 @@
     "check:runtime-bundle-manifest": "bun run scripts/check-runtime-bundle-manifest.ts",
     "check:telemetry-inventory": "bun run scripts/check-telemetry-inventory.ts",
     "check:deprecations": "bun run scripts/check-deprecations.ts",
+    "check:import-cycle": "bun run scripts/check-import-cycle.ts",
     "check:guide-coverage": "bun run scripts/check-guide-coverage.ts",
     "check:public-transcripts": "bun run scripts/check-public-transcripts.ts",
     "check:guide-drift": "bun run scripts/check-guide-drift.ts",

@@ -24,7 +24,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
 - Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
-- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:renderer-boundary`, `check:managed-file-boundary`, `check:state-store-boundary`, `check:probe-boundary`, `check:redaction-boundary`, `check:telemetry-inventory`, `lint:guides`, `check:guide-coverage`, `check:public-transcripts`, or `check:guide-drift`.
+- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:import-cycle`, `check:renderer-boundary`, `check:managed-file-boundary`, `check:state-store-boundary`, `check:probe-boundary`, `check:redaction-boundary`, `check:telemetry-inventory`, `lint:guides`, `check:guide-coverage`, `check:public-transcripts`, or `check:guide-drift`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
