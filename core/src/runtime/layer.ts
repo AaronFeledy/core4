@@ -56,6 +56,7 @@ import { InteractionService as InteractionServiceTag } from "@lando/sdk/services
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service.ts";
 import type { LoggerMode } from "../logging/service.ts";
 import type { RedactionService } from "../redaction/service.ts";
+import type { EventDeliveryMetrics } from "../services/event-service.ts";
 import { type BootstrapLifecycleTracker, makeBootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
 import { RuntimeCwd } from "./cwd.ts";
@@ -80,6 +81,7 @@ type MinimalRuntimeServices =
   | Telemetry
   | ConfigService
   | EventService
+  | EventDeliveryMetrics
   | PathsService
   | FileSystem
   | CacheService

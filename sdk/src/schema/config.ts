@@ -119,5 +119,17 @@ export const GlobalConfig = Schema.Struct({
   notify: Schema.optional(NotifyConfig).annotations({
     description: "Global desktop-notification policy (global notify; §8.9.7).",
   }),
+  events: Schema.optional(
+    Schema.Struct({
+      deliveryQueueCapacity: Schema.optional(
+        Schema.Number.pipe(Schema.int(), Schema.positive(), Schema.lessThanOrEqualTo(65_536)).annotations({
+          description:
+            "Positive per-subscriber event delivery queue capacity up to 65536 (global events.deliveryQueueCapacity; default 64).",
+        }),
+      ),
+    }),
+  ).annotations({
+    description: "Global event delivery policy (global events).",
+  }),
 });
 export type GlobalConfig = typeof GlobalConfig.Type;

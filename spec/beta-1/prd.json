@@ -1676,8 +1676,8 @@
         "Lint passes"
       ],
       "priority": 94,
-      "passes": false,
-      "notes": "Origin: US-456 review - 'Global EventService queue backpressure was deferred as cross-subsystem hardening.' The bus currently uses PubSub.unbounded (core/src/services/event-service.ts:240), so a dynamic consumer that stops draining grows the bus without bound. Internal hardening only (no new SDK surface); does not violate feature freeze. Open question: the exact overflow strategy (sliding drop-oldest vs dropping drop-newest) is left to implementation, but publish MUST stay non-blocking and overflow MUST be observable."
+      "passes": true,
+      "notes": "Origin: US-456 review - 'Global EventService queue backpressure was deferred as cross-subsystem hardening.' Implemented with a dropping-newest Effect.PubSub (default capacity 64), the validated global events.deliveryQueueCapacity override, and core-only delivery metrics for observable drop accounting; the SDK EventService surface is unchanged."
     }
   ]
 }

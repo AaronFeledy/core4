@@ -110,6 +110,20 @@
             }
           ]
         },
+        "events": {
+          "additionalProperties": false,
+          "properties": {
+            "deliveryQueueCapacity": {
+              "description": "Positive per-subscriber event delivery queue capacity up to 65536 (global events.deliveryQueueCapacity; default 64).",
+              "exclusiveMinimum": 0,
+              "maximum": 65536,
+              "title": "lessThanOrEqualTo(65536)",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
         "mcp": {
           "additionalProperties": false,
           "properties": {
