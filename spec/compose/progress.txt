@@ -1,0 +1,22 @@
+# Ralph Progress Log — Lando v4 Compose Service-Key Vocabulary
+
+Branch: ralph/compose
+Source PRDs: spec/compose/prd-compose-{01..04}-*.md (US-466..US-477)
+Spec source of truth: spec/{01..19}-*.md — specifically the amended §6.2 (service schema normalization contract), §7.4 (vocabulary principle, disposition matrix, vendored schema, rejected machinery), and §5.5.1 (matrix-driven planning order)
+Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format decision; see prd-compose-00-index.md)
+
+## Conventions
+
+- Durable progress narrative, not a changed-file ledger. Git records diffs; this file records outcomes, decisive verification, blockers, and durable learnings.
+- Explain what became true, what proved it, and what remains blocked or deferred. Skip review choreography, generated-path inventories, and test-count trivia.
+- If a story relaxes or re-scopes a contract, record the decision and the synchronized spec/PRD/snapshot updates. Truth hierarchy is spec > PRD > progress.
+
+## Codebase Patterns
+
+- The disposition matrix (US-466) is the single classification source: coverage gate, docs matrix, rejection remediation text, and conformance skip-list are all derived artifacts. Never hand-maintain a second key list.
+- The vendored Compose schema is a coverage oracle, not a codegen source: Effect Schema in @lando/sdk stays hand-authored per spec §1.2.
+- Pin source is a compose-go tag (compose-spec/compose-spec is an untagged mirror; never pin to it).
+
+## Log
+
+(no entries yet)

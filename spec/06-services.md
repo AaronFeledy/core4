@@ -32,14 +32,17 @@ A v4 service is a planned runtime component built from a **base** plus a sequenc
 
 `ServiceConfig` accepts the documented Compose service-key subset (§7.4) at the same level as Lando's additional keys. Lando-specific keys are conveniences or higher-level intent; they do not make supported Compose keys invalid. Unsupported Compose service keys fail validation unless they are moved under a provider extension that explicitly owns them.
 
-Core normalizes Compose service keys with portable equivalents before creating a `ServicePlan`:
+Core normalizes Compose service keys with portable equivalents before creating a `ServicePlan`. Both the Compose spelling and the Lando alias are accepted, and where Compose defines a short and a long syntax for a key, **both forms are accepted** and canonicalized to the long form before normalization:
 
-- `image:` / Compose `build:` map into the service artifact model when the selected provider can build or pull artifacts.
-- `command:`, `entrypoint:`, `user:`, `working_dir:`, `environment:`, and `env_file:` map directly to execution and environment fields.
-- `volumes:` entries map to `mounts` or `storage` depending on whether the source is a host path, named volume, or anonymous volume.
-- `ports:` and `expose:` map to `endpoints`; `ports:` with host bindings require the provider's host-port capability.
-- `depends_on:` maps to `dependsOn` and is used for lifecycle ordering.
-- Supported `networks:`, `configs:`, `secrets:`, `labels:`, `profiles:`, and `deploy:` forms are accepted. Fields in the supported subset without provider-neutral semantics are preserved in `ServicePlan.extensions.compose` and capability-checked per §5.5.1.
+- `image:` / Compose `build:` map into the service artifact model when the selected provider can build or pull artifacts. `build:` is **shape-discriminated**: a block containing Compose build keys (`context`, `dockerfile`, `dockerfile_inline`, `args`, `target`, ...) is a Compose build and normalizes into the artifact model; a block containing Lando build-script keys (`artifact:`, `app:`) is the §6.13 build-script block; a block mixing the two families fails with a tagged error and remediation. This shape discrimination replaces any separate `composeBuild:` spelling.
+- `command:`, `entrypoint:`, `user:`, `working_dir:`, `environment:` (map form and `KEY=value` list form), and `env_file:` (string and list forms) map directly to execution and environment fields.
+- `volumes:` entries (short-string and long-object forms) map to `mounts` or `storage` depending on whether the source is a host path, named volume, or anonymous volume; a long-form `type: tmpfs` entry routes to the preserved `tmpfs` runtime knob.
+- `ports:` (short-string and long-object forms) and `expose:` map to `endpoints`; `ports:` with host bindings require the provider's host-port capability.
+- `depends_on:` (list form and condition-map form) maps to `dependsOn` and is used for lifecycle ordering. `condition: service_started | service_healthy | service_completed_successfully` is preserved into the plan and honored by build/start orchestration (§6.13): `service_healthy` gates on the dependency's healthcheck, `service_completed_successfully` on its successful exit.
+- `healthcheck:` in the Compose shape (`test` as string or `CMD`/`CMD-SHELL`/`NONE` array, `interval`/`timeout`/`start_period` duration strings, `retries`, `disable`) normalizes into the §6.7 healthcheck model.
+- **Per-container runtime knobs** with no Lando abstraction are accepted and preserved per §5.5.1: `restart`, `cap_add`, `cap_drop`, `privileged`, `devices`, `ulimits`, `sysctls`, `tmpfs`, `shm_size`, `dns`, `dns_search`, `dns_opt`, `extra_hosts`, `init`, `stop_signal`, `stop_grace_period`, `security_opt`, `group_add`, `read_only`, `platform`, `pull_policy`, `logging`, `gpus`, and `deploy.resources`. They carry no provider-neutral planner semantics; they ride `ServicePlan.extensions.compose` and are capability-checked.
+- Supported `networks:`, `configs:`, `secrets:`, `labels:` (map and list forms), and `profiles:` forms are accepted. Fields in the supported subset without provider-neutral semantics are preserved in `ServicePlan.extensions.compose` and capability-checked per §5.5.1.
+- Service keys with a `rejected` disposition in the §7.4 matrix (`extends`, `container_name`, `network_mode`, `links`, Swarm-oriented `deploy` orchestration keys) fail validation with a tagged error and remediation; they are never silently dropped or passed through.
 
 Lando aliases such as `workingDirectory`, `envFile`, `appMount`, `mounts`, `storage`, `endpoints`, `routes`, `certs`, `security`, and `packages` remain available as extensions. When both a Compose key and its Lando simplification are present, the more specific Lando key wins during normalization and `lando config` SHOULD report the resolved value.
 

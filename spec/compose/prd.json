@@ -1,0 +1,236 @@
+{
+  "project": "Lando v4 Compose Service-Key Vocabulary (post-freeze feature wave, 4.1 target)",
+  "branchName": "ralph/compose",
+  "description": "Makes the amended spec sections 6.2, 7.4, and 5.5.1 true: Compose compatibility as a service-key vocabulary, not a file-format promise. US-466..US-467 (PRD-01) build the alignment substrate: the Compose JSON Schema vendored from a tagged compose-spec/compose-go release and pinned by checksum, the committed key-disposition matrix (normalized | preserved | rejected) with the check:compose-coverage gate that fails CI on any unclassified upstream key path, and the automated upstream-bump workflow. US-468..US-472 (PRD-02) land the vocabulary normalizations: Compose spellings and alternate forms (depends_on incl. condition map, working_dir, env_file, list environment, labels), ports/expose and volumes long syntax with mounts/storage/tmpfs classification, the Compose healthcheck shape, build: shape discrimination replacing composeBuild (pre-release gut-and-replace), and depends_on conditions driving section 6.13 orchestration. US-473..US-474 (PRD-03) land the per-container runtime-knob tier: schema shapes for the section 6.2 knob list with lossless preservation into ServicePlan.extensions.compose and the section 5.5.1 capability check with tagged CapabilityError, then Podman realization of the common knobs. US-475..US-477 (PRD-04) land the rejection surface (one tagged error shape with matrix-sourced remediation, covering extends, container_name, network_mode, links, Swarm deploy orchestration keys, and !reset/!override YAML tags, in Landofiles and kind: compose fragments alike), the fixture-driven conformance suite with a matrix-derived skip-list, and the closeout story: generated docs key matrix, executable guide, and SDK snapshot/API-compatibility reconciliation. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
+  "userStories": [
+    {
+      "id": "US-466",
+      "title": "Vendored pinned schema, disposition matrix, and coverage gate",
+      "description": "As a core maintainer, the upstream Compose JSON Schema is vendored in-repo pinned to a tagged compose-spec/compose-go release with a checksum, every key path in its service subtree carries exactly one committed disposition (normalized | preserved | rejected), and CI fails the moment the schema and the matrix disagree in either direction.",
+      "acceptanceCriteria": [
+        "spec/compose/vendor/compose-spec.json is committed, byte-identical to schema/compose-spec.json at the pinned compose-go tag; spec/compose/vendor/pin.json records { tag, sourceUrl, sha256 } and the vendored file's checksum matches.",
+        "`bun run codegen:compose-vendor` fetches the schema for the pinned tag, verifies the checksum, and rewrites the vendored file; it is the only network-touching path and is not invoked by tests or offline codegen gates.",
+        "An offline unit test verifies the vendored-file checksum against pin.json so manual edits to the vendored schema fail CI.",
+        "A committed matrix module (e.g. core/src/landofile/compose/dispositions.ts) maps every service-subtree key path of the vendored schema to normalized | preserved | rejected, with a rationale per entry and remediation pointers on rejected entries.",
+        "`bun run check:compose-coverage` walks the vendored schema (resolving $refs, oneOf short/long forms, patternProperties), and fails listing schema key paths with no matrix entry and matrix entries with no schema key path, following existing check:* gate conventions.",
+        "Top-level project keys (services, volumes, networks, configs, secrets, include, version, name, x-*) are covered by a static classification asserted by the same gate.",
+        "The gate runs in CI alongside the other boundary gates; the workflow generator is updated and regenerated output is committed together.",
+        "The initial matrix classifies the full current vendored schema per spec 6.2/7.4 (normalized set, knob tier preserved, rejected list) with the gate green.",
+        "Unit tests cover the schema walker on a fixture schema; root AGENTS.md generated-files note gains the vendored path (generator-owned).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Origin: spec 7.4 'Vendored upstream schema' + 'Disposition matrix' rules; spec 5.5.1 (planning consults the matrix). Pin source MUST be a compose-go tag, never the untagged compose-spec mirror. The matrix is the single source for the coverage gate, the published docs matrix (US-477), rejection remediation text (US-475), and the fixture skip-list (US-476). Merged from former US-466 + US-467."
+    },
+    {
+      "id": "US-467",
+      "title": "Automated upstream-bump workflow",
+      "description": "As a core maintainer, when compose-go publishes a new tagged release, a PR appears that bumps the pin and vendored schema and cannot go green until any new key paths are classified.",
+      "acceptanceCriteria": [
+        "A scheduled generated workflow checks the latest compose-go tag against pin.json and, when newer, runs codegen:compose-vendor with the new tag and opens/updates a single rolling PR with the pin + vendored diff.",
+        "The PR body lists added/removed key paths versus the previous vendored schema (US-466 walker reused as a diff reporter).",
+        "check:compose-coverage failing on unclassified new keys is the intended merge blocker; the diff reporter is tested against a synthetic schema bump; no auto-classification is attempted.",
+        "The workflow is emitted by the workflow generator (never hand-edited), follows nightly-workflow conventions, and `git diff --exit-code` on generated paths is clean after `bun run codegen`.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Origin: spec 7.4 'bumping the pin is a deliberate act'. Generated workflows are codegen outputs per root AGENTS.md; edit the generator, not the YAML. Blocked by US-466."
+    },
+    {
+      "id": "US-468",
+      "title": "Compose spellings and alternate scalar/list forms",
+      "description": "As a user pasting a Compose service block, depends_on (list and condition-map forms), working_dir, env_file (string and list), environment (map and KEY=value list), and labels (map and list) all decode and normalize, alongside the existing Lando aliases.",
+      "acceptanceCriteria": [
+        "ServiceConfig accepts depends_on (string list and {svc: {condition, restart?, required?}} map), working_dir, env_file (string | string list), environment list form, and labels map+list forms; all canonicalize to one internal long form before normalization.",
+        "Compose spelling and Lando alias may coexist; the Lando key wins per spec 6.2/7.4, covered by tests for working_dir vs workingDirectory and depends_on vs dependsOn.",
+        "environment list entries without '=' either resolve from the host environment per Compose semantics or fail with remediation; the chosen behavior is documented in the schema annotation and tested.",
+        "`lando config --format yaml` renders the post-normalization resolved values.",
+        "Schema snapshot refreshed (codegen:schema-snapshot); sdk/API_COMPATIBILITY.md updated (additive).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Origin: spec 6.2 normalization bullets (amended). Blocked by US-466 (keys must be classified normalized in the matrix in the same change)."
+    },
+    {
+      "id": "US-469",
+      "title": "ports, expose, and volumes long syntax",
+      "description": "As a user, ports in long-object form (target, published, host_ip, protocol, name, app_protocol), expose, and long-form volumes entries (type: bind | volume | tmpfs with their sub-objects) all decode and normalize into endpoints and Lando's mount model exactly as short strings do.",
+      "acceptanceCriteria": [
+        "Long-form port entries decode; short strings ('8080:80', '127.0.0.1:8080:80/udp', '80') parse per the Compose port grammar into the same long form; invalid grammar fails with position-carrying remediation.",
+        "ports and expose normalize into endpoints; host bindings require the provider host-port capability per spec 6.2; published port ranges ('8000-8010:8000-8010') either normalize or reject per their matrix disposition, never silently dropped.",
+        "services.<name>.endpoints continues to win over ports-inferred intent, tested.",
+        "Long-form volumes entries decode; short strings ('./src:/app', 'named:/data:ro', '/data') parse into the same long form.",
+        "Volume classification per spec 6.2: host-path sources -> mounts, named volumes -> storage, anonymous volumes -> storage auto-naming (spec 6.5), type: tmpfs -> the preserved tmpfs runtime knob (US-473 shape).",
+        "read_only, volume.subpath, and bind.create_host_path map to mount-model equivalents; unsupported sub-fields follow their matrix disposition with tests proving no silent drop.",
+        "Lando mounts:/storage:/appMount: win over overlapping volumes: intent, tested.",
+        "Schema snapshot refreshed.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Origin: spec 6.2 ports/expose and volumes bullets (amended to cover both forms + tmpfs routing). Coordinates with US-473 for the tmpfs knob shape. Merged from former US-470 + US-471."
+    },
+    {
+      "id": "US-470",
+      "title": "Compose healthcheck shape",
+      "description": "As a user, a Compose-shaped healthcheck (test string or CMD/CMD-SHELL/NONE array, duration strings, retries, disable) normalizes into the spec 6.7 healthcheck model.",
+      "acceptanceCriteria": [
+        "test: '<shell string>', test: ['CMD', ...], test: ['CMD-SHELL', ...], and test: ['NONE'] / disable: true all decode; the latter two normalize to kind: none.",
+        "interval, timeout, and start_period accept Compose duration strings ('30s', '1m30s', '1h2m3s') parsed to seconds; invalid durations fail with remediation; start_interval follows its matrix disposition.",
+        "The Lando-shaped HealthcheckInput remains valid and wins when both shapes appear.",
+        "Normalized checks execute through the existing HealthcheckRunner path unchanged; check:probe-boundary untouched.",
+        "Schema snapshot refreshed.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Origin: spec 6.2 healthcheck bullet (added) + spec 6.7 model."
+    },
+    {
+      "id": "US-471",
+      "title": "build: shape discrimination replaces composeBuild",
+      "description": "As a user, build: with Compose keys (context, dockerfile, dockerfile_inline, args, target) is a Compose build normalizing into the artifact model; build: with artifact:/app: is the Lando build-script block; mixing families is a tagged error; composeBuild: is removed.",
+      "acceptanceCriteria": [
+        "The build: schema is a shape-discriminated union; family detection is total over the vendored schema's build keys (every Compose build key has a matrix disposition).",
+        "Mixed-family blocks fail with a tagged error naming both families and the split remediation.",
+        "Compose builds normalize into the spec 6.3 artifact model (context/dockerfile/args/target; dockerfile_inline per matrix disposition); provider build capability is checked at planning.",
+        "composeBuild: is deleted from ServiceConfig (pre-release gut-and-replace, no shim); all in-repo references (recipes, fixtures, guides) migrate in the same change; schema snapshot and sdk/API_COMPATIBILITY.md record the replacement.",
+        "Planner and l337 base consume the discriminated result; image:+build: interaction parity covered by tests.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Origin: spec 6.2 build bullet (amended: shape discrimination normative). The one deliberate contract change of the wave; composeBuild is unreleased so no compatibility shim per root AGENTS.md."
+    },
+    {
+      "id": "US-472",
+      "title": "depends_on conditions drive orchestration",
+      "description": "As a user, condition: service_healthy and service_completed_successfully actually gate start/build ordering per spec 6.13, not just parse.",
+      "acceptanceCriteria": [
+        "Plan dependency edges carry the condition; service_started remains the default for list-form depends_on and Lando dependsOn.",
+        "service_healthy: dependents' start/app-build steps wait on the dependency's healthcheck success; a service_healthy edge onto a dependency with no healthcheck fails planning with remediation.",
+        "service_completed_successfully: dependents wait on the dependency's successful exit; non-zero exit fails waiting steps with the spec 6.13 continue-all aggregation.",
+        "required: false tolerates an absent/failed optional dependency per Compose semantics; restart: true follows its matrix disposition.",
+        "Orchestrator tests cover all three conditions deterministically via the test provider.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Origin: spec 6.2 depends_on bullet (amended: conditions preserved and honored) + spec 6.13 DAG semantics. Blocked by US-468 (condition-map decode)."
+    },
+    {
+      "id": "US-473",
+      "title": "Knob-tier shapes, lossless preservation, and capability check",
+      "description": "As a user, every spec 6.2 runtime knob (restart, cap_add/cap_drop, privileged, devices, ulimits, sysctls, tmpfs, shm_size, dns*, extra_hosts, init, stop_signal, stop_grace_period, security_opt, group_add, read_only, platform, pull_policy, logging, gpus, deploy.resources) decodes in each form Compose defines and is preserved losslessly into ServicePlan.extensions.compose — and on a provider that cannot realize a knob I used, planning fails up front with a tagged CapabilityError naming the knob, the service, and the provider.",
+      "acceptanceCriteria": [
+        "Shapes land in ServiceConfig for the full spec 6.2 knob list, accepting every form Compose defines per key (map/list, short/long, byte and duration strings).",
+        "Multi-form keys canonicalize to one long form; byte/duration strings parse with remediation on invalid grammar.",
+        "The planner copies canonicalized knobs into ServicePlan.extensions.compose with a round-trip test proving losslessness for every key.",
+        "Planning collects the preserved knobs in use per service and checks them against the selected provider's composeSpec capability declaration before any provider action.",
+        "Providers declare knob support as part of the composeSpec capability surface; the declaration shape is published in @lando/sdk and covered by the provider contract suite.",
+        "An unsupported knob yields a CapabilityError carrying { service, key, provider } plus remediation, rendered through the CLI failure formatter and the machine-output envelope.",
+        "The test provider declares a partial knob set so accept and reject paths are both covered deterministically.",
+        "Each key's matrix entry is preserved; check:compose-coverage green.",
+        "Schema snapshot refreshed; sdk/API_COMPATIBILITY.md updated (additive).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Origin: spec 6.2 'Per-container runtime knobs' bullet (added) + spec 5.5.1 steps 3-4 (preserve then capability-check; MUST NOT silently drop). No provider-neutral planner semantics for knobs in this wave. Merged from former US-475 + US-476."
+    },
+    {
+      "id": "US-474",
+      "title": "Podman realization of the common knobs",
+      "description": "As a user on the bundled Podman provider, the common runtime knobs take real effect in the created container.",
+      "acceptanceCriteria": [
+        "The Podman provider maps to libpod create-container fields: restart, cap_add/cap_drop, privileged, devices, ulimits, sysctls, tmpfs, shm_size, dns/dns_search/dns_opt, extra_hosts, init, stop_signal, stop_grace_period, security_opt, group_add, read_only, platform, pull_policy, and deploy.resources (cpus, memory, pids).",
+        "logging and gpus are declared per actual Podman support on each host platform; anything undeclared is excluded from the capability declaration (so the US-473 check rejects it) rather than best-effort mapped.",
+        "The provider's declared knob set exactly matches the implemented mapping, asserted by a declaration-vs-mapping diff test.",
+        "Unit tests cover request-body construction per knob; live effects (privileged, ulimit, extra_hosts) verified in the env-gated LANDO_TEST_PODMAN_SOCKET integration suite, serial per repo convention.",
+        "Windows named-pipe and Linux socket transports both exercised where CI supports them.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Origin: spec 5.5.1 capability model made real for the bundled provider. Blocked by US-473. Win32 uses the \\\\.\\pipe\\podman-lando named-pipe transport per root AGENTS.md."
+    },
+    {
+      "id": "US-475",
+      "title": "Tagged rejection surface",
+      "description": "As a user whose service block uses a rejected key, I get a tagged, machine-readable error naming the key, the reason, and the Lando surface that replaces it — in Landofiles and kind: compose include fragments alike.",
+      "acceptanceCriteria": [
+        "A Schema.TaggedError (e.g. ComposeKeyRejectedError) carries { service?, keyPath, remediation }; remediation text is sourced from the US-466 matrix entries, not hand-written per call site.",
+        "All spec 7.4 rejected keys produce it: extends (-> type: inheritance 6.11.1 / recipes / includes:), container_name (-> Lando naming), network_mode, links, and Swarm deploy orchestration keys with keyPath precision (deploy.replicas rejects while deploy.resources preserves).",
+        "!reset and !override YAML tags are rejected at YAML load with the same error shape and a spec 7.2-merge remediation; YAML anchors/aliases/merge keys (<<:) continue to work, tested.",
+        "kind: compose include fragments route through the same decode path and produce identical errors with the fragment source attributed.",
+        "Errors surface through the standard CLI failure formatter and --format json envelope; Landofile lint reports rejected keys with the same remediation.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Origin: spec 7.4 'Rejected project machinery' rule + spec 6.2 rejection bullet + 7.4 kind: compose fragment rule (all amended in this change)."
+    },
+    {
+      "id": "US-476",
+      "title": "Conformance fixture suite",
+      "description": "As a core maintainer, the vocabulary is proven against upstream Compose fixture material on every CI run, and the skip-list cannot quietly hide unsupported-but-classified-supported behavior.",
+      "acceptanceCriteria": [
+        "Service-level fixtures vendored from compose-spec/conformance-tests plus a curated real-world corpus (depends_on-condition, long-form ports/volumes, list-env, Compose-healthcheck patterns) live under core/test/fixtures/compose/ with a pinned refresh script (US-466 pattern), offline at test time.",
+        "A loader-level suite decodes each fixture's service blocks in a Landofile context and asserts per-key outcomes against the disposition matrix: normalized keys produce plan fields, preserved keys round-trip through extensions.compose, rejected keys produce ComposeKeyRejectedError.",
+        "The skip-list is computed: a fixture may be skipped only if it uses a rejected-disposition key; a stale skip entry fails the suite.",
+        "Provider-level spot checks for a small fixture subset run in the env-gated Podman integration suite.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Origin: the 'most compose parses' goal made measurable. Blocked by US-466 (matrix drives assertions and skip-list) and the PRD-02/03 normalization stories."
+    },
+    {
+      "id": "US-477",
+      "title": "Published matrix, executable guide, and SDK reconciliation",
+      "description": "As a user, I can read exactly which Compose keys work, which are provider-dependent, and which are replaced by Lando surfaces, and follow a runnable guide that pastes a Compose service into a Landofile — and as an SDK consumer, the wave's schema additions are published coherently with nothing left drifting.",
+      "acceptanceCriteria": [
+        "The spec 7.4-mandated docs key matrix is generated from the disposition matrix by a codegen:* script and drift-gated with git diff --exit-code like other generated docs.",
+        "An executable guide ports a realistic Compose service block (long-form ports, depends_on condition, a knob like extra_hosts) into a Landofile and runs it; one rejected-key step shows the tagged error and applies the remediation.",
+        "bun run dev:guides <guide> --once passes; lint:guides, check:guide-coverage, and check:public-transcripts / check:guide-drift gates are green.",
+        "The guide and the matrix cross-link; no hand-maintained key list exists anywhere in docs.",
+        "codegen:schema-snapshot output reflects the final ServiceConfig/LandofileShape (all PRD-02/03 shapes, composeBuild removal); the committed snapshot matches with git diff --exit-code.",
+        "Published JSON Schema includes the new shapes with annotations; COMPOSE_TOP_LEVEL_KEYS and display constants are reconciled with the US-466 top-level classification.",
+        "sdk/API_COMPATIBILITY.md documents the wave's additive surface and the composeBuild gut-and-replace in one entry.",
+        "The section 4.2 plugin-abstraction coverage suite and all boundary gates (renderer, probe, paths, state-store, redaction, compose-coverage) pass on the completed wave.",
+        "Full gate green at the wave's head: bun run typecheck, bun test, bun run lint.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Origin: spec 7.4 docs-matrix mandate (generated from the disposition matrix) + sdk/AGENTS.md additive-surface rules; closes the wave. Blocked by every prior story in the set. Merged from former US-480 + US-481."
+    }
+  ]
+}

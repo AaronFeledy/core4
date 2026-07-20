@@ -278,9 +278,9 @@ Planning handles supported Compose input in this order:
 2. Normalize Compose keys with provider-neutral meaning into `AppPlan` fields. Examples: top-level `volumes:` → `stores`, top-level `networks:` → `networks`, service `volumes:` → `mounts`/`storage`, service `ports:`/`expose:` → `endpoints`, service `depends_on:` → `dependsOn`.
 3. Preserve supported Compose keys that are valid but not provider-neutral under `AppPlan.extensions.compose` or `ServicePlan.extensions.compose` with secrets redacted where needed.
 4. Check provider capabilities. If preserved Compose semantics require `composeSpec: native` and the selected provider does not declare it, planning fails with an actionable `CapabilityError` instead of silently dropping config.
-5. Reject unsupported Compose keys with remediation pointing to either a supported Lando key, a provider extension, or a config translator when one is available.
+5. Reject Compose keys carrying the `rejected` disposition with remediation pointing to either a supported Lando key, a provider extension, or a config translator when one is available.
 
-This preserves the user-facing Compose subset while keeping the provider-neutral `AppPlan` as the runtime contract.
+The normalize/preserve/reject classification for every Compose service key is committed as the §7.4 disposition matrix (backed by the vendored, pinned upstream Compose JSON Schema) and enforced by the `check:compose-coverage` gate; planning consults that matrix rather than re-deciding per key. This preserves the user-facing Compose subset while keeping the provider-neutral `AppPlan` as the runtime contract.
 
 ### 5.6 Provider extensions
 
