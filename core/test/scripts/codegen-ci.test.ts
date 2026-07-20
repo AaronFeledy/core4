@@ -412,6 +412,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
+      expect(workflow).toContain("- name: Import cycle lint");
+      expect(workflow).toContain("run: bun run check:import-cycle");
       expect(workflow).toContain("- name: Renderer boundary lint");
       expect(workflow).toContain("run: bun run check:renderer-boundary");
       expect(workflow).toContain("- name: Managed-file boundary lint");

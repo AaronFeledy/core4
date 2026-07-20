@@ -40,6 +40,7 @@ describe("ci runbook", () => {
 
     expect(runbook).toContain("bun run typecheck");
     expect(runbook).toContain("bun run lint");
+    expect(runbook).toContain("bun run check:import-cycle");
     expect(runbook).toContain("bun run check:renderer-boundary");
     expect(runbook).toContain("bun run check:redaction-boundary");
     expect(runbook).toContain("bun run check:env-helper-boundary");

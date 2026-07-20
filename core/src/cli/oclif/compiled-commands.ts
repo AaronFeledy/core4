@@ -67,7 +67,7 @@ import MetaGlobalStartCommand from "./commands/meta/global/start.ts";
 import MetaGlobalStatusCommand from "./commands/meta/global/status.ts";
 import MetaGlobalStopCommand from "./commands/meta/global/stop.ts";
 import MetaGlobalUninstallCommand from "./commands/meta/global/uninstall.ts";
-import MetaMcpCommand from "./commands/meta/mcp.ts";
+import MetaMcpCommand, { injectMcpCompiledCommands } from "./commands/meta/mcp.ts";
 import PluginAddCommand from "./commands/meta/plugin/add.ts";
 import PluginBuildCommand from "./commands/meta/plugin/build.ts";
 import PluginLinkCommand from "./commands/meta/plugin/link.ts";
@@ -90,7 +90,7 @@ import UpdateCommand from "./commands/meta/update.ts";
 import VersionCommand from "./commands/meta/version.ts";
 import XCommand from "./commands/meta/x.ts";
 
-export default {
+const compiledCommands = {
   "app:cache:refresh": AppCacheRefreshCommand,
   "app:config": AppConfigCommand,
   "app:config:lint": AppConfigLintCommand,
@@ -177,3 +177,7 @@ export default {
   "meta:version": VersionCommand,
   "meta:x": XCommand,
 } satisfies Record<string, Command.Class>;
+
+injectMcpCompiledCommands(compiledCommands);
+
+export default compiledCommands;

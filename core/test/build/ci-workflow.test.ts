@@ -309,6 +309,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
+    expect(staticChecksPlatform).toContain("      - name: Import cycle lint");
+    expect(staticChecksPlatform).toContain("        run: bun run check:import-cycle");
     expect(staticChecksPlatform).toContain("        run: bun run check:renderer-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:managed-file-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");

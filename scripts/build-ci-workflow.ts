@@ -50,6 +50,9 @@ ${setupBunSteps}
       - name: Lint
         run: bun run lint
 
+      - name: Import cycle lint
+        run: bun run check:import-cycle
+
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
