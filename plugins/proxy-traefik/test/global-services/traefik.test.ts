@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { ServiceConfig } from "@lando/sdk/schema";
+import { DEFAULT_PROXY_HTTPS_PORT, DEFAULT_PROXY_HTTP_PORT, ServiceConfig } from "@lando/sdk/schema";
 
 import traefikGlobalService, {
   TRAEFIK_DASHBOARD_HOSTNAME,
@@ -35,12 +35,31 @@ describe("traefik global service ServiceConfig", () => {
     expect(config.appMount).toBe(false);
   });
 
-  test("publishes the web, websecure, and dashboard ports", async () => {
+  test("authors semantic HTTP and HTTPS endpoints with fixed rootless-safe loopback publication", async () => {
+    // Given
     const config = await decodeConfig();
-    const ports = config.ports ?? [];
-    expect(ports).toContain("80");
-    expect(ports).toContain("443");
-    expect(ports).toContain("8080");
+
+    // When
+    const endpoints = config.endpoints;
+
+    // Then
+    expect(endpoints).toEqual([
+      {
+        name: "web",
+        protocol: "http",
+        port: 80,
+        bind: "127.0.0.1",
+        publishedPort: DEFAULT_PROXY_HTTP_PORT,
+      },
+      {
+        name: "websecure",
+        protocol: "https",
+        port: 443,
+        bind: "127.0.0.1",
+        publishedPort: DEFAULT_PROXY_HTTPS_PORT,
+      },
+    ]);
+    expect(config.ports).toEqual(["8080"]);
   });
 
   test("enables the file provider and dashboard via static flags", async () => {
@@ -54,6 +73,19 @@ describe("traefik global service ServiceConfig", () => {
     expect(text).toContain("--entrypoints.traefik.address=:8080");
     // Routing must NOT depend on the provider-specific Docker provider.
     expect(text).not.toContain("--providers.docker");
+  });
+
+  test("redirects HTTP to the external HTTPS authority port without weakening forwarded-header trust", async () => {
+    // Given
+    const config = await decodeConfig();
+
+    // When
+    const text = commandText(config);
+
+    // Then
+    expect(text).toContain(`--entrypoints.web.http.redirections.entrypoint.to=:${DEFAULT_PROXY_HTTPS_PORT}`);
+    expect(text).toContain("--entrypoints.web.http.redirections.entrypoint.scheme=https");
+    expect(text.toLowerCase()).not.toContain("forwardedheaders.insecure=true");
   });
 
   test("routes the dashboard through the file provider on traefik.lndo.site → api@internal", async () => {

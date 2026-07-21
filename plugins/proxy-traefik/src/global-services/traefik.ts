@@ -17,7 +17,7 @@
  */
 import { Effect, Schema } from "effect";
 
-import { ServiceConfig } from "@lando/sdk/schema";
+import { DEFAULT_PROXY_HTTPS_PORT, DEFAULT_PROXY_HTTP_PORT, ServiceConfig } from "@lando/sdk/schema";
 
 /** Pinned Traefik v3 image. Override per-install via the user `.lando.yml`. */
 export const TRAEFIK_IMAGE = "traefik:v3.3";
@@ -35,6 +35,9 @@ export const TRAEFIK_STATIC_FLAGS: ReadonlyArray<string> = [
   "--api.insecure=true",
   "--entrypoints.web.address=:80",
   "--entrypoints.websecure.address=:443",
+  `--entrypoints.web.http.redirections.entrypoint.to=:${DEFAULT_PROXY_HTTPS_PORT}`,
+  "--entrypoints.web.http.redirections.entrypoint.scheme=https",
+  "--entrypoints.web.http.redirections.entrypoint.permanent=true",
   "--entrypoints.traefik.address=:8080",
   `--providers.file.directory=${TRAEFIK_DYNAMIC_CONFIG_DIR}`,
   "--providers.file.watch=true",
@@ -74,7 +77,23 @@ const traefikServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   image: TRAEFIK_IMAGE,
   appMount: false,
   command: ["sh", "-c", TRAEFIK_START_SCRIPT],
-  ports: ["80", "443", "8080"],
+  endpoints: [
+    {
+      name: "web",
+      protocol: "http",
+      port: 80,
+      bind: "127.0.0.1",
+      publishedPort: DEFAULT_PROXY_HTTP_PORT,
+    },
+    {
+      name: "websecure",
+      protocol: "https",
+      port: 443,
+      bind: "127.0.0.1",
+      publishedPort: DEFAULT_PROXY_HTTPS_PORT,
+    },
+  ],
+  ports: ["8080"],
   environment: {},
 });
 
