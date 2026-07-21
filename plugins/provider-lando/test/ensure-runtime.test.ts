@@ -238,6 +238,83 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 
 describe("ensureRuntime", () => {
   test("reachable socket with legacy managed argv stops service before relaunch", async () => {
+  test("missing rootless prerequisites fail before managed service launch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: the managed Linux socket is down and uidmap helpers are absent.
+      const calls: Call[] = [];
+      const p = paths(dir);
+
+      // When: setup preflights the managed runtime.
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: unreachableApi(),
+          serviceRunner: serviceRunner(calls, false),
+          rootlessProbes: {
+            probe: () => ({ ...allPrereqs(), hasUidmapTools: false }),
+          },
+          readinessPolicy: fastReadinessPolicy,
+          ...p,
+        }),
+      );
+
+      // Then: the known prerequisite failure is immediate and launch is untouched.
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(calls).toEqual([]);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(RootlessPrerequisiteError);
+          if (failure.value instanceof RootlessPrerequisiteError) {
+            expect(failure.value.prerequisite).toBe("uidmap-tools");
+          }
+        }
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("uidmap provisioning re-probes helpers before managed service launch", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: uidmap helpers begin absent and provisioning makes them visible.
+      const calls: Call[] = [];
+      const p = paths(dir);
+      let provisioned = false;
+      let probes = 0;
+
+      // When: explicit setup supplies the narrow uidmap provisioning adapter.
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: apiReachableAfterLaunch(calls),
+          serviceRunner: serviceRunner(calls, false),
+          rootlessProbes: {
+            probe: () => {
+              probes += 1;
+              return { ...allPrereqs(), hasUidmapTools: provisioned };
+            },
+          },
+          uidmapProvisioner: () =>
+            Effect.sync(() => {
+              provisioned = true;
+            }),
+          readinessPolicy: fastReadinessPolicy,
+          ...p,
+        }),
+      );
+
+      // Then: verification runs after provisioning and only then may launch proceed.
+      expect(probes).toBe(2);
+      expect(calls).toEqual([["launch", canonicalArgs(p)]]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const calls: Call[] = [];

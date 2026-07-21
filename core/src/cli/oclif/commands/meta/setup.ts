@@ -16,6 +16,7 @@ import {
 } from "@lando/sdk/services";
 
 import { NetworkTrust } from "../../../../http-client/network-trust.ts";
+import { makeInteractionService } from "../../../../interaction/service.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
@@ -36,6 +37,7 @@ import {
   SETUP_PLUGIN_FLAGS,
   contributedSetupFlagsForProvider,
 } from "./setup-command-flags.ts";
+import { makeSetupHostChangeConsent } from "./setup-host-change-consent.ts";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -108,6 +110,11 @@ export const setupSpec: LandoCommandSpec<
       const networkProbe = inputNetworkProbe(input);
       const privilege = yield* Effect.serviceOption(PrivilegeService);
       const privilegeOptions = privilege._tag === "Some" ? { privilege: privilege.value } : {};
+      const hostChangeConsent = makeSetupHostChangeConsent({
+        yes: inputBooleanFlag(input, "yes"),
+        nonInteractive: inputBooleanFlag(input, "no-interactive"),
+        interaction: makeInteractionService(),
+      });
 
       const selectedProviderId = String(selectedProvider);
       const userDataRootRaw = globalConfig.userDataRoot;
@@ -134,6 +141,7 @@ export const setupSpec: LandoCommandSpec<
             force: false,
             network,
             ...privilegeOptions,
+            hostChangeConsent,
             ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
             ...(runtimeBundleSha256 === undefined ? {} : { runtimeBundleSha256 }),
             ...(Object.keys(setupFlags).length === 0 ? {} : { setupFlags }),

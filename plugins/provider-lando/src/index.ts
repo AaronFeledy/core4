@@ -16,7 +16,12 @@ import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import { type AppId, type AppPlan, type HostPlatform, PluginManifest, ProviderId } from "@lando/sdk/schema";
-import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  type AppSelector,
+  type ProviderSetupOptions,
+  RuntimeProvider,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 
 import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { bringDown } from "./bring-down.ts";
@@ -39,7 +44,7 @@ import {
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
 import { redactDetails } from "./redact.ts";
-import type { RootlessProbes } from "./rootless-preflight.ts";
+import { type RootlessProbes, makeSystemRootlessProbes } from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
 import {
   type RuntimeServiceStatus,
@@ -50,9 +55,11 @@ import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
   type RuntimeBundleDownloader,
+  type RuntimeSetupProgress,
   makeSystemPodmanMachineRunner,
   setupProviderLando,
 } from "./setup.ts";
+import { type LinuxHostRelease, provisionUidmapTools, readLinuxHostRelease } from "./uidmap-provision.ts";
 
 export {
   appliedPlanPath,
@@ -131,6 +138,18 @@ export type {
   RootlessProbes,
 } from "./rootless-preflight.ts";
 export {
+  UIDMAP_PACKAGE_REQUEST,
+  UidmapProvisionError,
+  parseLinuxHostRelease,
+  provisionUidmapTools,
+  readLinuxHostRelease,
+} from "./uidmap-provision.ts";
+export type {
+  LinuxHostRelease,
+  UidmapProvisionOptions,
+  UidmapProvisionStage,
+} from "./uidmap-provision.ts";
+export {
   IntelMacUnsupportedError,
   MINIMUM_PODMAN_VERSION,
   PodmanMachinePrerequisiteError,
@@ -160,6 +179,8 @@ export type {
   PodmanVersionSource,
   RuntimeBundle,
   RuntimeBundleDownloader,
+  RuntimeSetupPhase,
+  RuntimeSetupProgress,
   SetupOptions,
   SetupResult,
 } from "./setup.ts";
@@ -287,6 +308,7 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
+  readonly linuxHostRelease?: LinuxHostRelease;
   readonly readinessPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
@@ -369,22 +391,40 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.runtimeRunDir !== undefined &&
     options.runtimeConfigDir !== undefined &&
     options.providerPidPath !== undefined;
-  const ensureEffect: Effect.Effect<void, ProviderUnavailableError> = canEnsure
-    ? ensureRuntime({
-        platform,
-        podmanApi,
-        serviceRunner,
-        ...(machineRunner === undefined ? {} : { machineRunner }),
-        podmanBin,
-        storageDir: options.runtimeStorageDir,
-        runRoot: options.runtimeRunDir,
-        configDir: options.runtimeConfigDir,
-        socketPath: ensureSocketPath,
-        pidPath: options.providerPidPath,
-        ...(options.rootlessProbes === undefined ? {} : { rootlessProbes: options.rootlessProbes }),
-        ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
-      })
-    : Effect.void;
+  const rootlessProbes = options.rootlessProbes ?? makeSystemRootlessProbes();
+  const makeEnsureEffect = (
+    progress?: RuntimeSetupProgress,
+  ): Effect.Effect<void, ProviderUnavailableError> =>
+    canEnsure
+      ? ensureRuntime({
+          platform,
+          podmanApi,
+          serviceRunner,
+          ...(machineRunner === undefined ? {} : { machineRunner }),
+          podmanBin,
+          storageDir: options.runtimeStorageDir,
+          runRoot: options.runtimeRunDir,
+          configDir: options.runtimeConfigDir,
+          socketPath: ensureSocketPath,
+          pidPath: options.providerPidPath,
+          rootlessProbes,
+          ...(progress === undefined ? {} : { progress }),
+          ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
+        })
+      : Effect.void;
+  const provisionHostPrerequisites = (
+    setupOptions: ProviderSetupOptions,
+  ): Effect.Effect<void, ProviderUnavailableError> =>
+    platform === "linux" && canEnsure
+      ? provisionUidmapTools({
+          host: options.linuxHostRelease ?? readLinuxHostRelease(),
+          probes: rootlessProbes,
+          privilege: setupOptions.privilege,
+          consent: setupOptions.hostChangeConsent,
+        })
+      : Effect.void;
+  let setupEnsuredRuntime = false;
+  const ensureEffect = Effect.suspend(() => (setupEnsuredRuntime ? Effect.void : makeEnsureEffect()));
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -504,6 +544,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       isAvailable: Effect.succeed(true),
       setup: (setupOptions) =>
         Effect.gen(function* () {
+          yield* provisionHostPrerequisites(setupOptions);
           const result = yield* setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.podmanCommand === undefined ? {} : { podmanCommand: options.podmanCommand }),
@@ -529,7 +570,18 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ...(options.runtimeConfigDir === undefined ? {} : { runtimeConfigDir: options.runtimeConfigDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
-            readinessCheck: ensureOnce,
+            ...(canEnsure
+              ? {
+                  managedRuntimeSetup: (progress: RuntimeSetupProgress) =>
+                    makeEnsureEffect(progress).pipe(
+                      Effect.tap(() =>
+                        Effect.sync(() => {
+                          setupEnsuredRuntime = true;
+                        }),
+                      ),
+                    ),
+                }
+              : {}),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           });
           runtimeVersion = result.podmanVersion;

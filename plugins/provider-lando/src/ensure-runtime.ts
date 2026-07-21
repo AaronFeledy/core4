@@ -20,7 +20,13 @@ import {
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
 import { launchStatePath, recordedLaunchMatchesSpec, writeLaunchState } from "./runtime-launch-state.ts";
-import { type PodmanMachineRunner, ensureMacOSPodmanMachine, ensureWindowsPodmanMachine } from "./setup.ts";
+import {
+  type PodmanMachineRunner,
+  type RuntimeSetupPhase,
+  type RuntimeSetupProgress,
+  ensureMacOSPodmanMachine,
+  ensureWindowsPodmanMachine,
+} from "./setup.ts";
 
 export interface EnsureRuntimeDeps {
   readonly platform: HostPlatform;
@@ -34,8 +40,16 @@ export interface EnsureRuntimeDeps {
   readonly socketPath: string;
   readonly pidPath: string;
   readonly rootlessProbes?: RootlessProbes;
+  readonly uidmapProvisioner?: () => Effect.Effect<void, ProviderUnavailableError>;
+  readonly progress?: RuntimeSetupProgress;
   readonly readinessPolicy?: RetryPolicy;
 }
+
+const runPhase = <A, E>(
+  deps: EnsureRuntimeDeps,
+  phase: RuntimeSetupPhase,
+  body: Effect.Effect<A, E>,
+): Effect.Effect<A, E> => deps.progress?.run(phase, body) ?? body;
 
 // ping() fails fast (connection refused) while podman is cold-starting, so the
 // readiness budget must be wall-clock patience, not a small attempt count burned
@@ -228,7 +242,12 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
     const reachable = yield* Effect.either(deps.podmanApi.ping);
     if (reachable._tag === "Right") {
       const owned = yield* currentRuntimeIsOwned(deps);
-      if (owned) return;
+      if (owned) {
+        yield* runPhase(deps, "prerequisites", Effect.void);
+        yield* runPhase(deps, "launch", Effect.void);
+        yield* runPhase(deps, "readiness", Effect.void);
+        return;
+      }
 
       if (
         deps.serviceRunner.findMatchingServicePids !== undefined ||
@@ -257,22 +276,49 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
       }
     }
 
-    yield* reapStaleRuntime(deps);
-    yield* launchRuntime(deps);
-    yield* verifyRuntimeReachable(deps);
+    yield* runPhase(
+      deps,
+      "prerequisites",
+      Effect.gen(function* () {
+        const probes = deps.rootlessProbes ?? makeSystemRootlessProbes();
+        const prerequisite = classifyRootlessFailure(probes.probe());
+        if (prerequisite?.prerequisite === "uidmap-tools" && deps.uidmapProvisioner !== undefined) {
+          yield* deps.uidmapProvisioner();
+        } else if (prerequisite !== undefined) {
+          return yield* Effect.fail(prerequisite);
+        }
+        const verifiedPrerequisite = classifyRootlessFailure(probes.probe());
+        if (verifiedPrerequisite !== undefined) return yield* Effect.fail(verifiedPrerequisite);
+      }),
+    );
+    yield* runPhase(
+      deps,
+      "launch",
+      Effect.gen(function* () {
+        yield* reapStaleRuntime(deps);
+        yield* launchRuntime(deps);
+      }),
+    );
+    yield* runPhase(deps, "readiness", verifyRuntimeReachable(deps));
   });
 
 export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> => {
   if (deps.platform === "darwin") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("darwin"))
-      : ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.andThen(verifyRuntimeReachable(deps)));
+      : runPhase(deps, "prerequisites", Effect.void).pipe(
+          Effect.andThen(runPhase(deps, "launch", ensureMacOSPodmanMachine(deps.machineRunner))),
+          Effect.andThen(runPhase(deps, "readiness", verifyRuntimeReachable(deps))),
+        );
   }
 
   if (deps.platform === "win32") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("win32"))
-      : ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.andThen(verifyRuntimeReachable(deps)));
+      : runPhase(deps, "prerequisites", Effect.void).pipe(
+          Effect.andThen(runPhase(deps, "launch", ensureWindowsPodmanMachine(deps.machineRunner))),
+          Effect.andThen(runPhase(deps, "readiness", verifyRuntimeReachable(deps))),
+        );
   }
 
   return ensureLinuxRuntime(deps);

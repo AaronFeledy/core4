@@ -165,6 +165,9 @@ export interface SetupOptions {
   readonly skipSocketProbe?: boolean;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly readinessCheck?: Effect.Effect<void, ProviderUnavailableError>;
+  readonly managedRuntimeSetup?: (
+    progress: RuntimeSetupProgress,
+  ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
@@ -178,6 +181,12 @@ export interface SetupOptions {
     machineName: string,
     platform: HostPlatform,
   ) => PodmanMachineRunner;
+}
+
+export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness";
+
+export interface RuntimeSetupProgress {
+  readonly run: <A, E>(phase: RuntimeSetupPhase, body: Effect.Effect<A, E>) => Effect.Effect<A, E>;
 }
 
 export interface SetupResult {
@@ -714,6 +723,7 @@ const buildSetupSteps = (
   hasBundle: boolean,
   hasStateDir: boolean,
   probesSocket: boolean,
+  managesRuntime: boolean,
 ): ReadonlyArray<SetupStep> => {
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
@@ -721,13 +731,22 @@ const buildSetupSteps = (
   if (platform === "darwin" || platform === "win32")
     steps.push({ taskId: "machine", label: "Ensure Podman machine" });
   if (probesSocket) steps.push({ taskId: "socket", label: "Probe Podman API" });
+  if (managesRuntime) {
+    steps.push({ taskId: "prerequisites", label: "Provision and preflight runtime prerequisites" });
+    steps.push({ taskId: "launch", label: "Launch managed runtime" });
+    steps.push({ taskId: "readiness", label: "Verify managed runtime readiness" });
+  }
   if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
 };
 
 interface StepCounter {
   succeeded: number;
+  readonly settled: Set<string>;
 }
+
+const failureMessage = (cause: unknown): string =>
+  cause instanceof ProviderUnavailableError || cause instanceof Error ? cause.message : String(cause);
 
 const withStep = <A, E>(
   eventService: EventPublisher | undefined,
@@ -748,21 +767,22 @@ const withStep = <A, E>(
       }),
     );
     const result = yield* body.pipe(
-      Effect.tapError((cause) =>
-        publishEvent(
+      Effect.tapError((cause) => {
+        counter.settled.add(step.taskId);
+        return publishEvent(
           eventService,
           TaskFailEvent.make({
             _tag: "task.fail",
             taskId: step.taskId,
-            summary: step.label,
+            summary: failureMessage(cause),
             ...(cause instanceof ProviderUnavailableError && cause.remediation !== undefined
               ? { remediation: cause.remediation }
               : {}),
             durationMs: Math.round(performance.now() - start),
             timestamp: nowUtc(),
           }),
-        ),
-      ),
+        );
+      }),
     );
     yield* publishEvent(
       eventService,
@@ -775,6 +795,7 @@ const withStep = <A, E>(
       }),
     );
     counter.succeeded += 1;
+    counter.settled.add(step.taskId);
     return result;
   });
 
@@ -790,7 +811,8 @@ export const setupProviderLando = (
     const hasBundle = options.runtimeBundleDownloader !== undefined;
     const hasStateDir = options.stateDir !== undefined;
     const probesSocket = options.skipSocketProbe !== true;
-    const steps = buildSetupSteps(platform, hasBundle, hasStateDir, probesSocket);
+    const managesRuntime = options.managedRuntimeSetup !== undefined;
+    const steps = buildSetupSteps(platform, hasBundle, hasStateDir, probesSocket, managesRuntime);
     const treeStart = performance.now();
 
     yield* publishEvent(
@@ -815,7 +837,7 @@ export const setupProviderLando = (
       return yield* Effect.die("internal: missing required setup steps");
     }
 
-    const counter: StepCounter = { succeeded: 0 };
+    const counter: StepCounter = { succeeded: 0, settled: new Set() };
 
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
@@ -914,8 +936,19 @@ export const setupProviderLando = (
       }
 
       const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
-      const readinessCheck = options.readinessCheck ?? Effect.void;
-      yield* readinessCheck;
+      if (options.managedRuntimeSetup !== undefined) {
+        const progress: RuntimeSetupProgress = {
+          run: (phase, body) => {
+            const step = steps.find((candidate) => candidate.taskId === phase);
+            return step === undefined
+              ? Effect.die(`internal: missing managed runtime setup step ${phase}`)
+              : withStep(options.eventService, step, counter, body);
+          },
+        };
+        yield* options.managedRuntimeSetup(progress);
+      } else {
+        yield* options.readinessCheck ?? Effect.void;
+      }
       const recordedMachineOwnership =
         machineOwnership === undefined || options.stateDir === undefined
           ? machineOwnership
@@ -945,19 +978,38 @@ export const setupProviderLando = (
         ...(statePath === undefined ? {} : { statePath }),
       } satisfies SetupResult;
     }).pipe(
-      Effect.tapError(() =>
-        publishEvent(
-          options.eventService,
-          TaskTreeCompleteEvent.make({
-            _tag: "task.tree.complete",
-            parentId: SETUP_PARENT_ID,
-            summary: "Lando runtime setup failed",
-            succeeded: counter.succeeded,
-            failed: 1,
-            durationMs: Math.round(performance.now() - treeStart),
-            timestamp: nowUtc(),
-          }),
-        ),
+      Effect.tapError((cause) =>
+        Effect.gen(function* () {
+          for (const step of steps) {
+            if (counter.settled.has(step.taskId)) continue;
+            counter.settled.add(step.taskId);
+            yield* publishEvent(
+              options.eventService,
+              TaskFailEvent.make({
+                _tag: "task.fail",
+                taskId: step.taskId,
+                summary: failureMessage(cause),
+                ...(cause instanceof ProviderUnavailableError && cause.remediation !== undefined
+                  ? { remediation: cause.remediation }
+                  : {}),
+                durationMs: 0,
+                timestamp: nowUtc(),
+              }),
+            );
+          }
+          yield* publishEvent(
+            options.eventService,
+            TaskTreeCompleteEvent.make({
+              _tag: "task.tree.complete",
+              parentId: SETUP_PARENT_ID,
+              summary: "Lando runtime setup failed",
+              succeeded: counter.succeeded,
+              failed: 1,
+              durationMs: Math.round(performance.now() - treeStart),
+              timestamp: nowUtc(),
+            }),
+          );
+        }),
       ),
     );
 

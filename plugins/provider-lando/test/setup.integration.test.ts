@@ -31,7 +31,7 @@ import {
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { RuntimeProvider } from "@lando/sdk/services";
-import type { PodmanMachineRunner, PodmanMachineStatus } from "../src/setup.ts";
+import type { PodmanMachineRunner, PodmanMachineStatus, RuntimeSetupProgress } from "../src/setup.ts";
 
 const podmanCommand = (version: string) => ({ version: Effect.succeed(version) });
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
@@ -468,6 +468,89 @@ describe("provider-lando setup", () => {
     const treeComplete = captured[captured.length - 1];
     expect(treeComplete?.succeeded).toBe(1);
     expect(treeComplete?.failed).toBe(0);
+  });
+
+  test("publishes explicit managed prerequisite, launch, and readiness tasks", async () => {
+    // Given: managed runtime setup exposes its three ordered phases.
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+    const phases: string[] = [];
+
+    // When: provider setup runs the managed runtime lifecycle.
+    await Effect.runPromise(
+      setupProviderLando({
+        platform: "linux",
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        skipSocketProbe: true,
+        managedRuntimeSetup: (progress: RuntimeSetupProgress) =>
+          Effect.gen(function* () {
+            for (const phase of ["prerequisites", "launch", "readiness"] as const) {
+              yield* progress.run(
+                phase,
+                Effect.sync(() => {
+                  phases.push(phase);
+                }),
+              );
+            }
+          }),
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              captured.push(event);
+            }),
+        },
+      }),
+    );
+
+    // Then: the tree and event sequence make all runtime work visible.
+    expect(captured[0]?.children).toEqual(["podman", "prerequisites", "launch", "readiness"]);
+    expect(phases).toEqual(["prerequisites", "launch", "readiness"]);
+    expect(captured.filter((event) => event._tag === "task.complete").map((event) => event.taskId)).toEqual([
+      "podman",
+      "prerequisites",
+      "launch",
+      "readiness",
+    ]);
+  });
+
+  test("failed preflight reports the actual failure and settles unstarted runtime tasks", async () => {
+    // Given: prerequisite preflight has actionable tagged failure details.
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+    const failure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "setup",
+      message: "newuidmap and newgidmap are still unavailable.",
+      remediation: "Install the Ubuntu uidmap package, then rerun `lando setup`.",
+    });
+
+    // When: the first managed runtime phase fails.
+    const exit = await Effect.runPromiseExit(
+      setupProviderLando({
+        platform: "linux",
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        skipSocketProbe: true,
+        managedRuntimeSetup: (progress: RuntimeSetupProgress) =>
+          progress.run("prerequisites", Effect.fail(failure)),
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              captured.push(event);
+            }),
+        },
+      }),
+    );
+
+    // Then: all declared children settle and task.fail preserves message plus remediation.
+    expect(Exit.isFailure(exit)).toBe(true);
+    const failed = captured.filter((event) => event._tag === "task.fail");
+    expect(failed.map((event) => event.taskId)).toEqual(["prerequisites", "launch", "readiness"]);
+    expect(failed[0]?.summary).toBe(failure.message);
+    expect(failed[0]?.remediation).toBe(failure.remediation);
+    expect(captured.at(-1)).toMatchObject({
+      _tag: "task.tree.complete",
+      summary: "Lando runtime setup failed",
+      succeeded: 1,
+      failed: 1,
+    });
   });
 
   test("runs readiness before persisting setup state or reporting the setup tree ready", async () => {
