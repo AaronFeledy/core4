@@ -388,14 +388,65 @@ describe("AppPlannerLive", () => {
       )?.buildSteps;
       expect(buildSteps).toEqual([
         {
+          id: "lando-log-redirect-mkdir:access",
+          phase: "build",
+          command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+        },
+        {
           id: "lando-log-redirect:access",
           phase: "build",
           command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
         },
         {
+          id: "lando-log-redirect-mkdir:error",
+          phase: "build",
+          command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+        },
+        {
           id: "lando-log-redirect:error",
           phase: "build",
           command: ["ln", "-sf", "/dev/stderr", "/usr/local/apache2/logs/error_log"],
+        },
+      ]);
+    });
+  });
+
+  test("emits parent creation before each PHP-FPM redirect link", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "php-logs-app",
+          runtime: 4,
+          services: { appserver: { type: "php:8.2" } },
+        }),
+      );
+
+      const appserver = appPlan.services[ServiceName.make("appserver")];
+      const buildSteps = (
+        appserver?.extensions["@lando/core/service-features"] as
+          | { readonly buildSteps?: ReadonlyArray<unknown> }
+          | undefined
+      )?.buildSteps;
+      expect(buildSteps).toEqual([
+        {
+          id: "lando-log-redirect-mkdir:access",
+          phase: "build",
+          command: ["mkdir", "-p", "/var/log/php-fpm"],
+        },
+        {
+          id: "lando-log-redirect:access",
+          phase: "build",
+          command: ["ln", "-sf", "/dev/stdout", "/var/log/php-fpm/access.log"],
+        },
+        {
+          id: "lando-log-redirect-mkdir:error",
+          phase: "build",
+          command: ["mkdir", "-p", "/var/log/php-fpm"],
+        },
+        {
+          id: "lando-log-redirect:error",
+          phase: "build",
+          command: ["ln", "-sf", "/dev/stderr", "/var/log/php-fpm/error.log"],
         },
       ]);
     });
@@ -441,7 +492,7 @@ describe("AppPlannerLive", () => {
           | { readonly buildSteps?: ReadonlyArray<{ readonly id: string }> }
           | undefined
       )?.buildSteps;
-      expect(buildSteps?.every((step) => step.id.startsWith("lando-log-redirect:"))).toBe(true);
+      expect(buildSteps?.every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
       expect((buildSteps?.length ?? 0) > 0).toBe(true);
     });
   });
