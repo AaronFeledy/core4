@@ -43,6 +43,7 @@ import {
   PluginManifest,
   ProviderCapabilities,
   type ServicePlan,
+  isHostPublishedEndpoint,
   landoAppNetworkName,
   landoNetworkNames,
   landoServiceNetworkAliases,
@@ -715,11 +716,18 @@ export const renderCompose = (plan: AppPlan): string => {
     .map((service) => {
       const image = service.artifact?.kind === "ref" ? service.artifact.ref : "";
       const ports = service.endpoints
-        .filter((endpoint) => endpoint.port !== undefined)
+        .filter((endpoint) => endpoint.port !== undefined && isHostPublishedEndpoint(endpoint))
         .map(
           (endpoint) =>
-            `      - "127.0.0.1:${endpoint.port}:${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`,
+            `      - "${endpoint.bind === undefined ? "" : `${endpoint.bind}:`}${endpoint.publishedPort ?? endpoint.port}:${endpoint.port}${endpoint.protocol === "udp" ? "/udp" : ""}"`,
         )
+        .join("\n");
+      const expose = service.endpoints
+        .filter(
+          (endpoint) =>
+            endpoint.protocol !== "unix" && endpoint.port !== undefined && !isHostPublishedEndpoint(endpoint),
+        )
+        .map((endpoint) => `      - "${endpoint.port}${endpoint.protocol === "udp" ? "/udp" : ""}"`)
         .join("\n");
       const networks = [
         "    networks:",
@@ -735,6 +743,7 @@ export const renderCompose = (plan: AppPlan): string => {
         `  ${service.name}:`,
         `    image: "${image}"`,
         ports.length === 0 ? "" : `    ports:\n${ports}`,
+        expose.length === 0 ? "" : `    expose:\n${expose}`,
         networks,
       ]
         .filter((line) => line.length > 0)

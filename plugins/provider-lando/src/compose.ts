@@ -5,6 +5,7 @@ import {
   type AppPlan,
   type ServicePlan,
   fileSyncVolumeName,
+  isHostPublishedEndpoint,
   landoNetworkNames,
   landoServiceNetworkAliases,
   landoSharedNetworkName,
@@ -36,6 +37,7 @@ interface DependsOnEntry {
 interface ComposeService {
   readonly image: string;
   readonly ports?: ReadonlyArray<string>;
+  readonly expose?: ReadonlyArray<string>;
   readonly environment?: Readonly<Record<string, string>>;
   readonly volumes?: ReadonlyArray<string>;
   readonly tmpfs?: ReadonlyArray<string>;
@@ -137,13 +139,22 @@ const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
 
 const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
   service.endpoints.flatMap((endpoint) => {
-    if (endpoint.port === undefined) {
+    if (endpoint.port === undefined || !isHostPublishedEndpoint(endpoint)) {
       return [];
     }
 
     const suffix = endpoint.protocol === "udp" ? "/udp" : "";
     const bind = endpoint.bind === undefined ? "" : `${endpoint.bind}:`;
     return [`${bind}${endpoint.publishedPort ?? endpoint.port}:${endpoint.port}${suffix}`];
+  });
+
+const serviceExpose = (service: ServicePlan): ReadonlyArray<string> =>
+  service.endpoints.flatMap((endpoint) => {
+    if (endpoint.protocol === "unix" || endpoint.port === undefined || isHostPublishedEndpoint(endpoint)) {
+      return [];
+    }
+
+    return [`${endpoint.port}${endpoint.protocol === "udp" ? "/udp" : ""}`];
   });
 
 // Maps DependencyPlan conditions to Docker Compose long-form depends_on entries
@@ -160,6 +171,7 @@ const serviceDependsOn = (service: ServicePlan): Readonly<Record<string, Depends
 const removeEmpty = (service: ComposeService): ComposeService => ({
   image: service.image,
   ...(service.ports === undefined || service.ports.length === 0 ? {} : { ports: service.ports }),
+  ...(service.expose === undefined || service.expose.length === 0 ? {} : { expose: service.expose }),
   ...(service.environment === undefined || Object.keys(service.environment).length === 0
     ? {}
     : { environment: service.environment }),
@@ -182,6 +194,7 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
       removeEmpty({
         image: serviceImage(service),
         ports: servicePorts(service),
+        expose: serviceExpose(service),
         environment: service.environment,
         volumes: serviceVolumes(plan, service),
         tmpfs: serviceTmpfs(service),
@@ -266,6 +279,11 @@ export const renderCompose = (plan: AppPlan): string => {
     if (service.ports !== undefined) {
       lines.push("    ports:");
       writeScalarList(lines, "      ", service.ports);
+    }
+
+    if (service.expose !== undefined) {
+      lines.push("    expose:");
+      writeScalarList(lines, "      ", service.expose);
     }
 
     if (service.environment !== undefined) {

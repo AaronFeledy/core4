@@ -85,6 +85,13 @@ describe("provider-lando Compose port rendering", () => {
     expect(content).toContain('      - "38080:80"\n');
   });
 
+  test("renders a bind-only endpoint with its target port", () => {
+    const content = renderPorts([{ port: 8080, protocol: "tcp", name: "http", bind: "0.0.0.0" }]);
+
+    expect(content).toContain('      - "0.0.0.0:8080:8080"\n');
+    expect(content).not.toContain("    expose:\n");
+  });
+
   test("renders an HTTPS target with its planned published port", () => {
     const content = renderPorts([{ port: 443, protocol: "https", name: "https", publishedPort: 38443 }]);
 
@@ -97,9 +104,25 @@ describe("provider-lando Compose port rendering", () => {
     expect(content).toContain('      - "38053:53/udp"\n');
   });
 
-  test("preserves target-only endpoint rendering", () => {
+  test("exposes a target-only endpoint without publishing an identity mapping", () => {
     const content = renderPorts([{ port: 3000, protocol: "http", name: "http" }]);
 
-    expect(content).toContain('      - "3000:3000"\n');
+    expect(content).toContain('    expose:\n      - "3000"\n');
+    expect(content).not.toContain("    ports:\n");
+    expect(content).not.toContain('      - "3000:3000"\n');
+  });
+
+  test("preserves the UDP suffix on a target-only endpoint", () => {
+    const content = renderPorts([{ port: 53, protocol: "udp", name: "dns" }]);
+
+    expect(content).toContain('    expose:\n      - "53/udp"\n');
+    expect(content).not.toContain('      - "53:53/udp"\n');
+  });
+
+  test("does not expose or publish a unix endpoint", () => {
+    const content = renderPorts([{ protocol: "unix", name: "socket" }]);
+
+    expect(content).not.toContain("    expose:\n");
+    expect(content).not.toContain("    ports:\n");
   });
 });

@@ -882,6 +882,32 @@ describe("provider-docker RuntimeProvider contract", () => {
     ]);
   });
 
+  test("exposes an appserver HTTP target without host-binding port 80", async () => {
+    const fake = makeFakeApi();
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
+    );
+    const appserver = { ...makeService(), endpoints: [{ port: 80, protocol: "http", name: "http" }] };
+
+    await Effect.runPromise(Effect.scoped(provider.apply(makePlan(appserver), { reconcile: true })));
+
+    expect(
+      fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body,
+    ).toMatchObject({
+      ExposedPorts: { "80/tcp": {} },
+      HostConfig: {
+        Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-0:/cache:ro"],
+      },
+    });
+    expect(
+      (
+        fake.calls.find((call) => call.path === "/containers/create?name=lando-myapp-web")?.body as
+          | { readonly HostConfig?: { readonly PortBindings?: unknown } }
+          | undefined
+      )?.HostConfig?.PortBindings,
+    ).toBeUndefined();
+  });
+
   test("passes TTY and inherited stdin settings into exec create/start", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
@@ -1101,8 +1127,21 @@ describe("provider-docker RuntimeProvider contract", () => {
     const compose = renderCompose(makePlan());
 
     expect(compose).toContain('image: "node:22-alpine"');
-    expect(compose).toContain('"127.0.0.1:31080:31080/tcp"');
+    expect(compose).toContain('    expose:\n      - "31080"');
+    expect(compose).not.toContain("    ports:\n");
+    expect(compose).not.toContain('"127.0.0.1:31080:31080/tcp"');
     expect(compose).toContain('name: "lando-myapp"');
+  });
+
+  test("emits exact published endpoint realization in compose", () => {
+    const service = {
+      ...makeService(),
+      endpoints: [{ port: 80, protocol: "http", bind: "127.0.0.2", publishedPort: 38080 }],
+    } satisfies ServicePlan;
+    const compose = renderCompose(makePlan(service));
+
+    expect(compose).toContain('    ports:\n      - "127.0.0.2:38080:80"');
+    expect(compose).not.toContain("    expose:\n");
   });
 
   test("creates and mounts cache volumes with storage-kind labels", async () => {

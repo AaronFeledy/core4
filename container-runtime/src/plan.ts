@@ -1,4 +1,10 @@
-import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type ServicePlan,
+  fileSyncVolumeName,
+  isHostPublishedEndpoint,
+  sameAppMountTarget,
+} from "@lando/sdk/schema";
 
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
@@ -91,7 +97,7 @@ export const containerPortBindings = (
 ): Record<string, ReadonlyArray<Record<string, string>>> =>
   Object.fromEntries(
     service.endpoints
-      .filter((endpoint) => endpoint.port !== undefined)
+      .filter((endpoint) => endpoint.port !== undefined && isHostPublishedEndpoint(endpoint))
       .map((endpoint) => [
         `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
         [{ HostIp: endpoint.bind ?? "127.0.0.1", HostPort: String(endpoint.publishedPort ?? endpoint.port) }],
@@ -133,6 +139,11 @@ export const containerCreateBodyFragment = (
     (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
   const refArtifact = artifact as Extract<NonNullable<ServicePlan["artifact"]>, { readonly kind: "ref" }>;
+  const exposedPorts = Object.fromEntries(
+    service.endpoints
+      .filter((endpoint) => endpoint.protocol !== "unix" && endpoint.port !== undefined)
+      .map((endpoint) => [`${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`, {}]),
+  );
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
@@ -142,6 +153,7 @@ export const containerCreateBodyFragment = (
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
     Labels: options.labels ?? commonContainerLabels(plan, service),
+    ...(Object.keys(exposedPorts).length === 0 ? {} : { ExposedPorts: exposedPorts }),
     HostConfig: options.hostConfig ?? containerHostConfigFragment(plan, service),
     ...(options.networkingConfig === undefined ? {} : { NetworkingConfig: options.networkingConfig }),
   };

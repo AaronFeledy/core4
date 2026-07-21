@@ -126,15 +126,14 @@ describe("provider-lando Compose emission", () => {
     expect(content).toStartWith('version: "3.9"\nservices:\n');
     expect(content).toContain("  web:\n");
     expect(content).toContain('    image: "node:22-alpine"\n');
-    expect(content).toContain('      - "3000:3000"\n');
-    expect(content).toContain('      - "9229:9229"\n');
+    expect(content).toContain('    expose:\n      - "3000"\n      - "9229"\n');
     expect(content).toContain('      NODE_ENV: "development"\n');
     expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
     expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
     expect(content).toContain('      database:\n        condition: "service_started"\n');
     expect(content).toContain("  database:\n");
     expect(content).toContain('    image: "postgres:16-alpine"\n');
-    expect(content).toContain('      - "5432:5432"\n');
+    expect(content).toContain('    expose:\n      - "5432"\n');
     expect(content).toContain('      POSTGRES_PASSWORD: "lando"\n');
     expect(content).toContain('      - "myapp_database_data:/var/lib/postgresql/data"\n');
     expect(content).toContain("networks:\n");
@@ -153,16 +152,16 @@ describe("provider-lando Compose emission", () => {
     expect(serviceKeys(content, "web").sort()).toEqual([
       "depends_on",
       "environment",
+      "expose",
       "image",
       "networks",
-      "ports",
       "volumes",
     ]);
     expect(serviceKeys(content, "database").sort()).toEqual([
       "environment",
+      "expose",
       "image",
       "networks",
-      "ports",
       "volumes",
     ]);
     expect(content).not.toContain("deploy:");

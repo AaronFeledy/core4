@@ -52,9 +52,9 @@ describe("container plan helpers", () => {
       expected: { "5432/tcp": [{ HostIp: "127.0.0.1", HostPort: "35432" }] },
     },
     {
-      name: "target-only fallback",
+      name: "target-only endpoint",
       endpoint: { port: 8080, protocol: "tcp" },
-      expected: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
+      expected: {},
     },
     {
       name: "UDP published port",
@@ -65,6 +65,11 @@ describe("container plan helpers", () => {
       name: "explicit non-loopback bind",
       endpoint: { port: 3000, protocol: "tcp", bind: "0.0.0.0", publishedPort: 33000 },
       expected: { "3000/tcp": [{ HostIp: "0.0.0.0", HostPort: "33000" }] },
+    },
+    {
+      name: "bind without a distinct published port",
+      endpoint: { port: 8080, protocol: "tcp", bind: "0.0.0.0" },
+      expected: { "8080/tcp": [{ HostIp: "0.0.0.0", HostPort: "8080" }] },
     },
   ] satisfies ReadonlyArray<{
     readonly name: string;
@@ -88,9 +93,48 @@ describe("container plan helpers", () => {
     });
 
     expect(containerHostConfigFragment(plan, service)).toEqual({
-      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
       Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
     });
+  });
+
+  test("exposes a semantic HTTP target without publishing it", () => {
+    const httpService: ServicePlan = {
+      ...service,
+      endpoints: [{ port: 80, protocol: "http", name: "http" }],
+    };
+
+    expect(containerCreateBodyFragment(plan, httpService)).toMatchObject({
+      ExposedPorts: { "80/tcp": {} },
+      HostConfig: {
+        Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
+      },
+    });
+    expect(containerCreateBodyFragment(plan, httpService).HostConfig).not.toHaveProperty("PortBindings");
+  });
+
+  test("exposes and exactly publishes a proxy HTTP target", () => {
+    const proxyService: ServicePlan = {
+      ...service,
+      endpoints: [{ port: 80, protocol: "http", name: "web", bind: "127.0.0.1", publishedPort: 38080 }],
+    };
+
+    expect(containerCreateBodyFragment(plan, proxyService)).toMatchObject({
+      ExposedPorts: { "80/tcp": {} },
+      HostConfig: {
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      },
+    });
+  });
+
+  test("does not expose or publish a unix endpoint", () => {
+    const unixService: ServicePlan = {
+      ...service,
+      endpoints: [{ protocol: "unix", name: "socket" }],
+    };
+    const body = containerCreateBodyFragment(plan, unixService);
+
+    expect(body).not.toHaveProperty("ExposedPorts");
+    expect(body.HostConfig).not.toHaveProperty("PortBindings");
   });
 
   test("builds common create body fields from a ref artifact", () => {
@@ -107,8 +151,8 @@ describe("container plan helpers", () => {
       Entrypoint: ["docker-entrypoint.sh"],
       WorkingDir: "/app",
       Labels: { "dev.lando.app": "app-id", "dev.lando.service": "web" },
+      ExposedPorts: { "8080/tcp": {} },
       HostConfig: {
-        PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
         Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },

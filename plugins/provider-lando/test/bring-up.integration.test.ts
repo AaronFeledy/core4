@@ -176,6 +176,7 @@ console.log(body);
 interface CreateContainerBody {
   readonly Cmd?: ReadonlyArray<string>;
   readonly Env?: ReadonlyArray<string>;
+  readonly ExposedPorts?: Readonly<Record<string, Record<string, never>>>;
   readonly HostConfig?: {
     readonly Binds?: ReadonlyArray<string>;
     readonly ExtraHosts?: ReadonlyArray<string>;
@@ -385,6 +386,27 @@ describe("provider-lando bringUp", () => {
     expect(body?.HostConfig?.PortBindings).toEqual({
       "80/tcp": [{ HostIp: "127.0.0.2", HostPort: "38080" }],
     });
+    expect(body?.ExposedPorts).toEqual({ "80/tcp": {} });
+  });
+
+  test("exposes an appserver HTTP target without host-binding port 80", async () => {
+    const fake = makeFakeApi();
+    const appserver: ServicePlan = {
+      ...node,
+      dependsOn: [],
+      endpoints: [{ port: 80, protocol: "http", name: "http" }],
+    };
+
+    await Effect.runPromise(
+      bringUp({ ...plan, services: { [appserver.name]: appserver } }, { podmanApi: fake.api }),
+    );
+
+    const create = fake.calls.find(
+      (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
+    );
+    const body = create?.body as CreateContainerBody | undefined;
+    expect(body?.ExposedPorts).toEqual({ "80/tcp": {} });
+    expect(body?.HostConfig?.PortBindings).toBeUndefined();
   });
 
   test("creates and mounts cache volumes with storage-kind labels", async () => {
