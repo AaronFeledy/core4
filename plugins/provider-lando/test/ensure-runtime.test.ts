@@ -237,7 +237,6 @@ const allPrereqs = (): ReturnType<RootlessProbes["probe"]> => ({
 });
 
 describe("ensureRuntime", () => {
-  test("reachable socket with legacy managed argv stops service before relaunch", async () => {
   test("missing rootless prerequisites fail before managed service launch", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
@@ -315,6 +314,7 @@ describe("ensureRuntime", () => {
     }
   });
 
+  test("reachable socket with legacy managed argv stops service before relaunch", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
       const calls: Call[] = [];
