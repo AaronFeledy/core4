@@ -68,10 +68,41 @@ describe("compose short-form ports", () => {
     expect(plan.endpoints.filter((endpoint) => endpoint.protocol === "tcp")).toEqual([]);
   });
 
-  test("keeps a bare port as a target-only endpoint", async () => {
+  test("keeps authored semantic endpoints unpublished", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      services: {
+        worker: {
+          type: "compose",
+          image: "nginx:alpine",
+          ports: ["38080:80"],
+          endpoints: [{ name: "web", protocol: "http", port: 80 }],
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("worker")];
+    if (service === undefined) throw new Error("worker service missing");
+
+    // When
+    const plan = await composeServicePlan({
+      serviceType: composeServiceType,
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+      serviceName: "worker",
+      featureOverrides: new Map([[COMPOSE_FEATURE_ID, composeServiceFeature]]),
+    });
+
+    // Then
+    expect(plan.endpoints).toEqual([{ name: "web", protocol: "http", port: 80 }]);
+  });
+
+  test("identity-publishes a bare port", async () => {
+    // Given / When
     const plan = await planPorts(["80"]);
 
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "tcp", name: "worker" }]);
+    // Then
+    expect(plan.endpoints).toEqual([{ port: 80, publishedPort: 80, protocol: "tcp", name: "worker" }]);
   });
 
   test("keeps published and target ports as separate endpoint fields", async () => {
@@ -89,11 +120,11 @@ describe("compose short-form ports", () => {
     ]);
   });
 
-  test("preserves UDP suffixes on target-only and host-bound endpoints", async () => {
+  test("preserves UDP suffixes on bare and host-bound endpoints", async () => {
     const plan = await planPorts(["53/udp", "127.0.0.1:5353:53/udp"]);
 
     expect(plan.endpoints).toEqual([
-      { port: 53, protocol: "udp", name: "worker" },
+      { port: 53, publishedPort: 53, protocol: "udp", name: "worker" },
       { port: 53, bind: "127.0.0.1", publishedPort: 5353, protocol: "udp", name: "worker" },
     ]);
   });

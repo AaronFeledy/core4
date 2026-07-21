@@ -109,6 +109,7 @@
 - `deprecateSchema`
 - `EndpointInput`
 - `EndpointPlan`
+- `isHostPublishedEndpoint`
 - `EmbeddingPluginDiscoveryPolicy`
 - `EmbeddingPluginPolicy`
 - `EmbeddingPluginPolicyMode`

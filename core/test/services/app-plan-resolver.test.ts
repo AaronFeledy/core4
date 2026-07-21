@@ -81,6 +81,29 @@ describe("AppPlanResolver", () => {
     expect(ports).toEqual({ http: 18080, https: 18443 });
   });
 
+  test("ignores unpublished semantic HTTP and HTTPS endpoints", async () => {
+    // Given
+    const plan = makePlan("global", [
+      {
+        name: "internal",
+        endpoints: [
+          { protocol: "http", port: 80 },
+          { protocol: "https", port: 443 },
+        ],
+      },
+      {
+        name: "proxy",
+        endpoints: [{ protocol: "http", port: 80, publishedPort: 18080 }],
+      },
+    ]);
+
+    // When
+    const ports = await Effect.runPromise(deriveRouteAuthorityPorts(plan));
+
+    // Then
+    expect(ports).toEqual({ http: 18080 });
+  });
+
   test("fails with typed validation when authority protocols belong to different services", async () => {
     const plan = makePlan("global", [
       { name: "http-proxy", endpoints: [{ protocol: "http", port: 80, publishedPort: 18080 }] },

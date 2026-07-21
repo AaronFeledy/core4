@@ -101,5 +101,8 @@ export const EndpointPlan = Schema.Union(
 );
 export type EndpointPlan = typeof EndpointPlan.Type;
 
+export const isHostPublishedEndpoint = (endpoint: EndpointInput | EndpointPlan): boolean =>
+  endpoint.bind !== undefined || endpoint.publishedPort !== undefined;
+
 export const DEFAULT_PROXY_HTTP_PORT = 38080 as const satisfies PortNumber;
 export const DEFAULT_PROXY_HTTPS_PORT = 38443 as const satisfies PortNumber;

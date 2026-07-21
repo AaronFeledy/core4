@@ -13,6 +13,7 @@ import {
 import {
   AbsolutePath,
   AppPlan,
+  type EndpointPlan,
   LandofileShape,
   LogSource,
   PluginManifest,
@@ -190,21 +191,64 @@ const socketOnlyServiceType = makeLegacyServiceTypeFake({
     }),
 });
 
+const endpointOnlyServiceType = (id: string, endpoint: EndpointPlan) =>
+  makeLegacyServiceTypeFake({
+    id,
+    toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+      Schema.decodeUnknownSync(ServicePlan)({
+        name: ServiceName.make(name),
+        type: id,
+        provider,
+        primary,
+        environment: {},
+        mounts: [],
+        storage: [],
+        endpoints: [{ ...endpoint, name }],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata,
+        extensions: {},
+      }),
+  });
+
+const semanticEndpointServiceType = endpointOnlyServiceType("semantic-endpoint", {
+  protocol: "http",
+  port: 80,
+});
+const bindEndpointServiceType = endpointOnlyServiceType("bind-endpoint", {
+  protocol: "http",
+  port: 80,
+  bind: "127.0.0.1",
+});
+const publishedEndpointServiceType = endpointOnlyServiceType("published-endpoint", {
+  protocol: "http",
+  port: 80,
+  publishedPort: 38080,
+});
+const customServiceTypes = [
+  appMountOnlyServiceType,
+  socketOnlyServiceType,
+  semanticEndpointServiceType,
+  bindEndpointServiceType,
+  publishedEndpointServiceType,
+] as const;
+
 const customPluginRegistry = {
   list: Effect.succeed([]),
   load: (pluginName: string) =>
     Effect.fail(new PluginLoadError({ message: `Plugin ${pluginName} is not registered.`, pluginName })),
   loadServiceType: (id: string) => {
-    if (id === appMountOnlyServiceType.id) return Effect.succeed(appMountOnlyServiceType);
-    if (id === socketOnlyServiceType.id) return Effect.succeed(socketOnlyServiceType);
+    const serviceType = customServiceTypes.find((candidate) => candidate.id === id);
+    if (serviceType !== undefined) return Effect.succeed(serviceType);
     return Effect.fail(
       new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
     );
   },
   loadServiceFeature: (id: string) => {
-    const feature = [appMountOnlyServiceType.testFeature, socketOnlyServiceType.testFeature].find(
-      (candidate) => candidate.id === id,
-    );
+    const feature = customServiceTypes
+      .map(({ testFeature }) => testFeature)
+      .find((candidate) => candidate.id === id);
     return feature === undefined
       ? Effect.fail(
           new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
@@ -1534,10 +1578,16 @@ describe("AppPlannerLive", () => {
 
   test("fails before apply when published ports require an unsupported provider capability", async () => {
     await withTempCwd(async () => {
-      const exit = await planExit(landofileFixture, {
-        ...providerLandoCapabilities,
-        hostPortPublish: "none",
-      });
+      const exit = await planExitWithCustomRegistry(
+        {
+          name: "published-endpoint-app",
+          runtime: 4,
+          services: {
+            [ServiceName.make("web")]: { type: "published-endpoint" },
+          },
+        },
+        { ...providerLandoCapabilities, hostPortPublish: "none" },
+      );
 
       const failure = expectSomeFailure(exit);
       expect(failure).toBeInstanceOf(CapabilityError);
@@ -1551,6 +1601,57 @@ describe("AppPlannerLive", () => {
           "Choose a provider with host port publish support or remove published ports from service web.",
         );
       }
+    });
+  });
+
+  test("does not require host port publishing for a semantic HTTP endpoint", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const landofile: LandofileShape = {
+        name: "semantic-endpoint-app",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type: "semantic-endpoint" },
+        },
+      };
+
+      // When
+      const appPlan = await planWithCustomRegistry(landofile, {
+        ...providerLandoCapabilities,
+        hostPortPublish: "none",
+      });
+
+      // Then
+      expect(appPlan.services[ServiceName.make("web")]?.endpoints).toEqual([
+        { protocol: "http", port: 80, name: "web" },
+      ]);
+    });
+  });
+
+  test.each([
+    ["bind-endpoint", "bind-only"],
+    ["published-endpoint", "published-port-only"],
+  ] as const)("requires host port publishing for a %s endpoint", async (type) => {
+    await withTempCwd(async () => {
+      // Given
+      const landofile: LandofileShape = {
+        name: "published-endpoint-app",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: { type },
+        },
+      };
+
+      // When
+      const exit = await planExitWithCustomRegistry(landofile, {
+        ...providerLandoCapabilities,
+        hostPortPublish: "none",
+      });
+
+      // Then
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      expect(failure).toMatchObject({ capability: "hostPortPublish", service: "web" });
     });
   });
 

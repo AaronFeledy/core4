@@ -8,6 +8,7 @@ import type {
   RouteAuthorityPorts,
   ServiceName,
 } from "@lando/sdk/schema";
+import { isHostPublishedEndpoint } from "@lando/sdk/schema";
 import { AppPlanResolver, AppPlanner, FileSystem, GlobalAppService } from "@lando/sdk/services";
 
 import { loadLandofileLayers } from "../landofile/service.ts";
@@ -41,6 +42,7 @@ export const deriveRouteAuthorityPorts = (
   for (const service of Object.values(plan.services)) {
     for (const endpoint of service.endpoints) {
       if (endpoint.protocol !== "http" && endpoint.protocol !== "https") continue;
+      if (!isHostPublishedEndpoint(endpoint)) continue;
       const port = endpoint.publishedPort ?? endpoint.port;
       if (port === undefined) continue;
       candidates.get(endpoint.protocol)?.set(`${service.name}:${port}`, { service: service.name, port });

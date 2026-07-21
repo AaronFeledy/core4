@@ -8,6 +8,7 @@ import {
 import { AbsolutePath, CommandSpec, ServiceName } from "./primitives.ts";
 
 export { DEFAULT_PROXY_HTTP_PORT, DEFAULT_PROXY_HTTPS_PORT } from "./endpoint.ts";
+export { isHostPublishedEndpoint } from "./endpoint.ts";
 export const EndpointPlan = EndpointPlanSchema;
 export type EndpointPlan = typeof EndpointPlan.Type;
 export const RouteAuthorityPorts = RouteAuthorityPortsSchema;

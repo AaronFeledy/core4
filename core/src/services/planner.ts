@@ -31,6 +31,7 @@ import {
   ServicePlan,
   type StorageScope,
   fileSyncVolumeName,
+  isHostPublishedEndpoint,
   landoNetworkingPlan,
   sameAppMountTarget,
 } from "@lando/sdk/schema";
@@ -1169,7 +1170,7 @@ const planApp = (
       };
 
       if (
-        servicePlanWithCapabilityRealization.endpoints.some((endpoint) => endpoint.port !== undefined) &&
+        servicePlanWithCapabilityRealization.endpoints.some(isHostPublishedEndpoint) &&
         providerCapabilities.hostPortPublish === "none"
       ) {
         yield* Effect.fail(

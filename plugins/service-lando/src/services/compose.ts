@@ -73,7 +73,7 @@ const parsePortShortForm = (entry: string): ComposePort => {
   const targetPart = targetSeparator === -1 ? portSpec : portSpec.slice(targetSeparator + 1);
   const port = parsePortNumber(targetPart, entry);
   const protocol = protocolParts[1] === "udp" ? "udp" : "tcp";
-  if (targetSeparator === -1) return { port, protocol };
+  if (targetSeparator === -1) return { port, protocol, publishedPort: port };
 
   const hostSpec = portSpec.slice(0, targetSeparator);
   const publishedSeparator = hostSpec.lastIndexOf(":");
