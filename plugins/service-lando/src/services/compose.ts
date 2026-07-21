@@ -4,7 +4,7 @@ import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, PortNumber, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -44,19 +44,49 @@ const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
   return { type: "volume", source: rawSource, target: rawTarget, readOnly };
 };
 
-const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "udp" } => {
-  const parts = entry.split(":");
-  const last = parts[parts.length - 1];
-  if (last === undefined) {
-    throw new Error(`Invalid compose port entry "${entry}".`);
+type ComposePort = {
+  readonly port: PortNumber;
+  readonly protocol: "tcp" | "udp";
+  readonly bind?: string;
+  readonly publishedPort?: PortNumber;
+};
+
+const parsePortNumber = (part: string, entry: string): PortNumber => {
+  if (!/^[0-9]+$/.test(part)) {
+    throw new Error(`Invalid compose port "${entry}". Expected decimal port.`);
   }
-  const [portPart, protoPart] = last.split("/");
-  const port = Number(portPart);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`Invalid compose port "${entry}". Expected positive integer port.`);
+  return Schema.decodeUnknownSync(PortNumber)(Number(part));
+};
+
+const parsePortShortForm = (entry: string): ComposePort => {
+  const protocolParts = entry.split("/");
+  if (
+    protocolParts.length > 2 ||
+    (protocolParts[1] !== undefined && protocolParts[1] !== "tcp" && protocolParts[1] !== "udp")
+  ) {
+    throw new Error(`Invalid compose port protocol in "${entry}". Allowed: tcp, udp.`);
   }
-  const protocol = protoPart === "udp" ? "udp" : "tcp";
-  return { port, protocol };
+  const portSpec = protocolParts[0];
+  if (portSpec === undefined) throw new Error(`Invalid compose port entry "${entry}".`);
+
+  const targetSeparator = portSpec.lastIndexOf(":");
+  const targetPart = targetSeparator === -1 ? portSpec : portSpec.slice(targetSeparator + 1);
+  const port = parsePortNumber(targetPart, entry);
+  const protocol = protocolParts[1] === "udp" ? "udp" : "tcp";
+  if (targetSeparator === -1) return { port, protocol };
+
+  const hostSpec = portSpec.slice(0, targetSeparator);
+  const publishedSeparator = hostSpec.lastIndexOf(":");
+  const publishedPart = publishedSeparator === -1 ? hostSpec : hostSpec.slice(publishedSeparator + 1);
+  const publishedPort = parsePortNumber(publishedPart, entry);
+  const bind = publishedSeparator === -1 ? undefined : hostSpec.slice(0, publishedSeparator);
+  if (bind === "") throw new Error(`Invalid compose port "${entry}". Bind must be non-empty.`);
+  return {
+    port,
+    protocol,
+    publishedPort,
+    ...(bind === undefined ? {} : { bind }),
+  };
 };
 
 const appNameFor = (ctx: ServiceFeatureContext): string => {
@@ -136,9 +166,25 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  for (const portEntry of service.ports ?? []) {
-    const parsed = parsePortShortForm(portEntry);
-    ctx.addEndpoint({ port: parsed.port, protocol: parsed.protocol, name: ctx.serviceName });
+  if (service.endpoints !== undefined) {
+    for (const endpoint of service.endpoints) {
+      const { socketPath, ...fields } = endpoint;
+      ctx.addEndpoint({
+        ...fields,
+        ...(socketPath === undefined ? {} : { socketPath: PortablePath.make(socketPath) }),
+      });
+    }
+  } else {
+    for (const portEntry of service.ports ?? []) {
+      const parsed = parsePortShortForm(portEntry);
+      ctx.addEndpoint({
+        port: parsed.port,
+        protocol: parsed.protocol,
+        name: ctx.serviceName,
+        ...(parsed.bind === undefined ? {} : { bind: parsed.bind }),
+        ...(parsed.publishedPort === undefined ? {} : { publishedPort: parsed.publishedPort }),
+      });
+    }
   }
 
   if (service.command !== undefined) ctx.setCommand(service.command);

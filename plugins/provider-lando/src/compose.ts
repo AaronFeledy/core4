@@ -142,7 +142,8 @@ const servicePorts = (service: ServicePlan): ReadonlyArray<string> =>
     }
 
     const suffix = endpoint.protocol === "udp" ? "/udp" : "";
-    return [`${endpoint.port}:${endpoint.port}${suffix}`];
+    const bind = endpoint.bind === undefined ? "" : `${endpoint.bind}:`;
+    return [`${bind}${endpoint.publishedPort ?? endpoint.port}:${endpoint.port}${suffix}`];
   });
 
 // Maps DependencyPlan conditions to Docker Compose long-form depends_on entries

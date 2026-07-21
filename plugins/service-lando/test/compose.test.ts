@@ -68,8 +68,8 @@ describe("compose ServiceType (raw passthrough)", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: "ghcr.io/example/worker:1.2.3" });
     expect(plan.environment).toMatchObject({ WORKER_ENV: "prod" });
     expect(plan.endpoints).toEqual([
-      { port: 9000, protocol: "tcp", name: "worker" },
-      { port: 9001, protocol: "udp", name: "worker" },
+      { port: 9000, publishedPort: 9000, protocol: "tcp", name: "worker" },
+      { port: 9001, publishedPort: 9001, protocol: "udp", name: "worker" },
     ]);
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-worker-data");
