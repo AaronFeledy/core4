@@ -71,6 +71,58 @@ describe("buildOpenTarget", () => {
     expect(target.scheme).toBe("http");
     expect(target.url).toBe("http://api.myapp.lndo.site/v1");
   });
+
+  test("uses the resolved HTTPS authority port with a path prefix", () => {
+    // Given
+    const resolvedRoute = route({
+      hostname: "web.myapp.lndo.site",
+      scheme: "https",
+      service: "web",
+      pathPrefix: "/admin",
+      authorityPorts: { https: 38443 },
+    });
+
+    // When
+    const target = buildOpenTarget(resolvedRoute);
+
+    // Then
+    expect(target.url).toBe("https://web.myapp.lndo.site:38443/admin");
+  });
+
+  test("uses the resolved HTTP authority port", () => {
+    // Given
+    const resolvedRoute = route({
+      hostname: "api.myapp.lndo.site",
+      scheme: "http",
+      service: "api",
+      authorityPorts: { http: 38080 },
+    });
+
+    // When
+    const target = buildOpenTarget(resolvedRoute);
+
+    // Then
+    expect(target.url).toBe("http://api.myapp.lndo.site:38080");
+  });
+
+  test.each([
+    ["http", 80, "http://app.myapp.lndo.site"],
+    ["https", 443, "https://app.myapp.lndo.site"],
+  ] as const)("omits the explicit default %s authority port", (scheme, port, expected) => {
+    // Given
+    const resolvedRoute = route({
+      hostname: "app.myapp.lndo.site",
+      scheme,
+      service: "app",
+      authorityPorts: { [scheme]: port },
+    });
+
+    // When
+    const target = buildOpenTarget(resolvedRoute);
+
+    // Then
+    expect(target.url).toBe(expected);
+  });
 });
 
 describe("resolveOpenTargets", () => {
@@ -122,6 +174,53 @@ describe("resolveOpenTargets", () => {
     ]);
   });
 
+  test("selects HTTPS for a both-scheme route", () => {
+    // Given
+    const both = plan(
+      [
+        route({
+          hostname: "web.myapp.lndo.site",
+          scheme: "both",
+          service: "web",
+          pathPrefix: "/docs",
+          authorityPorts: { http: 38080, https: 38443 },
+        }),
+      ],
+      ["web"],
+    );
+
+    // When
+    const selected = resolveOpenTargets(both, {});
+
+    // Then
+    expect(selected.map((target) => target.url)).toEqual(["https://web.myapp.lndo.site:38443/docs"]);
+  });
+
+  test("expands both authorities for --all", () => {
+    // Given
+    const both = plan(
+      [
+        route({
+          hostname: "web.myapp.lndo.site",
+          scheme: "both",
+          service: "web",
+          pathPrefix: "/docs",
+          authorityPorts: { http: 38080, https: 38443 },
+        }),
+      ],
+      ["web"],
+    );
+
+    // When
+    const all = resolveOpenTargets(both, { all: true });
+
+    // Then
+    expect(all.map((target) => target.url)).toEqual([
+      "http://web.myapp.lndo.site:38080/docs",
+      "https://web.myapp.lndo.site:38443/docs",
+    ]);
+  });
+
   test("S5 no routes resolves to an empty list", () => {
     expect(resolveOpenTargets(plan([], ["web"]), {})).toEqual([]);
     expect(resolveOpenTargets(p, { service: "missing" })).toEqual([]);
@@ -148,6 +247,43 @@ describe("resolveOpenTargets", () => {
     expect(resolveOpenTargets(p, { all: true }).map((r) => r.url)).toEqual([
       "http://localhost:8080",
       "https://localhost:8443",
+    ]);
+  });
+
+  test("S5 endpoint fallback uses the published host authority", () => {
+    // Given
+    const published = plan(
+      [],
+      [
+        svc("web", [
+          endpoint({
+            protocol: "https",
+            port: 8443,
+            bind: "127.0.0.1",
+            publishedPort: 38443,
+          }),
+          endpoint({ protocol: "http", port: 8080, publishedPort: 38080 }),
+        ]),
+      ],
+    );
+
+    // When
+    const targets = resolveOpenTargets(published, { all: true });
+
+    // Then
+    expect(targets).toEqual([
+      {
+        service: "web",
+        hostname: "127.0.0.1",
+        scheme: "https",
+        url: "https://127.0.0.1:38443",
+      },
+      {
+        service: "web",
+        hostname: "localhost",
+        scheme: "http",
+        url: "http://localhost:38080",
+      },
     ]);
   });
 

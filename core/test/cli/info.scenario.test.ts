@@ -272,6 +272,52 @@ describe("lando info", () => {
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
   });
 
+  test("reports resolved route authorities and published endpoint authorities", async () => {
+    // Given
+    const routedNode: ServicePlan = {
+      ...node,
+      endpoints: [
+        {
+          protocol: "http",
+          port: 3000,
+          bind: "127.0.0.1",
+          publishedPort: 38081,
+          name: "http",
+        },
+      ],
+    };
+    const routedPlan: AppPlan = {
+      ...plan,
+      services: { [routedNode.name]: routedNode },
+      routes: [
+        {
+          hostname: "node.test-info.lndo.site",
+          scheme: "both",
+          service: routedNode.name,
+          pathPrefix: "/app",
+          authorityPorts: { http: 38080, https: 38443 },
+        },
+      ],
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(makeInfoLayer("running", { plannedApp: routedPlan }))),
+    );
+    const output = renderInfoAppResult(result);
+
+    // Then
+    expect(result.services[0]?.endpoints).toEqual([
+      "http://node.test-info.lndo.site:38080/app",
+      "https://node.test-info.lndo.site:38443/app",
+      "http://127.0.0.1:38081",
+    ]);
+    expect(output).toContain("http://node.test-info.lndo.site:38080/app");
+    expect(output).toContain("https://node.test-info.lndo.site:38443/app");
+    expect(output).toContain("http://127.0.0.1:38081");
+    expect(output).not.toContain("localhost:3000");
+  });
+
   test("prints stopped services without endpoints", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("stopped"))));
     const output = renderInfoAppResult(result);
