@@ -174,6 +174,7 @@ export const setupSpec: LandoCommandSpec<
 
       if (
         !inputBooleanFlag(input, "skip-shell-integration") &&
+        (!inputBooleanFlag(input, "no-interactive") || inputBooleanFlag(input, "yes")) &&
         privilege._tag === "Some" &&
         userDataRoot !== undefined
       ) {
