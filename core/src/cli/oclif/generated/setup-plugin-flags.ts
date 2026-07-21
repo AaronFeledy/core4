@@ -28,6 +28,15 @@ export const BUNDLED_SETUP_FLAG_CONTRIBUTIONS: ReadonlyArray<BundledSetupFlagCon
     plugin: "@lando/provider-lando",
     providers: ["lando"],
     flag: {
+      name: "enable-linger",
+      type: "boolean",
+      description: "Enable systemd user lingering as an optional persistence convenience.",
+    },
+  },
+  {
+    plugin: "@lando/provider-lando",
+    providers: ["lando"],
+    flag: {
       name: "runtime-bundle-url",
       type: "option",
       description: "Override the Lando-managed runtime bundle URL for setup.",

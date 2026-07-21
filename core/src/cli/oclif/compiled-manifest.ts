@@ -5509,6 +5509,12 @@ export const COMPILED_OCLIF_MANIFEST = {
           options: ["auto", "none"],
           type: "option",
         },
+        "enable-linger": {
+          description: "Enable systemd user lingering as an optional persistence convenience.",
+          name: "enable-linger",
+          allowNo: false,
+          type: "boolean",
+        },
         "runtime-bundle-url": {
           description: "Override the Lando-managed runtime bundle URL for setup.",
           name: "runtime-bundle-url",

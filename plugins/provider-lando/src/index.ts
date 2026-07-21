@@ -60,6 +60,7 @@ import {
   setupProviderLando,
 } from "./setup.ts";
 import { type LinuxHostRelease, provisionUidmapTools, readLinuxHostRelease } from "./uidmap-provision.ts";
+import { configureUserLinger } from "./user-linger.ts";
 
 export {
   appliedPlanPath,
@@ -144,6 +145,8 @@ export {
   provisionUidmapTools,
   readLinuxHostRelease,
 } from "./uidmap-provision.ts";
+export { configureUserLinger, UserLingerError } from "./user-linger.ts";
+export type { ConfigureUserLingerOptions } from "./user-linger.ts";
 export type {
   LinuxHostRelease,
   UidmapProvisionOptions,
@@ -584,6 +587,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
               : {}),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           });
+          yield* configureUserLinger({
+            uid: platform === "linux" && typeof process.getuid === "function" ? process.getuid() : undefined,
+            setupFlags: setupOptions.setupFlags,
+            privilege: setupOptions.privilege,
+            consent: setupOptions.hostChangeConsent,
+          });
           runtimeVersion = result.podmanVersion;
           bundleVersion = result.runtimeBundleVersion;
         }),
@@ -802,6 +811,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     providers: ["lando"],
     setup: {
       flags: [
+        {
+          name: "enable-linger",
+          description: "Enable systemd user lingering as an optional persistence convenience.",
+          type: "boolean",
+        },
         {
           name: "runtime-bundle-url",
           description: "Override the Lando-managed runtime bundle URL for setup.",
