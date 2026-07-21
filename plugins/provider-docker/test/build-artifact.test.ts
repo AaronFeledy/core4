@@ -151,6 +151,7 @@ test("buildArtifact applies build steps after a context build", async () => {
       {
         "@lando/core/service-features": {
           buildSteps: [
+            { id: "redirect-mkdir", phase: "build", command: ["mkdir", "-p", "/logs"] },
             { id: "redirect", phase: "build", command: ["ln", "-sf", "/dev/stdout", "/logs/access.log"] },
           ],
         },
@@ -182,7 +183,9 @@ test("buildArtifact applies build steps after a context build", async () => {
       path: "/images/lando-build-docker-web-derived-key/json",
     });
     expect(bodies[2]).toContain("FROM lando-build-docker-web-derived-key-base");
-    expect(bodies[2]).toContain('RUN ["ln","-sf","/dev/stdout","/logs/access.log"]');
+    expect(bodies[2]).toContain(
+      'RUN ["mkdir","-p","/logs"]\nRUN ["ln","-sf","/dev/stdout","/logs/access.log"]',
+    );
   } finally {
     await rm(context, { recursive: true, force: true });
   }
@@ -204,6 +207,7 @@ test("buildArtifact derives a Dockerfile for ref builds with build steps", async
     {
       "@lando/core/service-features": {
         buildSteps: [
+          { id: "redirect-mkdir", phase: "build", command: ["mkdir", "-p", "/logs"] },
           { id: "redirect", phase: "build", command: ["ln", "-sf", "/dev/stdout", "/logs/access.log"] },
         ],
       },
@@ -222,5 +226,7 @@ test("buildArtifact derives a Dockerfile for ref builds with build steps", async
   );
 
   expect(requestBody).toContain("FROM debian:12.11-slim");
-  expect(requestBody).toContain('RUN ["ln","-sf","/dev/stdout","/logs/access.log"]');
+  expect(requestBody).toContain(
+    'RUN ["mkdir","-p","/logs"]\nRUN ["ln","-sf","/dev/stdout","/logs/access.log"]',
+  );
 });
