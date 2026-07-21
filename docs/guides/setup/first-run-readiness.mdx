@@ -32,6 +32,11 @@ tags: [beta, docs, setup, readiness]
   </Scenario>
 
   <Scenario id="managed-runtime-service-readiness" render={false} reason="Runtime-service status, self-heal, poweroff teardown, uninstall teardown, and doctor readiness context are covered by focused provider/core tests without launching a host runtime">
+    <Step name="setup-runtime-phases">
+      <Variable name="prerequisites" value="Provision and preflight runtime prerequisites" display="Setup detects known rootless failures and completes any consented Ubuntu uidmap provisioning before launch" />
+      <Variable name="launch" value="Launch managed runtime" display="Detached runtime launch is a separate task and is never entered while preflight is red" />
+      <Variable name="readinessTask" value="Verify managed runtime readiness" display="Socket readiness is visible after launch; tagged failures include their actual message and remediation, and pending children settle" />
+    </Step>
     <Step name="status-and-self-heal">
       <Variable name="statusProbe" value="runtime-service" display="Doctor reports the managed runtime-service check from a real socket/PID probe instead of a hardcoded running state" />
       <Variable name="selfHeal" value="ensureRuntime" display="The next runtime-needing command reruns ensureRuntime after a stopped or killed service and relaunches the private socket" />

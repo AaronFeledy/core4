@@ -526,6 +526,7 @@ Core does not ship SQL helpers.
 
 ```text
 lando setup [--yes] [--provider=<id>] [--skip-provider]
+            [--no-interactive]
             [--skip-proxy] [--skip-install-ca]
             [--skip-shell-integration] [--skip-file-sync]
 ```
@@ -536,6 +537,8 @@ Rules:
 
 - Provider plugins declare additional setup flags via the `setup.flags` manifest field.
 - Platform-specific elevation runs through `PrivilegeService`.
+- On Linux, the managed provider preflights rootless prerequisites before detached runtime launch. Missing `newuidmap`/`newgidmap` is the only setup-time package change Lando may provision automatically, and only when `/etc/os-release` identifies exactly `ID=ubuntu`, `VERSION_ID=26.04`. Interactive setup prompts once with the fixed `uidmap` package and reason; `--yes` grants consent, `--no-interactive` without `--yes` denies it, and `--yes --no-interactive` grants unattended consent. The provider invokes only `/usr/bin/apt-get update` and `/usr/bin/apt-get install --yes --no-install-recommends uidmap` through `PrivilegeService`, then re-probes both helpers before launch. Other distributions and all other missing rootless prerequisites fail closed with tagged remediation; app lifecycle commands never auto-provision host packages.
+- The setup task tree declares distinct prerequisite provisioning/preflight, managed-runtime launch, and runtime-readiness children. A failed child reports the tagged error message and remediation, and every unstarted child is settled before the tree completes so no setup state remains ambiguously waiting.
 - Linux commands that may prompt for sudo set `SUDO_ASKPASS` when an askpass helper is available.
 - Setup honors corporate proxy and custom CA configuration for every Lando-owned download or registry call (§10.3.1).
 - `lando shellenv` prints shell-profile snippets to add `<userDataRoot>/bin` to `PATH`.

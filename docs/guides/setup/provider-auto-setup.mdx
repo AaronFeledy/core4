@@ -17,11 +17,21 @@ tags: [beta, docs, setup, providers]
 
   <Scenario id="non-interactive-and-ci" render={false} reason="Non-interactive setup is deterministic and covered by setup argv parsing tests">
     <Step name="scripted-setup">
-      <Variable name="nonInteractive" value="lando setup --no-interactive" display="Uses the same guided defaults without follow-up prompts" />
-      <Variable name="confirmed" value="lando setup --yes" display="Confirms setup prompts but does not change provider precedence" />
-      <Variable name="ci" value="lando setup --yes --provider=lando" display="Recommended CI shape: choose the provider and confirmation mode explicitly" />
+      <Variable name="nonInteractive" value="lando setup --no-interactive" display="Disables prompts and denies required host package changes unless --yes is also present" />
+      <Variable name="confirmed" value="lando setup --yes" display="Confirms setup prompts, including the fixed Ubuntu 26.04 uidmap prerequisite, without changing provider precedence" />
+      <Variable name="ci" value="lando setup --yes --no-interactive --provider=lando" display="Recommended unattended shape: choose the provider, disable prompts, and grant explicit consent" />
       <Variable name="ciBundle" value="LANDO_RUNTIME_BUNDLE_MANIFEST" display="linux-x64 provider-integration CI stages a current-commit runtime bundle tarball and points setup at the local file manifest before ensureRuntime brings up the managed socket" />
       <Variable name="ciTeardown" value="lando poweroff + managed podman" display="CI teardown uses the Lando-managed podman binary with isolated --root, --runroot, and --config so cleanup targets the same store the job created" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ubuntu-uidmap-prerequisite" render={false} reason="Ubuntu host policy, exact privileged argv, consent mapping, re-probe, and pre-launch ordering are covered by provider-lando and core setup tests">
+    <Step name="consented-host-change">
+      <Variable name="supportedHost" value="ID=ubuntu VERSION_ID=26.04" display="Automatic uidmap provisioning is limited to the Ubuntu 26.04 reference host" />
+      <Variable name="package" value="uidmap" display="Interactive setup names the fixed package and explains that rootless Podman requires newuidmap and newgidmap" />
+      <Variable name="commands" value="/usr/bin/apt-get update; /usr/bin/apt-get install --yes --no-install-recommends uidmap" display="Both commands use exact argv through PrivilegeService; no shell command string or dynamic package name is accepted" />
+      <Variable name="verification" value="re-probe newuidmap and newgidmap before launch" display="Setup never starts the detached managed runtime while a known prerequisite is absent" />
+      <Variable name="unsupported" value="fail closed" display="Other distributions and missing subid, cgroups v2 delegation, or XDG runtime prerequisites receive tagged remediation without automatic host changes" />
     </Step>
   </Scenario>
 
