@@ -85,7 +85,9 @@ test("buildArtifact sends Docker build requests for build specs", async () => {
       request: (request) =>
         Effect.sync(() => {
           requests.push(request);
-          return { status: 200, body: '{"aux":{"Digest":"sha256:built"}}\n' };
+          return request.method === "POST"
+            ? { status: 200, body: '{"aux":{"Digest":"sha256:built"}}\n' }
+            : { status: 200, body: '{"Id":"sha256:built"}' };
         }),
     };
     const provider = await Effect.runPromise(makeRuntimeProvider({ dockerApi, platform: "linux" }));
@@ -114,6 +116,10 @@ test("buildArtifact sends Docker build requests for build specs", async () => {
     expect(requests[0]?.path).toContain("dockerfile=Containerfile");
     expect(requests[0]?.path).toContain("target=runtime");
     expect(requests[0]?.path).toContain("buildargs=%7B%22NODE_ENV%22%3A%22production%22%7D");
+    expect(requests[1]).toEqual({
+      method: "GET",
+      path: "/images/lando-build-docker-web-abc123/json",
+    });
   } finally {
     await rm(context, { recursive: true, force: true });
   }
@@ -162,13 +168,21 @@ test("buildArtifact applies build steps after a context build", async () => {
       ),
     );
 
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(4);
     expect(requests[0]?.path).toContain("t=lando-build-docker-web-derived-key-base");
     expect(requests[0]?.path).toContain("target=runtime");
-    expect(requests[1]?.path).toContain("t=lando-build-docker-web-derived-key");
-    expect(requests[1]?.path).not.toContain("target=runtime");
-    expect(bodies[1]).toContain("FROM lando-build-docker-web-derived-key-base");
-    expect(bodies[1]).toContain('RUN ["ln","-sf","/dev/stdout","/logs/access.log"]');
+    expect(requests[1]).toEqual({
+      method: "GET",
+      path: "/images/lando-build-docker-web-derived-key-base/json",
+    });
+    expect(requests[2]?.path).toContain("t=lando-build-docker-web-derived-key");
+    expect(requests[2]?.path).not.toContain("target=runtime");
+    expect(requests[3]).toEqual({
+      method: "GET",
+      path: "/images/lando-build-docker-web-derived-key/json",
+    });
+    expect(bodies[2]).toContain("FROM lando-build-docker-web-derived-key-base");
+    expect(bodies[2]).toContain('RUN ["ln","-sf","/dev/stdout","/logs/access.log"]');
   } finally {
     await rm(context, { recursive: true, force: true });
   }
@@ -180,7 +194,7 @@ test("buildArtifact derives a Dockerfile for ref builds with build steps", async
     info: Effect.succeed({ Architecture: "x86_64" }),
     request: (request) =>
       Effect.promise(async () => {
-        requestBody = await collect(request.stdin);
+        if (request.method === "POST") requestBody = await collect(request.stdin);
         return { status: 200, body: "" };
       }),
   };

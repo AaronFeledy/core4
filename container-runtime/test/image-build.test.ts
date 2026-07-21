@@ -186,7 +186,7 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
     ),
   );
 
-  expect(requests).toHaveLength(1);
+  expect(requests).toHaveLength(2);
   expect(bodies[0]).toContain("FROM debian:12\n");
   expect(bodies[0]).toContain("RUN echo $HOME && printf '%s' ok\n");
   expect(bodies[0]).toContain('RUN ["printf","hello world"]\n');
