@@ -13,6 +13,17 @@ import {
 const netavarkBytes = new TextEncoder().encode("pinned-netavark-binary");
 const passtBytes = new TextEncoder().encode("pinned-passt-binary");
 const pastaBytes = new TextEncoder().encode("pinned-pasta-binary");
+const netavarkAardvarkSource = `use std::path::{Path, PathBuf};
+
+impl Aardvark {
+        false
+    }
+
+    pub fn start_aardvark_server(&self) -> NetavarkResult<()> {
+        if is_using_systemd() && Aardvark::is_executable_in_path(SYSTEMD_RUN) {
+    }
+}
+`;
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 const acceptInspection = async (): Promise<string> =>
   "linux-vdso.so.1 (0x00007ffc00000000)\nlibc.so.6 => /lib/x86_64-linux-gnu/libc.so.6 (0x00007f0000000000)\n/lib64/ld-linux-x86-64.so.2 (0x00007f0000000000)\n";
@@ -144,7 +155,8 @@ describe("Linux helper source builds", () => {
   test("source-builds Netavark from source plus vendored dependencies", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rb-asm-netavark-"));
     try {
-      await mkdir(join(dir, "netavark-2.0.0"), { recursive: true });
+      await mkdir(join(dir, "netavark-2.0.0", "src", "dns"), { recursive: true });
+      await writeFile(join(dir, "netavark-2.0.0", "src", "dns", "aardvark.rs"), netavarkAardvarkSource);
       await mkdir(join(dir, "vendor"), { recursive: true });
       await Bun.$`tar -czf ${join(dir, "netavark-source.tar.gz")} -C ${dir} netavark-2.0.0`.quiet();
       await Bun.$`tar -czf ${join(dir, "netavark-vendor.tar.gz")} -C ${dir} vendor`.quiet();

@@ -25,6 +25,54 @@ const PodmanSourceBuildOutputs = [
   { source: "bin/rootlessport", installName: "bin/rootlessport", mode: 0o755 },
 ] as const;
 
+const NetavarkSourceReplacements = [
+  {
+    label: "UnixStream import",
+    expected: "use std::path::{Path, PathBuf};",
+    replacement: "use std::os::unix::net::UnixStream;\nuse std::path::{Path, PathBuf};",
+  },
+  {
+    label: "Aardvark user-bus probe",
+    expected: `        false
+    }
+
+    pub fn start_aardvark_server(&self) -> NetavarkResult<()> {`,
+    replacement: `        false
+    }
+
+    fn has_usable_systemd_user_bus() -> bool {
+        let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") else {
+            return false;
+        };
+        UnixStream::connect(Path::new(&runtime_dir).join("bus")).is_ok()
+    }
+
+    pub fn start_aardvark_server(&self) -> NetavarkResult<()> {`,
+  },
+  {
+    label: "Aardvark systemd-run condition",
+    expected: "        if is_using_systemd() && Aardvark::is_executable_in_path(SYSTEMD_RUN) {",
+    replacement: `        if is_using_systemd()
+            && Aardvark::is_executable_in_path(SYSTEMD_RUN)
+            && (!self.rootless || Aardvark::has_usable_systemd_user_bus())
+        {`,
+  },
+] as const;
+
+const patchNetavarkSource = (source: string): string =>
+  NetavarkSourceReplacements.reduce((current, sourceReplacement) => {
+    const firstMatch = current.indexOf(sourceReplacement.expected);
+    if (
+      firstMatch === -1 ||
+      current.indexOf(sourceReplacement.expected, firstMatch + sourceReplacement.expected.length) !== -1
+    ) {
+      throw new Error(
+        `assemble-runtime-bundle: Netavark v2.0.0 ${sourceReplacement.label} upstream text mismatch`,
+      );
+    }
+    return `${current.slice(0, firstMatch)}${sourceReplacement.replacement}${current.slice(firstMatch + sourceReplacement.expected.length)}`;
+  }, source);
+
 interface LinuxHelperSourceBuildOptions {
   readonly component: RuntimeBundleComponent;
   readonly artifactPaths: ReadonlyMap<string, string>;
@@ -64,6 +112,10 @@ export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuild
   try {
     await options.execute(["tar", "-xf", inputPath(options.artifactPaths, "source"), "-C", workDir]);
     const sourceDir = join(workDir, sourceDirName(options.component));
+    if (options.component.sourceBuild === LinuxNetavarkSourceBuild) {
+      const aardvarkSourcePath = join(sourceDir, "src", "dns", "aardvark.rs");
+      await writeFile(aardvarkSourcePath, patchNetavarkSource(await readFile(aardvarkSourcePath, "utf8")));
+    }
     if (
       options.component.sourceBuild === LinuxNetavarkSourceBuild ||
       options.component.sourceBuild === LinuxAardvarkDnsSourceBuild

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { access, chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { gunzipSync, inflateRawSync } from "node:zlib";
 
@@ -69,6 +70,11 @@ const ZIP_CENTRAL_DIRECTORY_HEADER_SIGNATURE = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const ZIP_DATA_DESCRIPTOR_SIGNATURE = 0x08074b50;
 const MARKER_FILE = ".runtime-installed-version";
+
+interface InstalledRuntimeIdentity {
+  readonly version: string;
+  readonly sha256: string;
+}
 
 const isGzip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
 const isZip = (bytes: Uint8Array): boolean => bytes.length >= 2 && bytes[0] === 0x50 && bytes[1] === 0x4b;
@@ -333,10 +339,32 @@ const stringJoin = (base: string, relativePath: string): string => {
 
 const markerPath = (runtimeBinDir: string): string => stringJoin(runtimeBinDir, MARKER_FILE);
 
-const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | undefined, never> =>
+const parseInstalledIdentity = (content: string): InstalledRuntimeIdentity | undefined => {
+  try {
+    const identity: unknown = JSON.parse(content);
+    if (
+      typeof identity !== "object" ||
+      identity === null ||
+      !("version" in identity) ||
+      typeof identity.version !== "string" ||
+      !("sha256" in identity) ||
+      typeof identity.sha256 !== "string"
+    ) {
+      return undefined;
+    }
+    return { version: identity.version, sha256: identity.sha256 };
+  } catch (cause) {
+    if (cause instanceof SyntaxError) return undefined;
+    throw cause;
+  }
+};
+
+const readInstalledIdentity = (
+  runtimeBinDir: string,
+): Effect.Effect<InstalledRuntimeIdentity | undefined, never> =>
   Effect.promise(() =>
     readFile(markerPath(runtimeBinDir), "utf8").then(
-      (content) => content.trim(),
+      (content) => parseInstalledIdentity(content),
       () => undefined,
     ),
   );
@@ -404,9 +432,10 @@ export const installRuntimeBundle = (
   options: InstallRuntimeBundleOptions,
 ): Effect.Effect<InstallRuntimeBundleResult, ProviderRuntimeExtractError> =>
   Effect.gen(function* () {
-    const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
+    const archiveSha256 = createHash("sha256").update(options.archiveBytes).digest("hex");
+    const installedIdentity = yield* readInstalledIdentity(options.runtimeBinDir);
     const entrypointReady =
-      installedVersion === options.version
+      installedIdentity?.version === options.version && installedIdentity.sha256 === archiveSha256
         ? yield* hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform)
         : false;
     if (entrypointReady) {
@@ -446,7 +475,10 @@ export const installRuntimeBundle = (
           if (fileCount === 0) {
             throw new ProviderRuntimeExtractError("Runtime bundle archive does not contain any files.");
           }
-          await writeFile(markerPath(tempDir), options.version);
+          await writeFile(
+            markerPath(tempDir),
+            `${JSON.stringify({ version: options.version, sha256: archiveSha256 })}\n`,
+          );
           await mkdir(stringParentDir(options.runtimeBinDir), { recursive: true });
           await replaceRuntimeBinDir(tempDir, options.runtimeBinDir);
         } catch (cause) {

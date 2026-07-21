@@ -893,6 +893,37 @@ describe("provider-lando setup runtime bundle extraction", () => {
     }
   });
 
+  test("replaces a verified same-version override before recording its requested SHA", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-extract-override-"));
+    const stateDir = join(root, "providers");
+    const runtimeBinDir = join(root, "runtime", "bin");
+    try {
+      const oldArchive = buildTarGz([{ path: "podman", bytes: new TextEncoder().encode("old-podman") }]);
+      const newArchive = buildTarGz([{ path: "podman", bytes: new TextEncoder().encode("new-podman") }]);
+      const setup = (archiveBytes: Uint8Array) =>
+        setupProviderLando({
+          platform: "linux",
+          podmanApi: {
+            info: Effect.succeed({ version: { Version: "6.0.2" } }),
+            ping: Effect.succeed(undefined),
+          },
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          runtimeBundleDownloader: downloaderFor(archiveBytes, "1.0.0"),
+          stateDir,
+          runtimeBinDir,
+        });
+
+      await Effect.runPromise(setup(oldArchive));
+      await Effect.runPromise(setup(newArchive));
+
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("new-podman");
+      const state = JSON.parse(await readFile(providerStatePath(stateDir), "utf8"));
+      expect(state.runtimeBundleSha256).toBe(sha256(newArchive));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes nothing into runtimeBinDir when the bundle checksum does not match", async () => {
     const runtimeBinDir = join(await mkdtemp(join(tmpdir(), "lando-extract-mismatch-")), "runtime", "bin");
     try {
@@ -980,7 +1011,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       await Effect.runPromise(setupV1());
       const markerPath = join(runtimeBinDir, ".runtime-installed-version");
-      expect((await readFile(markerPath, "utf8")).trim()).toBe("1.0.0");
+      expect(JSON.parse(await readFile(markerPath, "utf8"))).toEqual({
+        version: "1.0.0",
+        sha256: sha256(v1),
+      });
       const firstMtime = statSync(markerPath).mtimeMs;
 
       await Effect.runPromise(setupV1());
@@ -1006,7 +1040,10 @@ describe("provider-lando setup runtime bundle extraction", () => {
 
       expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(false);
       expect(existsSync(join(runtimeBinDir, "new-only"))).toBe(true);
-      expect((await readFile(markerPath, "utf8")).trim()).toBe("2.0.0");
+      expect(JSON.parse(await readFile(markerPath, "utf8"))).toEqual({
+        version: "2.0.0",
+        sha256: sha256(v2),
+      });
     } finally {
       await rm(runtimeBinDir, { recursive: true, force: true });
     }

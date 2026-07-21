@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -15,6 +16,9 @@ import {
 } from "../src/runtime-extract.ts";
 
 const encoder = new TextEncoder();
+const archiveSha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
+const installedIdentity = (version: string, archiveBytes: Uint8Array): string =>
+  `${JSON.stringify({ version, sha256: archiveSha256(archiveBytes) })}\n`;
 
 const expectFailure = <A, E>(exit: Exit.Exit<A, E>): E => {
   if (!Exit.isFailure(exit)) {
@@ -152,11 +156,12 @@ const expectCapError = (action: () => unknown, cap: number): ProviderRuntimeExtr
   try {
     action();
   } catch (cause) {
-    expect(cause).toBeInstanceOf(ProviderRuntimeExtractError);
-    const error = cause as ProviderRuntimeExtractError;
-    expect(error.message).toContain(`${cap}`);
-    expect(error.remediation).toContain("LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES");
-    return error;
+    if (cause instanceof ProviderRuntimeExtractError) {
+      expect(cause.message).toContain(`${cap}`);
+      expect(cause.remediation).toContain("LANDO_RUNTIME_BUNDLE_MAX_DECOMPRESSED_BYTES");
+      return cause;
+    }
+    throw cause;
   }
   throw new Error("expected runtime extraction to fail on decompressed-size cap");
 };
@@ -337,7 +342,7 @@ describe("installRuntimeBundle", () => {
     }
   });
 
-  test("rejects empty extracted archives without replacing an installed runtime", async () => {
+  test("leaves the old runtime and identity intact when same-version replacement fails", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
       await Effect.runPromise(
@@ -353,7 +358,7 @@ describe("installRuntimeBundle", () => {
       const exit = await Effect.runPromiseExit(
         installRuntimeBundle({
           archiveBytes: buildTarGz([{ path: "empty-dir", typeflag: "5" }]),
-          version: "2.0.0",
+          version: "1.0.0",
           runtimeBinDir,
           platform: "linux",
         }),
@@ -361,8 +366,8 @@ describe("installRuntimeBundle", () => {
 
       expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
       expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("old-podman");
-      expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "1.0.0",
+      expect(await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).toBe(
+        installedIdentity("1.0.0", new Uint8Array([1])),
       );
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -396,7 +401,7 @@ describe("installRuntimeBundle", () => {
     }
   });
 
-  test("does not call extractImpl when the installed version marker matches", async () => {
+  test("skips extraction when the installed version and archive identity match", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
       let calls = 0;
@@ -427,8 +432,73 @@ describe("installRuntimeBundle", () => {
       expect(first.installed).toBe(true);
       expect(second).toEqual({ installed: false, runtimeBinDir, version: "1.0.0" });
       expect(calls).toBe(1);
-      expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "1.0.0",
+      expect(await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).toBe(
+        installedIdentity("1.0.0", new Uint8Array([1])),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reinstalls same-version archives with different identities and removes stale files", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "linux",
+          extractImpl: () => [
+            { path: "podman", bytes: encoder.encode("old-podman"), mode: 0o755 },
+            { path: "stale-only", bytes: encoder.encode("stale"), mode: 0o755 },
+          ],
+        }),
+      );
+
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([2]),
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "linux",
+          extractImpl: () => [{ path: "podman", bytes: encoder.encode("new-podman"), mode: 0o755 }],
+        }),
+      );
+
+      expect(result.installed).toBe(true);
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("new-podman");
+      expect(existsSync(join(runtimeBinDir, "stale-only"))).toBe(false);
+      expect(await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).toBe(
+        installedIdentity("1.0.0", new Uint8Array([2])),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reinstalls a legacy version-only marker", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      await mkdir(runtimeBinDir, { recursive: true });
+      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      await writeFile(join(runtimeBinDir, "podman"), "old-podman");
+      const archiveBytes = new Uint8Array([1]);
+
+      const result = await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes,
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "linux",
+          extractImpl: () => [{ path: "podman", bytes: encoder.encode("new-podman"), mode: 0o755 }],
+        }),
+      );
+
+      expect(result.installed).toBe(true);
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("new-podman");
+      expect(await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).toBe(
+        installedIdentity("1.0.0", archiveBytes),
       );
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -439,9 +509,12 @@ describe("installRuntimeBundle", () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
       await mkdir(join(runtimeBinDir, "bin"), { recursive: true });
-      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
-      await writeFile(join(runtimeBinDir, "bin", "podman"), "old-podman");
       const archiveBytes = buildTarGz([{ path: "bin/podman", bytes: encoder.encode("new-podman") }]);
+      await writeFile(
+        join(runtimeBinDir, ".runtime-installed-version"),
+        installedIdentity("1.0.0", archiveBytes),
+      );
+      await writeFile(join(runtimeBinDir, "bin", "podman"), "old-podman");
 
       const result = await Effect.runPromise(
         installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
@@ -459,7 +532,11 @@ describe("installRuntimeBundle", () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
       await mkdir(runtimeBinDir, { recursive: true });
-      await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+      const archiveBytes = new Uint8Array([1]);
+      await writeFile(
+        join(runtimeBinDir, ".runtime-installed-version"),
+        installedIdentity("1.0.0", archiveBytes),
+      );
       await writeFile(join(runtimeBinDir, "podman.exe"), "podman");
       await writeFile(join(runtimeBinDir, "gvproxy.exe"), "gvproxy");
       await writeFile(join(runtimeBinDir, "win-sshproxy.exe"), "win-sshproxy");
@@ -467,7 +544,7 @@ describe("installRuntimeBundle", () => {
 
       const result = await Effect.runPromise(
         installRuntimeBundle({
-          archiveBytes: new Uint8Array([1]),
+          archiveBytes,
           version: "1.0.0",
           runtimeBinDir,
           platform: "win32",
@@ -491,14 +568,18 @@ describe("installRuntimeBundle", () => {
       const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
       try {
         await mkdir(runtimeBinDir, { recursive: true });
-        await writeFile(join(runtimeBinDir, ".runtime-installed-version"), "1.0.0\n");
+        const archiveBytes = new Uint8Array([1]);
+        await writeFile(
+          join(runtimeBinDir, ".runtime-installed-version"),
+          installedIdentity("1.0.0", archiveBytes),
+        );
         for (const name of ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"]) {
           if (name !== missingHelper) await writeFile(join(runtimeBinDir, name), `old-${name}`);
         }
 
         const result = await Effect.runPromise(
           installRuntimeBundle({
-            archiveBytes: new Uint8Array([1]),
+            archiveBytes,
             version: "1.0.0",
             runtimeBinDir,
             platform: "win32",
@@ -536,8 +617,8 @@ describe("installRuntimeBundle", () => {
 
       expect(existsSync(join(runtimeBinDir, "old-only"))).toBe(false);
       expect(existsSync(join(runtimeBinDir, "new-only"))).toBe(true);
-      expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
-        "2.0.0",
+      expect(await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).toBe(
+        installedIdentity("2.0.0", new Uint8Array([1])),
       );
     } finally {
       await rm(root, { recursive: true, force: true });
