@@ -94,7 +94,7 @@ export const containerPortBindings = (
       .filter((endpoint) => endpoint.port !== undefined)
       .map((endpoint) => [
         `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
-        [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
+        [{ HostIp: endpoint.bind ?? "127.0.0.1", HostPort: String(endpoint.publishedPort ?? endpoint.port) }],
       ]),
   );
 

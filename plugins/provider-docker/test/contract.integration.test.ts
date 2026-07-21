@@ -812,7 +812,11 @@ describe("provider-docker RuntimeProvider contract", () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ dockerApi: fake.api }))),
     );
-    const plan = makePlan(makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" }));
+    const service = makeService({ command: "npm start", entrypoint: "docker-entrypoint.sh" });
+    const plan = makePlan({
+      ...service,
+      endpoints: [{ port: 80, protocol: "http", name: "http", bind: "127.0.0.2", publishedPort: 38080 }],
+    });
 
     await Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: true })));
     const inspected = await Effect.runPromise(provider.inspect({ app: appId, service: serviceName }));
@@ -844,7 +848,7 @@ describe("provider-docker RuntimeProvider contract", () => {
       Entrypoint: ["docker-entrypoint.sh"],
       HostConfig: {
         Binds: ["My-App-web-app-mount:/app", "My-App-web-mount-0:/cache:ro"],
-        PortBindings: { "31080/tcp": [{ HostIp: "127.0.0.1", HostPort: "31080" }] },
+        PortBindings: { "80/tcp": [{ HostIp: "127.0.0.2", HostPort: "38080" }] },
       },
       NetworkingConfig: {
         EndpointsConfig: {

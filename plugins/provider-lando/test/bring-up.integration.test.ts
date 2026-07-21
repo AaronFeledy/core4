@@ -179,6 +179,7 @@ interface CreateContainerBody {
   readonly HostConfig?: {
     readonly Binds?: ReadonlyArray<string>;
     readonly ExtraHosts?: ReadonlyArray<string>;
+    readonly PortBindings?: Readonly<Record<string, ReadonlyArray<Record<string, string>>>>;
   };
   readonly NetworkingConfig?: {
     readonly EndpointsConfig?: Readonly<Record<string, { readonly Aliases?: ReadonlyArray<string> }>>;
@@ -361,6 +362,29 @@ describe("provider-lando bringUp", () => {
       { Name: "custom-app-net", Driver: "bridge" },
       { Name: "custom-shared-net", Driver: "bridge" },
     ]);
+  });
+
+  test("uses endpoint bind and published port in the Podman create request", async () => {
+    const fake = makeFakeApi();
+    const publishedNode: ServicePlan = {
+      ...node,
+      dependsOn: [],
+      endpoints: [{ port: 80, protocol: "http", name: "http", bind: "127.0.0.2", publishedPort: 38080 }],
+    };
+    const publishedPlan: AppPlan = {
+      ...plan,
+      services: { [publishedNode.name]: publishedNode },
+    };
+
+    await Effect.runPromise(bringUp(publishedPlan, { podmanApi: fake.api }));
+
+    const create = fake.calls.find(
+      (call) => call.method === "POST" && call.path.startsWith("/containers/create"),
+    );
+    const body = create?.body as CreateContainerBody | undefined;
+    expect(body?.HostConfig?.PortBindings).toEqual({
+      "80/tcp": [{ HostIp: "127.0.0.2", HostPort: "38080" }],
+    });
   });
 
   test("creates and mounts cache volumes with storage-kind labels", async () => {
