@@ -16,11 +16,13 @@ import {
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
+import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
+import { AppPlanResolverLive } from "../../src/services/app-plan-resolver.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
@@ -129,6 +131,12 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
+  const globalAppLive = GlobalAppServiceLive.pipe(
+    Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),
+  );
+  const resolverLive = AppPlanResolverLive.pipe(
+    Layer.provide(Layer.mergeAll(FileSystemLive, globalAppLive, plannerLive)),
+  );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
     capabilities: Effect.succeed(capabilities),
@@ -137,7 +145,7 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     LandofileServiceLive,
-    plannerLive,
+    resolverLive,
     registryLive,
     ScratchRegistryLive,
     ScratchResourceScannerLive,
@@ -151,7 +159,12 @@ const makeScratchRecipeLayer = (appliedPlans: AppPlan[]) => {
       ),
     ),
   );
-  return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
+  return Layer.mergeAll(
+    scratchDeps,
+    plannerLive,
+    globalAppLive,
+    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+  );
 };
 
 const fileExists = async (path: string): Promise<boolean> => {
