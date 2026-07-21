@@ -10,7 +10,9 @@ import type {
 import type { VersionConstraintEntry } from "../config/version-constraint.ts";
 import { CORE_VERSION } from "../version.ts";
 
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 5n;
+// Bump for serialized-shape or planner-output semantic changes, including generated build intents,
+// independently of the package version.
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 6n;
 
 export interface AppPlanCacheKeyInput {
   readonly appRoot: string;
