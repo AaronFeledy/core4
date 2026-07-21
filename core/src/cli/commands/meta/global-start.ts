@@ -20,6 +20,7 @@ import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  BuildOrchestrator,
   EventService,
   type FileSystem,
   type FileSystemError,
@@ -29,6 +30,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { withBuildProvider } from "../../../services/build-orchestrator.ts";
 import { globalInstall } from "./global-install.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
 
@@ -83,6 +85,7 @@ export type GlobalStartError =
 
 export type GlobalStartServices =
   | AppPlanner
+  | BuildOrchestrator
   | EventService
   | FileSystem
   | GlobalAppService
@@ -154,6 +157,7 @@ export const globalStart = (
     if (!loaded.materialized) return { app: "global", servicesStarted: [] };
 
     const services = yield* selectedServices(loaded.plan, options.services);
+    const builds = yield* BuildOrchestrator;
     const events = yield* EventService;
     const registry = yield* RuntimeProviderRegistry;
     const provider = yield* registry.select(loaded.plan);
@@ -184,8 +188,10 @@ export const globalStart = (
       }),
     );
 
+    const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+
     yield* Effect.scoped(
-      provider.apply(planToApply, {
+      provider.apply(builtPlan, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),

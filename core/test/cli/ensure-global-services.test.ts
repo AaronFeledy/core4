@@ -1,3 +1,4 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,7 @@ import {
 import {
   type AppPlanner,
   type ApplyOptions,
+  BuildOrchestrator,
   type CacheService,
   type ConfigService,
   EventService,
@@ -54,6 +56,7 @@ interface Harness {
   readonly dataRoot: string;
   readonly layer: Layer.Layer<
     | AppPlanner
+    | BuildOrchestrator
     | CacheService
     | ConfigService
     | EventService
@@ -63,6 +66,7 @@ interface Harness {
     | RuntimeProviderRegistry
   >;
   readonly applyCalls: Array<ApplyCall>;
+  readonly buildCalls: Array<AppPlan>;
   readonly inspectCalls: Array<InspectCall>;
   readonly events: Array<LandoEvent>;
 }
@@ -143,6 +147,7 @@ const makeHarness = async (
     },
   });
   const applyCalls: Array<ApplyCall> = [];
+  const buildCalls: Array<AppPlan> = [];
   const inspectCalls: Array<InspectCall> = [];
   const events: Array<LandoEvent> = [];
   const provider: RuntimeProviderShape = {
@@ -176,6 +181,22 @@ const makeHarness = async (
         : Effect.die(`unexpected service feature ${id}`),
     loadAppFeature: () => Effect.die("not used"),
   };
+  const buildOrchestrator = {
+    build: (plan: AppPlan) =>
+      Effect.sync(() => {
+        buildCalls.push(plan);
+        return {
+          ...plan,
+          services: Object.fromEntries(
+            Object.entries(plan.services).map(([id, service]) => [
+              id,
+              { ...service, artifact: { kind: "ref" as const, ref: `built:${String(service.name)}` } },
+            ]),
+          ),
+        };
+      }),
+    buildApp: () => Effect.void,
+  };
   const layer = Layer.mergeAll(
     ConfigServiceLive,
     CacheServiceLive,
@@ -193,6 +214,7 @@ const makeHarness = async (
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
+    Layer.succeed(BuildOrchestrator, buildOrchestrator),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(provider.capabilities),
@@ -204,7 +226,7 @@ const makeHarness = async (
       ),
     ),
   );
-  return { dataRoot, layer, applyCalls, inspectCalls, events };
+  return { dataRoot, layer, applyCalls, buildCalls, inspectCalls, events };
 };
 
 const withHarness = async <T>(
@@ -232,10 +254,8 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 
 describe("ensureGlobalServicesRunning", () => {
   test("reads required global services from AppPlan.requires", () => {
-    expect(requiredGlobalServicesForPlan({ requires: { globalServices: ["traefik"] } } as AppPlan)).toEqual([
-      "traefik",
-    ]);
-    expect(requiredGlobalServicesForPlan({} as AppPlan)).toEqual([]);
+    expect(requiredGlobalServicesForPlan({ requires: { globalServices: ["traefik"] } })).toEqual(["traefik"]);
+    expect(requiredGlobalServicesForPlan({})).toEqual([]);
   });
 
   test("cold ensure publishes pre/post-global-start and applies the selected global service", async () => {
@@ -246,9 +266,15 @@ describe("ensureGlobalServicesRunning", () => {
 
       expect(result.app).toBe("global");
       expect(result.servicesStarted.map((service) => service.name)).toEqual(["traefik"]);
+      expect(harness.buildCalls).toHaveLength(1);
+      expect(Object.keys(harness.buildCalls[0]?.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls).toHaveLength(1);
       expect(String(harness.applyCalls[0]?.plan.id)).toBe("global");
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
+      expect(harness.applyCalls[0]?.plan.services[ServiceName.make("traefik")]?.artifact).toEqual({
+        kind: "ref",
+        ref: "built:traefik",
+      });
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
       expect(harness.inspectCalls.map((call) => String(call.target.service))).toEqual(["traefik"]);
 
@@ -282,6 +308,7 @@ describe("ensureGlobalServicesRunning", () => {
         expect(error.message).toBe("Global service(s) not available in the global app: mailpit.");
         expect("missing" in error).toBe(false);
       }
+      expect(harness.buildCalls).toEqual([]);
       expect(harness.applyCalls).toEqual([]);
       expect(harness.inspectCalls).toEqual([]);
       const lifecycle = harness.events.filter(
