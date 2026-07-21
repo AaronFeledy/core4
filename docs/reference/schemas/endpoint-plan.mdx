@@ -11,7 +11,9 @@ Public Lando schema contract for Endpoint Plan.
 
 | Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| `port` | No | `number` | — | — | — | — | — |
-| `protocol` | Yes | `string` | — | — | `http`, `https`, `tcp`, `udp`, `unix` | — | — |
+| `protocol` | Yes | `string` | — | — | `unix`, `http`, `https`, `tcp`, `udp` | — | — |
+| `port` | No | `integer` | — | — | — | — | — |
+| `bind` | No | `string` | Host interface or address where the container endpoint is published. | — | — | — | — |
+| `publishedPort` | No | `integer` | Host port published separately from the container target port. | — | — | — | — |
 | `name` | No | `string` | — | — | — | — | — |
 | `socketPath` | No | `string` | — | — | — | — | — |

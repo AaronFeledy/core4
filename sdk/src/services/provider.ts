@@ -24,6 +24,7 @@ import type {
   MountPlan,
   NetworkConfig,
   ProviderCapabilities,
+  ProviderHostChangeRequest,
   ProviderId,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
@@ -49,12 +50,15 @@ export type ProviderError =
   | ServiceCopyError
   | ArtifactTransferError;
 
+export type { ProviderHostChangeRequest };
+
 export interface ProviderSetupOptions {
   readonly force: boolean;
   readonly runtimeBundleUrl?: string;
   readonly runtimeBundleSha256?: string;
   readonly network?: NetworkConfig;
   readonly privilege?: Context.Tag.Service<typeof PrivilegeService>;
+  readonly hostChangeConsent?: (request: ProviderHostChangeRequest) => Effect.Effect<boolean>;
   /** Parsed values of the setup flags this provider's plugin contributed via `setup.flags`. */
   readonly setupFlags?: Readonly<Record<string, unknown>>;
 }

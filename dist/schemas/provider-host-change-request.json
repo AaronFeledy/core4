@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "anyOf": [
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "package-install"
+          ],
+          "type": "string"
+        },
+        "packageName": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "packageName",
+        "reason"
+      ],
+      "type": "object"
+    },
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "enum": [
+            "enable-user-linger"
+          ],
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "uid": {
+          "description": "a non-negative number",
+          "minimum": 0,
+          "title": "nonNegative",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "_tag",
+        "uid",
+        "reason"
+      ],
+      "type": "object"
+    }
+  ]
+}

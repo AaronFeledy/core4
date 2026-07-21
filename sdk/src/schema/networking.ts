@@ -1,23 +1,13 @@
 import { Schema } from "effect";
 
-import { AbsolutePath, CommandSpec, PortablePath, ServiceName } from "./primitives.ts";
+import { EndpointPlan as EndpointPlanSchema, RouteAuthorityPortsField } from "./endpoint.ts";
+import { AbsolutePath, CommandSpec, ServiceName } from "./primitives.ts";
+
+export { DEFAULT_PROXY_HTTP_PORT, DEFAULT_PROXY_HTTPS_PORT } from "./endpoint.ts";
+export const EndpointPlan = EndpointPlanSchema;
+export type EndpointPlan = typeof EndpointPlan.Type;
 
 const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
-
-/**
- * Endpoint — a service listener.
- */
-export const EndpointPlan = Schema.Struct({
-  /** Port number inside the container (or `null` for unix sockets). */
-  port: Schema.optional(Schema.Number),
-  /** Protocol layer (`http`, `https`, `tcp`, `udp`, `unix`). */
-  protocol: Schema.Literal("http", "https", "tcp", "udp", "unix"),
-  /** Optional human-friendly name (`web`, `db`, `socket`…). */
-  name: Schema.optional(Schema.String),
-  /** Unix socket path (when protocol = `unix`). */
-  socketPath: Schema.optional(PortablePath),
-});
-export type EndpointPlan = typeof EndpointPlan.Type;
 
 /**
  * Route reference attached to a service — points at AppPlan.routes by index.
@@ -41,6 +31,8 @@ export const RoutePlan = Schema.Struct({
   endpoint: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   /** Optional path prefix (e.g., `/api`). */
   pathPrefix: Schema.optional(Schema.String),
+  /** Resolved host authority ports for generated route URLs. */
+  authorityPorts: RouteAuthorityPortsField,
 });
 export type RoutePlan = typeof RoutePlan.Type;
 

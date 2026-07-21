@@ -3,21 +3,16 @@ import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
 import { DeprecationNotice } from "./deprecation.ts";
+import { EndpointInput as EndpointInputSchema } from "./endpoint.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 
-// Landofile input shape — what a user authors (services:, routes:, etc.).
-
-/** Endpoint input as authored under `services.<name>.endpoints`. */
-export const EndpointInput = Schema.Struct({
-  port: Schema.optional(Schema.Number),
-  protocol: Schema.Literal("http", "https", "tcp", "udp", "unix"),
-  name: Schema.optional(Schema.String),
-  socketPath: Schema.optional(Schema.String),
-});
+export const EndpointInput = EndpointInputSchema;
 export type EndpointInput = typeof EndpointInput.Type;
+
+// Landofile input shape — what a user authors (services:, routes:, etc.).
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
 export const RouteInput = Schema.Struct({

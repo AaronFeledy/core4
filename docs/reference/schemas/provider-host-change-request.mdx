@@ -1,0 +1,17 @@
+---
+title: Provider Host Change Request
+description: Public Lando schema contract for Provider Host Change Request.
+---
+
+# Provider Host Change Request
+
+Public Lando schema contract for Provider Host Change Request.
+
+[JSON Schema artifact](../../../dist/schemas/provider-host-change-request.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | — | — | `package-install`, `enable-user-linger` | — | — |
+| `packageName` | No | `string` | a string | — | — | — | — |
+| `reason` | Yes | `string` | a string | — | — | — | — |
+| `uid` | No | `integer` | a non-negative number | — | — | — | — |

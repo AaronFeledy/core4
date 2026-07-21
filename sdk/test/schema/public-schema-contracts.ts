@@ -162,6 +162,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   PlanMetadata: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProviderExtensionConfig: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   HostPlatform: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  ProviderHostChangeRequest: "sdk/test/schema/provider-host-change.test.ts",
   ServiceInfo: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   EmbeddingPluginPolicy: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ContributionRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

@@ -40,6 +40,7 @@ export * from "./notify-config.ts";
 export * from "./plugin.ts";
 export * from "./plugin-trust.ts";
 export * from "./primitives.ts";
+export * from "./provider-host-change.ts";
 export * from "./prompt.ts";
 export * from "./recipe.ts";
 export * from "./remote-sync.ts";

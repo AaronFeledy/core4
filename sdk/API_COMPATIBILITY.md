@@ -4,6 +4,9 @@
 
 ## Compatibility notes
 
+- `EndpointInput` and `EndpointPlan` add optional provider-neutral `bind` and `publishedPort` fields while retaining `port` as the container target; published bindings require a valid `PortNumber` target and unix endpoints reject publication. `RoutePlan` additively gains nested `authorityPorts.http` / `authorityPorts.https`, and `@lando/sdk/schema` exports `PortNumber` plus fixed Beta-1 `DEFAULT_PROXY_HTTP_PORT` / `DEFAULT_PROXY_HTTPS_PORT` values (`38080` / `38443`).
+- `ProviderSetupOptions` additively gains `hostChangeConsent(request)` so explicit provider setup can ask core for consent before a fixed, privilege-mediated host change. `ProviderHostChangeRequest` is a new public tagged-union schema with `package-install` and `enable-user-linger` variants. Providers remain unable to prompt or elevate directly, and app lifecycle commands do not receive this consent callback.
+
 - The bootstrap event contract replaces the unreleased level-bearing `PreBootstrapEvent` with explicit `PreBootstrapMinimalEvent` / `PostBootstrapMinimalEvent`, `PreBootstrapPluginsEvent` / `PostBootstrapPluginsEvent`, `PreBootstrapCommandsEvent` / `PostBootstrapCommandsEvent`, `PreBootstrapProviderEvent` / `PostBootstrapProviderEvent`, `PreBootstrapAppEvent` / `PostBootstrapAppEvent`, and `PreBootstrapToolingEvent` / `PostBootstrapToolingEvent` schemas. Aggregate `PostBootstrapEvent` remains and no longer carries `level`. `PluginManifest.bootstrap` defaults to `app`, and `SubscriberLevelMismatchError` reports exact bootstrap-selector coverage failures.
 - `LandoPaths.pluginStateDir(pluginId)` additively exposes the canonical durable plugin-state root `<userDataRoot>/plugins/<pluginId>` so plugin contexts never reuse app-plugin installation paths.
 - `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
@@ -89,6 +92,8 @@
 - `ContributionRef`
 - `CleanupProps`
 - `DataStoreMountPlan`
+- `DEFAULT_PROXY_HTTP_PORT`
+- `DEFAULT_PROXY_HTTPS_PORT`
 - `defineLandofile`
 - `defineRecipe`
 - `DataStorePlan`
@@ -206,7 +211,9 @@
 - `PluginTrustList`
 - `PluginTrustState`
 - `PortablePath`
+- `PortNumber`
 - `ProviderExtensionConfig`
+- `ProviderHostChangeRequest`
 - `RecipeChoicesFrom`
 - `RecipeFile`
 - `RecipeId`
@@ -374,6 +381,7 @@
 - `ProviderSetupOptions.runtimeBundleSha256`
 - `ProviderSetupOptions.network`
 - `ProviderSetupOptions.privilege`
+- `ProviderSetupOptions.hostChangeConsent`
 - `ProviderSetupOptions.setupFlags`
 - `LandoPaths.tunnelRegistryFile`
 - `LandoPaths.tunnelRunDir`

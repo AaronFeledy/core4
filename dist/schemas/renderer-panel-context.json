@@ -854,6 +854,28 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "authorityPorts": {
+                        "additionalProperties": false,
+                        "description": "Resolved HTTP and HTTPS ports included in route URL authorities.",
+                        "properties": {
+                          "http": {
+                            "description": "Resolved HTTP port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          },
+                          "https": {
+                            "description": "Resolved HTTPS port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
                       "endpoint": {
                         "anyOf": [
                           {
@@ -1060,32 +1082,177 @@
                       },
                       "endpoints": {
                         "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "port": {
-                              "type": "number"
-                            },
-                            "protocol": {
-                              "enum": [
-                                "http",
-                                "https",
-                                "tcp",
-                                "udp",
-                                "unix"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "$id": "/schemas/never",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "unix"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
                               ],
-                              "type": "string"
+                              "type": "object"
                             },
-                            "socketPath": {
-                              "type": "string"
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "bind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "publishedPort"
+                              ],
+                              "type": "object"
                             }
-                          },
-                          "required": [
-                            "protocol"
-                          ],
-                          "type": "object"
+                          ]
                         },
                         "type": "array"
                       },
@@ -1656,6 +1823,28 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "authorityPorts": {
+                        "additionalProperties": false,
+                        "description": "Resolved HTTP and HTTPS ports included in route URL authorities.",
+                        "properties": {
+                          "http": {
+                            "description": "Resolved HTTP port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          },
+                          "https": {
+                            "description": "Resolved HTTPS port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
                       "endpoint": {
                         "anyOf": [
                           {
@@ -1862,32 +2051,177 @@
                       },
                       "endpoints": {
                         "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "port": {
-                              "type": "number"
-                            },
-                            "protocol": {
-                              "enum": [
-                                "http",
-                                "https",
-                                "tcp",
-                                "udp",
-                                "unix"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "$id": "/schemas/never",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "unix"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
                               ],
-                              "type": "string"
+                              "type": "object"
                             },
-                            "socketPath": {
-                              "type": "string"
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "bind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "publishedPort"
+                              ],
+                              "type": "object"
                             }
-                          },
-                          "required": [
-                            "protocol"
-                          ],
-                          "type": "object"
+                          ]
                         },
                         "type": "array"
                       },
@@ -2747,6 +3081,28 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "authorityPorts": {
+                        "additionalProperties": false,
+                        "description": "Resolved HTTP and HTTPS ports included in route URL authorities.",
+                        "properties": {
+                          "http": {
+                            "description": "Resolved HTTP port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          },
+                          "https": {
+                            "description": "Resolved HTTPS port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
                       "endpoint": {
                         "anyOf": [
                           {
@@ -2953,32 +3309,177 @@
                       },
                       "endpoints": {
                         "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "port": {
-                              "type": "number"
-                            },
-                            "protocol": {
-                              "enum": [
-                                "http",
-                                "https",
-                                "tcp",
-                                "udp",
-                                "unix"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "$id": "/schemas/never",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "unix"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
                               ],
-                              "type": "string"
+                              "type": "object"
                             },
-                            "socketPath": {
-                              "type": "string"
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "bind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "publishedPort"
+                              ],
+                              "type": "object"
                             }
-                          },
-                          "required": [
-                            "protocol"
-                          ],
-                          "type": "object"
+                          ]
                         },
                         "type": "array"
                       },
@@ -3560,6 +4061,28 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "authorityPorts": {
+                        "additionalProperties": false,
+                        "description": "Resolved HTTP and HTTPS ports included in route URL authorities.",
+                        "properties": {
+                          "http": {
+                            "description": "Resolved HTTP port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          },
+                          "https": {
+                            "description": "Resolved HTTPS port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
                       "endpoint": {
                         "anyOf": [
                           {
@@ -3766,32 +4289,177 @@
                       },
                       "endpoints": {
                         "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "port": {
-                              "type": "number"
-                            },
-                            "protocol": {
-                              "enum": [
-                                "http",
-                                "https",
-                                "tcp",
-                                "udp",
-                                "unix"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "$id": "/schemas/never",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "unix"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
                               ],
-                              "type": "string"
+                              "type": "object"
                             },
-                            "socketPath": {
-                              "type": "string"
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "bind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "publishedPort"
+                              ],
+                              "type": "object"
                             }
-                          },
-                          "required": [
-                            "protocol"
-                          ],
-                          "type": "object"
+                          ]
                         },
                         "type": "array"
                       },
@@ -4471,6 +5139,28 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "authorityPorts": {
+                        "additionalProperties": false,
+                        "description": "Resolved HTTP and HTTPS ports included in route URL authorities.",
+                        "properties": {
+                          "http": {
+                            "description": "Resolved HTTP port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          },
+                          "https": {
+                            "description": "Resolved HTTPS port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
                       "endpoint": {
                         "anyOf": [
                           {
@@ -4677,32 +5367,177 @@
                       },
                       "endpoints": {
                         "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "port": {
-                              "type": "number"
-                            },
-                            "protocol": {
-                              "enum": [
-                                "http",
-                                "https",
-                                "tcp",
-                                "udp",
-                                "unix"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "$id": "/schemas/never",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "unix"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
                               ],
-                              "type": "string"
+                              "type": "object"
                             },
-                            "socketPath": {
-                              "type": "string"
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "bind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "publishedPort"
+                              ],
+                              "type": "object"
                             }
-                          },
-                          "required": [
-                            "protocol"
-                          ],
-                          "type": "object"
+                          ]
                         },
                         "type": "array"
                       },
@@ -5269,6 +6104,28 @@
                   "items": {
                     "additionalProperties": false,
                     "properties": {
+                      "authorityPorts": {
+                        "additionalProperties": false,
+                        "description": "Resolved HTTP and HTTPS ports included in route URL authorities.",
+                        "properties": {
+                          "http": {
+                            "description": "Resolved HTTP port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          },
+                          "https": {
+                            "description": "Resolved HTTPS port included in the route URL authority.",
+                            "maximum": 65535,
+                            "minimum": 1,
+                            "title": "between(1, 65535)",
+                            "type": "integer"
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
                       "endpoint": {
                         "anyOf": [
                           {
@@ -5475,32 +6332,177 @@
                       },
                       "endpoints": {
                         "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "name": {
-                              "type": "string"
-                            },
-                            "port": {
-                              "type": "number"
-                            },
-                            "protocol": {
-                              "enum": [
-                                "http",
-                                "https",
-                                "tcp",
-                                "udp",
-                                "unix"
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "$id": "/schemas/never",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "unix"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
                               ],
-                              "type": "string"
+                              "type": "object"
                             },
-                            "socketPath": {
-                              "type": "string"
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "$id": "/schemas/never",
+                                  "description": "Host port published separately from the container target port.",
+                                  "not": {},
+                                  "title": "never"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "bind"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "bind": {
+                                  "description": "Host interface or address where the container endpoint is published.",
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "port": {
+                                  "description": "a number between 1 and 65535",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "protocol": {
+                                  "enum": [
+                                    "http",
+                                    "https",
+                                    "tcp",
+                                    "udp"
+                                  ],
+                                  "type": "string"
+                                },
+                                "publishedPort": {
+                                  "description": "Host port published separately from the container target port.",
+                                  "maximum": 65535,
+                                  "minimum": 1,
+                                  "title": "between(1, 65535)",
+                                  "type": "integer"
+                                },
+                                "socketPath": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "protocol",
+                                "port",
+                                "publishedPort"
+                              ],
+                              "type": "object"
                             }
-                          },
-                          "required": [
-                            "protocol"
-                          ],
-                          "type": "object"
+                          ]
                         },
                         "type": "array"
                       },

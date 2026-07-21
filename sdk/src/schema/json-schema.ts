@@ -257,6 +257,7 @@ import {
   ServiceName,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
+import { ProviderHostChangeRequest } from "./provider-host-change.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -491,6 +492,7 @@ const rawPublicSchemaRegistry = {
   PlanMetadata,
   ProviderExtensionConfig,
   HostPlatform,
+  ProviderHostChangeRequest,
   ServiceInfo,
   EmbeddingPluginPolicy,
   ContributionRef,
@@ -788,6 +790,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PlanMetadata: "Public Lando schema contract for Plan Metadata.",
   ProviderExtensionConfig: "Public Lando schema contract for Provider Extension Config.",
   HostPlatform: "Public Lando schema contract for Host Platform.",
+  ProviderHostChangeRequest: "Public Lando schema contract for Provider Host Change Request.",
   ServiceInfo: "Public Lando schema contract for Service Info.",
   EmbeddingPluginPolicy: "Public Lando schema contract for Embedding Plugin Policy.",
   ContributionRef: "Public Lando schema contract for Contribution Ref.",
@@ -2002,6 +2005,8 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ProviderCapabilities.sharedCrossAppNetwork",
   "ProviderCapabilities.tlsCertificates",
   "ProviderCapabilities.volumeSnapshot",
+  "ProviderHostChangeRequest._tag",
+  "ProviderHostChangeRequest.reason",
   "PublicTranscript.frames",
   "PublicTranscript.render",
   "PublicTranscript.runtime",
@@ -2247,6 +2252,16 @@ const hasSchemaUsefulDescription = (ast: AST.AST): boolean => {
   return AST.getIdentifierAnnotation(ast)._tag === "Some" && ast._tag !== "TypeLiteral";
 };
 
+const hasUnionMemberFieldDescriptions = (ast: AST.AST, name: PropertyKey): boolean =>
+  ast._tag === "Union" &&
+  ast.types.every((member) => {
+    const property = AST.getPropertySignatures(member).find((candidate) => candidate.name === name);
+    return (
+      property !== undefined &&
+      (hasOwnUsefulDescription(property.annotations) || hasOwnUsefulDescription(property.type.annotations))
+    );
+  });
+
 const fieldName = (name: PropertyKey): string => (typeof name === "symbol" ? name.toString() : String(name));
 
 const isSelfExplanatoryPublicField = (schemaName: string, name: string): boolean =>
@@ -2310,6 +2325,7 @@ export const validatePublicSchemaAnnotations = (
       if (
         !hasOwnUsefulDescription(property.annotations) &&
         !hasOwnUsefulDescription(property.type.annotations) &&
+        !hasUnionMemberFieldDescriptions(schema.ast, property.name) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&
         !isSelfExplanatoryPublicField(schemaName, name)
       ) {

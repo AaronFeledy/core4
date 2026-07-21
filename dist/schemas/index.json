@@ -1288,6 +1288,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Provider Host Change Request.",
+    "docsPath": "docs/reference/schemas/provider-host-change-request.mdx",
+    "id": "ProviderHostChangeRequest",
+    "jsonSchemaPath": "dist/schemas/provider-host-change-request.json",
+    "packageExport": "@lando/sdk/schema#ProviderHostChangeRequest",
+    "title": "Provider Host Change Request"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Service Info.",
     "docsPath": "docs/reference/schemas/service-info.mdx",
     "id": "ServiceInfo",
