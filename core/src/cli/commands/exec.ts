@@ -4,7 +4,7 @@ import type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   type CommandSpec,
   type ConfigService,
   type ExecTarget,
@@ -19,7 +19,7 @@ import { emitOptionalStderr } from "../renderer-boundary.ts";
 
 export type { ExecAppError, ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 
-export type ExecAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
+export type ExecAppServices = AppPlanResolver | ConfigService | LandofileService | RuntimeProviderRegistry;
 
 const availableServiceList = (services: AppPlan["services"]): string =>
   Object.values(services)
@@ -82,7 +82,7 @@ export const execApp = (
       );
     }
     const landofileService = yield* LandofileService;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const registry = yield* RuntimeProviderRegistry;
 
     let plan: AppPlan;
@@ -93,7 +93,7 @@ export const execApp = (
     } else {
       landofile = yield* loadUserLandofile(landofileService);
       const capabilities = yield* registry.capabilities;
-      plan = yield* planner.plan(landofile, capabilities);
+      plan = yield* planner.plan(landofile, capabilities, { kind: "user" });
     }
 
     // Resolve service before selecting provider so an invalid --service

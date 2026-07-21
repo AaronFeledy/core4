@@ -19,6 +19,7 @@ import { Effect, Either, Layer, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
+  AppPlanResolver,
   AppPlanner,
   BuildOrchestrator,
   CacheService,
@@ -104,11 +105,12 @@ type ProviderRuntimeServices =
   | RuntimeProviderRegistry
   | DataMover
   | GlobalAppService;
-type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchestrator;
+type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | AppPlanResolver | BuildOrchestrator;
 type ScratchRuntimeServices =
   | ProviderRuntimeServices
   | LandofileService
   | AppPlanner
+  | AppPlanResolver
   | BuildOrchestrator
   | ScratchAppService;
 export type AppRuntimeServices =
@@ -117,6 +119,7 @@ export type AppRuntimeServices =
   | LandofileService
   | CommandRegistry
   | AppPlanner
+  | AppPlanResolver
   | EventService
   | ToolingEngine
   | ShellRunner

@@ -15,7 +15,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   BuildOrchestrator,
   EventService,
   type LandoEvent,
@@ -215,7 +215,7 @@ const makeRebuildLayer = () => {
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-rebuild", services: {} }) }),
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.succeed(appPlan),
       buildApp: () => Effect.void,
@@ -287,7 +287,7 @@ const makeCachedBuildLayer = () => {
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "test-rebuild", services: {} }),
     }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithAppBuild) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithAppBuild) }),
     dependencies,
     BuildOrchestratorLive.pipe(Layer.provide(dependencies)),
   );

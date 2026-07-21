@@ -6,7 +6,7 @@ import { NotImplementedError, ToolingCompileError, ToolingExecError } from "@lan
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import {
-  AppPlanner,
+  AppPlanResolver,
   type ConfigService,
   EventService,
   LandofileService,
@@ -30,6 +30,7 @@ import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserv
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
+import { withProcessCwd } from "../../runtime/process-cwd.ts";
 
 import { runHostScript } from "../../services/host-tooling-engine.ts";
 
@@ -49,7 +50,7 @@ export type { ToolingResult };
 type RunToolingError = ToolingError;
 
 type RunToolingServices =
-  | AppPlanner
+  | AppPlanResolver
   | ConfigService
   | EventService
   | LandofileService
@@ -180,39 +181,26 @@ const findBunShellScriptForName = (
   return scripts.find((script) => script.id === target);
 };
 
-const withProcessCwd = <A, E, R>(
-  cwd: string,
-  use: () => Effect.Effect<A, E, R>,
-): Effect.Effect<A, E | ToolingCompileError, R> =>
-  Effect.acquireUseRelease(
-    Effect.try({
-      try: () => {
-        const original = process.cwd();
-        process.chdir(cwd);
-        return original;
-      },
-      catch: (cause) =>
-        new ToolingCompileError({
-          message: `Unable to enter the app directory at ${cwd}.`,
-          tool: "tooling",
-          cause,
-        }),
-    }),
-    () => use(),
-    (original) => Effect.sync(() => process.chdir(original)),
-  );
-
 const resolveToolingPlan = (input: {
   readonly landofile: LandofileShape;
   readonly appRoot: string | undefined;
 }) =>
   Effect.gen(function* () {
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const registry = yield* RuntimeProviderRegistry;
     const capabilities = yield* registry.capabilities;
     return yield* input.appRoot === undefined
-      ? planner.plan(input.landofile, capabilities)
-      : withProcessCwd(input.appRoot, () => planner.plan(input.landofile, capabilities));
+      ? planner.plan(input.landofile, capabilities, { kind: "user" })
+      : withProcessCwd(
+          input.appRoot,
+          Effect.suspend(() => planner.plan(input.landofile, capabilities, { kind: "user" })),
+          (cause) =>
+            new ToolingCompileError({
+              message: `Unable to enter the app directory at ${input.appRoot}.`,
+              tool: "tooling",
+              cause,
+            }),
+        );
   });
 
 const runBunShellScript = (

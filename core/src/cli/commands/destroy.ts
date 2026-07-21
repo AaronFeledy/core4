@@ -15,7 +15,7 @@ import type { DestroyAppError, DestroyAppOptions, DestroyAppResult } from "@land
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   EventService,
   LandofileService,
   PathsService,
@@ -36,7 +36,7 @@ export const DestroyAppResultSchema = Schema.Struct({
 });
 
 type DestroyAppServices =
-  | AppPlanner
+  | AppPlanResolver
   | EventService
   | LandofileService
   | PathsService
@@ -60,7 +60,7 @@ export const destroyApp = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const events = yield* EventService;
     const paths = yield* PathsService;
 
@@ -69,7 +69,7 @@ export const destroyApp = (
       (yield* Effect.gen(function* () {
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
+        return yield* planner.plan(landofile, capabilities, { kind: "user" });
       }));
     const provider = yield* registry.select(plan);
     const ref = target?.app ?? appRef(plan);

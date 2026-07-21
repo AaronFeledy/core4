@@ -18,7 +18,7 @@ import type {
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, EndpointPlan } from "@lando/sdk/schema";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   BuildOrchestrator,
   EventService,
   type FileSystem,
@@ -30,7 +30,7 @@ import {
 } from "@lando/sdk/services";
 
 import { globalInstall } from "./global-install.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -79,10 +79,11 @@ export type GlobalRebuildError =
   | PluginManifestError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | LoadGlobalPlanError;
 
 export type GlobalRebuildServices =
-  | AppPlanner
+  | AppPlanResolver
   | BuildOrchestrator
   | EventService
   | FileSystem

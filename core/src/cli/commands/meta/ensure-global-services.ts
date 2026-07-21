@@ -20,7 +20,7 @@ import { GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, EndpointPlan } from "@lando/sdk/schema";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   BuildOrchestrator,
   EventService,
   type FileSystem,
@@ -33,7 +33,7 @@ import {
 
 import { withBuildProvider } from "../../../services/build-orchestrator.ts";
 import { globalInstall } from "./global-install.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -78,10 +78,11 @@ export type EnsureGlobalServicesError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
-  | ToolingExecError;
+  | ToolingExecError
+  | LoadGlobalPlanError;
 
 export type EnsureGlobalServicesServices =
-  | AppPlanner
+  | AppPlanResolver
   | BuildOrchestrator
   | EventService
   | FileSystem

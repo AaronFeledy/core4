@@ -12,7 +12,7 @@ import {
   type ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   type FileSystem,
   type FileSystemError,
   type GlobalAppService,
@@ -20,7 +20,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalDestroyOptions {
   readonly yes?: boolean;
@@ -52,9 +52,10 @@ type GlobalDestroyError =
   | NotImplementedError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | LoadGlobalPlanError;
 
-type GlobalDestroyServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalDestroyServices = AppPlanResolver | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
 const confirmationError = (): GlobalDestroyConfirmationError =>
   new GlobalDestroyConfirmationError({

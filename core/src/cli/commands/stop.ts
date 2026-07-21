@@ -14,7 +14,7 @@ import {
 } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   EventService,
   LandofileService,
   PathsService,
@@ -33,7 +33,12 @@ export const StopAppResultSchema = Schema.Struct({
   servicesStopped: Schema.Array(Schema.String),
 });
 
-type StopAppServices = AppPlanner | EventService | LandofileService | PathsService | RuntimeProviderRegistry;
+type StopAppServices =
+  | AppPlanResolver
+  | EventService
+  | LandofileService
+  | PathsService
+  | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -51,7 +56,7 @@ export const stopApp = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const events = yield* EventService;
     const paths = yield* PathsService;
 
@@ -60,7 +65,7 @@ export const stopApp = (
       (yield* Effect.gen(function* () {
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
+        return yield* planner.plan(landofile, capabilities, { kind: "user" });
       }));
     const provider = yield* registry.select(plan);
     const ref = target?.app ?? appRef(plan);

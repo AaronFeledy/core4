@@ -13,7 +13,7 @@ import { GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   BuildOrchestrator,
   EventService,
   type FileSystem,
@@ -56,7 +56,7 @@ export const StartAppResultSchema = Schema.Struct({
 });
 
 type StartAppServices =
-  | AppPlanner
+  | AppPlanResolver
   | BuildOrchestrator
   | EventService
   | FileSystem
@@ -107,7 +107,7 @@ export const renderStartAppResult = (result: StartAppResult): string => {
 /**
  * Start the app discovered at the runtime's `cwd`.
  *
- * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanner`,
+ * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanResolver`,
  * `RuntimeProviderRegistry`, `EventService`.
  */
 export const startApp = (
@@ -119,7 +119,7 @@ export const startApp = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const events = yield* EventService;
     const builds = yield* BuildOrchestrator;
 
@@ -128,7 +128,7 @@ export const startApp = (
       (yield* Effect.gen(function* () {
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
+        return yield* planner.plan(landofile, capabilities, { kind: "user" });
       }));
     const provider = yield* registry.select(plan);
     const ref = target?.app ?? appRef(plan);

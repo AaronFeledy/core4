@@ -41,12 +41,14 @@ import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
+import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 import { ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive, readScratchLandofile } from "../../src/scratch-app/service.ts";
+import { AppPlanResolverLive } from "../../src/services/app-plan-resolver.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
@@ -195,6 +197,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
+  const configLive = options.configLayer ?? ConfigServiceLive;
+  const globalAppLive = GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(configLive, FileSystemLive)));
+  const resolverLive = AppPlanResolverLive.pipe(
+    Layer.provide(Layer.mergeAll(FileSystemLive, globalAppLive, plannerLive)),
+  );
   const redactionLive = RedactionServiceLive.pipe(Layer.provide(SecretStoreLive));
   const eventLive = EventServiceLive.pipe(Layer.provide(redactionLive));
   const pathsLive = Layer.succeed(PathsService, makeLandoPaths());
@@ -206,7 +213,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     LandofileServiceLive,
-    plannerLive,
+    resolverLive,
     registryLive,
     eventLive,
     pathsLive,
@@ -222,9 +229,11 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
   );
   return Layer.mergeAll(
     scratchDeps,
+    plannerLive,
+    globalAppLive,
     buildOrchestratorLive,
     ScratchAppServiceLive.pipe(Layer.provide(Layer.mergeAll(scratchDeps, buildOrchestratorLive))),
-    options.configLayer ?? ConfigServiceLive,
+    configLive,
   );
 };
 

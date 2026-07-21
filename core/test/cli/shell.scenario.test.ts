@@ -18,7 +18,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   DeprecationService,
   LandofileService,
   RuntimeProviderRegistry,
@@ -165,7 +165,7 @@ const layer = (
 ) =>
   Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -184,7 +184,7 @@ const layer = (
 const layerWithPlan = (appPlan: AppPlan, provider: RuntimeProviderShape) =>
   Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "shell-scenario" }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(appPlan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(appPlan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),

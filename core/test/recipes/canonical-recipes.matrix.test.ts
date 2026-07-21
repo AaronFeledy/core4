@@ -123,10 +123,9 @@ const discoverFrom = async (cwd: string): Promise<LandofileShape> => {
 
 const planLandofile = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive)),
   );
 
 const DETERMINISTIC_RECIPE_ENV_KEYS = ["LANDO_NODE_VERSION", "NODE_ENV"] as const;

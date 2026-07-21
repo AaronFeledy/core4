@@ -121,6 +121,30 @@ describe("CacheServiceLive", () => {
       join(appRoot, ".lando.yml"),
     ]);
   });
+
+  test("app-plan cache identity changes with normalized route authority ports", () => {
+    const base = {
+      appRoot: "/workspace/cache-plan",
+      landofile: { name: "cache-plan", runtime: 4 as const },
+      pluginManifests: [],
+    };
+
+    const first = deriveAppPlanCacheKey({
+      ...base,
+      routeAuthorityPorts: { http: 18080, https: 18443 },
+    });
+    const identical = deriveAppPlanCacheKey({
+      ...base,
+      routeAuthorityPorts: { https: 18443, http: 18080 },
+    });
+    const changed = deriveAppPlanCacheKey({
+      ...base,
+      routeAuthorityPorts: { http: 28080, https: 28443 },
+    });
+
+    expect(identical).toBe(first);
+    expect(changed).not.toBe(first);
+  });
   test("round-trips cached values through schema decode", async () => {
     const value = await runWithCache(
       Effect.flatMap(CacheService, (cache) =>
@@ -365,7 +389,7 @@ describe("CacheServiceLive", () => {
         ...base,
         providerCapabilities: { ...providerCapabilities, bindMounts: false },
       }),
-    ).toBe(key);
+    ).not.toBe(key);
     expect(
       deriveAppPlanCacheKey({
         ...base,

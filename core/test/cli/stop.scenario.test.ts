@@ -18,7 +18,7 @@ import {
 } from "@lando/core/schema";
 import type { FileSyncSessionInfo, FileSyncSessionRef } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   EventService,
   FileSyncEngine,
   LandofileService,
@@ -217,7 +217,7 @@ const makeStopLayer = (
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -426,7 +426,7 @@ describe("lando stop", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -653,7 +653,7 @@ describe("lando stop", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-stop", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),

@@ -13,7 +13,7 @@ import type {
 import { ToolingExecError } from "@lando/sdk/errors";
 import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   type FileSystem,
   type FileSystemError,
   type GlobalAppService,
@@ -28,7 +28,7 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "../../renderer/summary.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;
@@ -82,9 +82,10 @@ type GlobalStatusError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
-  | ToolingExecError;
+  | ToolingExecError
+  | LoadGlobalPlanError;
 
-type GlobalStatusServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalStatusServices = AppPlanResolver | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
 const statusText = (status: string | undefined): GlobalServiceStatus => {
   switch (status) {

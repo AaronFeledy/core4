@@ -103,18 +103,16 @@ const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
 
 const plan = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive)),
   );
 
 const planExit = (landofile: LandofileShape, providerCapabilities = providerLandoCapabilities) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive)),
   );
 
 const configLayer = (defaultProviderId: ProviderId | null) => {
@@ -133,7 +131,9 @@ const planWithConfig = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(PluginRegistryLive),
       Effect.provide(configLayer(defaultProviderId)),
@@ -256,7 +256,9 @@ const planWithCustomRegistry = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
@@ -267,7 +269,9 @@ const planExitWithCustomRegistry = (
   providerCapabilities = providerLandoCapabilities,
 ) =>
   Effect.runPromiseExit(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
     ),
@@ -285,6 +289,28 @@ const expectSomeFailure = <E>(exit: Exit.Exit<unknown, E>): E => {
 };
 
 describe("AppPlannerLive", () => {
+  test("stamps supplied route authority ports before final plan decode", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (appPlanner) =>
+          appPlanner.plan(
+            Schema.decodeUnknownSync(LandofileShape)({
+              name: "authority-app",
+              runtime: 4,
+              services: { web: { type: "apache" } },
+            }),
+            providerLandoCapabilities,
+            { kind: "user", routeAuthorityPorts: { http: 18080, https: 18443 } },
+          ),
+        ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive)),
+      );
+
+      expect(appPlan.routes.length).toBeGreaterThan(0);
+      expect(appPlan.routes.every((route) => route.authorityPorts?.http === 18080)).toBe(true);
+      expect(appPlan.routes.every((route) => route.authorityPorts?.https === 18443)).toBe(true);
+    });
+  });
+
   test("uses LANDO_PROVIDER when the Landofile does not set provider", async () => {
     const previous = process.env.LANDO_PROVIDER;
     process.env.LANDO_PROVIDER = "docker";
@@ -455,6 +481,7 @@ describe("AppPlannerLive", () => {
               services: { worker: { type: serviceType.id } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
+            { kind: "user" },
           ),
         ).pipe(
           Effect.provide(AppPlannerLive),
@@ -488,6 +515,7 @@ describe("AppPlannerLive", () => {
               services: { worker: { type: serviceType.id } },
             }),
             { ...providerLandoCapabilities, serviceLogSources: false },
+            { kind: "user" },
           ),
         ).pipe(
           Effect.provide(AppPlannerLive),
@@ -706,9 +734,9 @@ describe("AppPlannerLive", () => {
       try {
         const runPlan = (landofile: LandofileShape) =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planner.plan(landofile, providerLandoCapabilities, { kind: "user" }),
+            ).pipe(Effect.provide(layer)),
           );
 
         const first = await runPlan(cachedLandofile);
@@ -805,6 +833,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: "appmount-only" } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -856,6 +885,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: "appmount-only" } },
             },
             { ...providerLandoCapabilities, sharedCrossAppNetwork: false },
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -942,6 +972,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: serviceType.id } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -1032,6 +1063,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: buildStepServiceType.id } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -1098,6 +1130,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: "appmount-only" } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -1147,6 +1180,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: "appmount-only" } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -1343,6 +1377,7 @@ describe("AppPlannerLive", () => {
               },
             },
             slowBindMountCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive.pipe(Layer.provide(Layer.succeed(PluginRegistry, registry))))),
       );
@@ -2108,6 +2143,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: serviceType.id } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -2188,6 +2224,7 @@ describe("AppPlannerLive", () => {
               },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -2287,6 +2324,7 @@ describe("AppPlannerLive", () => {
               services: { [ServiceName.make("web")]: { type: serviceType.id } },
             },
             providerLandoCapabilities,
+            { kind: "user" },
           ),
         ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
       );
@@ -2373,9 +2411,9 @@ describe("AppPlannerLive", () => {
       try {
         const runPlan = () =>
           Effect.runPromise(
-            Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
-              Effect.provide(layer),
-            ),
+            Effect.flatMap(AppPlanner, (planner) =>
+              planner.plan(landofile, providerLandoCapabilities, { kind: "user" }),
+            ).pipe(Effect.provide(layer)),
           );
 
         const first = await runPlan();
@@ -2443,6 +2481,7 @@ describe("AppPlannerLive", () => {
                     services: { [ServiceName.make("db")]: { type: `mariadb:${version}` } },
                   },
                   providerLandoCapabilities,
+                  { kind: "user" },
                 ),
               ).pipe(
                 Effect.provide(AppPlannerLive),
@@ -2487,6 +2526,7 @@ describe("AppPlannerLive", () => {
                   services: { [ServiceName.make("web")]: { type: "node:lts" } },
                 },
                 providerLandoCapabilities,
+                { kind: "user" },
               ),
             ).pipe(
               Effect.provide(AppPlannerLive),
@@ -2560,6 +2600,7 @@ describe("AppPlannerLive", () => {
                 services: { [ServiceName.make("db")]: { type: "fake-db:1.0" } },
               },
               providerLandoCapabilities,
+              { kind: "user" },
             ),
           ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
         );
@@ -2577,6 +2618,7 @@ describe("AppPlannerLive", () => {
                 services: { [ServiceName.make("db")]: { type: "fake-db:2.0" } },
               },
               providerLandoCapabilities,
+              { kind: "user" },
             ),
           ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
         );
@@ -2594,6 +2636,7 @@ describe("AppPlannerLive", () => {
                 services: { [ServiceName.make("db")]: { type: "fake-db:9.9" } },
               },
               providerLandoCapabilities,
+              { kind: "user" },
             ),
           ).pipe(Effect.provide(AppPlannerLive), Effect.provide(Layer.succeed(PluginRegistry, registry))),
         );

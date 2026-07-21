@@ -12,7 +12,7 @@ import {
   type TunnelTarget as TunnelTargetType,
 } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   LandofileService,
   RuntimeProviderRegistry,
   type StateStore,
@@ -53,7 +53,7 @@ export interface ShareStopOptions extends ShareListOptions {
   readonly force?: boolean;
 }
 
-type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
+type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanResolver;
 
 const unavailable = (requested?: string): TunnelProviderUnavailableError =>
   new TunnelProviderUnavailableError({
@@ -88,10 +88,10 @@ const resolvePlan = (
   return Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
     const capabilities = yield* registry.capabilities;
-    return yield* planner.plan(landofile, capabilities);
+    return yield* planner.plan(landofile, capabilities, { kind: "user" });
   });
 };
 

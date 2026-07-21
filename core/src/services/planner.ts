@@ -36,6 +36,7 @@ import {
 } from "@lando/sdk/schema";
 import {
   AppPlanner,
+  type AppPlannerOptions,
   CacheService,
   ConfigService,
   PluginRegistry,
@@ -740,6 +741,7 @@ const planApp = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
+  options: AppPlannerOptions,
 ): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError> => {
   const appRoot = process.cwd();
   const appName = landofile.name ?? "app";
@@ -931,6 +933,9 @@ const planApp = (
       appRoot,
       landofile: { ...landofile, provider },
       providerCapabilities,
+      ...(options.routeAuthorityPorts === undefined
+        ? {}
+        : { routeAuthorityPorts: options.routeAuthorityPorts }),
       pluginManifests: manifests,
       ...(sourceFingerprint === undefined ? {} : { sourceFingerprint }),
       versionConstraints,
@@ -1244,6 +1249,9 @@ const planApp = (
           scheme: "https",
           service: ServiceName.make(name),
           ...(endpointRef !== undefined ? { endpoint: endpointRef } : {}),
+          ...(options.routeAuthorityPorts === undefined
+            ? {}
+            : { authorityPorts: options.routeAuthorityPorts }),
         });
       }
     }
@@ -1321,13 +1329,14 @@ export const AppPlannerLive = Layer.effect(
     const cacheService = yield* Effect.serviceOption(CacheService);
     const configService = yield* Effect.serviceOption(ConfigService);
     return {
-      plan: (landofile, providerCapabilities) =>
+      plan: (landofile, providerCapabilities, options) =>
         planApp(
           pluginRegistry,
           cacheService._tag === "Some" ? cacheService.value : undefined,
           configService._tag === "Some" ? configService.value : undefined,
           landofile,
           providerCapabilities,
+          options,
         ),
     } satisfies Context.Tag.Service<typeof AppPlanner>;
   }),

@@ -11,6 +11,7 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 import {
+  AppPlanResolver,
   AppPlanner,
   LandofileService,
   RuntimeProviderRegistry,
@@ -108,7 +109,7 @@ const makeProvider = (
 
 const planLandofile = (landofile: LandofileShape): Promise<AppPlan> =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities, { kind: "user" })).pipe(
       Effect.provide(Layer.merge(services, AppPlannerLive)),
       Effect.provide(PluginRegistryLive),
     ),
@@ -122,7 +123,7 @@ const makeToolingLayer = (options: {
   const landofileLayer = Layer.succeed(LandofileService, {
     discover: Effect.succeed(options.landofile),
   });
-  const plannerLayer = Layer.succeed(AppPlanner, {
+  const plannerLayer = Layer.succeed(AppPlanResolver, {
     plan: () => Effect.succeed(options.plan),
   });
   const registryLayer = Layer.succeed(RuntimeProviderRegistry, {

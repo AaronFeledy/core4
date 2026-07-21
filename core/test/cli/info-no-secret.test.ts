@@ -12,7 +12,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { AppPlanResolver, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
 /**
@@ -145,7 +145,7 @@ const makeInfoLayer = () => {
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "test-info-secret", services: {} }),
     }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),

@@ -19,7 +19,7 @@ describe("library makeLandoRuntime app bootstrap", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const planner = yield* AppPlanner;
-        const plan = yield* planner.plan(landofile, TestRuntimeProvider.capabilities);
+        const plan = yield* planner.plan(landofile, TestRuntimeProvider.capabilities, { kind: "user" });
         const registry = yield* RuntimeProviderRegistry;
         const provider = yield* registry.select(plan);
         const apply = yield* provider.apply(plan, { reconcile: false });

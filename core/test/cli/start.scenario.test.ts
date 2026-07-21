@@ -28,7 +28,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   BuildOrchestrator,
   EventService,
   FileSyncEngine,
@@ -365,7 +365,7 @@ const makeStartLayer = (
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
     Layer.succeed(PathsService, options.pathsService ?? makeLandoPaths()),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(providerCapabilities),
@@ -571,11 +571,22 @@ const makeAutoStartLayer = async (options: {
       discover: Effect.succeed({ name: options.userPlan.name, services: {} }),
     }),
     Layer.succeed(PathsService, makeLandoPaths()),
-    Layer.succeed(AppPlanner, {
+    Layer.succeed(AppPlanResolver, {
       plan: (landofile) =>
         Effect.succeed(
           (landofile as { readonly name?: string }).name === "global" ? plannedGlobal : options.userPlan,
         ),
+      global: () =>
+        Effect.succeed({
+          materialized: true as const,
+          paths: {
+            root: AbsolutePath.make("/global"),
+            distLandofile: AbsolutePath.make("/global/.lando.dist.yml"),
+            userLandofile: AbsolutePath.make("/global/.lando.yml"),
+          },
+          landofile: { name: "global", runtime: 4 as const },
+          plan: plannedGlobal,
+        }),
     }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -1442,7 +1453,7 @@ describe("lando start", () => {
     const fullLayer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -1568,7 +1579,7 @@ describe("lando start", () => {
     const fullLayer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -1688,7 +1699,7 @@ describe("lando start", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -1811,7 +1822,7 @@ describe("lando start", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -1932,7 +1943,7 @@ describe("lando start", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -2073,7 +2084,7 @@ describe("lando start", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),
@@ -2214,7 +2225,7 @@ describe("lando start", () => {
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-start", services: {} }) }),
       Layer.succeed(PathsService, makeLandoPaths()),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(planWithFileSync) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(capabilities),

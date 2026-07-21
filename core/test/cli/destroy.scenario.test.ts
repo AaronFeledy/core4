@@ -20,7 +20,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   EventService,
   FileSyncEngine,
   LandofileService,
@@ -235,7 +235,7 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
         platform: "linux",
       }),
     ),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),

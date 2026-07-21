@@ -7,7 +7,7 @@ import { Effect, Schema } from "effect";
 
 import type { RebuildAppError, RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
 import type {
-  AppPlanner,
+  AppPlanResolver,
   BuildOrchestrator,
   EventService,
   FileSystem,
@@ -33,7 +33,7 @@ export const RebuildAppResultSchema = Schema.Struct({
 });
 
 type RebuildAppServices =
-  | AppPlanner
+  | AppPlanResolver
   | BuildOrchestrator
   | EventService
   | FileSystem

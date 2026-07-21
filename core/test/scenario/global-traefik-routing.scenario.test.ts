@@ -76,7 +76,7 @@ const planApp = (
 ): Promise<AppPlan> => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)(landofileInput);
   return Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities, { kind: "global" })).pipe(
       Effect.provide(AppPlannerLive),
       Effect.provide(PluginRegistryLive),
     ),

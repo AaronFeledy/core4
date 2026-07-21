@@ -70,6 +70,7 @@ import type {
 } from "../schema/index.ts";
 import type { LandoEvent } from "../services/events.ts";
 import type {
+  AppPlanResolver,
   AppPlanner,
   CacheService,
   CommandRegistry,
@@ -128,6 +129,7 @@ export type LandoRuntimeServices =
   | LandofileService
   | CommandRegistry
   | AppPlanner
+  | AppPlanResolver
   | DataMover
   | EventService
   | ToolingEngine;

@@ -15,6 +15,7 @@ import {
   ServicePlan,
 } from "@lando/core/schema";
 import {
+  type AppPlanResolver,
   type AppPlanner,
   type ApplyOptions,
   BuildOrchestrator,
@@ -39,6 +40,7 @@ import {
   requiredGlobalServicesForPlan,
 } from "../../src/cli/commands/meta/ensure-global-services.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
+import { AppPlanResolverLive } from "../../src/services/app-plan-resolver.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
@@ -56,6 +58,7 @@ interface Harness {
   readonly dataRoot: string;
   readonly layer: Layer.Layer<
     | AppPlanner
+    | AppPlanResolver
     | BuildOrchestrator
     | CacheService
     | ConfigService
@@ -197,11 +200,22 @@ const makeHarness = async (
       }),
     buildApp: () => Effect.void,
   };
+  const globalAppLive = GlobalAppServiceLive.pipe(
+    Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),
+  );
+  const plannerLive = AppPlannerLive.pipe(
+    Layer.provide(
+      Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
+    ),
+  );
+  const resolverLive = AppPlanResolverLive.pipe(
+    Layer.provide(Layer.mergeAll(FileSystemLive, globalAppLive, plannerLive)),
+  );
   const layer = Layer.mergeAll(
     ConfigServiceLive,
     CacheServiceLive,
     FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    globalAppLive,
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {
@@ -220,11 +234,8 @@ const makeHarness = async (
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
-    AppPlannerLive.pipe(
-      Layer.provide(
-        Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
-      ),
-    ),
+    plannerLive,
+    resolverLive,
   );
   return { dataRoot, layer, applyCalls, buildCalls, inspectCalls, events };
 };

@@ -19,7 +19,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   type ConfigService,
   LandofileService,
   RuntimeProviderRegistry,
@@ -250,7 +250,7 @@ const makeInfoLayer = (
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "test-info", services: {}, ...options?.landofile }),
     }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plannedApp) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plannedApp) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(providerCapabilities),
@@ -477,7 +477,7 @@ describe("lando info — resolved log sources", () => {
     };
     return Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-info", services: {} }) }),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(logPlan) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(logPlan) }),
       Layer.succeed(RuntimeProviderRegistry, {
         list: Effect.succeed([providerId]),
         capabilities: Effect.succeed(caps),

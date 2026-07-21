@@ -17,7 +17,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { AppPlanResolver, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import { StreamFrame } from "@lando/sdk/schema";
 import type { LogChunk, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { EmptyResultSchema } from "../../src/cli/oclif/command-base.ts";
@@ -163,7 +163,7 @@ const makeLayer = (rawLine: string) => {
     Layer.succeed(LandofileService, {
       discover: Effect.succeed({ name: "test-logs-redaction", services: {} }),
     }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),

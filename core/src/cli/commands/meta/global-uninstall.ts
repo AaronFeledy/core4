@@ -13,7 +13,7 @@ import {
 } from "@lando/sdk/errors";
 import type { GlobalDistResult } from "@lando/sdk/services";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   type FileSystem,
   type FileSystemError,
   GlobalAppService,
@@ -21,7 +21,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalUninstallOptions {
   readonly plugin?: string;
@@ -61,9 +61,10 @@ type GlobalUninstallError =
   | NotImplementedError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | LoadGlobalPlanError;
 
-type GlobalUninstallServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;
+type GlobalUninstallServices = AppPlanResolver | FileSystem | GlobalAppService | RuntimeProviderRegistry;
 
 const pluginUninstallError = (plugin: string): GlobalAppError =>
   new GlobalAppError({

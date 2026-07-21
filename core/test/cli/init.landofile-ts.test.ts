@@ -110,10 +110,9 @@ const withEnv = async <T>(
 
 const planLandofile = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(PluginRegistryLive),
-    ),
+    Effect.flatMap(AppPlanner, (planner) =>
+      planner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(Effect.provide(AppPlannerLive), Effect.provide(PluginRegistryLive)),
   );
 
 describe("node-ts recipe renderer", () => {

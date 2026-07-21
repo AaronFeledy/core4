@@ -4,7 +4,8 @@
 
 ## Compatibility notes
 
-- `EndpointInput` and `EndpointPlan` add optional provider-neutral `bind` and `publishedPort` fields while retaining `port` as the container target; published bindings require a valid `PortNumber` target and unix endpoints reject publication. `RoutePlan` additively gains nested `authorityPorts.http` / `authorityPorts.https`, and `@lando/sdk/schema` exports `PortNumber` plus fixed Beta-1 `DEFAULT_PROXY_HTTP_PORT` / `DEFAULT_PROXY_HTTPS_PORT` values (`38080` / `38443`).
+- `EndpointInput` and `EndpointPlan` add optional provider-neutral `bind` and `publishedPort` fields while retaining `port` as the container target; published bindings require a valid `PortNumber` target and unix endpoints reject publication. `RoutePlan` additively gains nested `authorityPorts.http` / `authorityPorts.https`, and `@lando/sdk/schema` exports the named `RouteAuthorityPorts` schema, `PortNumber`, plus fixed Beta-1 `DEFAULT_PROXY_HTTP_PORT` / `DEFAULT_PROXY_HTTPS_PORT` values (`38080` / `38443`).
+- Raw `AppPlanner.plan` now requires explicit app-kind options and optional route authority ports. `AppPlanResolver` is the public orchestration seam for user/scratch planning and non-recursive merged-global planning; this is a pre-ship breaking planner-contract correction with no compatibility adapter.
 - `ProviderSetupOptions` additively gains `hostChangeConsent(request)` so explicit provider setup can ask core for consent before a fixed, privilege-mediated host change. `ProviderHostChangeRequest` is a new public tagged-union schema with `package-install` and `enable-user-linger` variants. Providers remain unable to prompt or elevate directly, and app lifecycle commands do not receive this consent callback.
 
 - The bootstrap event contract replaces the unreleased level-bearing `PreBootstrapEvent` with explicit `PreBootstrapMinimalEvent` / `PostBootstrapMinimalEvent`, `PreBootstrapPluginsEvent` / `PostBootstrapPluginsEvent`, `PreBootstrapCommandsEvent` / `PostBootstrapCommandsEvent`, `PreBootstrapProviderEvent` / `PostBootstrapProviderEvent`, `PreBootstrapAppEvent` / `PostBootstrapAppEvent`, and `PreBootstrapToolingEvent` / `PostBootstrapToolingEvent` schemas. Aggregate `PostBootstrapEvent` remains and no longer carries `level`. `PluginManifest.bootstrap` defaults to `app`, and `SubscriberLevelMismatchError` reports exact bootstrap-selector coverage failures.
@@ -233,6 +234,7 @@
 - `RecipeVersion`
 - `RouteInput`
 - `RoutePlan`
+- `RouteAuthorityPorts`
 - `RouteRef`
 - `RunProps`
 - `ScenarioProps`
@@ -526,6 +528,7 @@
 
 ## Additive Alpha service tags
 
+- `AppPlanResolver`
 - `CertificateAuthority`
 - `CommandFramework`
 - `CommandRegistry`

@@ -39,6 +39,7 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
+  AppPlanResolver,
   AppPlanner,
   CacheService,
   CommandRegistry,
@@ -171,10 +172,11 @@ type ProviderTestRuntimeServices =
   | RuntimeProviderRegistry
   | RuntimeProvider
   | GlobalAppService;
-type GlobalTestRuntimeServices = ProviderTestRuntimeServices | AppPlanner;
+type GlobalTestRuntimeServices = ProviderTestRuntimeServices | AppPlanner | AppPlanResolver;
 type ScratchTestRuntimeServices =
   | ProviderTestRuntimeServices
   | AppPlanner
+  | AppPlanResolver
   | LandofileService
   | ScratchAppService
   | ScratchRegistry
@@ -182,6 +184,7 @@ type ScratchTestRuntimeServices =
 type AppTestRuntimeServices =
   | ProviderTestRuntimeServices
   | AppPlanner
+  | AppPlanResolver
   | LandofileService
   | CommandRegistry
   | ToolingEngine
@@ -787,6 +790,11 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
         }),
       ),
   };
+  const appPlanResolverService: Context.Tag.Service<typeof AppPlanResolver> = {
+    plan: (landofile, providerCapabilities, options) =>
+      appPlannerService.plan(landofile, providerCapabilities, options),
+    global: () => Effect.succeed({ materialized: false, paths: globalPaths }),
+  };
 
   const landofileService: Context.Tag.Service<typeof LandofileService> = {
     discover: Effect.succeed(makeLandofile(providerId)),
@@ -992,11 +1000,13 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const globalLayer: Layer.Layer<GlobalTestRuntimeServices> = Layer.mergeAll(
     providerLayer,
     Layer.succeed(AppPlanner, appPlannerService),
+    Layer.succeed(AppPlanResolver, appPlanResolverService),
   );
 
   const scratchLayer: Layer.Layer<ScratchTestRuntimeServices> = Layer.mergeAll(
     providerLayer,
     Layer.succeed(AppPlanner, appPlannerService),
+    Layer.succeed(AppPlanResolver, appPlanResolverService),
     Layer.succeed(LandofileService, landofileService),
     Layer.succeed(ScratchAppService, scratchService),
     Layer.succeed(ScratchRegistry, scratchRegistryService),
@@ -1006,6 +1016,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
   const appLayer: Layer.Layer<AppTestRuntimeServices> = Layer.mergeAll(
     providerLayer,
     Layer.succeed(AppPlanner, appPlannerService),
+    Layer.succeed(AppPlanResolver, appPlanResolverService),
     Layer.succeed(LandofileService, landofileService),
     Layer.succeed(CommandRegistry, commandRegistryService),
     Layer.succeed(ToolingEngine, toolingEngineService),

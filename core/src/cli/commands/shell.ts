@@ -30,7 +30,7 @@ import {
 } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   type CommandSpec,
   type ConfigService,
   DeprecationService,
@@ -140,7 +140,7 @@ export type ShellAppError =
   | ToolingExecError;
 
 export type ShellAppServices =
-  | AppPlanner
+  | AppPlanResolver
   | ConfigService
   | LandofileService
   | RuntimeProviderRegistry
@@ -281,12 +281,12 @@ export const shellApp = (
     }
 
     const landofileService = yield* LandofileService;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const registry = yield* RuntimeProviderRegistry;
 
     const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan = yield* planner.plan(landofile, capabilities, { kind: "user" });
 
     const shell = "Bun.$";
     const useServiceMode = options.service !== undefined && options.service.length > 0;

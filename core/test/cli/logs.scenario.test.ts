@@ -19,7 +19,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
+import { AppPlanResolver, LandofileService, RuntimeProviderRegistry } from "@lando/core/services";
 import type { LogChunk, LogOptions, LogTarget, RuntimeProviderShape } from "@lando/sdk/services";
 import { EmptyResultSchema } from "../../src/cli/oclif/command-base.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
@@ -225,7 +225,7 @@ const makeLogsLayer = (
 
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-logs", services: {} }) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(effectivePlan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(effectivePlan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(defaultProviderCapabilities),

@@ -14,7 +14,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   LandofileService,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -182,7 +182,7 @@ const makeLayer = (options: {
 }) =>
   Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed(options.landofile) }),
-    Layer.succeed(AppPlanner, { plan: () => Effect.succeed(options.plan) }),
+    Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(options.plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -346,7 +346,7 @@ describe("execApp — provider-exec scenarios (US-022)", () => {
     });
     const layer = Layer.mergeAll(
       Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "scenario" }) }),
-      Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+      Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
       failingRegistry,
     );
 

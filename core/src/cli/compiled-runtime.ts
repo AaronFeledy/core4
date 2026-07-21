@@ -2,6 +2,7 @@ import type { Effect, Layer, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
+  AppPlanResolver,
   AppPlanner,
   BuildOrchestrator,
   ConfigService,
@@ -172,6 +173,7 @@ export const globalRuntimeLayer = () =>
     | PluginRegistry
     | RuntimeProviderRegistry
     | AppPlanner
+    | AppPlanResolver
     | BuildOrchestrator
     | FileSystem
     | EventService,

@@ -1,11 +1,17 @@
 import { Schema } from "effect";
 
-import { EndpointPlan as EndpointPlanSchema, RouteAuthorityPortsField } from "./endpoint.ts";
+import {
+  EndpointPlan as EndpointPlanSchema,
+  RouteAuthorityPortsField,
+  RouteAuthorityPorts as RouteAuthorityPortsSchema,
+} from "./endpoint.ts";
 import { AbsolutePath, CommandSpec, ServiceName } from "./primitives.ts";
 
 export { DEFAULT_PROXY_HTTP_PORT, DEFAULT_PROXY_HTTPS_PORT } from "./endpoint.ts";
 export const EndpointPlan = EndpointPlanSchema;
 export type EndpointPlan = typeof EndpointPlan.Type;
+export const RouteAuthorityPorts = RouteAuthorityPortsSchema;
+export type RouteAuthorityPorts = typeof RouteAuthorityPorts.Type;
 
 const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
 

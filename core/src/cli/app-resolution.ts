@@ -28,6 +28,7 @@ import { LANDOFILE_NAME } from "../landofile/discovery.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { landofileLayerPaths } from "../landofile/layers.ts";
 import { findDiscoveredLandofilePath, loadLandofileFile, loadLandofileLayers } from "../landofile/service.ts";
+import { withProcessCwd } from "../runtime/process-cwd.ts";
 import { CORE_VERSION } from "../version.ts";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";
 
@@ -219,30 +220,6 @@ export const loadUserLandofileFile = (
   );
 };
 
-const enterDir = (root: string): Effect.Effect<string, LandofileParseError> =>
-  Effect.try({
-    try: () => {
-      const original = process.cwd();
-      process.chdir(root);
-      return original;
-    },
-    catch: (cause) =>
-      new LandofileParseError({
-        message: cause instanceof Error ? cause.message : `Unable to enter the app directory at ${root}.`,
-        filePath: root,
-        line: undefined,
-        column: undefined,
-        cause,
-      }),
-  });
-
-/**
- * Process-wide guard serializing every transient `process.chdir` used during
- * app resolution. `process.cwd()` is process-global, so concurrent root-bound
- * resolutions in a retained runtime must not interleave their chdir regions.
- */
-const cwdResolutionLock = Effect.unsafeMakeSemaphore(1);
-
 /**
  * Runs `use` with `process.cwd()` temporarily set to `root`, restoring it after.
  * The chdir region is held under the shared cwd lock. A no-op when `root` already
@@ -252,16 +229,17 @@ export const withResolvedCwd = <A, E, R>(
   root: string,
   use: Effect.Effect<A, E, R>,
 ): Effect.Effect<A, E | LandofileParseError, R> =>
-  cwdResolutionLock.withPermits(1)(
-    Effect.suspend(() =>
-      root === process.cwd()
-        ? use
-        : Effect.acquireUseRelease(
-            enterDir(root),
-            () => use,
-            (original) => Effect.sync(() => process.chdir(original)),
-          ),
-    ),
+  withProcessCwd(
+    root,
+    use,
+    (cause) =>
+      new LandofileParseError({
+        message: cause instanceof Error ? cause.message : `Unable to enter the app directory at ${root}.`,
+        filePath: root,
+        line: undefined,
+        column: undefined,
+        cause,
+      }),
   );
 
 /**

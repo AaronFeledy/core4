@@ -19,7 +19,7 @@ import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   BuildOrchestrator,
   EventService,
   type FileSystem,
@@ -32,7 +32,7 @@ import {
 
 import { withBuildProvider } from "../../../services/build-orchestrator.ts";
 import { globalInstall } from "./global-install.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -81,10 +81,11 @@ export type GlobalStartError =
   | ProviderConfigError
   | ProviderError
   | ProviderUnavailableError
-  | ToolingExecError;
+  | ToolingExecError
+  | LoadGlobalPlanError;
 
 export type GlobalStartServices =
-  | AppPlanner
+  | AppPlanResolver
   | BuildOrchestrator
   | EventService
   | FileSystem

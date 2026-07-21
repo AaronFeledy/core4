@@ -17,7 +17,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   ConfigService,
   EventService,
   type LandoEvent,
@@ -189,7 +189,7 @@ const makeLayer = (options: {
   const landofileLayer = Layer.succeed(LandofileService, {
     discover: Effect.succeed(options.landofile),
   });
-  const plannerLayer = Layer.succeed(AppPlanner, {
+  const plannerLayer = Layer.succeed(AppPlanResolver, {
     plan: () => {
       options.planCalls?.push(1);
       options.planCwds?.push(process.cwd());

@@ -14,7 +14,7 @@ import type {
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
-  type AppPlanner,
+  type AppPlanResolver,
   EventService,
   type FileSystem,
   type FileSystemError,
@@ -23,7 +23,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "./global-plan.ts";
+import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
@@ -52,10 +52,11 @@ export type GlobalStopError =
   | NotImplementedError
   | ProviderConfigError
   | ProviderError
-  | ProviderUnavailableError;
+  | ProviderUnavailableError
+  | LoadGlobalPlanError;
 
 export type GlobalStopServices =
-  | AppPlanner
+  | AppPlanResolver
   | EventService
   | FileSystem
   | GlobalAppService

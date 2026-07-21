@@ -6,7 +6,12 @@ import { DateTime, Effect, Layer } from "effect";
 
 import { refreshAppCache, renderAppCacheRefreshResult } from "@lando/core/cli/operations";
 import { AbsolutePath, AppId, type AppPlan, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
-import { AppPlanner, LandofileService, PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanResolver,
+  LandofileService,
+  PluginRegistry,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import { CacheError } from "@lando/sdk/errors";
 
 import { appCommandCachePath } from "../../src/cache/paths.ts";
@@ -118,7 +123,7 @@ describe("lando app:cache:refresh", () => {
               tooling: { hello: { cmds: "echo hi", description: "say hi" } },
             }),
           }),
-          Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+          Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
           Layer.succeed(PluginRegistry, {
             list: Effect.succeed([]),
             load: () => Effect.die("plugin load must not run"),
@@ -188,7 +193,7 @@ describe("lando app:cache:refresh", () => {
               tooling: { hello: { cmds: "echo hi" } },
             }),
           }),
-          Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+          Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
           Layer.succeed(PluginRegistry, {
             list: Effect.succeed([]),
             load: () => Effect.die("plugin load must not run"),

@@ -75,6 +75,7 @@ export type {
 // without an extra import (`@lando/core/services` exports the full set).
 export {
   AppPlanner,
+  AppPlanResolver,
   CacheService,
   CommandRegistry,
   ConfigService,

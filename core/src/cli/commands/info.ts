@@ -10,7 +10,7 @@ import type {
 } from "@lando/sdk/app";
 import type { AppPlan, EndpointPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   type ConfigService,
   LandofileService,
   RuntimeProviderRegistry,
@@ -30,7 +30,7 @@ import {
 
 export type { InfoAppError, InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
 
-type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
+type InfoAppServices = AppPlanResolver | ConfigService | LandofileService | RuntimeProviderRegistry;
 
 const InfoServiceStatusSchema = Schema.Literal(
   "unknown",
@@ -276,7 +276,7 @@ const toServiceInfo = (
   };
 };
 
-// Requires only RuntimeProviderRegistry (no LandofileService/AppPlanner) so
+// Requires only RuntimeProviderRegistry (no LandofileService/AppPlanResolver) so
 // out-of-band plan resolvers (global-app commands) reuse this without pulling
 // user-Landofile resolution into their bootstrap layer.
 export const infoForPlan = (
@@ -317,7 +317,7 @@ export const infoApp = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
 
     let plan: AppPlan;
     let landofile: LandofileShape | undefined;
@@ -329,7 +329,7 @@ export const infoApp = (
     } else {
       landofile = yield* loadUserLandofile(landofileService);
       const capabilities = yield* registry.capabilities;
-      plan = yield* planner.plan(landofile, capabilities);
+      plan = yield* planner.plan(landofile, capabilities, { kind: "user" });
     }
 
     const result = yield* infoForPlan(plan);

@@ -5,7 +5,7 @@ import { Effect, ExecutionStrategy, Scope } from "effect";
 import type { App, AppSelector, LandoRuntimeServices } from "@lando/sdk/app";
 import { AppResolveError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AppPlanResolver, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import {
   type ResolvedAppTarget,
@@ -22,7 +22,7 @@ import { makeAppHandle } from "./handle.ts";
 import { makeAppLifecycle } from "./lifecycle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";
 
-type ResolvePlanServices = LandofileService | AppPlanner | RuntimeProviderRegistry | RuntimeCwd;
+type ResolvePlanServices = LandofileService | AppPlanResolver | RuntimeProviderRegistry | RuntimeCwd;
 
 interface ResolvedLandofilePlan {
   readonly plan: AppPlan;
@@ -53,11 +53,11 @@ const planResolvedLandofile = (
 ): Effect.Effect<ResolvedLandofilePlan, AppResolveError, ResolvePlanServices> =>
   Effect.gen(function* () {
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const capabilities = yield* registry.capabilities;
     const plan = yield* withResolvedCwd(
       root,
-      Effect.suspend(() => planner.plan(landofile, capabilities)),
+      Effect.suspend(() => planner.plan(landofile, capabilities, { kind: "user" })),
     );
     return { plan, landofile };
   }).pipe(Effect.catchAll((cause) => Effect.fail(toAppResolveError(cause))));

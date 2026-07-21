@@ -19,11 +19,13 @@ import {
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
+import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { ScratchRegistry, ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
 import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
 import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
+import { AppPlanResolverLive } from "../../src/services/app-plan-resolver.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
@@ -175,6 +177,12 @@ const makeScratchForkLayer = (
   const plannerLive = AppPlannerLive.pipe(
     Layer.provide(Layer.mergeAll(PluginRegistryLive, CacheServiceLive, ConfigServiceLive)),
   );
+  const globalAppLive = GlobalAppServiceLive.pipe(
+    Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),
+  );
+  const resolverLive = AppPlanResolverLive.pipe(
+    Layer.provide(Layer.mergeAll(FileSystemLive, globalAppLive, plannerLive)),
+  );
   const registryLive = Layer.succeed(RuntimeProviderRegistry, {
     list: Effect.succeed([providerId]),
     capabilities: Effect.sync(() => {
@@ -216,14 +224,19 @@ const makeScratchForkLayer = (
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     LandofileServiceLive,
-    plannerLive,
+    resolverLive,
     registryLive,
     scratchRegistryLive,
     ScratchResourceScannerLive,
     dataMoverLive,
   );
 
-  return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
+  return Layer.mergeAll(
+    scratchDeps,
+    plannerLive,
+    globalAppLive,
+    ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)),
+  );
 };
 
 describe("ScratchAppServiceLive fork acquire", () => {
@@ -262,7 +275,7 @@ describe("ScratchAppServiceLive fork acquire", () => {
           const service = yield* ScratchAppService;
           const landofile = yield* landofileService.discover;
           const sourceCapabilities = yield* registry.capabilities;
-          const sourcePlan = yield* planner.plan(landofile, sourceCapabilities);
+          const sourcePlan = yield* planner.plan(landofile, sourceCapabilities, { kind: "user" });
           const sourceSnapshot = JSON.stringify(sourcePlan);
           const handle = yield* Effect.scoped(service.acquire({ source: { kind: "fork" }, detached: true }));
           return { handle, sourcePlan, sourceSnapshot };

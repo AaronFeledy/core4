@@ -27,7 +27,7 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import {
-  AppPlanner,
+  AppPlanResolver,
   DataMover,
   Dataset,
   InteractionService,
@@ -108,7 +108,7 @@ export interface RemoteSetupOptions extends RemoteTestOptions {
 
 export type RemoteSyncCommandError = unknown;
 
-type RemoteSyncServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
+type RemoteSyncServices = LandofileService | RuntimeProviderRegistry | AppPlanResolver;
 
 interface LoadedRemoteLandofile {
   readonly file: string;
@@ -240,10 +240,10 @@ const resolvePlan = (
   return Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
     const landofile = yield* loadUserLandofileAt(landofileService, cwd ?? process.cwd());
     const capabilities = yield* registry.capabilities;
-    return yield* planner.plan(landofile, capabilities);
+    return yield* planner.plan(landofile, capabilities, { kind: "user" });
   });
 };
 

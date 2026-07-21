@@ -48,6 +48,7 @@ import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
 import { globalInfo } from "../../src/cli/commands/meta/global-info.ts";
 import { globalList } from "../../src/cli/commands/meta/global-list.ts";
 import { followGlobalLogs, globalLogs } from "../../src/cli/commands/meta/global-logs.ts";
+import { loadGlobalPlan } from "../../src/cli/commands/meta/global-plan.ts";
 import { globalRebuild } from "../../src/cli/commands/meta/global-rebuild.ts";
 import { globalRestart } from "../../src/cli/commands/meta/global-restart.ts";
 import { globalStart } from "../../src/cli/commands/meta/global-start.ts";
@@ -58,6 +59,7 @@ import { globalConfigOptionsFromInput } from "../../src/cli/oclif/commands/meta/
 import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { parseLandofile } from "../../src/landofile/parser.ts";
+import { AppPlanResolverLive } from "../../src/services/app-plan-resolver.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -132,13 +134,25 @@ const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<
 
 const fakeServiceType = makeLegacyServiceTypeFake({
   id: "lando",
-  toServicePlan: ({ name, appRoot, provider = ProviderId.make("lando"), primary = false, metadata }) =>
-    Schema.decodeUnknownSync(ServicePlan)({
+  toServicePlan: ({
+    name,
+    service,
+    appRoot,
+    provider = ProviderId.make("lando"),
+    primary = false,
+    metadata,
+  }) => {
+    const configuredPort = service.ports?.[0] ?? "8080";
+    const [published, target = published] = configuredPort.split(":");
+    return Schema.decodeUnknownSync(ServicePlan)({
       name: ServiceName.make(name),
       type: "lando",
       provider,
       primary,
-      artifact: { kind: "ref", ref: "lando-global-service:test" },
+      artifact: {
+        kind: "ref",
+        ref: typeof service.image === "string" ? service.image : "lando-global-service:test",
+      },
       environment: {},
       workingDirectory: PortablePath.make("/app"),
       appMount: {
@@ -151,13 +165,21 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       },
       mounts: [],
       storage: [],
-      endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+      endpoints: [
+        {
+          protocol: name === "mail" ? "tcp" : "http",
+          port: Number(target),
+          name: "http",
+          ...(target === published ? {} : { publishedPort: Number(published) }),
+        },
+      ],
       routes: [],
       dependsOn: [],
       hostAliases: [],
       metadata,
       extensions: {},
-    }),
+    });
+  },
 });
 
 const writeGlobalServiceModule = async (moduleRoot: string): Promise<string> => {
@@ -252,11 +274,22 @@ const makeHarness = async (
       }),
     buildApp: () => Effect.void,
   };
+  const globalAppLive = GlobalAppServiceLive.pipe(
+    Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive)),
+  );
+  const plannerLive = AppPlannerLive.pipe(
+    Layer.provide(
+      Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
+    ),
+  );
+  const resolverLive = AppPlanResolverLive.pipe(
+    Layer.provide(Layer.mergeAll(FileSystemLive, globalAppLive, plannerLive)),
+  );
   const layer = Layer.mergeAll(
     ConfigServiceLive,
     CacheServiceLive,
     FileSystemLive,
-    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    globalAppLive,
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {
@@ -275,11 +308,8 @@ const makeHarness = async (
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
-    AppPlannerLive.pipe(
-      Layer.provide(
-        Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
-      ),
-    ),
+    plannerLive,
+    resolverLive,
   );
   return { dataRoot, layer, calls, events };
 };
@@ -326,6 +356,56 @@ const failureOf = (exit: Exit.Exit<unknown, unknown>): unknown => {
 };
 
 describe("meta:global command effects", () => {
+  test("start plans Traefik from all global Landofile layers in documented precedence", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness, {
+        traefik: { type: "lando", image: "traefik:v3.3", ports: ["80"] },
+      });
+      const generated = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(harness.layer)));
+      const globalRoot = join(harness.dataRoot, "global");
+      for (const [file, publishedPort] of [
+        [".lando.base.yml", 18080],
+        [".lando.upstream.yml", 28080],
+        [".lando.yml", 38080],
+        [".lando.local.yml", 48080],
+        [".lando.user.yml", 58080],
+      ] as const) {
+        await writeFile(
+          join(globalRoot, file),
+          `services:\n  traefik:\n    image: "traefik:${publishedPort}"\n    ports: ["${publishedPort}:80"]\n`,
+        );
+      }
+
+      const result = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(harness.layer)));
+
+      expect(generated.materialized && generated.plan.services.traefik?.artifact).toEqual({
+        kind: "ref",
+        ref: "traefik:v3.3",
+      });
+      expect(result.materialized && result.plan.services.traefik?.endpoints).toEqual([
+        { protocol: "http", port: 80, name: "http", publishedPort: 58080 },
+      ]);
+      expect(result.materialized && result.plan.services.traefik?.artifact).toEqual({
+        kind: "ref",
+        ref: "traefik:58080",
+      });
+      expect(result.materialized && result.routeAuthorityPorts).toEqual({ http: 58080 });
+    });
+  });
+
+  test("start plans generated Traefik defaults unchanged when global overlays are absent", async () => {
+    await withHarness(async (harness) => {
+      await materializeDist(harness, { traefik: { type: "lando", ports: ["80"] } });
+
+      const result = await Effect.runPromise(loadGlobalPlan().pipe(Effect.provide(harness.layer)));
+
+      expect(result.materialized && result.plan.services.traefik?.endpoints).toEqual([
+        { protocol: "http", port: 80, name: "http" },
+      ]);
+      expect(result.materialized && result.routeAuthorityPorts).toEqual({ http: 80 });
+    });
+  });
+
   test("start materializes the global app, applies the global-rooted plan, and inspects each service", async () => {
     await withHarness(async (harness) => {
       const result = await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));

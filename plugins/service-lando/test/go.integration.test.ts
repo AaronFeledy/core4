@@ -17,7 +17,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   LandofileService,
   type ProviderCapabilities,
   RuntimeProvider,
@@ -181,7 +181,7 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
 
           const toolingLayer = Layer.mergeAll(
             Layer.succeed(LandofileService, { discover: Effect.succeed(landofile) }),
-            Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+            Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
             Layer.succeed(RuntimeProviderRegistry, {
               list: Effect.succeed([providerId]),
               capabilities: Effect.succeed(capabilities),

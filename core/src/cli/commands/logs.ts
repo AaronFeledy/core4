@@ -10,7 +10,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   LandofileService,
   type LogChunk,
   type LogOptions,
@@ -48,7 +48,7 @@ export interface LogsAppResult {
   readonly lines: ReadonlyArray<LogsAppLine>;
 }
 
-type LogsAppServices = AppPlanner | LandofileService | RuntimeProviderRegistry;
+type LogsAppServices = AppPlanResolver | LandofileService | RuntimeProviderRegistry;
 
 export const renderLogsAppResult = (result: LogsAppResult): string => {
   if (result.lines.length === 0) return `${result.app} (no log lines)`;
@@ -212,14 +212,14 @@ const resolvePlanServices = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
 
     const plan =
       target?.plan ??
       (yield* Effect.gen(function* () {
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities: ProviderCapabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
+        return yield* planner.plan(landofile, capabilities, { kind: "user" });
       }));
 
     const { services, provider } = yield* servicesForPlan(plan, options);

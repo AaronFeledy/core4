@@ -27,7 +27,7 @@ import type {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import {
-  AppPlanner,
+  AppPlanResolver,
   LandofileService,
   PluginRegistry,
   type ProviderError,
@@ -84,7 +84,7 @@ type AppCacheRefreshError =
   | ProviderError
   | ProviderUnavailableError;
 
-type AppCacheRefreshServices = AppPlanner | LandofileService | PluginRegistry | RuntimeProviderRegistry;
+type AppCacheRefreshServices = AppPlanResolver | LandofileService | PluginRegistry | RuntimeProviderRegistry;
 
 export const renderAppCacheRefreshResult = (result: AppCacheRefreshResult): string =>
   `refreshed: ${result.app} (${result.commandsCompiled} command${result.commandsCompiled === 1 ? "" : "s"})`;
@@ -105,11 +105,11 @@ export const refreshAppCache = (
     const landofileService = yield* LandofileService;
     const pluginRegistry = yield* PluginRegistry;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
 
     const landofile = yield* loadUserLandofile(landofileService);
     const capabilities = yield* registry.capabilities;
-    const plan = yield* planner.plan(landofile, capabilities);
+    const plan = yield* planner.plan(landofile, capabilities, { kind: "user" });
 
     const cwd = options.cwd ?? process.cwd();
     const scripts = yield* discoverScripts(cwd);

@@ -46,7 +46,9 @@ const registryLayer = Layer.merge(services, PluginRegistryLive);
 const planFor = (landofile: LandofileShape, provider: "lando" | "docker") =>
   Effect.runPromise(
     Effect.flatMap(AppPlanner, (planner) =>
-      planner.plan({ ...landofile, provider: ProviderId.make(provider) }, providerLandoCapabilities),
+      planner.plan({ ...landofile, provider: ProviderId.make(provider) }, providerLandoCapabilities, {
+        kind: "user",
+      }),
     ).pipe(Effect.provide(AppPlannerLive), Effect.provide(registryLayer)),
   );
 

@@ -43,10 +43,9 @@ const registryLayer = Layer.merge(services, PluginRegistryLive);
 
 const plan = (landofile: LandofileShape) =>
   Effect.runPromise(
-    Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerCapabilities)).pipe(
-      Effect.provide(AppPlannerLive),
-      Effect.provide(registryLayer),
-    ),
+    Effect.flatMap(AppPlanner, (appPlanner) =>
+      appPlanner.plan(landofile, providerCapabilities, { kind: "user" }),
+    ).pipe(Effect.provide(AppPlannerLive), Effect.provide(registryLayer)),
   );
 
 describe("@lando/service-lando registration", () => {

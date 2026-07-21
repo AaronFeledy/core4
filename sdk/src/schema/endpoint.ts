@@ -16,7 +16,7 @@ const ForbiddenPublishedPort = Schema.optional(Schema.Never).annotations({
   description: PUBLISHED_PORT_DESCRIPTION,
 });
 const AUTHORITY_PORTS_DESCRIPTION = "Resolved HTTP and HTTPS ports included in route URL authorities.";
-const RouteAuthorityPorts = Schema.Struct({
+export const RouteAuthorityPorts = Schema.Struct({
   http: Schema.optional(PortNumber).annotations({
     description: "Resolved HTTP port included in the route URL authority.",
   }),
@@ -24,6 +24,7 @@ const RouteAuthorityPorts = Schema.Struct({
     description: "Resolved HTTPS port included in the route URL authority.",
   }),
 }).annotations({ description: AUTHORITY_PORTS_DESCRIPTION });
+export type RouteAuthorityPorts = typeof RouteAuthorityPorts.Type;
 export const RouteAuthorityPortsField = Schema.optional(RouteAuthorityPorts).annotations({
   description: AUTHORITY_PORTS_DESCRIPTION,
 });

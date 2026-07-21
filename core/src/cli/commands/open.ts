@@ -5,7 +5,7 @@ import type { EventError, ShellExecError } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, EndpointPlan, RoutePlan, ServicePlan } from "@lando/sdk/schema";
-import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { AppPlanResolver, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService } from "../../redaction/service.ts";
@@ -244,7 +244,7 @@ export const openForPlan = (
   });
 
 type OpenAppServices =
-  | AppPlanner
+  | AppPlanResolver
   | LandofileService
   | RuntimeProviderRegistry
   | ShellRunner
@@ -258,14 +258,14 @@ export const openApp = (
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
-    const planner = yield* AppPlanner;
+    const planner = yield* AppPlanResolver;
 
     const plan =
       target?.plan ??
       (yield* Effect.gen(function* () {
         const landofile = yield* loadUserLandofile(landofileService);
         const capabilities = yield* registry.capabilities;
-        return yield* planner.plan(landofile, capabilities);
+        return yield* planner.plan(landofile, capabilities, { kind: "user" });
       }));
 
     return yield* openForPlan(plan, options);
