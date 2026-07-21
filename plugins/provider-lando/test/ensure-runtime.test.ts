@@ -218,6 +218,7 @@ const canonicalArgs = (p: ReturnType<typeof paths>) =>
 const canonicalEnv = (p: ReturnType<typeof paths>) => ({
   CONTAINERS_CONF: join(p.configDir, "containers.conf"),
   CONTAINERS_REGISTRIES_CONF: join(p.configDir, "registries.conf"),
+  XDG_CONFIG_HOME: p.configDir,
 });
 
 const writeLaunchState = (p: ReturnType<typeof paths>, pid: number) =>
@@ -420,17 +421,25 @@ describe("ensureRuntime", () => {
     }
   });
 
-  test("reachable socket with matching argv but mismatched launch env metadata is restarted", async () => {
+  test("reachable socket with matching argv but legacy two-key launch env metadata is restarted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
+      // Given: a live owned service predates the private XDG config root launch requirement.
       const calls: Call[] = [];
       const p = paths(dir);
       await writeFile(p.pidPath, "4321");
       await writeFile(
         `${p.pidPath}.launch.json`,
-        JSON.stringify({ pid: 4321, env: { CONTAINERS_CONF: join(p.configDir, "old-containers.conf") } }),
+        JSON.stringify({
+          pid: 4321,
+          env: {
+            CONTAINERS_CONF: join(p.configDir, "containers.conf"),
+            CONTAINERS_REGISTRIES_CONF: join(p.configDir, "registries.conf"),
+          },
+        }),
       );
 
+      // When: ensureRuntime compares the legacy launch state with the current service spec.
       await Effect.runPromise(
         ensureRuntime({
           platform: "linux",
@@ -440,6 +449,7 @@ describe("ensureRuntime", () => {
         }),
       );
 
+      // Then: the legacy service is terminated and relaunched with the current managed env.
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
@@ -449,6 +459,10 @@ describe("ensureRuntime", () => {
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
+        pid: 9999,
+        env: canonicalEnv(p),
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
