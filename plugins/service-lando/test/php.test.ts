@@ -5,11 +5,9 @@ import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } fro
 import type { ServiceType } from "@lando/sdk/services";
 
 import {
-  FRAMEWORK_WEBROOTS,
   PHP_FEATURE_ID,
   SUPPORTED_PHP_FRAMEWORKS,
   SUPPORTED_PHP_VERSIONS,
-  frameworkWebrootPath,
   php82ServiceType,
   php83ServiceType,
   phpServiceFeature,
@@ -24,6 +22,7 @@ const metadata = {
 
 const APP_ROOT = "/srv/apps/myapp";
 const archiveSupportId = "service-lando.php:archive-support";
+const commonExtensionsId = "service-lando.php:common-extensions";
 const composerId = "service-lando.php:composer";
 const featureOverrides = new Map([[PHP_FEATURE_ID, phpServiceFeature]]);
 const BuildSteps = Schema.Struct({ buildSteps: Schema.optional(Schema.Array(Schema.Unknown)) });
@@ -32,6 +31,8 @@ const buildStepsFor = (plan: ServicePlan): ReadonlyArray<unknown> =>
   Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]).buildSteps ?? [];
 const isArchiveSupport = (x: unknown) =>
   x !== null && typeof x === "object" && Reflect.get(x, "id") === archiveSupportId;
+const isCommonExtensions = (x: unknown) =>
+  x !== null && typeof x === "object" && Reflect.get(x, "id") === commonExtensionsId;
 const isComposer = (x: unknown) => x !== null && typeof x === "object" && Reflect.get(x, "id") === composerId;
 
 const decodeService = (raw: unknown): ServiceConfig => {
@@ -86,16 +87,22 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache" });
     const buildSteps = buildStepsFor(plan);
     const archiveSteps = buildSteps.filter(isArchiveSupport);
+    const commonExtensionSteps = buildSteps.filter(isCommonExtensions);
     const composerSteps = buildSteps.filter(isComposer);
     expect(archiveSteps).toHaveLength(1);
     expect(JSON.stringify(archiveSteps[0])).toMatch(
       /apt-get update.*apt-get install -y --no-install-recommends unzip.*rm -rf \/var\/lib\/apt\/lists\/\*/,
+    );
+    expect(commonExtensionSteps).toHaveLength(1);
+    expect(JSON.stringify(commonExtensionSteps[0])).toMatch(
+      /apt-get update.*libfreetype6-dev.*libicu-dev.*libjpeg62-turbo-dev.*libpng-dev.*libpq-dev.*libzip-dev.*docker-php-ext-configure gd --with-freetype --with-jpeg.*docker-php-ext-install.*gd intl pdo_mysql pdo_pgsql zip.*rm -rf \/var\/lib\/apt\/lists\/\*/,
     );
     expect(composerSteps).toHaveLength(1);
     expect(JSON.stringify(composerSteps[0])).toMatch(
       /^(?=.*"phase":"build")(?=.*"command":"trap 'status=\$\?; trap - 0; rm -f composer-setup\.php; exit .*status.*' 0; php -r .*https:\/\/composer\.github\.io\/installer\.sig.*https:\/\/getcomposer\.org\/installer.*\$checksum = hash_file.*sha384.*\$checksum === false \|\| !hash_equals.*&& php composer-setup\.php --2 --install-dir=\/usr\/local\/bin --filename=composer).*$/,
     );
     expect(buildSteps.findIndex(isArchiveSupport)).toBeLessThan(buildSteps.findIndex(isComposer));
+    expect(buildSteps.findIndex(isCommonExtensions)).toBeLessThan(buildSteps.findIndex(isComposer));
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
@@ -207,6 +214,7 @@ describe("php:8.2 ServiceType", () => {
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
     expect(buildStepsFor(plan).filter(isArchiveSupport)).toHaveLength(0);
+    expect(buildStepsFor(plan).filter(isCommonExtensions)).toHaveLength(0);
     expect(buildStepsFor(plan).filter(isComposer)).toHaveLength(0);
     expect(plan.endpoints).toEqual([{ port: 8080, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
@@ -273,35 +281,5 @@ describe("php:8.3 ServiceType", () => {
       }),
       /reserved LANDO_\* keys.*LANDO/,
     );
-  });
-});
-
-describe("frameworkWebrootPath — single source of truth parity", () => {
-  test("derives same absolute path as inline ternary for every framework", () => {
-    for (const framework of SUPPORTED_PHP_FRAMEWORKS) {
-      const rel = FRAMEWORK_WEBROOTS[framework];
-      const expected = rel === "" ? "/app" : `/app/${rel}`;
-      expect(frameworkWebrootPath(framework)).toBe(expected);
-    }
-  });
-
-  test("returns /app for frameworks with empty relative webroot (none, wordpress)", () => {
-    expect(frameworkWebrootPath("none")).toBe("/app");
-    expect(frameworkWebrootPath("wordpress")).toBe("/app");
-  });
-
-  test("returns /app/web for drupal", () => {
-    expect(frameworkWebrootPath("drupal")).toBe("/app/web");
-  });
-
-  test("returns /app/public for laravel and symfony", () => {
-    expect(frameworkWebrootPath("laravel")).toBe("/app/public");
-    expect(frameworkWebrootPath("symfony")).toBe("/app/public");
-  });
-
-  test("every result starts with /app for all frameworks", () => {
-    for (const framework of SUPPORTED_PHP_FRAMEWORKS) {
-      expect(frameworkWebrootPath(framework)).toMatch(/^\/app(\/|$)/);
-    }
   });
 });

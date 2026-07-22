@@ -26,6 +26,8 @@ const COMPOSER_INSTALL_COMMAND =
   'trap \'status=$?; trap - 0; rm -f composer-setup.php; exit "$status"\' 0; php -r \'$installer = "composer-setup.php"; $signature = file_get_contents("https://composer.github.io/installer.sig"); if ($signature === false || copy("https://getcomposer.org/installer", $installer) !== true) { exit(1); } $checksum = hash_file("sha384", $installer); if ($checksum === false || !hash_equals(trim($signature), $checksum)) { exit(1); }\' && php composer-setup.php --2 --install-dir=/usr/local/bin --filename=composer';
 const PHP_ARCHIVE_SUPPORT_COMMAND =
   "apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*";
+const PHP_COMMON_EXTENSIONS_COMMAND =
+  'apt-get update && apt-get install -y --no-install-recommends libfreetype6-dev libicu-dev libjpeg62-turbo-dev libpng-dev libpq-dev libzip-dev && docker-php-ext-configure gd --with-freetype --with-jpeg && docker-php-ext-install -j"$(nproc)" gd intl pdo_mysql pdo_pgsql zip && rm -rf /var/lib/apt/lists/*';
 
 const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -108,6 +110,11 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
       id: "service-lando.php:archive-support",
       phase: "build",
       command: PHP_ARCHIVE_SUPPORT_COMMAND,
+    });
+    ctx.addBuildStep({
+      id: "service-lando.php:common-extensions",
+      phase: "build",
+      command: PHP_COMMON_EXTENSIONS_COMMAND,
     });
     ctx.addBuildStep({ id: "service-lando.php:composer", phase: "build", command: COMPOSER_INSTALL_COMMAND });
   }
