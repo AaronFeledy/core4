@@ -1,44 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readdir, realpath, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { Effect } from "effect";
 
 import { ServiceName } from "@lando/core/schema";
-import { LandofileService } from "@lando/core/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { BUILTIN_RECIPE_RENDERERS, builtinRecipeIds } from "../../src/recipes/builtin/registry.ts";
-
-const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
-  const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-canonical-")));
-  const previousCwd = process.cwd();
-  const previousDataRoot = process.env.LANDO_USER_DATA_ROOT;
-  process.env.LANDO_USER_DATA_ROOT = join(dir, "lando-data");
-  try {
-    return await run(dir);
-  } finally {
-    process.chdir(previousCwd);
-    if (previousDataRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_DATA_ROOT");
-    else process.env.LANDO_USER_DATA_ROOT = previousDataRoot;
-    await rm(dir, { recursive: true, force: true });
-  }
-};
-
-const discoverFrom = async (cwd: string) => {
-  const previousCwd = process.cwd();
-  try {
-    process.chdir(cwd);
-    return await Effect.runPromise(
-      Effect.flatMap(LandofileService, (landofileService) => landofileService.discover).pipe(
-        Effect.provide(LandofileServiceLive),
-      ),
-    );
-  } finally {
-    process.chdir(previousCwd);
-  }
-};
+import { discoverFrom, withTempCwd } from "./support/init-recipe-harness.ts";
 
 interface CanonicalCase {
   readonly recipe: string;
@@ -47,6 +15,7 @@ interface CanonicalCase {
   readonly expectedTooling?: ReadonlyArray<string>;
 }
 
+// allow: SIZE_OK — this declarative recipe matrix is exercised by one shared harness.
 const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
   {
     recipe: "wordpress",
