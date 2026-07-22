@@ -12,3 +12,8 @@
  * command line where no parameter expansion is desired.
  */
 export const quoteShellPath = (target: string): string => `'${target.replaceAll("'", `'\\''`)}'`;
+
+const SHELL_SAFE_ARGUMENT = /^[A-Za-z0-9_@%+=:,./-]+$/u;
+
+export const quoteShellArgument = (value: string): string =>
+  value.length > 0 && SHELL_SAFE_ARGUMENT.test(value) ? value : `'${value.replaceAll("'", `'"'"'`)}'`;
