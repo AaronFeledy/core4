@@ -23,7 +23,13 @@ const metadata = {
 };
 
 const APP_ROOT = "/srv/apps/myapp";
+const composerId = "service-lando.php:composer";
 const featureOverrides = new Map([[PHP_FEATURE_ID, phpServiceFeature]]);
+const BuildSteps = Schema.Struct({ buildSteps: Schema.optional(Schema.Array(Schema.Unknown)) });
+
+const buildStepsFor = (plan: ServicePlan): ReadonlyArray<unknown> =>
+  Schema.decodeUnknownSync(BuildSteps)(plan.extensions["@lando/core/service-features"]).buildSteps ?? [];
+const isComposer = (x: unknown) => x !== null && typeof x === "object" && Reflect.get(x, "id") === composerId;
 
 const decodeService = (raw: unknown): ServiceConfig => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -75,6 +81,11 @@ describe("php:8.2 ServiceType", () => {
 
     expect(plan.type).toBe("php:8.2");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache" });
+    const composerSteps = buildStepsFor(plan).filter(isComposer);
+    expect(composerSteps).toHaveLength(1);
+    expect(JSON.stringify(composerSteps[0])).toMatch(
+      /^(?=.*"phase":"build")(?=.*"command":"trap 'status=\$\?; trap - 0; rm -f composer-setup\.php; exit .*status.*' 0; php -r .*https:\/\/composer\.github\.io\/installer\.sig.*https:\/\/getcomposer\.org\/installer.*\$checksum = hash_file.*sha384.*\$checksum === false \|\| !hash_equals.*&& php composer-setup\.php --2 --install-dir=\/usr\/local\/bin --filename=composer).*$/,
+    );
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
@@ -185,6 +196,7 @@ describe("php:8.2 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
+    expect(buildStepsFor(plan).filter(isComposer)).toHaveLength(0);
     expect(plan.endpoints).toEqual([{ port: 8080, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);

@@ -22,6 +22,8 @@ export const PHP_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const HEALTHCHECK_PORT = 80;
+const COMPOSER_INSTALL_COMMAND =
+  'trap \'status=$?; trap - 0; rm -f composer-setup.php; exit "$status"\' 0; php -r \'$installer = "composer-setup.php"; $signature = file_get_contents("https://composer.github.io/installer.sig"); if ($signature === false || copy("https://getcomposer.org/installer", $installer) !== true) { exit(1); } $checksum = hash_file("sha384", $installer); if ($checksum === false || !hash_equals(trim($signature), $checksum)) { exit(1); }\' && php composer-setup.php --2 --install-dir=/usr/local/bin --filename=composer';
 
 const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -99,6 +101,9 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const port = service.port ?? HEALTHCHECK_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? `php:${version}-apache` });
+  if (service.image === undefined) {
+    ctx.addBuildStep({ id: "service-lando.php:composer", phase: "build", command: COMPOSER_INSTALL_COMMAND });
+  }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   ctx.setAppMount({
