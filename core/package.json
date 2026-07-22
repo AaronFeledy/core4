@@ -39,6 +39,10 @@
       "types": "./src/runtime/managed-runtime-service.ts",
       "import": "./src/runtime/managed-runtime-service.ts"
     },
+    "./advisory-lock": {
+      "types": "./src/state/lock.ts",
+      "import": "./src/state/lock.ts"
+    },
     "./host-proxy-transport": {
       "types": "./src/subsystems/host-proxy/transport-feature.ts",
       "import": "./src/subsystems/host-proxy/transport-feature.ts"
