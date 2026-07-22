@@ -11,14 +11,15 @@ Drupal 11 scaffold with PHP, a database (MariaDB or PostgreSQL), and Drush.
 
 - `lando drush …` — Drush.
 - `lando composer …` — Composer inside the appserver.
+- `lando drupal-scaffold` — Safely scaffold Drupal 11 and project-local Drush into the nonempty app root.
 
 ## Bootstrapping the codebase
 
-The recipe writes a Landofile only; it does not download Drupal. After
-`lando start`, scaffold the project through the generated tooling:
+The recipe writes a Landofile only; it does not download Drupal or Drush. After
+`lando start`, scaffold both through the generated tooling:
 
 ```bash
-lando composer create-project drupal/recommended-project .
+lando drupal-scaffold
 lando drush site:install
 ```
 

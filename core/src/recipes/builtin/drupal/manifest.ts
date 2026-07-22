@@ -38,5 +38,5 @@ files:
     template: true
 postInit:
   - type: message
-    text: Run 'lando start', then scaffold Drupal 11 with 'lando composer create-project drupal/recommended-project .'.
+    text: Run 'lando start', then scaffold Drupal 11 with 'lando drupal-scaffold'.
 `;
