@@ -12,7 +12,7 @@ import { CORE_VERSION } from "../version.ts";
 
 // Bump for serialized-shape or planner-output semantic changes, including generated build intents,
 // independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 8n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 9n;
 
 export interface AppPlanCacheKeyInput {
   readonly appRoot: string;
