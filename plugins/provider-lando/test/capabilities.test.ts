@@ -249,7 +249,7 @@ describe("provider-lando capabilities", () => {
                   return 1234;
                 }),
               isAlive: () => Effect.succeed(false),
-              terminate: () => Effect.void,
+              terminate: (_pid, _spec) => Effect.void,
             },
             podmanApiFactory: () => ({
               ping: Effect.gen(function* () {

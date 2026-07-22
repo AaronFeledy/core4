@@ -152,8 +152,8 @@ const runtimePaths = (dir: string) => ({
   runtimeStorageDir: join(dir, "storage"),
   runtimeRunDir: join(dir, "run"),
   runtimeConfigDir: join(dir, "config"),
-  providerSocketPath: join(dir, "podman.sock"),
-  providerPidPath: join(dir, "podman.pid"),
+  providerSocketPath: join(dir, "run", "podman.sock"),
+  providerPidPath: join(dir, "run", "podman.pid"),
 });
 
 const canonicalRuntimeArgs = (paths: ReturnType<typeof runtimePaths>) =>
@@ -194,7 +194,7 @@ const fakeServiceRunner = (
       calls.push(["isServiceProcess", pid, JSON.stringify(spec.args)]);
       return isAlive(pid);
     }),
-  terminate: (pid) =>
+  terminate: (pid, _spec) =>
     Effect.sync(() => {
       calls.push(["terminate", pid]);
     }),

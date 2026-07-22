@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -100,45 +101,49 @@ const serviceRunner = (
     readonly findMatchingPids?: ReadonlyArray<number>;
     readonly findManagedPids?: ReadonlyArray<number>;
   },
-): PodmanServiceRunner => ({
-  launch: (spec) =>
-    Effect.sync(() => {
-      calls.push(["launch", JSON.stringify(spec.args)]);
-      return 9999;
-    }),
-  isAlive: (pid) =>
-    Effect.sync(() => {
-      calls.push(["isAlive", pid]);
-      return alive;
-    }),
-  isServiceProcess: (pid, spec) =>
-    Effect.sync(() => {
-      calls.push(["isServiceProcess", pid, JSON.stringify(spec.args)]);
-      return serviceProcess;
-    }),
-  ...(options?.findMatchingPids === undefined
-    ? {}
-    : {
-        findMatchingServicePids: (spec) =>
-          Effect.sync(() => {
-            calls.push(["findMatching", JSON.stringify(spec.args)]);
-            return options.findMatchingPids ?? [];
-          }),
+): PodmanServiceRunner => {
+  const terminated = new Set<number>();
+  return {
+    launch: (spec) =>
+      Effect.sync(() => {
+        calls.push(["launch", JSON.stringify(spec.args)]);
+        return 9999;
       }),
-  ...(options?.findManagedPids === undefined
-    ? {}
-    : {
-        findManagedServicePids: (spec) =>
-          Effect.sync(() => {
-            calls.push(["findManaged", JSON.stringify(spec.args)]);
-            return options.findManagedPids ?? [];
-          }),
+    isAlive: (pid) =>
+      Effect.sync(() => {
+        calls.push(["isAlive", pid]);
+        return alive && !terminated.has(pid);
       }),
-  terminate: (pid) =>
-    Effect.sync(() => {
-      calls.push(["terminate", pid]);
-    }),
-});
+    isServiceProcess: (pid, spec) =>
+      Effect.sync(() => {
+        calls.push(["isServiceProcess", pid, JSON.stringify(spec.args)]);
+        return serviceProcess && !terminated.has(pid);
+      }),
+    ...(options?.findMatchingPids === undefined
+      ? {}
+      : {
+          findMatchingServicePids: (spec) =>
+            Effect.sync(() => {
+              calls.push(["findMatching", JSON.stringify(spec.args)]);
+              return options.findMatchingPids ?? [];
+            }),
+        }),
+    ...(options?.findManagedPids === undefined
+      ? {}
+      : {
+          findManagedServicePids: (spec) =>
+            Effect.sync(() => {
+              calls.push(["findManaged", JSON.stringify(spec.args)]);
+              return options.findManagedPids ?? [];
+            }),
+        }),
+    terminate: (pid, _spec) =>
+      Effect.sync(() => {
+        calls.push(["terminate", pid]);
+        terminated.add(pid);
+      }),
+  };
+};
 
 const serviceRunnerWritingLog = (calls: Call[], output: string): PodmanServiceRunner => ({
   launch: (spec) =>
@@ -149,14 +154,14 @@ const serviceRunnerWritingLog = (calls: Call[], output: string): PodmanServiceRu
     }),
   isAlive: () => Effect.succeed(false),
   isServiceProcess: () => Effect.succeed(false),
-  terminate: () => Effect.void,
+  terminate: (_pid, _spec) => Effect.void,
 });
 
 const failingLaunchRunner = (error: RuntimeLaunchError): PodmanServiceRunner => ({
   launch: () => Effect.fail(error),
   isAlive: () => Effect.succeed(false),
   isServiceProcess: () => Effect.succeed(false),
-  terminate: () => Effect.void,
+  terminate: (_pid, _spec) => Effect.void,
 });
 
 const throwingLaunchRunner = (): PodmanServiceRunner => ({
@@ -172,7 +177,7 @@ const throwingLaunchRunner = (): PodmanServiceRunner => ({
     Effect.sync(() => {
       throw new Error("host service isServiceProcess must not be called");
     }),
-  terminate: () =>
+  terminate: (_pid, _spec) =>
     Effect.sync(() => {
       throw new Error("host service terminate must not be called");
     }),
@@ -190,14 +195,21 @@ const machineRunner = (status: PodmanMachineStatus, calls: string[]): PodmanMach
   teardown: Effect.sync(() => calls.push("teardown")).pipe(Effect.asVoid),
 });
 
-const paths = (dir: string) => ({
-  podmanBin: join(dir, "bin", "podman"),
-  storageDir: join(dir, "storage"),
-  runRoot: join(dir, "run"),
-  configDir: join(dir, "config"),
-  socketPath: join(dir, "podman.sock"),
-  pidPath: join(dir, "podman.pid"),
-});
+const paths = (dir: string) => {
+  const runtimeRoot = join(dir, "runtime");
+  const runRoot = join(runtimeRoot, "run");
+  mkdirSync(runRoot, { recursive: true });
+  return {
+    podmanBin: join(runtimeRoot, "bin", "podman"),
+    storageDir: join(runtimeRoot, "storage"),
+    runRoot,
+    configDir: join(runtimeRoot, "config"),
+    socketPath: join(runRoot, "podman.sock"),
+    pidPath: join(runRoot, "podman.pid"),
+    bootIdReader: () => Effect.succeed("test-boot"),
+    pidNamespaceReader: () => Effect.succeed("pid:[test]"),
+  };
+};
 
 const canonicalArgs = (p: ReturnType<typeof paths>) =>
   JSON.stringify([
@@ -338,6 +350,7 @@ describe("ensureRuntime", () => {
         ["findManaged", canonicalArgs(p)],
         ["isAlive", 8888],
         ["terminate", 8888],
+        ["isAlive", 8888],
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
@@ -455,7 +468,10 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["terminate", 4321],
+        ["isAlive", 4321],
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
@@ -493,7 +509,10 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["terminate", 4321],
+        ["isAlive", 4321],
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
@@ -510,6 +529,9 @@ describe("ensureRuntime", () => {
       const p = paths(dir);
       await writeFile(p.pidPath, "4321");
       await writeLaunchState(p, 4321);
+      await mkdir(p.runRoot, { recursive: true });
+      const runtimeMarker = join(p.runRoot, "healthy-runtime");
+      await writeFile(runtimeMarker, "preserve");
 
       // When: ensureRuntime sees the socket is already reachable.
       await Effect.runPromise(
@@ -527,6 +549,7 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+      expect(await readFile(runtimeMarker, "utf8")).toBe("preserve");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -551,12 +574,12 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
         ["findManaged", canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["isAlive", 4321],
-        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["launch", canonicalArgs(p)],
       ]);
       expect(calls.some((c) => c[0] === "terminate")).toBe(false);
@@ -587,12 +610,15 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["findMatching", canonicalArgs(p)],
-        ["isAlive", 7777],
-        ["findManaged", canonicalArgs(p)],
-        ["terminate", 7777],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["findMatching", canonicalArgs(p)],
+        ["findManaged", canonicalArgs(p)],
+        ["isAlive", 7777],
+        ["terminate", 7777],
+        ["isAlive", 7777],
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
@@ -643,11 +669,130 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["terminate", 4321],
+        ["isAlive", 4321],
         ["launch", canonicalArgs(p)],
       ]);
       await expectMissingFile(p.socketPath);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("cold launch reaps deduplicated owned services and resets only runRoot", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: durable runtime state contains stale nested network residue and
+      // the recorded service overlaps both process-discovery seams.
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const residue = join(p.runRoot, "networks", "aardvark-dns", "ipam", "netns");
+      const storageMarker = join(p.storageDir, "storage-sentinel");
+      const configMarker = join(p.configDir, "config-sentinel");
+      await mkdir(residue, { recursive: true });
+      await mkdir(p.storageDir, { recursive: true });
+      await mkdir(p.configDir, { recursive: true });
+      await writeFile(join(residue, "stale-state"), "stale");
+      await writeFile(storageMarker, "storage");
+      await writeFile(configMarker, "config");
+      await writeFile(p.pidPath, "4321");
+
+      // When: the unreachable managed runtime is relaunched.
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: apiReachableAfterLaunch(calls),
+          serviceRunner: serviceRunner(calls, true, true, {
+            findMatchingPids: [4321, 7777],
+            findManagedPids: [7777, 8888, 4321],
+          }),
+          ...p,
+        }),
+      );
+
+      // Then: every owned service is stopped once before launch, only runRoot
+      // is recreated empty, and durable storage/config remain intact.
+      const terminations = calls.filter((call): call is ["terminate", number] => call[0] === "terminate");
+      expect(terminations).toEqual([
+        ["terminate", 4321],
+        ["terminate", 7777],
+        ["terminate", 8888],
+      ]);
+      const launchIndex = calls.findIndex((call) => call[0] === "launch");
+      expect(launchIndex).toBeGreaterThan(-1);
+      expect(calls.slice(0, launchIndex).filter((call) => call[0] === "terminate")).toEqual(terminations);
+      expect((await stat(p.runRoot)).isDirectory()).toBe(true);
+      expect((await readdir(p.runRoot)).sort()).toEqual(["podman.pid", "podman.pid.launch.json"]);
+      await expectMissingFile(join(residue, "stale-state"));
+      expect(await readFile(storageMarker, "utf8")).toBe("storage");
+      expect(await readFile(configMarker, "utf8")).toBe("config");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("concurrent cold ensures use the advisory lock to launch once", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
+    try {
+      // Given: two cold ensures share production-shaped runtime paths and one delayed service runner.
+      const p = paths(dir);
+      let launches = 0;
+      let launchedPid: number | undefined;
+      let pingCalls = 0;
+      let readinessHeldLock = false;
+      const podmanApi: PodmanApiClient = {
+        info: Effect.succeed({}),
+        ping: Effect.gen(function* () {
+          pingCalls += 1;
+          if (pingCalls > 2 && launchedPid !== undefined) {
+            readinessHeldLock = yield* Effect.promise(() =>
+              stat(`${p.runRoot}.generation.lock`).then(
+                () => true,
+                () => false,
+              ),
+            );
+            return;
+          }
+          return yield* Effect.fail(unavailable());
+        }),
+      };
+      const concurrentRunner: PodmanServiceRunner = {
+        launch: () =>
+          Effect.sleep(Duration.millis(20)).pipe(
+            Effect.andThen(
+              Effect.sync(() => {
+                launches += 1;
+                launchedPid = 9000 + launches;
+                return launchedPid;
+              }),
+            ),
+          ),
+        isAlive: (pid) => Effect.sync(() => pid === launchedPid),
+        isServiceProcess: (pid) => Effect.sync(() => pid === launchedPid),
+        findMatchingServicePids: () => Effect.succeed([]),
+        findManagedServicePids: () => Effect.succeed([]),
+        terminate: (_pid, _spec) => Effect.void,
+      };
+      const deps = {
+        platform: "linux" as const,
+        podmanApi,
+        serviceRunner: concurrentRunner,
+        readinessPolicy: fastReadinessPolicy,
+        ...p,
+      };
+
+      // When: both ensures race through the initially unreachable API check.
+      await Effect.runPromise(
+        Effect.all([ensureRuntime(deps), ensureRuntime(deps)], { concurrency: "unbounded" }),
+      );
+
+      // Then: the real advisory lock serializes the critical section and the second ensure adopts the first launch.
+      expect(launches).toBe(1);
+      expect(await readFile(p.pidPath, "utf8")).toBe("9001");
+      expect(readinessHeldLock).toBe(false);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -670,6 +815,7 @@ describe("ensureRuntime", () => {
       );
 
       expect(calls).toEqual([
+        ["isAlive", 4321],
         ["isAlive", 4321],
         ["launch", canonicalArgs(p)],
       ]);
@@ -695,6 +841,8 @@ describe("ensureRuntime", () => {
       );
 
       expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["launch", canonicalArgs(p)],

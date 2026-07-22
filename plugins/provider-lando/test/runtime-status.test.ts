@@ -44,7 +44,7 @@ const serviceRunner = (options: {
     : {
         findMatchingServicePids: () => Effect.succeed(options.matchingPids ?? []),
       }),
-  terminate: () => Effect.void,
+  terminate: (_pid, _spec) => Effect.void,
 });
 
 describe("probeRuntimeServiceStatus", () => {

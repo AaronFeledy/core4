@@ -13,7 +13,7 @@ const fakeServiceRunner: PodmanServiceRunner = {
   launch: () => Effect.succeed(4242),
   isAlive: () => Effect.succeed(false),
   isServiceProcess: () => Effect.succeed(false),
-  terminate: () => Effect.void,
+  terminate: (_pid, _spec) => Effect.void,
 };
 
 describe("provider-lando runtime path resolution", () => {

@@ -1,13 +1,19 @@
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Duration, Effect } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { withAdvisoryLock } from "@lando/core/advisory-lock";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import type { HostPlatform } from "@lando/sdk/schema";
 
 import type { PodmanApiClient } from "./capabilities.ts";
+import {
+  type LinuxRuntimeFilesystem,
+  readRuntimePid,
+  reapStaleLinuxRuntime,
+} from "./linux-runtime-reaper.ts";
 import {
   type PodmanServiceRunner,
   type RuntimeLaunchError,
@@ -19,7 +25,7 @@ import {
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
-import { launchStatePath, recordedLaunchMatchesSpec, writeLaunchState } from "./runtime-launch-state.ts";
+import { recordedLaunchMatchesSpec, writeLaunchState } from "./runtime-launch-state.ts";
 import {
   type PodmanMachineRunner,
   type RuntimeSetupPhase,
@@ -43,6 +49,10 @@ export interface EnsureRuntimeDeps {
   readonly uidmapProvisioner?: () => Effect.Effect<void, ProviderUnavailableError>;
   readonly progress?: RuntimeSetupProgress;
   readonly readinessPolicy?: RetryPolicy;
+  readonly bootIdReader?: () => Effect.Effect<string, unknown>;
+  readonly pidNamespaceReader?: () => Effect.Effect<string, unknown>;
+  readonly filesystem?: LinuxRuntimeFilesystem;
+  readonly terminationPolicy?: RetryPolicy;
 }
 
 const runPhase = <A, E>(
@@ -69,19 +79,6 @@ const missingMachineRunnerError = (platform: "darwin" | "win32") =>
     remediation: "Run `lando setup` with the bundled provider runtime available, then retry the command.",
   });
 
-const readStalePid = (pidPath: string): Effect.Effect<number | undefined> =>
-  Effect.tryPromise({
-    try: async () => {
-      const raw = (await readFile(pidPath, "utf8")).trim();
-      if (!/^\d+$/u.test(raw)) return undefined;
-      return Number(raw);
-    },
-    catch: () => undefined,
-  }).pipe(Effect.catchAll((pid) => Effect.succeed(pid)));
-
-const bestEffortRm = (path: string): Effect.Effect<void> =>
-  Effect.promise(() => rm(path, { force: true })).pipe(Effect.catchAll(() => Effect.void));
-
 const writePidFile = (pidPath: string, pid: number): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
@@ -107,28 +104,9 @@ const writePidFile = (pidPath: string, pid: number): Effect.Effect<void, Provide
       }),
   });
 
-const reapStaleRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void> =>
-  Effect.gen(function* () {
-    const pid = yield* readStalePid(deps.pidPath);
-    if (pid !== undefined) {
-      const alive = yield* deps.serviceRunner.isAlive(pid);
-      const serviceProcess = alive
-        ? yield* deps.serviceRunner.isServiceProcess?.(pid, buildPodmanServiceArgs(deps)) ??
-            Effect.succeed(false)
-        : false;
-      if (serviceProcess) {
-        yield* deps.serviceRunner.terminate(pid);
-      }
-    }
-
-    yield* bestEffortRm(deps.socketPath);
-    yield* bestEffortRm(deps.pidPath);
-    yield* bestEffortRm(launchStatePath(deps.pidPath));
-  });
-
 const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> =>
   Effect.gen(function* () {
-    const pid = yield* readStalePid(deps.pidPath);
+    const pid = yield* readRuntimePid(deps.pidPath);
     if (pid === undefined) return false;
 
     const alive = yield* deps.serviceRunner.isAlive(pid);
@@ -140,30 +118,6 @@ const currentRuntimeIsOwned = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> 
 
     return yield* recordedLaunchMatchesSpec(deps.pidPath, pid, spec);
   });
-
-const findAliveServicePids = (
-  deps: EnsureRuntimeDeps,
-  find:
-    | ((spec: ReturnType<typeof buildPodmanServiceArgs>) => Effect.Effect<ReadonlyArray<number>>)
-    | undefined,
-): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    if (find === undefined) return [];
-
-    const spec = buildPodmanServiceArgs(deps);
-    const pids = yield* find(spec);
-    const alive: number[] = [];
-    for (const pid of pids) {
-      if (yield* deps.serviceRunner.isAlive(pid)) alive.push(pid);
-    }
-    return alive;
-  });
-
-const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
-  findAliveServicePids(deps, deps.serviceRunner.findMatchingServicePids);
-
-const findAliveManagedServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
-  findAliveServicePids(deps, deps.serviceRunner.findManagedServicePids);
 
 const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
@@ -248,32 +202,6 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
         yield* runPhase(deps, "readiness", Effect.void);
         return;
       }
-
-      if (
-        deps.serviceRunner.findMatchingServicePids !== undefined ||
-        deps.serviceRunner.findManagedServicePids !== undefined
-      ) {
-        const matchingPids = yield* findAliveMatchingServicePids(deps);
-        const managedPids = yield* findAliveManagedServicePids(deps);
-        const pidsToStop = [...new Set([...matchingPids, ...managedPids])];
-        if (pidsToStop.length === 0) {
-          const stalePid = yield* readStalePid(deps.pidPath);
-          if (stalePid !== undefined) {
-            const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
-            const serviceProcess =
-              staleAlive &&
-              (yield* deps.serviceRunner.isServiceProcess?.(stalePid, buildPodmanServiceArgs(deps)) ??
-                Effect.succeed(false));
-            if (serviceProcess) {
-              yield* deps.serviceRunner.terminate(stalePid);
-            }
-          }
-        } else {
-          for (const pid of pidsToStop) {
-            yield* deps.serviceRunner.terminate(pid);
-          }
-        }
-      }
     }
 
     yield* runPhase(
@@ -294,10 +222,28 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
     yield* runPhase(
       deps,
       "launch",
-      Effect.gen(function* () {
-        yield* reapStaleRuntime(deps);
-        yield* launchRuntime(deps);
-      }),
+      withAdvisoryLock(
+        `${deps.runRoot}.generation`,
+        "ensure-lando-runtime",
+        Effect.gen(function* () {
+          if (yield* currentRuntimeIsOwned(deps)) return;
+          yield* reapStaleLinuxRuntime(deps);
+          yield* launchRuntime(deps);
+        }),
+      ).pipe(
+        Effect.mapError((cause) =>
+          cause instanceof StateStoreError
+            ? new ProviderUnavailableError({
+                providerId: "lando",
+                operation: "setup",
+                message: "Failed to acquire the Lando runtime launch lock.",
+                remediation: "Wait for the current runtime launch to finish, then retry the command.",
+                details: { lockTarget: `${deps.runRoot}.generation` },
+                cause,
+              })
+            : cause,
+        ),
+      ),
     );
     yield* runPhase(deps, "readiness", verifyRuntimeReachable(deps));
   });

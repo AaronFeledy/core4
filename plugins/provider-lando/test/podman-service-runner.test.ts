@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 
 import {
   type PodmanServiceRunner,
@@ -117,9 +117,11 @@ describe("PodmanServiceRunner", () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
     try {
       let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
-      const runner = makeSystemPodmanServiceRunner((_argv, options) => {
-        launchedEnv = options.env;
-        return { pid: 4321 };
+      const runner = makeSystemPodmanServiceRunner({
+        spawn: (_argv, options) => {
+          launchedEnv = options.env;
+          return { pid: 4321 };
+        },
       });
       const spec = buildPodmanServiceArgs({
         podmanBin: "/data/runtime/bin/podman",
@@ -193,7 +195,7 @@ describe("PodmanServiceRunner", () => {
     const fakeRunner: PodmanServiceRunner = {
       launch: () => Effect.succeed(4321),
       isAlive: () => Effect.succeed(true),
-      terminate: () => Effect.void,
+      terminate: (_pid, _spec) => Effect.void,
     };
 
     const pid = await Effect.runPromise(
@@ -204,10 +206,59 @@ describe("PodmanServiceRunner", () => {
       }),
     );
     const isAlive = await Effect.runPromise(fakeRunner.isAlive(4321));
-    const terminateResult = await Effect.runPromise(fakeRunner.terminate(4321));
+    const terminateResult = await Effect.runPromise(
+      fakeRunner.terminate(4321, {
+        command: "/data/runtime/bin/podman",
+        args: ["system", "service", "--time=0", "unix:///data/runtime/run/podman.sock"],
+        socketPath: "/data/runtime/run/podman.sock",
+      }),
+    );
 
     expect(pid).toBe(4321);
     expect(isAlive).toBe(true);
     expect(terminateResult).toBeUndefined();
+  });
+
+  test("system runner revalidates managed identity at the signal boundary", async () => {
+    const signals: number[] = [];
+    const runner = makeSystemPodmanServiceRunner({
+      host: {
+        isAlive: () => true,
+        readArgv: () => Effect.succeed(["/usr/bin/unrelated", "worker"]),
+        signal: (pid) => Effect.sync(() => signals.push(pid)).pipe(Effect.asVoid),
+      },
+    });
+    const spec = buildPodmanServiceArgs({
+      podmanBin: "/data/runtime/bin/podman",
+      storageDir: "/data/runtime/storage",
+      runRoot: "/data/runtime/run",
+      configDir: "/data/runtime/config",
+      socketPath: "/data/runtime/run/podman.sock",
+    });
+
+    await Effect.runPromise(runner.terminate(4321, spec));
+
+    expect(signals).toEqual([]);
+  });
+
+  test("system runner surfaces signal failures for managed identity", async () => {
+    const spec = buildPodmanServiceArgs({
+      podmanBin: "/data/runtime/bin/podman",
+      storageDir: "/data/runtime/storage",
+      runRoot: "/data/runtime/run",
+      configDir: "/data/runtime/config",
+      socketPath: "/data/runtime/run/podman.sock",
+    });
+    const runner = makeSystemPodmanServiceRunner({
+      host: {
+        isAlive: () => true,
+        readArgv: () => Effect.succeed([spec.command, ...spec.args]),
+        signal: () => Effect.fail(new Error("EPERM")),
+      },
+    });
+
+    const exit = await Effect.runPromiseExit(runner.terminate(4321, spec));
+
+    expect(Exit.isFailure(exit)).toBe(true);
   });
 });

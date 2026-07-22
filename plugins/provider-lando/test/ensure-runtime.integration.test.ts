@@ -174,7 +174,7 @@ const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => ({
     }),
   isAlive: () => Effect.succeed(false),
   isServiceProcess: () => Effect.succeed(false),
-  terminate: () => Effect.void,
+  terminate: (_pid, _spec) => Effect.void,
 });
 
 const withRuntimeProvider = async <A>(
@@ -192,7 +192,7 @@ const withRuntimeProvider = async <A>(
         podmanApi: makeFakePodmanApi(events, pingSuccessesBeforeEnsureFailure, launchesBeforePingSuccess),
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         podmanService: makeFakeServiceRunner(events),
-        providerSocketPath: join(tempDir, "podman.sock"),
+        providerSocketPath: join(tempDir, "run", "podman.sock"),
         runtimeBinDir: join(tempDir, "bin"),
         runtimeStorageDir: join(tempDir, "storage"),
         runtimeRunDir: join(tempDir, "run"),

@@ -1,11 +1,16 @@
 import { closeSync, mkdirSync, openSync, readFileSync } from "node:fs";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
 import { buildManagedRuntimeServiceArgs } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+
+import { type PodmanServiceHost, makePodmanServiceProcessController } from "./podman-service-process.ts";
+
+export { RuntimeTerminationError, isManagedPodmanServiceArgv } from "./podman-service-process.ts";
+export type { PodmanServiceHost } from "./podman-service-process.ts";
 
 export interface PodmanServiceSpec {
   readonly command: string;
@@ -116,7 +121,7 @@ export interface PodmanServiceRunner {
   readonly isServiceProcess?: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<boolean>;
   readonly findMatchingServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
   readonly findManagedServicePids?: (spec: PodmanServiceSpec) => Effect.Effect<ReadonlyArray<number>>;
-  readonly terminate: (pid: number) => Effect.Effect<void>;
+  readonly terminate: (pid: number, spec: PodmanServiceSpec) => Effect.Effect<void, ProviderUnavailableError>;
 }
 
 export interface PodmanServiceLaunchOptions {
@@ -136,135 +141,53 @@ export type PodmanServiceSpawn = (
   options: PodmanServiceLaunchOptions,
 ) => PodmanServiceProcess;
 
+export interface SystemPodmanServiceRunnerOptions {
+  readonly spawn?: PodmanServiceSpawn;
+  readonly host?: PodmanServiceHost;
+}
+
 const defaultPodmanServiceSpawn: PodmanServiceSpawn = (argv, options) => Bun.spawn([...argv], options);
 
-const readProcessArgv = (pid: number): Effect.Effect<ReadonlyArray<string>> =>
-  Effect.tryPromise({
-    try: async () => {
-      const raw = await readFile(`/proc/${pid}/cmdline`, "utf8");
-      return raw.split("\0").filter((part) => part.length > 0);
-    },
-    catch: () => [],
-  }).pipe(Effect.catchAll((argv) => Effect.succeed(argv)));
-
-const sameArgv = (actual: ReadonlyArray<string>, expected: ReadonlyArray<string>): boolean =>
-  actual.length === expected.length && actual.every((arg, index) => arg === expected[index]);
-
-const argvFlagValue = (argv: ReadonlyArray<string>, flag: string): string | undefined => {
-  const index = argv.indexOf(flag);
-  if (index < 0 || index + 1 >= argv.length) return undefined;
-  return argv[index + 1];
-};
-
-const isPodmanSystemServiceArgv = (argv: ReadonlyArray<string>): boolean => {
-  const systemIndex = argv.indexOf("system");
-  return systemIndex >= 0 && argv[systemIndex + 1] === "service";
-};
-
-export const isManagedPodmanServiceArgv = (argv: ReadonlyArray<string>, spec: PodmanServiceSpec): boolean => {
-  if (argv[0] !== spec.command || !isPodmanSystemServiceArgv(argv)) return false;
-
-  const expectedArgv = [spec.command, ...spec.args];
-  const root = argvFlagValue(argv, "--root");
-  const runroot = argvFlagValue(argv, "--runroot");
-  const config = argvFlagValue(argv, "--config");
-  if (
-    root !== argvFlagValue(expectedArgv, "--root") ||
-    runroot !== argvFlagValue(expectedArgv, "--runroot") ||
-    config !== argvFlagValue(expectedArgv, "--config")
-  ) {
-    return false;
-  }
-
-  const socketBind = argv.at(-1);
-  const expectedSocket = `unix://${spec.socketPath}`;
-  return socketBind === expectedSocket;
-};
-
-const listProcPids = (): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.tryPromise({
-    try: async () => {
-      const entries = await readdir("/proc");
-      return entries.filter((entry) => /^\d+$/u.test(entry)).map((entry) => Number(entry));
-    },
-    catch: () => [] as number[],
-  }).pipe(Effect.catchAll(() => Effect.succeed([] as number[])));
-
-const findMatchingServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const expected = [spec.command, ...spec.args];
-    const pids = yield* listProcPids();
-    const matching: number[] = [];
-    for (const pid of pids) {
-      const argv = yield* readProcessArgv(pid);
-      if (sameArgv(argv, expected)) matching.push(pid);
-    }
-    return matching;
-  });
-
-const findManagedPodmanServicePidsOnHost = (spec: PodmanServiceSpec): Effect.Effect<ReadonlyArray<number>> =>
-  Effect.gen(function* () {
-    const pids = yield* listProcPids();
-    const matching: number[] = [];
-    for (const pid of pids) {
-      const argv = yield* readProcessArgv(pid);
-      if (isManagedPodmanServiceArgv(argv, spec)) matching.push(pid);
-    }
-    return matching;
-  });
-
 export const makeSystemPodmanServiceRunner = (
-  spawn: PodmanServiceSpawn = defaultPodmanServiceSpawn,
-): PodmanServiceRunner => ({
-  launch: (spec) =>
-    Effect.try({
-      try: () => {
-        const logPath = podmanServiceLogPath(spec.socketPath);
-        mkdirSync(dirname(logPath), { recursive: true });
-        const logFile = openSync(logPath, "w");
-        const proc = (() => {
-          try {
-            return spawn([spec.command, ...spec.args], {
-              env: { ...process.env, ...spec.env },
-              stdout: logFile,
-              stderr: logFile,
-              detached: true,
-            });
-          } finally {
-            closeSync(logFile);
-          }
-        })();
-        proc.unref?.();
-        return proc.pid;
-      },
-      catch: (cause) =>
-        cause instanceof RuntimeLaunchError
-          ? cause
-          : new RuntimeLaunchError(
-              "Failed to launch the Lando runtime service.",
-              cause,
-              readPodmanServiceLogTailSync(spec.socketPath),
-            ),
-    }),
-  isAlive: (pid) =>
-    Effect.sync(() => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    }),
-  isServiceProcess: (pid, spec) =>
-    readProcessArgv(pid).pipe(Effect.map((argv) => sameArgv(argv, [spec.command, ...spec.args]))),
-  findMatchingServicePids: findMatchingServicePidsOnHost,
-  findManagedServicePids: findManagedPodmanServicePidsOnHost,
-  terminate: (pid) =>
-    Effect.sync(() => {
-      try {
-        process.kill(pid, "SIGTERM");
-      } catch {
-        return;
-      }
-    }),
-});
+  options: SystemPodmanServiceRunnerOptions = {},
+): PodmanServiceRunner => {
+  const spawn = options.spawn ?? defaultPodmanServiceSpawn;
+  const processes = makePodmanServiceProcessController(options.host);
+  return {
+    launch: (spec) =>
+      Effect.try({
+        try: () => {
+          const logPath = podmanServiceLogPath(spec.socketPath);
+          mkdirSync(dirname(logPath), { recursive: true });
+          const logFile = openSync(logPath, "w");
+          const proc = (() => {
+            try {
+              return spawn([spec.command, ...spec.args], {
+                env: { ...process.env, ...spec.env },
+                stdout: logFile,
+                stderr: logFile,
+                detached: true,
+              });
+            } finally {
+              closeSync(logFile);
+            }
+          })();
+          proc.unref?.();
+          return proc.pid;
+        },
+        catch: (cause) =>
+          cause instanceof RuntimeLaunchError
+            ? cause
+            : new RuntimeLaunchError(
+                "Failed to launch the Lando runtime service.",
+                cause,
+                readPodmanServiceLogTailSync(spec.socketPath),
+              ),
+      }),
+    isAlive: processes.isAlive,
+    isServiceProcess: processes.isServiceProcess,
+    findMatchingServicePids: processes.findMatchingServicePids,
+    findManagedServicePids: processes.findManagedServicePids,
+    terminate: processes.terminate,
+  };
+};
