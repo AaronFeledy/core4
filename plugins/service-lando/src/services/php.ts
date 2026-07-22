@@ -28,6 +28,14 @@ const PHP_ARCHIVE_SUPPORT_COMMAND =
   "apt-get update && apt-get install -y --no-install-recommends unzip && rm -rf /var/lib/apt/lists/*";
 const PHP_COMMON_EXTENSIONS_COMMAND =
   'apt-get update && apt-get install -y --no-install-recommends libfreetype6-dev libicu-dev libjpeg62-turbo-dev libpng-dev libpq-dev libzip-dev && docker-php-ext-configure gd --with-freetype --with-jpeg && docker-php-ext-install -j"$(nproc)" gd intl pdo_mysql pdo_pgsql zip && rm -rf /var/lib/apt/lists/*';
+const PHP_APACHE_START_COMMAND = [
+  "set -eu",
+  'document_root="${APACHE_DOCUMENT_ROOT:-/var/www/html}"',
+  'sed -ri "s!/var/www/html!${document_root}!g" /etc/apache2/sites-available/*.conf',
+  'printf "%s\\n" "<Directory \\"${document_root}\\">" "  Options -Indexes +FollowSymLinks" "  AllowOverride All" "  Require all granted" "</Directory>" > /etc/apache2/conf-available/lando-document-root.conf',
+  "a2enconf lando-document-root >/dev/null",
+  "exec apache2-foreground",
+].join("; ");
 
 const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   {
@@ -117,6 +125,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
       command: PHP_COMMON_EXTENSIONS_COMMAND,
     });
     ctx.addBuildStep({ id: "service-lando.php:composer", phase: "build", command: COMPOSER_INSTALL_COMMAND });
+    ctx.setCommand(["sh", "-c", PHP_APACHE_START_COMMAND]);
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);

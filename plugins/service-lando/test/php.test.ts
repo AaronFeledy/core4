@@ -103,6 +103,10 @@ describe("php:8.2 ServiceType", () => {
     );
     expect(buildSteps.findIndex(isArchiveSupport)).toBeLessThan(buildSteps.findIndex(isComposer));
     expect(buildSteps.findIndex(isCommonExtensions)).toBeLessThan(buildSteps.findIndex(isComposer));
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toMatch(
+      /^(?=.*APACHE_DOCUMENT_ROOT)(?=.*sites-available)(?=.*lando-document-root\.conf)(?=.*AllowOverride All)(?=.*Require all granted)(?=.*apache2-foreground).*$/,
+    );
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
@@ -216,6 +220,7 @@ describe("php:8.2 ServiceType", () => {
     expect(buildStepsFor(plan).filter(isArchiveSupport)).toHaveLength(0);
     expect(buildStepsFor(plan).filter(isCommonExtensions)).toHaveLength(0);
     expect(buildStepsFor(plan).filter(isComposer)).toHaveLength(0);
+    expect(plan.command).toBeUndefined();
     expect(plan.endpoints).toEqual([{ port: 8080, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
