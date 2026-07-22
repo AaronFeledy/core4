@@ -236,9 +236,7 @@ describe("lando restart", () => {
     expect(result.servicesStarted.map((service) => [service.name, service.state])).toEqual([
       ["web", "running"],
     ]);
-    expect(renderRestartAppResult(result)).toBe(
-      "restarted: test-restart - web (running) http://localhost:3000",
-    );
+    expect(renderRestartAppResult(result)).toBe("restarted: test-restart - web (running) no endpoints");
   });
 
   test("fails outside an app directory with init remediation", async () => {

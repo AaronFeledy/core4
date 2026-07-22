@@ -11,7 +11,7 @@ import type {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanResolver,
   type FileSystem,
@@ -21,6 +21,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { hostEndpointText } from "../../authority-url.ts";
 import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
 import {
   type SummaryDocument,
@@ -134,11 +135,11 @@ const selectedServices = (
   return Effect.succeed(matched);
 };
 
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
+const hostEndpointTexts = (service: ServicePlan): ReadonlyArray<string> =>
+  service.endpoints.flatMap((endpoint) => {
+    const text = hostEndpointText(endpoint);
+    return text === undefined ? [] : [text];
+  });
 
 const globalStatusTone = (status: GlobalStatusService["status"]): SummaryTone => {
   switch (status) {
@@ -227,7 +228,7 @@ export const globalStatus = (
       provider: String(service.provider),
       primary: service.primary,
       status: "unknown",
-      endpoints: service.endpoints.map(endpointText),
+      endpoints: hostEndpointTexts(service),
     });
 
     // Intentional: provider-unavailable degrades to "unknown" so status reports the materialized stack even when nothing is running.
@@ -246,7 +247,13 @@ export const globalStatus = (
             provider: String(service.provider),
             primary: service.primary,
             status,
-            endpoints: status === "stopped" ? [] : (runtime.endpoints ?? service.endpoints).map(endpointText),
+            endpoints:
+              status === "stopped"
+                ? []
+                : (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
+                    const text = hostEndpointText(endpoint);
+                    return text === undefined ? [] : [text];
+                  }),
           };
         }),
         Effect.catchAll(() => Effect.succeed(degraded(service))),

@@ -227,7 +227,7 @@ describe("resolveOpenTargets", () => {
     expect(resolveOpenTargets(p, { route: "nope.lndo.site" })).toEqual([]);
   });
 
-  test("S5 falls back to http endpoints when no matching route exists", () => {
+  test("S5 ignores unpublished endpoints when no matching route exists", () => {
     const p = plan(
       [],
       [
@@ -238,16 +238,10 @@ describe("resolveOpenTargets", () => {
         ]),
       ],
     );
-    expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://localhost:8443"]);
-    expect(resolveOpenTargets(p, { service: "web" }).map((r) => r.url)).toEqual(["https://localhost:8443"]);
-    expect(resolveOpenTargets(p, { all: true, service: "web" }).map((r) => r.url)).toEqual([
-      "http://localhost:8080",
-      "https://localhost:8443",
-    ]);
-    expect(resolveOpenTargets(p, { all: true }).map((r) => r.url)).toEqual([
-      "http://localhost:8080",
-      "https://localhost:8443",
-    ]);
+    expect(resolveOpenTargets(p, {})).toEqual([]);
+    expect(resolveOpenTargets(p, { service: "web" })).toEqual([]);
+    expect(resolveOpenTargets(p, { all: true, service: "web" })).toEqual([]);
+    expect(resolveOpenTargets(p, { all: true })).toEqual([]);
   });
 
   test("S5 endpoint fallback uses the published host authority", () => {

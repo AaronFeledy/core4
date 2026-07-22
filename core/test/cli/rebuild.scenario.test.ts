@@ -303,9 +303,7 @@ describe("lando rebuild", () => {
     expect(harness.destroyCalls[0]?.options).toEqual({ volumes: false, removeState: false });
     expect(harness.applyCalls).toEqual([{ reconcile: true }]);
     expect(result.servicesRebuilt).toEqual(["web"]);
-    expect(renderRebuildAppResult(result)).toBe(
-      "rebuilt: test-rebuild - web (running) http://localhost:3000",
-    );
+    expect(renderRebuildAppResult(result)).toBe("rebuilt: test-rebuild - web (running) no endpoints");
   });
 
   test("reruns cached app build steps after a successful start", async () => {

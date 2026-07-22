@@ -18,7 +18,7 @@ import type {
 } from "@lando/sdk/errors";
 import { GlobalServiceMissingError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, EndpointPlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanResolver,
   BuildOrchestrator,
@@ -32,18 +32,13 @@ import {
 } from "@lando/sdk/services";
 
 import { withBuildProvider } from "../../../services/build-orchestrator.ts";
+import { hostEndpointText } from "../../authority-url.ts";
 import { globalInstall } from "./global-install.ts";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const globalAppRef = (plan: AppPlan): AppRef => ({ kind: "global", id: plan.id, root: plan.root });
-
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
 
 export interface EnsureGlobalServicesOptions {
   readonly services: ReadonlyArray<string>;
@@ -169,7 +164,10 @@ export const ensureGlobalServicesRunning = (
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
-          endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+          endpoints: (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
+            const text = hostEndpointText(endpoint);
+            return text === undefined ? [] : [text];
+          }),
         })),
       ),
     );

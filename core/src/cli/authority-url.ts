@@ -1,4 +1,4 @@
-import type { EndpointPlan, RoutePlan } from "@lando/sdk/schema";
+import { type EndpointPlan, type RoutePlan, isHostPublishedEndpoint } from "@lando/sdk/schema";
 
 export type HttpScheme = "http" | "https";
 type AuthorityProtocol = HttpScheme | "memcached" | "postgresql" | "redis" | "tcp" | "udp" | "valkey";
@@ -36,14 +36,24 @@ export const routeUrl = (route: RoutePlan, scheme: HttpScheme): URL => {
   return url;
 };
 
-export const endpointHostname = (endpoint: EndpointPlan): string => endpoint.bind ?? "localhost";
+const WILDCARD_BINDS = new Set(["0.0.0.0", "::", "[::]"]);
 
-export const endpointUrl = (endpoint: EndpointPlan, protocol: AuthorityProtocol): URL => {
+export const endpointHostname = (endpoint: EndpointPlan): string =>
+  endpoint.bind === undefined || WILDCARD_BINDS.has(endpoint.bind) ? "localhost" : endpoint.bind;
+
+export const endpointUrl = (endpoint: EndpointPlan, protocol: AuthorityProtocol): URL | undefined => {
+  if (!isHostPublishedEndpoint(endpoint)) return undefined;
   const url = new URL(AUTHORITY_BASE_URL[protocol]);
   setHostname(url, endpointHostname(endpoint));
   const port = endpoint.publishedPort ?? endpoint.port;
   if (port !== undefined) url.port = String(port);
   return url;
+};
+
+export const hostEndpointText = (endpoint: EndpointPlan): string | undefined => {
+  if (endpoint.protocol === "unix") return undefined;
+  const url = endpointUrl(endpoint, endpoint.protocol);
+  return url === undefined ? undefined : formatAuthorityUrl(url);
 };
 
 export const formatAuthorityUrl = (url: URL): string =>

@@ -7,7 +7,13 @@ import type {
   InfoAppService,
   InfoServiceStatus,
 } from "@lando/sdk/app";
-import type { AppPlan, EndpointPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type EndpointPlan,
+  type LandofileShape,
+  type ServicePlan,
+  isHostPublishedEndpoint,
+} from "@lando/sdk/schema";
 import {
   AppPlanResolver,
   type ConfigService,
@@ -90,24 +96,30 @@ const statusText = (status: string | undefined): InfoServiceStatus => {
 };
 
 const endpointText = (service: ServicePlan, endpoint: EndpointPlan): ReadonlyArray<string> => {
-  if (endpoint.socketPath !== undefined) return [`${endpoint.protocol}:${endpoint.socketPath}`];
-  if (endpoint.port === undefined) return [endpoint.protocol];
+  if (!isHostPublishedEndpoint(endpoint)) return [];
   if (service.type === "postgres") {
     const user = service.environment.POSTGRES_USER ?? "lando";
     const database = service.environment.POSTGRES_DB ?? "postgres";
     const url = endpointUrl(endpoint, "postgresql");
+    if (url === undefined) return [];
     url.username = user;
     url.pathname = database;
     return [formatAuthorityUrl(url)];
   }
-  if (service.type === "memcached" && endpoint.protocol === "tcp")
-    return [formatAuthorityUrl(endpointUrl(endpoint, "memcached"))];
-  if (service.type === "valkey" && endpoint.protocol === "tcp")
-    return [
-      formatAuthorityUrl(endpointUrl(endpoint, "valkey")),
-      formatAuthorityUrl(endpointUrl(endpoint, "redis")),
-    ];
-  return [formatAuthorityUrl(endpointUrl(endpoint, endpoint.protocol))];
+  if (service.type === "memcached" && endpoint.protocol === "tcp") {
+    const url = endpointUrl(endpoint, "memcached");
+    return url === undefined ? [] : [formatAuthorityUrl(url)];
+  }
+  if (service.type === "valkey" && endpoint.protocol === "tcp") {
+    const valkey = endpointUrl(endpoint, "valkey");
+    const redis = endpointUrl(endpoint, "redis");
+    return valkey === undefined || redis === undefined
+      ? []
+      : [formatAuthorityUrl(valkey), formatAuthorityUrl(redis)];
+  }
+  if (endpoint.protocol === "unix") return [];
+  const url = endpointUrl(endpoint, endpoint.protocol);
+  return url === undefined ? [] : [formatAuthorityUrl(url)];
 };
 
 const routeText = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> =>

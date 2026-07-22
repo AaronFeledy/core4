@@ -402,7 +402,7 @@ describe("meta:global command effects", () => {
       expect(result.materialized && result.plan.services.traefik?.endpoints).toEqual([
         { protocol: "http", port: 80, name: "http" },
       ]);
-      expect(result.materialized && result.routeAuthorityPorts).toEqual({ http: 80 });
+      expect(result.materialized && result.routeAuthorityPorts).toBeUndefined();
     });
   });
 
@@ -427,6 +427,7 @@ describe("meta:global command effects", () => {
         "proxy",
       ]);
       expect(result.servicesStarted.map((service) => service.name).sort()).toEqual(["mail", "proxy"]);
+      expect(result.servicesStarted.every((service) => service.endpoints.length === 0)).toBe(true);
     });
   });
 
@@ -647,7 +648,7 @@ describe("meta:global command effects", () => {
         expect(result.materialized).toBe(true);
         expect(result.services.map((service) => service.service).sort()).toEqual(["mail", "proxy"]);
         expect(result.services.every((service) => service.status === "unknown")).toBe(true);
-        expect(result.services.every((service) => service.endpoints.length > 0)).toBe(true);
+        expect(result.services.every((service) => service.endpoints.length === 0)).toBe(true);
       },
       { failInspect: true },
     );
@@ -821,7 +822,7 @@ describe("meta:global command effects", () => {
       expect(result.app).toBe("global");
       expect(result.services.map((service) => service.service).sort()).toEqual(["mail", "proxy"]);
       expect(result.services.every((service) => service.status === "running")).toBe(true);
-      expect(result.services.every((service) => service.endpoints.length > 0)).toBe(true);
+      expect(result.services.flatMap((service) => service.endpoints)).not.toContain("http://localhost:8080");
     });
   });
 

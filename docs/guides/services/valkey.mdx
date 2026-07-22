@@ -23,10 +23,9 @@ tags: [beta, docs, valkey, service]
     </Step>
   </Scenario>
 
-  <Scenario id="dual-scheme-endpoint" render={false} reason="lando info advertises both valkey:// (primary) and redis:// (alias) so new and existing client libraries connect without code changes">
+  <Scenario id="internal-endpoint" render={false} reason="Valkey's semantic endpoint stays internal unless the service explicitly publishes a host bind or port">
     <Step name="endpoints">
-      <Variable name="primaryScheme" value="valkey://localhost:6379" display="Primary endpoint scheme exposed by lando info" />
-      <Variable name="aliasScheme" value="redis://localhost:6379" display="Redis-compatible alias scheme for existing client libraries" />
+      <Variable name="internalAddress" value="cache:6379" display="Internal service address; lando info does not fabricate a localhost URL" />
     </Step>
   </Scenario>
 

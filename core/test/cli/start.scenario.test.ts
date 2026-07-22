@@ -651,8 +651,11 @@ describe("lando start", () => {
       ["database", "running"],
     ]);
     expect(renderStartAppResult(result)).toContain("ready: test-start");
-    expect(renderStartAppResult(result)).toContain("web (running) http://localhost:3000");
-    expect(renderStartAppResult(result)).toContain("database (running) tcp://localhost:5432");
+    expect(renderStartAppResult(result)).toContain("web (running) no endpoints");
+    expect(renderStartAppResult(result)).toContain("database (running) no endpoints");
+    expect(plan.services[ServiceName.make("web")]?.endpoints).toEqual([
+      { port: 3000, protocol: "http", name: "http" },
+    ]);
   });
 
   test("uses the captured scratch AppRef when starting a resolved scratch target", async () => {

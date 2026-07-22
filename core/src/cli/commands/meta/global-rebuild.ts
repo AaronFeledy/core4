@@ -16,7 +16,7 @@ import type {
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, EndpointPlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanResolver,
   BuildOrchestrator,
@@ -29,6 +29,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { hostEndpointText } from "../../authority-url.ts";
 import { globalInstall } from "./global-install.ts";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
@@ -91,12 +92,6 @@ export type GlobalRebuildServices =
   | PluginRegistry
   | RuntimeProviderRegistry;
 
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
-
 export const globalRebuild = (
   options: GlobalRebuildOptions = {},
 ): Effect.Effect<GlobalRebuildResult, GlobalRebuildError, GlobalRebuildServices> =>
@@ -140,7 +135,10 @@ export const globalRebuild = (
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
-          endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+          endpoints: (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
+            const text = hostEndpointText(endpoint);
+            return text === undefined ? [] : [text];
+          }),
         })),
       ),
     );

@@ -29,6 +29,7 @@ import {
 import type { RedactionService } from "../../redaction/service.ts";
 import { withBuildProvider } from "../../services/build-orchestrator.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
+import { hostEndpointText } from "../authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
@@ -71,16 +72,6 @@ type StartAppServices =
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
-
-const endpointText = (endpoint: {
-  readonly protocol: string;
-  readonly port?: number | undefined;
-  readonly socketPath?: string | undefined;
-}) => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
 
 const READY_STATES = new Set(["running", "ready"]);
 
@@ -201,7 +192,10 @@ export const startApp = (
                 Effect.map((runtime) => ({
                   name: String(service.name),
                   state: runtime.state ?? runtime.status,
-                  endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+                  endpoints: (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
+                    const text = hostEndpointText(endpoint);
+                    return text === undefined ? [] : [text];
+                  }),
                 })),
               ),
             );

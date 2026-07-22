@@ -1,6 +1,12 @@
 import { Schema } from "effect";
 
-import type { AppPlan, EndpointPlan, RoutePlan, ServicePlan } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type EndpointPlan,
+  type RoutePlan,
+  type ServicePlan,
+  isHostPublishedEndpoint,
+} from "@lando/sdk/schema";
 
 import {
   type HttpScheme,
@@ -51,13 +57,19 @@ const buildOpenTargets = (route: RoutePlan): ReadonlyArray<OpenTarget> =>
   routeSchemes(route, true).map((scheme) => openTargetForScheme(route, scheme));
 
 const endpointOpenTarget = (service: ServicePlan, endpoint: EndpointPlan): OpenTarget | undefined => {
-  if ((endpoint.protocol !== "http" && endpoint.protocol !== "https") || endpoint.port === undefined)
+  if (
+    !isHostPublishedEndpoint(endpoint) ||
+    (endpoint.protocol !== "http" && endpoint.protocol !== "https") ||
+    endpoint.port === undefined
+  )
     return undefined;
+  const url = endpointUrl(endpoint, endpoint.protocol);
+  if (url === undefined) return undefined;
   return {
     service: String(service.name),
     hostname: endpointHostname(endpoint),
     scheme: endpoint.protocol,
-    url: formatAuthorityUrl(endpointUrl(endpoint, endpoint.protocol)),
+    url: formatAuthorityUrl(url),
   };
 };
 

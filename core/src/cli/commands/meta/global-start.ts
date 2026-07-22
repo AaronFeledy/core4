@@ -17,7 +17,7 @@ import type {
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanResolver,
   BuildOrchestrator,
@@ -31,6 +31,7 @@ import {
 } from "@lando/sdk/services";
 
 import { withBuildProvider } from "../../../services/build-orchestrator.ts";
+import { hostEndpointText } from "../../authority-url.ts";
 import { globalInstall } from "./global-install.ts";
 import { type LoadGlobalPlanError, loadGlobalPlan } from "./global-plan.ts";
 
@@ -126,12 +127,6 @@ const selectedServices = (
   return Effect.succeed(matched);
 };
 
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
-
 const READY_STATES = new Set(["running", "ready"]);
 
 const isGlobalStartReady = (result: GlobalStartResult): boolean =>
@@ -203,7 +198,10 @@ export const globalStart = (
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
-          endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+          endpoints: (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
+            const text = hostEndpointText(endpoint);
+            return text === undefined ? [] : [text];
+          }),
         })),
       ),
     );

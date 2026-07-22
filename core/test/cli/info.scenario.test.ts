@@ -261,14 +261,15 @@ const makeInfoLayer = (
 };
 
 describe("lando info", () => {
-  test("prints running services with endpoint URLs as plain text", async () => {
+  test("prints running services without unpublished endpoint URLs as plain text", async () => {
     const result = await Effect.runPromise(infoApp().pipe(Effect.provide(makeInfoLayer("running"))));
     const output = renderInfoAppResult(result);
 
-    expect(output).toMatch(/node\s+running\s+http:\/\/localhost:3000/);
-    expect(output).toMatch(/postgres\s+running\s+postgresql:\/\/lando@localhost:5432\/appdb/);
-    expect(output).toMatch(/memcached\s+running\s+memcached:\/\/localhost:11211/);
-    expect(output).toMatch(/valkey\s+running\s+valkey:\/\/localhost:6379,\s*redis:\/\/localhost:6379/);
+    expect(output).toMatch(/node\s+running\s+no endpoints/);
+    expect(output).toMatch(/postgres\s+running\s+no endpoints/);
+    expect(output).toMatch(/memcached\s+running\s+no endpoints/);
+    expect(output).toMatch(/valkey\s+running\s+no endpoints/);
+    expect(output).not.toContain("localhost");
     expect(output).not.toContain(`${String.fromCharCode(27)}[`);
   });
 
@@ -316,6 +317,32 @@ describe("lando info", () => {
     expect(output).toContain("https://node.test-info.lndo.site:38443/app");
     expect(output).toContain("http://127.0.0.1:38081");
     expect(output).not.toContain("localhost:3000");
+  });
+
+  test("excludes unpublished semantic endpoints from host endpoint summaries", async () => {
+    // Given
+    const internalNode: ServicePlan = {
+      ...node,
+      endpoints: [{ protocol: "http", port: 80, name: "http" }],
+    };
+    const internalPlan: AppPlan = {
+      ...plan,
+      services: { [internalNode.name]: internalNode },
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      infoApp().pipe(Effect.provide(makeInfoLayer("running", { plannedApp: internalPlan }))),
+    );
+    const output = renderInfoAppResult(result);
+
+    // Then
+    expect(internalPlan.services[internalNode.name]?.endpoints).toEqual([
+      { protocol: "http", port: 80, name: "http" },
+    ]);
+    expect(result.services[0]?.endpoints).toEqual([]);
+    expect(output).toContain("no endpoints");
+    expect(output).not.toContain("http://localhost");
   });
 
   test("prints stopped services without endpoints", async () => {
