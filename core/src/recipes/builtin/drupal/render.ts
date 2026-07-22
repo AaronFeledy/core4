@@ -1,6 +1,16 @@
 import type { RecipeRenderer } from "../registry.ts";
 import { DRUPAL_RECIPE_ID } from "./manifest.ts";
 
+const DRUPAL_SCAFFOLD_COMMAND = [
+  "set -eu",
+  'test ! -e /app/composer.json || { echo "Drupal is already scaffolded at /app." >&2; exit 1; }',
+  "destination=$(mktemp -d /tmp/lando-drupal-scaffold.XXXXXX)",
+  "trap 'rm -rf \"$destination\"' EXIT",
+  'composer create-project drupal/recommended-project "$destination"',
+  'composer require --working-dir="$destination" drush/drush',
+  'cp -a "$destination"/. /app/',
+].join("; ");
+
 const renderLandofile = (appName: string, php: string, database: string): string =>
   [
     `name: ${appName}`,
@@ -20,12 +30,16 @@ const renderLandofile = (appName: string, php: string, database: string): string
     "    service: appserver",
     "    description: Run Drush inside the appserver service.",
     "    cmds:",
-    "      - drush",
+    "      - vendor/bin/drush",
     "  composer:",
     "    service: appserver",
     "    description: Run Composer inside the appserver service.",
     "    cmds:",
     "      - composer",
+    "  drupal-scaffold:",
+    "    service: appserver",
+    "    description: Scaffold Drupal 11 into the mounted app root.",
+    `    cmd: ${JSON.stringify(DRUPAL_SCAFFOLD_COMMAND)}`,
     "",
   ].join("\n");
 

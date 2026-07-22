@@ -73,7 +73,7 @@ const CANONICAL_CASES: ReadonlyArray<CanonicalCase> = [
       { name: "appserver", type: "php:8.3" },
       { name: "database", type: "mariadb" },
     ],
-    expectedTooling: ["drush", "composer"],
+    expectedTooling: ["drush", "composer", "drupal-scaffold"],
   },
   {
     recipe: "drupal-cms",
