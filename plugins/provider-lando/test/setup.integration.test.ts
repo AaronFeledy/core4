@@ -858,6 +858,23 @@ describe("provider-lando setup runtime bundle extraction", () => {
       expect(await readFile(join(runtimeConfigDir, "containers.conf"), "utf8")).toContain(
         `helper_binaries_dir = ["${runtimeBinDir}"]`,
       );
+      expect(await readFile(join(runtimeConfigDir, "containers", "policy.json"), "utf8")).toBe(`{
+  "default": [
+    {
+      "type": "insecureAcceptAnything"
+    }
+  ],
+  "transports": {
+    "docker-daemon": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    }
+  }
+}
+`);
       expect(existsSync(join(runtimeBinDir, "podman"))).toBe(true);
       expect(existsSync(join(runtimeBinDir, "gvproxy"))).toBe(true);
       expect(statSync(join(runtimeBinDir, "podman")).mode & 0o111).not.toBe(0);
