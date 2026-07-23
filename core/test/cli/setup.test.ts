@@ -2110,7 +2110,7 @@ describe("meta:setup command", () => {
         const { registry, observed } = buildRegistryThatCapturesPlan(provider);
         await Effect.runPromise(
           setupSpec
-            .run({ installDir: "/opt/lando" })
+            .run({ installDir: "/opt/lando", flags: { "no-interactive": true } })
             .pipe(Effect.provide(buildSetupLayers(registry, { defaultProviderId: null }))),
         );
         expect(observed.providerId).toBe("lando");
