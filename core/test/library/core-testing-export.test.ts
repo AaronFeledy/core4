@@ -19,7 +19,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sdkRoot = resolve(repoRoot, "sdk");
 const externalDependencyRoot = resolve(repoRoot, "node_modules");
-const packedConsumerDependencies = ["effect", "fast-check", "pure-rand"] as const;
+const packedConsumerDependencies = ["effect", "fast-check", "pure-rand", "semver"] as const;
 
 type TestingTypeExportCheck = {
   readonly runtime?: TestRuntime;
