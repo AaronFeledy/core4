@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "description": "a number between 1 and 65535",
+  "maximum": 65535,
+  "minimum": 1,
+  "title": "between(1, 65535)",
+  "type": "integer"
+}

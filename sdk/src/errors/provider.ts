@@ -71,6 +71,17 @@ export class CapabilityError extends Schema.TaggedError<CapabilityError>()("Capa
   remediation: Schema.optional(Schema.String),
 }) {}
 
+export class PublicationUnsupportedError extends Schema.TaggedError<PublicationUnsupportedError>()(
+  "PublicationUnsupportedError",
+  {
+    message: Schema.String,
+    service: Schema.String,
+    providerId: Schema.String,
+    capability: Schema.Literal("hostPortPublish"),
+    remediation: Schema.String,
+  },
+) {}
+
 export class VolumeOperationError extends Schema.TaggedError<VolumeOperationError>()("VolumeOperationError", {
   ...ProviderErrorBase,
   store: Schema.optional(Schema.String),

@@ -4,6 +4,14 @@ export * from "./build-plan.ts";
 export * from "./config.ts";
 export * from "./config-lint.ts";
 export * from "./data-transfer.ts";
+export {
+  EndpointInfo,
+  EndpointMaterialization,
+  EndpointPublication,
+  InternalEndpointInput,
+  PublishedEndpointInput,
+  PublishedEndpointInfo,
+} from "./endpoint.ts";
 export * from "./downloader.ts";
 export {
   DeprecationNotice,

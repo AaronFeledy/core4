@@ -18,7 +18,7 @@
   ],
   "serviceTags": {
     "AppPlanner": [
-      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>"
+      "plan: (landofile: LandofileShape, providerCapabilities: ProviderCapabilities) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError>"
     ],
     "BuildOrchestrator": [
       "build: (plan: AppPlan) => Effect.Effect<AppPlan, EventError | NoProviderInstalledError | ProviderConfigError | ProviderError | ProviderUnavailableError>"
