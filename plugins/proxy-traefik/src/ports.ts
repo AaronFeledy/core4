@@ -1,0 +1,2 @@
+export const TRAEFIK_HTTP_PORT = 38080;
+export const TRAEFIK_HTTPS_PORT = 38443;

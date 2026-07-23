@@ -30,6 +30,7 @@ export * from "./provider-data-plane.ts";
 export * from "./service-contract.ts";
 export * from "./file-sync-contract.ts";
 export * from "./network-service-fixtures.ts";
+export * from "./proxy-service-contract.ts";
 export * from "./managed-file-contract.ts";
 export * from "./remote-source-dataset-tunnel.ts";
 export * from "./state-store-contract.ts";

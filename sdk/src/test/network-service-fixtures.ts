@@ -1,73 +1,7 @@
 import { Effect } from "effect";
 
 import { AppId, type HealthcheckPlan, ServiceName } from "../schema/index.ts";
-import type { RoutePlan } from "../schema/index.ts";
-import type { ProxyServiceShape } from "../services/index.ts";
 import { ContractFailure } from "./_shared.ts";
-
-const proxyContractFailure = (assertion: string, details?: unknown): ContractFailure =>
-  new ContractFailure({ message: `ProxyService contract failed: ${assertion}`, assertion, details });
-
-const requireProxyContract = (
-  condition: boolean,
-  assertion: string,
-  details?: unknown,
-): Effect.Effect<void, ContractFailure> =>
-  condition ? Effect.void : Effect.fail(proxyContractFailure(assertion, details));
-
-export const runProxyServiceContract = (proxy: ProxyServiceShape): Effect.Effect<void, ContractFailure> =>
-  Effect.gen(function* () {
-    yield* requireProxyContract(
-      typeof proxy.id === "string" && proxy.id.length > 0,
-      "id is a non-empty string",
-      proxy.id,
-    );
-
-    yield* proxy.setup().pipe(Effect.mapError((d) => proxyContractFailure("setup resolves", d)));
-
-    const testAppId = AppId.make("contract-test-app");
-    const testRoutes: ReadonlyArray<RoutePlan> = [
-      {
-        hostname: "web.contract-test-app.lndo.site",
-        scheme: "https",
-        service: ServiceName.make("web"),
-        backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
-      },
-    ];
-
-    yield* proxy
-      .applyRoutes(testRoutes, testAppId)
-      .pipe(Effect.mapError((d) => proxyContractFailure("applyRoutes resolves", d)));
-
-    yield* proxy
-      .removeRoutes(testAppId)
-      .pipe(Effect.mapError((d) => proxyContractFailure("removeRoutes resolves", d)));
-
-    yield* proxy
-      .removeRoutes(testAppId)
-      .pipe(Effect.mapError((d) => proxyContractFailure("removeRoutes is idempotent", d)));
-  });
-
-export const makeTestProxyService = (): ProxyServiceShape & {
-  readonly routesByApp: ReadonlyMap<string, ReadonlyArray<RoutePlan>>;
-} => {
-  const routesByApp = new Map<string, ReadonlyArray<RoutePlan>>();
-  return {
-    id: "test",
-    setup: () => Effect.void,
-    applyRoutes: (routes, appId) =>
-      Effect.sync(() => {
-        routesByApp.set(String(appId), routes);
-      }),
-    removeRoutes: (appId) =>
-      Effect.sync(() => {
-        routesByApp.delete(String(appId));
-      }),
-    routesByApp,
-  };
-};
-
-export const TestProxyService: ProxyServiceShape = makeTestProxyService();
 
 import type {
   CaSetupOptions,

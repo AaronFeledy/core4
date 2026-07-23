@@ -421,7 +421,9 @@ export const subsystemDoctor = (
     const scanner = yield* UrlScanner;
     const hostProxy = yield* HostProxyService;
 
-    const proxyCheck = yield* buildIdCheck(PROXY_SPEC, proxy.id, fix, () => proxy.setup());
+    const proxyCheck = yield* buildIdCheck(PROXY_SPEC, proxy.id, fix, () =>
+      Effect.scoped(proxy.setup({ defaultDomain: "lndo.site" })),
+    );
     const certsCheck = yield* buildIdCheck(CERTS_SPEC, ca.id, fix);
     const sshCheck = yield* buildIdCheck(SSH_SPEC, ssh.id, fix, () => ssh.setup({ force: false }));
     const healthcheckCheck = yield* buildIdCheck(HEALTHCHECK_SPEC, healthcheck.id, fix);

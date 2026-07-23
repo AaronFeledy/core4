@@ -1,4 +1,4 @@
-import { Context, type Effect } from "effect";
+import { Context, type Effect, type Scope } from "effect";
 
 import type {
   CaError,
@@ -6,13 +6,24 @@ import type {
   HealthcheckTimeoutError,
   HostProxyError,
   PortCollisionError,
+  ProxyApplyError,
   ProxyError,
+  ProxySetupError,
   ScannerError,
   SecretNotFoundError,
   SshError,
 } from "../errors/index.ts";
 import type { ProbeOutcome } from "../probe/index.ts";
-import type { AppId, HealthcheckPlan, RoutePlan, ServiceName } from "../schema/index.ts";
+import type {
+  AppId,
+  HealthcheckPlan,
+  ProxyApplyResult,
+  ProxyCapabilities,
+  ProxyConfig,
+  ProxyStatus,
+  RoutePlan,
+  ServiceName,
+} from "../schema/index.ts";
 import type { PrivilegeService } from "./process.ts";
 
 export interface CaSetupOptions {
@@ -45,9 +56,15 @@ export class CertificateAuthority extends Context.Tag("@lando/core/CertificateAu
 
 export interface ProxyServiceShape {
   readonly id: string;
-  readonly setup: () => Effect.Effect<void, ProxyError>;
-  readonly applyRoutes: (routes: ReadonlyArray<RoutePlan>, appId: AppId) => Effect.Effect<void, ProxyError>;
+  readonly capabilities: ProxyCapabilities;
+  readonly setup: (config: ProxyConfig) => Effect.Effect<void, ProxySetupError, Scope.Scope>;
+  readonly applyRoutes: (
+    routes: ReadonlyArray<RoutePlan>,
+    appId: AppId,
+  ) => Effect.Effect<ProxyApplyResult, ProxyApplyError>;
   readonly removeRoutes: (appId: AppId) => Effect.Effect<void, ProxyError>;
+  readonly status: Effect.Effect<ProxyStatus, ProxyError>;
+  readonly stop: Effect.Effect<void, ProxyError>;
 }
 
 export class ProxyService extends Context.Tag("@lando/core/ProxyService")<

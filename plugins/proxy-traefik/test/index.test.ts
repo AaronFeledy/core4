@@ -3,7 +3,7 @@ import { Effect, Layer, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
-import { PLUGIN_NAME, globalServices, manifest, proxy } from "../src/index.ts";
+import { PLUGIN_NAME, globalServices, manifest, proxy, proxyServices } from "../src/index.ts";
 
 describe("@lando/proxy-traefik plugin exports", () => {
   test("PLUGIN_NAME is the package name", () => {
@@ -28,7 +28,14 @@ describe("@lando/proxy-traefik plugin exports", () => {
   });
 
   test("manifest declares the traefik proxy contribution", () => {
-    expect(manifest.contributes?.proxies).toEqual(["traefik"]);
+    expect(manifest.contributes?.proxyServices).toEqual([
+      {
+        id: "traefik",
+        module: "./src/proxy.ts",
+        defaultFor: { platform: ["darwin", "linux", "win32"] },
+      },
+    ]);
+    expect(proxyServices.get("traefik")).toBe(proxy);
   });
 
   test("globalServices map yields the traefik ServiceConfig effect", async () => {

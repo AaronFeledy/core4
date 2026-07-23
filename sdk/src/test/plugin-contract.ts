@@ -31,7 +31,7 @@ const pluginContributionLayerExports: ReadonlyArray<{
   { key: "fileSyncEngines", exportName: "engine" },
   { key: "loggers", exportName: "logger" },
   { key: "providers", exportName: "provider" },
-  { key: "proxies", exportName: "proxy" },
+  { key: "proxyServices", exportName: "proxy" },
   { key: "renderers", exportName: "renderer" },
   { key: "serviceTypes", exportName: "services" },
   { key: "templateEngines", exportName: "templateEngine" },
