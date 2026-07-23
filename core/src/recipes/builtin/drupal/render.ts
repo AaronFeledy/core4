@@ -8,7 +8,7 @@ const DRUPAL_SCAFFOLD_COMMAND = [
   "trap 'rm -rf \"$destination\"' EXIT",
   'composer create-project drupal/recommended-project "$destination"',
   'composer require --working-dir="$destination" drush/drush',
-  'cp -a "$destination"/. /app/',
+  'cp -R "$destination"/. /app/',
 ].join("; ");
 
 const renderLandofile = (appName: string, php: string, database: string): string =>

@@ -28,7 +28,8 @@ describe("lando init — Drupal recipe", () => {
       expect(command).toContain("mktemp -d");
       expect(command).toContain("composer create-project drupal/recommended-project");
       expect(command).toContain('composer require --working-dir="$destination" drush/drush');
-      expect(command).toContain('cp -a "$destination"/. /app/');
+      expect(command).toContain('cp -R "$destination"/. /app/');
+      expect(command).not.toContain('cp -a "$destination"/. /app/');
       expect(landofile.tooling?.drush?.cmds).toEqual(["vendor/bin/drush"]);
     });
   });
