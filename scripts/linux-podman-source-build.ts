@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -24,6 +25,47 @@ const PodmanSourceBuildOutputs = [
   { source: "bin/podman", installName: "bin/podman", mode: 0o755 },
   { source: "bin/rootlessport", installName: "bin/rootlessport", mode: 0o755 },
 ] as const;
+
+export const NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH = join(
+  import.meta.dir,
+  "patches",
+  "netavark-v2.0.0-systemd-user-bus.patch",
+);
+const NETAVARK_AARDVARK_SOURCE_SHA256 = "0cc2090fc5124a68f69da60215a2b7a85023d1c495d2e5685e83ccf20ecd3823";
+const NETAVARK_AARDVARK_PATCHED_SHA256 = "f01cefaf9a960ead28008b6bddb9d76811dbbb44b339e70c64fff66a5c3c969d";
+
+interface VerifiedSourcePatchOptions {
+  readonly sourceDir: string;
+  readonly sourcePath: string;
+  readonly patchPath: string;
+  readonly expectedSourceSha256: string;
+  readonly expectedPatchedSha256: string;
+  readonly execute: BundleCommandRunner;
+}
+
+const fileSha256 = async (path: string): Promise<string> =>
+  createHash("sha256")
+    .update(await readFile(path))
+    .digest("hex");
+
+export const applyVerifiedSourcePatch = async (options: VerifiedSourcePatchOptions): Promise<void> => {
+  const sourceSha256 = await fileSha256(options.sourcePath);
+  if (sourceSha256 !== options.expectedSourceSha256) {
+    throw new Error(
+      `assemble-runtime-bundle: source SHA-256 mismatch before patching ${options.sourcePath}: expected ${options.expectedSourceSha256}, received ${sourceSha256}`,
+    );
+  }
+  await options.execute(
+    ["patch", "--batch", "--forward", "--fuzz=0", "--reject-file=-", "-p1", "-i", options.patchPath],
+    options.sourceDir,
+  );
+  const patchedSha256 = await fileSha256(options.sourcePath);
+  if (patchedSha256 !== options.expectedPatchedSha256) {
+    throw new Error(
+      `assemble-runtime-bundle: patched source SHA-256 mismatch for ${options.sourcePath}: expected ${options.expectedPatchedSha256}, received ${patchedSha256}`,
+    );
+  }
+};
 
 interface LinuxHelperSourceBuildOptions {
   readonly component: RuntimeBundleComponent;
@@ -64,6 +106,16 @@ export const buildLinuxHelperFromSource = async (options: LinuxHelperSourceBuild
   try {
     await options.execute(["tar", "-xf", inputPath(options.artifactPaths, "source"), "-C", workDir]);
     const sourceDir = join(workDir, sourceDirName(options.component));
+    if (options.component.sourceBuild === LinuxNetavarkSourceBuild && options.component.version === "2.0.0") {
+      await applyVerifiedSourcePatch({
+        sourceDir,
+        sourcePath: join(sourceDir, "src", "dns", "aardvark.rs"),
+        patchPath: NETAVARK_SYSTEMD_USER_BUS_PATCH_PATH,
+        expectedSourceSha256: NETAVARK_AARDVARK_SOURCE_SHA256,
+        expectedPatchedSha256: NETAVARK_AARDVARK_PATCHED_SHA256,
+        execute: options.execute,
+      });
+    }
     if (
       options.component.sourceBuild === LinuxNetavarkSourceBuild ||
       options.component.sourceBuild === LinuxAardvarkDnsSourceBuild
