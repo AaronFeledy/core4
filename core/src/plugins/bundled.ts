@@ -14,8 +14,17 @@
 
 import { Effect, Layer } from "effect";
 
+import type { ProxyError } from "@lando/sdk/errors";
 import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
-import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
+import type {
+  AppFeatureDefinition,
+  FileSystem,
+  GlobalAppService,
+  PathsService,
+  ProxyService,
+  ServiceFeatureDefinition,
+  ServiceType,
+} from "@lando/sdk/services";
 import type { TemplateEngine } from "@lando/sdk/template";
 
 import * as plugin7 from "@lando/file-sync-mutagen";
@@ -97,6 +106,16 @@ const globalServicesFrom = (
 ): { readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect> } =>
   isGlobalServiceMap(module.globalServices) ? { globalServices: module.globalServices } : {};
 
+type ProxyServiceLayer = Layer.Layer<ProxyService, ProxyError, FileSystem | GlobalAppService | PathsService>;
+
+const isProxyServiceMap = (value: unknown): value is ReadonlyMap<string, ProxyServiceLayer> =>
+  value instanceof Map && [...value.values()].every((entry) => Layer.isLayer(entry));
+
+const proxyServicesFrom = (
+  module: BundledPluginModule,
+): { readonly proxyServices?: ReadonlyMap<string, ProxyServiceLayer> } =>
+  isProxyServiceMap(module.proxyServices) ? { proxyServices: module.proxyServices } : {};
+
 const isTemplateEngine = (value: unknown): value is TemplateEngine =>
   typeof value === "object" &&
   value !== null &&
@@ -123,6 +142,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
   readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition>;
   readonly appFeatures?: ReadonlyMap<string, AppFeatureDefinition>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;
+  readonly proxyServices?: ReadonlyMap<string, ProxyServiceLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
   readonly subscriberFactoryLoaders?: ReadonlyMap<string, () => Promise<unknown>>;
 }> = [
@@ -134,6 +154,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin0 }),
     ...appFeaturesFrom({ ...plugin0 }),
     ...globalServicesFrom({ ...plugin0 }),
+    ...proxyServicesFrom({ ...plugin0 }),
     ...templateEnginesFrom({ ...plugin0 }),
   },
   {
@@ -144,6 +165,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin1 }),
     ...appFeaturesFrom({ ...plugin1 }),
     ...globalServicesFrom({ ...plugin1 }),
+    ...proxyServicesFrom({ ...plugin1 }),
     ...templateEnginesFrom({ ...plugin1 }),
   },
   {
@@ -154,6 +176,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin2 }),
     ...appFeaturesFrom({ ...plugin2 }),
     ...globalServicesFrom({ ...plugin2 }),
+    ...proxyServicesFrom({ ...plugin2 }),
     ...templateEnginesFrom({ ...plugin2 }),
   },
   {
@@ -164,6 +187,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin3 }),
     ...appFeaturesFrom({ ...plugin3 }),
     ...globalServicesFrom({ ...plugin3 }),
+    ...proxyServicesFrom({ ...plugin3 }),
     ...templateEnginesFrom({ ...plugin3 }),
   },
   {
@@ -174,6 +198,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin4 }),
     ...appFeaturesFrom({ ...plugin4 }),
     ...globalServicesFrom({ ...plugin4 }),
+    ...proxyServicesFrom({ ...plugin4 }),
     ...templateEnginesFrom({ ...plugin4 }),
   },
   {
@@ -184,6 +209,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin5 }),
     ...appFeaturesFrom({ ...plugin5 }),
     ...globalServicesFrom({ ...plugin5 }),
+    ...proxyServicesFrom({ ...plugin5 }),
     ...templateEnginesFrom({ ...plugin5 }),
   },
   {
@@ -194,6 +220,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin6 }),
     ...appFeaturesFrom({ ...plugin6 }),
     ...globalServicesFrom({ ...plugin6 }),
+    ...proxyServicesFrom({ ...plugin6 }),
     ...templateEnginesFrom({ ...plugin6 }),
     subscriberFactoryLoaders: new Map([
       [
@@ -210,6 +237,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin7 }),
     ...appFeaturesFrom({ ...plugin7 }),
     ...globalServicesFrom({ ...plugin7 }),
+    ...proxyServicesFrom({ ...plugin7 }),
     ...templateEnginesFrom({ ...plugin7 }),
   },
   {
@@ -220,6 +248,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin8 }),
     ...appFeaturesFrom({ ...plugin8 }),
     ...globalServicesFrom({ ...plugin8 }),
+    ...proxyServicesFrom({ ...plugin8 }),
     ...templateEnginesFrom({ ...plugin8 }),
   },
   {
@@ -230,6 +259,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin9 }),
     ...appFeaturesFrom({ ...plugin9 }),
     ...globalServicesFrom({ ...plugin9 }),
+    ...proxyServicesFrom({ ...plugin9 }),
     ...templateEnginesFrom({ ...plugin9 }),
   },
   {
@@ -240,6 +270,7 @@ export const BUNDLED_PLUGINS: ReadonlyArray<{
     ...serviceFeaturesFrom({ ...plugin10 }),
     ...appFeaturesFrom({ ...plugin10 }),
     ...globalServicesFrom({ ...plugin10 }),
+    ...proxyServicesFrom({ ...plugin10 }),
     ...templateEnginesFrom({ ...plugin10 }),
   },
 ];
