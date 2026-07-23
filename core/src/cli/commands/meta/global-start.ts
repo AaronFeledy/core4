@@ -21,6 +21,7 @@ import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
+  BuildOrchestrator,
   EventService,
   type FileSystem,
   type FileSystemError,
@@ -29,6 +30,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { withBuildProvider } from "../../../services/build-orchestrator.ts";
 import { publishedEndpointUrls } from "../../authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
@@ -86,6 +88,7 @@ export type GlobalStartError =
 
 export type GlobalStartServices =
   | AppPlanner
+  | BuildOrchestrator
   | EventService
   | FileSystem
   | GlobalAppService
@@ -181,8 +184,11 @@ export const globalStart = (
       }),
     );
 
+    const builds = yield* BuildOrchestrator;
+    const builtPlan = yield* withBuildProvider(builds.build(planToApply), provider);
+
     yield* Effect.scoped(
-      provider.apply(planToApply, {
+      provider.apply(builtPlan, {
         reconcile: false,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       }),
