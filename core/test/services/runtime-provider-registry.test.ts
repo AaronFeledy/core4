@@ -9,6 +9,7 @@ import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClientLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
+import { StateStoreLive } from "../../src/state/service.ts";
 
 const appPlan: AppPlan = {
   id: AppId.make("myapp"),
@@ -54,6 +55,7 @@ const registryLayer = (
   return RuntimeProviderRegistryLive.pipe(
     Layer.provideMerge(PluginRegistryLive),
     Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientLive))),
+    Layer.provideMerge(StateStoreLive),
     Layer.provideMerge(
       Layer.succeed(
         PathsService,

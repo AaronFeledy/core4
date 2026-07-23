@@ -2,13 +2,12 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { LogFileHelperPayloads } from "@lando/container-runtime/log-file-helper-payloads";
-import { type Context, Effect, Layer, Schema } from "effect";
+import { type Context, Effect, Layer } from "effect";
 
 import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provider-docker";
 import {
   type ArtifactDownload,
   type ArtifactDownloadResult,
-  PLUGIN_NAME as LANDO_PROVIDER_PLUGIN_NAME,
   ProviderBundleChecksumError,
   makeRuntimeProvider as makeLandoRuntimeProvider,
 } from "@lando/provider-lando";
@@ -20,7 +19,7 @@ import {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
+import { ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
   Downloader,
@@ -29,12 +28,12 @@ import {
   PluginRegistry,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  type RuntimeProviderShape,
   StateStore,
   type StateStoreShape,
-  type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
-import { makePluginStateStore } from "../plugins/context-state.ts";
+import { makeLandoRuntimeState } from "./lando-runtime-state.ts";
 import { loadLogFileHelperPayloads } from "./log-file-helper-payloads.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -126,23 +125,7 @@ const makeRuntimeProviderRegistry = (
   stateStore: StateStoreShape,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const artifactDownload = makeArtifactDownload(downloader);
-  const providerState = makePluginStateStore(
-    stateStore,
-    Schema.decodeUnknownSync(AbsolutePath)(landoPaths.pluginStateDir(LANDO_PROVIDER_PLUGIN_NAME)),
-  );
-  const runtimeGenerationBucket = providerState.open({
-    key: "runtime-generation.json",
-    schema: Schema.String,
-    version: 1,
-    lock: "advisory",
-    onCorrupt: "fail",
-    onVersionMismatch: "discard",
-  });
-  const runtimeGenerationStore = {
-    get: runtimeGenerationBucket.pipe(Effect.flatMap((bucket) => bucket.get)),
-    set: (generation: string) =>
-      runtimeGenerationBucket.pipe(Effect.flatMap((bucket) => bucket.set(generation))),
-  };
+  const runtimeState = makeLandoRuntimeState(stateStore, landoPaths);
 
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
@@ -203,8 +186,7 @@ const makeRuntimeProviderRegistry = (
                   ...(eventService === undefined ? {} : { eventService }),
                   artifactDownload,
                   logFileHelperPayloads,
-                  runtimeLock: (body) => providerState.withLock("runtime-launch", body),
-                  runtimeGenerationStore,
+                  ...runtimeState,
                 }),
               ),
               Effect.mapError(toProviderUnavailableFromCapability),
