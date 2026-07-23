@@ -9,6 +9,7 @@ import {
   LandofileValidationError,
   NotImplementedError,
   PluginLoadError,
+  PublicationUnsupportedError,
 } from "@lando/core/errors";
 import {
   AbsolutePath,
@@ -181,7 +182,34 @@ const socketOnlyServiceType = makeLegacyServiceTypeFake({
       environment: {},
       mounts: [],
       storage: [],
-      endpoints: [{ protocol: "unix", socketPath: PortablePath.make("/var/run/socket-only.sock"), name }],
+      endpoints: [
+        {
+          _tag: "internal",
+          protocol: "unix",
+          socketPath: PortablePath.make("/var/run/socket-only.sock"),
+          name,
+        },
+      ],
+      routes: [],
+      dependsOn: [],
+      hostAliases: [],
+      metadata,
+      extensions: {},
+    }),
+});
+
+const publishedEndpointServiceType = makeLegacyServiceTypeFake({
+  id: "published-endpoint",
+  toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+    Schema.decodeUnknownSync(ServicePlan)({
+      name: ServiceName.make(name),
+      type: "published-endpoint",
+      provider,
+      primary,
+      environment: {},
+      mounts: [],
+      storage: [],
+      endpoints: [{ _tag: "published", protocol: "http", port: 8080, name, publication: {} }],
       routes: [],
       dependsOn: [],
       hostAliases: [],
@@ -197,14 +225,17 @@ const customPluginRegistry = {
   loadServiceType: (id: string) => {
     if (id === appMountOnlyServiceType.id) return Effect.succeed(appMountOnlyServiceType);
     if (id === socketOnlyServiceType.id) return Effect.succeed(socketOnlyServiceType);
+    if (id === publishedEndpointServiceType.id) return Effect.succeed(publishedEndpointServiceType);
     return Effect.fail(
       new PluginLoadError({ message: `Service type ${id} is not registered.`, pluginName: id }),
     );
   },
   loadServiceFeature: (id: string) => {
-    const feature = [appMountOnlyServiceType.testFeature, socketOnlyServiceType.testFeature].find(
-      (candidate) => candidate.id === id,
-    );
+    const feature = [
+      appMountOnlyServiceType.testFeature,
+      socketOnlyServiceType.testFeature,
+      publishedEndpointServiceType.testFeature,
+    ].find((candidate) => candidate.id === id);
     return feature === undefined
       ? Effect.fail(
           new PluginLoadError({ message: `Service feature ${id} is not registered.`, pluginName: id }),
@@ -794,7 +825,116 @@ describe("AppPlannerLive", () => {
       const appPlan = await plan(landofileFixture);
 
       expect(appPlan.routes).not.toEqual([]);
+      expect(appPlan.routes[0]?.backend).toEqual({
+        service: ServiceName.make("web"),
+        protocol: "http",
+        port: 3000,
+      });
       expect(appPlan.requires?.globalServices).toEqual(["traefik"]);
+    });
+  });
+
+  test("resolves an authored service route against its named endpoint", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            web: {
+              type: "node:lts",
+              routes: [
+                { hostname: "custom.example.test", scheme: "both", endpoint: "web", pathPrefix: "/api" },
+              ],
+            },
+          },
+        }),
+      );
+
+      expect(appPlan.routes).toEqual([
+        {
+          hostname: "custom.example.test",
+          scheme: "both",
+          service: ServiceName.make("web"),
+          endpoint: "web",
+          pathPrefix: "/api",
+          backend: { service: ServiceName.make("web"), protocol: "http", port: 3000 },
+        },
+      ]);
+      expect(appPlan.services[ServiceName.make("web")]?.routes).toEqual([{ index: 0 }]);
+    });
+  });
+
+  test("emits one canonical route when a service has multiple HTTP endpoints", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            web: {
+              type: "compose",
+              image: "nginx:1.27",
+              appMount: false,
+              endpoints: [
+                { _tag: "internal", name: "primary", protocol: "http", port: 8080 },
+                { _tag: "internal", name: "admin", protocol: "http", port: 8081 },
+              ],
+            },
+          },
+        }),
+      );
+
+      expect(appPlan.routes).toHaveLength(1);
+      expect(appPlan.routes[0]).toMatchObject({
+        hostname: "web.myapp.lndo.site",
+        endpoint: "primary",
+        backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
+      });
+    });
+  });
+
+  test("fails planning when a service declares duplicate endpoint names", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit(
+        Schema.decodeUnknownSync(LandofileShape)({
+          name: "myapp",
+          runtime: 4,
+          services: {
+            web: {
+              type: "compose",
+              image: "nginx:1.27",
+              appMount: false,
+              endpoints: [
+                { _tag: "internal", name: "web", protocol: "http", port: 8080 },
+                { _tag: "internal", name: "web", protocol: "http", port: 8081 },
+              ],
+            },
+          },
+        }),
+      );
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure.issues).toEqual(["services.web.endpoints"]);
+      }
+    });
+  });
+
+  test("fails routed planning when shared cross-app networking is unavailable", async () => {
+    await withTempCwd(async () => {
+      const exit = await planExit(landofileFixture, {
+        ...providerLandoCapabilities,
+        sharedCrossAppNetwork: false,
+      });
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure.feature).toBe("routes");
+        expect(failure.capability).toBe("sharedCrossAppNetwork");
+      }
     });
   });
 
@@ -1230,7 +1370,9 @@ describe("AppPlannerLive", () => {
         readOnly: false,
         realization: "passthrough",
       });
-      expect(web?.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+      expect(web?.endpoints).toEqual([
+        { _tag: "published", port: 3000, protocol: "http", name: "web", publication: { hostPort: 3000 } },
+      ]);
       expect(web?.dependsOn).toEqual([{ service: ServiceName.make("db"), condition: "started" }]);
 
       expect(db?.type).toBe("postgres");
@@ -1238,7 +1380,9 @@ describe("AppPlannerLive", () => {
       expect(db?.environment.POSTGRES_USER).toBe("lando");
       expect(db?.environment.POSTGRES_DB).toBe("myapp");
       expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
-      expect(db?.endpoints).toEqual([{ port: 5432, protocol: "tcp", name: "db" }]);
+      expect(db?.endpoints).toEqual([
+        { _tag: "published", port: 5432, protocol: "tcp", name: "db", publication: { hostPort: 5432 } },
+      ]);
       expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));
     });
   });
@@ -1499,23 +1643,25 @@ describe("AppPlannerLive", () => {
 
   test("fails before apply when published ports require an unsupported provider capability", async () => {
     await withTempCwd(async () => {
-      const exit = await planExit(landofileFixture, {
-        ...providerLandoCapabilities,
-        hostPortPublish: "none",
-      });
+      const exit = await planExitWithCustomRegistry(
+        {
+          name: "published-app",
+          runtime: 4,
+          services: { [ServiceName.make("web")]: { type: "published-endpoint" } },
+        },
+        { ...providerLandoCapabilities, hostPortPublish: "none" },
+      );
 
       const failure = expectSomeFailure(exit);
-      expect(failure).toBeInstanceOf(CapabilityError);
-      if (failure instanceof CapabilityError) {
-        expect(failure._tag).toBe("CapabilityError");
-        expect(failure.service).toBe("web");
-        expect(failure.feature).toBe("host port publish");
-        expect(failure.capability).toBe("hostPortPublish");
-        expect(failure.providerId).toBe("lando");
-        expect(failure.remediation).toBe(
-          "Choose a provider with host port publish support or remove published ports from service web.",
-        );
-      }
+      expect(failure).toBeInstanceOf(PublicationUnsupportedError);
+      expect(failure).toMatchObject({
+        _tag: "PublicationUnsupportedError",
+        service: "web",
+        capability: "hostPortPublish",
+        providerId: "lando",
+        remediation:
+          "Choose a provider with host port publish support or make service web endpoints internal.",
+      });
     });
   });
 
@@ -1535,6 +1681,7 @@ describe("AppPlannerLive", () => {
       const socket = appPlan.services[ServiceName.make("socket")];
       expect(socket?.endpoints).toEqual([
         {
+          _tag: "internal",
           protocol: "unix",
           socketPath: PortablePath.make("/var/run/socket-only.sock"),
           name: "socket",

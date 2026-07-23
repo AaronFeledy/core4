@@ -59,7 +59,7 @@ const cacheService: ServicePlan = {
   environment: {},
   mounts: [],
   storage: [],
-  endpoints: [{ port: 6379, protocol: "tcp", name: "redis" }],
+  endpoints: [{ _tag: "internal", port: 6379, protocol: "tcp", name: "redis" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],

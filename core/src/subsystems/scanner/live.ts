@@ -20,6 +20,7 @@ import {
   type UrlScanConfig,
   type UrlScannerDeps,
   defaultUrlScanConfig,
+  publishedHostPort,
   scanTarget,
   scanTargets,
 } from "./scan-target.ts";
@@ -64,10 +65,11 @@ export const makeUrlScanner = (
         for (const app of appIds) {
           const endpoints = yield* deps.listEndpoints(app);
           for (const endpoint of endpoints) {
-            if (endpoint.port === undefined) continue;
-            const claimants = claims.get(endpoint.port) ?? [];
+            const hostPort = publishedHostPort(endpoint);
+            if (hostPort === undefined) continue;
+            const claimants = claims.get(hostPort) ?? [];
             claimants.push({ appId: app, service: endpoint.service });
-            claims.set(endpoint.port, claimants);
+            claims.set(hostPort, claimants);
           }
         }
         const collisions: PortCollision[] = [];
@@ -100,11 +102,9 @@ const listEndpointsFromProvider =
       return infos.flatMap((info) =>
         (info.state ?? info.status) === "stopped" || info.endpoints === undefined
           ? []
-          : info.endpoints.map((endpoint) => ({
-              service: info.service,
-              protocol: endpoint.protocol,
-              ...(endpoint.port === undefined ? {} : { port: endpoint.port }),
-            })),
+          : info.endpoints.flatMap((endpoint) =>
+              endpoint._tag === "published" ? [{ ...endpoint, service: info.service }] : [],
+            ),
       );
     });
 

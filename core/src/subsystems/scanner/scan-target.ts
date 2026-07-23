@@ -2,7 +2,7 @@ import { Duration, Effect, Ref } from "effect";
 
 import { ScannerError } from "@lando/sdk/errors";
 import { type ProbeOutcome, runProbe } from "@lando/sdk/probe";
-import type { AppId, EndpointPlan, ServiceName } from "@lando/sdk/schema";
+import type { AppId, BindAddress, PortNumber, PublishedEndpoint, ServiceName } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 import type { ScanEndpoint } from "@lando/sdk/services";
 
@@ -38,11 +38,15 @@ export const defaultUrlScanConfig: UrlScanConfig = {
   maxRedirects: 0,
 };
 
-export interface ScanSourceEndpoint {
+export type ScanSourceEndpoint = PublishedEndpoint & {
   readonly service: ServiceName;
-  readonly protocol: EndpointPlan["protocol"];
-  readonly port?: number;
-}
+  readonly materialization?:
+    | {
+        readonly bindAddress: BindAddress;
+        readonly hostPort: PortNumber;
+      }
+    | undefined;
+};
 
 export interface UrlScannerDeps {
   readonly request: HttpClientShape["request"];
@@ -62,16 +66,29 @@ export interface ScanTarget {
 const isAccepted = (status: number, okCodes: ReadonlyArray<number>): boolean =>
   (status >= 200 && status < 300) || okCodes.includes(status);
 
-const buildUrl = (protocol: "http" | "https", port: number, path: string): string =>
-  `${protocol}://localhost:${port}${path.startsWith("/") ? path : `/${path}`}`;
+const buildUrl = (protocol: "http" | "https", host: string, port: number, path: string): string => {
+  const urlHost = host.includes(":") ? `[${host}]` : host;
+  return `${protocol}://${urlHost}:${port}${path.startsWith("/") ? path : `/${path}`}`;
+};
+
+export const publishedHostPort = (endpoint: ScanSourceEndpoint): PortNumber | undefined =>
+  endpoint.materialization?.hostPort ?? endpoint.publication.hostPort;
 
 export const scanTargets = (
   endpoints: ReadonlyArray<ScanSourceEndpoint>,
   path: string,
 ): ReadonlyArray<ScanTarget> =>
   endpoints.flatMap((endpoint) =>
-    (endpoint.protocol === "http" || endpoint.protocol === "https") && endpoint.port !== undefined
-      ? [{ service: endpoint.service, url: buildUrl(endpoint.protocol, endpoint.port, path) }]
+    endpoint.protocol === "http" || endpoint.protocol === "https"
+      ? (() => {
+          const hostPort = publishedHostPort(endpoint);
+          if (hostPort === undefined) return [];
+          const resolvedHost =
+            endpoint.materialization?.bindAddress ?? endpoint.publication.bindAddress ?? "127.0.0.1";
+          const host =
+            resolvedHost === "127.0.0.1" || resolvedHost === "0.0.0.0" ? "localhost" : resolvedHost;
+          return [{ service: endpoint.service, url: buildUrl(endpoint.protocol, host, hostPort, path) }];
+        })()
       : [],
   );
 

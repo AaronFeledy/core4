@@ -47,7 +47,9 @@ const webService: ServicePlan = {
   environment: {},
   mounts: [],
   storage: [],
-  endpoints: [{ port: 3000, protocol: "http", name: "http" }],
+  endpoints: [
+    { _tag: "published", port: 3000, protocol: "http", name: "http", publication: { hostPort: 3000 } },
+  ],
   routes: [],
   dependsOn: [],
   hostAliases: [],
