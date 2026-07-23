@@ -1,0 +1,16 @@
+---
+title: Proxy Capabilities
+description: Proxy route features truthfully supported by an implementation.
+---
+
+# Proxy Capabilities
+
+Proxy route features truthfully supported by an implementation.
+
+[JSON Schema artifact](../../../dist/schemas/proxy-capabilities.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `wildcardHostnames` | Yes | `boolean` | Whether wildcard Host rules are supported. | — | — | — | — |
+| `tls` | Yes | `boolean` | Whether HTTPS route intent is supported. | — | — | — | — |
+| `pathPrefixes` | Yes | `boolean` | Whether path-prefix route matching is supported. | — | — | — | — |
