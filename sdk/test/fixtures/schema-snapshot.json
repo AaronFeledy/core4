@@ -92,11 +92,6 @@
           "setup": {
             "flags": [
               {
-                "description": "Enable systemd user lingering as an optional persistence convenience.",
-                "name": "enable-linger",
-                "type": "boolean"
-              },
-              {
                 "description": "Override the Lando-managed runtime bundle URL for setup.",
                 "name": "runtime-bundle-url",
                 "type": "option"
