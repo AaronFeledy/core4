@@ -66,7 +66,15 @@ const nginxService = (): ServicePlan => ({
   environment: {},
   mounts: [],
   storage: [],
-  endpoints: [{ port: SHOP_BACKEND_PORT, protocol: "http", name: "web" }],
+  endpoints: [
+    {
+      _tag: "published",
+      port: SHOP_BACKEND_PORT,
+      protocol: "http",
+      name: "web",
+      publication: { hostPort: SHOP_BACKEND_PORT },
+    },
+  ],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -117,7 +125,15 @@ const traefikService = (): ServicePlan => ({
   environment: {},
   mounts: [],
   storage: [],
-  endpoints: [{ port: TRAEFIK_WEB_PORT, protocol: "http", name: "web" }],
+  endpoints: [
+    {
+      _tag: "published",
+      port: TRAEFIK_WEB_PORT,
+      protocol: "http",
+      name: "web",
+      publication: { hostPort: TRAEFIK_WEB_PORT },
+    },
+  ],
   routes: [],
   dependsOn: [],
   hostAliases: [],

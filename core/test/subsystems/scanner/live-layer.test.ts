@@ -33,7 +33,16 @@ describe("UrlScannerLive", () => {
             service: web,
             providerId: ProviderId.make(TestRuntimeProvider.id),
             status: "running",
-            endpoints: [{ protocol: "http" as const, port: 8080 }],
+            endpoints: [
+              {
+                _tag: "published" as const,
+                protocol: "http" as const,
+                port: 8080,
+                publication: {},
+                materialization: { bindAddress: "127.0.0.1", hostPort: 8080 },
+              },
+              { _tag: "internal" as const, protocol: "http" as const, port: 8181 },
+            ],
           },
           {
             app: appId,
@@ -41,7 +50,9 @@ describe("UrlScannerLive", () => {
             providerId: ProviderId.make(TestRuntimeProvider.id),
             status: "running",
             state: "stopped",
-            endpoints: [{ protocol: "http" as const, port: 9090 }],
+            endpoints: [
+              { _tag: "published" as const, protocol: "http" as const, port: 9090, publication: {} },
+            ],
           },
         ]),
     } satisfies RuntimeProviderShape;

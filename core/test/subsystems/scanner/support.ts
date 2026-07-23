@@ -2,7 +2,13 @@ import { expect } from "bun:test";
 import { Cause, Clock, Duration, Effect, Exit, Fiber, Layer, Option, TestClock, TestContext } from "effect";
 
 import { HttpRequestError, type ScannerError } from "@lando/sdk/errors";
-import { AppId, type HttpRequest, type HttpResponse } from "@lando/sdk/schema";
+import {
+  AppId,
+  type HttpRequest,
+  type HttpResponse,
+  type PublishedEndpoint,
+  type ServiceName,
+} from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
 
 import type { HttpClientShape } from "../../../src/http-client/service.ts";
@@ -49,6 +55,18 @@ export const failureOf = <A, E>(exit: Exit.Exit<A, E>): E => {
 };
 
 export const appId = AppId.make("myapp");
+
+export const publishedEndpoint = (
+  service: ServiceName,
+  protocol: PublishedEndpoint["protocol"],
+  port: number,
+): ScanSourceEndpoint => ({
+  _tag: "published",
+  service,
+  protocol,
+  port,
+  publication: { hostPort: port },
+});
 
 export const endpointsOf = (
   endpoints: ReadonlyArray<ScanSourceEndpoint>,

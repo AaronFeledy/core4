@@ -10,6 +10,7 @@ import {
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
+  type PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import {
   type AppPlanner,
@@ -43,6 +44,7 @@ export const GlobalDestroyResultSchema = Schema.Struct({
 
 type GlobalDestroyError =
   | CapabilityError
+  | PublicationUnsupportedError
   | FileSystemError
   | GlobalAppError
   | GlobalDestroyConfirmationError

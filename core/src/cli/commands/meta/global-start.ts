@@ -14,10 +14,11 @@ import type {
   PluginManifestError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
 import { PostGlobalStartEvent, PreGlobalStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   EventService,
@@ -28,6 +29,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { publishedEndpointUrls } from "../../authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
@@ -65,6 +67,7 @@ export const GlobalStartResultSchema = Schema.Struct({
 
 export type GlobalStartError =
   | CapabilityError
+  | PublicationUnsupportedError
   | EventError
   | FileSystemError
   | GlobalAppError
@@ -120,12 +123,6 @@ const selectedServices = (
 
   if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
   return Effect.succeed(matched);
-};
-
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
 const READY_STATES = new Set(["running", "ready"]);
@@ -196,7 +193,7 @@ export const globalStart = (
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
-          endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+          endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
         })),
       ),
     );

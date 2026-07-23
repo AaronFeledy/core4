@@ -109,8 +109,24 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
   storage: [],
   endpoints:
     name === "web"
-      ? [{ port: 3000, protocol: "http", name: "http" }]
-      : [{ port: 5432, protocol: "tcp", name: "database" }],
+      ? [
+          {
+            _tag: "published",
+            port: 3000,
+            protocol: "http",
+            name: "http",
+            publication: { hostPort: 3000 },
+          },
+        ]
+      : [
+          {
+            _tag: "published",
+            port: 5432,
+            protocol: "tcp",
+            name: "database",
+            publication: { hostPort: 5432 },
+          },
+        ],
   routes: [],
   dependsOn: name === "web" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
   hostAliases: [],
@@ -414,7 +430,15 @@ const globalServiceType = makeLegacyServiceTypeFake({
     type: "lando",
     provider,
     primary,
-    endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+    endpoints: [
+      {
+        _tag: "published",
+        protocol: "http",
+        port: 8080,
+        name: "http",
+        publication: { hostPort: 8080 },
+      },
+    ],
     metadata,
   }),
 });
@@ -456,7 +480,15 @@ const globalPlan = (serviceIds: ReadonlyArray<string>): AppPlan => {
         type: "lando",
         provider: ProviderId.make("lando"),
         primary: false,
-        endpoints: [{ protocol: "http" as const, port: 8080, name: "http" }],
+        endpoints: [
+          {
+            _tag: "published" as const,
+            protocol: "http" as const,
+            port: 8080,
+            name: "http",
+            publication: { hostPort: 8080 },
+          },
+        ],
         metadata,
       };
       return [service.name, service];
@@ -538,7 +570,16 @@ const makeAutoStartLayer = async (options: {
         providerId,
         status: "running",
         state: "running",
-        endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+        endpoints: [
+          {
+            _tag: "published",
+            protocol: "http",
+            port: 8080,
+            name: "http",
+            publication: {},
+            materialization: { bindAddress: "127.0.0.1", hostPort: 8080 },
+          },
+        ],
       }),
     list: () => Effect.succeed([]),
   };

@@ -4,13 +4,14 @@ import type { InfoAppError } from "@lando/sdk/app";
 import type { EventError, ShellExecError } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, EndpointPlan, RoutePlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, PublishedEndpoint, RoutePlan, ServicePlan } from "@lando/sdk/schema";
 import { AppPlanner, EventService, LandofileService, RuntimeProviderRegistry } from "@lando/sdk/services";
 import type { ShellRunner } from "@lando/sdk/services";
 
 import { RedactionService } from "../../redaction/service.ts";
 import { canOpenHost, openUrl } from "../../services/host-opener.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
+import { publishedEndpointHost, publishedEndpointUrl } from "../authority-url.ts";
 import type { RenderContext } from "../renderer-boundary.ts";
 
 export const OpenTargetSchema = Schema.Struct({
@@ -60,14 +61,15 @@ export const buildOpenTarget = (route: RoutePlan): OpenTarget => {
   };
 };
 
-const endpointOpenTarget = (service: ServicePlan, endpoint: EndpointPlan): OpenTarget | undefined => {
-  if ((endpoint.protocol !== "http" && endpoint.protocol !== "https") || endpoint.port === undefined)
-    return undefined;
+const endpointOpenTarget = (service: ServicePlan, endpoint: PublishedEndpoint): OpenTarget | undefined => {
+  if (endpoint.protocol !== "http" && endpoint.protocol !== "https") return undefined;
+  const url = publishedEndpointUrl(endpoint);
+  if (url === undefined) return undefined;
   return {
     service: String(service.name),
-    hostname: "localhost",
+    hostname: publishedEndpointHost(endpoint),
     scheme: endpoint.protocol,
-    url: `${endpoint.protocol}://localhost:${endpoint.port}`,
+    url,
   };
 };
 
@@ -81,6 +83,7 @@ const endpointTargetsForService = (plan: ResolvablePlan, serviceName: string): O
   const service = Object.values(plan.services).find((candidate) => String(candidate.name) === serviceName);
   if (service === undefined) return [];
   return service.endpoints.flatMap((endpoint) => {
+    if (endpoint._tag === "internal") return [];
     const target = endpointOpenTarget(service, endpoint);
     return target === undefined ? [] : [target];
   });

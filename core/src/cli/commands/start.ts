@@ -11,7 +11,7 @@ import { DateTime, Effect, Ref, Schema } from "effect";
 import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef } from "@lando/sdk/schema";
+import type { AppPlan, AppRef, PublishedEndpoint } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -29,6 +29,7 @@ import {
 import type { RedactionService } from "../../redaction/service.ts";
 import { withBuildProvider } from "../../services/build-orchestrator.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
+import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "../authority-url.ts";
 import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
@@ -72,15 +73,8 @@ const now = () => DateTime.unsafeMake(new Date().toISOString());
 
 const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: plan.root });
 
-const endpointText = (endpoint: {
-  readonly protocol: string;
-  readonly port?: number | undefined;
-  readonly socketPath?: string | undefined;
-}) => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
+const endpointText = (endpoint: PublishedEndpoint & MaterializedPublishedEndpoint): string | undefined =>
+  publishedEndpointUrl(endpoint);
 
 const READY_STATES = new Set(["running", "ready"]);
 
@@ -201,7 +195,11 @@ export const startApp = (
                 Effect.map((runtime) => ({
                   name: String(service.name),
                   state: runtime.state ?? runtime.status,
-                  endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+                  endpoints: (runtime.endpoints ?? service.endpoints).flatMap((endpoint) => {
+                    if (endpoint._tag === "internal") return [];
+                    const rendered = endpointText(endpoint);
+                    return rendered === undefined ? [] : [rendered];
+                  }),
                 })),
               ),
             );

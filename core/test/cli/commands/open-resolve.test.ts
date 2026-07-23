@@ -15,7 +15,15 @@ import { buildOpenTarget, isOpenableScheme, resolveOpenTargets } from "../../../
 const route = (
   over: Partial<Omit<RoutePlan, "service">> &
     Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string },
-): RoutePlan => ({ ...over, service: ServiceName.make(over.service) });
+): RoutePlan => ({
+  ...over,
+  service: ServiceName.make(over.service),
+  backend: over.backend ?? {
+    service: ServiceName.make(over.service),
+    protocol: "http",
+    port: 80,
+  },
+});
 
 const endpoint = (over: EndpointPlan): EndpointPlan => over;
 
@@ -133,9 +141,14 @@ describe("resolveOpenTargets", () => {
       [],
       [
         svc("web", [
-          endpoint({ protocol: "tcp", port: 3306 }),
-          endpoint({ protocol: "http", port: 8080 }),
-          endpoint({ protocol: "https", port: 8443 }),
+          endpoint({ _tag: "internal", protocol: "tcp", port: 3306 }),
+          endpoint({ _tag: "published", protocol: "http", port: 8080, publication: { hostPort: 8080 } }),
+          endpoint({
+            _tag: "published",
+            protocol: "https",
+            port: 8443,
+            publication: { hostPort: 8443 },
+          }),
         ]),
       ],
     );
@@ -154,7 +167,17 @@ describe("resolveOpenTargets", () => {
   test("S5 default prefers any proxy route before endpoint fallbacks", () => {
     const p = plan(
       [route({ hostname: "app.myapp.lndo.site", scheme: "https", service: "app" })],
-      [svc("db", [endpoint({ protocol: "http", port: 8888 })]), "app"],
+      [
+        svc("db", [
+          endpoint({
+            _tag: "published",
+            protocol: "http",
+            port: 8888,
+            publication: { hostPort: 8888 },
+          }),
+        ]),
+        "app",
+      ],
     );
 
     expect(resolveOpenTargets(p, {}).map((r) => r.url)).toEqual(["https://app.myapp.lndo.site"]);
