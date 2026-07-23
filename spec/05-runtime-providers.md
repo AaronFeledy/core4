@@ -197,6 +197,8 @@ export type ProviderCapabilities = Schema.Schema.Type<typeof ProviderCapabilitie
 
 If a service, feature, or subsystem requires a missing capability, planning fails with `CapabilityError` containing the service, feature, capability, provider id, and a suggested fix.
 
+Endpoint publication is explicit desired state (§6.6). Before returning an `AppPlan`, the planner checks every `PublishedEndpoint` against `hostPortPublish`; `"none"` fails with `PublicationUnsupportedError` and remediation before any provider action. `InternalEndpoint` never requires this capability. Providers materialize only published endpoints as host bindings and return any provider-assigned host port as runtime endpoint materialization, not by mutating `publication.hostPort`.
+
 `composeSpec` describes how much supported Compose input the provider can realize after core has parsed it:
 
 - `none` — the provider can only realize fields that core normalized into provider-neutral `AppPlan` fields.
@@ -267,6 +269,8 @@ export const AppPlan = Schema.Struct({
 ```
 
 The plan is what crosses the core↔provider boundary. Providers MAY translate this into their own native representation (compose files, pod specs, Vagrantfiles) but the *truth* lives in the plan.
+
+Every `RoutePlan` in the plan carries a planner-resolved `backend` with the target `service`, HTTP protocol, and service port. Route providers consume that backend without inspecting service endpoints or applying fallback-port heuristics.
 
 ### 5.5.1 Supported Compose input at the boundary
 

@@ -13,11 +13,11 @@ import type {
   ServiceStartError,
   VolumeOperationError,
 } from "../errors/index.ts";
+import type { EndpointInfo } from "../schema/endpoint.ts";
 import type {
   AppId,
   AppPlan,
   DataStoreMountPlan,
-  EndpointPlan,
   HostPlatform,
   LogSource,
   LogSourceId,
@@ -174,7 +174,7 @@ export interface ServiceRuntimeInfo {
   readonly health?: "healthy" | "starting" | "unhealthy";
   readonly state?: string;
   readonly containerId?: string;
-  readonly endpoints?: ReadonlyArray<EndpointPlan>;
+  readonly endpoints?: ReadonlyArray<EndpointInfo>;
   readonly lastStartedAt?: Date;
 }
 

@@ -61,6 +61,10 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   DataStorePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   DataStoreMountPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   StorageScope: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  BindAddress: "sdk/test/schema/endpoint-intent.test.ts",
+  PortNumber: "sdk/test/schema/endpoint-intent.test.ts",
+  InternalEndpoint: "sdk/test/schema/endpoint-intent.test.ts",
+  PublishedEndpoint: "sdk/test/schema/endpoint-intent.test.ts",
   EndpointPlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   RouteRef: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   RoutePlan: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
@@ -607,6 +611,10 @@ const fixtureOverrides: Partial<Record<JsonSchemaName, unknown>> = {
     strategy: "follow",
   },
   LogSourceInput: { path: "/var/log/app.log" },
+  BindAddress: "127.0.0.1",
+  PortNumber: 8080,
+  InternalEndpoint: { _tag: "internal", protocol: "http", port: 8080 },
+  PublishedEndpoint: { _tag: "published", protocol: "http", port: 8080, publication: {} },
 };
 
 export const publicSchemaHappyPathFixture = (schemaName: JsonSchemaName): unknown => {

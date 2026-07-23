@@ -27,7 +27,12 @@ export const runProxyServiceContract = (proxy: ProxyServiceShape): Effect.Effect
 
     const testAppId = AppId.make("contract-test-app");
     const testRoutes: ReadonlyArray<RoutePlan> = [
-      { hostname: "web.contract-test-app.lndo.site", scheme: "https", service: ServiceName.make("web") },
+      {
+        hostname: "web.contract-test-app.lndo.site",
+        scheme: "https",
+        service: ServiceName.make("web"),
+        backend: { service: ServiceName.make("web"), protocol: "http", port: 8080 },
+      },
     ];
 
     yield* proxy

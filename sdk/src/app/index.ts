@@ -40,6 +40,7 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
   RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
@@ -190,6 +191,7 @@ export type StartAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | PublicationUnsupportedError
   | GlobalAutoStartError
   | HostProxySocketStaleError
   | HostProxyTransportUnavailableError
@@ -223,6 +225,7 @@ export type StopAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -329,6 +332,7 @@ export type InfoAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError
@@ -357,6 +361,7 @@ export interface ExecAppResult {
 export type ExecAppError =
   | AppIdReservedError
   | CapabilityError
+  | PublicationUnsupportedError
   | ConfigError
   | LandofileNotFoundError
   | LandofileParseError
@@ -400,6 +405,7 @@ export type ToolingError =
   | BunShellScriptEmptyError
   | BunShellScriptFrontMatterError
   | CapabilityError
+  | PublicationUnsupportedError
   | ConfigError
   | LandofileNotFoundError
   | LandofileParseError
@@ -441,6 +447,7 @@ export type LogsAppError =
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
+  | PublicationUnsupportedError
   | LandoCommandError
   | NoProviderInstalledError
   | ProviderConfigError

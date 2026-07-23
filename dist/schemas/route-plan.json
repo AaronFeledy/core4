@@ -2,6 +2,35 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
   "properties": {
+    "backend": {
+      "additionalProperties": false,
+      "description": "Planner-resolved service endpoint consumed by the route provider.",
+      "properties": {
+        "port": {
+          "description": "a number between 1 and 65535",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "between(1, 65535)",
+          "type": "integer"
+        },
+        "protocol": {
+          "enum": [
+            "http",
+            "https"
+          ],
+          "type": "string"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "service",
+        "protocol",
+        "port"
+      ],
+      "type": "object"
+    },
     "endpoint": {
       "anyOf": [
         {
@@ -33,7 +62,8 @@
   "required": [
     "hostname",
     "scheme",
-    "service"
+    "service",
+    "backend"
   ],
   "type": "object"
 }

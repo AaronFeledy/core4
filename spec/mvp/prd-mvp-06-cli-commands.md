@@ -55,7 +55,7 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
   - Both `pre-app-start` and `post-app-start` events were published.
   - The provider's `bringUp` was called once with the planned `AppPlan`.
   - `provider.inspect(plan)` shows both services in `state: running`.
-  - Stdout contains a final "ready" line listing each service and its endpoint.
+  - Stdout contains a final "ready" line listing each service and any explicitly host-published endpoints.
 - [ ] Test asserts a missing `.lando.yml` (running `start` outside an app dir) fails with `LandofileNotFoundError` and a remediation pointing at `lando init`.
 - [ ] Test asserts a malformed `.lando.yml` fails with `LandofileParseError` carrying `{ filePath, line }` in the rendered output.
 - [ ] Test asserts cancellation via SIGINT cleanly tears down partial state (`bringUp`'s `AbortSignal` is honored).
@@ -86,8 +86,9 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
 
 **Acceptance Criteria:**
 - [ ] Failing scenario test in `core/test/cli/info.scenario.test.ts` (gated on `LANDO_TEST_PODMAN_SOCKET`; otherwise xfail) brings up the test app, runs `info`, captures stdout, and asserts:
-  - Output contains the line `node` followed by `running` followed by an endpoint matching `http://localhost:<port>`.
-  - Output contains the line `postgres` followed by `running` followed by an endpoint matching `postgresql://<user>@localhost:<port>/<db>`.
+  - Output contains the line `node` followed by `running`; it includes a direct host URL only when the endpoint is explicitly published.
+  - Output contains the line `postgres` followed by `running`; an unpublished database target port is not rendered as a localhost URL.
+  - Routed services retain their route authority rendering without treating internal service endpoints as direct host URLs.
   - Output is plain text (no ANSI escape codes when stdout is not a TTY).
 - [ ] Test asserts running `info` against a stopped app shows each service with `state: stopped` and no endpoints.
 - [ ] Test asserts running `info` outside an app dir fails with `LandofileNotFoundError`.

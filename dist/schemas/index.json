@@ -379,6 +379,42 @@
   },
   {
     "deprecated": false,
+    "description": "Validated host IP address for explicit endpoint publication.",
+    "docsPath": "docs/reference/schemas/bind-address.mdx",
+    "id": "BindAddress",
+    "jsonSchemaPath": "dist/schemas/bind-address.json",
+    "packageExport": "@lando/sdk/schema#BindAddress",
+    "title": "Bind Address"
+  },
+  {
+    "deprecated": false,
+    "description": "a number between 1 and 65535",
+    "docsPath": "docs/reference/schemas/port-number.mdx",
+    "id": "PortNumber",
+    "jsonSchemaPath": "dist/schemas/port-number.json",
+    "packageExport": "@lando/sdk/schema#PortNumber",
+    "title": "between(1, 65535)"
+  },
+  {
+    "deprecated": false,
+    "description": "Service-facing endpoint that is never published on the host.",
+    "docsPath": "docs/reference/schemas/internal-endpoint.mdx",
+    "id": "InternalEndpoint",
+    "jsonSchemaPath": "dist/schemas/internal-endpoint.json",
+    "packageExport": "@lando/sdk/schema#InternalEndpoint",
+    "title": "Internal Endpoint"
+  },
+  {
+    "deprecated": false,
+    "description": "Service endpoint carrying explicit nested host-publication intent.",
+    "docsPath": "docs/reference/schemas/published-endpoint.mdx",
+    "id": "PublishedEndpoint",
+    "jsonSchemaPath": "dist/schemas/published-endpoint.json",
+    "packageExport": "@lando/sdk/schema#PublishedEndpoint",
+    "title": "Published Endpoint"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Endpoint Plan.",
     "docsPath": "docs/reference/schemas/endpoint-plan.mdx",
     "id": "EndpointPlan",

@@ -1,29 +1,139 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "additionalProperties": false,
-  "properties": {
-    "name": {
-      "type": "string"
+  "anyOf": [
+    {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "description": "Discriminates a service-only endpoint.",
+              "enum": [
+                "internal"
+              ],
+              "type": "string"
+            },
+            "name": {
+              "description": "Optional endpoint name.",
+              "type": "string"
+            },
+            "port": {
+              "description": "a number between 1 and 65535",
+              "maximum": 65535,
+              "minimum": 1,
+              "title": "between(1, 65535)",
+              "type": "integer"
+            },
+            "protocol": {
+              "description": "Service-facing network protocol.",
+              "enum": [
+                "http",
+                "https",
+                "tcp",
+                "udp"
+              ],
+              "type": "string"
+            }
+          },
+          "required": [
+            "_tag",
+            "protocol",
+            "port"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "_tag": {
+              "description": "Discriminates a service-only endpoint.",
+              "enum": [
+                "internal"
+              ],
+              "type": "string"
+            },
+            "name": {
+              "description": "Optional endpoint name.",
+              "type": "string"
+            },
+            "protocol": {
+              "description": "Unix-socket endpoint protocol.",
+              "enum": [
+                "unix"
+              ],
+              "type": "string"
+            },
+            "socketPath": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "_tag",
+            "protocol",
+            "socketPath"
+          ],
+          "type": "object"
+        }
+      ]
     },
-    "port": {
-      "type": "number"
-    },
-    "protocol": {
-      "enum": [
-        "http",
-        "https",
-        "tcp",
-        "udp",
-        "unix"
+    {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "description": "Discriminates an explicitly host-published endpoint.",
+          "enum": [
+            "published"
+          ],
+          "type": "string"
+        },
+        "name": {
+          "description": "Optional endpoint name.",
+          "type": "string"
+        },
+        "port": {
+          "description": "a number between 1 and 65535",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "between(1, 65535)",
+          "type": "integer"
+        },
+        "protocol": {
+          "description": "Service-facing network protocol.",
+          "enum": [
+            "http",
+            "https",
+            "tcp",
+            "udp"
+          ],
+          "type": "string"
+        },
+        "publication": {
+          "additionalProperties": false,
+          "description": "Explicit host-publication intent and policy overrides.",
+          "properties": {
+            "bindAddress": {
+              "format": "ip",
+              "type": "string"
+            },
+            "hostPort": {
+              "description": "a number between 1 and 65535",
+              "maximum": 65535,
+              "minimum": 1,
+              "title": "between(1, 65535)",
+              "type": "integer"
+            }
+          },
+          "required": [],
+          "type": "object"
+        }
+      },
+      "required": [
+        "_tag",
+        "protocol",
+        "port",
+        "publication"
       ],
-      "type": "string"
-    },
-    "socketPath": {
-      "type": "string"
+      "type": "object"
     }
-  },
-  "required": [
-    "protocol"
-  ],
-  "type": "object"
+  ]
 }
