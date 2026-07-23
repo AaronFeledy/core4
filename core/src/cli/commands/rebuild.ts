@@ -15,6 +15,7 @@ import type {
   LandofileService,
   PathsService,
   PluginRegistry,
+  ProxyService,
   RuntimeProviderRegistry,
   ShellRunner,
 } from "@lando/sdk/services";
@@ -41,6 +42,7 @@ type RebuildAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
+  | ProxyService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
