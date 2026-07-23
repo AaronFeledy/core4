@@ -35,7 +35,9 @@ describe("PodmanServiceRunner", () => {
     expect(spec.env).toEqual({
       CONTAINERS_CONF: "/data/runtime/config/containers.conf",
       CONTAINERS_REGISTRIES_CONF: "/data/runtime/config/registries.conf",
+      XDG_CONFIG_HOME: "/data/runtime/config",
     });
+    expect(spec.env).not.toHaveProperty("PATH");
     expect(spec.args).toEqual([
       "--root",
       "/data/runtime/storage",
@@ -111,7 +113,7 @@ describe("PodmanServiceRunner", () => {
     expect(spec.args.at(-1)).toBe("unix:///data/runtime/run/podman.sock");
   });
 
-  test("system runner launches Podman with the managed containers config and inherited environment", async () => {
+  test("system runner launches Podman with managed config and the inherited host PATH", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-podman-service-runner-"));
     try {
       let launchedEnv: Readonly<Record<string, string | undefined>> | undefined;
@@ -132,6 +134,7 @@ describe("PodmanServiceRunner", () => {
       expect(pid).toBe(4321);
       expect(launchedEnv?.CONTAINERS_CONF).toBe("/data/runtime/config/containers.conf");
       expect(launchedEnv?.CONTAINERS_REGISTRIES_CONF).toBe("/data/runtime/config/registries.conf");
+      expect(launchedEnv?.XDG_CONFIG_HOME).toBe("/data/runtime/config");
       expect(launchedEnv?.PATH).toBe(process.env.PATH);
     } finally {
       await rm(dir, { recursive: true, force: true });
