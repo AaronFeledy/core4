@@ -14752,6 +14752,15 @@
     },
     {
       "deprecated": false,
+      "description": "Mutation-free provider setup plan inspected and authorized by core before provider apply.",
+      "docsPath": "docs/reference/schemas/provider-setup-plan.mdx",
+      "id": "ProviderSetupPlan",
+      "jsonSchemaPath": "dist/schemas/provider-setup-plan.json",
+      "packageExport": "@lando/sdk/schema#ProviderSetupPlan",
+      "title": "Provider Setup Plan"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Service Plan.",
       "docsPath": "docs/reference/schemas/service-plan.mdx",
       "id": "ServicePlan",
@@ -17266,6 +17275,7 @@
       "BuildPlan",
       "BuildStep",
       "AppPlan",
+      "ProviderSetupPlan",
       "ServicePlan",
       "AppMountPlan",
       "MountPlan",
@@ -44139,6 +44149,50 @@
     "ProviderId": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "type": "string"
+    },
+    "ProviderSetupPlan": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "description": "Mutation-free provider setup plan inspected and authorized by core before provider apply.",
+      "properties": {
+        "changes": {
+          "description": "Closed list of privileged host changes requiring core authorization.",
+          "items": {
+            "additionalProperties": false,
+            "description": "Install Ubuntu's fixed uidmap package. This host change is valid only on Linux hosts identified as Ubuntu 26.04.",
+            "properties": {
+              "_tag": {
+                "enum": ["install-uidmap"],
+                "type": "string"
+              },
+              "distribution": {
+                "enum": ["ubuntu"],
+                "type": "string"
+              },
+              "platform": {
+                "enum": ["linux"],
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "version": {
+                "enum": ["26.04"],
+                "type": "string"
+              }
+            },
+            "required": ["_tag", "platform", "distribution", "version", "reason"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "providerId": {
+          "description": "Provider that inspected and will apply this plan.",
+          "type": "string"
+        }
+      },
+      "required": ["providerId", "changes"],
+      "type": "object"
     },
     "PrunePolicy": {
       "$defs": {
