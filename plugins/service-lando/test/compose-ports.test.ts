@@ -143,3 +143,46 @@ describe("compose short-form ports", () => {
     },
   );
 });
+
+describe("compose mounts", () => {
+  test("resolves an authored relative bind mount into the service plan", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      services: {
+        worker: {
+          type: "compose",
+          image: "traefik:v3.3",
+          appMount: false,
+          mounts: [
+            {
+              type: "bind",
+              source: "./proxy-traefik/dynamic",
+              target: "/etc/traefik/dynamic",
+              readOnly: false,
+            },
+          ],
+        },
+      },
+    });
+    const service = landofile.services?.[ServiceName.make("worker")];
+    if (service === undefined) throw new Error("worker service missing");
+
+    const plan = await composeServicePlan({
+      serviceType: composeServiceType,
+      service,
+      appRoot: "/srv/apps/myapp",
+      metadata,
+      serviceName: "worker",
+      featureOverrides: new Map([[COMPOSE_FEATURE_ID, composeServiceFeature]]),
+    });
+
+    expect(plan.mounts).toEqual([
+      {
+        type: "bind",
+        source: "/srv/apps/myapp/proxy-traefik/dynamic",
+        target: "/etc/traefik/dynamic",
+        readOnly: false,
+        realization: "passthrough",
+      },
+    ]);
+  });
+});

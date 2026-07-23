@@ -4,7 +4,7 @@ import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, PortNumber, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type MountInput, PortNumber, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -17,6 +17,12 @@ type VolumeMount = {
   readonly source?: string;
   readonly target: string;
   readonly readOnly: boolean;
+};
+
+const resolveBindSource = (source: string, appRoot: string): string => {
+  const expanded =
+    source === "~" ? homedir() : source.startsWith("~/") ? homedir() + source.slice(1) : source;
+  return isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
 };
 
 const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
@@ -36,12 +42,25 @@ const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
   }
   const isPathLike = rawSource.startsWith(".") || rawSource.startsWith("/") || rawSource.startsWith("~");
   if (isPathLike) {
-    const expanded =
-      rawSource === "~" ? homedir() : rawSource.startsWith("~/") ? homedir() + rawSource.slice(1) : rawSource;
-    const source = isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
-    return { type: "bind", source, target: rawTarget, readOnly };
+    return { type: "bind", source: resolveBindSource(rawSource, appRoot), target: rawTarget, readOnly };
   }
   return { type: "volume", source: rawSource, target: rawTarget, readOnly };
+};
+
+const parseMount = (entry: MountInput, appRoot: string): VolumeMount => {
+  if (typeof entry === "string") return parseVolumeShortForm(entry, appRoot);
+  const type = entry.type ?? "bind";
+  if (type === "bind" && entry.source === undefined) {
+    throw new Error(`Compose bind mount at "${entry.target}" requires a source.`);
+  }
+  const source =
+    type === "bind" && entry.source !== undefined ? resolveBindSource(entry.source, appRoot) : entry.source;
+  return {
+    type,
+    ...(source === undefined ? {} : { source }),
+    target: entry.target,
+    readOnly: entry.readOnly ?? false,
+  };
 };
 
 type ComposePort = {
@@ -146,6 +165,15 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
       source: ctx.appRoot,
       target: APP_MOUNT_TARGET,
       readOnly: false,
+    });
+  }
+
+  for (const mount of (service.mounts ?? []).map((entry) => parseMount(entry, ctx.appRoot))) {
+    ctx.addMount({
+      type: mount.type,
+      ...(mount.source === undefined ? {} : { source: mount.source }),
+      target: PortablePath.make(mount.target),
+      readOnly: mount.readOnly,
     });
   }
 
