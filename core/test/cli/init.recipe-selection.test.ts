@@ -120,8 +120,8 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       expect(result.stdout).toContain("Pick a recipe");
       expect(result.stdout).toContain("Empty Landofile");
       expect(result.stdout).toContain("Created ci-empty-app at");
-      expect(await Bun.file(join(dir, "ci-empty-app", ".lando.yml")).exists()).toBe(true);
-      expect(await Bun.file(join(dir, "ci-empty-app", "server.js")).exists()).toBe(false);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "server.js")).exists()).toBe(false);
     });
   });
 
@@ -131,8 +131,8 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created idx-pick-app at");
-      expect(await Bun.file(join(dir, "idx-pick-app", ".lando.yml")).exists()).toBe(true);
-      expect(await Bun.file(join(dir, "idx-pick-app", "server.js")).exists()).toBe(false);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "server.js")).exists()).toBe(false);
     });
   });
 
@@ -142,8 +142,8 @@ describe("lando init — interactive recipe selection (US-031 AC1)", () => {
       const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created default-app at");
-      expect(await Bun.file(join(dir, "default-app", ".lando.yml")).exists()).toBe(true);
-      expect(await Bun.file(join(dir, "default-app", "server.js")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "server.js")).exists()).toBe(true);
     });
   });
 
@@ -220,8 +220,8 @@ describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created ci-app at");
-      expect(await Bun.file(join(dir, "ci-app", ".lando.yml")).exists()).toBe(true);
-      expect(await Bun.file(join(dir, "ci-app", "server.js")).exists()).toBe(false);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "server.js")).exists()).toBe(false);
     });
   });
 
@@ -231,8 +231,8 @@ describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created default-ci at");
-      expect(await Bun.file(join(dir, "default-ci", ".lando.yml")).exists()).toBe(true);
-      expect(await Bun.file(join(dir, "default-ci", "server.js")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, "server.js")).exists()).toBe(true);
     });
   });
 
@@ -242,7 +242,7 @@ describe("lando init — non-interactive recipe selection (US-031 AC2)", () => {
       expect(result.exitCode).toBe(0);
       expect(result.stdout).not.toContain("Pick a recipe");
       expect(result.stdout).toContain("Created yes-app at");
-      expect(await Bun.file(join(dir, "yes-app", ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
     });
   });
 });
