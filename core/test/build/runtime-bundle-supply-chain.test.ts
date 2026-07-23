@@ -86,6 +86,7 @@ describe("runtime-bundle workflow supply chain", () => {
     expect(packageVerification).toBeGreaterThan(packageInstall);
     expect(workflow).toContain("--allow-downgrades --reinstall");
     expect(workflow).toContain("https://snapshot.ubuntu.com/ubuntu/$UBUNTU_SNAPSHOT");
+    expect(workflow).toMatch(/PACKAGES=.*\bpatch\b/u);
     for (const obsoletePackage of ["libassuan-dev", "libgpg-error-dev", "libgpgme-dev"]) {
       expect(workflow).not.toContain(obsoletePackage);
     }
