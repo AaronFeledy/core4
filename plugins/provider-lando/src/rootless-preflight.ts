@@ -35,7 +35,7 @@ const rootlessPrerequisiteCopy: Record<RootlessPrerequisite, RootlessPrerequisit
   "xdg-runtime-dir": {
     message: "Rootless Podman requires XDG_RUNTIME_DIR to be set for your session.",
     remediation:
-      "Start a full user session so XDG_RUNTIME_DIR is set (run `loginctl enable-linger $USER` or `export XDG_RUNTIME_DIR=/run/user/$(id -u)`), then rerun `lando setup`.",
+      "Start a full user session so XDG_RUNTIME_DIR is set, or export XDG_RUNTIME_DIR=/run/user/$(id -u), then rerun `lando setup`.",
   },
 };
 
