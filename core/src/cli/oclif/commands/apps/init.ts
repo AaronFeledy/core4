@@ -4,13 +4,14 @@
  * **Interactive only** — not exported as a function from
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
-import { Flags } from "@oclif/core";
+import { Args, Flags } from "@oclif/core";
 import { Effect } from "effect";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { formatBugReport } from "../../../bug-report.ts";
 import { newInvocationId } from "../../../command-lifecycle.ts";
+import { resolveInitDestination } from "../../../commands/init-destination.ts";
 import { parseInitSourceFlags } from "../../../commands/init-source.ts";
 import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
 import { type ResultFormat, resolveResultFormat } from "../../../format-flags.ts";
@@ -60,6 +61,11 @@ export interface InitFlags {
 }
 
 export const initOptionsFromInput = (input: unknown): InitAppOptions => {
+  const inputArgs = typeof input === "object" && input !== null && "args" in input ? input.args : undefined;
+  const destination =
+    typeof inputArgs === "object" && inputArgs !== null && "destination" in inputArgs
+      ? inputArgs.destination
+      : undefined;
   const flags: Partial<InitFlags> =
     typeof input === "object" && input !== null
       ? ((input as { readonly flags?: Partial<InitFlags> }).flags ?? {})
@@ -73,8 +79,9 @@ export const initOptionsFromInput = (input: unknown): InitAppOptions => {
     path: flags.path,
     checksum: flags.checksum,
   });
+  const cwd = process.cwd();
   return {
-    cwd: process.cwd(),
+    cwd,
     full: flags.full === true,
     answers,
     ...(flags.answers === undefined ? {} : { answersFile: flags.answers }),
@@ -85,6 +92,11 @@ export const initOptionsFromInput = (input: unknown): InitAppOptions => {
       isTTY: process.stdin.isTTY,
     }),
     ...sourceOptions,
+    destination: resolveInitDestination({
+      cwd,
+      ...(typeof destination === "string" ? { destination } : {}),
+      ...(flags.name === undefined ? {} : { name: flags.name }),
+    }),
     ...(flags.name === undefined ? {} : { name: flags.name }),
     ...(flags.recipe === undefined ? {} : { recipe: flags.recipe }),
     ...(flags["registry-url"] === undefined ? {} : { registryUrl: flags["registry-url"] }),
@@ -104,6 +116,9 @@ export const initSpec: LandoCommandSpec<never> = {
 export default class InitCommand extends LandoCommandBase {
   static override description = initSpec.summary;
   static override aliases = [...resolveTopLevelAliases(initSpec)];
+  static override args = {
+    destination: Args.string({ description: "Output directory.", required: false, ignoreStdin: true }),
+  };
   static override flags = {
     name: Flags.string({ description: "App name (slugified for the project id)." }),
     source: Flags.string({ description: "Init source id (cwd, git, tarball, npm, registry, template)." }),
@@ -120,7 +135,6 @@ export default class InitCommand extends LandoCommandBase {
       description: "Expected SHA-256 of a --source=tarball archive (64 hex chars).",
     }),
     recipe: Flags.string({ description: "Recipe to apply." }),
-    destination: Flags.string({ description: "Target directory." }),
     full: Flags.boolean({ description: "Use full recipe defaults instead of prompts." }),
     yes: Flags.boolean({ description: "Accept every prompt's default without asking.", default: false }),
     "no-interactive": Flags.boolean({
@@ -203,7 +217,7 @@ export default class InitCommand extends LandoCommandBase {
     )
       return;
 
-    const parsed = (await this.parse(InitCommand)) as { readonly flags: InitFlags };
+    const parsed = await this.parse(InitCommand);
     const runtime = getCommandRuntimeLayer(this.ctor);
     if (runtime === undefined) {
       await renderPreCommandFailure({
@@ -239,7 +253,7 @@ export default class InitCommand extends LandoCommandBase {
         invocation: {
           commandId: initSpec.id,
           argv: this.argv,
-          args: {},
+          args: parsed.args,
           flags: Object.fromEntries(Object.entries(parsed.flags)),
           cwd: process.cwd(),
           invocationId: newInvocationId(),
