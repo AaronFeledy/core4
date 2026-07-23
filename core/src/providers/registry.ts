@@ -130,6 +130,19 @@ const makeRuntimeProviderRegistry = (
     stateStore,
     Schema.decodeUnknownSync(AbsolutePath)(landoPaths.pluginStateDir(LANDO_PROVIDER_PLUGIN_NAME)),
   );
+  const runtimeGenerationBucket = providerState.open({
+    key: "runtime-generation.json",
+    schema: Schema.String,
+    version: 1,
+    lock: "advisory",
+    onCorrupt: "fail",
+    onVersionMismatch: "discard",
+  });
+  const runtimeGenerationStore = {
+    get: runtimeGenerationBucket.pipe(Effect.flatMap((bucket) => bucket.get)),
+    set: (generation: string) =>
+      runtimeGenerationBucket.pipe(Effect.flatMap((bucket) => bucket.set(generation))),
+  };
 
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
@@ -191,6 +204,7 @@ const makeRuntimeProviderRegistry = (
                   artifactDownload,
                   logFileHelperPayloads,
                   runtimeLock: (body) => providerState.withLock("runtime-launch", body),
+                  runtimeGenerationStore,
                 }),
               ),
               Effect.mapError(toProviderUnavailableFromCapability),
