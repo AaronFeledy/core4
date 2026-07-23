@@ -78,6 +78,7 @@ interface InspectCall {
 }
 
 interface ProviderCalls {
+  readonly actions: Array<"apply" | "build">;
   readonly apply: Array<ApplyCall>;
   readonly build: Array<AppPlan>;
   readonly destroy: Array<DestroyCall>;
@@ -102,6 +103,11 @@ interface Harness {
   readonly calls: ProviderCalls;
   readonly events: Array<LandoEvent>;
 }
+
+const artifactRefs = (plan: AppPlan): ReadonlyArray<string> =>
+  Object.values(plan.services).flatMap((service) =>
+    service.artifact?.kind === "ref" ? [service.artifact.ref] : [],
+  );
 
 const withTempRoots = async <T>(run: (dataRoot: string) => Promise<T>): Promise<T> => {
   const dataRoot = await mkdtemp(join(tmpdir(), "lando-global-commands-data-"));
@@ -183,7 +189,7 @@ const makeHarness = async (
       ],
     },
   });
-  const calls: ProviderCalls = { apply: [], build: [], destroy: [], inspect: [] };
+  const calls: ProviderCalls = { actions: [], apply: [], build: [], destroy: [], inspect: [] };
   const events: Array<LandoEvent> = [];
   const providerId = ProviderId.make("lando");
   const provider: RuntimeProviderShape = {
@@ -192,6 +198,7 @@ const makeHarness = async (
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
     apply: (plan, options) =>
       Effect.sync(() => {
+        calls.actions.push("apply");
         calls.apply.push({ plan, options });
         return { changed: true };
       }),
@@ -235,6 +242,7 @@ const makeHarness = async (
   const buildOrchestrator = {
     build: (plan: AppPlan) =>
       Effect.sync(() => {
+        calls.actions.push("build");
         calls.build.push(plan);
         return {
           ...plan,
@@ -246,6 +254,7 @@ const makeHarness = async (
           ),
         };
       }),
+    buildApp: () => Effect.void,
   };
   const layer = Layer.mergeAll(
     ConfigServiceLive,
@@ -326,11 +335,17 @@ describe("meta:global command effects", () => {
       const result = await Effect.runPromise(globalStart({}).pipe(Effect.provide(harness.layer)));
 
       expect(harness.calls.apply).toHaveLength(1);
+      expect(harness.calls.build).toHaveLength(1);
+      expect(harness.calls.actions).toEqual(["build", "apply"]);
       expect(String(harness.calls.apply[0]?.plan.id)).toBe("global");
       expect(harness.calls.apply[0]?.plan.name).toBe("global");
       expect(harness.calls.apply[0]?.plan.root).toBe(join(harness.dataRoot, "global"));
       expect(harness.calls.apply[0]?.options.reconcile).toBe(false);
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {}).sort()).toEqual(["mail", "proxy"]);
+      expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan)).sort()).toEqual([
+        "built:mail",
+        "built:proxy",
+      ]);
       expect(harness.calls.inspect.map((call) => String(call.target.service)).sort()).toEqual([
         "mail",
         "proxy",
@@ -346,7 +361,11 @@ describe("meta:global command effects", () => {
       );
 
       expect(harness.calls.apply).toHaveLength(1);
+      expect(harness.calls.build).toHaveLength(1);
+      expect(Object.keys(harness.calls.build[0]?.services ?? {})).toEqual(["mail"]);
+      expect(harness.calls.actions).toEqual(["build", "apply"]);
       expect(Object.keys(harness.calls.apply[0]?.plan.services ?? {})).toEqual(["mail"]);
+      expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan))).toEqual(["built:mail"]);
       expect(harness.calls.inspect.map((call) => String(call.target.service))).toEqual(["mail"]);
       expect(result.servicesStarted.map((service) => service.name)).toEqual(["mail"]);
     });
@@ -359,6 +378,7 @@ describe("meta:global command effects", () => {
       );
 
       expect(harness.calls.apply).toEqual([]);
+      expect(harness.calls.build).toEqual([]);
       expect(harness.calls.inspect).toEqual([]);
       const error = failureOf(exit) as { readonly _tag: string; readonly message: string };
       expect(error._tag).toBe("ToolingExecError");
@@ -875,13 +895,17 @@ describe("meta:global command effects", () => {
     );
   });
 
-  test("rebuild regression: adjacent restart still does not build", async () => {
+  test("restart uses global start's built plan", async () => {
     await withHarness(async (harness) => {
       await materializeDist(harness, { proxy: { type: "lando" }, mail: { type: "lando" } });
 
       await Effect.runPromise(globalRestart().pipe(Effect.provide(harness.layer)));
 
-      expect(harness.calls.build).toEqual([]);
+      expect(harness.calls.build).toHaveLength(1);
+      expect(harness.calls.apply.flatMap(({ plan }) => artifactRefs(plan)).sort()).toEqual([
+        "built:mail",
+        "built:proxy",
+      ]);
     });
   });
 
