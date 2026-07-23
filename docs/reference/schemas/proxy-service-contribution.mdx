@@ -1,0 +1,20 @@
+---
+title: Proxy Service Contribution
+description: Public Lando schema contract for Proxy Service Contribution.
+---
+
+# Proxy Service Contribution
+
+Public Lando schema contract for Proxy Service Contribution.
+
+[JSON Schema artifact](../../../dist/schemas/proxy-service-contribution.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `id` | Yes | `string` | Unique ProxyService implementation id. | — | — | — | — |
+| `module` | Yes | `string` | Contained plugin module exporting the ProxyService Layer. | — | — | — | — |
+| `capabilities` | No | `object` | Static capability declaration available before loading the implementation. | — | — | — | — |
+| `defaultFor` | No | `object` | Host matchers that nominate this implementation as a default. | — | — | — | — |
+| `enabledByDefault` | No | `boolean` | Whether this contribution starts enabled after installation. | — | — | — | — |
+| `summary` | No | `string` | One-line implementation description for listings and diagnostics. | — | — | — | — |
+| `deprecated` | No | `object` | Optional lifecycle notice for this contribution. | — | — | — | — |
