@@ -7,6 +7,7 @@ import { Effect, Layer, Stream } from "effect";
 
 import { AbsolutePath, type ProviderCapabilities, ProviderId } from "@lando/core/schema";
 import {
+  AppPlanResolver,
   type EventService,
   PathsService,
   RuntimeProvider,
@@ -146,6 +147,10 @@ const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
     redactionLive,
     ScratchRegistryLive,
     scannerLive,
+    Layer.succeed(AppPlanResolver, {
+      plan: () => Effect.die("scratch gc test should not plan an app"),
+      global: () => Effect.die("scratch gc test should not plan the global app"),
+    }),
     DataMoverLive.pipe(
       Layer.provide(
         Layer.mergeAll(
