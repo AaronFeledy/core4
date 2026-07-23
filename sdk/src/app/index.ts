@@ -40,6 +40,7 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  ProxyError,
   RemoteError,
   RemoteProtectedEnvError,
   RemoteProviderUnavailableError,
@@ -91,6 +92,7 @@ import type {
   PluginTrustStore,
   PrivilegeService,
   ProcessRunner,
+  ProxyService,
   RemoteSourceError,
   Renderer,
   RuntimeProvider,
@@ -123,6 +125,7 @@ export type LandoRuntimeServices =
   | Downloader
   | StateStore
   | PluginRegistry
+  | ProxyService
   | RuntimeProvider
   | RuntimeProviderRegistry
   | GlobalAppService
@@ -199,6 +202,7 @@ export type StartAppError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
+  | ProxyError
   | ProviderUnavailableError;
 
 // biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
@@ -267,7 +271,7 @@ export interface DestroyAppResult {
   readonly volumesRemoved: boolean;
 }
 
-export type DestroyAppError = StopAppError;
+export type DestroyAppError = StopAppError | ProxyError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;

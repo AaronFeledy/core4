@@ -40,6 +40,7 @@ import type {
   PluginTrustStore,
   PrivilegeService,
   ProcessRunner,
+  ProxyService,
   Renderer,
   RootOverrides,
   RuntimeProvider,
@@ -115,6 +116,7 @@ type ScratchRuntimeServices =
   | ScratchAppService;
 export type AppRuntimeServices =
   | ProviderRuntimeServices
+  | ProxyService
   | BuildOrchestrator
   | LandofileService
   | CommandRegistry

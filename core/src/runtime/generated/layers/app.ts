@@ -14,6 +14,7 @@
 import { Context, Layer } from "effect";
 
 import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
+import { proxy as ProxyServiceLive } from "@lando/proxy-traefik";
 import { EventService } from "@lando/sdk/services";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
 import { AppPlanResolverLive } from "../../../services/app-plan-resolver.ts";
@@ -29,11 +30,13 @@ export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const buildOrchestratorLive = Layer.suspend(() => BuildOrchestratorLive.pipe(Layer.provide(providerBase)));
   const plannerLive = AppPlannerLive.pipe(Layer.provide(providerBase));
   const resolverLive = AppPlanResolverLive.pipe(Layer.provide(Layer.merge(providerBase, plannerLive)));
+  const proxyServiceLive = ProxyServiceLive.pipe(Layer.provide(providerBase));
   const appBase = Layer.mergeAll(
     providerBase,
     buildOrchestratorLive,
     plannerLive,
     resolverLive,
+    proxyServiceLive,
     ProviderExecToolingEngineLive,
     ShellRunnerLive,
     FileSyncEngineLive.pipe(Layer.provide(providerBase)),
