@@ -274,7 +274,8 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     await withRuntimeProvider(
       events,
       async (provider) => {
-        await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
+        const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+        await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
         await Effect.runPromise(provider.apply(plan, {}));
       },
       2,
