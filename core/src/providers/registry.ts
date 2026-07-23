@@ -2,12 +2,13 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { LogFileHelperPayloads } from "@lando/container-runtime/log-file-helper-payloads";
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Effect, Layer, Schema } from "effect";
 
 import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provider-docker";
 import {
   type ArtifactDownload,
   type ArtifactDownloadResult,
+  PLUGIN_NAME as LANDO_PROVIDER_PLUGIN_NAME,
   ProviderBundleChecksumError,
   makeRuntimeProvider as makeLandoRuntimeProvider,
 } from "@lando/provider-lando";
@@ -19,7 +20,7 @@ import {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, ProviderId } from "@lando/sdk/schema";
 import {
   ConfigService,
   Downloader,
@@ -28,9 +29,12 @@ import {
   PluginRegistry,
   RuntimeProvider,
   RuntimeProviderRegistry,
+  StateStore,
+  type StateStoreShape,
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import { makePluginStateStore } from "../plugins/context-state.ts";
 import { loadLogFileHelperPayloads } from "./log-file-helper-payloads.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -119,8 +123,13 @@ const makeRuntimeProviderRegistry = (
   eventService: EventPublisher | undefined,
   downloader: Context.Tag.Service<typeof Downloader>,
   landoPaths: Context.Tag.Service<typeof PathsService>,
+  stateStore: StateStoreShape,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const artifactDownload = makeArtifactDownload(downloader);
+  const providerState = makePluginStateStore(
+    stateStore,
+    Schema.decodeUnknownSync(AbsolutePath)(landoPaths.pluginStateDir(LANDO_PROVIDER_PLUGIN_NAME)),
+  );
 
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
@@ -181,6 +190,7 @@ const makeRuntimeProviderRegistry = (
                   ...(eventService === undefined ? {} : { eventService }),
                   artifactDownload,
                   logFileHelperPayloads,
+                  runtimeLock: (body) => providerState.withLock("runtime-launch", body),
                 }),
               ),
               Effect.mapError(toProviderUnavailableFromCapability),
@@ -235,12 +245,14 @@ export const RuntimeProviderRegistryLive = Layer.effect(
     const eventService = yield* Effect.serviceOption(EventService);
     const downloader = yield* Downloader;
     const landoPaths = yield* PathsService;
+    const stateStore = yield* StateStore;
     return makeRuntimeProviderRegistry(
       configService,
       pluginRegistry,
       eventService._tag === "Some" ? eventService.value : undefined,
       downloader,
       landoPaths,
+      stateStore,
     );
   }),
 );
