@@ -36,10 +36,12 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestProxyService, makeTestProxyService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -250,6 +252,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
+  Layer.succeed(ProxyService, TestProxyService),
   Layer.succeed(BuildOrchestrator, {
     build: (appPlan) => Effect.succeed(appPlan),
     buildApp: () => Effect.void,
@@ -286,6 +289,7 @@ const makeStartLayer = (
   const taskEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const applyPlans: AppPlan[] = [];
   const buildOrder: string[] = [];
+  const proxy = makeTestProxyService();
   const destroyCalls: Array<{
     readonly app: string;
     readonly volumes: boolean;
@@ -394,6 +398,7 @@ const makeStartLayer = (
       query: () => Effect.succeed([]),
     }),
     unusedGlobalServicesLayer,
+    Layer.succeed(ProxyService, proxy),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
       buildApp: () =>
@@ -403,7 +408,7 @@ const makeStartLayer = (
     }),
   );
 
-  return { layer, events, applyPlans, buildOrder, destroyCalls, taskEvents };
+  return { layer, events, applyPlans, buildOrder, destroyCalls, proxy, taskEvents };
 };
 
 const globalServiceType = makeLegacyServiceTypeFake({
@@ -571,6 +576,7 @@ const makeAutoStartLayer = async (options: {
       discover: Effect.succeed({ name: options.userPlan.name, services: {} }),
     }),
     Layer.succeed(PathsService, makeLandoPaths()),
+    Layer.succeed(ProxyService, TestProxyService),
     Layer.succeed(AppPlanResolver, {
       plan: (landofile) =>
         Effect.succeed(
@@ -656,6 +662,25 @@ describe("lando start", () => {
     expect(plan.services[ServiceName.make("web")]?.endpoints).toEqual([
       { port: 3000, protocol: "http", name: "http" },
     ]);
+  });
+
+  test("applies planned routes through the proxy service", async () => {
+    const routedPlan: AppPlan = {
+      ...plan,
+      routes: [
+        {
+          hostname: "web.test-start.lndo.site",
+          scheme: "https",
+          service: web.name,
+          endpoint: 3000,
+        },
+      ],
+    };
+    const harness = makeStartLayer({ plannedApp: routedPlan });
+
+    await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    expect(harness.proxy.routesByApp.get(String(plan.id))).toEqual(routedPlan.routes);
   });
 
   test("uses the captured scratch AppRef when starting a resolved scratch target", async () => {
@@ -1074,6 +1099,14 @@ describe("lando start", () => {
     await withHostProxyArtifact(async ({ dataRoot }) => {
       const eligiblePlan = {
         ...plan,
+        routes: [
+          {
+            hostname: "web.test-start.lndo.site",
+            scheme: "https" as const,
+            service: web.name,
+            endpoint: 3000,
+          },
+        ],
         services: {
           ...plan.services,
           [web.name]: hostProxyEnabledWeb,
@@ -1093,6 +1126,7 @@ describe("lando start", () => {
       expect(exit._tag).toBe("Failure");
       expect(harness.applyPlans).toHaveLength(1);
       expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
+      expect(harness.proxy.routesByApp.has(String(plan.id))).toBe(false);
       await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
@@ -1357,7 +1391,7 @@ describe("lando start", () => {
 
         const result = await runCli(["start"], join(dir, "test-start"));
 
-        expect(result.exitCode).toBe(0);
+        expect(result).toMatchObject({ exitCode: 0 });
         expect(result.stdout).toContain("ready: test-start");
         expect(result.stdout).toContain("web");
         expect(result.stdout).toContain("database");

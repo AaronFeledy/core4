@@ -21,6 +21,8 @@ import {
   LandofileService,
   type PathsService,
   type PluginRegistry,
+  ProxyService,
+  type ProxyServiceShape,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
   type ShellRunner,
@@ -65,6 +67,7 @@ type StartAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
+  | ProxyService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -79,10 +82,13 @@ const isStartAppReady = (result: StartAppResult): boolean =>
   result.servicesStarted.length > 0 &&
   result.servicesStarted.every((service) => READY_STATES.has(service.state));
 
-const rollbackAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
-  provider
-    .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
-    .pipe(Effect.catchAll(() => Effect.void));
+const rollbackAppliedApp = (provider: RuntimeProviderShape, proxy: ProxyServiceShape, plan: AppPlan) =>
+  Effect.all([
+    provider
+      .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
+      .pipe(Effect.catchAll(() => Effect.void)),
+    proxy.removeRoutes(plan.id).pipe(Effect.catchAll(() => Effect.void)),
+  ]).pipe(Effect.asVoid);
 
 export const renderStartAppResult = (result: StartAppResult): string => {
   const services = result.servicesStarted
@@ -113,6 +119,7 @@ export const startApp = (
     const planner = yield* AppPlanResolver;
     const events = yield* EventService;
     const builds = yield* BuildOrchestrator;
+    const proxy = yield* ProxyService;
 
     const plan =
       target?.plan ??
@@ -143,6 +150,7 @@ export const startApp = (
         ),
       );
     }
+    yield* proxy.setup();
 
     return yield* withStartedHostProxy(plan, ref, provider.capabilities, {
       platform: provider.platform,
@@ -187,6 +195,7 @@ export const startApp = (
                 ...(options.signal === undefined ? {} : { signal: options.signal }),
               }),
             );
+            yield* proxy.applyRoutes(builtPlan.routes, plan.id);
             return yield* Effect.forEach(serviceList, (service) =>
               provider.inspect({ app: plan.id, service: service.name }).pipe(
                 Effect.map((runtime) => ({
@@ -203,7 +212,7 @@ export const startApp = (
           const servicesStarted = yield* applyAndInspect.pipe(
             Effect.tapError(() =>
               Effect.gen(function* () {
-                yield* rollbackAppliedApp(provider, plan);
+                yield* rollbackAppliedApp(provider, proxy, plan);
                 for (const service of serviceList) {
                   yield* publishTaskFail(events, {
                     taskId: String(service.name),
@@ -246,7 +255,7 @@ export const startApp = (
           yield* startFileSyncSessions(plan, events, managed).pipe(
             Effect.tapError(() =>
               Effect.gen(function* () {
-                yield* rollbackAppliedApp(provider, plan);
+                yield* rollbackAppliedApp(provider, proxy, plan);
               }),
             ),
           );
@@ -265,7 +274,7 @@ export const startApp = (
     }).pipe(
       Effect.onInterrupt(() =>
         Ref.get(applyStarted).pipe(
-          Effect.flatMap((started) => (started ? rollbackAppliedApp(provider, plan) : Effect.void)),
+          Effect.flatMap((started) => (started ? rollbackAppliedApp(provider, proxy, plan) : Effect.void)),
         ),
       ),
     );
