@@ -19,6 +19,9 @@ import { Effect, Schema } from "effect";
 
 import { ServiceConfig } from "@lando/sdk/schema";
 
+import { TRAEFIK_HTTPS_PORT, TRAEFIK_HTTP_PORT } from "../ports.ts";
+import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy.ts";
+
 /** Pinned Traefik v3 image. Override per-install via the user `.lando.yml`. */
 export const TRAEFIK_IMAGE = "traefik:v3.3";
 
@@ -74,7 +77,31 @@ const traefikServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   image: TRAEFIK_IMAGE,
   appMount: false,
   command: ["sh", "-c", TRAEFIK_START_SCRIPT],
-  ports: ["80", "443", "8080"],
+  mounts: [
+    {
+      type: "bind",
+      source: TRAEFIK_DYNAMIC_CONFIG_SOURCE,
+      target: TRAEFIK_DYNAMIC_CONFIG_DIR,
+      readOnly: false,
+    },
+  ],
+  endpoints: [
+    {
+      _tag: "published",
+      name: "web",
+      protocol: "http",
+      port: 80,
+      publication: { bindAddress: "127.0.0.1", hostPort: TRAEFIK_HTTP_PORT },
+    },
+    {
+      _tag: "published",
+      name: "websecure",
+      protocol: "https",
+      port: 443,
+      publication: { bindAddress: "127.0.0.1", hostPort: TRAEFIK_HTTPS_PORT },
+    },
+  ],
+  ports: ["8080"],
   environment: {},
 });
 

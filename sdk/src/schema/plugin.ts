@@ -5,6 +5,7 @@ import { DownloaderCapabilities } from "./downloader.ts";
 import { HttpClientCapabilities } from "./http-client.ts";
 import { BootstrapLevel, PluginName } from "./primitives.ts";
 import { PromptType } from "./prompt.ts";
+import { ProxyCapabilities } from "./proxy.ts";
 import { DatasetContribution, RemoteSourceContribution } from "./remote-sync.ts";
 import { RendererPanelManifestEntry } from "./renderer-panel.ts";
 import { SubscriberManifestEntry } from "./subscriber.ts";
@@ -152,6 +153,33 @@ export const InteractionServiceContribution = Schema.Struct({
 });
 export type InteractionServiceContribution = typeof InteractionServiceContribution.Type;
 
+export const ProxyServiceContribution = Schema.Struct({
+  id: Schema.propertySignature(Schema.String).annotations({
+    description: "Unique ProxyService implementation id.",
+  }),
+  module: Schema.propertySignature(Schema.String).annotations({
+    description: "Contained plugin module exporting the ProxyService Layer.",
+  }),
+  capabilities: Schema.optional(ProxyCapabilities).annotations({
+    description: "Static capability declaration available before loading the implementation.",
+  }),
+  defaultFor: Schema.optional(
+    Schema.Struct({
+      platform: Schema.optional(Schema.Array(Schema.String)),
+    }),
+  ).annotations({ description: "Host matchers that nominate this implementation as a default." }),
+  enabledByDefault: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether this contribution starts enabled after installation.",
+  }),
+  summary: Schema.optional(Schema.String).annotations({
+    description: "One-line implementation description for listings and diagnostics.",
+  }),
+  deprecated: Schema.optional(DeprecationNotice).annotations({
+    description: "Optional lifecycle notice for this contribution.",
+  }),
+});
+export type ProxyServiceContribution = typeof ProxyServiceContribution.Type;
+
 export const PluginSetupFlagContribution = Schema.Struct({
   name: Schema.String,
   type: Schema.Literal("boolean", "option"),
@@ -176,8 +204,9 @@ export const PluginContribution = Schema.Struct({
   appFeatures: Schema.optional(Schema.Array(ContributionRef)),
   /** Provider ids registered. */
   providers: Schema.optional(Schema.Array(ContributionRef)),
-  /** Proxy ids registered. */
-  proxies: Schema.optional(Schema.Array(ContributionRef)),
+  proxyServices: Schema.optional(Schema.Array(ProxyServiceContribution)).annotations({
+    description: "ProxyService implementations registered by this plugin.",
+  }),
   /** Logger ids registered. */
   loggers: Schema.optional(Schema.Array(ContributionRef)),
   /** Renderer ids registered. */

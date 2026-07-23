@@ -20,7 +20,6 @@ type ContributionKind =
   | "serviceTypes"
   | "serviceFeatures"
   | "providers"
-  | "proxies"
   | "loggers"
   | "renderers"
   | "templateEngines"
@@ -32,7 +31,6 @@ const CONTRIBUTION_KIND_TO_DEPRECATION_KIND = {
   serviceTypes: "service-type",
   serviceFeatures: "service-feature",
   providers: "provider-extension",
-  proxies: "provider-extension",
   loggers: "manifest-contribution",
   renderers: "render-event",
   templateEngines: "manifest-contribution",
@@ -45,7 +43,6 @@ const CONTRIBUTION_KINDS: ReadonlyArray<ContributionKind> = [
   "serviceTypes",
   "serviceFeatures",
   "providers",
-  "proxies",
   "loggers",
   "renderers",
   "templateEngines",
@@ -87,6 +84,16 @@ const registerPluginDeprecations = (manifests: ReadonlyArray<PluginManifest>) =>
             "manifest-contribution",
             `${manifest.name}:globalServices.${service.id}`,
             service.deprecated,
+          );
+        }
+      }
+      for (const proxy of manifest.contributes?.proxyServices ?? []) {
+        if (proxy.deprecated !== undefined) {
+          yield* deprecations.register(
+            "plugin",
+            "provider-extension",
+            `${manifest.name}:proxyServices.${proxy.id}`,
+            proxy.deprecated,
           );
         }
       }

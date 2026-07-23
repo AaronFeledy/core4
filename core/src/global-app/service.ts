@@ -345,7 +345,11 @@ const makeGlobalAppService = (
       return { path: resolved.distLandofile, status: "updated" as const, serviceIds };
     });
 
-  return { id: GLOBAL_APP_ID, root, ensureRoot, paths, ensureUserLandofile, regenerateDist };
+  const ensureRunning = () =>
+    Effect.fail(
+      globalAppError("ensureRunning", "Global service startup requires the app runtime.", undefined),
+    );
+  return { id: GLOBAL_APP_ID, root, ensureRoot, paths, ensureUserLandofile, ensureRunning, regenerateDist };
 };
 
 export const GlobalAppServiceLive = Layer.effect(
