@@ -12,16 +12,18 @@
  * `bun build --compile` binary). The manifest still records `module:` for
  * documentation and the non-bundled (future) dynamic-import fallback.
  */
-import { type Effect, Layer, Schema } from "effect";
+import { type Effect, Schema } from "effect";
 
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
 import traefikGlobalService from "./global-services/traefik.ts";
+import { ProxyServiceTraefikGlobalAppLive } from "./proxy-service.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
-/** ProxyService Layer slot. Realization lands with the ProxyService story. */
-export const proxy = Layer.empty;
+export { ProxyServiceTraefikGlobalAppLive } from "./proxy-service.ts";
+
+export const proxy = ProxyServiceTraefikGlobalAppLive;
 
 /** Static global-service contributions, keyed by contribution id. */
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([

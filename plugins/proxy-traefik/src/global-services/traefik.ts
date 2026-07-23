@@ -19,6 +19,8 @@ import { Effect, Schema } from "effect";
 
 import { DEFAULT_PROXY_HTTPS_PORT, DEFAULT_PROXY_HTTP_PORT, ServiceConfig } from "@lando/sdk/schema";
 
+import { TRAEFIK_DYNAMIC_CONFIG_SOURCE } from "../proxy-service.ts";
+
 /** Pinned Traefik v3 image. Override per-install via the user `.lando.yml`. */
 export const TRAEFIK_IMAGE = "traefik:v3.3";
 
@@ -77,6 +79,14 @@ const traefikServiceConfig = Schema.decodeUnknownSync(ServiceConfig)({
   image: TRAEFIK_IMAGE,
   appMount: false,
   command: ["sh", "-c", TRAEFIK_START_SCRIPT],
+  mounts: [
+    {
+      type: "bind",
+      source: TRAEFIK_DYNAMIC_CONFIG_SOURCE,
+      target: TRAEFIK_DYNAMIC_CONFIG_DIR,
+      readOnly: false,
+    },
+  ],
   endpoints: [
     {
       name: "web",
