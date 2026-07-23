@@ -15,7 +15,7 @@ export const RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT = [
   `UBUNTU_SNAPSHOT=${RUNTIME_BUNDLE_UBUNTU_SNAPSHOT}`,
   `printf 'APT::Snapshot "%s";\\n' "$UBUNTU_SNAPSHOT" | sudo tee /etc/apt/apt.conf.d/50lando-runtime-bundle-snapshot`,
   "sudo apt-get update",
-  "PACKAGES=(build-essential libassuan-dev libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libgpg-error-dev libgpgme-dev libseccomp-dev libsqlite3-dev libsystemd-dev pkg-config protobuf-compiler uidmap)",
+  "PACKAGES=(build-essential libbtrfs-dev libcap-dev libdevmapper-dev libglib2.0-dev libseccomp-dev libsqlite3-dev libsystemd-dev pkg-config protobuf-compiler uidmap)",
   'sudo apt-get install -y --no-install-recommends --allow-downgrades --reinstall "${PACKAGES[@]}"',
   'for PACKAGE in "${PACKAGES[@]}"; do',
   `  INSTALLED_VERSION="$(dpkg-query -W -f='\${Version}' "$PACKAGE")"`,
