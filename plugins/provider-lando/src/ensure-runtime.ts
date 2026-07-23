@@ -9,6 +9,12 @@ import type { HostPlatform } from "@lando/sdk/schema";
 
 import type { PodmanApiClient } from "./capabilities.ts";
 import {
+  type LinuxRuntimeFilesystem,
+  type RuntimeGenerationStore,
+  adoptHealthyRuntimeGeneration,
+} from "./linux-runtime-generation.ts";
+import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
+import {
   type PodmanServiceRunner,
   type RuntimeLaunchError,
   buildPodmanServiceArgs,
@@ -36,6 +42,11 @@ export interface EnsureRuntimeDeps {
   readonly rootlessProbes?: RootlessProbes;
   readonly readinessPolicy?: RetryPolicy;
   readonly withLaunchLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
+  readonly generationStore?: RuntimeGenerationStore;
+  readonly bootIdReader?: () => Effect.Effect<string, unknown>;
+  readonly pidNamespaceReader?: () => Effect.Effect<string, unknown>;
+  readonly filesystem?: LinuxRuntimeFilesystem;
+  readonly terminationPolicy?: RetryPolicy;
   readonly setupProgress?: {
     readonly launch: (
       body: Effect.Effect<void, ProviderUnavailableError>,
@@ -160,10 +171,31 @@ const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<Re
 const findAliveManagedServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
   findAliveServicePids(deps, deps.serviceRunner.findManagedServicePids);
 
-const runtimeIsHealthy = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> =>
+const runtimeIsHealthy = (
+  deps: EnsureRuntimeDeps,
+): Effect.Effect<boolean, ProviderUnavailableError> =>
   Effect.either(deps.podmanApi.ping).pipe(
     Effect.flatMap((reachable) =>
-      reachable._tag === "Left" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
+      reachable._tag === "Left"
+        ? Effect.succeed(false)
+        : currentRuntimeIsOwned(deps).pipe(
+            Effect.flatMap((owned) => {
+              if (!owned || deps.generationStore === undefined) return Effect.succeed(owned);
+              return adoptHealthyRuntimeGeneration({
+                storageDir: deps.storageDir,
+                runRoot: deps.runRoot,
+                configDir: deps.configDir,
+                socketPath: deps.socketPath,
+                pidPath: deps.pidPath,
+                generationStore: deps.generationStore,
+                ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
+                ...(deps.pidNamespaceReader === undefined
+                  ? {}
+                  : { pidNamespaceReader: deps.pidNamespaceReader }),
+                ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
+              });
+            }),
+          ),
     ),
   );
 
@@ -281,8 +313,25 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
 
     const repair = Effect.gen(function* () {
       if (yield* runtimeIsHealthy(deps)) return;
-      yield* stopDiscoveredRuntimeProcesses(deps);
-      yield* reapStaleRuntime(deps);
+      if (deps.generationStore === undefined) {
+        yield* stopDiscoveredRuntimeProcesses(deps);
+        yield* reapStaleRuntime(deps);
+      } else {
+        yield* reapStaleLinuxRuntime({
+          serviceRunner: deps.serviceRunner,
+          podmanBin: deps.podmanBin,
+          storageDir: deps.storageDir,
+          runRoot: deps.runRoot,
+          configDir: deps.configDir,
+          socketPath: deps.socketPath,
+          pidPath: deps.pidPath,
+          generationStore: deps.generationStore,
+          ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
+          ...(deps.pidNamespaceReader === undefined ? {} : { pidNamespaceReader: deps.pidNamespaceReader }),
+          ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
+          ...(deps.terminationPolicy === undefined ? {} : { terminationPolicy: deps.terminationPolicy }),
+        });
+      }
       yield* launchRuntime(deps);
     });
     const launch = (deps.withLaunchLock?.(repair) ?? repair).pipe(
