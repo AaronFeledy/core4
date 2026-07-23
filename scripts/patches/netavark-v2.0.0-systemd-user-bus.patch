@@ -1,0 +1,34 @@
+--- a/src/dns/aardvark.rs
++++ b/src/dns/aardvark.rs
+@@ -14,6 +14,7 @@
+ use std::io::Write;
+ use std::net::Ipv4Addr;
+ use std::net::{IpAddr, Ipv6Addr};
++use std::os::unix::net::UnixStream;
+ use std::path::{Path, PathBuf};
+ use std::process::{Command, Stdio};
+ 
+@@ -108,12 +109,22 @@
+         false
+     }
+ 
++    fn has_usable_systemd_user_bus() -> bool {
++        let Ok(runtime_dir) = std::env::var("XDG_RUNTIME_DIR") else {
++            return false;
++        };
++        UnixStream::connect(Path::new(&runtime_dir).join("bus")).is_ok()
++    }
++
+     pub fn start_aardvark_server(&self) -> NetavarkResult<()> {
+         log::debug!("Spawning aardvark server");
+ 
+         let mut aardvark_args = vec![];
+         // only use systemd when it is booted
+-        if is_using_systemd() && Aardvark::is_executable_in_path(SYSTEMD_RUN) {
++        if is_using_systemd()
++            && Aardvark::is_executable_in_path(SYSTEMD_RUN)
++            && (!self.rootless || Aardvark::has_usable_systemd_user_bus())
++        {
+             // TODO: This could be replaced by systemd-api.
+             aardvark_args = vec![
+                 OsStr::new(SYSTEMD_RUN),
