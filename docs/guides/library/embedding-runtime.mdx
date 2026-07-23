@@ -99,13 +99,17 @@ for the raw operations only when you need command-level dispatch.
     <Step name="start-info-stop">
       <Run
         runtime="library"
-        code={`const providerLayers = [
+        code={`const [{ ProxyService }, { TestProxyService }] = yield* Effect.promise(() =>
+  Promise.all([import("@lando/core/services"), import("@lando/sdk/test")]),
+);
+const providerLayers = [
   LandoTesting.withService(LandoCore.RuntimeProvider, LandoTesting.TestRuntimeProvider),
   LandoTesting.withService(LandoCore.RuntimeProviderRegistry, {
     list: Effect.succeed([]),
     capabilities: Effect.succeed(LandoTesting.TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(LandoTesting.TestRuntimeProvider),
   }),
+  LandoTesting.withService(ProxyService, TestProxyService),
 ];
 yield* Effect.promise(() =>
   Bun.write(

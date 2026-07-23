@@ -6,12 +6,12 @@
  * Programmatic equivalent: `startApp({ reconcile: false })` from
  * `@lando/core/cli`.
  */
-import { DateTime, Effect, Ref, Schema } from "effect";
+import { DateTime, Effect, Ref } from "effect";
 
 import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import { GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, PublishedEndpoint } from "@lando/sdk/schema";
+import { type AppPlan, type AppRef, type PublishedEndpoint, ServiceName } from "@lando/sdk/schema";
 import {
   AppPlanner,
   BuildOrchestrator,
@@ -21,11 +21,14 @@ import {
   LandofileService,
   type PathsService,
   type PluginRegistry,
+  ProxyService,
   RuntimeProviderRegistry,
-  type RuntimeProviderShape,
   type ShellRunner,
 } from "@lando/sdk/services";
 
+import { compensateFailure } from "../../lifecycle/failure-compensation.ts";
+import { appliedProxyUrlsByService } from "../../lifecycle/route-urls.ts";
+import { applyAppRoutes, destroyAppliedApp, removeRoutesAndDestroyApp } from "../../lifecycle/routes.ts";
 import type { RedactionService } from "../../redaction/service.ts";
 import { withBuildProvider } from "../../services/build-orchestrator.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
@@ -44,17 +47,7 @@ import {
 
 export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 export type { StartManagedScope } from "./start-file-sync.ts";
-
-export const StartedServiceResultSchema = Schema.Struct({
-  name: Schema.String,
-  state: Schema.String,
-  endpoints: Schema.Array(Schema.String),
-});
-
-export const StartAppResultSchema = Schema.Struct({
-  app: Schema.String,
-  servicesStarted: Schema.Array(StartedServiceResultSchema),
-});
+export { renderStartAppResult, StartAppResultSchema, StartedServiceResultSchema } from "./start-result.ts";
 
 type StartAppServices =
   | AppPlanner
@@ -65,6 +58,7 @@ type StartAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
+  | ProxyService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -75,28 +69,6 @@ const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: pl
 
 const endpointText = (endpoint: PublishedEndpoint & MaterializedPublishedEndpoint): string | undefined =>
   publishedEndpointUrl(endpoint);
-
-const READY_STATES = new Set(["running", "ready"]);
-
-const isStartAppReady = (result: StartAppResult): boolean =>
-  result.servicesStarted.length > 0 &&
-  result.servicesStarted.every((service) => READY_STATES.has(service.state));
-
-const rollbackAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
-  provider
-    .destroy({ app: plan.id, plan }, { volumes: true, removeState: true })
-    .pipe(Effect.catchAll(() => Effect.void));
-
-export const renderStartAppResult = (result: StartAppResult): string => {
-  const services = result.servicesStarted
-    .map((service) => {
-      const endpoints = service.endpoints.length === 0 ? "no endpoints" : service.endpoints.join(", ");
-      return `${service.name} (${service.state}) ${endpoints}`;
-    })
-    .join("; ");
-  const prefix = isStartAppReady(result) ? "ready" : "starting";
-  return `${prefix}: ${result.app}${services.length === 0 ? "" : ` - ${services}`}`;
-};
 
 /**
  * Start the app discovered at the runtime's `cwd`.
@@ -116,6 +88,7 @@ export const startApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
     const builds = yield* BuildOrchestrator;
+    const proxy = yield* ProxyService;
 
     const plan =
       target?.plan ??
@@ -127,6 +100,7 @@ export const startApp = (
     const provider = yield* registry.select(plan);
     const ref = target?.app ?? appRef(plan);
     const applyStarted = yield* Ref.make(false);
+    const routesApplied = yield* Ref.make(false);
 
     const neededGlobalServices = requiredGlobalServicesForPlan(plan);
     if (neededGlobalServices.length > 0) {
@@ -204,29 +178,28 @@ export const startApp = (
               ),
             );
           });
-          const servicesStarted = yield* applyAndInspect.pipe(
-            Effect.tapError(() =>
-              Effect.gen(function* () {
-                yield* rollbackAppliedApp(provider, plan);
-                for (const service of serviceList) {
-                  yield* publishTaskFail(events, {
-                    taskId: String(service.name),
-                    summary: `Apply service ${String(service.name)}`,
-                    durationMs: Math.round(performance.now() - applyStart),
-                  });
-                }
-                yield* publishTreeComplete(events, {
-                  parentId: applyParentId,
-                  summary: `${plan.name} apply failed`,
-                  succeeded: 0,
-                  failed: serviceList.length,
+          const inspectedServices = yield* compensateFailure(
+            applyAndInspect,
+            Effect.gen(function* () {
+              yield* destroyAppliedApp(provider, plan);
+              for (const service of serviceList) {
+                yield* publishTaskFail(events, {
+                  taskId: String(service.name),
+                  summary: `Apply service ${String(service.name)}`,
                   durationMs: Math.round(performance.now() - applyStart),
                 });
-              }),
-            ),
+              }
+              yield* publishTreeComplete(events, {
+                parentId: applyParentId,
+                summary: `${plan.name} apply failed`,
+                succeeded: 0,
+                failed: serviceList.length,
+                durationMs: Math.round(performance.now() - applyStart),
+              });
+            }),
           );
 
-          for (const service of servicesStarted) {
+          for (const service of inspectedServices) {
             yield* publishTaskComplete(events, {
               taskId: service.name,
               summary: `${service.name} (${service.state})`,
@@ -247,29 +220,40 @@ export const startApp = (
             provider,
           );
 
-          yield* startFileSyncSessions(plan, events, managed).pipe(
-            Effect.tapError(() =>
-              Effect.gen(function* () {
-                yield* rollbackAppliedApp(provider, plan);
-              }),
-            ),
+          yield* startFileSyncSessions(plan, events, managed).pipe((effect) =>
+            compensateFailure(effect, destroyAppliedApp(provider, plan)),
           );
 
-          yield* events.publish(
-            PostAppStartEvent.make({
-              eventName: "post-app-start",
-              appRef: ref,
-              providerId: plan.provider,
-              timestamp: now(),
-            }),
+          const proxyResult = yield* applyAppRoutes(proxy, builtPlan);
+          yield* Ref.set(routesApplied, true);
+          const proxyUrls = appliedProxyUrlsByService(proxyResult);
+          const servicesStarted = inspectedServices.map((service) => ({
+            ...service,
+            endpoints: [...(proxyUrls.get(ServiceName.make(service.name)) ?? []), ...service.endpoints],
+          }));
+
+          yield* compensateFailure(
+            events.publish(
+              PostAppStartEvent.make({
+                eventName: "post-app-start",
+                appRef: ref,
+                providerId: plan.provider,
+                timestamp: now(),
+              }),
+            ),
+            removeRoutesAndDestroyApp(proxy, provider, plan),
           );
 
           return { app: plan.name, servicesStarted };
         }),
     }).pipe(
       Effect.onInterrupt(() =>
-        Ref.get(applyStarted).pipe(
-          Effect.flatMap((started) => (started ? rollbackAppliedApp(provider, plan) : Effect.void)),
+        Effect.all([Ref.get(applyStarted), Ref.get(routesApplied)]).pipe(
+          Effect.flatMap(([started, routed]) => {
+            if (routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
+            return started ? destroyAppliedApp(provider, plan) : Effect.void;
+          }),
+          Effect.orDie,
         ),
       ),
     );
