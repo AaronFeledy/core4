@@ -7,11 +7,13 @@ import { Cause, DateTime, Effect, Exit, Fiber, Layer, Queue, Schema, Stream } fr
 import { renderStartAppResult, startApp } from "@lando/core/cli/operations";
 import {
   BuildPhaseFailedError,
+  EventError,
   FileSyncStartError,
   GlobalAutoStartError,
   GlobalServiceMissingError,
   HostProxyTransportUnavailableError,
   ProviderUnavailableError,
+  ProxyError,
 } from "@lando/core/errors";
 import {
   AbsolutePath,
@@ -36,10 +38,12 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { FileSyncEngineShape, RuntimeProviderShape, ServiceRuntimeInfo } from "@lando/sdk/services";
+import { TestProxyService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -266,6 +270,7 @@ const unusedGlobalServicesLayer = Layer.mergeAll(
   FileSystemLive,
   GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
   Layer.succeed(PluginRegistry, emptyPluginRegistry),
+  Layer.succeed(ProxyService, TestProxyService),
   Layer.succeed(BuildOrchestrator, {
     build: (appPlan) => Effect.succeed(appPlan),
     buildApp: () => Effect.void,
@@ -294,6 +299,10 @@ const makeStartLayer = (
     readonly providerPlatform?: RuntimeProviderShape["platform"];
     readonly pathsService?: ReturnType<typeof makeLandoPaths>;
     readonly buildAppEffect?: Effect.Effect<void, BuildPhaseFailedError>;
+    readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly postStartFailure?: EventError;
+    readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
+    readonly recordReadiness?: boolean;
   } = {},
 ) => {
   const plannedApp = options.plannedApp ?? plan;
@@ -307,6 +316,32 @@ const makeStartLayer = (
     readonly volumes: boolean;
     readonly removeState: boolean;
   }> = [];
+  const proxy = {
+    id: "recording",
+    capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+    setup: () => Effect.sync(() => void buildOrder.push("proxy-setup")),
+    applyRoutes: (routes: AppPlan["routes"], app: AppPlan["id"]) =>
+      Effect.sync(() => {
+        buildOrder.push("proxy-apply");
+        return {
+          app,
+          appliedRoutes: routes,
+          authorities: routes.flatMap((route) =>
+            (route.scheme === "both" ? (["http", "https"] as const) : [route.scheme]).map((scheme) => ({
+              scheme,
+              hostname: route.hostname,
+              port: scheme === "https" ? 4443 : 4080,
+            })),
+          ),
+        };
+      }),
+    removeRoutes: () =>
+      Effect.sync(() => void buildOrder.push("proxy-remove")).pipe(
+        Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
+      ),
+    status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+    stop: Effect.void,
+  };
   const provider: RuntimeProviderShape = {
     id: "lando",
     displayName: "Lando Runtime Provider",
@@ -358,23 +393,29 @@ const makeStartLayer = (
           volumes: destroyOptions.volumes,
           removeState: destroyOptions.removeState ?? false,
         });
-      }),
+      }).pipe(Effect.zipRight(options.destroyEffect ?? Effect.void)),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     logs: () => Stream.die("not used"),
     inspect: (target) =>
-      options.inspectEffect ??
-      (options.inspectFailure === undefined
-        ? Effect.succeed<ServiceRuntimeInfo>({
-            app: plannedApp.id,
-            service: target.service,
-            providerId,
-            status: "running",
-            state: "running",
-            endpoints: plannedApp.services[target.service]?.endpoints ?? [],
-          })
-        : Effect.fail(options.inspectFailure)),
+      Effect.sync(() => {
+        if (options.recordReadiness === true) buildOrder.push(`inspect:${String(target.service)}`);
+      }).pipe(
+        Effect.zipRight(
+          options.inspectEffect ??
+            (options.inspectFailure === undefined
+              ? Effect.succeed<ServiceRuntimeInfo>({
+                  app: plannedApp.id,
+                  service: target.service,
+                  providerId,
+                  status: "running",
+                  state: "running",
+                  endpoints: plannedApp.services[target.service]?.endpoints ?? [],
+                })
+              : Effect.fail(options.inspectFailure)),
+        ),
+      ),
     list: () => Effect.succeed([]),
   };
 
@@ -394,13 +435,18 @@ const makeStartLayer = (
           taskEvents.push(event);
           if (event._tag === "pre-app-start") buildOrder.push("pre-app-start");
           if (event._tag === "task.tree.complete") buildOrder.push(`tree:${String(event.summary)}`);
+          if (event._tag === "post-app-start" && options.postStartFailure !== undefined) {
+            return;
+          }
         }).pipe(
           Effect.zipRight(
             event._tag === "task.tree.start" &&
               event.label === `Apply ${plannedApp.name}` &&
               options.blockTreeStart !== undefined
               ? options.blockTreeStart
-              : Effect.void,
+              : event._tag === "post-app-start" && options.postStartFailure !== undefined
+                ? Effect.fail(options.postStartFailure)
+                : Effect.void,
           ),
         ),
       subscribe: () => Effect.die("not used"),
@@ -410,6 +456,7 @@ const makeStartLayer = (
       query: () => Effect.succeed([]),
     }),
     unusedGlobalServicesLayer,
+    Layer.succeed(ProxyService, proxy),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.sync(() => void buildOrder.push("artifact")).pipe(Effect.as(appPlan)),
       buildApp: () =>
@@ -635,6 +682,7 @@ const makeAutoStartLayer = async (options: {
       query: () => Effect.succeed([]),
     }),
     Layer.succeed(PluginRegistry, pluginRegistry),
+    Layer.succeed(ProxyService, TestProxyService),
     Layer.succeed(BuildOrchestrator, {
       build: (appPlan) => Effect.succeed(appPlan),
       buildApp: () => Effect.void,
@@ -673,6 +721,8 @@ describe("lando start", () => {
       "apply",
       "tree:test-start applied",
       "app",
+      "proxy-setup",
+      "proxy-apply",
     ]);
     expect(harness.applyPlans).toHaveLength(1);
     expect(plan.services[ServiceName.make("web")]?.environment).toEqual({});
@@ -699,6 +749,76 @@ describe("lando start", () => {
     expect(harness.taskEvents.find((event) => event._tag === "post-app-start")).toMatchObject({
       appRef: scratchRef,
     });
+  });
+
+  test("applies routes after provider readiness and renders proxy authorities", async () => {
+    // Given
+    const routedPlan: AppPlan = {
+      ...plan,
+      services: {
+        ...plan.services,
+        [web.name]: { ...web, endpoints: [{ _tag: "internal", port: 3000, protocol: "http", name: "http" }] },
+      },
+      routes: [
+        {
+          hostname: "web.test-start.lndo.site",
+          scheme: "https",
+          service: web.name,
+          endpoint: 3000,
+          backend: { service: web.name, protocol: "http", port: 3000 },
+        },
+      ],
+    };
+    const harness = makeStartLayer({ plannedApp: routedPlan, recordReadiness: true });
+
+    // When
+    const result = await Effect.runPromise(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(harness.buildOrder).toEqual([
+      "pre-app-start",
+      "artifact",
+      "apply",
+      "inspect:web",
+      "inspect:database",
+      "tree:test-start applied",
+      "app",
+      "proxy-setup",
+      "proxy-apply",
+    ]);
+    expect(result.servicesStarted.find((service) => service.name === "web")?.endpoints).toEqual([
+      "https://web.test-start.lndo.site:4443",
+    ]);
+  });
+
+  test("removes applied routes and aggregates compensation failures when post-start fails", async () => {
+    // Given
+    const postFailure = new EventError({
+      message: "subscriber rejected start",
+      event: "post-app-start",
+    });
+    const cleanupFailure = new ProxyError({ message: "route cleanup failed", proxyId: "recording" });
+    const providerCleanupFailure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "destroy",
+      message: "provider cleanup failed",
+    });
+    const harness = makeStartLayer({
+      postStartFailure: postFailure,
+      proxyRemoveEffect: Effect.fail(cleanupFailure),
+      destroyEffect: Effect.fail(providerCleanupFailure),
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(Array.from(Cause.failures(exit.cause))).toEqual(
+      expect.arrayContaining([postFailure, cleanupFailure, providerCleanupFailure]),
+    );
+    expect(harness.buildOrder).toContain("proxy-remove");
   });
 
   test("preserves app-build failure identity without rolling back a successful apply", async () => {

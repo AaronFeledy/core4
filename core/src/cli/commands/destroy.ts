@@ -19,9 +19,11 @@ import {
   EventService,
   LandofileService,
   PathsService,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { destroyAppAndRemoveRoutes } from "../../lifecycle/routes.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
 import { cleanupHostProxyRunLandoState } from "../../subsystems/host-proxy/transport.ts";
@@ -40,6 +42,7 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
+  | ProxyService
   | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -63,6 +66,7 @@ export const destroyApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
     const paths = yield* PathsService;
+    const proxy = yield* ProxyService;
 
     const plan =
       target?.plan ??
@@ -85,18 +89,22 @@ export const destroyApp = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* provider
-      .destroy(
-        { app: plan.id, plan },
-        {
-          volumes,
-          ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
-          removeState: true,
-        },
-      )
-      .pipe(
-        Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
-      );
+    yield* destroyAppAndRemoveRoutes(
+      provider
+        .destroy(
+          { app: plan.id, plan },
+          {
+            volumes,
+            ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
+            removeState: true,
+          },
+        )
+        .pipe(
+          Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+        ),
+      proxy,
+      plan,
+    );
 
     if (volumes) {
       yield* Effect.promise(() =>

@@ -3,10 +3,10 @@ import { existsSync } from "node:fs";
 import { chmod, mkdir, mkdtemp, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { DateTime, Effect, Layer, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Layer, Stream } from "effect";
 
 import { destroyApp, renderDestroyAppResult } from "@lando/core/cli/operations";
-import { FileSyncStopError, ProviderUnavailableError } from "@lando/core/errors";
+import { FileSyncStopError, ProviderUnavailableError, ProxyError } from "@lando/core/errors";
 import {
   AbsolutePath,
   AppId,
@@ -25,6 +25,7 @@ import {
   FileSyncEngine,
   LandofileService,
   PathsService,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type {
@@ -159,11 +160,18 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
+const makeDestroyLayer = (
+  options: {
+    readonly userDataRoot?: string;
+    readonly providerDestroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
+    readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
+  } = {},
+) => {
   const events: string[] = [];
   const publishedEvents: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const volumes = new Set(plan.stores.map((store) => store.name));
+  const routeRemovals: string[] = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -196,19 +204,19 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
-    destroy: (target, options) =>
+    destroy: (target, destroyOptions) =>
       Effect.sync(() => {
-        destroyCalls.push({ target, options });
-        if (options.volumes || options.purgeCaches) {
+        destroyCalls.push({ target, options: destroyOptions });
+        if (destroyOptions.volumes || destroyOptions.purgeCaches) {
           for (const store of plan.stores) {
             if (store.kind === "cache") {
-              if (options.purgeCaches) volumes.delete(store.name);
-            } else if (options.volumes && store.scope !== "global") {
+              if (destroyOptions.purgeCaches) volumes.delete(store.name);
+            } else if (destroyOptions.volumes && store.scope !== "global") {
               volumes.delete(store.name);
             }
           }
         }
-      }),
+      }).pipe(Effect.zipRight(options.providerDestroyEffect ?? Effect.void)),
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
     run: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
@@ -241,6 +249,18 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(ProxyService, {
+      id: "recording",
+      capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+      setup: () => Effect.void,
+      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+      removeRoutes: (app) =>
+        Effect.sync(() => void routeRemovals.push(String(app))).pipe(
+          Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
+        ),
+      status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
+      stop: Effect.void,
+    }),
     Layer.succeed(EventService, {
       publish: (event) =>
         Effect.sync(() => {
@@ -255,7 +275,7 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
     }),
   );
 
-  return { layer, events, publishedEvents, destroyCalls, volumes };
+  return { layer, events, publishedEvents, destroyCalls, routeRemovals, volumes };
 };
 
 const expectMissingPath = async (path: string): Promise<void> => {
@@ -269,6 +289,43 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando destroy", () => {
+  test("removes routes when provider destroy fails and reports both failures", async () => {
+    // Given
+    const providerFailure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "destroy",
+      message: "provider destroy failed",
+    });
+    const proxyFailure = new ProxyError({ message: "route removal failed", proxyId: "recording" });
+    const harness = makeDestroyLayer({
+      providerDestroyEffect: Effect.fail(providerFailure),
+      proxyRemoveEffect: Effect.fail(proxyFailure),
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(destroyApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(harness.routeRemovals).toEqual([String(plan.id)]);
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (!Exit.isFailure(exit)) throw new Error("expected failure");
+    expect(Array.from(Cause.failures(exit.cause))).toEqual(
+      expect.arrayContaining([providerFailure, proxyFailure]),
+    );
+  });
+
+  test("destroys the provider when route removal fails", async () => {
+    // Given
+    const proxyFailure = new ProxyError({ message: "route removal failed", proxyId: "recording" });
+    const harness = makeDestroyLayer({ proxyRemoveEffect: Effect.fail(proxyFailure) });
+
+    // When
+    await Effect.runPromiseExit(destroyApp().pipe(Effect.provide(harness.layer)));
+
+    // Then
+    expect(harness.destroyCalls).toHaveLength(1);
+    expect(harness.routeRemovals).toEqual([String(plan.id)]);
+  });
   test("plans the app, destroys without removing volumes by default, and emits destroy events", async () => {
     const harness = makeDestroyLayer();
     const result = await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));

@@ -40,6 +40,9 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  ProxyApplyError,
+  ProxyError,
+  ProxySetupError,
   PublicationUnsupportedError,
   RemoteError,
   RemoteProtectedEnvError,
@@ -199,6 +202,9 @@ export type StartAppError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
+  | ProxyApplyError
+  | ProxyError
+  | ProxySetupError
   | ProviderUnavailableError;
 
 // biome-ignore lint/complexity/noBannedTypes: stop has no extra options beyond start today.
@@ -268,7 +274,7 @@ export interface DestroyAppResult {
   readonly volumesRemoved: boolean;
 }
 
-export type DestroyAppError = StopAppError;
+export type DestroyAppError = StopAppError | ProxyError;
 
 export interface InfoAppOptions {
   readonly deep?: boolean;
@@ -337,6 +343,7 @@ export type InfoAppError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
+  | ProxyError
   | ProviderUnavailableError;
 
 export interface ExecAppOptions {
