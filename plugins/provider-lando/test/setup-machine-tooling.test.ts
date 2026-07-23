@@ -247,6 +247,46 @@ describe("provider-lando bundled machine tooling resolution", () => {
     }
   });
 
+  test("linux setup reports a bundled Podman launch failure as a managed runtime failure", async () => {
+    const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-launch-failure-"));
+    const podmanBin = join(runtimeBinDir, "podman");
+    try {
+      await writeFile(
+        podmanBin,
+        '#!/bin/sh\necho "error while loading shared libraries: libgpgme.so.11" >&2\nexit 127\n',
+        { mode: 0o755 },
+      );
+
+      const exit = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "linux",
+          runtimeBinDir,
+          skipSocketProbe: true,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
+          const error = failure.value as ProviderUnavailableError;
+          expect(error.providerId).toBe("lando");
+          expect(error.operation).toBe("setup");
+          expect(`${error.message} ${JSON.stringify(error.details ?? {})}`).toContain(podmanBin);
+          expect(error.remediation).toContain("Reinstall");
+          expect(error.remediation).toContain("report");
+          expect(error.remediation).not.toContain("Install Podman");
+          expect(error.cause).toBeDefined();
+          expect(JSON.stringify(error.cause)).toContain("libgpgme.so.11");
+        }
+      }
+    } finally {
+      await rm(runtimeBinDir, { recursive: true, force: true });
+    }
+  });
+
   test("darwin Detect Podman step fails with bundle remediation, not PATH wording, when the bundled binary is absent", async () => {
     const runtimeBinDir = await mkdtemp(join(tmpdir(), "lando-bundle-detect-missing-"));
     try {
