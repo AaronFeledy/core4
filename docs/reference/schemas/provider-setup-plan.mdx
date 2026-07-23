@@ -1,0 +1,15 @@
+---
+title: Provider Setup Plan
+description: Mutation-free provider setup plan inspected and authorized by core before provider apply.
+---
+
+# Provider Setup Plan
+
+Mutation-free provider setup plan inspected and authorized by core before provider apply.
+
+[JSON Schema artifact](../../../dist/schemas/provider-setup-plan.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `providerId` | Yes | `string` | Provider that inspected and will apply this plan. | — | — | — | — |
+| `changes` | Yes | `array` | Closed list of privileged host changes requiring core authorization. | — | — | — | — |
