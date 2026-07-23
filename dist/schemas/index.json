@@ -325,6 +325,15 @@
   },
   {
     "deprecated": false,
+    "description": "Mutation-free provider setup plan inspected and authorized by core before provider apply.",
+    "docsPath": "docs/reference/schemas/provider-setup-plan.mdx",
+    "id": "ProviderSetupPlan",
+    "jsonSchemaPath": "dist/schemas/provider-setup-plan.json",
+    "packageExport": "@lando/sdk/schema#ProviderSetupPlan",
+    "title": "Provider Setup Plan"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Service Plan.",
     "docsPath": "docs/reference/schemas/service-plan.mdx",
     "id": "ServicePlan",
