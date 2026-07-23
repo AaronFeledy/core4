@@ -84,7 +84,7 @@ describe("ruby:3.3 ServiceType", () => {
     expect(plan.mounts[0]?.source).toBe(APP_ROOT);
     expect(String(plan.mounts[0]?.target)).toBe("/app");
 
-    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -121,7 +121,7 @@ describe("ruby:3.3 ServiceType", () => {
   test("framework=rails sets port 3000, rails server default command preset, public/ webroot, and rails env", async () => {
     const plan = await composeRubyPlan(ruby33ServiceType, { type: "ruby:3.3", framework: "rails" });
 
-    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/3000"]);
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.RAILS_ENV).toBe("development");
@@ -171,7 +171,7 @@ describe("ruby:3.3 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/ruby:3.3-custom" });
-    expect(plan.endpoints).toEqual([{ port: 4000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 4000, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/4000"]);
     expect(plan.extensions["lando-service-ruby"]).toMatchObject({ port: 4000 });
   });

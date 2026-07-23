@@ -102,7 +102,7 @@ describe("static ServiceType", () => {
         "exec nginx -g 'daemon off;'",
       ].join("\n"),
     ]);
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "nginx" });
@@ -112,7 +112,7 @@ describe("static ServiceType", () => {
     const plan = await composeStaticPlan({ type: "static" }, staticNginxServiceType, "assets");
 
     expect(plan.primary).toBe(false);
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "assets" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "assets" }]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "assets",
       LANDO_SERVICE_TYPE: "static:nginx",
@@ -134,7 +134,7 @@ describe("static ServiceType", () => {
     expect(plan.command).toEqual(["caddy", "file-server", "--listen", ":80", "--root", "/app"]);
     expect(plan.appMount?.readOnly).toBe(true);
     expect(plan.mounts[0]?.readOnly).toBe(true);
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
     expect(plan.extensions["lando-service-static"]).toEqual({ server: "caddy" });

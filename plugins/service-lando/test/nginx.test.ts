@@ -76,7 +76,7 @@ describe("nginx ServiceType", () => {
     expect(plan.mounts[0]?.source).toBe(APP_ROOT);
     expect(String(plan.mounts[0]?.target)).toBe("/app");
     expect(plan.mounts[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
   });
@@ -85,7 +85,7 @@ describe("nginx ServiceType", () => {
     const plan = await composeNginxPlan({ type: "nginx" }, "proxy");
 
     expect(plan.primary).toBe(false);
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "proxy" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "proxy" }]);
     expect(plan.environment).toMatchObject({
       LANDO_SERVICE_NAME: "proxy",
       LANDO_SERVICE_TYPE: "nginx",

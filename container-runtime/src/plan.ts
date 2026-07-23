@@ -1,4 +1,10 @@
-import { type AppPlan, type ServicePlan, fileSyncVolumeName, sameAppMountTarget } from "@lando/sdk/schema";
+import {
+  type AppPlan,
+  type PublishedEndpoint,
+  type ServicePlan,
+  fileSyncVolumeName,
+  sameAppMountTarget,
+} from "@lando/sdk/schema";
 
 export class ContainerPlanError extends Error {
   readonly _tag = "ContainerPlanError";
@@ -87,23 +93,30 @@ export const bindMountStrings = (
 };
 
 export const containerPortBindings = (
-  service: ServicePlan,
-): Record<string, ReadonlyArray<Record<string, string>>> =>
-  Object.fromEntries(
-    service.endpoints
-      .filter((endpoint) => endpoint.port !== undefined)
-      .map((endpoint) => [
-        `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`,
-        [{ HostIp: "127.0.0.1", HostPort: String(endpoint.port) }],
-      ]),
-  );
+  endpoints: ReadonlyArray<PublishedEndpoint>,
+): Record<string, ReadonlyArray<Record<string, string>>> => {
+  const grouped = new Map<string, Array<Record<string, string>>>();
+  for (const endpoint of endpoints) {
+    const key = `${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}`;
+    const binding = {
+      HostIp: endpoint.publication.bindAddress ?? "127.0.0.1",
+      HostPort: endpoint.publication.hostPort === undefined ? "" : String(endpoint.publication.hostPort),
+    };
+    const existing = grouped.get(key);
+    if (existing === undefined) grouped.set(key, [binding]);
+    else existing.push(binding);
+  }
+  return Object.fromEntries(grouped);
+};
 
 export const containerHostConfigFragment = (
   plan: AppPlan,
   service: ServicePlan,
   options: ContainerHostConfigOptions = {},
 ): Record<string, unknown> => {
-  const portBindings = containerPortBindings(service);
+  const portBindings = containerPortBindings(
+    service.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : [])),
+  );
   const binds = bindMountStrings(plan, service, options);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),

@@ -11,6 +11,8 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "nginx:1.26-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -64,7 +66,7 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
   };
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["sh", "-c", `nc -z 127.0.0.1 ${port}`],

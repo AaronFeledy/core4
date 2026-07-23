@@ -155,7 +155,7 @@ describe("elasticsearch service type — scenario: Elasticsearch + lando es-cli 
       kind: "ref",
       ref: "docker.elastic.co/elasticsearch/elasticsearch:8.17.0",
     });
-    expect(search.endpoints).toEqual([{ port: 9200, protocol: "tcp", name: "search" }]);
+    expect(search.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "tcp", name: "search" }]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-elasticsearch-data");
     expect(search.healthcheck?.kind).toBe("command");

@@ -6,6 +6,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "getmeili/meilisearch:v1.11";
 const DEFAULT_PORT = 7700;
 const DATA_TARGET = PortablePath.make("/meili_data");
@@ -46,7 +48,7 @@ const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["sh", "-c", `curl -sf http://localhost:${port}/health`],
