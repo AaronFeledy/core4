@@ -36,7 +36,7 @@ describe("redis ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-redis-data");
     expect(String(plan.storage[0]?.target)).toBe("/data");
-    expect(plan.endpoints).toEqual([{ port: 6379, protocol: "tcp", name: "cache" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 6379, protocol: "tcp", name: "cache" }]);
   });
 
   test("respects image, port, and command overrides", async () => {

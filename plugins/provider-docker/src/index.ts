@@ -715,10 +715,18 @@ export const renderCompose = (plan: AppPlan): string => {
     .map((service) => {
       const image = service.artifact?.kind === "ref" ? service.artifact.ref : "";
       const ports = service.endpoints
-        .filter((endpoint) => endpoint.port !== undefined)
-        .map(
-          (endpoint) =>
-            `      - "127.0.0.1:${endpoint.port}:${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`,
+        .flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : []))
+        .map((endpoint) => {
+          const bindAddress = endpoint.publication.bindAddress ?? "127.0.0.1";
+          const hostPort = endpoint.publication.hostPort ?? "";
+          return `      - "${bindAddress}:${hostPort}:${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`;
+        })
+        .join("\n");
+      const expose = service.endpoints
+        .flatMap((endpoint) =>
+          endpoint._tag === "internal" && endpoint.protocol !== "unix"
+            ? [`      - "${endpoint.port}/${endpoint.protocol === "udp" ? "udp" : "tcp"}"`]
+            : [],
         )
         .join("\n");
       const networks = [
@@ -735,6 +743,7 @@ export const renderCompose = (plan: AppPlan): string => {
         `  ${service.name}:`,
         `    image: "${image}"`,
         ports.length === 0 ? "" : `    ports:\n${ports}`,
+        expose.length === 0 ? "" : `    expose:\n${expose}`,
         networks,
       ]
         .filter((line) => line.length > 0)

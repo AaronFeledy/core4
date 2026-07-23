@@ -4,6 +4,7 @@ import {
   commonContainerLabels,
   containerCreateBodyFragment,
   containerHostConfigFragment,
+  containerPortBindings,
   envArrayFromRecord,
   mountSuffix,
 } from "@lando/container-runtime/plan";
@@ -23,7 +24,15 @@ const service = {
   command: "echo hi",
   entrypoint: "docker-entrypoint.sh",
   workingDirectory: "/app",
-  endpoints: [{ port: 8080, protocol: "tcp" }],
+  endpoints: [
+    {
+      _tag: "published",
+      port: 8080,
+      protocol: "tcp",
+      publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
+    },
+    { _tag: "internal", port: 9090, protocol: "tcp" },
+  ],
   appMount: { source: "/host/app", target: "/app", readOnly: true, realization: "passthrough" },
   mounts: [
     { type: "bind", source: "/host/app", target: "/app", readOnly: true, realization: "passthrough" },
@@ -48,7 +57,7 @@ describe("container plan helpers", () => {
     });
 
     expect(containerHostConfigFragment(plan, service)).toEqual({
-      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
+      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
       Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
     });
   });
@@ -68,10 +77,34 @@ describe("container plan helpers", () => {
       WorkingDir: "/app",
       Labels: { "dev.lando.app": "app-id", "dev.lando.service": "web" },
       HostConfig: {
-        PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "8080" }] },
+        PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
         Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
+    });
+  });
+
+  test("groups multiple host bindings for the same container port", () => {
+    expect(
+      containerPortBindings([
+        {
+          _tag: "published",
+          port: 8080,
+          protocol: "tcp",
+          publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
+        },
+        {
+          _tag: "published",
+          port: 8080,
+          protocol: "tcp",
+          publication: { bindAddress: "0.0.0.0", hostPort: 48080 },
+        },
+      ]),
+    ).toEqual({
+      "8080/tcp": [
+        { HostIp: "127.0.0.1", HostPort: "38080" },
+        { HostIp: "0.0.0.0", HostPort: "48080" },
+      ],
     });
   });
 });

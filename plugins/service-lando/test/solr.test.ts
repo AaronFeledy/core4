@@ -56,7 +56,7 @@ describe("solr ServiceType", () => {
     expect(plan.storage[0]?.store).toBe("myapp-solr-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/solr");
     expect(plan.storage[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ port: 8983, protocol: "http", name: "search" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8983, protocol: "http", name: "search" }]);
   });
 
   test("respects image, port, and command overrides", async () => {

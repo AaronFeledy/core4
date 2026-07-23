@@ -4,6 +4,8 @@ import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 export const SUPPORTED_RUBY_VERSIONS = ["3.3"] as const;
 export type SupportedRubyVersion = (typeof SUPPORTED_RUBY_VERSIONS)[number];
 
@@ -111,7 +113,7 @@ const applyRubyFeature = (ctx: ServiceFeatureContext): void => {
     target: APP_MOUNT_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],

@@ -152,7 +152,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
 
     expect(web.type).toBe("static:nginx");
     expect(web.artifact).toEqual({ kind: "ref", ref: "nginx:1.26-alpine" });
-    expect(web.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
+    expect(web.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
     expect(web.appMount?.readOnly).toBe(true);
     expect(web.healthcheck?.kind).toBe("command");
     expect(web.healthcheck?.command).toEqual(["sh", "-c", "nc -z 127.0.0.1 80"]);
@@ -173,7 +173,7 @@ describe("static service type — scenario: nginx-backed dist/ serve + lando cur
     expect(web.type).toBe("static:nginx");
     expect(web.environment.LANDO_WEBROOT).toBe("/app/dist");
     expect(web.appMount?.readOnly).toBe(true);
-    expect(web.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
+    expect(web.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
   });
 
   test("`lando curl` tooling alias fetches a known file from the static service via provider.exec", async () => {

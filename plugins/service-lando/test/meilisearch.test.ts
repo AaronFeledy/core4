@@ -60,7 +60,7 @@ describe("meilisearch ServiceType", () => {
         expect(plan.storage[0]?.store).toBe("myapp-meilisearch-data");
         expect(String(plan.storage[0]?.target)).toBe("/meili_data");
         expect(plan.storage[0]?.readOnly).toBe(false);
-        expect(plan.endpoints).toEqual([{ port: 7700, protocol: "http", name: "search" }]);
+        expect(plan.endpoints).toEqual([{ _tag: "internal", port: 7700, protocol: "http", name: "search" }]);
       });
 
       test("seeds a deterministic dev master key and disables analytics by default", async () => {
@@ -85,7 +85,7 @@ describe("meilisearch ServiceType", () => {
           kind: "ref",
           ref: "getmeili/meilisearch:v1.10",
         });
-        expect(plan.endpoints).toEqual([{ port: 17700, protocol: "http", name: "search" }]);
+        expect(plan.endpoints).toEqual([{ _tag: "internal", port: 17700, protocol: "http", name: "search" }]);
         expect(plan.environment).toMatchObject({ MEILI_HTTP_ADDR: "0.0.0.0:17700" });
       });
 

@@ -42,7 +42,7 @@ describe("mysql ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-mysql-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
-    expect(plan.endpoints).toEqual([{ port: 3306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
   });
 
   test("propagates MySQL overrides (image, user, database, port, env)", async () => {
@@ -78,6 +78,6 @@ describe("mysql ServiceType", () => {
       MYSQL_PASSWORD: "secret",
       MYSQL_DATABASE: "appdb",
     });
-    expect(plan.endpoints).toEqual([{ port: 13306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 13306, protocol: "tcp", name: "db" }]);
   });
 });

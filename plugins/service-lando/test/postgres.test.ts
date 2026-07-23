@@ -46,7 +46,7 @@ describe("postgres ServiceType", () => {
     expect(plan.storage[0]?.store).toBe("myapp-postgresql-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/postgresql/data");
     expect(plan.storage[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ port: 5432, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 5432, protocol: "tcp", name: "db" }]);
   });
 
   test("propagates Postgres user overrides", async () => {
@@ -82,6 +82,35 @@ describe("postgres ServiceType", () => {
       POSTGRES_PASSWORD: "secret",
       POSTGRES_DB: "appdb",
     });
-    expect(plan.endpoints).toEqual([{ port: 15432, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 15432, protocol: "tcp", name: "db" }]);
+  });
+
+  test("publishes explicit ports instead of classifying them as internal", async () => {
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "myapp",
+      services: { db: { type: "postgres", ports: ["127.0.0.1:15432:5432"] } },
+    });
+    const service = landofile.services?.[ServiceName.make("db")];
+    if (service === undefined) throw new Error("db service missing");
+
+    const plan = await composeServicePlan({
+      serviceType: postgresServiceType,
+      service,
+      appRoot: "/srv/apps/myapp",
+      appName: "myapp",
+      serviceName: "db",
+      metadata,
+      featureOverrides: new Map([[POSTGRES_FEATURE_ID, postgresServiceFeature]]),
+    });
+
+    expect(plan.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 5432,
+        protocol: "tcp",
+        name: "db",
+        publication: { bindAddress: "127.0.0.1", hostPort: 15432 },
+      },
+    ]);
   });
 });

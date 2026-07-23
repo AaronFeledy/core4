@@ -152,7 +152,7 @@ describe("solr service type — scenario: Solr + lando solr-admin tooling", () =
 
     expect(search.type).toBe("solr");
     expect(search.artifact).toEqual({ kind: "ref", ref: "solr:9" });
-    expect(search.endpoints).toEqual([{ port: 8983, protocol: "http", name: "search" }]);
+    expect(search.endpoints).toEqual([{ _tag: "internal", port: 8983, protocol: "http", name: "search" }]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-solr-data");
     expect(search.healthcheck?.kind).toBe("command");

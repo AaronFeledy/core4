@@ -4,25 +4,12 @@ import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { parsePublishedPort, publicationFor } from "./_port-helpers.ts";
+
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
-
-const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "udp" } => {
-  const parts = entry.split(":");
-  const last = parts[parts.length - 1];
-  if (last === undefined) {
-    throw new Error(`Invalid port entry "${entry}".`);
-  }
-  const [portPart, protoPart] = last.split("/");
-  const port = Number(portPart);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`Invalid port "${entry}". Expected positive integer port.`);
-  }
-  const protocol = protoPart === "udp" ? "udp" : "tcp";
-  return { port, protocol };
-};
 
 const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -55,8 +42,14 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   }
 
   for (const portEntry of service.ports ?? []) {
-    const parsed = parsePortShortForm(portEntry);
-    ctx.addEndpoint({ port: parsed.port, protocol: parsed.protocol, name: ctx.serviceName });
+    const parsed = parsePublishedPort(portEntry);
+    ctx.addEndpoint({
+      _tag: "published",
+      port: parsed.port,
+      protocol: parsed.protocol,
+      name: ctx.serviceName,
+      publication: publicationFor(parsed),
+    });
   }
 
   for (const dependency of service.dependsOn ?? []) {

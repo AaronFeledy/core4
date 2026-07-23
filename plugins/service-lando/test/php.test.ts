@@ -87,7 +87,7 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.mounts[0]?.source).toBe(APP_ROOT);
     expect(String(plan.mounts[0]?.target)).toBe("/app");
 
-    expect(plan.endpoints).toEqual([{ port: 80, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 80, protocol: "http", name: "web" }]);
 
     expect(plan.healthcheck).toEqual({
       kind: "command",
@@ -185,7 +185,7 @@ describe("php:8.2 ServiceType", () => {
     });
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
-    expect(plan.endpoints).toEqual([{ port: 8080, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 8080, protocol: "http", name: "web" }]);
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
   });
