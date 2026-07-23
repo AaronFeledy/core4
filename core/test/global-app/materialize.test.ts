@@ -147,6 +147,46 @@ describe("GlobalAppService Landofile materialization", () => {
     });
   });
 
+  test("regenerateDist creates host directories for global-service bind mounts", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const source = join(dataRoot, "proxy-config");
+      const services: Record<string, ServiceConfig> = {
+        proxy: {
+          type: "compose",
+          image: "proxy:test",
+          mounts: [{ type: "bind", source, target: "/etc/proxy", readOnly: false }],
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+
+      expect((await stat(source)).isDirectory()).toBe(true);
+    });
+  });
+
+  test("regenerateDist resolves relative global-service bind mounts from the global app root", async () => {
+    await withTempRoots(async (dataRoot) => {
+      const services: Record<string, ServiceConfig> = {
+        proxy: {
+          type: "compose",
+          image: "proxy:test",
+          mounts: [
+            {
+              type: "bind",
+              source: "./proxy-traefik/dynamic",
+              target: "/etc/proxy",
+              readOnly: false,
+            },
+          ],
+        },
+      };
+
+      await runWithGlobalApp(materializeDist(services));
+
+      expect((await stat(join(dataRoot, "global", "proxy-traefik", "dynamic"))).isDirectory()).toBe(true);
+    });
+  });
+
   test("regenerateDist indents nested array-of-record children under the array marker", async () => {
     await withTempRoots(async (dataRoot) => {
       const services: Record<string, ServiceConfig> = {
