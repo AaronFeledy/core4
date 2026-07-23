@@ -36,6 +36,7 @@ import type {
   PromptSpec,
   ProviderCapabilities,
   ProviderId,
+  ProviderSetupPlan,
   RecipeManifest,
   RemoteCapabilities,
   RemoteConfig,
@@ -165,6 +166,7 @@ import type {
   LogOptions,
   LogTarget,
   ProviderError,
+  ProviderSetupInspectOptions,
   ProviderSetupOptions,
   ProviderStatus,
   ProviderVersions,
@@ -225,7 +227,13 @@ export interface RuntimeProviderShape {
   readonly capabilities: ProviderCapabilities;
 
   readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
-  readonly setup: (options: ProviderSetupOptions) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly planSetup: (
+    options: ProviderSetupInspectOptions,
+  ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
+  readonly setup: (
+    plan: ProviderSetupPlan,
+    options: ProviderSetupOptions,
+  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
   readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
 

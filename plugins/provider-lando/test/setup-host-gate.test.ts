@@ -110,7 +110,8 @@ describe("provider-lando setup Intel Mac host gate", () => {
       }),
     );
 
-    const exit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
+    const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+    const exit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
 
     expect(Exit.isFailure(exit)).toBe(true);
     expect(calls).toEqual([]);

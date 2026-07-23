@@ -141,7 +141,8 @@ describe("provider-lando setup", () => {
     );
 
     try {
-      await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
+      const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+      await Effect.runPromise(Effect.scoped(provider.setup(plan, { force: false })));
 
       const versions = await Effect.runPromise(provider.getVersions);
       expect(versions.runtime).toBe("6.0.2");
@@ -298,9 +299,16 @@ describe("provider-lando setup", () => {
         }),
       );
 
+      const plan = await Effect.runPromise(
+        provider.planSetup({
+          force: false,
+          runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
+          runtimeBundleSha256: "a".repeat(64),
+        }),
+      );
       const exit = await Effect.runPromiseExit(
         provider
-          .setup({
+          .setup(plan, {
             force: false,
             runtimeBundleUrl: "https://example.invalid/custom-runtime.zip",
             runtimeBundleSha256: "a".repeat(64),
@@ -353,7 +361,8 @@ describe("provider-lando setup", () => {
           }),
         );
 
-        const exit = await Effect.runPromiseExit(provider.setup({ force: false }).pipe(Effect.scoped));
+        const plan = await Effect.runPromise(provider.planSetup({ force: false }));
+        const exit = await Effect.runPromiseExit(provider.setup(plan, { force: false }).pipe(Effect.scoped));
 
         expect(fetchedUrl).toContain("lando-runtime-win32-x64.zip");
         expect(calls).toEqual([]);
@@ -468,6 +477,74 @@ describe("provider-lando setup", () => {
     const treeComplete = captured[captured.length - 1];
     expect(treeComplete?.succeeded).toBe(1);
     expect(treeComplete?.failed).toBe(0);
+  });
+
+  test("settles provisioning, launch, and readiness children when provisioning fails", async () => {
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+    const failure = new ProviderUnavailableError({
+      providerId: "lando",
+      operation: "setup",
+      message: "uidmap provisioning failed",
+      remediation: "Install uidmap manually.",
+    });
+
+    const exit = await Effect.runPromiseExit(
+      setupProviderLando({
+        platform: "linux",
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        skipSocketProbe: true,
+        managedRuntimeSetup: (progress) => progress.run("prerequisites", Effect.fail(failure)),
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              captured.push(event);
+            }),
+        },
+      }),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(captured.find((event) => event._tag === "task.tree.start")?.children).toEqual([
+      "podman",
+      "prerequisites",
+      "launch",
+      "readiness",
+    ]);
+    expect(captured.filter((event) => event._tag === "task.fail").map((event) => event.taskId)).toEqual([
+      "prerequisites",
+      "launch",
+      "readiness",
+    ]);
+    expect(captured.find((event) => event._tag === "task.tree.complete")?.failed).toBe(3);
+  });
+
+  test("settles the task tree when a managed runtime child is interrupted", async () => {
+    const captured: Array<{ readonly _tag: string; readonly [key: string]: unknown }> = [];
+
+    const exit = await Effect.runPromiseExit(
+      setupProviderLando({
+        platform: "linux",
+        podmanCommand: podmanCommand("podman version 6.0.2"),
+        skipSocketProbe: true,
+        managedRuntimeSetup: (progress) => progress.run("launch", Effect.interrupt),
+        eventService: {
+          publish: (event) =>
+            Effect.sync(() => {
+              captured.push(event);
+            }),
+        },
+      }),
+    );
+
+    expect(Exit.isFailure(exit)).toBe(true);
+    expect(captured.filter((event) => event._tag === "task.fail").map((event) => event.taskId)).toEqual([
+      "launch",
+      "prerequisites",
+      "readiness",
+    ]);
+    const treeComplete = captured.find((event) => event._tag === "task.tree.complete");
+    expect(treeComplete?.summary).toBe("Lando runtime setup failed");
+    expect(treeComplete?.failed).toBe(3);
   });
 
   test("runs readiness before persisting setup state or reporting the setup tree ready", async () => {

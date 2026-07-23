@@ -3,9 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Effect, Exit } from "effect";
-
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { Effect, Exit } from "effect";
 
 import {
   type PodmanCommandRunner,
@@ -13,6 +11,7 @@ import {
   type PodmanMachineStatus,
   ensureMacOSPodmanMachine,
   ensureWindowsPodmanMachine,
+  persistSetupState,
   providerStatePath,
   setupProviderLando,
 } from "../src/setup.ts";
@@ -209,7 +208,7 @@ describe("provider-lando machine ownership recording", () => {
     }
   });
 
-  test("setup fails instead of downgrading ownership when prior state cannot be parsed", async () => {
+  test("setup recovers from corrupt prior state and publishes a warning", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-corrupt-"));
     try {
       await Effect.runPromise(
@@ -223,30 +222,56 @@ describe("provider-lando machine ownership recording", () => {
       );
 
       const statePath = providerStatePath(stateDir);
-      const before = await readFile(statePath, "utf8");
       await writeFile(statePath, "{not valid json");
+      const events: Array<{ readonly _tag: string }> = [];
 
-      const exit = await Effect.runPromiseExit(
+      await Effect.runPromise(
         setupProviderLando({
           platform: "darwin",
           podmanCommand: podmanCommand("podman version 6.0.2"),
           podmanMachine: machineRunner("running", []),
           skipSocketProbe: true,
           stateDir,
+          eventService: {
+            publish: (event) =>
+              Effect.sync(() => {
+                events.push(event);
+              }),
+          },
         }),
       );
 
-      expect(Exit.isFailure(exit)).toBe(true);
-      if (Exit.isFailure(exit)) {
-        const failure = Cause.failureOption(exit.cause);
-        expect(failure._tag).toBe("Some");
-        if (failure._tag === "Some") {
-          expect(failure.value).toBeInstanceOf(ProviderUnavailableError);
-        }
-      }
+      expect(events.some((event) => event._tag === "message.warn")).toBe(true);
+      const state = JSON.parse(await readFile(statePath, "utf8"));
+      expect(state.machine).toEqual({ name: "lando", createdByLando: false });
+    } finally {
+      await rm(stateDir, { recursive: true, force: true });
+    }
+  });
 
-      expect(before).toContain('"createdByLando": true');
-      expect(await readFile(statePath, "utf8")).toBe("{not valid json");
+  test("atomic setup-state replacement preserves the prior record when rename fails", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "lando-machine-atomic-state-"));
+    try {
+      await mkdir(join(stateDir, "provider-lando"), { recursive: true });
+      const statePath = providerStatePath(stateDir);
+      const prior = `${JSON.stringify({
+        podmanVersion: "6.0.1",
+        machine: { name: "lando", createdByLando: true },
+      })}\n`;
+      await writeFile(statePath, prior);
+
+      const exit = await Effect.runPromiseExit(
+        persistSetupState(
+          stateDir,
+          { podmanVersion: "6.0.2", machine: { name: "lando", createdByLando: false } },
+          async () => {
+            throw new Error("simulated rename failure");
+          },
+        ),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(await readFile(statePath, "utf8")).toBe(prior);
     } finally {
       await rm(stateDir, { recursive: true, force: true });
     }

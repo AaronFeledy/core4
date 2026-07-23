@@ -1,13 +1,14 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 
-import { type Context, DateTime, Effect } from "effect";
+import { Cause, type Context, DateTime, Effect, Exit } from "effect";
 
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
+  MessageWarnEvent,
   TaskCompleteEvent,
   TaskFailEvent,
   TaskStartEvent,
@@ -15,7 +16,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 import type { HostPlatform } from "@lando/sdk/schema";
-import type { EventService } from "@lando/sdk/services";
+import type { EventService, ProviderError } from "@lando/sdk/services";
 
 import { type PodmanApiClient, makePodmanApiClient } from "./capabilities.ts";
 import { IntelMacUnsupportedError, isIntelMacHost } from "./host-support.ts";
@@ -165,6 +166,7 @@ export interface SetupOptions {
   readonly skipSocketProbe?: boolean;
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly readinessCheck?: Effect.Effect<void, ProviderUnavailableError>;
+  readonly managedRuntimeSetup?: (progress: RuntimeSetupProgress) => Effect.Effect<void, ProviderError>;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
   readonly runtimeBinDir?: string;
@@ -178,6 +180,12 @@ export interface SetupOptions {
     machineName: string,
     platform: HostPlatform,
   ) => PodmanMachineRunner;
+}
+
+export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness";
+
+export interface RuntimeSetupProgress {
+  readonly run: <A, E>(phase: RuntimeSetupPhase, body: Effect.Effect<A, E>) => Effect.Effect<A, E>;
 }
 
 export interface SetupResult {
@@ -197,47 +205,64 @@ const hasErrorCode = (cause: unknown, code: string): boolean =>
 
 const readExistingMachineOwnership = (
   stateDir: string,
+  eventService?: EventPublisher,
 ): Effect.Effect<RecordedMachineOwnership | undefined, ProviderUnavailableError> =>
-  Effect.tryPromise({
-    try: async () => {
-      let raw: string;
-      try {
-        raw = await readFile(providerStatePath(stateDir), "utf8");
-      } catch (cause) {
-        // No prior state file is a legitimate "nothing recorded yet" case, not a failure.
-        if (hasErrorCode(cause, "ENOENT")) return undefined;
-        throw cause;
-      }
-      const parsed: unknown = JSON.parse(raw);
-      if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
-      const machine = (parsed as { readonly machine: unknown }).machine;
-      if (typeof machine !== "object" || machine === null) return undefined;
-      const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
-      const createdByLando =
-        "createdByLando" in machine
-          ? (machine as { readonly createdByLando: unknown }).createdByLando
-          : undefined;
-      if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
-      const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
-      return ownership;
-    },
-    catch: (cause) =>
-      new ProviderUnavailableError({
-        providerId: PROVIDER_ID,
-        operation: "setup",
-        message: "Unable to read the existing provider-lando setup state.",
-        remediation: `Check permissions for ${providerStatePath(stateDir)} and rerun \`lando setup\`.`,
-        cause,
-      }),
+  Effect.gen(function* () {
+    const raw = yield* Effect.tryPromise({
+      try: () => readFile(providerStatePath(stateDir), "utf8"),
+      catch: (cause) =>
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "setup",
+          message: "Unable to read the existing provider-lando setup state.",
+          remediation: `Check permissions for ${providerStatePath(stateDir)} and rerun \`lando setup\`.`,
+          cause,
+        }),
+    }).pipe(
+      Effect.catchIf(
+        (cause) => hasErrorCode(cause.cause, "ENOENT"),
+        () => Effect.succeed(undefined),
+      ),
+    );
+    if (raw === undefined) return undefined;
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (cause) {
+      if (!(cause instanceof SyntaxError)) return yield* Effect.die(cause);
+      yield* publishEvent(
+        eventService,
+        MessageWarnEvent.make({
+          _tag: "message.warn",
+          body: `Ignoring corrupt provider setup state at ${providerStatePath(stateDir)}.`,
+          timestamp: nowUtc(),
+        }),
+      );
+      return undefined;
+    }
+
+    if (typeof parsed !== "object" || parsed === null || !("machine" in parsed)) return undefined;
+    const machine = (parsed as { readonly machine: unknown }).machine;
+    if (typeof machine !== "object" || machine === null) return undefined;
+    const name = "name" in machine ? (machine as { readonly name: unknown }).name : undefined;
+    const createdByLando =
+      "createdByLando" in machine
+        ? (machine as { readonly createdByLando: unknown }).createdByLando
+        : undefined;
+    if (name !== "lando" || typeof createdByLando !== "boolean") return undefined;
+    const ownership: RecordedMachineOwnership = { name: "lando", createdByLando };
+    return ownership;
   });
 
 const preserveRecordedMachineOwnership = (
   stateDir: string,
   current: RecordedMachineOwnership,
+  eventService?: EventPublisher,
 ): Effect.Effect<RecordedMachineOwnership, ProviderUnavailableError> =>
   current.createdByLando
     ? Effect.succeed(current)
-    : readExistingMachineOwnership(stateDir).pipe(
+    : readExistingMachineOwnership(stateDir, eventService).pipe(
         Effect.map((existing) =>
           existing?.createdByLando === true ? { name: "lando", createdByLando: true } : current,
         ),
@@ -523,11 +548,13 @@ const resolveSetupMachineRunner = (
 export const ensureMacOSPodmanMachine = (
   machine: PodmanMachineRunner,
   recordedOwnership?: RecordedMachineOwnership,
+  onCreated: Effect.Effect<void, ProviderUnavailableError> = Effect.void,
 ): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
     if (status === "missing") {
       yield* machine.create;
+      yield* onCreated;
       yield* machine.start;
       return { createdByLando: true };
     }
@@ -565,11 +592,13 @@ export const teardownMacOSPodmanMachine = (
 export const ensureWindowsPodmanMachine = (
   machine: PodmanMachineRunner,
   recordedOwnership?: RecordedMachineOwnership,
+  onCreated: Effect.Effect<void, ProviderUnavailableError> = Effect.void,
 ): Effect.Effect<{ readonly createdByLando: boolean }, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const status = yield* machine.inspect;
     if (status === "missing") {
       yield* machine.create;
+      yield* onCreated;
       yield* machine.start;
       return { createdByLando: true };
     }
@@ -645,7 +674,7 @@ const verifyRuntimeBundle = (bundle: RuntimeBundle) =>
         : new ProviderBundleChecksumError("Failed to verify the Lando runtime bundle checksum.", cause),
   });
 
-const persistSetupState = (
+export const persistSetupState = (
   stateDir: string,
   state: {
     readonly podmanVersion: string;
@@ -655,14 +684,21 @@ const persistSetupState = (
     readonly socketPath?: string;
     readonly machine?: { readonly name: "lando"; readonly createdByLando: boolean };
   },
+  renameState: (from: string, to: string) => Promise<void> = rename,
 ) =>
   Effect.tryPromise({
     try: async () => {
       const providerDir = `${stateDir.replace(/\/+$/u, "")}/provider-lando`;
       const statePath = providerStatePath(stateDir);
+      const tempPath = `${statePath}.tmp-${process.pid}-${randomUUID()}`;
 
       await mkdir(providerDir, { recursive: true });
-      await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`);
+      try {
+        await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+        await renameState(tempPath, statePath);
+      } finally {
+        await rm(tempPath, { force: true });
+      }
 
       return statePath;
     },
@@ -694,6 +730,7 @@ const buildSetupSteps = (
   hasBundle: boolean,
   hasStateDir: boolean,
   probesSocket: boolean,
+  managesRuntime: boolean,
 ): ReadonlyArray<SetupStep> => {
   const steps: SetupStep[] = [];
   if (hasBundle) steps.push({ taskId: "bundle", label: "Verify runtime bundle" });
@@ -701,13 +738,41 @@ const buildSetupSteps = (
   if (platform === "darwin" || platform === "win32")
     steps.push({ taskId: "machine", label: "Ensure Podman machine" });
   if (probesSocket) steps.push({ taskId: "socket", label: "Probe Podman API" });
+  if (managesRuntime) {
+    steps.push({ taskId: "prerequisites", label: "Provision and preflight runtime prerequisites" });
+    steps.push({ taskId: "launch", label: "Launch managed runtime" });
+    steps.push({ taskId: "readiness", label: "Verify managed runtime readiness" });
+  }
   if (hasStateDir) steps.push({ taskId: "state", label: "Persist setup state" });
   return steps;
 };
 
 interface StepCounter {
   succeeded: number;
+  readonly settled: Set<string>;
 }
+
+const failureMessage = (cause: unknown): string =>
+  cause instanceof ProviderUnavailableError || cause instanceof Error ? cause.message : String(cause);
+
+const failureDetails = (
+  cause: Cause.Cause<unknown>,
+): { readonly summary: string; readonly remediation?: string } => {
+  const failure = Cause.failureOption(cause);
+  if (failure._tag === "Some") {
+    return {
+      summary: failureMessage(failure.value),
+      ...(failure.value instanceof ProviderUnavailableError && failure.value.remediation !== undefined
+        ? { remediation: failure.value.remediation }
+        : {}),
+    };
+  }
+  if (Cause.isInterruptedOnly(cause)) return { summary: "Setup interrupted." };
+  const defect = Cause.dieOption(cause);
+  return {
+    summary: defect._tag === "Some" ? failureMessage(defect.value) : Cause.pretty(cause),
+  };
+};
 
 const withStep = <A, E>(
   eventService: EventPublisher | undefined,
@@ -728,21 +793,22 @@ const withStep = <A, E>(
       }),
     );
     const result = yield* body.pipe(
-      Effect.tapError((cause) =>
-        publishEvent(
+      Effect.onExit((exit) => {
+        if (Exit.isSuccess(exit)) return Effect.void;
+        counter.settled.add(step.taskId);
+        const details = failureDetails(exit.cause);
+        return publishEvent(
           eventService,
           TaskFailEvent.make({
             _tag: "task.fail",
             taskId: step.taskId,
-            summary: step.label,
-            ...(cause instanceof ProviderUnavailableError && cause.remediation !== undefined
-              ? { remediation: cause.remediation }
-              : {}),
+            summary: details.summary,
+            ...(details.remediation === undefined ? {} : { remediation: details.remediation }),
             durationMs: Math.round(performance.now() - start),
             timestamp: nowUtc(),
           }),
-        ),
-      ),
+        );
+      }),
     );
     yield* publishEvent(
       eventService,
@@ -755,12 +821,11 @@ const withStep = <A, E>(
       }),
     );
     counter.succeeded += 1;
+    counter.settled.add(step.taskId);
     return result;
   });
 
-export const setupProviderLando = (
-  options: SetupOptions = {},
-): Effect.Effect<SetupResult, ProviderUnavailableError> =>
+export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<SetupResult, ProviderError> =>
   Effect.gen(function* () {
     const platform = options.platform ?? currentHostPlatform();
     const arch = options.arch ?? (options.platform === undefined ? process.arch : undefined);
@@ -770,7 +835,8 @@ export const setupProviderLando = (
     const hasBundle = options.runtimeBundleDownloader !== undefined;
     const hasStateDir = options.stateDir !== undefined;
     const probesSocket = options.skipSocketProbe !== true;
-    const steps = buildSetupSteps(platform, hasBundle, hasStateDir, probesSocket);
+    const managesRuntime = options.managedRuntimeSetup !== undefined;
+    const steps = buildSetupSteps(platform, hasBundle, hasStateDir, probesSocket, managesRuntime);
     const treeStart = performance.now();
 
     yield* publishEvent(
@@ -795,7 +861,7 @@ export const setupProviderLando = (
       return yield* Effect.die("internal: missing required setup steps");
     }
 
-    const counter: StepCounter = { succeeded: 0 };
+    const counter: StepCounter = { succeeded: 0, settled: new Set() };
 
     const result = yield* Effect.gen(function* () {
       const runtimeBinDir = options.runtimeBinDir;
@@ -804,7 +870,7 @@ export const setupProviderLando = (
       const existingMachineOwnership =
         options.stateDir === undefined || (platform !== "darwin" && platform !== "win32")
           ? undefined
-          : yield* readExistingMachineOwnership(options.stateDir);
+          : yield* readExistingMachineOwnership(options.stateDir, options.eventService);
       const bundle =
         bundleStep === undefined || options.runtimeBundleDownloader === undefined
           ? undefined
@@ -844,6 +910,20 @@ export const setupProviderLando = (
             ).pipe(Effect.flatMap((runner) => runner.version))
         ).pipe(Effect.tap((output) => enforcePodmanVersionFloor(parsePodmanVersion(output), "cli"))),
       );
+      const detectedPodmanVersion = parsePodmanVersion(podmanVersionOutput);
+      const socketPath = options.socketPath;
+      const recordCreatedMachine =
+        options.stateDir === undefined
+          ? Effect.void
+          : persistSetupState(options.stateDir, {
+              podmanVersion: detectedPodmanVersion,
+              ...(bundle === undefined
+                ? {}
+                : { runtimeBundleVersion: bundle.version, runtimeBundleSha256: bundle.sha256 }),
+              ...(bundle !== undefined && runtimeBinDir !== undefined ? { runtimeBinDir } : {}),
+              ...(socketPath === undefined ? {} : { socketPath }),
+              machine: { name: "lando", createdByLando: true },
+            }).pipe(Effect.asVoid);
 
       if (platform === "darwin" && machineStep !== undefined) {
         const ensured = yield* withStep(
@@ -851,7 +931,9 @@ export const setupProviderLando = (
           machineStep,
           counter,
           resolveSetupMachineRunner("darwin", options).pipe(
-            Effect.flatMap((runner) => ensureMacOSPodmanMachine(runner, existingMachineOwnership)),
+            Effect.flatMap((runner) =>
+              ensureMacOSPodmanMachine(runner, existingMachineOwnership, recordCreatedMachine),
+            ),
           ),
         );
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
@@ -863,13 +945,14 @@ export const setupProviderLando = (
           machineStep,
           counter,
           resolveSetupMachineRunner("win32", options).pipe(
-            Effect.flatMap((runner) => ensureWindowsPodmanMachine(runner, existingMachineOwnership)),
+            Effect.flatMap((runner) =>
+              ensureWindowsPodmanMachine(runner, existingMachineOwnership, recordCreatedMachine),
+            ),
           ),
         );
         machineOwnership = { name: "lando", createdByLando: ensured.createdByLando };
       }
 
-      const socketPath = options.socketPath;
       const api =
         options.podmanApi ?? (socketPath === undefined ? undefined : makePodmanApiClient(socketPath));
 
@@ -893,13 +976,24 @@ export const setupProviderLando = (
         );
       }
 
-      const podmanVersion = infoPodmanVersion(info) ?? parsePodmanVersion(podmanVersionOutput);
-      const readinessCheck = options.readinessCheck ?? Effect.void;
-      yield* readinessCheck;
+      const podmanVersion = infoPodmanVersion(info) ?? detectedPodmanVersion;
+      if (options.managedRuntimeSetup !== undefined) {
+        const progress: RuntimeSetupProgress = {
+          run: (phase, body) => {
+            const step = steps.find((candidate) => candidate.taskId === phase);
+            return step === undefined
+              ? Effect.die(`internal: missing managed runtime setup step ${phase}`)
+              : withStep(options.eventService, step, counter, body);
+          },
+        };
+        yield* options.managedRuntimeSetup(progress);
+      } else {
+        yield* options.readinessCheck ?? Effect.void;
+      }
       const recordedMachineOwnership =
         machineOwnership === undefined || options.stateDir === undefined
           ? machineOwnership
-          : yield* preserveRecordedMachineOwnership(options.stateDir, machineOwnership);
+          : yield* preserveRecordedMachineOwnership(options.stateDir, machineOwnership, options.eventService);
       const statePath =
         stateStep === undefined || options.stateDir === undefined
           ? undefined
@@ -925,19 +1019,39 @@ export const setupProviderLando = (
         ...(statePath === undefined ? {} : { statePath }),
       } satisfies SetupResult;
     }).pipe(
-      Effect.tapError(() =>
-        publishEvent(
-          options.eventService,
-          TaskTreeCompleteEvent.make({
-            _tag: "task.tree.complete",
-            parentId: SETUP_PARENT_ID,
-            summary: "Lando runtime setup failed",
-            succeeded: counter.succeeded,
-            failed: 1,
-            durationMs: Math.round(performance.now() - treeStart),
-            timestamp: nowUtc(),
-          }),
-        ),
+      Effect.onExit((exit) =>
+        Exit.isSuccess(exit)
+          ? Effect.void
+          : Effect.gen(function* () {
+              const details = failureDetails(exit.cause);
+              for (const step of steps) {
+                if (counter.settled.has(step.taskId)) continue;
+                counter.settled.add(step.taskId);
+                yield* publishEvent(
+                  options.eventService,
+                  TaskFailEvent.make({
+                    _tag: "task.fail",
+                    taskId: step.taskId,
+                    summary: details.summary,
+                    ...(details.remediation === undefined ? {} : { remediation: details.remediation }),
+                    durationMs: 0,
+                    timestamp: nowUtc(),
+                  }),
+                );
+              }
+              yield* publishEvent(
+                options.eventService,
+                TaskTreeCompleteEvent.make({
+                  _tag: "task.tree.complete",
+                  parentId: SETUP_PARENT_ID,
+                  summary: "Lando runtime setup failed",
+                  succeeded: counter.succeeded,
+                  failed: steps.length - counter.succeeded,
+                  durationMs: Math.round(performance.now() - treeStart),
+                  timestamp: nowUtc(),
+                }),
+              );
+            }),
       ),
     );
 

@@ -11,6 +11,7 @@ import {
   ConfigService,
   type Downloader,
   type HttpClient,
+  InteractionService,
   PrivilegeService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
@@ -47,6 +48,7 @@ import {
   shouldDisableHostProxyForSetup,
   sourceInstallDir,
 } from "./setup-inputs.ts";
+import { authorizeProviderSetupPlan } from "./setup-provider-authorization.ts";
 import {
   SYSTEM_RUNTIME_PROVIDERS,
   maybeSelectSetupProvider,
@@ -69,7 +71,7 @@ export { ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup
 export const setupSpec: LandoCommandSpec<
   SetupResult,
   unknown,
-  ConfigService | RuntimeProviderRegistry | HttpClient | Downloader
+  ConfigService | RuntimeProviderRegistry | HttpClient | Downloader | InteractionService
 > = {
   resultSchema: SetupResultSchema,
   id: "meta:setup",
@@ -95,14 +97,16 @@ export const setupSpec: LandoCommandSpec<
         capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
       });
 
-      const selectedProvider = yield* Effect.promise(() =>
-        maybeSelectSetupProvider({
-          resolution,
-          yes: inputBooleanFlag(input, "yes"),
-          nonInteractive: inputBooleanFlag(input, "no-interactive"),
-          skipProvider: inputBooleanFlag(input, "skip-provider"),
-        }),
-      );
+      const interactionOption = yield* Effect.serviceOption(InteractionService);
+      const interaction = interactionOption._tag === "Some" ? interactionOption.value : undefined;
+
+      const selectedProvider = yield* maybeSelectSetupProvider({
+        resolution,
+        yes: inputBooleanFlag(input, "yes"),
+        nonInteractive: inputBooleanFlag(input, "no-interactive"),
+        skipProvider: inputBooleanFlag(input, "skip-provider"),
+        ...(interaction === undefined ? {} : { interaction }),
+      });
 
       const provider = yield* registry.select(setupProviderPlan(selectedProvider));
       const networkProbe = inputNetworkProbe(input);
@@ -129,14 +133,25 @@ export const setupSpec: LandoCommandSpec<
         const runtimeBundleUrl = inputStringFlag(input, "runtime-bundle-url");
         const runtimeBundleSha256 = inputStringFlag(input, "runtime-bundle-sha256");
         const setupFlags = contributedSetupFlagsForProvider(input, selectedProviderId);
+        const inspectOptions = {
+          force: false,
+          network,
+          ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
+          ...(runtimeBundleSha256 === undefined ? {} : { runtimeBundleSha256 }),
+          ...(Object.keys(setupFlags).length === 0 ? {} : { setupFlags }),
+        };
+        const plan = yield* provider
+          .planSetup(inspectOptions)
+          .pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
+        const approvedPlan = yield* authorizeProviderSetupPlan(plan, {
+          yes: inputBooleanFlag(input, "yes"),
+          nonInteractive: inputBooleanFlag(input, "no-interactive"),
+          interaction,
+        }).pipe(Effect.tapError((cause) => recorder.recordFailure("provider", cause)));
         yield* Effect.scoped(
-          provider.setup({
-            force: false,
-            network,
+          provider.setup(approvedPlan, {
+            ...inspectOptions,
             ...privilegeOptions,
-            ...(runtimeBundleUrl === undefined ? {} : { runtimeBundleUrl }),
-            ...(runtimeBundleSha256 === undefined ? {} : { runtimeBundleSha256 }),
-            ...(Object.keys(setupFlags).length === 0 ? {} : { setupFlags }),
           }),
         ).pipe(
           Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
@@ -166,6 +181,7 @@ export const setupSpec: LandoCommandSpec<
 
       if (
         !inputBooleanFlag(input, "skip-shell-integration") &&
+        !inputBooleanFlag(input, "no-interactive") &&
         privilege._tag === "Some" &&
         userDataRoot !== undefined
       ) {
