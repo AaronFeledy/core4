@@ -22,10 +22,11 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
@@ -183,6 +184,7 @@ const requiredStartServicesLayer = Layer.mergeAll(
   Layer.succeed(RedactionService, {
     forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
   }),
+  Layer.succeed(ProxyService, TestProxyService),
   ShellRunnerLive,
 );
 
