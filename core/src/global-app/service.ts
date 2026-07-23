@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { type Context, Effect, Layer } from "effect";
 
@@ -111,6 +111,13 @@ const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): st
   return [distMarker, distOverrideHint, `${distHashPrefix}${sha256(body)}`, body].join("\n");
 };
 
+const bindMountSources = (services: Readonly<Record<string, ServiceConfig>>): ReadonlyArray<string> =>
+  Object.values(services).flatMap((service) =>
+    (service.mounts ?? []).flatMap((mount) =>
+      typeof mount !== "string" && mount.type === "bind" && mount.source !== undefined ? [mount.source] : [],
+    ),
+  );
+
 const splitYamlLines = (content: string): ReadonlyArray<string> => content.split(/\r?\n/);
 
 const currentDistBody = (content: string): string => splitYamlLines(content).slice(3).join("\n");
@@ -217,6 +224,20 @@ const makeGlobalAppService = (
       const resolved = yield* paths;
       yield* ensureRoot;
       const services = input?.services ?? {};
+      for (const source of bindMountSources(services)) {
+        const mountPath = isAbsolute(source) ? source : join(resolved.root, source);
+        yield* fileSystem
+          .mkdir(mountPath)
+          .pipe(
+            Effect.mapError((cause) =>
+              globalAppError(
+                "regenerateDist",
+                `Unable to create the global service bind-mount source at ${mountPath}.`,
+                cause,
+              ),
+            ),
+          );
+      }
       const serviceIds = Object.keys(services).sort((left, right) => left.localeCompare(right));
       const nextContent = buildDistContent(services);
       const exists = yield* fileSystem
