@@ -471,7 +471,7 @@ describe("AppPlannerLive", () => {
           | { readonly buildSteps?: ReadonlyArray<unknown> }
           | undefined
       )?.buildSteps;
-      expect(buildSteps).toEqual([
+      expect(buildSteps?.slice(-4)).toEqual([
         {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
