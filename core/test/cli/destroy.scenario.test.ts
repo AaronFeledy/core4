@@ -25,6 +25,7 @@ import {
   FileSyncEngine,
   LandofileService,
   PathsService,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type {
@@ -33,7 +34,7 @@ import type {
   FileSyncEngineShape,
   RuntimeProviderShape,
 } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import { TestRuntimeProvider, makeTestProxyService } from "@lando/sdk/test";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -225,6 +226,7 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
     list: () => Effect.succeed([]),
   };
 
+  const proxy = makeTestProxyService();
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     Layer.succeed(
@@ -235,6 +237,7 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
         platform: "linux",
       }),
     ),
+    Layer.succeed(ProxyService, proxy),
     Layer.succeed(AppPlanResolver, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
@@ -255,7 +258,7 @@ const makeDestroyLayer = (options: { readonly userDataRoot?: string } = {}) => {
     }),
   );
 
-  return { layer, events, publishedEvents, destroyCalls, volumes };
+  return { layer, events, publishedEvents, destroyCalls, proxy, volumes };
 };
 
 const expectMissingPath = async (path: string): Promise<void> => {
@@ -298,6 +301,26 @@ describe("lando destroy", () => {
     expect(harness.publishedEvents.find((event) => event._tag === "post-destroy")).toMatchObject({
       app: scratchRef,
     });
+  });
+
+  test("removes app routes from the proxy service", async () => {
+    const harness = makeDestroyLayer();
+    await Effect.runPromise(
+      harness.proxy.applyRoutes(
+        [
+          {
+            hostname: "web.test-destroy.lndo.site",
+            scheme: "https",
+            service: ServiceName.make("web"),
+          },
+        ],
+        plan.id,
+      ),
+    );
+
+    await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
+
+    expect(harness.proxy.routesByApp.has(String(plan.id))).toBe(false);
   });
 
   test("cleans host-proxy artifacts under the resolved PathsService roots", async () => {

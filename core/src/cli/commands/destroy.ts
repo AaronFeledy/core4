@@ -19,6 +19,7 @@ import {
   EventService,
   LandofileService,
   PathsService,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -40,6 +41,7 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
+  | ProxyService
   | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -63,6 +65,7 @@ export const destroyApp = (
     const planner = yield* AppPlanResolver;
     const events = yield* EventService;
     const paths = yield* PathsService;
+    const proxy = yield* ProxyService;
 
     const plan =
       target?.plan ??
@@ -97,6 +100,8 @@ export const destroyApp = (
       .pipe(
         Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
       );
+
+    yield* proxy.removeRoutes(plan.id);
 
     if (volumes) {
       yield* Effect.promise(() =>
