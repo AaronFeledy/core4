@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `@lando/sdk/schema` adds the minimal `ProviderSetupPlan` contract: mutation-free inspection produces a closed host-change union whose sole member is `install-uidmap` for exact Ubuntu 26.04. Core authorizes the plan through `InteractionService` before provider apply. `@lando/sdk/errors` adds consent-denied, unsupported-host, privilege-unavailable, and provisioning tagged errors for that flow.
 - `EndpointInput` and `EndpointPlan` are now explicit `_tag: "internal" | "published"` unions. Published network endpoints carry `publication: { bindAddress?, hostPort? }`; internal endpoints are never host-visible, Unix sockets cannot be published, and runtime-assigned ports belong to endpoint materialization output. `RoutePlan.backend` is planner-resolved. The schema barrel additively exports `BindAddress`, `PortNumber`, `InternalEndpoint`, and `PublishedEndpoint`.
 - `@lando/sdk/errors` additively exports `PublicationUnsupportedError` for plan-time rejection when a provider cannot satisfy explicit endpoint publication intent.
 
@@ -181,6 +182,7 @@
 - `InlineProps`
 - `IncludeEntry`
 - `InspectProps`
+- `InstallUidmapHostChange`
 - `IsolateMode`
 - `ContentSource`
 - `FileFormat`
@@ -220,6 +222,8 @@
 - `PluginTrustState`
 - `PortablePath`
 - `ProviderExtensionConfig`
+- `ProviderSetupHostChange`
+- `ProviderSetupPlan`
 - `RecipeChoicesFrom`
 - `RecipeFile`
 - `RecipeId`
@@ -504,6 +508,10 @@
 - `InteractionCancelledError`
 - `ChoicesUnavailableError`
 - `InteractionUnavailableError`
+- `ProviderSetupConsentDeniedError`
+- `ProviderSetupPrivilegeUnavailableError`
+- `ProviderSetupProvisioningError`
+- `ProviderSetupUnsupportedHostError`
 - `TunnelProviderUnavailableError`
 - `TunnelTargetUnresolvedError`
 - `TunnelAuthRequiredError`
