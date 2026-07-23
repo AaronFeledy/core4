@@ -757,6 +757,7 @@ export const makeRuntimeProvider = (
           Effect.as(true),
           Effect.catchAll(() => Effect.succeed(false)),
         ),
+        planSetup: () => Effect.succeed({ providerId: ProviderId.make("podman"), changes: [] }),
         setup: () => Effect.void,
         getStatus: Effect.succeed({ running: true, message: "ready" }),
         getVersions: Effect.succeed({ provider: "0.0.0", runtime: serverVersion }),

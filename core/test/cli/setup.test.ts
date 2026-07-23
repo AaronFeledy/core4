@@ -12,6 +12,7 @@ import {
   ConfigService,
   FileSyncEngine,
   HostProxyService,
+  type InteractionServiceShape,
   PrivilegeService,
   ProxyService,
   RuntimeProviderRegistry,
@@ -20,6 +21,7 @@ import {
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { manifest as providerLandoManifest } from "@lando/provider-lando";
 import { makeRuntimeProvider, providerStatePath } from "@lando/provider-lando";
+import { InteractionCancelledError, InteractionUnavailableError } from "@lando/sdk/errors";
 import { type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import {
   TestFileSyncEngine,
@@ -42,7 +44,6 @@ import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
 import type { HttpClient } from "../../src/http-client/service.ts";
-import type { InteractionPrompter } from "../../src/interaction/prompter.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
 
 const makeConfigService = (
@@ -266,12 +267,51 @@ describe("meta:setup command", () => {
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput("lando"));
   });
 
+  test("does not apply provider setup before unattended consent is granted", async () => {
+    let applyCalls = 0;
+    const provider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      planSetup: () =>
+        Effect.succeed({
+          providerId: ProviderId.make("lando"),
+          changes: [
+            {
+              _tag: "install-uidmap" as const,
+              platform: "linux" as const,
+              distribution: "ubuntu" as const,
+              version: "26.04" as const,
+              reason: "Rootless Podman needs uidmap helpers.",
+            },
+          ],
+        }),
+      setup: () =>
+        Effect.sync(() => {
+          applyCalls += 1;
+        }),
+    };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    const exit = await Effect.runPromiseExit(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { "no-interactive": true } })
+        .pipe(Effect.provide(buildSetupLayers(registry))),
+    );
+
+    expect(exit._tag).toBe("Failure");
+    expect(applyCalls).toBe(0);
+  });
+
   test("passes runtime-bundle-url through to provider setup", async () => {
     const setupOptions: Array<{ readonly force: boolean; readonly runtimeBundleUrl?: string }> = [];
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
+      setup: (_plan, options: { readonly force: boolean; readonly runtimeBundleUrl?: string }) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -314,7 +354,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (options: { readonly setupFlags?: Readonly<Record<string, unknown>> }) =>
+      setup: (_plan, options: { readonly setupFlags?: Readonly<Record<string, unknown>> }) =>
         Effect.sync(() => {
           setupOptions.push(options);
         }),
@@ -877,7 +917,7 @@ describe("meta:setup command", () => {
     const provider = {
       ...TestRuntimeProvider,
       id: "lando",
-      setup: (options: unknown) =>
+      setup: (_plan, options: unknown) =>
         Effect.sync(() => {
           providerSetupOptions.push(options);
         }),
@@ -938,6 +978,35 @@ describe("meta:setup command", () => {
     await Effect.runPromise(
       setupSpec
         .run({ installDir: "/opt/lando", flags: { "skip-shell-integration": true } })
+        .pipe(
+          Effect.provide(
+            buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
+          ),
+        ),
+    );
+
+    expect(elevated).toEqual([]);
+  });
+
+  test("unattended setup skips shell profile writes", async () => {
+    const elevated: ReadonlyArray<string>[] = [];
+    const privilege = {
+      elevate: (command: ReadonlyArray<string>) =>
+        Effect.sync(() => {
+          elevated.push(command);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        }),
+    };
+    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const registry = {
+      list: Effect.succeed([ProviderId.make("lando")]),
+      capabilities: Effect.succeed(provider.capabilities),
+      select: () => Effect.succeed(provider),
+    };
+
+    await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando", flags: { "no-interactive": true } })
         .pipe(
           Effect.provide(
             buildSetupLayersWithPrivilege(registry, privilege, { userDataRoot: "/tmp/lando-data" }),
@@ -1011,7 +1080,7 @@ describe("meta:setup command", () => {
         ...TestRuntimeProvider,
         id: "lando",
         capabilities: { ...TestRuntimeProvider.capabilities, bindMountPerformance: "slow" as const },
-        setup: (options: { readonly network?: unknown }) =>
+        setup: (_plan, options: { readonly network?: unknown }) =>
           Effect.sync(() => {
             observedProviderNetworks.push(options.network);
             calls.push("provider");
@@ -1955,15 +2024,20 @@ describe("meta:setup command", () => {
   });
 
   describe("provider selection precedence", () => {
-    const recordingPrompter = (chosen: string): { prompter: InteractionPrompter; calls: number } => {
+    const recordingPrompter = (chosen: string): { prompter: InteractionServiceShape; calls: number } => {
       const state = { calls: 0 };
-      const prompter: InteractionPrompter = {
-        promptAll: async () => ({}),
-        confirm: async () => false,
-        select: async () => {
-          state.calls += 1;
-          return chosen as never;
-        },
+      const prompter: InteractionServiceShape = {
+        id: "test",
+        isInteractive: Effect.succeed(true),
+        prompt: () => Effect.die("unused"),
+        promptAll: () => Effect.die("unused"),
+        confirm: () => Effect.succeed(false),
+        select: () =>
+          Effect.sync(() => {
+            state.calls += 1;
+            return chosen as never;
+          }),
+        secret: () => Effect.die("unused"),
       };
       return {
         prompter,
@@ -1975,26 +2049,85 @@ describe("meta:setup command", () => {
 
     test("default-source selection resolves through InteractionService.select", async () => {
       const recorder = recordingPrompter("podman");
-      const chosen = await maybeSelectSetupProvider({
-        resolution: { providerId: ProviderId.make("lando"), source: "default" },
-        yes: false,
-        nonInteractive: false,
-        skipProvider: false,
-        interaction: recorder.prompter,
-      });
+      const chosen = await Effect.runPromise(
+        maybeSelectSetupProvider({
+          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          yes: false,
+          nonInteractive: false,
+          skipProvider: false,
+          interaction: recorder.prompter,
+        }),
+      );
       expect(String(chosen)).toBe("podman");
       expect(recorder.calls).toBe(1);
     });
 
+    test("provider selection propagates interactive cancellation", async () => {
+      const cancellation = new InteractionCancelledError({
+        message: "Provider selection cancelled.",
+        promptName: "provider",
+      });
+      const interaction = {
+        ...recordingPrompter("lando").prompter,
+        select: () => Effect.fail(cancellation),
+      };
+
+      const exit = await Effect.runPromiseExit(
+        maybeSelectSetupProvider({
+          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          yes: false,
+          nonInteractive: false,
+          skipProvider: false,
+          interaction,
+        }),
+      );
+
+      expect(exit._tag).toBe("Failure");
+      if (exit._tag === "Failure") {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") expect(failure.value).toBe(cancellation);
+      }
+    });
+
+    test("provider selection falls back when interaction is unavailable", async () => {
+      const interaction = {
+        ...recordingPrompter("podman").prompter,
+        select: () =>
+          Effect.fail(
+            new InteractionUnavailableError({
+              message: "No interactive renderer is available.",
+              serviceId: "unavailable",
+              capability: "select",
+              remediation: "Run non-interactively.",
+            }),
+          ),
+      };
+
+      const chosen = await Effect.runPromise(
+        maybeSelectSetupProvider({
+          resolution: { providerId: ProviderId.make("lando"), source: "default" },
+          yes: false,
+          nonInteractive: false,
+          skipProvider: false,
+          interaction,
+        }),
+      );
+
+      expect(String(chosen)).toBe("lando");
+    });
+
     test("non-default source skips the provider prompt entirely", async () => {
       const recorder = recordingPrompter("podman");
-      const chosen = await maybeSelectSetupProvider({
-        resolution: { providerId: ProviderId.make("docker"), source: "flag" },
-        yes: false,
-        nonInteractive: false,
-        skipProvider: false,
-        interaction: recorder.prompter,
-      });
+      const chosen = await Effect.runPromise(
+        maybeSelectSetupProvider({
+          resolution: { providerId: ProviderId.make("docker"), source: "flag" },
+          yes: false,
+          nonInteractive: false,
+          skipProvider: false,
+          interaction: recorder.prompter,
+        }),
+      );
       expect(String(chosen)).toBe("docker");
       expect(recorder.calls).toBe(0);
     });
@@ -2006,11 +2139,13 @@ describe("meta:setup command", () => {
         { yes: false, nonInteractive: false, skipProvider: true },
       ]) {
         const recorder = recordingPrompter("podman");
-        const chosen = await maybeSelectSetupProvider({
-          resolution: { providerId: ProviderId.make("lando"), source: "default" },
-          ...gate,
-          interaction: recorder.prompter,
-        });
+        const chosen = await Effect.runPromise(
+          maybeSelectSetupProvider({
+            resolution: { providerId: ProviderId.make("lando"), source: "default" },
+            ...gate,
+            interaction: recorder.prompter,
+          }),
+        );
         expect(String(chosen)).toBe("lando");
         expect(recorder.calls).toBe(0);
       }

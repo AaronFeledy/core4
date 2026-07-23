@@ -1,7 +1,7 @@
 import { type Context, Effect, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderCapabilities } from "@lando/sdk/schema";
+import { ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
 import type { Renderer, RootOverrides, RuntimeProvider, Telemetry } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
@@ -70,6 +70,7 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   platform: "linux",
   capabilities: providerCapabilities,
   isAvailable: Effect.succeed(false),
+  planSetup: () => Effect.succeed({ providerId: ProviderId.make("stub"), changes: [] }),
   setup: () => Effect.void,
   getStatus: Effect.succeed({ running: false }),
   getVersions: Effect.succeed({ provider: "0.0.0" }),
