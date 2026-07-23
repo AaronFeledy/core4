@@ -112,7 +112,7 @@ export const buildLinuxPodmanFromSource = async (
         `SOURCE_DATE_EPOCH=${PodmanSourceBuild.sourceDateEpoch}`,
         "CGO_ENABLED=1",
         `GOFLAGS=${PodmanSourceBuild.goflags}`,
-        "BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp",
+        "BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp containers_image_openpgp",
         `EXTRA_LDFLAGS=${PodmanSourceBuild.extraLdflags}`,
       ],
       sourceDir,
