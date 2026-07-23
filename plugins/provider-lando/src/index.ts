@@ -39,6 +39,7 @@ import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
 import { pullImage } from "./image-pull.ts";
 import { inspect } from "./inspect.ts";
+import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { logs } from "./logs.ts";
 import {
   type PodmanServiceRunner,
@@ -320,6 +321,7 @@ export interface ProviderLayerOptions {
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
+  readonly runtimeGenerationStore?: RuntimeGenerationStore;
 }
 
 interface RuntimeProviderServiceControls {
@@ -417,6 +419,9 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           pidPath: options.providerPidPath,
           rootlessProbes,
           withLaunchLock,
+          ...(options.runtimeGenerationStore === undefined
+            ? {}
+            : { generationStore: options.runtimeGenerationStore }),
           ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
           ...(progress === undefined
             ? {}
