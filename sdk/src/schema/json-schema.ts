@@ -243,6 +243,7 @@ import {
   PluginManifest,
   PluginSetupContribution,
   PluginSetupFlagContribution,
+  ProxyServiceContribution,
 } from "./plugin.ts";
 import {
   AppId,
@@ -260,6 +261,7 @@ import {
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
 import { ProviderSetupPlan } from "./provider-setup.ts";
+import { ProxyApplyResult, ProxyAuthority, ProxyCapabilities, ProxyConfig, ProxyStatus } from "./proxy.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -401,6 +403,11 @@ const rawPublicSchemaRegistry = {
   EndpointPlan,
   RouteRef,
   RoutePlan,
+  ProxyCapabilities,
+  ProxyConfig,
+  ProxyAuthority,
+  ProxyApplyResult,
+  ProxyStatus,
   HealthcheckPlan,
   CertificatePlan,
   HostAliasPlan,
@@ -506,6 +513,7 @@ const rawPublicSchemaRegistry = {
   PluginSetupContribution,
   PluginContribution,
   PluginManifest,
+  ProxyServiceContribution,
   PluginTrustState,
   GlobalServiceContribution,
   FileSyncEngineCapabilities,
@@ -705,6 +713,11 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   EndpointPlan: "Public Lando schema contract for Endpoint Plan.",
   RouteRef: "Public Lando schema contract for Route Ref.",
   RoutePlan: "Public Lando schema contract for Route Plan.",
+  ProxyCapabilities: "Proxy route features truthfully supported by an implementation.",
+  ProxyConfig: "Proxy setup configuration supplied by core.",
+  ProxyAuthority: "Externally visible authority selected by a proxy implementation.",
+  ProxyApplyResult: "Durable route-application result returned by a proxy implementation.",
+  ProxyStatus: "Current ingress and configured-app status reported by a proxy implementation.",
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
@@ -810,6 +823,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginManifest: "Public Lando schema contract for Plugin Manifest.",
   PluginTrustState: "Public Lando schema contract for Plugin Trust State.",
   GlobalServiceContribution: "Public Lando schema contract for Global Service Contribution.",
+  ProxyServiceContribution: "Public Lando schema contract for Proxy Service Contribution.",
   FileSyncEngineCapabilities: "Public Lando schema contract for File Sync Engine Capabilities.",
   FileSyncSessionSpec: "Public Lando schema contract for File Sync Session Spec.",
   FileSyncSessionInfo: "Public Lando schema contract for File Sync Session Info.",
