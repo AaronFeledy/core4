@@ -1,0 +1,16 @@
+---
+title: Proxy Authority
+description: Externally visible authority selected by a proxy implementation.
+---
+
+# Proxy Authority
+
+Externally visible authority selected by a proxy implementation.
+
+[JSON Schema artifact](../../../dist/schemas/proxy-authority.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `scheme` | Yes | `string` | Externally visible authority scheme. | — | `http`, `https` | — | — |
+| `hostname` | Yes | `string` | Externally visible authority hostname. | — | — | — | — |
+| `port` | Yes | `integer` | a number between 1 and 65535 | — | — | — | — |
