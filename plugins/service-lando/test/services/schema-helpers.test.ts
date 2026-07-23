@@ -23,7 +23,7 @@ const validPlanInput = {
   },
   mounts: [],
   storage: [],
-  endpoints: [{ port: 80, protocol: "http", name: "web" }],
+  endpoints: [{ _tag: "internal", port: 80, protocol: "http", name: "web" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],
@@ -56,7 +56,7 @@ describe("service schema helpers", () => {
   test("decodeServicePlan throws the same malformed-plan error shape as the raw decoder", () => {
     const malformedPlanInput = {
       ...validPlanInput,
-      endpoints: [{ port: "eighty", protocol: "http", name: "web" }],
+      endpoints: [{ _tag: "internal", port: "eighty", protocol: "http", name: "web" }],
     };
 
     expect(thrownShape(() => decodeServicePlan(malformedPlanInput))).toEqual(
