@@ -1,0 +1,122 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "description": "App whose durable route set was replaced.",
+      "type": "string"
+    },
+    "appliedRoutes": {
+      "description": "Complete route set accepted by the proxy.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "backend": {
+            "additionalProperties": false,
+            "description": "Planner-resolved service endpoint consumed by the route provider.",
+            "properties": {
+              "port": {
+                "description": "a number between 1 and 65535",
+                "maximum": 65535,
+                "minimum": 1,
+                "title": "between(1, 65535)",
+                "type": "integer"
+              },
+              "protocol": {
+                "enum": [
+                  "http",
+                  "https"
+                ],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "service",
+              "protocol",
+              "port"
+            ],
+            "type": "object"
+          },
+          "endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "hostname": {
+            "type": "string"
+          },
+          "pathPrefix": {
+            "type": "string"
+          },
+          "scheme": {
+            "enum": [
+              "http",
+              "https",
+              "both"
+            ],
+            "type": "string"
+          },
+          "service": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "hostname",
+          "scheme",
+          "service",
+          "backend"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "authorities": {
+      "description": "Externally visible authorities selected by the proxy.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "description": "Externally visible authority hostname.",
+            "type": "string"
+          },
+          "port": {
+            "description": "a number between 1 and 65535",
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "between(1, 65535)",
+            "type": "integer"
+          },
+          "scheme": {
+            "description": "Externally visible authority scheme.",
+            "enum": [
+              "http",
+              "https"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheme",
+          "hostname",
+          "port"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "app",
+    "appliedRoutes",
+    "authorities"
+  ],
+  "type": "object"
+}
