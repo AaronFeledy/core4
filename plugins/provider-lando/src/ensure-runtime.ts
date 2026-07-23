@@ -3,7 +3,7 @@ import { dirname } from "node:path";
 
 import { Duration, Effect } from "effect";
 
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import type { HostPlatform } from "@lando/sdk/schema";
 
@@ -35,6 +35,7 @@ export interface EnsureRuntimeDeps {
   readonly pidPath: string;
   readonly rootlessProbes?: RootlessProbes;
   readonly readinessPolicy?: RetryPolicy;
+  readonly withLaunchLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly setupProgress?: {
     readonly launch: (
       body: Effect.Effect<void, ProviderUnavailableError>,
@@ -159,6 +160,45 @@ const findAliveMatchingServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<Re
 const findAliveManagedServicePids = (deps: EnsureRuntimeDeps): Effect.Effect<ReadonlyArray<number>> =>
   findAliveServicePids(deps, deps.serviceRunner.findManagedServicePids);
 
+const runtimeIsHealthy = (deps: EnsureRuntimeDeps): Effect.Effect<boolean> =>
+  Effect.either(deps.podmanApi.ping).pipe(
+    Effect.flatMap((reachable) =>
+      reachable._tag === "Left" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
+    ),
+  );
+
+const stopDiscoveredRuntimeProcesses = (deps: EnsureRuntimeDeps): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    if (
+      deps.serviceRunner.findMatchingServicePids === undefined &&
+      deps.serviceRunner.findManagedServicePids === undefined
+    ) {
+      return;
+    }
+    const matchingPids = yield* findAliveMatchingServicePids(deps);
+    const managedPids = yield* findAliveManagedServicePids(deps);
+    const pidsToStop = [...new Set([...matchingPids, ...managedPids])];
+    if (pidsToStop.length === 0) return;
+    for (const pid of pidsToStop) {
+      yield* deps.serviceRunner.terminate(pid);
+    }
+  });
+
+const mapLaunchLockError = (
+  deps: EnsureRuntimeDeps,
+  cause: ProviderUnavailableError | StateStoreError,
+): ProviderUnavailableError =>
+  cause instanceof StateStoreError
+    ? new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message: "Failed to acquire the Lando runtime launch lock.",
+        remediation: "Wait for the current runtime launch to finish, then retry the command.",
+        details: { runRoot: deps.runRoot },
+        cause,
+      })
+    : cause;
+
 const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
     const spec = buildPodmanServiceArgs({
@@ -233,43 +273,21 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
 
 const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
-    const reachable = yield* Effect.either(deps.podmanApi.ping);
-    if (reachable._tag === "Right") {
-      const owned = yield* currentRuntimeIsOwned(deps);
-      if (owned) {
-        yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
-        yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
-        return;
-      }
-
-      if (
-        deps.serviceRunner.findMatchingServicePids !== undefined ||
-        deps.serviceRunner.findManagedServicePids !== undefined
-      ) {
-        const matchingPids = yield* findAliveMatchingServicePids(deps);
-        const managedPids = yield* findAliveManagedServicePids(deps);
-        const pidsToStop = [...new Set([...matchingPids, ...managedPids])];
-        if (pidsToStop.length === 0) {
-          const stalePid = yield* readStalePid(deps.pidPath);
-          if (stalePid !== undefined) {
-            const staleAlive = yield* deps.serviceRunner.isAlive(stalePid);
-            const serviceProcess =
-              staleAlive &&
-              (yield* deps.serviceRunner.isServiceProcess?.(stalePid, buildPodmanServiceArgs(deps)) ??
-                Effect.succeed(false));
-            if (serviceProcess) {
-              yield* deps.serviceRunner.terminate(stalePid);
-            }
-          }
-        } else {
-          for (const pid of pidsToStop) {
-            yield* deps.serviceRunner.terminate(pid);
-          }
-        }
-      }
+    if (yield* runtimeIsHealthy(deps)) {
+      yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
+      yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
+      return;
     }
 
-    const launch = reapStaleRuntime(deps).pipe(Effect.andThen(launchRuntime(deps)));
+    const repair = Effect.gen(function* () {
+      if (yield* runtimeIsHealthy(deps)) return;
+      yield* stopDiscoveredRuntimeProcesses(deps);
+      yield* reapStaleRuntime(deps);
+      yield* launchRuntime(deps);
+    });
+    const launch = (deps.withLaunchLock?.(repair) ?? repair).pipe(
+      Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+    );
     yield* deps.setupProgress?.launch(launch) ?? launch;
     const readiness = verifyRuntimeReachable(deps);
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
