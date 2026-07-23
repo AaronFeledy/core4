@@ -259,6 +259,7 @@ import {
   ServiceName,
 } from "./primitives.ts";
 import { PromptSpec } from "./prompt.ts";
+import { ProviderSetupPlan } from "./provider-setup.ts";
 import {
   RecipeChoicesFrom,
   RecipeManifest,
@@ -386,6 +387,7 @@ const rawPublicSchemaRegistry = {
   BuildPlan,
   BuildStep,
   AppPlan,
+  ProviderSetupPlan,
   ServicePlan,
   AppMountPlan,
   MountPlan,
@@ -689,6 +691,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   BuildPlan: "Public Lando schema contract for Build Plan.",
   BuildStep: "Public Lando schema contract for Build Step.",
   AppPlan: "Public Lando schema contract for App Plan.",
+  ProviderSetupPlan: "Inspectable provider setup plan authorized by core before host mutation.",
   ServicePlan: "Public Lando schema contract for Service Plan.",
   AppMountPlan: "Public Lando schema contract for App Mount Plan.",
   MountPlan: "Public Lando schema contract for Mount Plan.",
