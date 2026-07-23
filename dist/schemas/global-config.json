@@ -38,6 +38,9 @@
         }
       ]
     },
+    "defaultProxyService": {
+      "type": "string"
+    },
     "events": {
       "additionalProperties": false,
       "properties": {
