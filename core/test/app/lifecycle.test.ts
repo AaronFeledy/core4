@@ -20,7 +20,7 @@ import {
   type ServicePlan,
 } from "@lando/core/schema";
 import {
-  AppPlanner,
+  AppPlanResolver,
   FileSyncEngine,
   RuntimeProvider,
   RuntimeProviderRegistry,
@@ -174,7 +174,10 @@ const appLayer = (
           capabilities: Effect.succeed(provider.capabilities),
           select: () => Effect.succeed(provider),
         }),
-        Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+        Layer.succeed(AppPlanResolver, {
+          plan: () => Effect.succeed(plan),
+          global: () => Effect.die("not used"),
+        }),
         Layer.succeed(FileSyncEngine, engine),
       ],
     },
@@ -913,7 +916,10 @@ describe("App handle managed lifecycle scopes", () => {
                     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
                     select: () => Effect.succeed(TestRuntimeProvider),
                   }),
-                  Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                  Layer.succeed(AppPlanResolver, {
+                    plan: () => Effect.succeed(planWithFileSync(dir)),
+                    global: () => Effect.die("not used"),
+                  }),
                   Layer.succeed(FileSyncEngine, tracking.engine),
                 ],
               },

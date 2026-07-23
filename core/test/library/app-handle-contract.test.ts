@@ -25,7 +25,12 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, FileSyncEngine, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanResolver,
+  FileSyncEngine,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
 
@@ -287,7 +292,10 @@ describe("@lando/core App-handle library contract", () => {
               policy: "bundled-only",
               layers: [
                 ...testProviderLayers,
-                Layer.succeed(AppPlanner, { plan: () => Effect.succeed(planWithFileSync(dir)) }),
+                Layer.succeed(AppPlanResolver, {
+                  plan: () => Effect.succeed(planWithFileSync(dir)),
+                  global: () => Effect.die("not used"),
+                }),
                 Layer.succeed(FileSyncEngine, tracking.engine),
               ],
             },
