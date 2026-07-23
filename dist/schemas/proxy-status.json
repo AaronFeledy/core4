@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "authorities": {
+      "description": "Authorities currently exposed by the proxy.",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "hostname": {
+            "description": "Externally visible authority hostname.",
+            "type": "string"
+          },
+          "port": {
+            "description": "a number between 1 and 65535",
+            "maximum": 65535,
+            "minimum": 1,
+            "title": "between(1, 65535)",
+            "type": "integer"
+          },
+          "scheme": {
+            "description": "Externally visible authority scheme.",
+            "enum": [
+              "http",
+              "https"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheme",
+          "hostname",
+          "port"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "configuredApps": {
+      "description": "Apps with durable route configuration.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "state": {
+      "description": "Current proxy ingress state.",
+      "enum": [
+        "running",
+        "stopped"
+      ],
+      "type": "string"
+    }
+  },
+  "required": [
+    "state",
+    "authorities",
+    "configuredApps"
+  ],
+  "type": "object"
+}
