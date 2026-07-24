@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
@@ -72,15 +73,13 @@ export const writeLaunchState = (
     try: async () => {
       const state: RuntimeLaunchState = { pid, env: spec.env ?? {} };
       const path = launchStatePath(pidPath);
+      const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
+      await mkdir(dirname(path), { recursive: true });
       try {
-        await writeFile(path, JSON.stringify(state));
-      } catch (cause) {
-        if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT") {
-          await mkdir(dirname(path), { recursive: true });
-          await writeFile(path, JSON.stringify(state));
-          return;
-        }
-        throw cause;
+        await writeFile(tempPath, JSON.stringify(state), { mode: 0o600 });
+        await rename(tempPath, path);
+      } finally {
+        await rm(tempPath, { force: true });
       }
     },
     catch: (cause) =>

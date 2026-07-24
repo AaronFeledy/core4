@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
-import { Duration, Effect } from "effect";
+import { Duration, Effect, Exit } from "effect";
 
 import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
@@ -17,6 +18,7 @@ import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
 import {
   type RuntimeLaunchError,
+  type PodmanServiceSpec,
   buildPodmanServiceArgs,
   readPodmanServiceLogTail,
 } from "./podman-service-runner.ts";
@@ -35,6 +37,10 @@ export interface EnsureRuntimeDeps extends LinuxRuntimeHealthDeps {
   readonly readinessPolicy?: RetryPolicy;
   readonly withLaunchLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly terminationPolicy?: RetryPolicy;
+  readonly recordLaunch?: (
+    pid: number,
+    spec: PodmanServiceSpec,
+  ) => Effect.Effect<void, ProviderUnavailableError>;
   readonly setupProgress?: {
     readonly launch: (
       body: Effect.Effect<void, ProviderUnavailableError>,
@@ -66,15 +72,13 @@ const missingMachineRunnerError = (platform: "darwin" | "win32") =>
 const writePidFile = (pidPath: string, pid: number): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
+      const tempPath = `${pidPath}.tmp-${process.pid}-${randomUUID()}`;
+      await mkdir(dirname(pidPath), { recursive: true });
       try {
-        await writeFile(pidPath, String(pid));
-      } catch (cause) {
-        if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT") {
-          await mkdir(dirname(pidPath), { recursive: true });
-          await writeFile(pidPath, String(pid));
-          return;
-        }
-        throw cause;
+        await writeFile(tempPath, String(pid), { mode: 0o600 });
+        await rename(tempPath, pidPath);
+      } finally {
+        await rm(tempPath, { force: true });
       }
     },
     catch: (cause) =>
@@ -121,8 +125,12 @@ const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUna
       }),
     );
 
-    yield* writePidFile(deps.pidPath, pid);
-    yield* writeLaunchState(deps.pidPath, pid, spec);
+    const recordLaunch =
+      deps.recordLaunch?.(pid, spec) ??
+      writeLaunchState(deps.pidPath, pid, spec).pipe(Effect.zipRight(writePidFile(deps.pidPath, pid)));
+    yield* recordLaunch.pipe(
+      Effect.onExit((exit) => (Exit.isFailure(exit) ? deps.serviceRunner.terminate(pid) : Effect.void)),
+    );
   });
 
 const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
