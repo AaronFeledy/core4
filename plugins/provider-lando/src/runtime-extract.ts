@@ -344,22 +344,15 @@ const readInstalledVersion = (runtimeBinDir: string): Effect.Effect<string | und
 const runtimeEntrypointNames = (platform: HostPlatform): readonly string[] =>
   platform === "win32" ? ["podman.exe", "gvproxy.exe", "win-sshproxy.exe"] : ["podman"];
 
-const hasInstalledRuntimeEntrypoint = (
-  runtimeBinDir: string,
-  platform: HostPlatform,
-): Effect.Effect<boolean, never> =>
-  Effect.promise(async () =>
-    (
-      await Promise.all(
-        runtimeEntrypointNames(platform).map((name) =>
-          access(stringJoin(runtimeBinDir, name)).then(
-            () => true,
-            () => false,
-          ),
-        ),
-      )
-    ).every(Boolean),
-  );
+const hasInstalledRuntimeEntrypoint = (runtimeBinDir: string, platform: HostPlatform): Promise<boolean> =>
+  Promise.all(
+    runtimeEntrypointNames(platform).map((name) =>
+      access(stringJoin(runtimeBinDir, name)).then(
+        () => true,
+        () => false,
+      ),
+    ),
+  ).then((results) => results.every(Boolean));
 
 const toExtractError = (message: string, cause: unknown): ProviderRuntimeExtractError =>
   cause instanceof ProviderRuntimeExtractError ? cause : new ProviderRuntimeExtractError(message, cause);
@@ -407,7 +400,7 @@ export const installRuntimeBundle = (
     const installedVersion = yield* readInstalledVersion(options.runtimeBinDir);
     const entrypointReady =
       installedVersion === options.version
-        ? yield* hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform)
+        ? yield* Effect.promise(() => hasInstalledRuntimeEntrypoint(options.runtimeBinDir, options.platform))
         : false;
     if (entrypointReady) {
       return { installed: false, runtimeBinDir: options.runtimeBinDir, version: options.version };
@@ -445,6 +438,11 @@ export const installRuntimeBundle = (
           }
           if (fileCount === 0) {
             throw new ProviderRuntimeExtractError("Runtime bundle archive does not contain any files.");
+          }
+          if (!(await hasInstalledRuntimeEntrypoint(tempDir, options.platform))) {
+            throw new ProviderRuntimeExtractError(
+              `Runtime bundle archive is missing required ${options.platform} entrypoints: ${runtimeEntrypointNames(options.platform).join(", ")}.`,
+            );
           }
           await writeFile(markerPath(tempDir), options.version);
           await mkdir(stringParentDir(options.runtimeBinDir), { recursive: true });
