@@ -82,7 +82,7 @@ describe("node:lts ServiceType", () => {
     expect(plan.mounts[0]?.readOnly).toBe(false);
     expect(plan.mounts[0]?.realization).toBe("passthrough");
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
-    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.environment).toMatchObject({
       LANDO_APP_ROOT: "/app",
       LANDO_PROJECT_MOUNT: "/app",
@@ -104,7 +104,9 @@ describe("node:lts ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22" });
     expect(plan.command).toBe("npm start");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
-    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "published", port: 3000, protocol: "http", name: "web", publication: { hostPort: 3001 } },
+    ]);
   });
 
   test("ServiceConfig schema accepts the framework field", () => {
@@ -169,7 +171,7 @@ describe("node:22 ServiceType", () => {
     expect(String(plan.mounts[0]?.target)).toBe("/app");
     expect(plan.mounts[0]?.realization).toBe("passthrough");
     expect(plan.command).toEqual(["sh", "-c", "tail -f /dev/null"]);
-    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3000, protocol: "http", name: "web" }]);
     expect(plan.environment).toMatchObject({
       LANDO_APP_ROOT: "/app",
       LANDO_PROJECT_MOUNT: "/app",
@@ -192,7 +194,9 @@ describe("node:22 ServiceType", () => {
     expect(plan.artifact).toEqual({ kind: "ref", ref: "node:22-alpine" });
     expect(plan.command).toBe("npm run dev");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
-    expect(plan.endpoints).toEqual([{ port: 3000, protocol: "http", name: "web" }]);
+    expect(plan.endpoints).toEqual([
+      { _tag: "published", port: 3000, protocol: "http", name: "web", publication: { hostPort: 3001 } },
+    ]);
   });
 
   test("passes through entrypoint and dependsOn", async () => {

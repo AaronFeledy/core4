@@ -152,7 +152,7 @@ describe("memcached service type — scenario: Memcached + lando memcached-tool 
 
     expect(cache.type).toBe("memcached");
     expect(cache.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
-    expect(cache.endpoints).toEqual([{ port: 11211, protocol: "tcp", name: "cache" }]);
+    expect(cache.endpoints).toEqual([{ _tag: "internal", port: 11211, protocol: "tcp", name: "cache" }]);
     expect(cache.storage).toEqual([]);
     expect(cache.healthcheck?.kind).toBe("command");
     expect(cache.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/11211"]);

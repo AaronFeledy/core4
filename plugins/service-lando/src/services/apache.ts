@@ -4,6 +4,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, type LogSource, LogSourceId, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "httpd:2.4-alpine";
 const DEFAULT_PORT = 80;
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -57,7 +59,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   };
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["sh", "-c", `nc -z 127.0.0.1 ${port}`],

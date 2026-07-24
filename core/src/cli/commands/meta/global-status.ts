@@ -9,9 +9,10 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import { ToolingExecError } from "@lando/sdk/errors";
-import type { AppPlan, EndpointPlan, ServicePlan } from "@lando/sdk/schema";
+import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   type FileSystem,
@@ -20,6 +21,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { publishedEndpointUrls } from "../../authority-url.ts";
 
 import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
 import {
@@ -73,6 +75,7 @@ export const GlobalStatusResultSchema = Schema.Struct({
 
 type GlobalStatusError =
   | CapabilityError
+  | PublicationUnsupportedError
   | FileSystemError
   | GlobalAppError
   | LandofileParseError
@@ -131,12 +134,6 @@ const selectedServices = (
 
   if (missing !== undefined) return Effect.fail(unknownServiceError(missing, plan.services));
   return Effect.succeed(matched);
-};
-
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
 };
 
 const globalStatusTone = (status: GlobalStatusService["status"]): SummaryTone => {
@@ -226,7 +223,7 @@ export const globalStatus = (
       provider: String(service.provider),
       primary: service.primary,
       status: "unknown",
-      endpoints: service.endpoints.map(endpointText),
+      endpoints: publishedEndpointUrls(service.endpoints),
     });
 
     // Intentional: provider-unavailable degrades to "unknown" so status reports the materialized stack even when nothing is running.
@@ -245,7 +242,8 @@ export const globalStatus = (
             provider: String(service.provider),
             primary: service.primary,
             status,
-            endpoints: status === "stopped" ? [] : (runtime.endpoints ?? service.endpoints).map(endpointText),
+            endpoints:
+              status === "stopped" ? [] : publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
           };
         }),
         Effect.catchAll(() => Effect.succeed(degraded(service))),

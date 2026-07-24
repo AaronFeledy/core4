@@ -44,7 +44,7 @@ describe("mongodb ServiceType", () => {
     expect(plan.storage[0]?.store).toBe("myapp-mongodb-data");
     expect(String(plan.storage[0]?.target)).toBe("/data/db");
     expect(plan.storage[0]?.readOnly).toBe(false);
-    expect(plan.endpoints).toEqual([{ port: 27017, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 27017, protocol: "tcp", name: "db" }]);
   });
 
   test("database defaults to appRoot basename when no explicit appName is provided", async () => {

@@ -10,6 +10,7 @@ import {
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
+  type PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import type { GlobalDistResult } from "@lando/sdk/services";
 import {
@@ -52,6 +53,7 @@ export const GlobalUninstallResultSchema = Schema.Struct({
 
 type GlobalUninstallError =
   | CapabilityError
+  | PublicationUnsupportedError
   | FileSystemError
   | GlobalAppError
   | GlobalDistConflictError

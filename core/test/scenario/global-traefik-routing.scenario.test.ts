@@ -233,10 +233,14 @@ describe("per-app NetworkingPlan + cross-app reachability (US-109)", () => {
     ]);
   });
 
-  test("omits shared membership for a provider without sharedCrossAppNetwork", async () => {
-    const plan = await planUserApp(baseCapabilities({ sharedCrossAppNetwork: false }));
-    expect(plan.networking?.perAppBridge.name).toBe("lando-shop");
-    expect(plan.networking?.sharedNetworkMembership).toBeUndefined();
+  test("rejects routed apps for a provider without sharedCrossAppNetwork", async () => {
+    const result = planUserApp(baseCapabilities({ sharedCrossAppNetwork: false }));
+
+    await expect(result).rejects.toHaveProperty("name", "(FiberFailure) CapabilityError");
+    await expect(result).rejects.toHaveProperty(
+      "message",
+      "Routes require provider capability sharedCrossAppNetwork.",
+    );
   });
 
   test("two apps and the global Traefik proxy all join the shared network and resolve each other", async () => {

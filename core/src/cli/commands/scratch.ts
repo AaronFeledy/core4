@@ -412,7 +412,7 @@ const renderInfoMounts = (info: ScratchInfo): ReadonlyArray<string> => {
 const renderInfoEndpoints = (info: ScratchInfo): ReadonlyArray<string> => {
   const lines = info.endpoints.flatMap((service) =>
     service.endpoints.map((endpoint) => {
-      const port = endpoint.port === undefined ? "" : `:${endpoint.port}`;
+      const port = endpoint.protocol === "unix" ? "" : `:${endpoint.port}`;
       const name = endpoint.name === undefined ? "" : ` (${endpoint.name})`;
       return `  ${service.service} ${endpoint.protocol}${port}${name}`;
     }),

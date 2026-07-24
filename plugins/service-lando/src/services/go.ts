@@ -10,6 +10,8 @@ import type {
   ServiceType,
 } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 export const SUPPORTED_GO_VERSIONS = ["1.22", "1.23"] as const;
 export type SupportedGoVersion = (typeof SUPPORTED_GO_VERSIONS)[number];
 
@@ -110,7 +112,7 @@ const applyGoFeature = (ctx: ServiceFeatureContext): void => {
   if (service.user !== undefined) ctx.setUser(service.user);
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],

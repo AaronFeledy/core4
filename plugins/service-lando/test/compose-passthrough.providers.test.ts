@@ -77,7 +77,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
 
     const document = renderLandoCompose(plan);
     expect(document).toContain('image: "ghcr.io/example/worker:latest"');
-    expect(document).toContain('"9000:9000"');
+    expect(document).toContain('"127.0.0.1:9000:9000"');
     expect(document).toContain('- "composeapp-worker-state:/var/state"');
     expect(document).toContain('WORKER_ENV: "prod"');
     expect(document).toContain("volumes:");

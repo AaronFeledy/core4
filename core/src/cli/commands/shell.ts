@@ -24,6 +24,7 @@ import {
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
+  type PublicationUnsupportedError,
   type ShellExecError,
   ShellRequiresTtyError,
   ToolingExecError,
@@ -119,6 +120,7 @@ export interface ShellAppResult {
 export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
+  | PublicationUnsupportedError
   | ConfigError
   | DeprecatedSurfaceError
   | LandofileNotFoundError

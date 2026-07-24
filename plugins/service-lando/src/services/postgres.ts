@@ -7,6 +7,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "postgres:16";
 const DEFAULT_PORT = 5432;
 const DATA_TARGET = PortablePath.make("/var/lib/postgresql/data");
@@ -33,7 +35,7 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({ port: service.port ?? DEFAULT_PORT, protocol: "tcp", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
 
   for (const dependency of service.dependsOn ?? []) {
     ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });

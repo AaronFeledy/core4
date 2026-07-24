@@ -195,8 +195,8 @@ describe("mergeResolutionOverParent", () => {
       base: "lando",
       normalizedConfig: {
         endpoints: [
-          { name: "web", port: 80, protocol: "http" },
-          { name: "metrics", port: 9090, protocol: "http" },
+          { _tag: "internal", name: "web", port: 80, protocol: "http" },
+          { _tag: "internal", name: "metrics", port: 9090, protocol: "http" },
         ],
       } as ServiceConfig,
       features: [],
@@ -204,7 +204,7 @@ describe("mergeResolutionOverParent", () => {
     const child: ServiceTypeResolution = {
       base: "lando",
       normalizedConfig: {
-        endpoints: [{ name: "web", port: 8080, protocol: "http" }],
+        endpoints: [{ _tag: "internal", name: "web", port: 8080, protocol: "http" }],
       } as ServiceConfig,
       features: [],
     };

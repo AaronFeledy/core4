@@ -3,18 +3,17 @@ import { describe, expect, test } from "bun:test";
 import { ServiceName } from "@lando/sdk/schema";
 
 import * as liveModule from "../../../src/subsystems/scanner/live.ts";
-import { appId, drive, endpointsOf, httpStatus, requestSequence } from "./support.ts";
+import { appId, drive, endpointsOf, httpStatus, publishedEndpoint, requestSequence } from "./support.ts";
 
 const { makeUrlScanner } = liveModule;
 
 const web = ServiceName.make("web");
-const worker = ServiceName.make("worker");
 const db = ServiceName.make("db");
 
 describe("makeUrlScanner", () => {
   test("scans http endpoints through the HttpClient chokepoint and resolves green", async () => {
     const http = requestSequence([httpStatus(200)]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
 
     expect(scanner.id).toBe("http-probe");
@@ -42,7 +41,7 @@ describe("makeUrlScanner", () => {
 
   test("maxRedirects and path map onto the outbound request", async () => {
     const http = requestSequence([httpStatus(204)]);
-    const source = endpointsOf([{ service: web, protocol: "https", port: 8443 }]);
+    const source = endpointsOf([publishedEndpoint(web, "https", 8443)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { maxRedirects: 3, path: "/healthz", timeoutSeconds: 2 },
@@ -56,13 +55,9 @@ describe("makeUrlScanner", () => {
     expect(http.requests[0]?.timeoutMs).toBe(2_000);
   });
 
-  test("skips non-http and port-less endpoints", async () => {
+  test("skips published non-http endpoints", async () => {
     const http = requestSequence([httpStatus(200)]);
-    const source = endpointsOf([
-      { service: db, protocol: "tcp", port: 5432 },
-      { service: worker, protocol: "unix" },
-      { service: web, protocol: "http", port: 8080 },
-    ]);
+    const source = endpointsOf([publishedEndpoint(db, "tcp", 5432), publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner({ request: http.request, listEndpoints: source.listEndpoints });
 
     const result = await drive(scanner.scan(appId));
@@ -74,7 +69,7 @@ describe("makeUrlScanner", () => {
 
   test("enabled false short-circuits without probing", async () => {
     const http = requestSequence([httpStatus(200)]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { enabled: false },

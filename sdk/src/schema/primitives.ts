@@ -18,6 +18,10 @@ export type AbsolutePath = typeof AbsolutePath.Type;
 export const PortablePath = Schema.String.pipe(Schema.brand("PortablePath"));
 export type PortablePath = typeof PortablePath.Type;
 
+/** Integer TCP/UDP port in the inclusive IANA range. */
+export const PortNumber = Schema.Number.pipe(Schema.int(), Schema.between(1, 65535));
+export type PortNumber = typeof PortNumber.Type;
+
 export const HostPlatform = Schema.Literal("darwin", "linux", "win32", "wsl");
 export type HostPlatform = typeof HostPlatform.Type;
 

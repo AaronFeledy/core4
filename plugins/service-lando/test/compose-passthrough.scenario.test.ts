@@ -158,7 +158,15 @@ describe("compose passthrough — scenario: third-party image with default endpo
 
     expect(whoami.type).toBe("compose");
     expect(whoami.artifact).toEqual({ kind: "ref", ref: "traefik/whoami:v1.10" });
-    expect(whoami.endpoints).toEqual([{ port: 80, protocol: "tcp", name: "whoami" }]);
+    expect(whoami.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        name: "whoami",
+        publication: { hostPort: 8080 },
+      },
+    ]);
 
     // compose is an l337 service and must not inject the LANDO_* env layer.
     expect(Object.keys(whoami.environment).filter((k) => k === "LANDO" || k.startsWith("LANDO_"))).toEqual(
@@ -228,7 +236,15 @@ describe("compose passthrough — scenario: third-party image with default endpo
     expect(Object.keys(sidekick.environment).filter((k) => k === "LANDO" || k.startsWith("LANDO_"))).toEqual(
       [],
     );
-    expect(sidekick.endpoints).toEqual([{ port: 80, protocol: "tcp", name: "sidekick" }]);
+    expect(sidekick.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 80,
+        protocol: "tcp",
+        name: "sidekick",
+        publication: { hostPort: 9090 },
+      },
+    ]);
     expect(appPlan.networks).toEqual([{ name: "lando-myapp", shared: false, driver: "bridge" }]);
   });
 });

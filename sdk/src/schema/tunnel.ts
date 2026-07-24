@@ -1,14 +1,13 @@
 import { Schema } from "effect";
 
 import { AppPlan } from "./app-plan.ts";
-import { AppId, ServiceName } from "./primitives.ts";
+import { AppId, PortNumber, ServiceName } from "./primitives.ts";
 
 const TUNNEL_IDENTIFIER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u;
 const TUNNEL_SERVICE_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const TUNNEL_HOSTNAME_PATTERN =
   /^(?:\*\.)?(?=.{1,253}$)(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/u;
 const SAFE_HTTP_URL_PATTERN = /^https?:\/\/[^\s/?#@]+(?:\/[^\s?#]*)?$/u;
-const TunnelPort = Schema.Number.pipe(Schema.int(), Schema.between(1, 65535));
 const LOOPBACK_URL_PATTERN =
   /^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):(?:[1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5])(?:\/[^\s?#]*)?$/u;
 
@@ -88,7 +87,7 @@ const TunnelRouteTarget = Schema.TaggedStruct("route", {
 
 const TunnelServiceEndpointTarget = Schema.TaggedStruct("service", {
   service: TunnelServiceName,
-  port: TunnelPort,
+  port: PortNumber,
   protocol: Schema.optional(Schema.Literal("http", "https", "tcp")),
 });
 

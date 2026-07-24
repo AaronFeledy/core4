@@ -152,7 +152,7 @@ describe("valkey service type — scenario: Valkey + lando valkey-cli tooling", 
 
     expect(cache.type).toBe("valkey");
     expect(cache.artifact).toEqual({ kind: "ref", ref: "valkey/valkey:8" });
-    expect(cache.endpoints).toEqual([{ port: 6379, protocol: "tcp", name: "cache" }]);
+    expect(cache.endpoints).toEqual([{ _tag: "internal", port: 6379, protocol: "tcp", name: "cache" }]);
     expect(cache.storage).toHaveLength(1);
     expect(cache.storage[0]?.store).toBe("myapp-valkey-data");
     expect(cache.healthcheck?.kind).toBe("command");

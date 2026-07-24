@@ -10,6 +10,7 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import { PostGlobalStopEvent, PreGlobalStopEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
@@ -43,6 +44,7 @@ export const GlobalStopResultSchema = Schema.Struct({
 
 export type GlobalStopError =
   | CapabilityError
+  | PublicationUnsupportedError
   | EventError
   | FileSystemError
   | GlobalAppError

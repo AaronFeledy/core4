@@ -1,0 +1,18 @@
+---
+title: Published Endpoint
+description: Service endpoint carrying explicit nested host-publication intent.
+---
+
+# Published Endpoint
+
+Service endpoint carrying explicit nested host-publication intent.
+
+[JSON Schema artifact](../../../dist/schemas/published-endpoint.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | Discriminates an explicitly host-published endpoint. | — | `published` | — | — |
+| `protocol` | Yes | `string` | Service-facing network protocol. | — | `http`, `https`, `tcp`, `udp` | — | — |
+| `port` | Yes | `integer` | a number between 1 and 65535 | — | — | — | — |
+| `publication` | Yes | `object` | Explicit host-publication intent and policy overrides. | — | — | — | — |
+| `name` | No | `string` | Optional endpoint name. | — | — | — | — |

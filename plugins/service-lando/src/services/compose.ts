@@ -7,6 +7,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { AbsolutePath, type MountInput, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { parsePublishedPort, publicationFor } from "./_port-helpers.ts";
+
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 export const COMPOSE_FEATURE_ID = "service-lando.compose" as const;
@@ -77,21 +79,6 @@ const parseMount = (entry: MountInput, appRoot: string): VolumeMount => {
     target: entry.target,
     readOnly: entry.readOnly ?? false,
   };
-};
-
-const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "udp" } => {
-  const parts = entry.split(":");
-  const last = parts[parts.length - 1];
-  if (last === undefined) {
-    throw new Error(`Invalid compose port entry "${entry}".`);
-  }
-  const [portPart, protoPart] = last.split("/");
-  const port = Number(portPart);
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`Invalid compose port "${entry}". Expected positive integer port.`);
-  }
-  const protocol = protoPart === "udp" ? "udp" : "tcp";
-  return { port, protocol };
 };
 
 const appNameFor = (ctx: ServiceFeatureContext): string => {
@@ -180,9 +167,25 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     }
   }
 
-  for (const portEntry of service.ports ?? []) {
-    const parsed = parsePortShortForm(portEntry);
-    ctx.addEndpoint({ port: parsed.port, protocol: parsed.protocol, name: ctx.serviceName });
+  if (service.endpoints !== undefined) {
+    for (const endpoint of service.endpoints) {
+      if (endpoint.protocol === "unix") {
+        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
+      } else {
+        ctx.addEndpoint(endpoint);
+      }
+    }
+  } else {
+    for (const portEntry of service.ports ?? []) {
+      const parsed = parsePublishedPort(portEntry);
+      ctx.addEndpoint({
+        _tag: "published",
+        port: parsed.port,
+        protocol: parsed.protocol,
+        name: ctx.serviceName,
+        publication: publicationFor(parsed),
+      });
+    }
   }
 
   if (service.command !== undefined) ctx.setCommand(service.command);

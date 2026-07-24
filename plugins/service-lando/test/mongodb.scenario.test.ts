@@ -152,7 +152,7 @@ describe("mongodb service type — scenario: MongoDB + lando mongosh tooling", (
 
     expect(db.type).toBe("mongodb");
     expect(db.artifact).toEqual({ kind: "ref", ref: "mongo:7" });
-    expect(db.endpoints).toEqual([{ port: 27017, protocol: "tcp", name: "db" }]);
+    expect(db.endpoints).toEqual([{ _tag: "internal", port: 27017, protocol: "tcp", name: "db" }]);
     expect(db.storage).toHaveLength(1);
     expect(db.storage[0]?.store).toBe("myapp-mongodb-data");
     expect(String(db.storage[0]?.target)).toBe("/data/db");

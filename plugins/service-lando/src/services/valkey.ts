@@ -6,6 +6,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "valkey/valkey:8";
 const DEFAULT_PORT = 6379;
 const DATA_TARGET = PortablePath.make("/data");
@@ -28,7 +30,7 @@ const applyValkeyFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({ port, protocol: "tcp", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "tcp" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],

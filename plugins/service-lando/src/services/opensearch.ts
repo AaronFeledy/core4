@@ -6,6 +6,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "opensearchproject/opensearch:2";
 const DEFAULT_PORT = 9200;
 const DATA_TARGET = PortablePath.make("/usr/share/opensearch/data");
@@ -40,7 +42,7 @@ const applyOpenSearchFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["bash", "-c", `curl -sf http://localhost:${port}/_cluster/health`],

@@ -9,6 +9,7 @@ import {
   type NotImplementedError,
   type ProviderConfigError,
   type ProviderUnavailableError,
+  type PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import { type AppPlan, type LandofileShape, LandofileShape as LandofileShapeSchema } from "@lando/sdk/schema";
 import {
@@ -46,6 +47,7 @@ export type LoadGlobalPlanError =
   | NoProviderInstalledError
   | NotImplementedError
   | ProviderConfigError
+  | PublicationUnsupportedError
   | ProviderUnavailableError;
 
 export type LoadGlobalPlanServices = AppPlanner | FileSystem | GlobalAppService | RuntimeProviderRegistry;

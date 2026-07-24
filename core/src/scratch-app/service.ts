@@ -433,7 +433,7 @@ const planServiceEndpoints = (plan: AppPlan): ReadonlyArray<ScratchServiceEndpoi
       service: name,
       endpoints: (service?.endpoints ?? []).map((endpoint) => ({
         protocol: endpoint.protocol,
-        ...(endpoint.port === undefined ? {} : { port: endpoint.port }),
+        ...(endpoint.protocol === "unix" ? {} : { port: endpoint.port }),
         ...(endpoint.name === undefined ? {} : { name: endpoint.name }),
       })),
     }));

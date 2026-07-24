@@ -517,6 +517,7 @@ describe("CacheServiceLive", () => {
           hostname: "web.cache-plan.lndo.site",
           scheme: "https" as const,
           service: ServiceName.make("web"),
+          backend: { service: ServiceName.make("web"), protocol: "http" as const, port: 8080 },
         },
       ],
     };
