@@ -1,5 +1,7 @@
 import { Schema } from "effect";
 
+import { ProviderId } from "../schema/primitives.ts";
+
 const ProviderErrorBase = {
   providerId: Schema.String,
   operation: Schema.String,
@@ -79,6 +81,43 @@ export class PublicationUnsupportedError extends Schema.TaggedError<PublicationU
     providerId: Schema.String,
     capability: Schema.Literal("hostPortPublish"),
     remediation: Schema.String,
+  },
+) {}
+
+const ProviderSetupErrorBase = {
+  providerId: ProviderId,
+  message: Schema.String,
+  remediation: Schema.String,
+};
+
+export class ProviderSetupConsentDeniedError extends Schema.TaggedError<ProviderSetupConsentDeniedError>()(
+  "ProviderSetupConsentDeniedError",
+  { ...ProviderSetupErrorBase, change: Schema.Literal("install-uidmap") },
+) {}
+
+export class ProviderSetupUnsupportedHostError extends Schema.TaggedError<ProviderSetupUnsupportedHostError>()(
+  "ProviderSetupUnsupportedHostError",
+  {
+    ...ProviderSetupErrorBase,
+    prerequisite: Schema.String,
+    host: Schema.optional(Schema.Struct({ id: Schema.String, versionId: Schema.String })),
+  },
+) {}
+
+export class ProviderSetupPrivilegeUnavailableError extends Schema.TaggedError<ProviderSetupPrivilegeUnavailableError>()(
+  "ProviderSetupPrivilegeUnavailableError",
+  { ...ProviderSetupErrorBase, change: Schema.Literal("install-uidmap") },
+) {}
+
+export class ProviderSetupProvisioningError extends Schema.TaggedError<ProviderSetupProvisioningError>()(
+  "ProviderSetupProvisioningError",
+  {
+    ...ProviderSetupErrorBase,
+    change: Schema.Literal("install-uidmap"),
+    stage: Schema.Literal("update", "install", "verify"),
+    exitCode: Schema.optional(Schema.Number),
+    stderr: Schema.optional(Schema.String),
+    cause: Schema.optional(Schema.Unknown),
   },
 ) {}
 

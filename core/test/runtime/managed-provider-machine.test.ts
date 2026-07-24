@@ -3,6 +3,10 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
+
+import { type PodmanMachineRunner, setupProviderLando } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import {
   type MachineSpawnResult,
@@ -90,6 +94,70 @@ describe("classifyManagedProviderMachine", () => {
 });
 
 describe("teardownManagedProviderMachine", () => {
+  test("removes a machine whose creation was recorded before start failed and setup retried", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-machine-partial-setup-"));
+    const stateDir = join(root, "providers");
+    let status: "missing" | "stopped" | "running" = "missing";
+    let startAttempts = 0;
+    const machine: PodmanMachineRunner = {
+      inspect: Effect.sync(() => status),
+      create: Effect.sync(() => {
+        status = "stopped";
+      }),
+      start: Effect.gen(function* () {
+        startAttempts += 1;
+        if (startAttempts === 1) {
+          return yield* Effect.fail(
+            new ProviderUnavailableError({
+              providerId: "lando",
+              operation: "setup",
+              message: "simulated machine start failure",
+            }),
+          );
+        }
+        status = "running";
+      }),
+      stop: Effect.void,
+      upgrade: Effect.void,
+      teardown: Effect.void,
+    };
+
+    try {
+      const first = await Effect.runPromiseExit(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
+          podmanMachine: machine,
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+      expect(first._tag).toBe("Failure");
+
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "darwin",
+          podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
+          podmanMachine: machine,
+          skipSocketProbe: true,
+          stateDir,
+        }),
+      );
+
+      const spawnCalls: ReadonlyArray<string>[] = [];
+      const removed = await teardownManagedProviderMachine(root, {
+        spawn: async (args) => {
+          spawnCalls.push(args);
+          return { exitCode: 0, stderr: "" };
+        },
+      });
+      expect(removed).toEqual({ removed: true, name: "lando" });
+      expect(spawnCalls).toEqual([["machine", "rm", "--force", "lando"]]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("removes an owned machine and returns removed", async () => {
     const calls: ReadonlyArray<string>[] = [];
     const spawn = async (args: ReadonlyArray<string>): Promise<MachineSpawnResult> => {

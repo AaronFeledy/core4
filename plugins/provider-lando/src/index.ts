@@ -15,7 +15,14 @@ import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import type { RetryPolicy } from "@lando/sdk/probe";
-import { type AppId, type AppPlan, type HostPlatform, PluginManifest, ProviderId } from "@lando/sdk/schema";
+import {
+  type AppId,
+  type AppPlan,
+  type HostPlatform,
+  PluginManifest,
+  ProviderId,
+  type ProviderSetupPlan,
+} from "@lando/sdk/schema";
 import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
 
 import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
@@ -39,7 +46,11 @@ import {
   makeSystemPodmanServiceRunner,
 } from "./podman-service-runner.ts";
 import { redactDetails } from "./redact.ts";
-import type { RootlessProbes } from "./rootless-preflight.ts";
+import {
+  type RootlessProbes,
+  classifyRootlessFailure,
+  makeSystemRootlessProbes,
+} from "./rootless-preflight.ts";
 import { type ArtifactDownload, makeDefaultRuntimeBundleDownloader } from "./runtime-bundle.ts";
 import {
   type RuntimeServiceStatus,
@@ -50,9 +61,16 @@ import {
   type PodmanCommandRunner,
   type PodmanMachineRunner,
   type RuntimeBundleDownloader,
+  type RuntimeSetupProgress,
   makeSystemPodmanMachineRunner,
   setupProviderLando,
 } from "./setup.ts";
+import {
+  type LinuxHostRelease,
+  applyApprovedProviderSetupPlan,
+  inspectUidmapSetupPlan,
+  readLinuxHostRelease,
+} from "./uidmap-provision.ts";
 
 export {
   appliedPlanPath,
@@ -125,6 +143,13 @@ export {
   classifyRootlessFailure,
   makeSystemRootlessProbes,
 } from "./rootless-preflight.ts";
+export {
+  applyApprovedProviderSetupPlan,
+  inspectUidmapSetupPlan,
+  parseLinuxHostRelease,
+  readLinuxHostRelease,
+} from "./uidmap-provision.ts";
+export type { LinuxHostRelease } from "./uidmap-provision.ts";
 export type {
   RootlessPrerequisite,
   RootlessProbeResults,
@@ -160,6 +185,8 @@ export type {
   PodmanVersionSource,
   RuntimeBundle,
   RuntimeBundleDownloader,
+  RuntimeSetupPhase,
+  RuntimeSetupProgress,
   SetupOptions,
   SetupResult,
 } from "./setup.ts";
@@ -287,6 +314,7 @@ export interface ProviderLayerOptions {
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
   readonly podmanService?: PodmanServiceRunner;
   readonly rootlessProbes?: RootlessProbes;
+  readonly linuxHostRelease?: LinuxHostRelease;
   readonly readinessPolicy?: RetryPolicy;
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
@@ -369,22 +397,33 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.runtimeRunDir !== undefined &&
     options.runtimeConfigDir !== undefined &&
     options.providerPidPath !== undefined;
-  const ensureEffect: Effect.Effect<void, ProviderUnavailableError> = canEnsure
-    ? ensureRuntime({
-        platform,
-        podmanApi,
-        serviceRunner,
-        ...(machineRunner === undefined ? {} : { machineRunner }),
-        podmanBin,
-        storageDir: options.runtimeStorageDir,
-        runRoot: options.runtimeRunDir,
-        configDir: options.runtimeConfigDir,
-        socketPath: ensureSocketPath,
-        pidPath: options.providerPidPath,
-        ...(options.rootlessProbes === undefined ? {} : { rootlessProbes: options.rootlessProbes }),
-        ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
-      })
-    : Effect.void;
+  const rootlessProbes = options.rootlessProbes ?? makeSystemRootlessProbes();
+  const ensureEffectFor = (progress?: RuntimeSetupProgress): Effect.Effect<void, ProviderUnavailableError> =>
+    canEnsure
+      ? ensureRuntime({
+          platform,
+          podmanApi,
+          serviceRunner,
+          ...(machineRunner === undefined ? {} : { machineRunner }),
+          podmanBin,
+          storageDir: options.runtimeStorageDir,
+          runRoot: options.runtimeRunDir,
+          configDir: options.runtimeConfigDir,
+          socketPath: ensureSocketPath,
+          pidPath: options.providerPidPath,
+          rootlessProbes,
+          ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
+          ...(progress === undefined
+            ? {}
+            : {
+                setupProgress: {
+                  launch: (body) => progress.run("launch", body),
+                  readiness: (body) => progress.run("readiness", body),
+                },
+              }),
+        })
+      : Effect.void;
+  const ensureEffect = ensureEffectFor();
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -502,7 +541,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       platform,
       capabilities: resolvedCapabilities,
       isAvailable: Effect.succeed(true),
-      setup: (setupOptions) =>
+      planSetup: () =>
+        shouldManageRuntime && platform === "linux"
+          ? inspectUidmapSetupPlan({
+              platform,
+              host: options.linuxHostRelease ?? readLinuxHostRelease(),
+              probes: rootlessProbes,
+            })
+          : Effect.succeed({ providerId, changes: [] }),
+      setup: (plan: ProviderSetupPlan, setupOptions) =>
         Effect.gen(function* () {
           const result = yield* setupProviderLando({
             ...(podmanApi === undefined ? {} : { podmanApi }),
@@ -529,7 +576,28 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ...(options.runtimeConfigDir === undefined ? {} : { runtimeConfigDir: options.runtimeConfigDir }),
             ...(socketPath === undefined ? {} : { socketPath }),
             ...(skipSetupSocketProbe ? { skipSocketProbe: true } : {}),
-            readinessCheck: ensureOnce,
+            ...(canEnsure
+              ? {
+                  managedRuntimeSetup: (progress: RuntimeSetupProgress) =>
+                    Effect.gen(function* () {
+                      yield* progress.run(
+                        "prerequisites",
+                        applyApprovedProviderSetupPlan(plan, {
+                          probes: rootlessProbes,
+                          privilege: setupOptions.privilege,
+                        }).pipe(
+                          Effect.andThen(
+                            Effect.suspend(() => {
+                              const failure = classifyRootlessFailure(rootlessProbes.probe());
+                              return failure === undefined ? Effect.void : Effect.fail(failure);
+                            }),
+                          ),
+                        ),
+                      );
+                      yield* ensureEffectFor(progress);
+                    }),
+                }
+              : { readinessCheck: ensureOnce }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           });
           runtimeVersion = result.podmanVersion;
