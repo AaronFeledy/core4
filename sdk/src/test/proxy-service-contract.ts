@@ -83,6 +83,16 @@ export const runProxyServiceContractSuite = (
 
     const status = yield* proxy.status.pipe(Effect.mapError((cause) => failure("status resolves", cause)));
     yield* requireContract(status.state === "running", "status reports running after setup", status);
+    yield* proxy.stop.pipe(Effect.mapError((cause) => failure("stop resolves", cause)));
+    const stopped = yield* proxy.status.pipe(
+      Effect.mapError((cause) => failure("status resolves after stop", cause)),
+    );
+    yield* requireContract(
+      stopped.state === "stopped" && stopped.configuredApps.length === 0,
+      "stop durably removes configured routing without requiring process-local state",
+      stopped,
+    );
+    yield* requireContract((yield* harness.readRoutes(app)).length === 0, "stop clears routes");
     yield* proxy.removeRoutes(app).pipe(Effect.mapError((cause) => failure("removeRoutes resolves", cause)));
     yield* proxy
       .removeRoutes(app)
@@ -128,6 +138,7 @@ export const makeTestProxyService = (): ProxyServiceShape & {
     })),
     stop: Effect.sync(() => {
       running = false;
+      routesByApp.clear();
     }),
     readRoutes: (app) => Effect.succeed(routesByApp.get(String(app)) ?? []),
     routesByApp,
