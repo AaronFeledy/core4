@@ -44,10 +44,10 @@ export const renderStopAppResult = (result: StopAppResult): string => {
   return `stopped: ${result.app} - ${services}`;
 };
 
-export const stopApp = (
+export const stopAppWithPlan = (
   _options: StopAppOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
+): Effect.Effect<{ readonly result: StopAppResult; readonly plan: AppPlan }, StopAppError, StopAppServices> =>
   Effect.gen(function* () {
     const landofileService = yield* LandofileService;
     const registry = yield* RuntimeProviderRegistry;
@@ -116,5 +116,14 @@ export const stopApp = (
       }),
     );
 
-    return { app: plan.name, servicesStopped: services.map((service) => String(service.name)) };
+    return {
+      result: { app: plan.name, servicesStopped: services.map((service) => String(service.name)) },
+      plan,
+    };
   });
+
+export const stopApp = (
+  options: StopAppOptions = {},
+  target?: ResolvedAppTarget,
+): Effect.Effect<StopAppResult, StopAppError, StopAppServices> =>
+  stopAppWithPlan(options, target).pipe(Effect.map(({ result }) => result));
