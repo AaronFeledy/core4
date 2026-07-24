@@ -30,6 +30,7 @@ import {
   DataMover,
   FileSystem,
   LandofileService,
+  ProxyService,
   RuntimeProviderRegistry,
   type ScratchAcquireInput,
   ScratchAppService,
@@ -458,6 +459,7 @@ const makeScratchAppService = (
   scanner: Context.Tag.Service<typeof ScratchResourceScanner>,
   dataMover: Context.Tag.Service<typeof DataMover>,
   buildOrchestrator: Option.Option<Context.Tag.Service<typeof BuildOrchestrator>>,
+  proxy: Option.Option<Context.Tag.Service<typeof ProxyService>>,
 ): Context.Tag.Service<typeof ScratchAppService> => {
   const root = Effect.sync(() => AbsolutePath.make(makeLandoPaths().scratchDir));
 
@@ -541,6 +543,31 @@ const makeScratchAppService = (
       Effect.catchAll(() => Effect.succeed(undefined)),
     );
 
+  const applyScratchRoutes = (plan: AppPlan): Effect.Effect<void, never> =>
+    plan.routes.length === 0
+      ? Effect.void
+      : Option.match(proxy, {
+          onNone: () => Effect.void,
+          onSome: (service) =>
+            Effect.scoped(service.setup({ defaultDomain: "lndo.site" }))
+              .pipe(Effect.zipRight(service.applyRoutes(plan.routes, plan.id)))
+              .pipe(
+                Effect.asVoid,
+                // Ephemeral scratch acquisition must survive an unavailable proxy; routes still apply when it is reachable.
+                Effect.catchAllCause((cause) =>
+                  Effect.logWarning(
+                    `Unable to apply proxy routes for scratch app ${String(plan.id)}: ${Cause.pretty(cause)}`,
+                  ),
+                ),
+              ),
+        });
+
+  const removeScratchRoutes = (appId: AppPlan["id"]): Effect.Effect<void, never> =>
+    Option.match(proxy, {
+      onNone: () => Effect.void,
+      onSome: (service) => service.removeRoutes(appId).pipe(Effect.catchAll(() => Effect.void)),
+    });
+
   const reapScratch = (input: {
     readonly id: string;
     readonly instanceRoot: AbsolutePath;
@@ -571,8 +598,10 @@ const makeScratchAppService = (
             ),
           );
 
-    return pruneProvider.pipe(
-      Effect.catchAll(() => Effect.void),
+    const removeRoutes = input.plan === undefined ? Effect.void : removeScratchRoutes(input.plan.id);
+
+    return removeRoutes.pipe(
+      Effect.zipRight(pruneProvider.pipe(Effect.catchAll(() => Effect.void))),
       Effect.zipRight(cleanupScratchInstance(input.instanceRoot).pipe(Effect.catchAll(() => Effect.void))),
       Effect.zipRight(scratchRegistry.remove(input.id)),
     );
@@ -640,6 +669,7 @@ const makeScratchAppService = (
           scratchAppError("start", `Unable to start scratch app ${scratchId}.`, cause),
         ),
       );
+      yield* applyScratchRoutes(builtPlan);
       if (!detached) {
         // Skip the destroy when the entry was converted to detached mid-scope
         // (`apps:scratch:run --keep`): the registry owns the scratch from there.
@@ -999,6 +1029,7 @@ export const ScratchAppServiceLive = Layer.effect(
     const scanner = yield* ScratchResourceScanner;
     const dataMover = yield* DataMover;
     const buildOrchestrator = yield* Effect.serviceOption(BuildOrchestrator);
+    const proxy = yield* Effect.serviceOption(ProxyService);
     return makeScratchAppService(
       fileSystem,
       landofileService,
@@ -1008,6 +1039,7 @@ export const ScratchAppServiceLive = Layer.effect(
       scanner,
       dataMover,
       buildOrchestrator,
+      proxy,
     );
   }),
 );

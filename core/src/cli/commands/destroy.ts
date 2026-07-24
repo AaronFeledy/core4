@@ -19,9 +19,12 @@ import {
   EventService,
   LandofileService,
   PathsService,
+  ProxyService,
+  Renderer,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
+import { destroyAppAndRemoveRoutes } from "../../lifecycle/routes.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 
 import { cleanupHostProxyRunLandoState } from "../../subsystems/host-proxy/transport.ts";
@@ -40,6 +43,7 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
+  | Renderer
   | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -63,6 +67,8 @@ export const destroyApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
     const paths = yield* PathsService;
+    const proxy = yield* Effect.serviceOption(ProxyService);
+    const renderer = yield* Renderer;
 
     const plan =
       target?.plan ??
@@ -85,7 +91,7 @@ export const destroyApp = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* provider
+    const providerDestroy = provider
       .destroy(
         { app: plan.id, plan },
         {
@@ -97,6 +103,14 @@ export const destroyApp = (
       .pipe(
         Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
       );
+    if (proxy._tag === "Some") {
+      yield* destroyAppAndRemoveRoutes(providerDestroy, proxy.value, plan);
+    } else {
+      yield* renderer.message.warn(
+        `Proxy service is unavailable; destroying ${plan.name} without route cleanup.`,
+      );
+      yield* providerDestroy;
+    }
 
     if (volumes) {
       yield* Effect.promise(() =>

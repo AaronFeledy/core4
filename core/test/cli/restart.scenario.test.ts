@@ -21,10 +21,16 @@ import {
   LandofileService,
   PathsService,
   PluginRegistry,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
-import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
-import { TestRuntimeProvider } from "@lando/sdk/test";
+import type {
+  AppSelector,
+  DestroyOptions,
+  ProxyServiceShape,
+  RuntimeProviderShape,
+} from "@lando/sdk/services";
+import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
@@ -142,27 +148,34 @@ const runCli = async (args: ReadonlyArray<string>, cwd: string): Promise<RunResu
   return { exitCode, stdout, stderr };
 };
 
-const requiredStartServicesLayer = Layer.mergeAll(
-  ConfigServiceLive,
-  FileSystemLive,
-  GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
-  Layer.succeed(PluginRegistry, {
-    list: Effect.succeed([]),
-    load: () => Effect.die("not used"),
-    loadServiceType: () => Effect.die("not used"),
-    loadServiceFeature: () => Effect.die("not used"),
-    loadAppFeature: () => Effect.die("not used"),
-  }),
-  Layer.succeed(RedactionService, {
-    forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
-  }),
-  ShellRunnerLive,
-);
+const requiredStartServicesLayer = (proxy: ProxyServiceShape) =>
+  Layer.mergeAll(
+    ConfigServiceLive,
+    FileSystemLive,
+    GlobalAppServiceLive.pipe(Layer.provide(Layer.mergeAll(ConfigServiceLive, FileSystemLive))),
+    Layer.succeed(PluginRegistry, {
+      list: Effect.succeed([]),
+      load: () => Effect.die("not used"),
+      loadServiceType: () => Effect.die("not used"),
+      loadServiceFeature: () => Effect.die("not used"),
+      loadAppFeature: () => Effect.die("not used"),
+    }),
+    Layer.succeed(RedactionService, {
+      forProfile: (profile, options) => Effect.succeed(createStandaloneRedactor(profile, options)),
+    }),
+    Layer.succeed(ProxyService, proxy),
+    ShellRunnerLive,
+  );
 
-const makeRestartLayer = () => {
+const makeRestartLayer = (options: { readonly buildEffect?: Effect.Effect<AppPlan> } = {}) => {
   const events: string[] = [];
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const applyCalls: Array<{ readonly reconcile: boolean }> = [];
+  const routeRemovals: string[] = [];
+  const proxy: ProxyServiceShape = {
+    ...TestProxyService,
+    removeRoutes: (app) => Effect.sync(() => void routeRemovals.push(String(app))),
+  };
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -193,10 +206,10 @@ const makeRestartLayer = () => {
     Layer.succeed(PathsService, makeLandoPaths()),
     Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
     Layer.succeed(BuildOrchestrator, {
-      build: (appPlan) => Effect.succeed(appPlan),
+      build: (appPlan) => options.buildEffect ?? Effect.succeed(appPlan),
       buildApp: () => Effect.void,
     }),
-    requiredStartServicesLayer,
+    requiredStartServicesLayer(proxy),
     Layer.succeed(RuntimeProviderRegistry, {
       list: Effect.succeed([providerId]),
       capabilities: Effect.succeed(capabilities),
@@ -212,7 +225,7 @@ const makeRestartLayer = () => {
     }),
   );
 
-  return { layer, events, destroyCalls, applyCalls };
+  return { layer, events, destroyCalls, applyCalls, routeRemovals };
 };
 
 describe("lando restart", () => {
@@ -251,5 +264,15 @@ describe("lando restart", () => {
       expect(result.stderr).toContain("No .lando.yml or .lando.ts found");
       expect(result.stderr).toContain("lando init");
     });
+  });
+
+  test("removes retained routes when the restart start phase fails", async () => {
+    const harness = makeRestartLayer({ buildEffect: Effect.die("build failed") });
+
+    const exit = await Effect.runPromiseExit(restartApp().pipe(Effect.provide(harness.layer)));
+
+    expect(exit._tag).toBe("Failure");
+    expect(harness.routeRemovals).toEqual([String(plan.id)]);
+    expect(harness.destroyCalls).toMatchObject([{ options: { volumes: false, removeState: false } }]);
   });
 });

@@ -18,11 +18,13 @@ import type {
   RuntimeProviderRegistry,
   ShellRunner,
 } from "@lando/sdk/services";
+import { ProxyService } from "@lando/sdk/services";
 
+import { compensateFailure } from "../../lifecycle/failure-compensation.ts";
 import type { RedactionService } from "../../redaction/service.ts";
 import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
-import { stopApp } from "./stop.ts";
+import { stopAppWithPlan } from "./stop.ts";
 
 export type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
 
@@ -40,6 +42,7 @@ type RestartAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
+  | ProxyService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -60,13 +63,17 @@ export const restartApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RestartAppResult, RestartAppError, RestartAppServices> =>
   Effect.gen(function* () {
-    yield* stopApp({}, target);
-    return yield* startApp(
-      {
-        reconcile: options.reconcile ?? false,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      },
-      target,
-      managed,
+    const proxy = yield* ProxyService;
+    const { plan } = yield* stopAppWithPlan({}, target);
+    return yield* compensateFailure(
+      startApp(
+        {
+          reconcile: options.reconcile ?? false,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        },
+        target,
+        managed,
+      ),
+      proxy.removeRoutes(plan.id),
     );
   });
