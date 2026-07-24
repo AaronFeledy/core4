@@ -1,3 +1,5 @@
+import { posix } from "node:path";
+
 import type { LogSource } from "@lando/sdk/schema";
 import type { ServiceBuildStepIntent } from "@lando/sdk/services";
 
@@ -21,12 +23,10 @@ const redirectStepId = (source: LogSource): string => `lando-log-redirect:${Stri
 /**
  * Reify `strategy: "redirect"` log sources as deterministic image-build steps.
  *
- * For each redirect source on a Lando-built service the daemon's log path is
- * symlinked to `/dev/stdout` (`stream: "stdout"`) or `/dev/stderr`
- * (`stream: "stderr"`) with `ln -sf` so lines flow through the existing
- * `console` stream with no runtime follower. `ln -sf` is idempotent across
- * rebuilds; the command encodes the source's stream and path so a changed
- * source produces a changed step.
+ * For each redirect source on a Lando-built service the daemon's log parent is
+ * created before its path is symlinked to `/dev/stdout` (`stream: "stdout"`) or
+ * `/dev/stderr` (`stream: "stderr"`). Separate argv commands keep both steps
+ * shell-free and idempotent across rebuilds.
  *
  * A non-Lando base has no build phase to redirect through (redirect sources on
  * such a service are already rejected during {@link mergeLogSources}), so this
@@ -40,11 +40,18 @@ export const redirectLogSourceBuildSteps = (
   return input.logSources
     .filter((source) => source.strategy === "redirect")
     .sort((left, right) => String(left.id).localeCompare(String(right.id)))
-    .map((source) => ({
-      id: redirectStepId(source),
-      phase: "build",
-      command: ["ln", "-sf", redirectTarget(source.stream), String(source.path)],
-    }));
+    .flatMap((source) => [
+      {
+        id: `lando-log-redirect-mkdir:${String(source.id)}`,
+        phase: "build" as const,
+        command: ["mkdir", "-p", posix.dirname(String(source.path))],
+      },
+      {
+        id: redirectStepId(source),
+        phase: "build" as const,
+        command: ["ln", "-sf", redirectTarget(source.stream), String(source.path)],
+      },
+    ]);
 };
 
 /**

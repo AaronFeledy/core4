@@ -5,31 +5,15 @@ import type { ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
 
 import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
+import { type ContainerBuildOptions, requestContainerBuild } from "./image-build-http.ts";
 
 export { buildContextContentDigest, packBuildContext } from "./build-context.ts";
-
-export interface ContainerBuildHttpRequest {
-  readonly method: "POST";
-  readonly path: `/${string}`;
-  readonly headers?: Readonly<Record<string, string>>;
-  readonly stdin?: AsyncIterable<Uint8Array>;
-}
-
-export interface ContainerBuildHttpResponse {
-  readonly status: number;
-  readonly body: string;
-}
-
-export interface ContainerBuildHttpApi {
-  readonly request?: (
-    request: ContainerBuildHttpRequest,
-  ) => Effect.Effect<ContainerBuildHttpResponse, ProviderUnavailableError | ProviderInternalError>;
-}
-
-export interface ContainerBuildOptions {
-  readonly providerId: string;
-  readonly api: ContainerBuildHttpApi;
-}
+export type {
+  ContainerBuildHttpApi,
+  ContainerBuildHttpRequest,
+  ContainerBuildHttpResponse,
+  ContainerBuildOptions,
+} from "./image-build-http.ts";
 
 interface BuildStep {
   readonly command: string | ReadonlyArray<string>;
@@ -109,83 +93,6 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
   return `/build?${params.toString()}`;
 };
 
-const redactBuildQuery = (value: string): string =>
-  value.replace(/(buildargs=)(?:[^&\s]+)/giu, "$1[redacted]");
-
-const sanitizeBuildErrorValue = (value: unknown): unknown => {
-  if (typeof value === "string") return redactBuildQuery(value);
-  if (Array.isArray(value)) return value.map(sanitizeBuildErrorValue);
-  if (!isRecord(value)) return value;
-  return Object.fromEntries(
-    Object.entries(value).map(([key, entry]) => [key, sanitizeBuildErrorValue(entry)]),
-  );
-};
-
-const sanitizeProviderError = (
-  cause: ProviderUnavailableError | ProviderInternalError,
-): ProviderUnavailableError | ProviderInternalError => {
-  const input = {
-    providerId: cause.providerId,
-    operation: cause.operation,
-    message: redactBuildQuery(cause.message),
-    details: cause.details === undefined ? undefined : sanitizeBuildErrorValue(cause.details),
-    remediation: cause.remediation,
-  };
-  return cause instanceof ProviderInternalError
-    ? new ProviderInternalError(input)
-    : new ProviderUnavailableError(input);
-};
-
-const requestBuild = (
-  request: NonNullable<ContainerBuildHttpApi["request"]>,
-  options: ContainerBuildOptions,
-  path: `/${string}`,
-  stdin: AsyncIterable<Uint8Array>,
-): Effect.Effect<ContainerBuildHttpResponse, ProviderUnavailableError | ProviderInternalError> =>
-  request({
-    method: "POST",
-    path,
-    headers: { "Content-Type": "application/x-tar" },
-    stdin,
-  }).pipe(
-    Effect.mapError((cause) =>
-      cause instanceof ProviderUnavailableError || cause instanceof ProviderInternalError
-        ? sanitizeProviderError(cause)
-        : new ProviderUnavailableError({
-            providerId: options.providerId,
-            operation: "buildArtifact",
-            message: "Container image build request failed.",
-            cause,
-          }),
-    ),
-    Effect.flatMap((response) =>
-      response.status >= 200 && response.status < 300
-        ? Effect.succeed(response)
-        : Effect.fail(
-            new ProviderUnavailableError({
-              providerId: options.providerId,
-              operation: "buildArtifact",
-              message: `Container image build failed with HTTP ${response.status}.`,
-              details: { status: response.status },
-            }),
-          ),
-    ),
-  );
-
-const parseDigest = (body: string): string | undefined => {
-  for (const line of body.split("\n")) {
-    if (line.trim().length === 0) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (isRecord(parsed) && isRecord(parsed.aux) && typeof parsed.aux.Digest === "string")
-        return parsed.aux.Digest;
-    } catch (cause) {
-      if (!(cause instanceof SyntaxError)) throw cause;
-    }
-  }
-  return undefined;
-};
-
 export const buildContainerArtifact = (
   input: ArtifactBuildSpec,
   options: ContainerBuildOptions,
@@ -214,7 +121,9 @@ export const buildContainerArtifact = (
     const artifact = service.artifact;
     const steps = serviceBuildSteps(service);
     const tag = deterministicRef(input);
-    let response: ContainerBuildHttpResponse;
+    let digest: string | undefined;
+    const secretValues =
+      artifact?.kind === "build" && artifact.args !== undefined ? Object.values(artifact.args) : [];
     if (artifact?.kind === "build") {
       const packed = yield* Effect.tryPromise({
         try: () => packBuildContext(artifact.context),
@@ -227,20 +136,41 @@ export const buildContainerArtifact = (
           }),
       });
       const baseTag = steps.length === 0 ? tag : `${tag}-base`;
-      response = yield* requestBuild(request, options, buildPath(input, baseTag, false), packed.tar);
+      digest = yield* requestContainerBuild({
+        request,
+        options,
+        path: buildPath(input, baseTag, false),
+        tag: baseTag,
+        stdin: packed.tar,
+        secretValues,
+      });
       if (steps.length > 0) {
         const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, baseTag, steps);
         const entries: ReadonlyArray<BuildContextEntry> = [
           { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
         ];
-        response = yield* requestBuild(request, options, buildPath(input, tag, true), tarStream(entries));
+        digest = yield* requestContainerBuild({
+          request,
+          options,
+          path: buildPath(input, tag, true),
+          tag,
+          stdin: tarStream(entries),
+          secretValues,
+        });
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
       const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, artifact.ref, steps);
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
       ];
-      response = yield* requestBuild(request, options, buildPath(input, tag, true), tarStream(entries));
+      digest = yield* requestContainerBuild({
+        request,
+        options,
+        path: buildPath(input, tag, true),
+        tag,
+        stdin: tarStream(entries),
+        secretValues,
+      });
     } else {
       return yield* Effect.fail(
         new ProviderInternalError({
@@ -250,6 +180,5 @@ export const buildContainerArtifact = (
         }),
       );
     }
-    const digest = parseDigest(response.body);
     return { providerId: input.plan.provider, ref: tag, ...(digest === undefined ? {} : { digest }) };
   });

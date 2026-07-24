@@ -22,7 +22,7 @@ const source = (input: {
 });
 
 describe("redirectLogSourceBuildSteps", () => {
-  test("emits ln -sf /dev/stdout for a redirect stdout source", () => {
+  test("emits argv-safe parent creation immediately before a stdout redirect", () => {
     const steps = redirectLogSourceBuildSteps({
       base: "lando",
       logSources: [
@@ -37,6 +37,11 @@ describe("redirectLogSourceBuildSteps", () => {
 
     expect(steps).toEqual([
       {
+        id: "lando-log-redirect-mkdir:access",
+        phase: "build",
+        command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+      },
+      {
         id: "lando-log-redirect:access",
         phase: "build",
         command: ["ln", "-sf", "/dev/stdout", "/usr/local/apache2/logs/access_log"],
@@ -44,7 +49,7 @@ describe("redirectLogSourceBuildSteps", () => {
     ]);
   });
 
-  test("emits ln -sf /dev/stderr for a redirect stderr source", () => {
+  test("emits argv-safe parent creation immediately before a stderr redirect", () => {
     const steps = redirectLogSourceBuildSteps({
       base: "lando",
       logSources: [
@@ -58,6 +63,11 @@ describe("redirectLogSourceBuildSteps", () => {
     });
 
     expect(steps).toEqual([
+      {
+        id: "lando-log-redirect-mkdir:error",
+        phase: "build",
+        command: ["mkdir", "-p", "/usr/local/apache2/logs"],
+      },
       {
         id: "lando-log-redirect:error",
         phase: "build",
@@ -75,6 +85,26 @@ describe("redirectLogSourceBuildSteps", () => {
     expect(steps).toEqual([]);
   });
 
+  test("creates the nested parent directory for a redirect source", () => {
+    const steps = redirectLogSourceBuildSteps({
+      base: "lando",
+      logSources: [source({ id: "nested", path: "/var/log/services/php/access.log", strategy: "redirect" })],
+    });
+
+    expect(steps[0]?.command).toEqual(["mkdir", "-p", "/var/log/services/php"]);
+    expect(steps[1]?.command).toEqual(["ln", "-sf", "/dev/stderr", "/var/log/services/php/access.log"]);
+  });
+
+  test("uses the container root as the parent for a root-level redirect path", () => {
+    const steps = redirectLogSourceBuildSteps({
+      base: "lando",
+      logSources: [source({ id: "root", path: "/service.log", strategy: "redirect" })],
+    });
+
+    expect(steps[0]?.command).toEqual(["mkdir", "-p", "/"]);
+    expect(steps[1]?.command).toEqual(["ln", "-sf", "/dev/stderr", "/service.log"]);
+  });
+
   test("returns [] for a non-lando base even if a redirect source slips through", () => {
     const steps = redirectLogSourceBuildSteps({
       base: "l337",
@@ -86,7 +116,7 @@ describe("redirectLogSourceBuildSteps", () => {
     expect(steps).toEqual([]);
   });
 
-  test("orders steps deterministically by id and skips follow sources", () => {
+  test("orders paired mkdir and link steps by source id and skips follow sources", () => {
     const steps = redirectLogSourceBuildSteps({
       base: "lando",
       logSources: [
@@ -96,7 +126,12 @@ describe("redirectLogSourceBuildSteps", () => {
       ],
     });
 
-    expect(steps.map((step) => step.id)).toEqual(["lando-log-redirect:access", "lando-log-redirect:error"]);
+    expect(steps.map((step) => step.id)).toEqual([
+      "lando-log-redirect-mkdir:access",
+      "lando-log-redirect:access",
+      "lando-log-redirect-mkdir:error",
+      "lando-log-redirect:error",
+    ]);
   });
 
   test("produces identical output for identical input (idempotent content)", () => {
@@ -122,7 +157,7 @@ describe("redirectLogSourceBuildSteps", () => {
       logSources: [source({ id: "access", path: "/logs/other_log", strategy: "redirect", stream: "stdout" })],
     });
 
-    expect(before[0]?.command).not.toEqual(after[0]?.command);
+    expect(before[1]?.command).not.toEqual(after[1]?.command);
   });
 });
 

@@ -195,6 +195,29 @@ describe("GlobalAppServiceLive", () => {
     });
   });
 
+  test("regenerateDist materializes bind-mount sources for string-form mounts", async () => {
+    await withTempRoots(async (dataRoot) => {
+      // Given a global service authoring a Traefik dynamic-config string-form mount
+      const result = await Effect.runPromise(
+        Effect.flatMap(GlobalAppService, (service) =>
+          service.regenerateDist({
+            services: {
+              traefik: {
+                image: "traefik:v3",
+                mounts: ["./proxy-traefik/dynamic:/etc/traefik/dynamic:ro"],
+              },
+            },
+          }),
+        ).pipe(Effect.provide(globalAppLayer)),
+      );
+
+      // Then the string-form bind source is created under the global root
+      expect(result.serviceIds).toEqual(["traefik"]);
+      const sourceDir = join(dataRoot, "global", "proxy-traefik", "dynamic");
+      expect((await stat(sourceDir)).isDirectory()).toBe(true);
+    });
+  });
+
   test("ensureUserLandofile creates a comment-only overlay once and preserves edits", async () => {
     await withTempRoots(async () => {
       const first = await Effect.runPromise(

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { resolve } from "node:path";
 
 import {
   scratchIdFromInput,
@@ -63,6 +64,7 @@ describe("dual-dispatch argv parser parity", () => {
 
     expect(initOptionsFromInput(input)).toEqual({
       cwd: process.cwd(),
+      destination: resolve(process.cwd(), "demo"),
       full: true,
       name: "demo",
       recipe: "node-postgres",

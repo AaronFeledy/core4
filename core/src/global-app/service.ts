@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { type Context, Effect, Layer } from "effect";
 
 import { GlobalAppError, GlobalDistConflictError, GlobalLandofilePathConflictError } from "@lando/sdk/errors";
-import { AbsolutePath, type ServiceConfig } from "@lando/sdk/schema";
+import { AbsolutePath, type MountInput, type ServiceConfig } from "@lando/sdk/schema";
 import { ConfigService, FileSystem, GlobalAppService } from "@lando/sdk/services";
 
 export { GlobalAppService } from "@lando/sdk/services";
@@ -110,6 +110,36 @@ const buildDistContent = (services: Readonly<Record<string, ServiceConfig>>): st
   const body = buildDistBody(services);
   return [distMarker, distOverrideHint, `${distHashPrefix}${sha256(body)}`, body].join("\n");
 };
+
+// Windows drive-letter prefix ("C:\" or "C:/") whose ":" is a path char, not a mount separator.
+const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
+
+const isBindPathSource = (source: string): boolean =>
+  source.startsWith(".") ||
+  source.startsWith("/") ||
+  source.startsWith("~") ||
+  DRIVE_LETTER_PREFIX.test(source);
+
+const stringMountBindSource = (entry: string): string | undefined => {
+  const source = DRIVE_LETTER_PREFIX.test(entry)
+    ? `${entry.slice(0, 2)}${entry.slice(2).split(":")[0] ?? ""}`
+    : entry.split(":")[0];
+  if (source === undefined || source.length === 0) return undefined;
+  return isBindPathSource(source) ? source : undefined;
+};
+
+const mountBindSource = (mount: MountInput): string | undefined => {
+  if (typeof mount === "string") return stringMountBindSource(mount);
+  return (mount.type ?? "bind") === "bind" && mount.source !== undefined ? mount.source : undefined;
+};
+
+const bindMountSources = (services: Readonly<Record<string, ServiceConfig>>): ReadonlyArray<string> =>
+  Object.values(services).flatMap((service) =>
+    (service.mounts ?? []).flatMap((mount) => {
+      const source = mountBindSource(mount);
+      return source === undefined ? [] : [source];
+    }),
+  );
 
 const splitYamlLines = (content: string): ReadonlyArray<string> => content.split(/\r?\n/);
 
@@ -217,6 +247,20 @@ const makeGlobalAppService = (
       const resolved = yield* paths;
       yield* ensureRoot;
       const services = input?.services ?? {};
+      for (const source of bindMountSources(services)) {
+        const mountPath = isAbsolute(source) ? source : join(resolved.root, source);
+        yield* fileSystem
+          .mkdir(mountPath)
+          .pipe(
+            Effect.mapError((cause) =>
+              globalAppError(
+                "regenerateDist",
+                `Unable to create the global service bind-mount source at ${mountPath}.`,
+                cause,
+              ),
+            ),
+          );
+      }
       const serviceIds = Object.keys(services).sort((left, right) => left.localeCompare(right));
       const nextContent = buildDistContent(services);
       const exists = yield* fileSystem

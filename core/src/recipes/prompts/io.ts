@@ -71,39 +71,77 @@ export interface PromptLineReader {
   readonly readLine: (signal?: AbortSignal) => Promise<string>;
 }
 
+type ReadableEndedStream = NodeJS.ReadableStream & { readonly readableEnded: boolean };
+
+const hasReadableEnded = (stream: NodeJS.ReadableStream): stream is ReadableEndedStream =>
+  "readableEnded" in stream && typeof stream.readableEnded === "boolean";
+
 export const createLineReader = (stream: NodeJS.ReadableStream): PromptLineReader => {
   let buffer = "";
   let done = false;
-  let iterator: AsyncIterator<Buffer | string> | undefined;
-  // A read abandoned by `raceAbort` leaves its `iterator.next()` unsettled; reuse
-  // that pending promise on the next read so input is never dropped or reordered.
-  let pendingNext: Promise<IteratorResult<Buffer | string>> | undefined;
 
-  const readLine = async (signal?: AbortSignal): Promise<string> => {
-    while (true) {
-      const newlineIndex = buffer.indexOf("\n");
-      if (newlineIndex !== -1) {
+  const readLine = (signal?: AbortSignal): Promise<string> => {
+    const bufferedNewline = buffer.indexOf("\n");
+    if (bufferedNewline !== -1) {
+      const line = buffer.slice(0, bufferedNewline);
+      buffer = buffer.slice(bufferedNewline + 1);
+      stream.pause();
+      return Promise.resolve(line.endsWith("\r") ? line.slice(0, -1) : line);
+    }
+    if (hasReadableEnded(stream) && stream.readableEnded) done = true;
+    if (done) {
+      const tail = buffer;
+      buffer = "";
+      stream.pause();
+      return Promise.resolve(tail);
+    }
+    if (signal?.aborted === true) {
+      stream.pause();
+      return Promise.reject(new PromptCancelledError("Prompt aborted."));
+    }
+
+    return new Promise<string>((resolve, reject) => {
+      let settled = false;
+      const cleanup = (): void => {
+        if (settled) return;
+        settled = true;
+        stream.off("data", onData);
+        stream.off("end", onEnd);
+        stream.off("error", onError);
+        signal?.removeEventListener("abort", onAbort);
+        stream.pause();
+      };
+      const onData = (chunk: Buffer | string): void => {
+        buffer += typeof chunk === "string" ? chunk : chunk.toString("utf8");
+        const newlineIndex = buffer.indexOf("\n");
+        if (newlineIndex === -1) return;
         const line = buffer.slice(0, newlineIndex);
         buffer = buffer.slice(newlineIndex + 1);
-        // Strip trailing CR for CRLF input.
-        return line.endsWith("\r") ? line.slice(0, -1) : line;
-      }
-      if (done) {
+        cleanup();
+        resolve(line.endsWith("\r") ? line.slice(0, -1) : line);
+      };
+      const onEnd = (): void => {
+        done = true;
         const tail = buffer;
         buffer = "";
-        return tail;
-      }
-      iterator ??= stream[Symbol.asyncIterator]() as AsyncIterator<Buffer | string>;
-      pendingNext ??= iterator.next() as Promise<IteratorResult<Buffer | string>>;
-      const result = await raceAbort(pendingNext, signal);
-      pendingNext = undefined;
-      const { value, done: streamDone } = result;
-      if (streamDone) {
-        done = true;
-        continue;
-      }
-      buffer += typeof value === "string" ? value : value.toString("utf8");
-    }
+        cleanup();
+        resolve(tail);
+      };
+      const onError = (cause: unknown): void => {
+        cleanup();
+        reject(cause);
+      };
+      const onAbort = (): void => {
+        cleanup();
+        reject(new PromptCancelledError("Prompt aborted."));
+      };
+
+      stream.on("data", onData);
+      stream.on("end", onEnd);
+      stream.on("error", onError);
+      signal?.addEventListener("abort", onAbort, { once: true });
+      stream.resume();
+    });
   };
 
   return { readLine };
