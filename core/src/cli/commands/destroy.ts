@@ -20,6 +20,7 @@ import {
   LandofileService,
   PathsService,
   ProxyService,
+  Renderer,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -42,7 +43,7 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
-  | ProxyService
+  | Renderer
   | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -66,7 +67,8 @@ export const destroyApp = (
     const planner = yield* AppPlanner;
     const events = yield* EventService;
     const paths = yield* PathsService;
-    const proxy = yield* ProxyService;
+    const proxy = yield* Effect.serviceOption(ProxyService);
+    const renderer = yield* Renderer;
 
     const plan =
       target?.plan ??
@@ -89,22 +91,26 @@ export const destroyApp = (
 
     yield* terminateFileSyncSessions(ref);
 
-    yield* destroyAppAndRemoveRoutes(
-      provider
-        .destroy(
-          { app: plan.id, plan },
-          {
-            volumes,
-            ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
-            removeState: true,
-          },
-        )
-        .pipe(
-          Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
-        ),
-      proxy,
-      plan,
-    );
+    const providerDestroy = provider
+      .destroy(
+        { app: plan.id, plan },
+        {
+          volumes,
+          ...(options.purgeCaches === undefined ? {} : { purgeCaches: options.purgeCaches }),
+          removeState: true,
+        },
+      )
+      .pipe(
+        Effect.ensuring(cleanupHostProxyRunLandoState(ref, { ...paths.roots, platform: paths.platform })),
+      );
+    if (proxy._tag === "Some") {
+      yield* destroyAppAndRemoveRoutes(providerDestroy, proxy.value, plan);
+    } else {
+      yield* renderer.message.warn(
+        `Proxy service is unavailable; destroying ${plan.name} without route cleanup.`,
+      );
+      yield* providerDestroy;
+    }
 
     if (volumes) {
       yield* Effect.promise(() =>
