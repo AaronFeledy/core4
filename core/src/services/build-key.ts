@@ -158,8 +158,21 @@ export const buildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> => {
   return Array.isArray(buildSteps) ? buildSteps.map(stableValue) : [];
 };
 
+const artifactBuildStepInput = (step: unknown): unknown => {
+  if (!isRecord(step)) return step;
+  return {
+    id: step.id,
+    phase: step.phase,
+    command: step.command,
+    dependsOn: step.dependsOn,
+    buildKeyInputs: step.buildKeyInputs,
+  };
+};
+
 export const artifactBuildStepsFor = (service: ServicePlan): ReadonlyArray<unknown> =>
-  buildStepsFor(service).filter((step) => !isRecord(step) || step.phase !== "app");
+  buildStepsFor(service)
+    .filter((step) => !isRecord(step) || step.phase !== "app")
+    .map(artifactBuildStepInput);
 
 const stableBuildInput = (
   provider: RuntimeProviderShape,
