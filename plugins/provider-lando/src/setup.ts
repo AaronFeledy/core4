@@ -185,6 +185,7 @@ export interface SetupOptions {
 export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness";
 
 export interface RuntimeSetupProgress {
+  readonly runtimeBundleVersion?: string;
   readonly run: <A, E>(phase: RuntimeSetupPhase, body: Effect.Effect<A, E>) => Effect.Effect<A, E>;
 }
 
@@ -999,6 +1000,7 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
       const podmanVersion = infoPodmanVersion(info) ?? detectedPodmanVersion;
       if (options.managedRuntimeSetup !== undefined) {
         const progress: RuntimeSetupProgress = {
+          ...(bundle === undefined ? {} : { runtimeBundleVersion: bundle.version }),
           run: (phase, body) => {
             const step = steps.find((candidate) => candidate.taskId === phase);
             return step === undefined

@@ -828,6 +828,33 @@ const downloaderFor = (archiveBytes: Uint8Array, version = "0.0.0-test") => ({
 });
 
 describe("provider-lando setup runtime bundle extraction", () => {
+  test("passes the installed bundle version to managed runtime setup", async () => {
+    const root = await mkdtemp(join(tmpdir(), "lando-extract-runtime-version-"));
+    const runtimeBinDir = join(root, "runtime", "bin");
+    let observedVersion: string | undefined;
+    try {
+      const archiveBytes = buildTarGz([{ path: "podman", bytes: new TextEncoder().encode("podman") }]);
+
+      await Effect.runPromise(
+        setupProviderLando({
+          platform: "linux",
+          podmanCommand: podmanCommand("podman version 6.0.2"),
+          runtimeBundleDownloader: downloaderFor(archiveBytes, "2.0.0"),
+          runtimeBinDir,
+          skipSocketProbe: true,
+          managedRuntimeSetup: (progress) =>
+            Effect.sync(() => {
+              observedVersion = progress.runtimeBundleVersion;
+            }),
+        }),
+      );
+
+      expect(observedVersion).toBe("2.0.0");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("extracts the verified runtime bundle into runtimeBinDir with executable bits", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-extract-state-"));
     const stateDir = join(root, "providers");

@@ -8,17 +8,17 @@ import { ProviderUnavailableError, StateStoreError } from "@lando/sdk/errors";
 import { type RetryPolicy, runProbe } from "@lando/sdk/probe";
 import type { HostPlatform } from "@lando/sdk/schema";
 
+import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import {
   type LinuxRuntimeHealthDeps,
   linuxRuntimeIsHealthy,
   reapLegacyStaleRuntime,
   stopDiscoveredRuntimeProcesses,
 } from "./linux-runtime-health.ts";
-import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
 import {
-  type RuntimeLaunchError,
   type PodmanServiceSpec,
+  type RuntimeLaunchError,
   buildPodmanServiceArgs,
   readPodmanServiceLogTail,
 } from "./podman-service-runner.ts";
@@ -127,7 +127,9 @@ const launchRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUna
 
     const recordLaunch =
       deps.recordLaunch?.(pid, spec) ??
-      writeLaunchState(deps.pidPath, pid, spec).pipe(Effect.zipRight(writePidFile(deps.pidPath, pid)));
+      writeLaunchState(deps.pidPath, pid, spec, deps.runtimeBundleVersion).pipe(
+        Effect.zipRight(writePidFile(deps.pidPath, pid)),
+      );
     yield* recordLaunch.pipe(
       Effect.onExit((exit) => (Exit.isFailure(exit) ? deps.serviceRunner.terminate(pid) : Effect.void)),
     );
