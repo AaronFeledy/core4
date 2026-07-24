@@ -66,7 +66,7 @@ test("provider-lando buildArtifact uses the managed Podman build API seam", asyn
     request: (request) =>
       Effect.sync(() => {
         requests.push(request);
-        return { status: 200, body: "" };
+        return { status: 200, body: "{}" };
       }),
   };
   const provider = await Effect.runPromise(makeRuntimeProvider({ podmanApi, platform: "linux" }));
@@ -78,4 +78,8 @@ test("provider-lando buildArtifact uses the managed Podman build API seam", asyn
   expect(artifact).toEqual({ providerId, ref: "lando-build-lando-web-lando-key" });
   expect(requests[0]?.method).toBe("POST");
   expect(requests[0]?.path).toContain("/build?t=lando-build-lando-web-lando-key");
+  expect(requests[1]).toEqual({
+    method: "GET",
+    path: "/images/lando-build-lando-web-lando-key/json",
+  });
 });

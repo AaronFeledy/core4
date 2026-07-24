@@ -127,6 +127,7 @@ describe("lando init --full", () => {
         cwd: dir,
         full: true,
         answersFile: "answers.json",
+        destination: join(dir, "from-file"),
         nonInteractive: true,
       });
 

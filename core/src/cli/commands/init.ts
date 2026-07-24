@@ -1,5 +1,5 @@
 import { mkdir, readdir } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -45,6 +45,7 @@ import {
 import { readAnswersFile } from "../prompts/answer-flags.ts";
 import { activeRendererMode } from "../renderer-mode-state.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";
+import { resolveInitDestination } from "./init-destination.ts";
 import { parseInitSourceFlags } from "./init-source.ts";
 
 const APP_NAME_PROMPT = "name";
@@ -346,7 +347,11 @@ export const initApp = async (options: InitAppOptions): Promise<InitAppResult> =
     label: `Render recipe files (${files.length})`,
   });
 
-  const directory = options.destination ?? join(cwd, appName);
+  const directory = resolveInitDestination({
+    cwd,
+    ...(options.destination === undefined ? {} : { destination: options.destination }),
+    ...(options.name === undefined ? {} : { name: options.name }),
+  });
 
   try {
     const existing = await readdir(directory).catch((cause: unknown) => {

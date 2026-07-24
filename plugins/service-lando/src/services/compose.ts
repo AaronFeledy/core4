@@ -4,7 +4,7 @@ import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, type MountInput, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
@@ -19,8 +19,26 @@ type VolumeMount = {
   readonly readOnly: boolean;
 };
 
+// Windows drive-letter prefix ("C:\" or "C:/") whose ":" is a path char, not a Compose separator.
+const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
+
+// Split on ":" but keep a leading drive letter attached: "C:\src:/app:ro" -> ["C:\src","/app","ro"].
+const splitMountEntry = (entry: string): ReadonlyArray<string> => {
+  if (!DRIVE_LETTER_PREFIX.test(entry)) return entry.split(":");
+  const driveLetter = entry.slice(0, 2);
+  const [firstSegment, ...rest] = entry.slice(2).split(":");
+  return [`${driveLetter}${firstSegment ?? ""}`, ...rest];
+};
+
+const resolveBindSource = (source: string, appRoot: string): string => {
+  if (DRIVE_LETTER_PREFIX.test(source)) return source;
+  const expanded =
+    source === "~" ? homedir() : source.startsWith("~/") ? homedir() + source.slice(1) : source;
+  return isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
+};
+
 const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
-  const parts = entry.split(":");
+  const parts = splitMountEntry(entry);
   if (parts.length < 2 || parts.length > 3) {
     throw new Error(
       `Invalid compose volume entry "${entry}". Expected short form "<source>:<target>[:ro|rw]".`,
@@ -34,14 +52,31 @@ const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
   if (mode !== undefined && mode !== "ro" && mode !== "rw") {
     throw new Error(`Invalid compose volume mode "${mode}" in "${entry}". Allowed: ro, rw.`);
   }
-  const isPathLike = rawSource.startsWith(".") || rawSource.startsWith("/") || rawSource.startsWith("~");
+  const isPathLike =
+    rawSource.startsWith(".") ||
+    rawSource.startsWith("/") ||
+    rawSource.startsWith("~") ||
+    DRIVE_LETTER_PREFIX.test(rawSource);
   if (isPathLike) {
-    const expanded =
-      rawSource === "~" ? homedir() : rawSource.startsWith("~/") ? homedir() + rawSource.slice(1) : rawSource;
-    const source = isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
-    return { type: "bind", source, target: rawTarget, readOnly };
+    return { type: "bind", source: resolveBindSource(rawSource, appRoot), target: rawTarget, readOnly };
   }
   return { type: "volume", source: rawSource, target: rawTarget, readOnly };
+};
+
+const parseMount = (entry: MountInput, appRoot: string): VolumeMount => {
+  if (typeof entry === "string") return parseVolumeShortForm(entry, appRoot);
+  const type = entry.type ?? "bind";
+  if (type === "bind" && entry.source === undefined) {
+    throw new Error(`Compose bind mount at "${entry.target}" requires a source.`);
+  }
+  const source =
+    type === "bind" && entry.source !== undefined ? resolveBindSource(entry.source, appRoot) : entry.source;
+  return {
+    type,
+    ...(source === undefined ? {} : { source }),
+    target: entry.target,
+    readOnly: entry.readOnly ?? false,
+  };
 };
 
 const parsePortShortForm = (entry: string): { port: number; protocol: "tcp" | "udp" } => {
@@ -116,6 +151,15 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
       source: ctx.appRoot,
       target: APP_MOUNT_TARGET,
       readOnly: false,
+    });
+  }
+
+  for (const mount of (service.mounts ?? []).map((entry) => parseMount(entry, ctx.appRoot))) {
+    ctx.addMount({
+      type: mount.type,
+      ...(mount.source === undefined ? {} : { source: mount.source }),
+      target: PortablePath.make(mount.target),
+      readOnly: mount.readOnly,
     });
   }
 

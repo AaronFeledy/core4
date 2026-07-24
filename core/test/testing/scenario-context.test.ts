@@ -244,9 +244,7 @@ describe("withScenarioContext", () => {
           const run = yield* context.runCli(["init", "--full", "--no-interactive"], {
             answers: { name: "answers-app" },
           });
-          const exists = yield* Effect.promise(() =>
-            Bun.file(join(context.testDir, "answers-app", ".lando.yml")).exists(),
-          );
+          const exists = yield* Effect.promise(() => Bun.file(join(context.testDir, ".lando.yml")).exists());
           return { run, exists };
         }),
       ),
@@ -512,9 +510,7 @@ describe("ScenarioContextFactory", () => {
           const init = yield* context.runCli(["init", "--full", "--no-interactive"], {
             answers: { name: "seam-app" },
           });
-          const created = yield* Effect.promise(() =>
-            Bun.file(join(context.testDir, "seam-app", ".lando.yml")).exists(),
-          );
+          const created = yield* Effect.promise(() => Bun.file(join(context.testDir, ".lando.yml")).exists());
           return { version, init, created };
         }),
       ),

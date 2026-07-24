@@ -2352,7 +2352,13 @@ export const COMPILED_OCLIF_MANIFEST = {
     },
     "apps:init": {
       aliases: ["init"],
-      args: {},
+      args: {
+        destination: {
+          description: "Output directory.",
+          name: "destination",
+          required: false,
+        },
+      },
       description: "Generate a new Lando app.",
       flags: {
         format: {
@@ -2429,13 +2435,6 @@ export const COMPILED_OCLIF_MANIFEST = {
         recipe: {
           description: "Recipe to apply.",
           name: "recipe",
-          hasDynamicHelp: false,
-          multiple: false,
-          type: "option",
-        },
-        destination: {
-          description: "Target directory.",
-          name: "destination",
           hasDynamicHelp: false,
           multiple: false,
           type: "option",

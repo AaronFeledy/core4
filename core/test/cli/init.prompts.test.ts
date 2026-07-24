@@ -58,7 +58,7 @@ describe("lando init — answers and prompting", () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["init", "--full", "--no-interactive", "--answer=name=via-answer"], dir);
       expect(result.exitCode).toBe(0);
-      expect(await Bun.file(join(dir, "via-answer", ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
       expect(result.stdout).toContain("Created via-answer at");
     });
   });
@@ -71,6 +71,7 @@ describe("lando init — answers and prompting", () => {
       const result = await runCli(
         [
           "init",
+          "explicit-app",
           "--recipe=node-postgres",
           "--no-interactive",
           "--answers",
@@ -113,7 +114,7 @@ describe("lando init — answers and prompting", () => {
       const result = await runCli(["init", "--interactive"], dir, { stdin: scriptedStdin });
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("Created good-name at");
-      expect(await Bun.file(join(dir, "good-name", ".lando.yml")).exists()).toBe(true);
+      expect(await Bun.file(join(dir, ".lando.yml")).exists()).toBe(true);
       const transcript = flatten(`${result.stdout}\n${result.stderr}`);
       expect(transcript).toContain("App name must be lowercase kebab-case.");
     });

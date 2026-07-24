@@ -26,7 +26,9 @@ import { appPlanCachePath } from "./paths.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 4n;
+// Bump for serialized-shape or planner-output semantic changes, including generated build intents,
+// independently of the package version.
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 5n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
