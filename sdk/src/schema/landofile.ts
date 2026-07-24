@@ -216,6 +216,7 @@ export type ToolingArgShape = typeof ToolingArgShape.Type;
  * - `description:` / `summary:` — short help text.
  * - `cmd:` — single command (string or string array).
  * - `cmds:` — sequential command list (strings only in this schema).
+ * - `arguments: false` — reject caller-supplied positional arguments.
  * - `vars:` — accepted `ToolingVar` forms only.
  *
  * Supported deprecation metadata:
@@ -237,6 +238,9 @@ export const ToolingTaskShape = Schema.Struct({
   summary: Schema.optional(Schema.String),
   cmd: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
   cmds: Schema.optional(Schema.Array(Schema.String)),
+  arguments: Schema.optional(Schema.Literal(false)).annotations({
+    description: "Set to false to reject caller-supplied positional arguments for this task.",
+  }),
   vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVar })),
   deprecated: Schema.optional(DeprecationNotice),
   flags: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingFlagShape })),
