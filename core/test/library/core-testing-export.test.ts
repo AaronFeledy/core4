@@ -18,8 +18,34 @@ import corePackage from "../../package.json";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreRoot = resolve(import.meta.dirname, "../..");
 const sdkRoot = resolve(repoRoot, "sdk");
+const containerRuntimeRoot = resolve(repoRoot, "container-runtime");
 const externalDependencyRoot = resolve(repoRoot, "node_modules");
-const packedConsumerDependencies = ["effect", "fast-check", "pure-rand"] as const;
+const workspaceDependencyRoots: Readonly<Record<string, string>> = {
+  "@lando/container-runtime": containerRuntimeRoot,
+  "@lando/sdk": sdkRoot,
+};
+
+const dependencySource = (dependency: string): string =>
+  workspaceDependencyRoots[dependency] ?? join(externalDependencyRoot, dependency);
+
+const dependencyNamesFrom = async (packageRoot: string): Promise<ReadonlyArray<string>> => {
+  const packageJson: unknown = JSON.parse(await Bun.file(join(packageRoot, "package.json")).text());
+  if (packageJson === null || typeof packageJson !== "object") return [];
+  const dependencies = Reflect.get(packageJson, "dependencies");
+  return dependencies === null || typeof dependencies !== "object" ? [] : Object.keys(dependencies);
+};
+
+const packedConsumerDependencyClosure = async (): Promise<ReadonlyArray<string>> => {
+  const pending = Object.keys(corePackage.dependencies);
+  const dependencies = new Set<string>();
+  while (pending.length > 0) {
+    const dependency = pending.shift();
+    if (dependency === undefined || dependencies.has(dependency)) continue;
+    dependencies.add(dependency);
+    pending.push(...(await dependencyNamesFrom(dependencySource(dependency))));
+  }
+  return [...dependencies].sort();
+};
 
 type TestingTypeExportCheck = {
   readonly runtime?: TestRuntime;
@@ -137,20 +163,16 @@ describe("@lando/core/testing package export", () => {
       const scopedDir = join(consumerDir, "node_modules/@lando");
       await mkdir(scopedDir, { recursive: true });
       await symlink(join(extractDir, "package"), join(scopedDir, "core"), "dir");
-      await symlink(sdkRoot, join(scopedDir, "sdk"), "dir");
-
       const extractNodeModules = join(extractDir, "package", "node_modules");
-      const extractScopedDir = join(extractNodeModules, "@lando");
-      await mkdir(extractScopedDir, { recursive: true });
-      await symlink(sdkRoot, join(extractScopedDir, "sdk"), "dir");
 
-      for (const dependency of packedConsumerDependencies) {
-        await symlink(
-          join(externalDependencyRoot, dependency),
-          join(consumerDir, "node_modules", dependency),
-          "dir",
-        );
-        await symlink(join(externalDependencyRoot, dependency), join(extractNodeModules, dependency), "dir");
+      for (const dependency of await packedConsumerDependencyClosure()) {
+        const source = dependencySource(dependency);
+        const consumerTarget = join(consumerDir, "node_modules", dependency);
+        const extractTarget = join(extractNodeModules, dependency);
+        await mkdir(resolve(consumerTarget, ".."), { recursive: true });
+        await mkdir(resolve(extractTarget, ".."), { recursive: true });
+        await symlink(source, consumerTarget, "dir");
+        await symlink(source, extractTarget, "dir");
       }
 
       const resolved = await runCommand(
