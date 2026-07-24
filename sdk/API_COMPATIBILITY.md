@@ -14,6 +14,7 @@
 - `LandoPaths.pluginStateDir(pluginId)` additively exposes the canonical durable plugin-state root `<userDataRoot>/plugins/<pluginId>` so plugin contexts never reuse app-plugin installation paths.
 - `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
 - `ToolingCompileError` and `ToolingExecError` additively accept optional `remediation` so cache-only routing and task failures can return actionable machine errors.
+- `ToolingTaskShape` additively accepts `arguments: false`; core rejects caller-supplied positional arguments for those tasks with `ToolingCompileError` instead of appending argv to the authored command.
 - US-442 replaces the placeholder static CLI event tags with canonical dynamic `cli-<command-id>-init|run|error` tags and adds redacted invocation, duration, exit-code, and failure identity fields. `EventFor<Name>` narrows those dynamic tags to their public lifecycle variants.
 - `CommandWarning` additively accepts structured string context so machine warnings can retain actionable source metadata.
 - US-441 adds `LandofileFormConflictError` and extends each `LandofileVersionConstraintError.constraints` entry with ordered `layer` and `order` provenance.

@@ -1,18 +1,19 @@
 ---
 id: drupal
 provider: test
-timeout: 60000
+timeout: 900000
 tags: [recipe, drupal, php]
 ---
 
 # Drupal
 
 Spin up a Drupal 11 stack with PHP, MariaDB, Drush, and Composer. After the app
-starts, scaffold the codebase with `lando composer create-project drupal/recommended-project .`.
-The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
+starts, use `lando drupal-scaffold` to install the pinned Drupal 11 project and
+project-local Drush through a retryable stage-then-commit workflow. The walkthrough
+below runs that scaffold, verifies its outputs, checks Drush, and tears the app down.
 
 <Guide>
-  <Scenario id="reader-path" render>
+  <Scenario id="reader-path" layer="e2e" tags={["@smoke"]} render>
     <Step name="scaffold">
       <Variable name="appName" value="drupal" display="my-drupal-app" />
       <Run command="lando init --recipe drupal --name={{appName}} --yes" />
@@ -21,8 +22,13 @@ The walkthrough below scaffolds the recipe, starts the app, and tears it back do
       <Run command="lando start" />
       <Verify event="post-start" />
     </Step>
-    <Step name="inspect">
-      <Inspect output />
+    <Step name="scaffold-drupal">
+      <Run command="lando drupal-scaffold" />
+      <Verify command="lando exec appserver -- test -f /app/composer.json" />
+      <Verify command="lando exec appserver -- test -x /app/vendor/bin/drush" />
+    </Step>
+    <Step name="check-drush">
+      <Run command="lando drush --version" />
     </Step>
     <Step name="cleanup">
       <Cleanup />
