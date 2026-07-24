@@ -17,7 +17,7 @@ describe("PHP base image workflow", () => {
   test("publishes every supported line to GHCR without changing runtime manifests", () => {
     const workflow = renderPhpBaseWorkflow();
 
-    expect(workflow).toContain("php: [8.2, 8.3]");
+    expect(workflow).toContain("php: [8.1, 8.2, 8.3, 8.4]");
     expect(workflow).toContain("registry: ghcr.io");
     expect(workflow).toContain("push: true");
     expect(workflow).toContain("images/php/${{ matrix.php }}");
