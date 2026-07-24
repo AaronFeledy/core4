@@ -769,7 +769,7 @@ export function makeTestRuntime(options: TestRuntimeOptions = {}): TestRuntime {
     ensureRoot: Effect.void,
     paths: Effect.succeed(globalPaths),
     ensureUserLandofile: Effect.succeed({ path: globalPaths.userLandofile, created: false }),
-    ensureRunning: () => Effect.void,
+    ensureRunning: () => Effect.succeed([]),
     regenerateDist: (input) =>
       Effect.succeed({
         path: globalPaths.distLandofile,
