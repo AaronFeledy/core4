@@ -432,7 +432,9 @@ describe("AppPlannerLive", () => {
           | { readonly buildSteps?: ReadonlyArray<unknown> }
           | undefined
       )?.buildSteps;
-      expect(buildSteps).toEqual([
+      // PHP prerequisite steps may precede the redirects; the invariant is that
+      // redirects are finalization steps with each mkdir immediately before its link.
+      expect(buildSteps?.slice(-4)).toEqual([
         {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
@@ -2621,7 +2623,7 @@ describe("AppPlannerLive", () => {
         });
         const webPlan = appPlan.services[ServiceName.make("web")];
         expect(webPlan?.type).toBe("php:8.2");
-        expect(webPlan?.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache" });
+        expect(webPlan?.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
       });
     });
 

@@ -12,6 +12,15 @@ import {
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
+import { phpPrerequisiteBuildSteps } from "./php-prerequisites.ts";
+
+export {
+  PHP_APT_PACKAGE_PINS,
+  PHP_COMMON_EXTENSIONS,
+  PHP_COMPOSER,
+  PHP_COMPOSER_COMMAND,
+  PHP_PREREQUISITES_COMMAND,
+} from "./php-prerequisites.ts";
 
 export const SUPPORTED_PHP_VERSIONS = ["8.2", "8.3"] as const;
 export type SupportedPhpVersion = (typeof SUPPORTED_PHP_VERSIONS)[number];
@@ -100,7 +109,10 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const { framework, version, webroot } = configFor(ctx);
   const port = service.port ?? HEALTHCHECK_PORT;
 
-  ctx.setArtifact({ kind: "ref", ref: service.image ?? `php:${version}-apache` });
+  ctx.setArtifact({ kind: "ref", ref: service.image ?? `php:${version}-apache-bookworm` });
+  if (service.image === undefined) {
+    for (const step of phpPrerequisiteBuildSteps()) ctx.addBuildStep(step);
+  }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
   ctx.setAppMount({
