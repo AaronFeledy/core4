@@ -1,4 +1,4 @@
-import { lstat as nodeLstat } from "node:fs/promises";
+import { lstat as nodeLstat, rename } from "node:fs/promises";
 
 import { type Context, Effect, Layer, Stream } from "effect";
 
@@ -75,11 +75,17 @@ const write = async (path: string, content: string | Uint8Array): Promise<void> 
   await Bun.write(path, content);
 };
 
-const writeAtomic = async (path: string, content: string | Uint8Array): Promise<void> => {
+type AtomicReplace = (source: string, destination: string) => Promise<void>;
+
+export const writeAtomicFile = async (
+  path: string,
+  content: string | Uint8Array,
+  replace: AtomicReplace = rename,
+): Promise<void> => {
   const tempPath = `${path}.tmp-${crypto.randomUUID()}`;
   try {
     await Bun.write(tempPath, content);
-    await Bun.write(path, Bun.file(tempPath));
+    await replace(tempPath, path);
   } finally {
     // Clean up the temp file but never let cleanup failures mask the real
     // error from the try block. Callers cannot act on cleanup failure: the
@@ -181,7 +187,7 @@ const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
     }),
   writeAtomic: (path, content) =>
     Effect.tryPromise({
-      try: () => writeAtomic(path, content),
+      try: () => writeAtomicFile(path, content),
       catch: mapFileError(path, `Failed to write ${path}`),
     }),
   exists: (path) =>
