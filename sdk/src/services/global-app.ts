@@ -30,7 +30,14 @@ export class GlobalAppService extends Context.Tag("@lando/core/GlobalAppService"
       { readonly path: AbsolutePath; readonly created: boolean },
       GlobalAppError | GlobalLandofilePathConflictError
     >;
-    readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<void, GlobalAppError>;
+    readonly ensureRunning: (services: ReadonlyArray<string>) => Effect.Effect<
+      ReadonlyArray<{
+        readonly name: string;
+        readonly state: string;
+        readonly endpoints: ReadonlyArray<string>;
+      }>,
+      GlobalAppError
+    >;
     readonly regenerateDist: (input?: { readonly services?: Record<string, ServiceConfig> }) => Effect.Effect<
       GlobalDistResult,
       GlobalAppError | GlobalDistConflictError

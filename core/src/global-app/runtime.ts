@@ -32,7 +32,7 @@ export const GlobalAppRuntimeLive = Layer.effect(
       ensureRunning: (services) =>
         ensureGlobalServicesRunning({ services }).pipe(
           Effect.provide(context),
-          Effect.asVoid,
+          Effect.map((result) => result.servicesStarted),
           Effect.mapError(
             (cause) =>
               new GlobalAppError({

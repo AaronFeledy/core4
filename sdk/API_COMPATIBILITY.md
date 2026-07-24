@@ -4,7 +4,7 @@
 
 ## Compatibility notes
 
-- `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; core's app runtime captures the planner, builder, provider registry, and plugin registry before invoking it.
+- `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
 - `@lando/sdk/schema` adds the minimal `ProviderSetupPlan` contract: mutation-free inspection produces a closed host-change union whose sole member is `install-uidmap` for exact Ubuntu 26.04. Core authorizes the plan through `InteractionService` before provider apply. `@lando/sdk/errors` adds consent-denied, unsupported-host, privilege-unavailable, and provisioning tagged errors for that flow.
 - `EndpointInput` and `EndpointPlan` are now explicit `_tag: "internal" | "published"` unions. Published network endpoints carry `publication: { bindAddress?, hostPort? }`; internal endpoints are never host-visible, Unix sockets cannot be published, and runtime-assigned ports belong to endpoint materialization output. `RoutePlan.backend` is planner-resolved. The schema barrel additively exports `BindAddress`, `PortNumber`, `InternalEndpoint`, and `PublishedEndpoint`.
