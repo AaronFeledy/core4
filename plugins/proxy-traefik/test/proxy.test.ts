@@ -55,6 +55,19 @@ describe("Traefik ProxyService", () => {
     expect(rendered).toContain("tls: {}");
   });
 
+  test("namespaces routers and services by app", () => {
+    const otherApp = AppId.make("other");
+    const objectNames = (content: string) =>
+      content
+        .split("\n")
+        .flatMap((line) => line.match(/^    ([^ ]+):$/)?.[1] ?? []);
+
+    const demoNames = new Set(objectNames(renderTraefikDynamicConfig(routes, app)));
+    const otherNames = objectNames(renderTraefikDynamicConfig(routes, otherApp));
+
+    expect(otherNames.every((name) => !demoNames.has(name))).toBe(true);
+  });
+
   test("setup ensures the global Traefik service is running", async () => {
     const harness = makeHarness();
 

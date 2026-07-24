@@ -64,17 +64,18 @@ const authoritiesFor = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<ProxyAu
   );
 
 export const renderTraefikDynamicConfig = (routes: ReadonlyArray<RoutePlan>, app: AppId): string => {
+  const namespace = encodeURIComponent(String(app));
   const routers = routes.flatMap((route, index) =>
     routeSchemes(route).flatMap((scheme) => [
-      `    route-${index}-${scheme}:`,
+      `    route-${namespace}-${index}-${scheme}:`,
       `      rule: ${JSON.stringify(routeRule(route))}`,
       `      entryPoints: [${scheme === "https" ? "websecure" : "web"}]`,
-      `      service: route-${index}`,
+      `      service: route-${namespace}-${index}`,
       ...(scheme === "https" ? ["      tls: {}"] : []),
     ]),
   );
   const services = routes.flatMap((route, index) => [
-    `    route-${index}:`,
+    `    route-${namespace}-${index}:`,
     "      loadBalancer:",
     "        servers:",
     `          - url: ${route.backend.protocol}://${String(route.backend.service)}.${String(app)}.internal:${route.backend.port}`,
