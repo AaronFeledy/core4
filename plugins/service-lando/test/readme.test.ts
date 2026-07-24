@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { SUPPORTED_GO_FRAMEWORKS, SUPPORTED_GO_VERSIONS } from "../src/services/go.ts";
 import { SUPPORTED_NODE_VERSIONS } from "../src/services/node.ts";
-import { SUPPORTED_PHP_FRAMEWORKS, SUPPORTED_PHP_VERSIONS } from "../src/services/php.ts";
+import { SUPPORTED_PHP_VERSIONS } from "../src/services/php.ts";
 import { SUPPORTED_PYTHON_FRAMEWORKS, SUPPORTED_PYTHON_VERSIONS } from "../src/services/python.ts";
 import { SUPPORTED_RUBY_FRAMEWORKS, SUPPORTED_RUBY_VERSIONS } from "../src/services/ruby.ts";
 
@@ -55,7 +55,7 @@ describe("@lando/service-lando README — framework presets table", () => {
       {
         language: "php",
         versions: [...SUPPORTED_PHP_VERSIONS],
-        frameworks: [...SUPPORTED_PHP_FRAMEWORKS],
+        frameworks: [],
       },
       {
         language: "node",
@@ -97,6 +97,14 @@ describe("@lando/service-lando README — framework presets table", () => {
     expect(nodeRow).toContain("accepted for schema compatibility");
     expect(nodeRow).toContain("ignored by the ServiceType");
     expect(nodeRow).not.toContain("rejected");
+  });
+
+  test("documents explicit PHP webroot and AllowOverride parameters instead of presets", async () => {
+    const phpRow = findLanguageRow(findFrameworkTable(await readReadme()), "php");
+
+    expect(phpRow).toContain("webroot:");
+    expect(phpRow).toContain("allowOverride:");
+    expect(phpRow).toContain("n/a");
   });
 
   test("Go row lists only `none` and omits deferred frameworks", async () => {
