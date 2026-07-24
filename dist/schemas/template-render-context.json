@@ -1140,6 +1140,13 @@
                 "required": [],
                 "type": "object"
               },
+              "arguments": {
+                "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              },
               "cmd": {
                 "anyOf": [
                   {
