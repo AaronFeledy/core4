@@ -203,41 +203,42 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
           ...(deps.terminationPolicy === undefined ? {} : { terminationPolicy: deps.terminationPolicy }),
         });
       }
-      yield* launchRuntime(deps);
+      const launch = launchRuntime(deps);
+      yield* deps.setupProgress?.launch(launch) ?? launch;
+      const readiness = verifyRuntimeReachable(deps);
+      yield* deps.setupProgress?.readiness(readiness) ?? readiness;
     });
-    const launch = (deps.withLaunchLock?.(repair) ?? repair).pipe(
+    const launchAndReadiness = (deps.withLaunchLock?.(repair) ?? repair).pipe(
       Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
     );
-    yield* deps.setupProgress?.launch(launch) ?? launch;
+    yield* launchAndReadiness;
+  });
+
+const ensureMachineRuntime = (
+  deps: EnsureRuntimeDeps,
+  launchMachine: Effect.Effect<void, ProviderUnavailableError>,
+): Effect.Effect<void, ProviderUnavailableError> => {
+  const launchAndReadiness = Effect.gen(function* () {
+    yield* deps.setupProgress?.launch(launchMachine) ?? launchMachine;
     const readiness = verifyRuntimeReachable(deps);
     yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
+  return (deps.withLaunchLock?.(launchAndReadiness) ?? launchAndReadiness).pipe(
+    Effect.mapError((cause) => mapLaunchLockError(deps, cause)),
+  );
+};
 
 export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> => {
   if (deps.platform === "darwin") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("darwin"))
-      : (
-          deps.setupProgress?.launch(ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)) ??
-          ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)
-        ).pipe(
-          Effect.andThen(
-            deps.setupProgress?.readiness(verifyRuntimeReachable(deps)) ?? verifyRuntimeReachable(deps),
-          ),
-        );
+      : ensureMachineRuntime(deps, ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
   }
 
   if (deps.platform === "win32") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("win32"))
-      : (
-          deps.setupProgress?.launch(ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)) ??
-          ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)
-        ).pipe(
-          Effect.andThen(
-            deps.setupProgress?.readiness(verifyRuntimeReachable(deps)) ?? verifyRuntimeReachable(deps),
-          ),
-        );
+      : ensureMachineRuntime(deps, ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid));
   }
 
   return ensureLinuxRuntime(deps);
