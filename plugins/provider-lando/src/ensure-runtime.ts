@@ -13,6 +13,7 @@ import {
   reapLegacyStaleRuntime,
   stopDiscoveredRuntimeProcesses,
 } from "./linux-runtime-health.ts";
+import { adoptHealthyRuntimeGeneration } from "./linux-runtime-generation.ts";
 import { reapStaleLinuxRuntime } from "./linux-runtime-reaper.ts";
 import {
   type RuntimeLaunchError,
@@ -176,14 +177,36 @@ const verifyRuntimeReachable = (deps: EnsureRuntimeDeps): Effect.Effect<void, Pr
 
 const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.gen(function* () {
-    if (yield* linuxRuntimeIsHealthy(deps)) {
+    if ((yield* linuxRuntimeIsHealthy(deps)) && deps.generationStore === undefined) {
       yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
       yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
       return;
     }
 
     const repair = Effect.gen(function* () {
-      if (yield* linuxRuntimeIsHealthy(deps)) return;
+      if (yield* linuxRuntimeIsHealthy(deps)) {
+        const adopted =
+          deps.generationStore === undefined
+            ? true
+            : yield* adoptHealthyRuntimeGeneration({
+                storageDir: deps.storageDir,
+                runRoot: deps.runRoot,
+                configDir: deps.configDir,
+                socketPath: deps.socketPath,
+                pidPath: deps.pidPath,
+                generationStore: deps.generationStore,
+                ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
+                ...(deps.pidNamespaceReader === undefined
+                  ? {}
+                  : { pidNamespaceReader: deps.pidNamespaceReader }),
+                ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
+              });
+        if (adopted) {
+          yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
+          yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
+          return;
+        }
+      }
       if (deps.generationStore === undefined) {
         yield* stopDiscoveredRuntimeProcesses(deps);
         yield* reapLegacyStaleRuntime(deps);

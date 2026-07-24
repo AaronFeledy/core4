@@ -5,11 +5,7 @@ import { Effect } from "effect";
 import type { ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { PodmanApiClient } from "./capabilities.ts";
-import {
-  type LinuxRuntimeFilesystem,
-  type RuntimeGenerationStore,
-  adoptHealthyRuntimeGeneration,
-} from "./linux-runtime-generation.ts";
+import type { LinuxRuntimeFilesystem, RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { readRuntimePid } from "./linux-runtime-reaper.ts";
 import { type PodmanServiceRunner, buildPodmanServiceArgs } from "./podman-service-runner.ts";
 import { launchStatePath, recordedLaunchMatchesSpec } from "./runtime-launch-state.ts";
@@ -45,24 +41,7 @@ export const linuxRuntimeIsHealthy = (
     Effect.flatMap((reachable) =>
       reachable._tag === "Left"
         ? Effect.succeed(false)
-        : currentRuntimeIsOwned(deps).pipe(
-            Effect.flatMap((owned) => {
-              if (!owned || deps.generationStore === undefined) return Effect.succeed(owned);
-              return adoptHealthyRuntimeGeneration({
-                storageDir: deps.storageDir,
-                runRoot: deps.runRoot,
-                configDir: deps.configDir,
-                socketPath: deps.socketPath,
-                pidPath: deps.pidPath,
-                generationStore: deps.generationStore,
-                ...(deps.bootIdReader === undefined ? {} : { bootIdReader: deps.bootIdReader }),
-                ...(deps.pidNamespaceReader === undefined
-                  ? {}
-                  : { pidNamespaceReader: deps.pidNamespaceReader }),
-                ...(deps.filesystem === undefined ? {} : { filesystem: deps.filesystem }),
-              });
-            }),
-          ),
+        : currentRuntimeIsOwned(deps),
     ),
   );
 

@@ -49,6 +49,56 @@ const filesystem = (events: string[]): LinuxRuntimeFilesystem => ({
 });
 
 describe("managed Linux runtime generation recovery", () => {
+  test("adopts a healthy runtime generation only while holding the launch lock", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-generation-locked-adopt-"));
+    try {
+      const runtimePaths = paths(dir);
+      let insideLock = false;
+      let adoptedInsideLock = false;
+      await writeOwnedLaunch(runtimePaths, 4050);
+      const generation: RuntimeGenerationStore = {
+        get: Effect.succeed(null),
+        set: () =>
+          Effect.sync(() => {
+            adoptedInsideLock = insideLock;
+          }),
+      };
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: { info: Effect.succeed({}), ping: Effect.void },
+          serviceRunner: {
+            launch: () => Effect.die("healthy runtime must not launch"),
+            isAlive: () => Effect.succeed(true),
+            isServiceProcess: () => Effect.succeed(true),
+            terminate: () => Effect.die("healthy runtime must not terminate"),
+          },
+          generationStore: generation,
+          bootIdReader: () => Effect.succeed("boot-a"),
+          pidNamespaceReader: () => Effect.succeed("pid:[1]"),
+          filesystem: filesystem([]),
+          withLaunchLock: (body) =>
+            Effect.acquireUseRelease(
+              Effect.sync(() => {
+                insideLock = true;
+              }),
+              () => body,
+              () =>
+                Effect.sync(() => {
+                  insideLock = false;
+                }),
+            ),
+          ...runtimePaths,
+        }),
+      );
+
+      expect(adoptedInsideLock).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("a healthy runtime adopts a missing generation marker without resetting runroot", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-generation-adopt-"));
     try {
