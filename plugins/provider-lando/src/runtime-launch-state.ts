@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 
 import { Effect } from "effect";
@@ -10,6 +11,7 @@ import type { PodmanServiceSpec } from "./podman-service-runner.ts";
 interface RuntimeLaunchState {
   readonly pid: number;
   readonly env: Readonly<Record<string, string>>;
+  readonly runtimeBundleVersion?: string;
 }
 
 export const launchStatePath = (pidPath: string): string => `${pidPath}.launch.json`;
@@ -34,7 +36,9 @@ const parseRuntimeLaunchState = (raw: string): RuntimeLaunchState | undefined =>
     env[key] = value;
   }
 
-  return { pid: parsed.pid, env };
+  const runtimeBundleVersion = parsed.runtimeBundleVersion;
+  if (runtimeBundleVersion !== undefined && typeof runtimeBundleVersion !== "string") return undefined;
+  return { pid: parsed.pid, env, ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }) };
 };
 
 const readLaunchState = (pidPath: string): Effect.Effect<RuntimeLaunchState | undefined> =>
@@ -58,29 +62,39 @@ export const recordedLaunchMatchesSpec = (
   pidPath: string,
   pid: number,
   spec: PodmanServiceSpec,
+  runtimeBundleVersion?: string,
 ): Effect.Effect<boolean> =>
   readLaunchState(pidPath).pipe(
-    Effect.map((state) => state !== undefined && state.pid === pid && sameSpecEnv(state.env, spec.env)),
+    Effect.map(
+      (state) =>
+        state !== undefined &&
+        state.pid === pid &&
+        sameSpecEnv(state.env, spec.env) &&
+        (runtimeBundleVersion === undefined || state.runtimeBundleVersion === runtimeBundleVersion),
+    ),
   );
 
 export const writeLaunchState = (
   pidPath: string,
   pid: number,
   spec: PodmanServiceSpec,
+  runtimeBundleVersion?: string,
 ): Effect.Effect<void, ProviderUnavailableError> =>
   Effect.tryPromise({
     try: async () => {
-      const state: RuntimeLaunchState = { pid, env: spec.env ?? {} };
+      const state: RuntimeLaunchState = {
+        pid,
+        env: spec.env ?? {},
+        ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
+      };
       const path = launchStatePath(pidPath);
+      const tempPath = `${path}.tmp-${process.pid}-${randomUUID()}`;
+      await mkdir(dirname(path), { recursive: true });
       try {
-        await writeFile(path, JSON.stringify(state));
-      } catch (cause) {
-        if (typeof cause === "object" && cause !== null && "code" in cause && cause.code === "ENOENT") {
-          await mkdir(dirname(path), { recursive: true });
-          await writeFile(path, JSON.stringify(state));
-          return;
-        }
-        throw cause;
+        await writeFile(tempPath, JSON.stringify(state), { mode: 0o600 });
+        await rename(tempPath, path);
+      } finally {
+        await rm(tempPath, { force: true });
       }
     },
     catch: (cause) =>

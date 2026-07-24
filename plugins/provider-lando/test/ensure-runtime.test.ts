@@ -218,14 +218,16 @@ const canonicalArgs = (p: ReturnType<typeof paths>) =>
 const canonicalEnv = (p: ReturnType<typeof paths>) => ({
   CONTAINERS_CONF: join(p.configDir, "containers.conf"),
   CONTAINERS_REGISTRIES_CONF: join(p.configDir, "registries.conf"),
+  XDG_CONFIG_HOME: p.configDir,
 });
 
-const writeLaunchState = (p: ReturnType<typeof paths>, pid: number) =>
+const writeLaunchState = (p: ReturnType<typeof paths>, pid: number, runtimeBundleVersion?: string) =>
   writeFile(
     `${p.pidPath}.launch.json`,
     JSON.stringify({
       pid,
       env: canonicalEnv(p),
+      ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
     }),
   );
 
@@ -343,17 +345,25 @@ describe("ensureRuntime", () => {
     }
   });
 
-  test("reachable socket with matching argv but mismatched launch env metadata is restarted", async () => {
+  test("reachable socket with matching argv but legacy two-key launch env metadata is restarted", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
+      // Given: a live owned service predates the private XDG config root launch requirement.
       const calls: Call[] = [];
       const p = paths(dir);
       await writeFile(p.pidPath, "4321");
       await writeFile(
         `${p.pidPath}.launch.json`,
-        JSON.stringify({ pid: 4321, env: { CONTAINERS_CONF: join(p.configDir, "old-containers.conf") } }),
+        JSON.stringify({
+          pid: 4321,
+          env: {
+            CONTAINERS_CONF: join(p.configDir, "containers.conf"),
+            CONTAINERS_REGISTRIES_CONF: join(p.configDir, "registries.conf"),
+          },
+        }),
       );
 
+      // When: ensureRuntime compares the legacy launch state with the current service spec.
       await Effect.runPromise(
         ensureRuntime({
           platform: "linux",
@@ -363,7 +373,10 @@ describe("ensureRuntime", () => {
         }),
       );
 
+      // Then: the legacy service is terminated and relaunched with the current managed env.
       expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
@@ -372,6 +385,10 @@ describe("ensureRuntime", () => {
         ["launch", canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+      expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
+        pid: 9999,
+        env: canonicalEnv(p),
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -398,6 +415,8 @@ describe("ensureRuntime", () => {
 
       // Then: the old owned process is stopped and relaunched with the current spec.
       expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
@@ -441,6 +460,36 @@ describe("ensureRuntime", () => {
     }
   });
 
+  test("setup restarts a healthy service launched from an older runtime bundle", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-bundle-upgrade-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+      await writeLaunchState(p, 4321, "1.0.0");
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          runtimeBundleVersion: "2.0.0",
+          ...p,
+        }),
+      );
+
+      expect(calls.some((call) => call[0] === "terminate" && call[1] === 4321)).toBe(true);
+      expect(calls.some((call) => call[0] === "launch")).toBe(true);
+      expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
+        pid: 9999,
+        env: canonicalEnv(p),
+        runtimeBundleVersion: "2.0.0",
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("reachable socket with live pid file but non-service process and no argv match does not terminate", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
@@ -460,10 +509,10 @@ describe("ensureRuntime", () => {
       expect(calls).toEqual([
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
-        ["findMatching", canonicalArgs(p)],
-        ["findManaged", canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
+        ["findMatching", canonicalArgs(p)],
+        ["findManaged", canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["launch", canonicalArgs(p)],
@@ -494,6 +543,8 @@ describe("ensureRuntime", () => {
       );
 
       expect(calls).toEqual([
+        ["isAlive", 4321],
+        ["isServiceProcess", 4321, canonicalArgs(p)],
         ["isAlive", 4321],
         ["isServiceProcess", 4321, canonicalArgs(p)],
         ["findMatching", canonicalArgs(p)],
@@ -527,6 +578,36 @@ describe("ensureRuntime", () => {
 
       expect(calls).toEqual([["launch", canonicalArgs(p)]]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("terminates a just-spawned service when launch metadata persistence fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-metadata-fail-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const metadataError = new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message: "simulated metadata write failure",
+      });
+
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: unreachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          recordLaunch: () => Effect.fail(metadataError),
+          readinessPolicy: fastReadinessPolicy,
+          ...p,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(calls).toContainEqual(["launch", canonicalArgs(p)]);
+      expect(calls).toContainEqual(["terminate", 9999]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -739,7 +820,7 @@ describe("ensureRuntime", () => {
       );
 
       // Then: readiness uses ping only and never invokes expensive info.
-      expect(apiCalls).toEqual(["ping", "ping"]);
+      expect(apiCalls).toEqual(["ping", "ping", "ping"]);
       expect(calls).toEqual([["launch", canonicalArgs(p)]]);
       expect(await readFile(p.pidPath, "utf8")).toBe("9999");
     } finally {

@@ -27,7 +27,7 @@ const linuxHelperSources = (sourceArchive: Uint8Array, vendorArchive: Uint8Array
         components: [
           {
             name: "netavark",
-            version: "2.0.0",
+            version: "9.9.9",
             sourceBuild: "netavark-linux-native",
             inputs: [
               {
@@ -144,9 +144,9 @@ describe("Linux helper source builds", () => {
   test("source-builds Netavark from source plus vendored dependencies", async () => {
     const dir = await mkdtemp(join(tmpdir(), "rb-asm-netavark-"));
     try {
-      await mkdir(join(dir, "netavark-2.0.0"), { recursive: true });
+      await mkdir(join(dir, "netavark-9.9.9"), { recursive: true });
       await mkdir(join(dir, "vendor"), { recursive: true });
-      await Bun.$`tar -czf ${join(dir, "netavark-source.tar.gz")} -C ${dir} netavark-2.0.0`.quiet();
+      await Bun.$`tar -czf ${join(dir, "netavark-source.tar.gz")} -C ${dir} netavark-9.9.9`.quiet();
       await Bun.$`tar -czf ${join(dir, "netavark-vendor.tar.gz")} -C ${dir} vendor`.quiet();
       const sourceArchive = await readFile(join(dir, "netavark-source.tar.gz"));
       const vendorArchive = await readFile(join(dir, "netavark-vendor.tar.gz"));

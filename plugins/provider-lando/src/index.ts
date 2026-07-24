@@ -1,7 +1,7 @@
 /**
  * `@lando/provider-lando` — Lando-managed RuntimeProvider.
  */
-import { Duration, Effect, Layer, Schema, Stream } from "effect";
+import { Effect, Layer, Schema, Stream } from "effect";
 
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
 import { buildContainerArtifact } from "@lando/container-runtime/image-build";
@@ -12,7 +12,7 @@ import {
 } from "@lando/container-runtime/log-file-helper-payloads";
 import { stripHostProxyRunLando } from "@lando/core/host-proxy-transport";
 import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
-import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import {
@@ -39,6 +39,7 @@ import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
 import { pullImage } from "./image-pull.ts";
 import { inspect } from "./inspect.ts";
+import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { logs } from "./logs.ts";
 import {
   type PodmanServiceRunner,
@@ -319,6 +320,8 @@ export interface ProviderLayerOptions {
   readonly eventService?: BringUpOptions["eventService"];
   readonly logFileAccess?: LogFileAccess;
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
+  readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
+  readonly runtimeGenerationStore?: RuntimeGenerationStore;
 }
 
 interface RuntimeProviderServiceControls {
@@ -398,7 +401,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
     options.runtimeConfigDir !== undefined &&
     options.providerPidPath !== undefined;
   const rootlessProbes = options.rootlessProbes ?? makeSystemRootlessProbes();
-  const ensureEffectFor = (progress?: RuntimeSetupProgress): Effect.Effect<void, ProviderUnavailableError> =>
+  const ensureGuard = Effect.unsafeMakeSemaphore(1);
+  const withLaunchLock = <A, E>(body: Effect.Effect<A, E>) =>
+    ensureGuard.withPermits(1)(options.runtimeLock?.(body) ?? body);
+  const ensureEffectFor = (
+    progress?: RuntimeSetupProgress,
+    runtimeBundleVersion?: string,
+  ): Effect.Effect<void, ProviderUnavailableError> =>
     canEnsure
       ? ensureRuntime({
           platform,
@@ -411,7 +420,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           configDir: options.runtimeConfigDir,
           socketPath: ensureSocketPath,
           pidPath: options.providerPidPath,
+          ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
+          withLaunchLock,
+          ...(options.runtimeGenerationStore === undefined
+            ? {}
+            : { generationStore: options.runtimeGenerationStore }),
           ...(options.readinessPolicy === undefined ? {} : { readinessPolicy: options.readinessPolicy }),
           ...(progress === undefined
             ? {}
@@ -424,6 +438,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         })
       : Effect.void;
   const ensureEffect = ensureEffectFor();
+  const ensureBefore = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    ensureEffect.pipe(Effect.zipRight(effect));
+  const ensureBeforeStream = <A, E, R>(stream: Stream.Stream<A, E, R>) =>
+    Stream.unwrap(ensureEffect.pipe(Effect.as(stream)));
   const dataPlane =
     podmanApi === undefined
       ? undefined
@@ -462,11 +480,6 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   };
 
   return Effect.gen(function* () {
-    const [cachedEnsure, invalidateEnsure] = yield* Effect.cachedInvalidateWithTTL(
-      ensureEffect,
-      Duration.infinity,
-    );
-    const ensureOnce = cachedEnsure.pipe(Effect.tapError(() => invalidateEnsure));
     const shouldProbeCapabilities = options.podmanApi !== undefined || externalSocketPath !== undefined;
     const capabilities =
       shouldProbeCapabilities && podmanApi !== undefined
@@ -594,10 +607,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                           ),
                         ),
                       );
-                      yield* ensureEffectFor(progress);
+                      yield* ensureEffectFor(progress, progress.runtimeBundleVersion);
                     }),
                 }
-              : { readinessCheck: ensureOnce }),
+              : { readinessCheck: ensureEffect }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
           });
           runtimeVersion = result.podmanVersion;
@@ -627,21 +640,23 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       buildArtifact:
         podmanApi === undefined
           ? () => Effect.fail(makeUnavailable("buildArtifact"))
-          : (spec) => buildContainerArtifact(spec, { providerId: "lando", api: podmanApi }),
+          : (spec) => ensureBefore(buildContainerArtifact(spec, { providerId: "lando", api: podmanApi })),
       pullArtifact:
         podmanApi === undefined
           ? () => Effect.fail(makeUnavailable("pullArtifact"))
           : (spec) =>
-              pullImage(podmanApi, spec.ref, {
-                providerId: "lando",
-                publish: (event) =>
-                  options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ??
-                  Effect.void,
-              }).pipe(Effect.as({ providerId, ref: spec.ref })),
+              ensureBefore(
+                pullImage(podmanApi, spec.ref, {
+                  providerId: "lando",
+                  publish: (event) =>
+                    options.eventService?.publish(event).pipe(Effect.catchAll(() => Effect.void)) ??
+                    Effect.void,
+                }).pipe(Effect.as({ providerId, ref: spec.ref })),
+              ),
       removeArtifact: () => Effect.void,
       apply: (plan, applyOptions) =>
         Effect.gen(function* () {
-          yield* ensureOnce;
+          yield* ensureEffect;
           const result = yield* bringUp(plan, {
             ...(podmanApi === undefined ? {} : { podmanApi }),
             ...(options.eventService === undefined ? {} : { eventService: options.eventService }),
@@ -657,7 +672,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         Effect.gen(function* () {
           const plan = yield* resolvePlan(target);
           if (plan === undefined) return;
-          yield* ensureOnce;
+          yield* ensureEffect;
           yield* bringDown(plan, {
             ...(podmanApi === undefined ? {} : { podmanApi }),
             volumes: destroyOptions.volumes,
@@ -669,7 +684,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         }),
       exec: (target, command) =>
         Effect.gen(function* () {
-          yield* ensureOnce;
+          yield* ensureEffect;
           const plan = yield* resolvePlan(target);
           if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "exec"));
           return yield* exec(plan, target, command, {
@@ -678,7 +693,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         }),
       execStream: (target, command) =>
         Stream.unwrap(
-          ensureOnce.pipe(
+          ensureEffect.pipe(
             Effect.zipRight(
               resolvePlan(target).pipe(
                 Effect.map((plan) =>
@@ -692,16 +707,21 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
             ),
           ),
         ),
-      run: dataPlane === undefined ? () => Effect.fail(makeUnavailable("run")) : dataPlane.run,
+      run:
+        dataPlane === undefined
+          ? () => Effect.fail(makeUnavailable("run"))
+          : (spec) => ensureBefore(dataPlane.run(spec)),
       runStream:
-        dataPlane === undefined ? () => Stream.fail(makeUnavailable("runStream")) : dataPlane.runStream,
+        dataPlane === undefined
+          ? () => Stream.fail(makeUnavailable("runStream"))
+          : (spec) => ensureBeforeStream(dataPlane.runStream(spec)),
       logs: (target, logOptions) =>
         Stream.unwrap(
           resolvePlan(target).pipe(
             Effect.flatMap((plan) =>
               plan === undefined
                 ? Effect.succeed(Stream.fail(makeNoPlanError(target.app, "logs")))
-                : ensureOnce.pipe(
+                : ensureEffect.pipe(
                     Effect.as(
                       logs(plan, target, logOptions, {
                         ...(podmanApi === undefined ? {} : { podmanApi }),
@@ -731,13 +751,13 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         Effect.gen(function* () {
           const plan = yield* resolvePlan(target);
           if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "inspect"));
-          yield* ensureOnce;
+          yield* ensureEffect;
           return yield* inspect(plan, target, {
             ...(podmanApi === undefined ? {} : { podmanApi }),
           });
         }),
       list: (filter) =>
-        ensureOnce.pipe(
+        ensureEffect.pipe(
           Effect.zipRight(
             Effect.forEach(Array.from(plans.values()), (plan) =>
               Effect.forEach(Object.values(plan.services), (service) =>
@@ -759,43 +779,51 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       snapshotVolume:
         dataPlane === undefined
           ? () => Effect.fail(makeUnavailable("snapshotVolume"))
-          : dataPlane.snapshotVolume,
+          : (spec) => ensureBefore(dataPlane.snapshotVolume(spec)),
       restoreVolume:
         dataPlane === undefined
           ? () => Effect.fail(makeUnavailable("restoreVolume"))
-          : dataPlane.restoreVolume,
+          : (spec) => ensureBefore(dataPlane.restoreVolume(spec)),
       listVolumes:
-        dataPlane === undefined ? () => Effect.fail(makeUnavailable("listVolumes")) : dataPlane.listVolumes,
+        dataPlane === undefined
+          ? () => Effect.fail(makeUnavailable("listVolumes"))
+          : (filter) => ensureBefore(dataPlane.listVolumes(filter)),
       removeVolume:
-        dataPlane === undefined ? () => Effect.fail(makeUnavailable("removeVolume")) : dataPlane.removeVolume,
+        dataPlane === undefined
+          ? () => Effect.fail(makeUnavailable("removeVolume"))
+          : (ref) => ensureBefore(dataPlane.removeVolume(ref)),
       copyToService:
         dataPlane === undefined
           ? () => Effect.fail(makeUnavailable("copyToService"))
           : (target, spec) =>
-              resolvePlan(target).pipe(
-                Effect.flatMap((plan) =>
-                  dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+              ensureBefore(
+                resolvePlan(target).pipe(
+                  Effect.flatMap((plan) =>
+                    dataPlane.copyToService(plan === undefined ? target : { ...target, plan }, spec),
+                  ),
                 ),
               ),
       copyFromService:
         dataPlane === undefined
           ? () => Stream.fail(makeUnavailable("copyFromService"))
           : (target, spec) =>
-              Stream.unwrap(
-                resolvePlan(target).pipe(
-                  Effect.map((plan) =>
-                    dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+              ensureBeforeStream(
+                Stream.unwrap(
+                  resolvePlan(target).pipe(
+                    Effect.map((plan) =>
+                      dataPlane.copyFromService(plan === undefined ? target : { ...target, plan }, spec),
+                    ),
                   ),
                 ),
               ),
       exportArtifact:
         dataPlane === undefined
           ? () => Stream.fail(makeUnavailable("exportArtifact"))
-          : dataPlane.exportArtifact,
+          : (ref) => ensureBeforeStream(dataPlane.exportArtifact(ref)),
       importArtifact:
         dataPlane === undefined
           ? () => Effect.fail(makeUnavailable("importArtifact"))
-          : dataPlane.importArtifact,
+          : (data) => ensureBefore(dataPlane.importArtifact(data)),
     };
 
     return provider satisfies RuntimeProviderShape;

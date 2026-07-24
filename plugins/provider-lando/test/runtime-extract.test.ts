@@ -213,16 +213,45 @@ describe("installRuntimeBundle", () => {
     }
   });
 
-  test("extracts a real stored zip runtime bundle", async () => {
+  test("rejects a nested-only stored zip without replacing the working runtime", async () => {
     const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
     try {
+      await Effect.runPromise(
+        installRuntimeBundle({
+          archiveBytes: new Uint8Array([1]),
+          version: "1.0.0",
+          runtimeBinDir,
+          platform: "linux",
+          extractImpl: () => [{ path: "podman", bytes: encoder.encode("working-podman"), mode: 0o755 }],
+        }),
+      );
       const archiveBytes = buildStoredZip("nested/podman", encoder.encode("zip-podman"));
 
-      await Effect.runPromise(
+      const exit = await Effect.runPromiseExit(
+        installRuntimeBundle({ archiveBytes, version: "2.0.0", runtimeBinDir, platform: "linux" }),
+      );
+
+      expect(expectFailure(exit)).toBeInstanceOf(ProviderRuntimeExtractError);
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("working-podman");
+      expect((await readFile(join(runtimeBinDir, ".runtime-installed-version"), "utf8")).trim()).toBe(
+        "1.0.0",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("installs a stored zip containing the required runtime entrypoint", async () => {
+    const { root, runtimeBinDir } = await makeTempRuntimeBinDir();
+    try {
+      const archiveBytes = buildStoredZip("podman", encoder.encode("zip-podman"));
+
+      const result = await Effect.runPromise(
         installRuntimeBundle({ archiveBytes, version: "1.0.0", runtimeBinDir, platform: "linux" }),
       );
 
-      expect(existsSync(join(runtimeBinDir, "nested", "podman"))).toBe(true);
+      expect(result.installed).toBe(true);
+      expect(await readFile(join(runtimeBinDir, "podman"), "utf8")).toBe("zip-podman");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -528,7 +557,10 @@ describe("installRuntimeBundle", () => {
           version,
           runtimeBinDir,
           platform: "linux",
-          extractImpl: () => [{ path, bytes: encoder.encode(path), mode: 0o755 }],
+          extractImpl: () => [
+            { path: "podman", bytes: encoder.encode(`podman-${version}`), mode: 0o755 },
+            { path, bytes: encoder.encode(path), mode: 0o755 },
+          ],
         });
 
       await Effect.runPromise(install("1.0.0", "old-only"));

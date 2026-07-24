@@ -56,8 +56,8 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
       : [],
   endpoints:
     name === "web"
-      ? [{ port: 31082, protocol: "http", name: "http" }]
-      : [{ port: 55434, protocol: "tcp", name: "database" }],
+      ? [{ _tag: "internal", port: 31082, protocol: "http", name: "http" }]
+      : [{ _tag: "internal", port: 55434, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: name === "web" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
   hostAliases: [],
@@ -432,7 +432,7 @@ describe("provider-lando cross-process state", () => {
     });
   });
 
-  test("a fresh provider layer self-heals a killed managed runtime before inspect", async () => {
+  test("the same provider layer self-heals a killed managed runtime before inspect", async () => {
     await withStateDir(async (stateDir) => {
       const fake = makeFakePodmanState();
       const paths = runtimePaths(stateDir);
@@ -445,17 +445,11 @@ describe("provider-lando cross-process state", () => {
         (pid) => livePids.add(pid),
       );
       let forceUnreachableUntilNextLaunch = false;
-      let allowLayerConstructionProbe = false;
       let launchBaseline = 0;
       const pingObservations: string[] = [];
       const podmanApi: PodmanApiClient = {
         ...fake.api,
         ping: Effect.gen(function* () {
-          if (allowLayerConstructionProbe) {
-            allowLayerConstructionProbe = false;
-            pingObservations.push("reachable-for-layer-construction");
-            return;
-          }
           if (!forceUnreachableUntilNextLaunch || launchCount() > launchBaseline) {
             pingObservations.push("reachable");
             return;
@@ -465,23 +459,20 @@ describe("provider-lando cross-process state", () => {
         }),
       };
 
-      const makeFreshProvider = () =>
-        runOnce(
-          RuntimeProvider.pipe(
-            Effect.provide(
-              makeProviderLayer({
-                podmanApi,
-                podmanService: serviceRunner,
-                stateDir,
-                platform: "linux",
-                ...paths,
-              }),
-            ),
+      const provider = await runOnce(
+        RuntimeProvider.pipe(
+          Effect.provide(
+            makeProviderLayer({
+              podmanApi,
+              podmanService: serviceRunner,
+              stateDir,
+              platform: "linux",
+              ...paths,
+            }),
           ),
-        );
-
-      const providerA = await makeFreshProvider();
-      await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
+        ),
+      );
+      await runOnce(provider.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
       const firstLaunches = launchCount();
       expect(firstLaunches).toBe(1);
@@ -493,8 +484,7 @@ describe("provider-lando cross-process state", () => {
       forceUnreachableUntilNextLaunch = true;
       livePids.delete(firstPid);
 
-      const providerB = await makeFreshProvider();
-      const snapshot = await runOnce(providerB.inspect({ app: plan.id, service: web.name }));
+      const snapshot = await runOnce(provider.inspect({ app: plan.id, service: web.name }));
 
       expect(snapshot.app).toBe(plan.id);
       expect(snapshot.service).toBe(web.name);

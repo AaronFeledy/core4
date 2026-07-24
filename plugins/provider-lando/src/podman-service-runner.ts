@@ -97,6 +97,7 @@ export const buildPodmanServiceArgs = (p: {
     env: {
       CONTAINERS_CONF: `${p.configDir}/containers.conf`,
       CONTAINERS_REGISTRIES_CONF: `${p.configDir}/registries.conf`,
+      XDG_CONFIG_HOME: p.configDir,
     },
     args: buildManagedRuntimeServiceArgs({
       runtimeStorageDir: p.storageDir,

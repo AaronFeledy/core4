@@ -29,8 +29,11 @@ import {
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
+  StateStore,
+  type StateStoreShape,
 } from "@lando/sdk/services";
 
+import { makeLandoRuntimeState } from "./lando-runtime-state.ts";
 import { loadLogFileHelperPayloads } from "./log-file-helper-payloads.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
@@ -119,8 +122,10 @@ const makeRuntimeProviderRegistry = (
   eventService: EventPublisher | undefined,
   downloader: Context.Tag.Service<typeof Downloader>,
   landoPaths: Context.Tag.Service<typeof PathsService>,
+  stateStore: StateStoreShape,
 ): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
   const artifactDownload = makeArtifactDownload(downloader);
+  const runtimeState = makeLandoRuntimeState(stateStore, landoPaths);
 
   const providerIds = Effect.mapError(
     Effect.map(pluginRegistry.list, (manifests) =>
@@ -181,6 +186,7 @@ const makeRuntimeProviderRegistry = (
                   ...(eventService === undefined ? {} : { eventService }),
                   artifactDownload,
                   logFileHelperPayloads,
+                  ...runtimeState,
                 }),
               ),
               Effect.mapError(toProviderUnavailableFromCapability),
@@ -235,12 +241,14 @@ export const RuntimeProviderRegistryLive = Layer.effect(
     const eventService = yield* Effect.serviceOption(EventService);
     const downloader = yield* Downloader;
     const landoPaths = yield* PathsService;
+    const stateStore = yield* StateStore;
     return makeRuntimeProviderRegistry(
       configService,
       pluginRegistry,
       eventService._tag === "Some" ? eventService.value : undefined,
       downloader,
       landoPaths,
+      stateStore,
     );
   }),
 );
