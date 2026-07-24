@@ -35,11 +35,11 @@ describe("mailpit global service ServiceConfig", () => {
     expect(config.appMount).toBe(false);
   });
 
-  test("publishes the SMTP and web UI ports", async () => {
+  test("declares SMTP and web UI as internal endpoints reached over the shared network and Traefik route", async () => {
     const config = await decodeConfig();
-    const ports = config.ports ?? [];
-    expect(ports).toContain(String(MAILPIT_SMTP_PORT));
-    expect(ports).toContain(String(MAILPIT_WEB_PORT));
+    const endpoints = config.endpoints ?? [];
+    expect(endpoints).toContainEqual({ _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp" });
+    expect(endpoints).toContainEqual({ _tag: "internal", port: MAILPIT_WEB_PORT, protocol: "http" });
     expect(MAILPIT_SMTP_PORT).toBe(1025);
     expect(MAILPIT_WEB_PORT).toBe(8025);
   });
