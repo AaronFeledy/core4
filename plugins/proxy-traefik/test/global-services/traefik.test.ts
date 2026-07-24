@@ -35,12 +35,37 @@ describe("traefik global service ServiceConfig", () => {
     expect(config.appMount).toBe(false);
   });
 
-  test("publishes the web, websecure, and dashboard ports", async () => {
+  test("publishes rootless-safe loopback ingress endpoints", async () => {
     const config = await decodeConfig();
-    const ports = config.ports ?? [];
-    expect(ports).toContain("80");
-    expect(ports).toContain("443");
-    expect(ports).toContain("8080");
+    expect(config.endpoints).toEqual([
+      {
+        _tag: "published",
+        name: "web",
+        protocol: "http",
+        port: 80,
+        publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
+      },
+      {
+        _tag: "published",
+        name: "websecure",
+        protocol: "https",
+        port: 443,
+        publication: { bindAddress: "127.0.0.1", hostPort: 38443 },
+      },
+    ]);
+    expect(config.ports).toEqual(["8080"]);
+  });
+
+  test("mounts the durable route configuration into the file provider directory", async () => {
+    const config = await decodeConfig();
+    expect(config.mounts).toEqual([
+      {
+        type: "bind",
+        source: "./proxy-traefik/dynamic",
+        target: TRAEFIK_DYNAMIC_CONFIG_DIR,
+        readOnly: false,
+      },
+    ]);
   });
 
   test("enables the file provider and dashboard via static flags", async () => {

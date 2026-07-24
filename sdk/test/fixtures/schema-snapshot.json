@@ -149,7 +149,15 @@
               "summary": "Global Traefik reverse proxy"
             }
           ],
-          "proxies": ["traefik"]
+          "proxyServices": [
+            {
+              "defaultFor": {
+                "platform": ["darwin", "linux", "win32"]
+              },
+              "id": "traefik",
+              "module": "./src/proxy.ts"
+            }
+          ]
         },
         "description": "Traefik-backed `ProxyService` and bundled global reverse proxy.",
         "enabled": true,
@@ -14878,6 +14886,51 @@
     },
     {
       "deprecated": false,
+      "description": "Proxy route features truthfully supported by an implementation.",
+      "docsPath": "docs/reference/schemas/proxy-capabilities.mdx",
+      "id": "ProxyCapabilities",
+      "jsonSchemaPath": "dist/schemas/proxy-capabilities.json",
+      "packageExport": "@lando/sdk/schema#ProxyCapabilities",
+      "title": "Proxy Capabilities"
+    },
+    {
+      "deprecated": false,
+      "description": "Proxy setup configuration supplied by core.",
+      "docsPath": "docs/reference/schemas/proxy-config.mdx",
+      "id": "ProxyConfig",
+      "jsonSchemaPath": "dist/schemas/proxy-config.json",
+      "packageExport": "@lando/sdk/schema#ProxyConfig",
+      "title": "Proxy Config"
+    },
+    {
+      "deprecated": false,
+      "description": "Externally visible authority selected by a proxy implementation.",
+      "docsPath": "docs/reference/schemas/proxy-authority.mdx",
+      "id": "ProxyAuthority",
+      "jsonSchemaPath": "dist/schemas/proxy-authority.json",
+      "packageExport": "@lando/sdk/schema#ProxyAuthority",
+      "title": "Proxy Authority"
+    },
+    {
+      "deprecated": false,
+      "description": "Durable route-application result returned by a proxy implementation.",
+      "docsPath": "docs/reference/schemas/proxy-apply-result.mdx",
+      "id": "ProxyApplyResult",
+      "jsonSchemaPath": "dist/schemas/proxy-apply-result.json",
+      "packageExport": "@lando/sdk/schema#ProxyApplyResult",
+      "title": "Proxy Apply Result"
+    },
+    {
+      "deprecated": false,
+      "description": "Current ingress and configured-app status reported by a proxy implementation.",
+      "docsPath": "docs/reference/schemas/proxy-status.mdx",
+      "id": "ProxyStatus",
+      "jsonSchemaPath": "dist/schemas/proxy-status.json",
+      "packageExport": "@lando/sdk/schema#ProxyStatus",
+      "title": "Proxy Status"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Healthcheck Plan.",
       "docsPath": "docs/reference/schemas/healthcheck-plan.mdx",
       "id": "HealthcheckPlan",
@@ -15820,6 +15873,15 @@
       "jsonSchemaPath": "dist/schemas/plugin-manifest.json",
       "packageExport": "@lando/sdk/schema#PluginManifest",
       "title": "Plugin Manifest"
+    },
+    {
+      "deprecated": false,
+      "description": "Public Lando schema contract for Proxy Service Contribution.",
+      "docsPath": "docs/reference/schemas/proxy-service-contribution.mdx",
+      "id": "ProxyServiceContribution",
+      "jsonSchemaPath": "dist/schemas/proxy-service-contribution.json",
+      "packageExport": "@lando/sdk/schema#ProxyServiceContribution",
+      "title": "Proxy Service Contribution"
     },
     {
       "deprecated": false,
@@ -17289,6 +17351,11 @@
       "EndpointPlan",
       "RouteRef",
       "RoutePlan",
+      "ProxyCapabilities",
+      "ProxyConfig",
+      "ProxyAuthority",
+      "ProxyApplyResult",
+      "ProxyStatus",
       "HealthcheckPlan",
       "CertificatePlan",
       "HostAliasPlan",
@@ -17394,6 +17461,7 @@
       "PluginSetupContribution",
       "PluginContribution",
       "PluginManifest",
+      "ProxyServiceContribution",
       "PluginTrustState",
       "GlobalServiceContribution",
       "FileSyncEngineCapabilities",
@@ -22927,6 +22995,9 @@
               "type": "null"
             }
           ]
+        },
+        "defaultProxyService": {
+          "type": "string"
         },
         "events": {
           "additionalProperties": false,
@@ -35013,26 +35084,72 @@
           },
           "type": "array"
         },
-        "proxies": {
+        "proxyServices": {
+          "description": "ProxyService implementations registered by this plugin.",
           "items": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
                 "additionalProperties": false,
+                "description": "Static capability declaration available before loading the implementation.",
                 "properties": {
-                  "deprecated": {
-                    "$ref": "#/$defs/DeprecationNotice"
+                  "pathPrefixes": {
+                    "description": "Whether path-prefix route matching is supported.",
+                    "type": "boolean"
                   },
-                  "id": {
-                    "type": "string"
+                  "tls": {
+                    "description": "Whether HTTPS route intent is supported.",
+                    "type": "boolean"
+                  },
+                  "wildcardHostnames": {
+                    "description": "Whether wildcard Host rules are supported.",
+                    "type": "boolean"
                   }
                 },
-                "required": ["id"],
+                "required": ["wildcardHostnames", "tls", "pathPrefixes"],
                 "type": "object"
+              },
+              "defaultFor": {
+                "additionalProperties": false,
+                "description": "Host matchers that nominate this implementation as a default.",
+                "properties": {
+                  "platform": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "deprecated": {
+                "allOf": [
+                  {
+                    "$ref": "#/$defs/DeprecationNotice"
+                  }
+                ],
+                "description": "Optional lifecycle notice for this contribution."
+              },
+              "enabledByDefault": {
+                "description": "Whether this contribution starts enabled after installation.",
+                "type": "boolean"
+              },
+              "id": {
+                "description": "Unique ProxyService implementation id.",
+                "type": "string"
+              },
+              "module": {
+                "description": "Contained plugin module exporting the ProxyService Layer.",
+                "type": "string"
+              },
+              "summary": {
+                "description": "One-line implementation description for listings and diagnostics.",
+                "type": "string"
               }
-            ]
+            },
+            "required": ["id", "module"],
+            "type": "object"
           },
           "type": "array"
         },
@@ -35762,26 +35879,72 @@
               },
               "type": "array"
             },
-            "proxies": {
+            "proxyServices": {
+              "description": "ProxyService implementations registered by this plugin.",
               "items": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
+                "additionalProperties": false,
+                "properties": {
+                  "capabilities": {
                     "additionalProperties": false,
+                    "description": "Static capability declaration available before loading the implementation.",
                     "properties": {
-                      "deprecated": {
-                        "$ref": "#/$defs/DeprecationNotice"
+                      "pathPrefixes": {
+                        "description": "Whether path-prefix route matching is supported.",
+                        "type": "boolean"
                       },
-                      "id": {
-                        "type": "string"
+                      "tls": {
+                        "description": "Whether HTTPS route intent is supported.",
+                        "type": "boolean"
+                      },
+                      "wildcardHostnames": {
+                        "description": "Whether wildcard Host rules are supported.",
+                        "type": "boolean"
                       }
                     },
-                    "required": ["id"],
+                    "required": ["wildcardHostnames", "tls", "pathPrefixes"],
                     "type": "object"
+                  },
+                  "defaultFor": {
+                    "additionalProperties": false,
+                    "description": "Host matchers that nominate this implementation as a default.",
+                    "properties": {
+                      "platform": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "deprecated": {
+                    "allOf": [
+                      {
+                        "$ref": "#/$defs/DeprecationNotice"
+                      }
+                    ],
+                    "description": "Optional lifecycle notice for this contribution."
+                  },
+                  "enabledByDefault": {
+                    "description": "Whether this contribution starts enabled after installation.",
+                    "type": "boolean"
+                  },
+                  "id": {
+                    "description": "Unique ProxyService implementation id.",
+                    "type": "string"
+                  },
+                  "module": {
+                    "description": "Contained plugin module exporting the ProxyService Layer.",
+                    "type": "string"
+                  },
+                  "summary": {
+                    "description": "One-line implementation description for listings and diagnostics.",
+                    "type": "string"
                   }
-                ]
+                },
+                "required": ["id", "module"],
+                "type": "object"
               },
               "type": "array"
             },
@@ -44192,6 +44355,307 @@
         }
       },
       "required": ["providerId", "changes"],
+      "type": "object"
+    },
+    "ProxyApplyResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "app": {
+          "description": "App whose durable route set was replaced.",
+          "type": "string"
+        },
+        "appliedRoutes": {
+          "description": "Complete route set accepted by the proxy.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "backend": {
+                "additionalProperties": false,
+                "description": "Planner-resolved service endpoint consumed by the route provider.",
+                "properties": {
+                  "port": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  },
+                  "protocol": {
+                    "enum": ["http", "https"],
+                    "type": "string"
+                  },
+                  "service": {
+                    "type": "string"
+                  }
+                },
+                "required": ["service", "protocol", "port"],
+                "type": "object"
+              },
+              "endpoint": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "pathPrefix": {
+                "type": "string"
+              },
+              "scheme": {
+                "enum": ["http", "https", "both"],
+                "type": "string"
+              },
+              "service": {
+                "type": "string"
+              }
+            },
+            "required": ["hostname", "scheme", "service", "backend"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "authorities": {
+          "description": "Externally visible authorities selected by the proxy.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "description": "Externally visible authority hostname.",
+                "type": "string"
+              },
+              "port": {
+                "description": "a number between 1 and 65535",
+                "maximum": 65535,
+                "minimum": 1,
+                "title": "between(1, 65535)",
+                "type": "integer"
+              },
+              "scheme": {
+                "description": "Externally visible authority scheme.",
+                "enum": ["http", "https"],
+                "type": "string"
+              }
+            },
+            "required": ["scheme", "hostname", "port"],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["app", "appliedRoutes", "authorities"],
+      "type": "object"
+    },
+    "ProxyAuthority": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "hostname": {
+          "description": "Externally visible authority hostname.",
+          "type": "string"
+        },
+        "port": {
+          "description": "a number between 1 and 65535",
+          "maximum": 65535,
+          "minimum": 1,
+          "title": "between(1, 65535)",
+          "type": "integer"
+        },
+        "scheme": {
+          "description": "Externally visible authority scheme.",
+          "enum": ["http", "https"],
+          "type": "string"
+        }
+      },
+      "required": ["scheme", "hostname", "port"],
+      "type": "object"
+    },
+    "ProxyCapabilities": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "pathPrefixes": {
+          "description": "Whether path-prefix route matching is supported.",
+          "type": "boolean"
+        },
+        "tls": {
+          "description": "Whether HTTPS route intent is supported.",
+          "type": "boolean"
+        },
+        "wildcardHostnames": {
+          "description": "Whether wildcard Host rules are supported.",
+          "type": "boolean"
+        }
+      },
+      "required": ["wildcardHostnames", "tls", "pathPrefixes"],
+      "type": "object"
+    },
+    "ProxyConfig": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "defaultDomain": {
+          "description": "Default local domain used when routes omit a custom domain.",
+          "type": "string"
+        }
+      },
+      "required": ["defaultDomain"],
+      "type": "object"
+    },
+    "ProxyServiceContribution": {
+      "$defs": {
+        "DeprecationNotice": {
+          "additionalProperties": false,
+          "description": "A structured deprecation declaration attached to a public surface.",
+          "properties": {
+            "docsUrl": {
+              "format": "uri",
+              "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            },
+            "removeIn": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "replacement": {
+              "type": "string"
+            },
+            "severity": {
+              "enum": ["info", "warn", "error"],
+              "type": "string"
+            },
+            "since": {
+              "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+              "type": "string"
+            },
+            "ticket": {
+              "type": "string"
+            }
+          },
+          "required": ["since", "note"],
+          "title": "Deprecation Notice",
+          "type": "object"
+        }
+      },
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "capabilities": {
+          "additionalProperties": false,
+          "description": "Static capability declaration available before loading the implementation.",
+          "properties": {
+            "pathPrefixes": {
+              "description": "Whether path-prefix route matching is supported.",
+              "type": "boolean"
+            },
+            "tls": {
+              "description": "Whether HTTPS route intent is supported.",
+              "type": "boolean"
+            },
+            "wildcardHostnames": {
+              "description": "Whether wildcard Host rules are supported.",
+              "type": "boolean"
+            }
+          },
+          "required": ["wildcardHostnames", "tls", "pathPrefixes"],
+          "type": "object"
+        },
+        "defaultFor": {
+          "additionalProperties": false,
+          "description": "Host matchers that nominate this implementation as a default.",
+          "properties": {
+            "platform": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "deprecated": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/DeprecationNotice"
+            }
+          ],
+          "description": "Optional lifecycle notice for this contribution."
+        },
+        "enabledByDefault": {
+          "description": "Whether this contribution starts enabled after installation.",
+          "type": "boolean"
+        },
+        "id": {
+          "description": "Unique ProxyService implementation id.",
+          "type": "string"
+        },
+        "module": {
+          "description": "Contained plugin module exporting the ProxyService Layer.",
+          "type": "string"
+        },
+        "summary": {
+          "description": "One-line implementation description for listings and diagnostics.",
+          "type": "string"
+        }
+      },
+      "required": ["id", "module"],
+      "type": "object"
+    },
+    "ProxyStatus": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "authorities": {
+          "description": "Authorities currently exposed by the proxy.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "hostname": {
+                "description": "Externally visible authority hostname.",
+                "type": "string"
+              },
+              "port": {
+                "description": "a number between 1 and 65535",
+                "maximum": 65535,
+                "minimum": 1,
+                "title": "between(1, 65535)",
+                "type": "integer"
+              },
+              "scheme": {
+                "description": "Externally visible authority scheme.",
+                "enum": ["http", "https"],
+                "type": "string"
+              }
+            },
+            "required": ["scheme", "hostname", "port"],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "configuredApps": {
+          "description": "Apps with durable route configuration.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "state": {
+          "description": "Current proxy ingress state.",
+          "enum": ["running", "stopped"],
+          "type": "string"
+        }
+      },
+      "required": ["state", "authorities", "configuredApps"],
       "type": "object"
     },
     "PrunePolicy": {
@@ -56466,6 +56930,9 @@
                   "type": "null"
                 }
               ]
+            },
+            "defaultProxyService": {
+              "type": "string"
             },
             "events": {
               "additionalProperties": false,

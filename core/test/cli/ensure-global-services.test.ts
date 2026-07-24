@@ -16,6 +16,7 @@ import {
 import {
   type AppPlanner,
   type ApplyOptions,
+  BuildOrchestrator,
   type CacheService,
   type ConfigService,
   EventService,
@@ -54,6 +55,7 @@ interface Harness {
   readonly dataRoot: string;
   readonly layer: Layer.Layer<
     | AppPlanner
+    | BuildOrchestrator
     | CacheService
     | ConfigService
     | EventService
@@ -65,6 +67,7 @@ interface Harness {
   readonly applyCalls: Array<ApplyCall>;
   readonly inspectCalls: Array<InspectCall>;
   readonly events: Array<LandoEvent>;
+  readonly operations: Array<"build" | "apply">;
 }
 
 const providerId = ProviderId.make("lando");
@@ -147,12 +150,14 @@ const makeHarness = async (
   const applyCalls: Array<ApplyCall> = [];
   const inspectCalls: Array<InspectCall> = [];
   const events: Array<LandoEvent> = [];
+  const operations: Array<"build" | "apply"> = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: String(providerId),
     capabilities: { ...TestRuntimeProvider.capabilities, sharedCrossAppNetwork: true },
     apply: (plan, options) =>
       Effect.sync(() => {
+        operations.push("apply");
         applyCalls.push({ plan, options });
         return { changed: true };
       }),
@@ -202,13 +207,21 @@ const makeHarness = async (
       capabilities: Effect.succeed(provider.capabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(BuildOrchestrator, {
+      build: (plan) =>
+        Effect.sync(() => {
+          operations.push("build");
+          return plan;
+        }),
+      buildApp: () => Effect.void,
+    }),
     AppPlannerLive.pipe(
       Layer.provide(
         Layer.mergeAll(Layer.succeed(PluginRegistry, pluginRegistry), CacheServiceLive, ConfigServiceLive),
       ),
     ),
   );
-  return { dataRoot, layer, applyCalls, inspectCalls, events };
+  return { dataRoot, layer, applyCalls, inspectCalls, events, operations };
 };
 
 const withHarness = async <T>(
@@ -254,6 +267,7 @@ describe("ensureGlobalServicesRunning", () => {
       expect(String(harness.applyCalls[0]?.plan.id)).toBe("global");
       expect(Object.keys(harness.applyCalls[0]?.plan.services ?? {})).toEqual(["traefik"]);
       expect(harness.applyCalls[0]?.options.reconcile).toBe(false);
+      expect(harness.operations).toEqual(["build", "apply"]);
       expect(harness.inspectCalls.map((call) => String(call.target.service))).toEqual(["traefik"]);
 
       const lifecycle = harness.events.filter(

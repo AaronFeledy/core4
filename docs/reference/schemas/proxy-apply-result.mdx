@@ -1,0 +1,16 @@
+---
+title: Proxy Apply Result
+description: Durable route-application result returned by a proxy implementation.
+---
+
+# Proxy Apply Result
+
+Durable route-application result returned by a proxy implementation.
+
+[JSON Schema artifact](../../../dist/schemas/proxy-apply-result.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `app` | Yes | `string` | App whose durable route set was replaced. | — | — | — | — |
+| `appliedRoutes` | Yes | `array` | Complete route set accepted by the proxy. | — | — | — | — |
+| `authorities` | Yes | `array` | Externally visible authorities selected by the proxy. | — | — | — | — |

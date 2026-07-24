@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "defaultDomain": {
+      "description": "Default local domain used when routes omit a custom domain.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "defaultDomain"
+  ],
+  "type": "object"
+}

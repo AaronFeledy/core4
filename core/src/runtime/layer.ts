@@ -39,6 +39,7 @@ import type {
   PluginTrustStore,
   PrivilegeService,
   ProcessRunner,
+  ProxyService,
   Renderer,
   RootOverrides,
   RuntimeProvider,
@@ -120,6 +121,7 @@ export type AppRuntimeServices =
   | EventService
   | ToolingEngine
   | ShellRunner
+  | ProxyService
   | RuntimeCwd;
 type RuntimeLayer =
   | Layer.Layer<never>

@@ -55,7 +55,9 @@ export const runProxySetupStep = (input: unknown, recorder: SetupReadinessRecord
     if (!inputBooleanFlag(input, "skip-proxy")) {
       const proxy = yield* Effect.serviceOption(ProxyService);
       if (proxy._tag === "Some") {
-        yield* proxy.value.setup().pipe(Effect.tapError((cause) => recorder.recordFailure("proxy", cause)));
+        yield* Effect.scoped(proxy.value.setup({ defaultDomain: "lndo.site" })).pipe(
+          Effect.tapError((cause) => recorder.recordFailure("proxy", cause)),
+        );
         yield* recorder.record({ id: "proxy", status: "satisfied", evidence: "Proxy setup completed." });
       } else {
         yield* recorder.recordUnavailable("proxy", "Proxy");
