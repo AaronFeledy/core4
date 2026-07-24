@@ -552,6 +552,36 @@ describe("ensureRuntime", () => {
     }
   });
 
+  test("terminates a just-spawned service when launch metadata persistence fails", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-metadata-fail-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      const metadataError = new ProviderUnavailableError({
+        providerId: "lando",
+        operation: "setup",
+        message: "simulated metadata write failure",
+      });
+
+      const exit = await Effect.runPromiseExit(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: unreachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          recordLaunch: () => Effect.fail(metadataError),
+          readinessPolicy: fastReadinessPolicy,
+          ...p,
+        }),
+      );
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(calls).toContainEqual(["launch", canonicalArgs(p)]);
+      expect(calls).toContainEqual(["terminate", 9999]);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("unreachable socket with a live stale pid reaps then relaunches", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-"));
     try {
