@@ -80,6 +80,11 @@ const deterministicRef = (input: ArtifactBuildSpec): string =>
     "-",
   );
 
+const resolvedBaseRef = (artifact: Extract<ServicePlan["artifact"], { readonly kind: "ref" }>): string =>
+  artifact.digest === undefined || artifact.ref.includes("@")
+    ? artifact.ref
+    : `${artifact.ref}@${artifact.digest}`;
+
 const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/${string}` => {
   const params = new URLSearchParams({ t: tag });
   const artifact = input.plan.services[input.service]?.artifact;
@@ -159,7 +164,11 @@ export const buildContainerArtifact = (
         });
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
-      const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, artifact.ref, steps);
+      const dockerfile = yield* dockerfileForDerivedBuild(
+        options.providerId,
+        resolvedBaseRef(artifact),
+        steps,
+      );
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
       ];
