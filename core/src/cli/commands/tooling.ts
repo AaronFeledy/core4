@@ -47,30 +47,46 @@ type RunToolingServices =
   | RuntimeProviderRegistry
   | ToolingEngine;
 
+const POSITIONAL_PARAMETER = /\$(?:@|[1-9]|\{(?:@|[1-9]))/u;
+
 const shellCommand = (command: string, args: ReadonlyArray<string>): ReadonlyArray<string> => [
   "sh",
   "-c",
-  `${command} "$@"`,
+  POSITIONAL_PARAMETER.test(command) ? command : `${command} "$@"`,
   "lando-tooling",
   ...args,
 ];
+
+export const validateToolingArguments = (
+  name: string,
+  task: ToolingTaskShape,
+  args: ReadonlyArray<string>,
+): ToolingCompileError | undefined =>
+  task.arguments === false && args.length > 0
+    ? new ToolingCompileError({
+        message: `Tooling command ${name} does not accept positional arguments.`,
+        tool: name,
+        remediation: `Run \`lando ${name}\` without arguments.`,
+      })
+    : undefined;
 
 const normalizeCommands = (
   task: ToolingTaskShape,
   args: ReadonlyArray<string>,
 ): ReadonlyArray<ReadonlyArray<string>> => {
+  const forwardedArgs = task.arguments === false ? [] : args;
   const cmds = task.cmds;
   if (cmds !== undefined && cmds.length > 0) {
     return cmds.map((cmd, index) => {
-      const commandArgs = index === cmds.length - 1 ? args : [];
+      const commandArgs = index === cmds.length - 1 ? forwardedArgs : [];
       return shellCommand(cmd, commandArgs);
     });
   }
   if (task.cmd !== undefined) {
     if (typeof task.cmd === "string") {
-      return [shellCommand(task.cmd, args)];
+      return [shellCommand(task.cmd, forwardedArgs)];
     }
-    return [[...task.cmd, ...args]];
+    return [[...task.cmd, ...forwardedArgs]];
   }
   return [];
 };
@@ -202,6 +218,9 @@ export const runTooling = (
         }),
       );
     }
+
+    const argumentFailure = validateToolingArguments(options.name, task, options.args ?? []);
+    if (argumentFailure !== undefined) return yield* Effect.fail(argumentFailure);
 
     const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
     const plan = target?.plan ?? (yield* resolveToolingPlan({ landofile, appRoot }));

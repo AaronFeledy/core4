@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildToolingInvocation } from "../../src/cli/commands/tooling.ts";
+import { buildToolingInvocation, validateToolingArguments } from "../../src/cli/commands/tooling.ts";
 
 describe("buildToolingInvocation", () => {
   test("preserves pass-through argument boundaries for string tooling commands", () => {
@@ -38,5 +38,40 @@ describe("buildToolingInvocation", () => {
 
     // Then
     expect(invocation.commands).toEqual([["php", "-r", "echo $argv[1];", "two words", ""]]);
+  });
+
+  test("does not append argv when a string command already references positional parameters", () => {
+    // Given
+    const task = { cmd: 'printf "<%s>\\n" "$@"' };
+
+    // When
+    const invocation = buildToolingInvocation("printf", task, { args: ["one", "two"] });
+
+    // Then
+    expect(invocation.commands).toEqual([
+      ["sh", "-c", 'printf "<%s>\\n" "$@"', "lando-tooling", "one", "two"],
+    ]);
+  });
+
+  test.each(["echo $1", "echo $9", "echo ${1:-fallback}"])(
+    "does not append argv for authored positional form %s",
+    (cmd) => {
+      const invocation = buildToolingInvocation("positional", { cmd }, { args: ["value"] });
+
+      expect(invocation.commands[0]?.[2]).toBe(cmd);
+    },
+  );
+
+  test("rejects the drupal-scaffold composer.json deletion reproducer", () => {
+    // Given
+    const task = { cmd: "rm -f state", arguments: false as const };
+
+    // When
+    const failure = validateToolingArguments("drupal-scaffold", task, ["composer.json"]);
+
+    // Then
+    expect(failure?._tag).toBe("ToolingCompileError");
+    expect(failure?.tool).toBe("drupal-scaffold");
+    expect(failure?.message).toContain("does not accept positional arguments");
   });
 });
