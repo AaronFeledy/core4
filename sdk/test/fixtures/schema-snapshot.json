@@ -254,8 +254,10 @@
             "opensearch",
             "opensearch:2",
             "postgres",
+            "php:8.1",
             "php:8.2",
             "php:8.3",
+            "php:8.4",
             "python:3.12",
             "redis",
             "ruby:3.3",
@@ -1176,6 +1178,11 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
                   },
                   "cmd": {
                     "anyOf": [
@@ -2209,6 +2216,11 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
                   },
                   "cmd": {
                     "anyOf": [
@@ -3284,6 +3296,11 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
                   },
                   "cmd": {
                     "anyOf": [
@@ -4488,6 +4505,11 @@
                     "required": [],
                     "type": "object"
                   },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
+                  },
                   "cmd": {
                     "anyOf": [
                       {
@@ -5520,6 +5542,11 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
                   },
                   "cmd": {
                     "anyOf": [
@@ -9019,6 +9046,11 @@
                     "required": [],
                     "type": "object"
                   },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
+                  },
                   "cmd": {
                     "anyOf": [
                       {
@@ -10074,6 +10106,11 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
                   },
                   "cmd": {
                     "anyOf": [
@@ -11131,6 +11168,11 @@
                     "required": [],
                     "type": "object"
                   },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
+                  },
                   "cmd": {
                     "anyOf": [
                       {
@@ -12187,6 +12229,11 @@
                     "required": [],
                     "type": "object"
                   },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
+                  },
                   "cmd": {
                     "anyOf": [
                       {
@@ -13242,6 +13289,11 @@
                     "properties": {},
                     "required": [],
                     "type": "object"
+                  },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
                   },
                   "cmd": {
                     "anyOf": [
@@ -33484,6 +33536,11 @@
                 "properties": {},
                 "required": [],
                 "type": "object"
+              },
+              "arguments": {
+                "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                "enum": [false],
+                "type": "boolean"
               },
               "cmd": {
                 "anyOf": [
@@ -57970,6 +58027,11 @@
                     "required": [],
                     "type": "object"
                   },
+                  "arguments": {
+                    "description": "Set to false to reject caller-supplied positional arguments for this task.",
+                    "enum": [false],
+                    "type": "boolean"
+                  },
                   "cmd": {
                     "anyOf": [
                       {
@@ -58360,6 +58422,11 @@
           "properties": {},
           "required": [],
           "type": "object"
+        },
+        "arguments": {
+          "description": "Set to false to reject caller-supplied positional arguments for this task.",
+          "enum": [false],
+          "type": "boolean"
         },
         "cmd": {
           "anyOf": [
