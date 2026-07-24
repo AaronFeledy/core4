@@ -26,6 +26,7 @@ import {
   LandofileService,
   PathsService,
   ProxyService,
+  Renderer,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type {
@@ -165,6 +166,7 @@ const makeDestroyLayer = (
     readonly userDataRoot?: string;
     readonly providerDestroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
+    readonly proxyAvailable?: boolean;
   } = {},
 ) => {
   const events: string[] = [];
@@ -172,6 +174,7 @@ const makeDestroyLayer = (
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const volumes = new Set(plan.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
+  const warnings: string[] = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -233,6 +236,18 @@ const makeDestroyLayer = (
     list: () => Effect.succeed([]),
   };
 
+  const proxyLayer = Layer.succeed(ProxyService, {
+    id: "recording",
+    capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+    setup: () => Effect.void,
+    applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+    removeRoutes: (app) =>
+      Effect.sync(() => void routeRemovals.push(String(app))).pipe(
+        Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
+      ),
+    status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+    stop: Effect.void,
+  });
   const layer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     Layer.succeed(
@@ -249,17 +264,16 @@ const makeDestroyLayer = (
       capabilities: Effect.succeed(capabilities),
       select: () => Effect.succeed(provider),
     }),
-    Layer.succeed(ProxyService, {
-      id: "recording",
-      capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-      setup: () => Effect.void,
-      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
-      removeRoutes: (app) =>
-        Effect.sync(() => void routeRemovals.push(String(app))).pipe(
-          Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
-        ),
-      status: Effect.succeed({ state: "running", authorities: [], configuredApps: [] }),
-      stop: Effect.void,
+    ...(options.proxyAvailable === false ? [] : [proxyLayer]),
+    Layer.succeed(Renderer, {
+      id: "test",
+      capabilities: { color: false, interactive: false, animation: false, notifications: false },
+      message: {
+        info: () => Effect.void,
+        warn: (message) => Effect.sync(() => void warnings.push(message)),
+        error: () => Effect.void,
+      },
+      output: { stdout: () => Effect.void, stderr: () => Effect.void },
     }),
     Layer.succeed(EventService, {
       publish: (event) =>
@@ -275,7 +289,7 @@ const makeDestroyLayer = (
     }),
   );
 
-  return { layer, events, publishedEvents, destroyCalls, routeRemovals, volumes };
+  return { layer, events, publishedEvents, destroyCalls, routeRemovals, volumes, warnings };
 };
 
 const expectMissingPath = async (path: string): Promise<void> => {
@@ -289,6 +303,18 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando destroy", () => {
+  test("destroys the provider when no proxy service can be resolved", async () => {
+    const harness = makeDestroyLayer({ proxyAvailable: false });
+
+    await Effect.runPromise(destroyApp().pipe(Effect.provide(harness.layer)));
+
+    expect(harness.destroyCalls).toHaveLength(1);
+    expect(harness.routeRemovals).toEqual([]);
+    expect(harness.warnings).toEqual([
+      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+    ]);
+  });
+
   test("removes routes when provider destroy fails and reports both failures", async () => {
     // Given
     const providerFailure = new ProviderUnavailableError({
