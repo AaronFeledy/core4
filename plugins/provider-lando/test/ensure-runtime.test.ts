@@ -221,12 +221,13 @@ const canonicalEnv = (p: ReturnType<typeof paths>) => ({
   XDG_CONFIG_HOME: p.configDir,
 });
 
-const writeLaunchState = (p: ReturnType<typeof paths>, pid: number) =>
+const writeLaunchState = (p: ReturnType<typeof paths>, pid: number, runtimeBundleVersion?: string) =>
   writeFile(
     `${p.pidPath}.launch.json`,
     JSON.stringify({
       pid,
       env: canonicalEnv(p),
+      ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
     }),
   );
 
@@ -454,6 +455,36 @@ describe("ensureRuntime", () => {
         ["isServiceProcess", 4321, canonicalArgs(p)],
       ]);
       expect(await readFile(p.pidPath, "utf8")).toBe("4321");
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("setup restarts a healthy service launched from an older runtime bundle", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-ensure-runtime-bundle-upgrade-"));
+    try {
+      const calls: Call[] = [];
+      const p = paths(dir);
+      await writeFile(p.pidPath, "4321");
+      await writeLaunchState(p, 4321, "1.0.0");
+
+      await Effect.runPromise(
+        ensureRuntime({
+          platform: "linux",
+          podmanApi: reachableApi(),
+          serviceRunner: serviceRunner(calls, true),
+          runtimeBundleVersion: "2.0.0",
+          ...p,
+        }),
+      );
+
+      expect(calls.some((call) => call[0] === "terminate" && call[1] === 4321)).toBe(true);
+      expect(calls.some((call) => call[0] === "launch")).toBe(true);
+      expect(JSON.parse(await readFile(`${p.pidPath}.launch.json`, "utf8"))).toEqual({
+        pid: 9999,
+        env: canonicalEnv(p),
+        runtimeBundleVersion: "2.0.0",
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

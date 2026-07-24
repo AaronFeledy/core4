@@ -404,7 +404,10 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   const ensureGuard = Effect.unsafeMakeSemaphore(1);
   const withLaunchLock = <A, E>(body: Effect.Effect<A, E>) =>
     ensureGuard.withPermits(1)(options.runtimeLock?.(body) ?? body);
-  const ensureEffectFor = (progress?: RuntimeSetupProgress): Effect.Effect<void, ProviderUnavailableError> =>
+  const ensureEffectFor = (
+    progress?: RuntimeSetupProgress,
+    runtimeBundleVersion?: string,
+  ): Effect.Effect<void, ProviderUnavailableError> =>
     canEnsure
       ? ensureRuntime({
           platform,
@@ -417,6 +420,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
           configDir: options.runtimeConfigDir,
           socketPath: ensureSocketPath,
           pidPath: options.providerPidPath,
+          ...(runtimeBundleVersion === undefined ? {} : { runtimeBundleVersion }),
           rootlessProbes,
           withLaunchLock,
           ...(options.runtimeGenerationStore === undefined
@@ -603,7 +607,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
                           ),
                         ),
                       );
-                      yield* ensureEffectFor(progress);
+                      yield* ensureEffectFor(progress, progress.runtimeBundleVersion);
                     }),
                 }
               : { readinessCheck: ensureEffect }),

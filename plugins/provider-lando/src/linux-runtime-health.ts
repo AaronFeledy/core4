@@ -19,6 +19,7 @@ export interface LinuxRuntimeHealthDeps {
   readonly configDir: string;
   readonly socketPath: string;
   readonly pidPath: string;
+  readonly runtimeBundleVersion?: string;
   readonly generationStore?: RuntimeGenerationStore;
   readonly bootIdReader?: () => Effect.Effect<string, unknown>;
   readonly pidNamespaceReader?: () => Effect.Effect<string, unknown>;
@@ -31,7 +32,9 @@ const currentRuntimeIsOwned = (deps: LinuxRuntimeHealthDeps): Effect.Effect<bool
     if (pid === undefined || !(yield* deps.serviceRunner.isAlive(pid))) return false;
     const spec = buildPodmanServiceArgs(deps);
     const serviceProcess = yield* deps.serviceRunner.isServiceProcess?.(pid, spec) ?? Effect.succeed(false);
-    return serviceProcess && (yield* recordedLaunchMatchesSpec(deps.pidPath, pid, spec));
+    return (
+      serviceProcess && (yield* recordedLaunchMatchesSpec(deps.pidPath, pid, spec, deps.runtimeBundleVersion))
+    );
   });
 
 export const linuxRuntimeIsHealthy = (
@@ -39,9 +42,7 @@ export const linuxRuntimeIsHealthy = (
 ): Effect.Effect<boolean, ProviderUnavailableError> =>
   Effect.either(deps.podmanApi.ping).pipe(
     Effect.flatMap((reachable) =>
-      reachable._tag === "Left"
-        ? Effect.succeed(false)
-        : currentRuntimeIsOwned(deps),
+      reachable._tag === "Left" ? Effect.succeed(false) : currentRuntimeIsOwned(deps),
     ),
   );
 
