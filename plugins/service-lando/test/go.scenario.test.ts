@@ -200,7 +200,7 @@ describe("go service type — scenario: minimal HTTP server + lando go version t
     expect(result.stdout).toBe("go version go1.22.0 linux/amd64\n");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("web");
-    expect(calls[0]?.command).toEqual(["sh", "-c", "go version"]);
+    expect(calls[0]?.command).toEqual(["sh", "-c", 'go "$@"', "lando-tooling", "version"]);
   });
 
   test("`lando go build ./...` passes through args while keeping the go service target", async () => {

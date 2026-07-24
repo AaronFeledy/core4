@@ -567,7 +567,7 @@ describe("runTooling — CLI rendering", () => {
     expect(result.stderr).toBe("err-1\n");
     expect(calls).toHaveLength(1);
     expect(calls[0]?.service).toBe("appserver");
-    expect(calls[0]?.command).toEqual(["sh", "-c", "composer install"]);
+    expect(calls[0]?.command).toEqual(["sh", "-c", 'composer "$@"', "lando-tooling", "install"]);
   });
 
   test("appends pass-through args to argv-form cmd", async () => {
@@ -611,8 +611,8 @@ describe("runTooling — CLI rendering", () => {
     );
 
     expect(calls.map((call) => call.command)).toEqual([
-      ["sh", "-c", "composer install"],
-      ["sh", "-c", "phpunit --testdox"],
+      ["sh", "-c", 'composer install "$@"', "lando-tooling"],
+      ["sh", "-c", 'phpunit "$@"', "lando-tooling", "--testdox"],
     ]);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("install-out\ntest-out\n");
@@ -860,7 +860,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(result.service).toBe("appserver");
       expect(result.stdout).toBe("from-provider");
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.command).toEqual(["sh", "-c", "make"]);
+      expect(calls[0]?.command).toEqual(["sh", "-c", 'make "$@"', "lando-tooling"]);
     });
   });
 
@@ -891,7 +891,7 @@ describe("runTooling — .bun.sh script-backed tasks", () => {
       expect(result.service).toBe("appserver");
       expect(result.stdout).toBe("from-provider");
       expect(calls).toHaveLength(1);
-      expect(calls[0]?.command).toEqual(["sh", "-c", "make"]);
+      expect(calls[0]?.command).toEqual(["sh", "-c", 'make "$@"', "lando-tooling"]);
     });
   });
 

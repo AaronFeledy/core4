@@ -47,9 +47,13 @@ type RunToolingServices =
   | RuntimeProviderRegistry
   | ToolingEngine;
 
-const isNonEmptyString = (value: unknown): value is string => typeof value === "string" && value.length > 0;
-
-const joinShell = (parts: ReadonlyArray<string>): string => parts.filter(isNonEmptyString).join(" ");
+const shellCommand = (command: string, args: ReadonlyArray<string>): ReadonlyArray<string> => [
+  "sh",
+  "-c",
+  `${command} "$@"`,
+  "lando-tooling",
+  ...args,
+];
 
 const normalizeCommands = (
   task: ToolingTaskShape,
@@ -58,15 +62,13 @@ const normalizeCommands = (
   const cmds = task.cmds;
   if (cmds !== undefined && cmds.length > 0) {
     return cmds.map((cmd, index) => {
-      const lastIndex = cmds.length - 1;
-      const tail = index === lastIndex && args.length > 0 ? ` ${joinShell(args)}` : "";
-      return ["sh", "-c", `${cmd}${tail}`];
+      const commandArgs = index === cmds.length - 1 ? args : [];
+      return shellCommand(cmd, commandArgs);
     });
   }
   if (task.cmd !== undefined) {
     if (typeof task.cmd === "string") {
-      const tail = args.length > 0 ? ` ${joinShell(args)}` : "";
-      return [["sh", "-c", `${task.cmd}${tail}`]];
+      return [shellCommand(task.cmd, args)];
     }
     return [[...task.cmd, ...args]];
   }
