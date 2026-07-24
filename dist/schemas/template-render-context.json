@@ -487,6 +487,10 @@
           "additionalProperties": {
             "additionalProperties": false,
             "properties": {
+              "allowOverride": {
+                "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                "type": "boolean"
+              },
               "api": {
                 "enum": [
                   4
@@ -1051,6 +1055,10 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "webroot": {
+                "description": "Container path served as this service's HTTP document root.",
+                "type": "string"
               },
               "workingDirectory": {
                 "type": "string"
