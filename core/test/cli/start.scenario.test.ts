@@ -301,6 +301,8 @@ const makeStartLayer = (
     readonly buildAppEffect?: Effect.Effect<void, BuildPhaseFailedError>;
     readonly destroyEffect?: Effect.Effect<void, ProviderUnavailableError>;
     readonly postStartFailure?: EventError;
+    readonly proxySetupEffect?: Effect.Effect<void, ProxyError>;
+    readonly proxyApplyEffect?: Effect.Effect<void, ProxyError>;
     readonly proxyRemoveEffect?: Effect.Effect<void, ProxyError>;
     readonly recordReadiness?: boolean;
   } = {},
@@ -319,11 +321,14 @@ const makeStartLayer = (
   const proxy = {
     id: "recording",
     capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
-    setup: () => Effect.sync(() => void buildOrder.push("proxy-setup")),
+    setup: () =>
+      Effect.sync(() => void buildOrder.push("proxy-setup")).pipe(
+        Effect.zipRight(options.proxySetupEffect ?? Effect.void),
+      ),
     applyRoutes: (routes: AppPlan["routes"], app: AppPlan["id"]) =>
-      Effect.sync(() => {
-        buildOrder.push("proxy-apply");
-        return {
+      Effect.sync(() => void buildOrder.push("proxy-apply")).pipe(
+        Effect.zipRight(options.proxyApplyEffect ?? Effect.void),
+        Effect.as({
           app,
           appliedRoutes: routes,
           authorities: routes.flatMap((route) =>
@@ -333,8 +338,8 @@ const makeStartLayer = (
               port: scheme === "https" ? 4443 : 4080,
             })),
           ),
-        };
-      }),
+        }),
+      ),
     removeRoutes: () =>
       Effect.sync(() => void buildOrder.push("proxy-remove")).pipe(
         Effect.zipRight(options.proxyRemoveEffect ?? Effect.void),
@@ -821,7 +826,7 @@ describe("lando start", () => {
     expect(harness.buildOrder).toContain("proxy-remove");
   });
 
-  test("preserves app-build failure identity without rolling back a successful apply", async () => {
+  test("safely tears down a successful apply when app build fails", async () => {
     // Given
     const failure = new BuildPhaseFailedError({
       app: { kind: "user", id: plan.id, root: plan.root },
@@ -835,7 +840,8 @@ describe("lando start", () => {
 
     // Then
     expect(failureOf(exit)).toBe(failure);
-    expect(harness.destroyCalls).toHaveLength(0);
+    expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: false, removeState: false }]);
+    expect(harness.buildOrder).toContain("proxy-remove");
     expect(harness.events).toContain("task.tree.complete");
     expect(harness.buildOrder).toEqual([
       "pre-app-start",
@@ -843,7 +849,30 @@ describe("lando start", () => {
       "apply",
       "tree:test-start applied",
       "app",
+      "proxy-remove",
     ]);
+  });
+
+  test("safely tears down the provider when proxy setup fails", async () => {
+    const failure = new ProxyError({ message: "proxy setup failed", proxyId: "recording" });
+    const harness = makeStartLayer({ proxySetupEffect: Effect.fail(failure) });
+
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    expect(failureOf(exit)).toBe(failure);
+    expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: false, removeState: false }]);
+    expect(harness.buildOrder).toContain("proxy-remove");
+  });
+
+  test("removes partial routes and safely tears down when route apply fails", async () => {
+    const failure = new ProxyError({ message: "route apply failed", proxyId: "recording" });
+    const harness = makeStartLayer({ proxyApplyEffect: Effect.fail(failure) });
+
+    const exit = await Effect.runPromiseExit(startApp().pipe(Effect.provide(harness.layer)));
+
+    expect(failureOf(exit)).toBe(failure);
+    expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: false, removeState: false }]);
+    expect(harness.buildOrder.filter((entry) => entry === "proxy-remove")).toHaveLength(1);
   });
 
   test("publishes a task tree around provider.apply with one task per planned service", async () => {
@@ -1239,7 +1268,7 @@ describe("lando start", () => {
 
       expect(exit._tag).toBe("Failure");
       expect(harness.applyPlans).toHaveLength(1);
-      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
+      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: false, removeState: false }]);
       await expectMissingPath(makeLandoPaths({ userDataRoot: dataRoot }).hostProxyRunDir(plan.id, plan.root));
     });
   });
@@ -1269,7 +1298,7 @@ describe("lando start", () => {
       await Effect.runPromise(Fiber.interrupt(fiber));
 
       expect(harness.applyPlans).toHaveLength(1);
-      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: true, removeState: true }]);
+      expect(harness.destroyCalls).toEqual([{ app: String(plan.id), volumes: false, removeState: false }]);
       await expectMissingPath(hostProxyDir);
     });
   });
@@ -2258,7 +2287,7 @@ describe("lando start", () => {
         "create:app-mount",
         "create:mount-1",
         "terminate:session-web-app-mount",
-        "destroy:true:true",
+        "destroy:false:false",
       ]);
       await expectMissingPath(
         makeLandoPaths({ userDataRoot: join(root, "data") }).hostProxyRunDir(plan.id, plan.root),
@@ -2400,7 +2429,7 @@ describe("lando start", () => {
       "list:mount-1",
       "create:mount-1",
       "pause:session-web-app-mount",
-      "destroy:true:true",
+      "destroy:false:false",
     ]);
   });
 });
