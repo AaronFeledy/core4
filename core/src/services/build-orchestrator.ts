@@ -3,6 +3,7 @@ import { type Context, DateTime, Effect, FiberRef, Layer } from "effect";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import type { Redactor } from "@lando/sdk/secrets";
+import type { ArtifactRef, ProviderError } from "@lando/sdk/services";
 import {
   BuildOrchestrator,
   EventService,
@@ -68,6 +69,40 @@ const transcriptPathFor = (userDataRoot: string, plan: AppPlan, step: ArtifactBu
     scratch: isScratchPlan(plan),
   });
 
+const resolveSourceArtifact = (
+  provider: RuntimeProviderShape,
+  service: ServicePlan,
+): Effect.Effect<ArtifactRef | undefined, ProviderError> => {
+  const artifact = service.artifact;
+  if (artifact?.kind !== "ref") return Effect.succeed(undefined);
+  if (!provider.capabilities.artifactPull) {
+    return Effect.succeed(
+      artifact.digest === undefined
+        ? undefined
+        : { providerId: service.provider, ref: artifact.ref, digest: artifact.digest },
+    );
+  }
+  return provider.pullArtifact({ ref: artifact.ref });
+};
+
+const sourceIdentityMatches = (
+  complete: {
+    readonly sourceArtifactRef?: string | undefined;
+    readonly sourceArtifactDigest?: string | undefined;
+  },
+  service: ServicePlan,
+  sourceArtifact: ArtifactRef | undefined,
+): boolean => {
+  const planned = service.artifact;
+  if (planned?.kind !== "ref") return true;
+  const resolvedDigest = sourceArtifact?.digest ?? planned.digest;
+  return (
+    resolvedDigest !== undefined &&
+    complete.sourceArtifactRef === planned.ref &&
+    complete.sourceArtifactDigest === resolvedDigest
+  );
+};
+
 const buildService = (input: {
   readonly events: Context.Tag.Service<typeof EventService>;
   readonly paths: Context.Tag.Service<typeof PathsService>;
@@ -86,6 +121,18 @@ const buildService = (input: {
         : identityRedactor;
     const context = redactedBuildContext(redactor, plan, service);
     const step = yield* buildStepFor(provider, service);
+    const sourceArtifact = yield* resolveSourceArtifact(provider, service);
+    const resolvedService =
+      service.artifact?.kind === "ref" && sourceArtifact?.digest !== undefined
+        ? {
+            ...service,
+            artifact: { ...service.artifact, digest: sourceArtifact.digest },
+          }
+        : service;
+    const resolvedPlan =
+      resolvedService === service
+        ? plan
+        : { ...plan, services: { ...plan.services, [service.name]: resolvedService } };
     const transcriptPath = transcriptPathFor(paths.roots.userDataRoot, plan, step);
     const started = performance.now();
     yield* progress.startTask(service, transcriptPath);
@@ -105,7 +152,7 @@ const buildService = (input: {
           phase: step.phase,
           service: service.name,
         });
-        if (complete?.artifactRef !== undefined) {
+        if (complete?.artifactRef !== undefined && sourceIdentityMatches(complete, service, sourceArtifact)) {
           yield* publishArtifactBuildStepSkip(events, context, step);
           const digest =
             complete.artifactDigest ??
@@ -131,7 +178,13 @@ const buildService = (input: {
         timestamp: timestamp(),
       });
 
-      const artifact = yield* runProviderBuild(provider, plan, service, step.buildKey).pipe(
+      const artifact = yield* runProviderBuild({
+        provider,
+        plan: resolvedPlan,
+        service: resolvedService,
+        buildKey: step.buildKey,
+        ...(sourceArtifact === undefined ? {} : { resolvedSource: sourceArtifact }),
+      }).pipe(
         Effect.tapError(() =>
           bucket === undefined
             ? Effect.void
@@ -160,6 +213,16 @@ const buildService = (input: {
           durationMs: performance.now() - started,
           artifactRef: artifact.ref,
           ...(artifact.digest === undefined ? {} : { artifactDigest: artifact.digest }),
+          ...(service.artifact?.kind !== "ref"
+            ? {}
+            : {
+                sourceArtifactRef: service.artifact.ref,
+                ...(sourceArtifact?.digest === undefined
+                  ? service.artifact.digest === undefined
+                    ? {}
+                    : { sourceArtifactDigest: service.artifact.digest }
+                  : { sourceArtifactDigest: sourceArtifact.digest }),
+              }),
           transcriptPath,
         }).pipe(Effect.mapError((cause) => mapBuildCacheError(provider.id, cause)));
       }

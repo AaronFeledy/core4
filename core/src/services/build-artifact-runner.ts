@@ -5,15 +5,24 @@ import type { ArtifactRef, ProviderError, RuntimeProviderShape } from "@lando/sd
 
 import { artifactBuildStepsFor } from "./build-key.ts";
 
-export const runProviderBuild = (
-  provider: RuntimeProviderShape,
-  plan: AppPlan,
-  service: ServicePlan,
-  buildKey: string,
-): Effect.Effect<ArtifactRef, ProviderError> =>
+interface ProviderBuildInput {
+  readonly provider: RuntimeProviderShape;
+  readonly plan: AppPlan;
+  readonly service: ServicePlan;
+  readonly buildKey: string;
+  readonly resolvedSource?: ArtifactRef;
+}
+
+export const runProviderBuild = (input: ProviderBuildInput): Effect.Effect<ArtifactRef, ProviderError> =>
   Effect.gen(function* () {
+    const { provider, plan, service, buildKey, resolvedSource } = input;
     const artifact = service.artifact;
     if (artifact?.kind === "ref" && artifactBuildStepsFor(service).length === 0) {
+      if (resolvedSource !== undefined) {
+        return resolvedSource.digest !== undefined || artifact.digest === undefined
+          ? resolvedSource
+          : { ...resolvedSource, digest: artifact.digest };
+      }
       if (provider.capabilities.artifactPull) {
         const pulled = yield* provider.pullArtifact({ ref: artifact.ref });
         if (pulled.digest !== undefined || artifact.digest === undefined) return pulled;
