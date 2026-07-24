@@ -18,7 +18,7 @@ import { mysqlServiceType } from "./services/mysql.ts";
 import { nginxServiceType } from "./services/nginx.ts";
 import { node22ServiceType, nodeLtsServiceType } from "./services/node.ts";
 import { opensearch2ServiceType, opensearchServiceType } from "./services/opensearch.ts";
-import { php82ServiceType, php83ServiceType } from "./services/php.ts";
+import { php81ServiceType, php82ServiceType, php83ServiceType, php84ServiceType } from "./services/php.ts";
 import { postgresServiceType } from "./services/postgres.ts";
 import { python312ServiceType } from "./services/python.ts";
 import { redisServiceType } from "./services/redis.ts";
@@ -51,7 +51,7 @@ export {
   opensearch2ServiceType,
   opensearchServiceType,
 } from "./services/opensearch.ts";
-export { php82ServiceType, php83ServiceType } from "./services/php.ts";
+export { php81ServiceType, php82ServiceType, php83ServiceType, php84ServiceType } from "./services/php.ts";
 export { postgresServiceType } from "./services/postgres.ts";
 export { python312ServiceType } from "./services/python.ts";
 export { redisServiceType } from "./services/redis.ts";
@@ -80,8 +80,10 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
   ["opensearch", opensearchServiceType],
   ["opensearch:2", opensearch2ServiceType],
   ["postgres", postgresServiceType],
+  ["php:8.1", php81ServiceType],
   ["php:8.2", php82ServiceType],
   ["php:8.3", php83ServiceType],
+  ["php:8.4", php84ServiceType],
   ["python:3.12", python312ServiceType],
   ["redis", redisServiceType],
   ["ruby:3.3", ruby33ServiceType],
@@ -151,8 +153,10 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       "opensearch",
       "opensearch:2",
       "postgres",
+      "php:8.1",
       "php:8.2",
       "php:8.3",
+      "php:8.4",
       "python:3.12",
       "redis",
       "ruby:3.3",
