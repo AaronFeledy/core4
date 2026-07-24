@@ -17,6 +17,7 @@ export type {
 
 interface BuildStep {
   readonly command: string | ReadonlyArray<string>;
+  readonly phase: string;
 }
 
 const isControlCharacterCode = (code: number): boolean => code < 32 || code === 127;
@@ -67,10 +68,11 @@ const serviceBuildSteps = (service: ServicePlan): ReadonlyArray<BuildStep> => {
   if (!isRecord(extension) || !Array.isArray(extension.buildSteps)) return [];
   return extension.buildSteps.flatMap((step): ReadonlyArray<BuildStep> => {
     if (!isRecord(step)) return [];
-    if (typeof step.command === "string") return [{ command: step.command }];
+    if (step.phase !== "build") return [];
+    if (typeof step.command === "string") return [{ command: step.command, phase: step.phase }];
     if (!Array.isArray(step.command)) return [];
     const command = step.command.filter((part): part is string => typeof part === "string");
-    return command.length === step.command.length ? [{ command }] : [];
+    return command.length === step.command.length ? [{ command, phase: step.phase }] : [];
   });
 };
 
