@@ -5,11 +5,9 @@ import { LandofileShape, type ServiceConfig, ServiceName, type ServicePlan } fro
 import type { ServiceType } from "@lando/sdk/services";
 
 import {
-  FRAMEWORK_WEBROOTS,
   PHP_FEATURE_ID,
   SUPPORTED_PHP_FRAMEWORKS,
   SUPPORTED_PHP_VERSIONS,
-  frameworkWebrootPath,
   php82ServiceType,
   php83ServiceType,
   phpServiceFeature,
@@ -117,6 +115,8 @@ describe("php:8.2 ServiceType", () => {
       webroot: "/app",
       version: "8.2",
     });
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).not.toContain("AllowOverride All");
   });
 
   test("derives appName from appRoot basename when no explicit appName is provided", async () => {
@@ -133,13 +133,14 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.environment.LANDO_PROJECT).toBe("anotherapp");
   });
 
-  test("framework=drupal sets webroot to /app/web and matching APACHE_DOCUMENT_ROOT", async () => {
+  test("does not infer a webroot or AllowOverride policy from framework=drupal", async () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "drupal" });
 
-    expect(String(plan.workingDirectory)).toBe("/app/web");
-    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/web");
-    expect(plan.environment.LANDO_WEBROOT).toBe("/app/web");
-    expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "drupal", webroot: "/app/web" });
+    expect(String(plan.workingDirectory)).toBe("/app");
+    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
+    expect(plan.environment.LANDO_WEBROOT).toBe("/app");
+    expect(plan.command?.[2]).not.toContain("AllowOverride All");
+    expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "drupal", webroot: "/app" });
   });
 
   test("framework=wordpress keeps the app root as webroot", async () => {
@@ -151,24 +152,37 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "wordpress" });
   });
 
-  test("framework=laravel sets webroot to /app/public", async () => {
-    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "laravel" });
+  test("uses an explicit service webroot without enabling AllowOverride", async () => {
+    const plan = await composePhpPlan(php82ServiceType, {
+      type: "php:8.2",
+      framework: "laravel",
+      webroot: "/app/public",
+    });
 
     expect(String(plan.workingDirectory)).toBe("/app/public");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/public");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).not.toContain("AllowOverride All");
   });
 
-  test("framework=symfony sets webroot to /app/public", async () => {
-    const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "symfony" });
+  test("enables AllowOverride only when the service explicitly requests it", async () => {
+    const plan = await composePhpPlan(php82ServiceType, {
+      type: "php:8.2",
+      framework: "drupal",
+      webroot: "/app/web",
+      allowOverride: true,
+    });
 
-    expect(String(plan.workingDirectory)).toBe("/app/public");
-    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/public");
+    expect(String(plan.workingDirectory)).toBe("/app/web");
+    expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app/web");
+    expect(plan.command?.slice(0, 2)).toEqual(["sh", "-c"]);
+    expect(plan.command?.[2]).toContain("AllowOverride All");
   });
 
   test("user environment overrides framework defaults", async () => {
     const plan = await composePhpPlan(php82ServiceType, {
       type: "php:8.2",
-      framework: "drupal",
+      webroot: "/app/web",
       environment: { APACHE_DOCUMENT_ROOT: "/app/custom", FOO: "bar" },
     });
 
@@ -250,35 +264,5 @@ describe("php:8.3 ServiceType", () => {
       }),
       /reserved LANDO_\* keys.*LANDO/,
     );
-  });
-});
-
-describe("frameworkWebrootPath — single source of truth parity", () => {
-  test("derives same absolute path as inline ternary for every framework", () => {
-    for (const framework of SUPPORTED_PHP_FRAMEWORKS) {
-      const rel = FRAMEWORK_WEBROOTS[framework];
-      const expected = rel === "" ? "/app" : `/app/${rel}`;
-      expect(frameworkWebrootPath(framework)).toBe(expected);
-    }
-  });
-
-  test("returns /app for frameworks with empty relative webroot (none, wordpress)", () => {
-    expect(frameworkWebrootPath("none")).toBe("/app");
-    expect(frameworkWebrootPath("wordpress")).toBe("/app");
-  });
-
-  test("returns /app/web for drupal", () => {
-    expect(frameworkWebrootPath("drupal")).toBe("/app/web");
-  });
-
-  test("returns /app/public for laravel and symfony", () => {
-    expect(frameworkWebrootPath("laravel")).toBe("/app/public");
-    expect(frameworkWebrootPath("symfony")).toBe("/app/public");
-  });
-
-  test("every result starts with /app for all frameworks", () => {
-    for (const framework of SUPPORTED_PHP_FRAMEWORKS) {
-      expect(frameworkWebrootPath(framework)).toMatch(/^\/app(\/|$)/);
-    }
   });
 });

@@ -109,13 +109,13 @@ describe("@lando/service-lando registration", () => {
     expect(appPlan.services[ServiceName.make("db")]?.type).toBe("postgres");
   });
 
-  test("AppPlanner resolves php:8.2 and php:8.3 through PluginRegistry with framework defaults", async () => {
+  test("AppPlanner resolves php:8.2 and php:8.3 through PluginRegistry with explicit webroots", async () => {
     const appPlan = await plan({
       name: "php-app",
       runtime: 4,
       services: {
-        [ServiceName.make("web")]: { type: "php:8.2", framework: "drupal" },
-        [ServiceName.make("api")]: { type: "php:8.3", framework: "laravel" },
+        [ServiceName.make("web")]: { type: "php:8.2", framework: "drupal", webroot: "/app/web" },
+        [ServiceName.make("api")]: { type: "php:8.3", framework: "laravel", webroot: "/app/public" },
       },
     });
 

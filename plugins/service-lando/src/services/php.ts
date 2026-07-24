@@ -55,23 +55,11 @@ const PHP_FPM_LOG_SOURCES: ReadonlyArray<LogSource> = [
   },
 ];
 
-export const FRAMEWORK_WEBROOTS: Record<SupportedPhpFramework, string> = {
-  drupal: "web",
-  wordpress: "",
-  laravel: "public",
-  symfony: "public",
-  none: "",
-};
-
-export const frameworkWebrootPath = (framework: SupportedPhpFramework): string => {
-  const rel = FRAMEWORK_WEBROOTS[framework];
-  return rel === "" ? "/app" : `/app/${rel}`;
-};
-
 const PhpFeatureConfigSchema = Schema.Struct({
+  allowOverride: Schema.Boolean,
   framework: Schema.Literal(...SUPPORTED_PHP_FRAMEWORKS),
   version: Schema.Literal(...SUPPORTED_PHP_VERSIONS),
-  webroot: Schema.String,
+  webroot: PortablePath,
 });
 type PhpFeatureConfig = typeof PhpFeatureConfigSchema.Type;
 
@@ -104,14 +92,35 @@ const validateVersion = (
 
 const configFor = (ctx: ServiceFeatureContext): PhpFeatureConfig => ctx.config as PhpFeatureConfig;
 
+const apacheStartCommand = (allowOverride: boolean): ReadonlyArray<string> => {
+  const configureOverride = allowOverride
+    ? [
+        'printf "%s\\n" "<Directory \\"${document_root}\\">" "  Options -Indexes +FollowSymLinks" "  AllowOverride All" "  Require all granted" "</Directory>" > /etc/apache2/conf-available/lando-document-root.conf',
+        "a2enconf lando-document-root >/dev/null",
+      ]
+    : [];
+  return [
+    "sh",
+    "-c",
+    [
+      "set -eu",
+      'document_root="${APACHE_DOCUMENT_ROOT:-/app}"',
+      'sed -ri "s!/var/www/html!${document_root}!g" /etc/apache2/sites-available/*.conf',
+      ...configureOverride,
+      "exec apache2-foreground",
+    ].join("; "),
+  ];
+};
+
 const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  const { framework, version, webroot } = configFor(ctx);
+  const { allowOverride, framework, version, webroot } = configFor(ctx);
   const port = service.port ?? HEALTHCHECK_PORT;
 
   ctx.setArtifact({ kind: "ref", ref: service.image ?? `php:${version}-apache-bookworm` });
   if (service.image === undefined) {
     for (const step of phpPrerequisiteBuildSteps()) ctx.addBuildStep(step);
+    ctx.setCommand(apacheStartCommand(allowOverride));
   }
   ctx.setWorkingDirectory(service.workingDirectory ?? PortablePath.make(webroot));
   ctx.addEnv("APACHE_DOCUMENT_ROOT", webroot);
@@ -147,7 +156,7 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
 
   ctx.addExtension("lando-service-php", {
     framework,
-    webroot: frameworkWebrootPath(framework),
+    webroot,
     version,
   });
 };
@@ -183,14 +192,15 @@ const makePhpServiceType = (version: SupportedPhpVersion): ServiceType => ({
       try: () => {
         const resolvedVersion = validateVersion(input.service.type, version);
         const framework = validateFramework(input.service.framework);
-        const webroot = frameworkWebrootPath(framework);
+        const webroot = input.service.webroot ?? APP_MOUNT_TARGET;
+        const allowOverride = input.service.allowOverride ?? false;
 
         return {
           base: "lando" as const,
           normalizedConfig: normalizedService(input.service, resolvedVersion),
           logSources: PHP_FPM_LOG_SOURCES,
           features: [
-            { id: PHP_FEATURE_ID, config: { framework, version: resolvedVersion, webroot } },
+            { id: PHP_FEATURE_ID, config: { allowOverride, framework, version: resolvedVersion, webroot } },
             {
               id: "lando.env",
               config: { appPaths: { appRoot: "/app", projectMount: "/app" }, webroot },
