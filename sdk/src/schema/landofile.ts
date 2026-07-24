@@ -91,6 +91,12 @@ export const ServiceConfig = Schema.Struct({
   cores: Schema.optional(Schema.Array(Schema.String)),
   port: Schema.optional(Schema.Number),
   framework: Schema.optional(Schema.String),
+  webroot: Schema.optional(PortablePath).annotations({
+    description: "Container path served as this service's HTTP document root.",
+  }),
+  allowOverride: Schema.optional(Schema.Boolean).annotations({
+    description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+  }),
   root: Schema.optional(Schema.String),
   // Accept number/boolean values from YAML auto-typing and coerce to string.
   environment: Schema.optional(
