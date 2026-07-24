@@ -12,8 +12,8 @@ export const applyAppRoutes = (proxy: ProxyServiceShape, plan: AppPlan) =>
     Effect.zipRight(proxy.applyRoutes(plan.routes, plan.id)),
   );
 
-export const destroyAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
-  provider.destroy({ app: plan.id, plan }, { volumes: true, removeState: true });
+export const teardownAppliedApp = (provider: RuntimeProviderShape, plan: AppPlan) =>
+  provider.destroy({ app: plan.id, plan }, { volumes: false, removeState: false });
 
 export const removeRoutesAndDestroyApp = (
   proxy: ProxyServiceShape,
@@ -22,7 +22,7 @@ export const removeRoutesAndDestroyApp = (
 ) =>
   runAllAndMergeFailures<ProxyError | ProviderError, never>([
     proxy.removeRoutes(plan.id),
-    destroyAppliedApp(provider, plan),
+    teardownAppliedApp(provider, plan),
   ]);
 
 export const destroyAppAndRemoveRoutes = <E, R>(

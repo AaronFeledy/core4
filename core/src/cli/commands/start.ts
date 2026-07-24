@@ -28,7 +28,7 @@ import {
 
 import { compensateFailure } from "../../lifecycle/failure-compensation.ts";
 import { appliedProxyUrlsByService } from "../../lifecycle/route-urls.ts";
-import { applyAppRoutes, destroyAppliedApp, removeRoutesAndDestroyApp } from "../../lifecycle/routes.ts";
+import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../../lifecycle/routes.ts";
 import type { RedactionService } from "../../redaction/service.ts";
 import { withBuildProvider } from "../../services/build-orchestrator.ts";
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
@@ -181,7 +181,7 @@ export const startApp = (
           const inspectedServices = yield* compensateFailure(
             applyAndInspect,
             Effect.gen(function* () {
-              yield* destroyAppliedApp(provider, plan);
+              yield* teardownAppliedApp(provider, plan);
               for (const service of serviceList) {
                 yield* publishTaskFail(events, {
                   taskId: String(service.name),
@@ -215,16 +215,22 @@ export const startApp = (
             durationMs: Math.round(performance.now() - applyStart),
           });
 
-          yield* withBuildProvider(
-            builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined),
-            provider,
+          yield* compensateFailure(
+            withBuildProvider(
+              builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined),
+              provider,
+            ),
+            removeRoutesAndDestroyApp(proxy, provider, plan),
           );
 
           yield* startFileSyncSessions(plan, events, managed).pipe((effect) =>
-            compensateFailure(effect, destroyAppliedApp(provider, plan)),
+            compensateFailure(effect, removeRoutesAndDestroyApp(proxy, provider, plan)),
           );
 
-          const proxyResult = yield* applyAppRoutes(proxy, builtPlan);
+          const proxyResult = yield* compensateFailure(
+            applyAppRoutes(proxy, builtPlan),
+            removeRoutesAndDestroyApp(proxy, provider, plan),
+          );
           yield* Ref.set(routesApplied, true);
           const proxyUrls = appliedProxyUrlsByService(proxyResult);
           const servicesStarted = inspectedServices.map((service) => ({
@@ -251,7 +257,7 @@ export const startApp = (
         Effect.all([Ref.get(applyStarted), Ref.get(routesApplied)]).pipe(
           Effect.flatMap(([started, routed]) => {
             if (routed) return removeRoutesAndDestroyApp(proxy, provider, plan);
-            return started ? destroyAppliedApp(provider, plan) : Effect.void;
+            return started ? removeRoutesAndDestroyApp(proxy, provider, plan) : Effect.void;
           }),
           Effect.orDie,
         ),
