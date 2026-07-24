@@ -819,7 +819,7 @@ The canonical types are bundled into the binary (§13.5) by `@lando/service-land
 
 | `type:` | Versions | Default base | What you get out of the box |
 |---|---|---|---|
-| `php:<version>` | 8.1, 8.2, 8.3, 8.4 | `lando` | PHP-FPM, Composer 2, common extensions (gd, intl, opcache, pdo_*, mbstring, zip), framework-aware nginx/apache config selectable via `framework: <id>` (`drupal`, `wordpress`, `laravel`, `symfony`, `magento`, `none`), webroot resolution, cache mounts |
+| `php:<version>` | 8.1, 8.2, 8.3, 8.4 | `lando` | Apache PHP, Composer 2, common extensions (gd, intl, opcache, pdo_*, mbstring, zip), explicit absolute-container `webroot:` selection, and opt-in Apache `allowOverride:` policy |
 | `node:<version>` | 18, 20, 22, 24, lts | `lando` | Node + npm + yarn + pnpm + bun installers; `command:` for the dev server; `script:` for npm scripts; node_modules cache mount |
 | `python:<version>` | 3.10, 3.11, 3.12, 3.13 | `lando` | Python + pip + `uv` + venv; `framework: <id>` (`django`, `fastapi`, `flask`, `none`); requirements/pyproject install |
 | `ruby:<version>` | 3.1, 3.2, 3.3 | `lando` | Ruby + Bundler + rbenv; `framework: <id>` (`rails`, `sinatra`, `none`); bundle install hooks |
@@ -854,11 +854,13 @@ Each type's configuration schema is published from `@lando/sdk` under `@lando/sd
 - [ ] Passes `runServiceCompositionContract` (§13.1), including the base-specific env assertions (`lando` → `lando.env`/`LANDO_*` present; `l337` → no injected env layer).
 - [ ] If it contributes `AppFeature`s, passes `runAppFeatureContract` (selector match, idempotency, cycle rejection).
 - [ ] Does not import the env-layer helper directly (the §13.4 boundary gate forbids it outside the `lando.env` feature).
-- [ ] Ships its `tooling:` (§6.11.3), `creds:` (§6.12.4 where applicable), and `framework:` presets (§6.12.2) through the resolution, not through bespoke plan mutation.
+- [ ] Ships its `tooling:` (§6.11.3), `creds:` (§6.12.4 where applicable), and any supported `framework:` presets (§6.12.2) through the resolution, not through bespoke plan mutation.
 
 #### 6.12.2 Framework presets
 
-`framework:` is a normalized field on the language-runtime types (`php`, `python`, `ruby`, `go`) that selects opinionated defaults: webserver config, URL rewriting, env defaults, common build steps, and tooling additions.
+`framework:` is a normalized field on the language-runtime types that opt into opinionated defaults: webserver config, URL rewriting, env defaults, common build steps, and tooling additions.
+
+The canonical `php:<version>` types do not implement framework-name presets. PHP applications select an absolute container `webroot:` explicitly (default `/app`) and opt into `.htaccess` processing with `allowOverride: true` (default `false`). The PHP resolver rejects non-absolute paths and shell/config-unsafe characters at plan time; recipes such as Drupal own their framework-specific choice of `/app/web` and `allowOverride: true`.
 
 | Field value | Effects |
 |---|---|

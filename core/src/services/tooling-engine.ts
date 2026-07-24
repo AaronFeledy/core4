@@ -66,6 +66,7 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       return yield* Effect.fail(noCommandsError(invocation.tool));
     }
     const service = yield* resolveService(invocation, plan);
+    const cwd = invocation.cwd ?? service.appMount?.target ?? service.workingDirectory;
     const env = withAgentContextEnv(invocation.env, process.env, {
       lowerThanEnv: service.environment,
       ...(invocation.agentEnvAllowlist === undefined ? {} : { allowlist: invocation.agentEnvAllowlist }),
@@ -82,7 +83,7 @@ const providerExecRun = (invocation: ToolingInvocation, plan: AppPlan, provider:
       };
       const spec = {
         command,
-        ...(invocation.cwd === undefined ? {} : { cwd: invocation.cwd }),
+        ...(cwd === undefined ? {} : { cwd }),
         ...(env === undefined ? {} : { env }),
       };
       const result = yield* provider.exec(target, spec);

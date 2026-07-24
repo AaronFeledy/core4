@@ -703,7 +703,7 @@ describe("BuildOrchestratorLive", () => {
         pullArtifact: (spec: { readonly ref: string }) =>
           Effect.sync(() => {
             pullCalls.push(spec.ref);
-            return { providerId, ref: spec.ref };
+            return { providerId, ref: spec.ref, digest: "sha256:current" };
           }),
       };
 
@@ -716,6 +716,7 @@ describe("BuildOrchestratorLive", () => {
             expect(builtRepeat.services[web.name]?.artifact).toEqual({
               kind: "ref",
               ref: "debian:12.11-slim",
+              digest: "sha256:current",
             });
             return yield* eventService.query("build-step-skip");
           }),
@@ -732,7 +733,7 @@ describe("BuildOrchestratorLive", () => {
           serviceName: ServiceName.make("web"),
         }),
       ]);
-      expect(pullCalls).toEqual(["debian:12.11-slim"]);
+      expect(pullCalls).toEqual(["debian:12.11-slim", "debian:12.11-slim"]);
       expect(JSON.stringify(skipEvents)).not.toContain("/tmp/topsecret");
       expect(JSON.stringify(skipEvents)).not.toContain("PASSWORD");
       expect(JSON.stringify(skipEvents)).not.toContain("topsecret");
@@ -784,7 +785,65 @@ describe("BuildOrchestratorLive", () => {
         ref: "debian:12.11-slim",
         digest: "sha256:planned",
       });
-      expect(pullCalls).toEqual(["debian:12.11-slim"]);
+      expect(pullCalls).toEqual(["debian:12.11-slim", "debian:12.11-slim"]);
+    });
+  });
+
+  test("rebuilds a warm scratch artifact when its mutable base image digest changes", async () => {
+    await withTempUserRoots(async () => {
+      // Given
+      const derivedService: ServicePlan = {
+        ...web,
+        artifact: { kind: "ref", ref: "php:8.4-apache-bookworm" },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [{ id: "php-extension", phase: "build", command: ["echo", "build"] }],
+          },
+        },
+      };
+      const firstPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-base-digest-first"),
+        slug: "scratch-base-digest-first",
+        services: { [web.name]: derivedService },
+      };
+      const repeatPlan: AppPlan = {
+        ...firstPlan,
+        id: AppId.make("scratch-base-digest-second"),
+        slug: "scratch-base-digest-second",
+      };
+      let baseDigest = "sha256:first";
+      let builds = 0;
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: (spec: { readonly ref: string }) =>
+          Effect.succeed({ providerId, ref: spec.ref, digest: baseDigest }),
+        buildArtifact: () =>
+          Effect.sync(() => {
+            builds += 1;
+            return { providerId, ref: `php-derived:${builds}`, digest: `sha256:derived-${builds}` };
+          }),
+      };
+
+      // When
+      const builtRepeat = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            yield* orchestrator.build(firstPlan);
+            baseDigest = "sha256:second";
+            return yield* orchestrator.build(repeatPlan);
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      expect(builds).toBe(2);
+      expect(builtRepeat.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "php-derived:2",
+        digest: "sha256:derived-2",
+      });
     });
   });
 
@@ -835,7 +894,7 @@ describe("BuildOrchestratorLive", () => {
     });
   });
 
-  test("does not attach planned digest to legacy warm scratch cache hits for a different artifact ref", async () => {
+  test("replaces a legacy warm scratch cache entry whose artifact identity is incomplete", async () => {
     await withTempUserRoots(async () => {
       const artifactPlan: AppPlan = {
         ...plan,
@@ -874,7 +933,11 @@ describe("BuildOrchestratorLive", () => {
         }).pipe(Effect.provide(layer(provider))),
       );
 
-      expect(builtPlan.services[web.name]?.artifact).toEqual({ kind: "ref", ref: "ubuntu:24.04" });
+      expect(builtPlan.services[web.name]?.artifact).toEqual({
+        kind: "ref",
+        ref: "debian:12.11-slim",
+        digest: "sha256:planned",
+      });
     });
   });
 

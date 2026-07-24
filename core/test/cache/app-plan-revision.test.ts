@@ -18,12 +18,12 @@ import {
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CORE_VERSION } from "../../src/version.ts";
 
-test("ignores a valid revision-5 app plan with obsolete endpoint intent", async () => {
+test("ignores a valid revision-6 app plan without pinned PHP prerequisite identities", async () => {
   // Given
-  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-v5-"));
+  const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-v6-"));
   const appRoot = "/workspace/redirect-app";
   const appName = "redirect-app";
-  const key = "revision-5-key";
+  const key = "revision-6-key";
   const serviceName = ServiceName.make("web");
   const metadata = {
     resolvedAt: DateTime.unsafeMake("2026-07-21T00:00:00Z"),
@@ -76,7 +76,7 @@ test("ignores a valid revision-5 app plan with obsolete endpoint intent", async 
     extensions: {},
   });
   const body = serialize({
-    schemaVersion: 5,
+    schemaVersion: 6,
     landoVersion: CORE_VERSION,
     key,
     versionConstraints: [],
@@ -85,7 +85,7 @@ test("ignores a valid revision-5 app plan with obsolete endpoint intent", async 
   });
   const header = Buffer.alloc(APP_PLAN_CACHE_HEADER_BYTES);
   APP_PLAN_CACHE_MAGIC.copy(header, 0);
-  header.writeBigUInt64BE(5n, 4);
+  header.writeBigUInt64BE(6n, 4);
   createHash("sha256").update(body).digest().copy(header, 12);
   const persisted = Buffer.concat([header, body]);
   const path = appPlanCachePath(cacheRoot, appName, appRoot);
@@ -100,7 +100,7 @@ test("ignores a valid revision-5 app plan with obsolete endpoint intent", async 
   expect(await readFile(path)).toEqual(persisted);
 });
 
-test("includes revision 6 in the app-plan cache key", () => {
+test("includes revision 9 in the app-plan cache key", () => {
   // Given
   const input = {
     appRoot: "/workspace/revision-key",
@@ -112,6 +112,6 @@ test("includes revision 6 in the app-plan cache key", () => {
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(6n);
-  expect(key).not.toBe("4807f5d0e74a6d0454f79d4b37857fdb0e430ea367d0bdb811a0b4a8b394292b");
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(9n);
+  expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
 });

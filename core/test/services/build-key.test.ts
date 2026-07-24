@@ -102,6 +102,32 @@ describe("buildKeyForService", () => {
     expect(await key(changedRedirect)).not.toBe(await key(withRedirect));
   });
 
+  test("invalidates when resolved artifact identities change without changing command text", async () => {
+    // Given
+    const withComposerIdentity = (sha256: string) =>
+      service({
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [
+              {
+                id: "composer",
+                phase: "build",
+                command: "install-composer",
+                buildKeyInputs: { composer: { version: "2.10.2", sha256 } },
+              },
+            ],
+          },
+        },
+      });
+
+    // When
+    const pinned = await key(withComposerIdentity("first-sha"));
+    const republished = await key(withComposerIdentity("second-sha"));
+
+    // Then
+    expect(republished).not.toBe(pinned);
+  });
+
   test("keeps app-phase commands out of artifact cache identity", async () => {
     // Given
     const withInstall = service({

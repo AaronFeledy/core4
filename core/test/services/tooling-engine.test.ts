@@ -5,6 +5,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -216,6 +217,55 @@ describe("ProviderExecToolingEngineLive", () => {
     expect(result.service).toBe(ServiceName.make("worker"));
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("ok");
+  });
+
+  test("defaults provider exec cwd to the service app mount target", async () => {
+    // Given: a Drupal-like service serves from a webroot below its mounted app root.
+    const service = {
+      ...baseServicePlan("appserver", true),
+      workingDirectory: PortablePath.make("/app/web"),
+      appMount: {
+        source: AbsolutePath.make("/workspace/drupal"),
+        target: PortablePath.make("/app"),
+        readOnly: false,
+        excludes: [],
+        includes: [],
+      },
+    };
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "composer",
+      service: "appserver",
+      commands: [["composer", "create-project", "drupal/recommended-project", "."]],
+    };
+
+    // When: provider-exec tooling runs without an explicit cwd override.
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then: Composer executes at the mounted project root, not the HTTP document root.
+    expect(provider.calls[0]?.command.cwd).toBe("/app");
+  });
+
+  test("defaults provider exec cwd to the service working directory without an app mount", async () => {
+    // Given: a service has no app mount and declares its only meaningful working directory.
+    const service = {
+      ...baseServicePlan("worker", true),
+      workingDirectory: PortablePath.make("/srv/worker"),
+    };
+    const plan = makePlan([service]);
+    const provider = makeFakeProvider([{ exitCode: 0, stdout: "", stderr: "" }]);
+    const invocation: ToolingInvocation = {
+      tool: "worker-task",
+      service: "worker",
+      commands: [["worker", "run"]],
+    };
+
+    // When: provider-exec tooling runs without an explicit cwd override.
+    await Effect.runPromise(runEngine(invocation, plan, provider));
+
+    // Then: execution retains the service working directory.
+    expect(provider.calls[0]?.command.cwd).toBe("/srv/worker");
   });
 
   test("falls back to the primary service when service is not declared", async () => {
