@@ -74,7 +74,7 @@ describe("php:8.2 ServiceType", () => {
     const plan = await composePhpPlan(php82ServiceType, { type: "php:8.2" });
 
     expect(plan.type).toBe("php:8.2");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.2-apache-bookworm" });
     expect(plan.primary).toBe(true);
     expect(String(plan.workingDirectory)).toBe("/app");
 
@@ -208,7 +208,7 @@ describe("php:8.3 ServiceType", () => {
     const plan = await composePhpPlan(php83ServiceType, { type: "php:8.3" });
 
     expect(plan.type).toBe("php:8.3");
-    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.3-apache" });
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "php:8.3-apache-bookworm" });
     expect(plan.environment.LANDO_SERVICE_TYPE).toBe("php:8.3");
     expect(plan.extensions["lando-service-php"]).toMatchObject({ version: "8.3" });
   });
