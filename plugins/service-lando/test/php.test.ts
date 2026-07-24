@@ -6,7 +6,6 @@ import type { ServiceType } from "@lando/sdk/services";
 
 import {
   PHP_FEATURE_ID,
-  SUPPORTED_PHP_FRAMEWORKS,
   SUPPORTED_PHP_VERSIONS,
   php82ServiceType,
   php83ServiceType,
@@ -58,12 +57,8 @@ const expectRejectsToThrow = async (promise: Promise<unknown>, pattern: RegExp):
 };
 
 describe("php ServiceType — supported versions and frameworks", () => {
-  test("exposes 8.2 and 8.3 as supported versions", () => {
-    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.2", "8.3"]);
-  });
-
-  test("exposes drupal, wordpress, laravel, symfony, none as supported frameworks", () => {
-    expect([...SUPPORTED_PHP_FRAMEWORKS]).toEqual(["drupal", "wordpress", "laravel", "symfony", "none"]);
+  test("exposes the complete PHP version catalog", () => {
+    expect([...SUPPORTED_PHP_VERSIONS]).toEqual(["8.1", "8.2", "8.3", "8.4"]);
   });
 });
 
@@ -111,7 +106,7 @@ describe("php:8.2 ServiceType", () => {
     });
 
     expect(plan.extensions["lando-service-php"]).toEqual({
-      framework: "none",
+      allowOverride: false,
       webroot: "/app",
       version: "8.2",
     });
@@ -140,7 +135,7 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app");
     expect(plan.command?.[2]).not.toContain("AllowOverride All");
-    expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "drupal", webroot: "/app" });
+    expect(plan.extensions["lando-service-php"]).toMatchObject({ allowOverride: false, webroot: "/app" });
   });
 
   test("framework=wordpress keeps the app root as webroot", async () => {
@@ -149,13 +144,12 @@ describe("php:8.2 ServiceType", () => {
     expect(String(plan.workingDirectory)).toBe("/app");
     expect(plan.environment.APACHE_DOCUMENT_ROOT).toBe("/app");
     expect(plan.environment.LANDO_WEBROOT).toBe("/app");
-    expect(plan.extensions["lando-service-php"]).toMatchObject({ framework: "wordpress" });
+    expect(plan.extensions["lando-service-php"]).toMatchObject({ allowOverride: false });
   });
 
   test("uses an explicit service webroot without enabling AllowOverride", async () => {
     const plan = await composePhpPlan(php82ServiceType, {
       type: "php:8.2",
-      framework: "laravel",
       webroot: "/app/public",
     });
 
@@ -168,7 +162,6 @@ describe("php:8.2 ServiceType", () => {
   test("enables AllowOverride only when the service explicitly requests it", async () => {
     const plan = await composePhpPlan(php82ServiceType, {
       type: "php:8.2",
-      framework: "drupal",
       webroot: "/app/web",
       allowOverride: true,
     });
@@ -203,18 +196,6 @@ describe("php:8.2 ServiceType", () => {
     expect(plan.healthcheck?.kind).toBe("command");
     expect(plan.healthcheck?.command).toEqual(["bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]);
   });
-
-  test("rejects unsupported framework values with a remediation in the error", async () => {
-    await expectRejectsToThrow(
-      composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "magento" }),
-      /Unsupported PHP framework "magento"\./,
-    );
-
-    await expectRejectsToThrow(
-      composePhpPlan(php82ServiceType, { type: "php:8.2", framework: "magento" }),
-      /Set framework to one of: drupal, wordpress, laravel, symfony, none/,
-    );
-  });
 });
 
 describe("php:8.3 ServiceType", () => {
@@ -229,20 +210,20 @@ describe("php:8.3 ServiceType", () => {
 
   test("rejects unsupported PHP versions with remediation", async () => {
     await expectRejectsToThrow(
-      composePhpPlan(php83ServiceType, { type: "php:8.1" }),
-      /Unsupported PHP version "8.1"\./,
+      composePhpPlan(php83ServiceType, { type: "php:9.0" }),
+      /Unsupported PHP version "9.0"\./,
     );
 
     await expectRejectsToThrow(
-      composePhpPlan(php83ServiceType, { type: "php:8.1" }),
-      /Set type to one of: php:8.2, php:8.3/,
+      composePhpPlan(php83ServiceType, { type: "php:9.0" }),
+      /Set type to one of: php:8.1, php:8.2, php:8.3, php:8.4/,
     );
   });
 
-  test("rejects php:8.4 and other unsupported versions on the 8.2 service type too", async () => {
+  test("rejects versions outside the supported catalog", async () => {
     await expectRejectsToThrow(
-      composePhpPlan(php82ServiceType, { type: "php:8.4" }),
-      /Unsupported PHP version "8.4"/,
+      composePhpPlan(php82ServiceType, { type: "php:9.0" }),
+      /Unsupported PHP version "9.0"/,
     );
   });
 
