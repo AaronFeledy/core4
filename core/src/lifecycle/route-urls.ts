@@ -1,7 +1,9 @@
 import type { ProxyApplyResult, ProxyAuthority, RoutePlan, ServiceName } from "@lando/sdk/schema";
 
-const authorityUrl = (authority: ProxyAuthority, pathPrefix?: string): string =>
-  `${authority.scheme}://${authority.hostname}:${authority.port}${pathPrefix ?? ""}`;
+const authorityUrl = (authority: ProxyAuthority, pathPrefix?: string): string => {
+  const hostname = authority.hostname.includes(":") ? `[${authority.hostname}]` : authority.hostname;
+  return `${authority.scheme}://${hostname}:${authority.port}${pathPrefix ?? ""}`;
+};
 
 const routeAcceptsAuthority = (route: RoutePlan, authority: ProxyAuthority): boolean =>
   route.hostname === authority.hostname && (route.scheme === "both" || route.scheme === authority.scheme);
