@@ -57,6 +57,8 @@ export interface ServiceBuildStepIntent {
   readonly phase: string;
   /** The command(s) to run for this step. */
   readonly command: CommandSpec;
+  /** Resolved immutable artifact identities included in the image build key but not rendered as commands. */
+  readonly buildKeyInputs?: Readonly<Record<string, unknown>>;
   /** Step ids this step depends on, if any. */
   readonly dependsOn?: ReadonlyArray<string>;
 }
