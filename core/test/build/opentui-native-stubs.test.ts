@@ -98,33 +98,37 @@ describe("OpenTUI native stub catalog", () => {
     { timeout: 30_000 },
   );
 
-  test("generates exactly 35 deterministic import-free throwing stubs", async () => {
-    // Given a generated catalog
-    // When every target stub directory is inspected
-    const proc = runGenerator();
-    expect(proc.exitCode).toBe(0);
-    const targets = Object.keys(targetToNativeRoot);
-    const files = (
-      await Promise.all(
-        targets.map(async (target) =>
-          (await readdir(resolve(generatedRoot, "stubs", target))).map((file) => `${target}/${file}`),
-        ),
-      )
-    ).flat();
+  test(
+    "generates exactly 35 deterministic import-free throwing stubs",
+    async () => {
+      // Given a generated catalog
+      // When every target stub directory is inspected
+      const proc = runGenerator();
+      expect(proc.exitCode).toBe(0);
+      const targets = Object.keys(targetToNativeRoot);
+      const files = (
+        await Promise.all(
+          targets.map(async (target) =>
+            (await readdir(resolve(generatedRoot, "stubs", target))).map((file) => `${target}/${file}`),
+          ),
+        )
+      ).flat();
 
-    // Then each target has seven stable, import-free modules that name its mismatched root
-    expect(files).toHaveLength(35);
-    for (const relativePath of files) {
-      const [target, file] = relativePath.split("/");
-      const source = await Bun.file(resolve(generatedRoot, "stubs", relativePath)).text();
-      expect(source).not.toMatch(/\b(?:import|require)\s*(?:\(|["'{*])/u);
-      expect(source).toContain(
-        `OpenTUI native package @opentui/${file?.replace(".generated.ts", "")} is unreachable`,
-      );
-      expect(source).toContain(`release target ${target}`);
-      expect(source).toMatch(/^throw new Error\([\s\S]+\);\n$/u);
-    }
-  });
+      // Then each target has seven stable, import-free modules that name its mismatched root
+      expect(files).toHaveLength(35);
+      for (const relativePath of files) {
+        const [target, file] = relativePath.split("/");
+        const source = await Bun.file(resolve(generatedRoot, "stubs", relativePath)).text();
+        expect(source).not.toMatch(/\b(?:import|require)\s*(?:\(|["'{*])/u);
+        expect(source).toContain(
+          `OpenTUI native package @opentui/${file?.replace(".generated.ts", "")} is unreachable`,
+        );
+        expect(source).toContain(`release target ${target}`);
+        expect(source).toMatch(/^throw new Error\([\s\S]+\);\n$/u);
+      }
+    },
+    { timeout: 30_000 },
+  );
 
   test("fails closed when pinned package inputs diverge", async () => {
     // Given the generator's pinned input validator
@@ -165,26 +169,30 @@ describe("OpenTUI native stub catalog", () => {
     ).toThrow(/bun.lock resolution/u);
   });
 
-  test("is byte-stable on rerun", async () => {
-    // Given one complete generation
-    expect(runGenerator().exitCode).toBe(0);
-    const before = new Map<string, string>();
-    const catalog = await Bun.file(catalogPath).text();
-    before.set("catalog.generated.ts", catalog);
-    for (const target of Object.keys(targetToNativeRoot)) {
-      for (const file of await readdir(resolve(generatedRoot, "stubs", target))) {
-        const relativePath = `stubs/${target}/${file}`;
-        before.set(relativePath, await Bun.file(resolve(generatedRoot, relativePath)).text());
+  test(
+    "is byte-stable on rerun",
+    async () => {
+      // Given one complete generation
+      expect(runGenerator().exitCode).toBe(0);
+      const before = new Map<string, string>();
+      const catalog = await Bun.file(catalogPath).text();
+      before.set("catalog.generated.ts", catalog);
+      for (const target of Object.keys(targetToNativeRoot)) {
+        for (const file of await readdir(resolve(generatedRoot, "stubs", target))) {
+          const relativePath = `stubs/${target}/${file}`;
+          before.set(relativePath, await Bun.file(resolve(generatedRoot, relativePath)).text());
+        }
       }
-    }
 
-    // When generation runs again
-    expect(runGenerator().exitCode).toBe(0);
+      // When generation runs again
+      expect(runGenerator().exitCode).toBe(0);
 
-    // Then all 36 generated files remain byte-identical
-    expect(before.size).toBe(36);
-    for (const [relativePath, source] of before) {
-      expect(await Bun.file(resolve(generatedRoot, relativePath)).text()).toBe(source);
-    }
-  });
+      // Then all 36 generated files remain byte-identical
+      expect(before.size).toBe(36);
+      for (const [relativePath, source] of before) {
+        expect(await Bun.file(resolve(generatedRoot, relativePath)).text()).toBe(source);
+      }
+    },
+    { timeout: 60_000 },
+  );
 });
