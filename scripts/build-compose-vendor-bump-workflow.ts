@@ -15,6 +15,11 @@ const selectNewerTagScript = [
   "const newer = selectNewerComposeGoTag(pin.tag, candidates);",
   "if (newer !== undefined) process.stdout.write(newer);",
 ].join(" ");
+const readPinnedTagScript = [
+  'const { readComposeVendorPin } = await import("./scripts/compose-vendor.ts");',
+  'const pin = await readComposeVendorPin("spec/compose/vendor/pin.json");',
+  "process.stdout.write(pin.tag);",
+].join(" ");
 
 export const renderComposeVendorBumpWorkflow = (): string => `${GENERATED_HEADER}
 #
@@ -68,35 +73,40 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           gh auth setup-git
+          git fetch origin main:refs/remotes/origin/main
+          BRANCH_EXISTS=false
           if git ls-remote --exit-code --heads origin automation/compose-go-bump >/dev/null 2>&1; then
-            git fetch origin main:refs/remotes/origin/main automation/compose-go-bump:refs/remotes/origin/automation/compose-go-bump
+            BRANCH_EXISTS=true
+            git fetch origin automation/compose-go-bump:refs/remotes/origin/automation/compose-go-bump
             git checkout -B automation/compose-go-bump origin/automation/compose-go-bump
             git merge --no-edit origin/main
           else
             git checkout -b automation/compose-go-bump
           fi
 
-          NEW_TAG="$(gh api --paginate repos/compose-spec/compose-go/tags --jq '.[].name' | bun -e '${selectNewerTagScript}')"
-          if [ -z "$NEW_TAG" ]; then
-            echo "::notice title=compose-vendor-bump::compose-go pin is already current; nothing to bump."
-            exit 0
+          TARGET_TAG="$(gh api --paginate repos/compose-spec/compose-go/tags --jq '.[].name' | bun -e '${selectNewerTagScript}')"
+          if [ -z "$TARGET_TAG" ]; then
+            if [ "$BRANCH_EXISTS" = false ] || git diff --quiet origin/main...HEAD -- spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json; then
+              echo "::notice title=compose-vendor-bump::compose-go pin is already current; nothing to bump."
+              exit 0
+            fi
+            TARGET_TAG="$(bun -e '${readPinnedTagScript}')"
+            echo "::notice title=compose-vendor-bump::reconciling the existing $TARGET_TAG bump branch."
+          else
+            echo "::notice title=compose-vendor-bump::bumping compose-go pin to $TARGET_TAG"
           fi
-          echo "::notice title=compose-vendor-bump::bumping compose-go pin to $NEW_TAG"
 
-          git show HEAD:spec/compose/vendor/compose-spec.json > "$RUNNER_TEMP/old-compose-spec.json"
-          bun run codegen:compose-vendor --tag "$NEW_TAG"
+          git show origin/main:spec/compose/vendor/compose-spec.json > "$RUNNER_TEMP/old-compose-spec.json"
+          bun run codegen:compose-vendor --tag "$TARGET_TAG"
           bun run scripts/report-compose-schema-diff.ts "$RUNNER_TEMP/old-compose-spec.json" spec/compose/vendor/compose-spec.json > "$RUNNER_TEMP/pr-body.md"
 
-          if git diff --quiet -- spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json; then
-            echo "::notice title=compose-vendor-bump::pin already matches $NEW_TAG; nothing to commit."
-            exit 0
+          if ! git diff --quiet -- spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json; then
+            git add spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json
+            git commit -m "bump compose-go vendored schema to $TARGET_TAG"
           fi
-
-          git add spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json
-          git commit -m "bump compose-go vendored schema to $NEW_TAG"
           git push origin HEAD:automation/compose-go-bump
 
-          TITLE="bump compose-go vendored schema to $NEW_TAG"
+          TITLE="bump compose-go vendored schema to $TARGET_TAG"
           if [ -z "$(gh pr list --state open --head automation/compose-go-bump --json number --jq '.[].number')" ]; then
             gh pr create --base main --head automation/compose-go-bump --title "$TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
           else
