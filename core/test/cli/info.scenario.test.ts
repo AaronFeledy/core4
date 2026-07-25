@@ -22,9 +22,11 @@ import {
   AppPlanner,
   type ConfigService,
   LandofileService,
+  ProxyService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { TestProxyService } from "@lando/sdk/test";
 
 import { agentEnvConfigServiceLayer, emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
@@ -217,6 +219,11 @@ const makeInfoLayer = (
     readonly config?: Layer.Layer<ConfigService>;
     readonly plannedApp?: AppPlan;
     readonly providerCapabilities?: ProviderCapabilities;
+    readonly proxyAuthorities?: ReadonlyArray<{
+      readonly scheme: "http" | "https";
+      readonly hostname: string;
+      readonly port: number;
+    }>;
   },
 ) => {
   const plannedApp = options?.plannedApp ?? plan;
@@ -288,6 +295,19 @@ const makeInfoLayer = (
       capabilities: Effect.succeed(providerCapabilities),
       select: () => Effect.succeed(provider),
     }),
+    Layer.succeed(ProxyService, {
+      id: "recording",
+      capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+      setup: () => Effect.void,
+      applyRoutes: (routes, app) => Effect.succeed({ app, appliedRoutes: routes, authorities: [] }),
+      removeRoutes: () => Effect.void,
+      status: Effect.succeed({
+        state: "running",
+        authorities: options?.proxyAuthorities ?? [],
+        configuredApps: [plannedApp.id],
+      }),
+      stop: Effect.void,
+    }),
     options?.config ?? emptyConfigServiceLayer,
   );
 };
@@ -313,6 +333,46 @@ describe("lando info", () => {
     expect(output).toMatch(/memcached\s+stopped\s+no endpoints/);
     expect(output).toMatch(/valkey\s+stopped\s+no endpoints/);
     expect(output).not.toContain("localhost");
+  });
+
+  test("renders routed authorities from proxy status without exposing internal endpoints", async () => {
+    // Given
+    const routedPlan: AppPlan = {
+      ...plan,
+      services: {
+        ...plan.services,
+        [node.name]: {
+          ...node,
+          endpoints: [{ _tag: "internal", port: 3000, protocol: "http", name: "http" }],
+        },
+      },
+      routes: [
+        {
+          hostname: "node.test-info.lndo.site",
+          scheme: "https",
+          service: node.name,
+          endpoint: 3000,
+          backend: { service: node.name, protocol: "http", port: 3000 },
+        },
+      ],
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      infoApp().pipe(
+        Effect.provide(
+          makeInfoLayer("running", {
+            plannedApp: routedPlan,
+            proxyAuthorities: [{ scheme: "https", hostname: "node.test-info.lndo.site", port: 7443 }],
+          }),
+        ),
+      ),
+    );
+
+    // Then
+    const nodeInfo = result.services.find((service) => service.service === "node");
+    expect(nodeInfo?.endpoints).toEqual(["https://node.test-info.lndo.site:7443"]);
+    expect(renderInfoAppResult(result)).not.toContain("localhost:3000");
   });
 
   test("prints a visible host-proxy unavailable notice from the plan extension", async () => {
@@ -515,6 +575,7 @@ describe("lando info — resolved log sources", () => {
         capabilities: Effect.succeed(caps),
         select: () => Effect.succeed(provider),
       }),
+      Layer.succeed(ProxyService, TestProxyService),
       emptyConfigServiceLayer,
     );
   };

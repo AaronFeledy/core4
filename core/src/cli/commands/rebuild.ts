@@ -18,11 +18,13 @@ import type {
   RuntimeProviderRegistry,
   ShellRunner,
 } from "@lando/sdk/services";
+import { ProxyService } from "@lando/sdk/services";
 
+import { compensateFailure } from "../../lifecycle/failure-compensation.ts";
 import type { RedactionService } from "../../redaction/service.ts";
 import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
-import { stopApp } from "./stop.ts";
+import { stopAppWithPlan } from "./stop.ts";
 
 export type { RebuildAppError, RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
 
@@ -41,6 +43,7 @@ type RebuildAppServices =
   | LandofileService
   | PathsService
   | PluginRegistry
+  | ProxyService
   | RedactionService
   | RuntimeProviderRegistry
   | ShellRunner;
@@ -61,15 +64,19 @@ export const rebuildApp = (
   managed?: StartManagedScope,
 ): Effect.Effect<RebuildAppResult, RebuildAppError, RebuildAppServices> =>
   Effect.gen(function* () {
-    yield* stopApp({}, target);
-    const start = yield* startApp(
-      {
-        reconcile: true,
-        ...(options.signal === undefined ? {} : { signal: options.signal }),
-      },
-      target,
-      managed,
-      { forceAppBuild: true },
+    const proxy = yield* ProxyService;
+    const { plan } = yield* stopAppWithPlan({}, target);
+    const start = yield* compensateFailure(
+      startApp(
+        {
+          reconcile: true,
+          ...(options.signal === undefined ? {} : { signal: options.signal }),
+        },
+        target,
+        managed,
+        { forceAppBuild: true },
+      ),
+      proxy.removeRoutes(plan.id),
     );
     return {
       app: start.app,

@@ -55,7 +55,9 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
   - Both `pre-app-start` and `post-app-start` events were published.
   - The provider's `bringUp` was called once with the planned `AppPlan`.
   - `provider.inspect(plan)` shows both services in `state: running`.
-  - Stdout contains a final "ready" line listing each service and any explicitly host-published endpoints.
+  - Stdout contains a final "ready" line listing each service, any explicitly host-published endpoints, and
+    routed services' external authorities returned by the selected `ProxyService.applyRoutes` operation.
+    Internal service endpoints are never rendered as host URLs.
 - [ ] Test asserts a missing `.lando.yml` (running `start` outside an app dir) fails with `LandofileNotFoundError` and a remediation pointing at `lando init`.
 - [ ] Test asserts a malformed `.lando.yml` fails with `LandofileParseError` carrying `{ filePath, line }` in the rendered output.
 - [ ] Test asserts cancellation via SIGINT cleanly tears down partial state (`bringUp`'s `AbortSignal` is honored).
@@ -89,6 +91,8 @@ Depends on: **PRD-01 (SDK)**, **PRD-02 (Foundation)**, **PRD-03 (Effect services
   - Output contains the line `node` followed by `running`; it includes a direct host URL only when the endpoint is explicitly published.
   - Output contains the line `postgres` followed by `running`; an unpublished database target port is not rendered as a localhost URL.
   - Routed services retain their route authority rendering without treating internal service endpoints as direct host URLs.
+    `lando info` obtains authority host/port data from the selected `ProxyService.status` output and associates it
+    with the app's `RoutePlan`; it does not infer proxy ports or stamp authority constants into the app plan.
   - Output is plain text (no ANSI escape codes when stdout is not a TTY).
 - [ ] Test asserts running `info` against a stopped app shows each service with `state: stopped` and no endpoints.
 - [ ] Test asserts running `info` outside an app dir fails with `LandofileNotFoundError`.

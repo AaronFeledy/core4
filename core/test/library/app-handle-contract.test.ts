@@ -25,9 +25,16 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, FileSyncEngine, RuntimeProvider, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanner,
+  FileSyncEngine,
+  ProxyService,
+  RuntimeProvider,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import type { FileSyncEngineShape } from "@lando/sdk/services";
+import { TestProxyService } from "@lando/sdk/test";
 
 const testProviderLayers = [
   Layer.succeed(RuntimeProvider, TestRuntimeProvider),
@@ -36,10 +43,11 @@ const testProviderLayers = [
     capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
     select: () => Effect.succeed(TestRuntimeProvider),
   }),
+  Layer.succeed(ProxyService, TestProxyService),
 ];
 
-// A single `redis` service keeps the plan route-free (tcp endpoint, no proxy),
-// so `app.start()` performs no global-service auto-start and no file-sync work.
+// A single `redis` service keeps the plan route-free (tcp endpoint), so
+// `app.start()` performs no global-service auto-start and no file-sync work.
 const landofileYaml = (name = "embedded-app"): string =>
   `name: ${name}\nruntime: 4\nprovider: ${TestRuntimeProvider.id}\nservices:\n  cache:\n    type: redis\n    primary: true\n`;
 

@@ -10,6 +10,7 @@ import {
   AppPlanner,
   LandofileService,
   PathsService,
+  ProxyService,
   RuntimeProvider,
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
@@ -80,6 +81,19 @@ const forkLandofile = [
   "",
 ].join("\n");
 
+const routedForkLandofile = [
+  "name: forkme",
+  "runtime: 4",
+  "provider: lando",
+  "services:",
+  "  appserver:",
+  "    image: node:20-alpine",
+  "    primary: true",
+  "    routes:",
+  "      - hostname: forkme.lndo.site",
+  "",
+].join("\n");
+
 const withTempProject = async <T>(
   landofile: string | undefined,
   run: (dir: string) => Promise<T>,
@@ -127,12 +141,18 @@ interface DestroyCall {
   readonly removeState: boolean | undefined;
 }
 
+interface RouteRecorder {
+  readonly applied: string[];
+  readonly removed: string[];
+}
+
 const makeScratchForkLayer = (
   appliedPlans: AppPlan[],
   destroyCalls: DestroyCall[] = [],
   options: {
     readonly failSecondRegistryUpsert?: boolean;
     readonly onCapabilities?: () => void;
+    readonly routes?: RouteRecorder;
   } = {},
 ) => {
   const provider: RuntimeProviderShape = {
@@ -213,6 +233,25 @@ const makeScratchForkLayer = (
       ),
     ),
   );
+  const routeRecorder = options.routes;
+  const proxyLayers =
+    routeRecorder === undefined
+      ? []
+      : [
+          Layer.succeed(ProxyService, {
+            id: "recording",
+            capabilities: { wildcardHostnames: true, tls: true, pathPrefixes: true },
+            setup: () => Effect.void,
+            applyRoutes: (routes, app) =>
+              Effect.sync(() => {
+                routeRecorder.applied.push(String(app));
+                return { app, appliedRoutes: routes, authorities: [] };
+              }),
+            removeRoutes: (app) => Effect.sync(() => void routeRecorder.removed.push(String(app))),
+            status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
+            stop: Effect.void,
+          }),
+        ];
   const scratchDeps = Layer.mergeAll(
     FileSystemLive,
     LandofileServiceLive,
@@ -221,6 +260,7 @@ const makeScratchForkLayer = (
     scratchRegistryLive,
     ScratchResourceScannerLive,
     dataMoverLive,
+    ...proxyLayers,
   );
 
   return Layer.mergeAll(scratchDeps, ScratchAppServiceLive.pipe(Layer.provide(scratchDeps)));
@@ -288,6 +328,29 @@ describe("ScratchAppServiceLive fork acquire", () => {
       expect(result.sourcePlan.slug).toBe("forkme");
       expect(result.sourcePlan.name).toBe("forkme");
       expect(JSON.stringify(result.sourcePlan)).toBe(result.sourceSnapshot);
+    });
+  });
+
+  test("applies proxy routes on acquire and removes them on scope finalize", async () => {
+    await withTempProject(routedForkLandofile, async () => {
+      const appliedPlans: AppPlan[] = [];
+      const routes: RouteRecorder = { applied: [], removed: [] };
+      const handleId = await Effect.runPromise(
+        Effect.gen(function* () {
+          const service = yield* ScratchAppService;
+          return yield* Effect.scoped(
+            Effect.gen(function* () {
+              const handle = yield* service.acquire({ source: { kind: "fork" }, detached: false });
+              expect(routes.applied).toEqual([handle.id]);
+              expect(routes.removed).toEqual([]);
+              return handle.id;
+            }),
+          );
+        }).pipe(Effect.provide(makeScratchForkLayer(appliedPlans, [], { routes }))),
+      );
+
+      expect(routes.applied).toEqual([handleId]);
+      expect(routes.removed).toEqual([handleId]);
     });
   });
 
