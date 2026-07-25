@@ -316,8 +316,16 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       .destroy({ app: TEST_APP_ID }, { volumes: true })
       .pipe(Effect.mapError(mapProviderFailure("destroy succeeds for the contract fixture")));
 
+    yield* requireContract(
+      typeof provider.planSetup === "function",
+      "planSetup is callable",
+      provider.planSetup,
+    );
+    const setupPlan = yield* provider
+      .planSetup({ force: false })
+      .pipe(Effect.mapError(mapProviderFailure("planSetup returns a setup plan")));
     yield* requireContract(typeof provider.setup === "function", "setup is callable", provider.setup);
-    const setupEffect = provider.setup({ force: false });
+    const setupEffect = provider.setup(setupPlan, { force: false });
     yield* requireContract(Effect.isEffect(setupEffect), "setup returns an Effect", setupEffect);
 
     yield* requireContract(

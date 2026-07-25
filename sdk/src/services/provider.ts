@@ -6,6 +6,10 @@ import type {
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderInternalError,
+  ProviderSetupConsentDeniedError,
+  ProviderSetupPrivilegeUnavailableError,
+  ProviderSetupProvisioningError,
+  ProviderSetupUnsupportedHostError,
   ProviderUnavailableError,
   ServiceCopyError,
   ServiceExecError,
@@ -25,6 +29,7 @@ import type {
   NetworkConfig,
   ProviderCapabilities,
   ProviderId,
+  ProviderSetupPlan,
   ServiceCopyInSpec,
   ServiceCopyOutSpec,
   ServiceName,
@@ -41,6 +46,10 @@ export type ProviderError =
   | ProviderCapabilityError
   | ProviderConfigError
   | ProviderInternalError
+  | ProviderSetupConsentDeniedError
+  | ProviderSetupPrivilegeUnavailableError
+  | ProviderSetupProvisioningError
+  | ProviderSetupUnsupportedHostError
   | ProviderUnavailableError
   | ServiceExecError
   | ServiceNotFoundError
@@ -58,6 +67,8 @@ export interface ProviderSetupOptions {
   /** Parsed values of the setup flags this provider's plugin contributed via `setup.flags`. */
   readonly setupFlags?: Readonly<Record<string, unknown>>;
 }
+
+export type ProviderSetupInspectOptions = Omit<ProviderSetupOptions, "privilege">;
 
 export interface ProviderStatus {
   readonly running: boolean;
@@ -207,7 +218,13 @@ export interface RuntimeProviderShape {
   readonly capabilities: ProviderCapabilities;
 
   readonly isAvailable: Effect.Effect<boolean, ProviderUnavailableError>;
-  readonly setup: (options: ProviderSetupOptions) => Effect.Effect<void, ProviderError, Scope.Scope>;
+  readonly planSetup: (
+    options: ProviderSetupInspectOptions,
+  ) => Effect.Effect<ProviderSetupPlan, ProviderError>;
+  readonly setup: (
+    plan: ProviderSetupPlan,
+    options: ProviderSetupOptions,
+  ) => Effect.Effect<void, ProviderError, Scope.Scope>;
   readonly getStatus: Effect.Effect<ProviderStatus, ProviderError>;
   readonly getVersions: Effect.Effect<ProviderVersions, ProviderError>;
 

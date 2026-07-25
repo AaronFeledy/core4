@@ -392,7 +392,8 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   capabilities: testCapabilities,
 
   isAvailable: Effect.succeed(true),
-  setup: (_options) => Effect.void,
+  planSetup: (_options) => Effect.succeed({ providerId: TEST_PROVIDER_ID, changes: [] }),
+  setup: (_plan, _options) => Effect.void,
   getStatus: Effect.succeed({ running: true, message: "ready" }),
   getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test" }),
 

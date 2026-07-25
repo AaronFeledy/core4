@@ -166,16 +166,23 @@ const makeFakePodmanApi = (
   };
 };
 
-const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => ({
-  launch: () =>
-    Effect.sync(() => {
-      events.push("service.launch");
-      return 42;
-    }),
-  isAlive: () => Effect.succeed(false),
-  isServiceProcess: () => Effect.succeed(false),
-  terminate: () => Effect.void,
-});
+const makeFakeServiceRunner = (events: string[]): PodmanServiceRunner => {
+  const launched = new Set<number>();
+  return {
+    launch: () =>
+      Effect.sync(() => {
+        events.push("service.launch");
+        launched.add(42);
+        return 42;
+      }),
+    isAlive: (pid) => Effect.succeed(launched.has(pid)),
+    isServiceProcess: (pid) => Effect.succeed(launched.has(pid)),
+    terminate: (pid) =>
+      Effect.sync(() => {
+        launched.delete(pid);
+      }),
+  };
+};
 
 const withRuntimeProvider = async <A>(
   events: string[],
@@ -274,7 +281,8 @@ describe("provider-lando ensureRuntime factory wiring", () => {
     await withRuntimeProvider(
       events,
       async (provider) => {
-        await Effect.runPromise(Effect.scoped(provider.setup({ force: false })));
+        const setupPlan = await Effect.runPromise(provider.planSetup({ force: false }));
+        await Effect.runPromise(Effect.scoped(provider.setup(setupPlan, { force: false })));
         await Effect.runPromise(provider.apply(plan, {}));
       },
       2,

@@ -35,6 +35,14 @@ export interface EnsureRuntimeDeps {
   readonly pidPath: string;
   readonly rootlessProbes?: RootlessProbes;
   readonly readinessPolicy?: RetryPolicy;
+  readonly setupProgress?: {
+    readonly launch: (
+      body: Effect.Effect<void, ProviderUnavailableError>,
+    ) => Effect.Effect<void, ProviderUnavailableError>;
+    readonly readiness: (
+      body: Effect.Effect<void, ProviderUnavailableError>,
+    ) => Effect.Effect<void, ProviderUnavailableError>;
+  };
 }
 
 // ping() fails fast (connection refused) while podman is cold-starting, so the
@@ -228,7 +236,11 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
     const reachable = yield* Effect.either(deps.podmanApi.ping);
     if (reachable._tag === "Right") {
       const owned = yield* currentRuntimeIsOwned(deps);
-      if (owned) return;
+      if (owned) {
+        yield* deps.setupProgress?.launch(Effect.void) ?? Effect.void;
+        yield* deps.setupProgress?.readiness(Effect.void) ?? Effect.void;
+        return;
+      }
 
       if (
         deps.serviceRunner.findMatchingServicePids !== undefined ||
@@ -257,22 +269,37 @@ const ensureLinuxRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, Provid
       }
     }
 
-    yield* reapStaleRuntime(deps);
-    yield* launchRuntime(deps);
-    yield* verifyRuntimeReachable(deps);
+    const launch = reapStaleRuntime(deps).pipe(Effect.andThen(launchRuntime(deps)));
+    yield* deps.setupProgress?.launch(launch) ?? launch;
+    const readiness = verifyRuntimeReachable(deps);
+    yield* deps.setupProgress?.readiness(readiness) ?? readiness;
   });
 
 export const ensureRuntime = (deps: EnsureRuntimeDeps): Effect.Effect<void, ProviderUnavailableError> => {
   if (deps.platform === "darwin") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("darwin"))
-      : ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.andThen(verifyRuntimeReachable(deps)));
+      : (
+          deps.setupProgress?.launch(ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)) ??
+          ensureMacOSPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)
+        ).pipe(
+          Effect.andThen(
+            deps.setupProgress?.readiness(verifyRuntimeReachable(deps)) ?? verifyRuntimeReachable(deps),
+          ),
+        );
   }
 
   if (deps.platform === "win32") {
     return deps.machineRunner === undefined
       ? Effect.fail(missingMachineRunnerError("win32"))
-      : ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.andThen(verifyRuntimeReachable(deps)));
+      : (
+          deps.setupProgress?.launch(ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)) ??
+          ensureWindowsPodmanMachine(deps.machineRunner).pipe(Effect.asVoid)
+        ).pipe(
+          Effect.andThen(
+            deps.setupProgress?.readiness(verifyRuntimeReachable(deps)) ?? verifyRuntimeReachable(deps),
+          ),
+        );
   }
 
   return ensureLinuxRuntime(deps);

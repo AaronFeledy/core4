@@ -47,6 +47,7 @@ export * from "./networking.ts";
 export * from "./notify-config.ts";
 export * from "./plugin.ts";
 export * from "./plugin-trust.ts";
+export * from "./provider-setup.ts";
 export * from "./primitives.ts";
 export * from "./prompt.ts";
 export * from "./recipe.ts";

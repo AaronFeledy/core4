@@ -8,16 +8,13 @@
  * resolved selection. `setupProviderPlan` is the minimal plan used to drive
  * provider selection from the registry.
  */
-import { DateTime } from "effect";
+import { DateTime, Effect } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, type AppPlan, ProviderId } from "@lando/sdk/schema";
 
-import {
-  type InteractionPrompter,
-  makePromiseInteractionPrompter,
-} from "../../../../interaction/prompter.ts";
-import { makeInteractionService } from "../../../../interaction/service.ts";
+import type { InteractionUnavailableError } from "@lando/sdk/errors";
+import type { InteractionError, InteractionServiceShape } from "@lando/sdk/services";
 import type { ProviderSelectionResolution } from "../../../../providers/precedence.ts";
 
 export const SYSTEM_RUNTIME_PROVIDERS: Record<string, string> = {
@@ -60,28 +57,28 @@ const SETUP_PROVIDER_CHOICES: ReadonlyArray<{ value: string; label: string }> = 
   { value: "podman", label: "Podman (existing installation required)" },
 ];
 
-export const maybeSelectSetupProvider = async (params: {
+export const maybeSelectSetupProvider = (params: {
   readonly resolution: ProviderSelectionResolution;
   readonly yes: boolean;
   readonly nonInteractive: boolean;
   readonly skipProvider: boolean;
-  readonly interaction?: InteractionPrompter;
-}): Promise<ProviderId> => {
+  readonly interaction?: InteractionServiceShape;
+}): Effect.Effect<ProviderId, Exclude<InteractionError, InteractionUnavailableError>> => {
   const fallback = params.resolution.providerId;
-  if (params.resolution.source !== "default") return fallback;
-  if (params.yes || params.nonInteractive || params.skipProvider) return fallback;
-  const interaction = params.interaction ?? makePromiseInteractionPrompter(makeInteractionService());
-  try {
-    const chosen = await interaction.select({
+  if (params.resolution.source !== "default") return Effect.succeed(fallback);
+  if (params.yes || params.nonInteractive || params.skipProvider || params.interaction === undefined) {
+    return Effect.succeed(fallback);
+  }
+  return Effect.scoped(
+    params.interaction.select({
       message: "Select the container runtime provider for Lando",
       name: "provider",
       default: String(fallback),
       choices: SETUP_PROVIDER_CHOICES,
       yes: params.yes,
-      ...(params.nonInteractive ? { interactive: false } : {}),
-    });
-    return chosen === "" ? fallback : ProviderId.make(chosen);
-  } catch {
-    return fallback;
-  }
+    }),
+  ).pipe(
+    Effect.map((chosen) => (chosen === "" ? fallback : ProviderId.make(chosen))),
+    Effect.catchTag("InteractionUnavailableError", () => Effect.succeed(fallback)),
+  );
 };
