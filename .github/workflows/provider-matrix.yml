@@ -152,7 +152,7 @@ jobs:
             sudo sysctl kernel.apparmor_restrict_unprivileged_userns=0
           fi
           if ! grep -q "systemd.unified_cgroup_hierarchy" /proc/cmdline; then
-            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via ubuntu-24.04 default (systemd.unified_cgroup_hierarchy)"
+            echo "::notice title=ci-runtime::cgroups v2 unified hierarchy assumed via Ubuntu LTS default (systemd.unified_cgroup_hierarchy)"
           fi
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true
