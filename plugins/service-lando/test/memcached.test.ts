@@ -42,7 +42,7 @@ describe("memcached ServiceType", () => {
     expect(plan.type).toBe("memcached");
     expect(plan.artifact).toEqual({ kind: "ref", ref: "memcached:1.6" });
     expect(plan.command).toEqual(["memcached", "-p", "11211"]);
-    expect(plan.endpoints).toEqual([{ port: 11211, protocol: "tcp", name: "cache" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 11211, protocol: "tcp", name: "cache" }]);
     expect(plan.storage).toEqual([]);
     expect(plan.appMount).toBeUndefined();
   });

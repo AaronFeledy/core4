@@ -64,7 +64,7 @@ describe("opensearch ServiceType", () => {
       expect(plan.storage[0]?.store).toBe("myapp-opensearch-data");
       expect(String(plan.storage[0]?.target)).toBe("/usr/share/opensearch/data");
       expect(plan.storage[0]?.readOnly).toBe(false);
-      expect(plan.endpoints).toEqual([{ port: 9200, protocol: "http", name: "search" }]);
+      expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "search" }]);
     });
 
     test(`${label} includes single-node and security-disabled env defaults for local dev`, async () => {
@@ -139,7 +139,7 @@ describe("opensearch ServiceType", () => {
   test("uses the authored service name for the endpoint", async () => {
     const plan = await planOpenSearchService(opensearchServiceType, { type: "opensearch" }, "indexer");
 
-    expect(plan.endpoints).toEqual([{ port: 9200, protocol: "http", name: "indexer" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "indexer" }]);
   });
 
   test("service description documents Apache 2.0 licensing compared to Elasticsearch", () => {

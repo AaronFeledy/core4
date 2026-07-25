@@ -6,6 +6,8 @@ import { ServiceFeatureError } from "@lando/sdk/errors";
 import { PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 const DEFAULT_IMAGE = "redis:7";
 const DEFAULT_COMMAND = ["redis-server", "--appendonly", "yes"];
 const DEFAULT_PORT = 6379;
@@ -28,7 +30,7 @@ const applyRedisFeature = (ctx: ServiceFeatureContext): void => {
     target: DATA_TARGET,
     readOnly: false,
   });
-  ctx.addEndpoint({ port: service.port ?? DEFAULT_PORT, protocol: "tcp", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
 
   for (const dependency of service.dependsOn ?? []) {
     ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });

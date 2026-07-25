@@ -9,6 +9,7 @@ import {
   NotImplementedError,
   type PluginLoadError,
   type PluginManifestError,
+  PublicationUnsupportedError,
   ServiceTypeCollisionError,
 } from "@lando/sdk/errors";
 import {
@@ -25,6 +26,7 @@ import {
   PortablePath,
   type ProviderCapabilities,
   type ProviderId,
+  type RouteInput,
   type RoutePlan,
   type ServiceConfig,
   ServiceName,
@@ -597,12 +599,69 @@ type PlannedServiceDraft = {
   readonly authored: ReturnType<typeof authoredStorageScopes>;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
-  readonly routes: ServicePlan["routes"];
+  readonly routes: ReadonlyArray<RouteInput>;
   readonly extensions: ServicePlan["extensions"];
 };
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
 const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
+
+const duplicateEndpointNameError = (
+  appRoot: string,
+  serviceName: string,
+  endpointName: string,
+): LandofileValidationError =>
+  new LandofileValidationError({
+    message: `Service ${serviceName} declares duplicate endpoint name ${endpointName}.`,
+    file: `${appRoot}/.lando.yml`,
+    issues: [`services.${serviceName}.endpoints`],
+  });
+
+type RoutableEndpoint = ServicePlan["endpoints"][number] & {
+  readonly protocol: "http" | "https";
+  readonly port: number;
+};
+
+const isRoutableEndpoint = (endpoint: ServicePlan["endpoints"][number]): endpoint is RoutableEndpoint =>
+  "port" in endpoint && (endpoint.protocol === "http" || endpoint.protocol === "https");
+
+const resolveRoute = (
+  appRoot: string,
+  serviceName: string,
+  endpoints: ServicePlan["endpoints"],
+  route: RouteInput,
+): Effect.Effect<RoutePlan, LandofileValidationError> => {
+  const candidates = endpoints.filter(isRoutableEndpoint);
+  const endpoint =
+    route.endpoint === undefined
+      ? candidates[0]
+      : candidates.find((candidate) =>
+          typeof route.endpoint === "number"
+            ? candidate.port === route.endpoint
+            : candidate.name === route.endpoint,
+        );
+  if (endpoint === undefined) {
+    return Effect.fail(
+      new LandofileValidationError({
+        message: `Route ${route.hostname} for service ${serviceName} does not resolve to an HTTP endpoint.`,
+        file: `${appRoot}/.lando.yml`,
+        issues: [`services.${serviceName}.routes`],
+      }),
+    );
+  }
+  return Effect.succeed({
+    hostname: route.hostname,
+    scheme: route.scheme ?? "https",
+    service: ServiceName.make(serviceName),
+    ...(route.endpoint === undefined ? {} : { endpoint: route.endpoint }),
+    ...(route.pathPrefix === undefined ? {} : { pathPrefix: route.pathPrefix }),
+    backend: {
+      service: ServiceName.make(serviceName),
+      protocol: endpoint.protocol,
+      port: endpoint.port,
+    },
+  });
+};
 
 const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArray<string> =>
   base === "lando" ? LANDO_BASE_DEFAULT_FEATURE_IDS : L337_BASE_DEFAULT_FEATURE_IDS;
@@ -740,7 +799,10 @@ const planApp = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
-): Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError> => {
+): Effect.Effect<
+  AppPlan,
+  LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
+> => {
   const appRoot = process.cwd();
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
@@ -766,6 +828,7 @@ const planApp = (
   }> = [];
   const fileSyncEntries: Array<FileSyncPlan> = [];
   const aggregatedRoutes: Array<RoutePlan> = [];
+  const routeIndexes = new Map<string, number>();
   const seenStoreNames = new Set<string>();
 
   const pushStore = (
@@ -777,6 +840,16 @@ const planApp = (
     if (seenStoreNames.has(name)) return;
     seenStoreNames.add(name);
     aggregatedStores.push({ name, scope, kind, ...(key === undefined ? {} : { key }) });
+  };
+
+  const pushRoute = (route: RoutePlan): number => {
+    const key = `${route.hostname}\u0000${route.scheme}`;
+    const existing = routeIndexes.get(key);
+    if (existing !== undefined) return existing;
+    const index = aggregatedRoutes.length;
+    aggregatedRoutes.push(route);
+    routeIndexes.set(key, index);
+    return index;
   };
 
   return Effect.gen(function* () {
@@ -1058,7 +1131,7 @@ const planApp = (
         authored,
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
-        routes: servicePlan.routes,
+        routes: [...(service.routes ?? []), ...(landofile.proxy?.[ServiceName.make(name)] ?? [])],
         extensions: servicePlan.extensions,
       });
     }
@@ -1125,7 +1198,7 @@ const planApp = (
           ? draft
           : { ...draft, buildSteps: [...draft.buildSteps, ...redirectSteps] };
       const servicePlan = {
-        ...servicePlanFromDraft(draftForPlan, routes, metadata, extensionsForPlan),
+        ...servicePlanFromDraft(draftForPlan, [], metadata, extensionsForPlan),
         ...(logSources.length === 0 ? {} : { logSources }),
       };
 
@@ -1163,25 +1236,63 @@ const planApp = (
         ),
       };
 
+      const endpointNames = new Set<string>();
+      for (const endpoint of servicePlanWithCapabilityRealization.endpoints) {
+        if (endpoint.name === undefined) continue;
+        if (endpointNames.has(endpoint.name)) {
+          yield* Effect.fail(duplicateEndpointNameError(appRoot, name, endpoint.name));
+        }
+        endpointNames.add(endpoint.name);
+      }
+
+      const routeRefs: Array<ServicePlan["routes"][number]> = [];
+      if (routes.length > 0) {
+        for (const route of routes) {
+          routeRefs.push({
+            index: pushRoute(
+              yield* resolveRoute(appRoot, name, servicePlanWithCapabilityRealization.endpoints, route),
+            ),
+          });
+        }
+      } else {
+        const endpoint = servicePlanWithCapabilityRealization.endpoints.find(isRoutableEndpoint);
+        if (endpoint !== undefined) {
+          routeRefs.push({
+            index: pushRoute({
+              hostname: `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}`,
+              scheme: "https",
+              service: ServiceName.make(name),
+              ...(endpoint.name === undefined ? { endpoint: endpoint.port } : { endpoint: endpoint.name }),
+              backend: {
+                service: ServiceName.make(name),
+                protocol: endpoint.protocol,
+                port: endpoint.port,
+              },
+            }),
+          });
+        }
+      }
+      const servicePlanWithRoutes: ServicePlan = {
+        ...servicePlanWithCapabilityRealization,
+        routes: routeRefs,
+      };
+
       if (
-        servicePlanWithCapabilityRealization.endpoints.some((endpoint) => endpoint.port !== undefined) &&
+        servicePlanWithRoutes.endpoints.some((endpoint) => endpoint._tag === "published") &&
         providerCapabilities.hostPortPublish === "none"
       ) {
         yield* Effect.fail(
-          missingCapability(
-            provider,
-            name,
-            "host port publish",
-            "hostPortPublish",
-            `Choose a provider with host port publish support or remove published ports from service ${name}.`,
-          ),
+          new PublicationUnsupportedError({
+            message: `Provider ${provider} cannot publish endpoints for service ${name}.`,
+            providerId: provider,
+            service: name,
+            capability: "hostPortPublish",
+            remediation: `Choose a provider with host port publish support or make service ${name} endpoints internal.`,
+          }),
         );
       }
 
-      if (
-        servicePlanWithCapabilityRealization.storage.length > 0 &&
-        !providerCapabilities.persistentStorage
-      ) {
+      if (servicePlanWithRoutes.storage.length > 0 && !providerCapabilities.persistentStorage) {
         yield* Effect.fail(
           missingCapability(
             provider,
@@ -1193,7 +1304,7 @@ const planApp = (
         );
       }
 
-      const healthcheck = servicePlanWithCapabilityRealization.healthcheck;
+      const healthcheck = servicePlanWithRoutes.healthcheck;
       if (healthcheck !== undefined && healthcheck.kind !== "command" && healthcheck.kind !== "none") {
         yield* Effect.fail(
           missingCapability(
@@ -1207,13 +1318,13 @@ const planApp = (
       }
 
       serviceHostnames[name] = hostnames;
-      services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithCapabilityRealization);
+      services[name] = Schema.encodeSync(ServicePlan)(servicePlanWithRoutes);
 
       for (const shadow of shadowResult.shadowStores) {
         pushStore(shadow.name, shadow.scope);
       }
 
-      for (const mount of servicePlanWithCapabilityRealization.storage) {
+      for (const mount of servicePlanWithRoutes.storage) {
         const authoredInfo = authored.byStore.get(mount.store);
         pushStore(
           mount.store,
@@ -1230,22 +1341,23 @@ const planApp = (
             appRoot,
             appName,
             serviceName: name,
-            servicePlan: servicePlanWithCapabilityRealization,
+            servicePlan: servicePlanWithRoutes,
             engineId: fileSyncEngineId,
           }),
         );
       }
+    }
 
-      for (const ep of servicePlanWithCapabilityRealization.endpoints) {
-        if (ep.protocol !== "http" && ep.protocol !== "https") continue;
-        const endpointRef: string | number | undefined = ep.name !== undefined ? ep.name : ep.port;
-        aggregatedRoutes.push({
-          hostname: `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}`,
-          scheme: "https",
-          service: ServiceName.make(name),
-          ...(endpointRef !== undefined ? { endpoint: endpointRef } : {}),
-        });
-      }
+    if (aggregatedRoutes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
+      yield* Effect.fail(
+        new CapabilityError({
+          message: "Routes require provider capability sharedCrossAppNetwork.",
+          feature: "routes",
+          capability: "sharedCrossAppNetwork",
+          providerId: String(provider),
+          remediation: "Choose a provider with shared cross-app networking or remove the authored routes.",
+        }),
+      );
     }
 
     const serviceNames = Object.keys(services);

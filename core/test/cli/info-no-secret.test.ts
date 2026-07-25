@@ -77,7 +77,7 @@ const postgres: ServicePlan = {
   environment: { POSTGRES_USER: "lando", POSTGRES_DB: "appdb", POSTGRES_PASSWORD: SECRET_VALUE },
   mounts: [],
   storage: [],
-  endpoints: [{ port: 5432, protocol: "tcp", name: "database" }],
+  endpoints: [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: [],
   hostAliases: [],

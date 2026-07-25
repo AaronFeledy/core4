@@ -44,6 +44,6 @@ describe("mariadb ServiceType", () => {
     expect(plan.storage).toHaveLength(1);
     expect(plan.storage[0]?.store).toBe("myapp-mariadb-data");
     expect(String(plan.storage[0]?.target)).toBe("/var/lib/mysql");
-    expect(plan.endpoints).toEqual([{ port: 3306, protocol: "tcp", name: "db" }]);
+    expect(plan.endpoints).toEqual([{ _tag: "internal", port: 3306, protocol: "tcp", name: "db" }]);
   });
 });

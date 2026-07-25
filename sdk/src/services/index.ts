@@ -94,6 +94,7 @@ import type {
   ProcessTimeoutError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
   RecipeManifestNotFoundError,
   RecipeManifestParseError,
   RecipeManifestValidationError,
@@ -499,7 +500,10 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     readonly plan: (
       landofile: LandofileShape,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>;
+    ) => Effect.Effect<
+      AppPlan,
+      LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
+    >;
   }
 >() {}
 

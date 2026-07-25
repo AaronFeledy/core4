@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
-import { EndpointPlan, RoutePlan } from "./networking.ts";
+import { EndpointInfo } from "./endpoint.ts";
+import { RoutePlan } from "./networking.ts";
 
 // ServiceInfo — provider-neutral runtime info returned by `lando info`.
 
@@ -13,7 +14,7 @@ export const ServiceInfo = Schema.Struct({
   primary: Schema.Boolean,
   status: Schema.Literal("unknown", "stopped", "starting", "running", "healthy", "unhealthy", "error"),
   /** Resolved endpoints (host-reachable). */
-  endpoints: Schema.optional(Schema.Array(EndpointPlan)),
+  endpoints: Schema.optional(Schema.Array(EndpointInfo)),
   /** Resolved routes pointing at this service. */
   routes: Schema.optional(Schema.Array(RoutePlan)),
 });

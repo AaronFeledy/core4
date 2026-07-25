@@ -155,7 +155,7 @@ describe("opensearch service type — scenario: OpenSearch + lando os-cli toolin
       kind: "ref",
       ref: "opensearchproject/opensearch:2",
     });
-    expect(search.endpoints).toEqual([{ port: 9200, protocol: "http", name: "search" }]);
+    expect(search.endpoints).toEqual([{ _tag: "internal", port: 9200, protocol: "http", name: "search" }]);
     expect(search.storage).toHaveLength(1);
     expect(search.storage[0]?.store).toBe("myapp-opensearch-data");
     expect(search.healthcheck?.kind).toBe("command");

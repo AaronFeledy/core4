@@ -114,12 +114,44 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
       : [],
   endpoints:
     name === "node"
-      ? [{ port: 3000, protocol: "http", name: "http" }]
+      ? [
+          {
+            _tag: "published",
+            port: 3000,
+            protocol: "http",
+            name: "http",
+            publication: { hostPort: 3000 },
+          },
+        ]
       : name === "postgres"
-        ? [{ port: 5432, protocol: "tcp", name: "database" }]
+        ? [
+            {
+              _tag: "published",
+              port: 5432,
+              protocol: "tcp",
+              name: "database",
+              publication: { hostPort: 5432 },
+            },
+          ]
         : name === "memcached"
-          ? [{ port: 11211, protocol: "tcp", name: "cache" }]
-          : [{ port: 6379, protocol: "tcp", name: "valkey" }],
+          ? [
+              {
+                _tag: "published",
+                port: 11211,
+                protocol: "tcp",
+                name: "cache",
+                publication: { hostPort: 11211 },
+              },
+            ]
+          : [
+              {
+                _tag: "published",
+                port: 6379,
+                protocol: "tcp",
+                name: "valkey",
+                publication: { hostPort: 6379 },
+              },
+            ],
   routes: [],
   dependsOn: name === "node" ? [{ service: ServiceName.make("postgres"), condition: "started" }] : [],
   hostAliases: [],

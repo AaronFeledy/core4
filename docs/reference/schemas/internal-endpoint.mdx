@@ -1,0 +1,18 @@
+---
+title: Internal Endpoint
+description: Service-facing endpoint that is never published on the host.
+---
+
+# Internal Endpoint
+
+Service-facing endpoint that is never published on the host.
+
+[JSON Schema artifact](../../../dist/schemas/internal-endpoint.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `_tag` | Yes | `string` | Discriminates a service-only endpoint. | — | `internal` | — | — |
+| `protocol` | Yes | `string` | Service-facing network protocol. | — | `http`, `https`, `tcp`, `udp`, `unix` | — | — |
+| `port` | No | `integer` | a number between 1 and 65535 | — | — | — | — |
+| `name` | No | `string` | Optional endpoint name. | — | — | — | — |
+| `socketPath` | No | `string` | a string | — | — | — | — |

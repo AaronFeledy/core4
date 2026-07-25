@@ -55,8 +55,14 @@ const mailpitService = (): ServicePlan => ({
   mounts: [],
   storage: [],
   endpoints: [
-    { port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
-    { port: MAILPIT_WEB_PORT, protocol: "http", name: "web" },
+    { _tag: "internal", port: MAILPIT_SMTP_PORT, protocol: "tcp", name: "smtp" },
+    {
+      _tag: "published",
+      port: MAILPIT_WEB_PORT,
+      protocol: "http",
+      name: "web",
+      publication: { bindAddress: "127.0.0.1", hostPort: MAILPIT_WEB_PORT },
+    },
   ],
   routes: [],
   dependsOn: [],

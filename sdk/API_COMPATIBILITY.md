@@ -4,6 +4,9 @@
 
 ## Compatibility notes
 
+- `EndpointInput` and `EndpointPlan` are now explicit `_tag: "internal" | "published"` unions. Published network endpoints carry `publication: { bindAddress?, hostPort? }`; internal endpoints are never host-visible, Unix sockets cannot be published, and runtime-assigned ports belong to endpoint materialization output. `RoutePlan.backend` is planner-resolved. The schema barrel additively exports `BindAddress`, `PortNumber`, `InternalEndpoint`, and `PublishedEndpoint`.
+- `@lando/sdk/errors` additively exports `PublicationUnsupportedError` for plan-time rejection when a provider cannot satisfy explicit endpoint publication intent.
+
 - The bootstrap event contract replaces the unreleased level-bearing `PreBootstrapEvent` with explicit `PreBootstrapMinimalEvent` / `PostBootstrapMinimalEvent`, `PreBootstrapPluginsEvent` / `PostBootstrapPluginsEvent`, `PreBootstrapCommandsEvent` / `PostBootstrapCommandsEvent`, `PreBootstrapProviderEvent` / `PostBootstrapProviderEvent`, `PreBootstrapAppEvent` / `PostBootstrapAppEvent`, and `PreBootstrapToolingEvent` / `PostBootstrapToolingEvent` schemas. Aggregate `PostBootstrapEvent` remains and no longer carries `level`. `PluginManifest.bootstrap` defaults to `app`, and `SubscriberLevelMismatchError` reports exact bootstrap-selector coverage failures.
 - `LandoPaths.pluginStateDir(pluginId)` additively exposes the canonical durable plugin-state root `<userDataRoot>/plugins/<pluginId>` so plugin contexts never reuse app-plugin installation paths.
 - `TaskStartEvent` additively accepts optional branded `transcriptPath: AbsolutePath`; older task-start payloads continue to decode without it.
@@ -102,7 +105,17 @@
 - `deprecateField`
 - `deprecateSchema`
 - `EndpointInput`
+- `BindAddress`
+- `PortNumber`
+- `InternalEndpoint`
+- `InternalEndpointInput`
+- `PublishedEndpoint`
+- `PublishedEndpointInput`
+- `PublishedEndpointInfo`
 - `EndpointPlan`
+- `EndpointInfo`
+- `EndpointMaterialization`
+- `EndpointPublication`
 - `EmbeddingPluginDiscoveryPolicy`
 - `EmbeddingPluginPolicy`
 - `EmbeddingPluginPolicyMode`

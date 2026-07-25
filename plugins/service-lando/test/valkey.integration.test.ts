@@ -111,7 +111,9 @@ describe("valkey service type — live integration: RESP ping/set/get", () => {
       try {
         const landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "valkeyinttest",
-          services: { cache: { type: "valkey", port: VALKEY_PORT } },
+          services: {
+            cache: { type: "valkey", port: VALKEY_PORT, ports: [`${VALKEY_PORT}:${VALKEY_PORT}`] },
+          },
         });
         const service = landofile.services?.[ServiceName.make("cache")];
         if (service === undefined) throw new Error("cache service missing");

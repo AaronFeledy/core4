@@ -40,6 +40,7 @@ const servicePlanFixture: typeof ServicePlan.Encoded = {
   storage: [],
   endpoints: [
     {
+      _tag: "internal",
       port: 3000,
       protocol: "http",
       name: "web",
@@ -144,7 +145,7 @@ describe("ServicePlan", () => {
   test("rejects an unknown endpoint protocol literal", () => {
     const result = Schema.decodeUnknownEither(ServicePlan)({
       ...servicePlanFixture,
-      endpoints: [{ port: 3000, protocol: "websocket" }],
+      endpoints: [{ _tag: "internal", port: 3000, protocol: "websocket" }],
     });
     expect(Either.isLeft(result)).toBe(true);
     if (Either.isLeft(result)) {

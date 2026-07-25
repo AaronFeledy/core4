@@ -89,7 +89,13 @@ describe("memcached service type — live integration: text protocol set/get", (
       try {
         const landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "memcachedinttest",
-          services: { cache: { type: "memcached", port: MEMCACHED_PORT } },
+          services: {
+            cache: {
+              type: "memcached",
+              port: MEMCACHED_PORT,
+              ports: [`${MEMCACHED_PORT}:${MEMCACHED_PORT}`],
+            },
+          },
         });
         const service = landofile.services?.[ServiceName.make("cache")];
         if (service === undefined) throw new Error("cache service missing");

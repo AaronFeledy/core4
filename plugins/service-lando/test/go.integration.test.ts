@@ -107,7 +107,15 @@ const goServicePlan = (appRoot: AbsolutePath): ServicePlan => ({
   },
   mounts: [],
   storage: [],
-  endpoints: [{ port: GO_PORT, protocol: "http", name: "http" }],
+  endpoints: [
+    {
+      _tag: "published",
+      port: GO_PORT,
+      protocol: "http",
+      name: "http",
+      publication: { bindAddress: "127.0.0.1", hostPort: GO_PORT },
+    },
+  ],
   routes: [],
   dependsOn: [],
   hostAliases: [],

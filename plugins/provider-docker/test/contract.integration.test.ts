@@ -86,7 +86,15 @@ const makeService = (overrides: Partial<Pick<ServicePlan, "command" | "entrypoin
     },
   ],
   storage: [],
-  endpoints: [{ port: 31080, protocol: "http", name: "http" }],
+  endpoints: [
+    {
+      _tag: "published",
+      port: 31080,
+      protocol: "http",
+      name: "http",
+      publication: { bindAddress: "127.0.0.1", hostPort: 31080 },
+    },
+  ],
   routes: [],
   dependsOn: [],
   hostAliases: [],

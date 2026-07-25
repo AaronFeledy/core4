@@ -14,9 +14,10 @@ import type {
   PluginManifestError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
 } from "@lando/sdk/errors";
 import { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "@lando/sdk/events";
-import type { AppPlan, AppRef, EndpointPlan } from "@lando/sdk/schema";
+import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   type AppPlanner,
   BuildOrchestrator,
@@ -28,6 +29,7 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
+import { publishedEndpointUrls } from "../../authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
 import { loadGlobalPlan } from "./global-plan.ts";
@@ -66,6 +68,7 @@ export const GlobalRebuildResultSchema = Schema.Struct({
 
 export type GlobalRebuildError =
   | CapabilityError
+  | PublicationUnsupportedError
   | EventError
   | FileSystemError
   | GlobalAppError
@@ -89,12 +92,6 @@ export type GlobalRebuildServices =
   | GlobalAppService
   | PluginRegistry
   | RuntimeProviderRegistry;
-
-const endpointText = (endpoint: EndpointPlan): string => {
-  if (endpoint.socketPath !== undefined) return `${endpoint.protocol}:${endpoint.socketPath}`;
-  if (endpoint.port === undefined) return endpoint.protocol;
-  return `${endpoint.protocol}://localhost:${endpoint.port}`;
-};
 
 export const globalRebuild = (
   options: GlobalRebuildOptions = {},
@@ -139,7 +136,7 @@ export const globalRebuild = (
         Effect.map((runtime) => ({
           name: String(service.name),
           state: runtime.state ?? runtime.status,
-          endpoints: (runtime.endpoints ?? service.endpoints).map(endpointText),
+          endpoints: publishedEndpointUrls(runtime.endpoints ?? service.endpoints),
         })),
       ),
     );

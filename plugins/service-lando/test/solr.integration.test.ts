@@ -54,7 +54,7 @@ describe("solr service type — live integration: system info endpoint", () => {
       try {
         const landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "solrinttest",
-          services: { search: { type: "solr", port: SOLR_PORT } },
+          services: { search: { type: "solr", port: SOLR_PORT, ports: [`${SOLR_PORT}:${SOLR_PORT}`] } },
         });
         const service = landofile.services?.[ServiceName.make("search")];
         if (service === undefined) throw new Error("search service missing");

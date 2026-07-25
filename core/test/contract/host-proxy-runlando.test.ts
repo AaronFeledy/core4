@@ -30,6 +30,7 @@ import { buildRunLandoRequest } from "../../src/subsystems/host-proxy/shim.ts";
 const route = (over: Pick<RoutePlan, "hostname" | "scheme"> & { readonly service: string }): RoutePlan => ({
   ...over,
   service: ServiceName.make(over.service),
+  backend: { service: ServiceName.make(over.service), protocol: "http", port: 80 },
 });
 
 const makePlan = (routes: RoutePlan[], serviceNames: string[]): AppPlan => {

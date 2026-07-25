@@ -56,8 +56,8 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
       : [],
   endpoints:
     name === "web"
-      ? [{ port: 31082, protocol: "http", name: "http" }]
-      : [{ port: 55434, protocol: "tcp", name: "database" }],
+      ? [{ _tag: "internal", port: 31082, protocol: "http", name: "http" }]
+      : [{ _tag: "internal", port: 55434, protocol: "tcp", name: "database" }],
   routes: [],
   dependsOn: name === "web" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
   hostAliases: [],

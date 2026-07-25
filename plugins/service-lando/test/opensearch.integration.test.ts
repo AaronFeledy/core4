@@ -59,7 +59,7 @@ describe("opensearch service type — live integration: cluster health endpoint"
       try {
         const landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "osinttest",
-          services: { search: { type: "opensearch", port: OS_PORT } },
+          services: { search: { type: "opensearch", port: OS_PORT, ports: [`${OS_PORT}:${OS_PORT}`] } },
         });
         const service = landofile.services?.[ServiceName.make("search")];
         if (service === undefined) throw new Error("search service missing");

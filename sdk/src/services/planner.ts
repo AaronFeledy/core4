@@ -9,6 +9,7 @@ import type {
   NotImplementedError,
   ProviderConfigError,
   ProviderUnavailableError,
+  PublicationUnsupportedError,
 } from "../errors/index.ts";
 import type { AppPlan, LandofileShape, ProviderCapabilities } from "../schema/index.ts";
 import type { ProviderError } from "./provider.ts";
@@ -23,7 +24,10 @@ export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
     readonly plan: (
       landofile: LandofileShape,
       providerCapabilities: ProviderCapabilities,
-    ) => Effect.Effect<AppPlan, LandofileValidationError | CapabilityError | NotImplementedError>;
+    ) => Effect.Effect<
+      AppPlan,
+      LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
+    >;
   }
 >() {}
 

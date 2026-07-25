@@ -113,7 +113,7 @@ describe("runServiceCompositionContract", () => {
             environment: {},
             mounts: [],
             storage: [],
-            endpoints: [{ port: 8080, protocol: "tcp", name: input.name }],
+            endpoints: [{ _tag: "internal", port: 8080, protocol: "tcp", name: input.name }],
             routes: [],
             dependsOn: [],
             hostAliases: [],

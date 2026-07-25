@@ -15,6 +15,7 @@ import {
   httpSleep,
   httpStatus,
   marker,
+  publishedEndpoint,
   requestSequence,
   runExitUnderClock,
   secret,
@@ -29,7 +30,7 @@ const db = ServiceName.make("db");
 describe("makeUrlScanner probe behavior", () => {
   test("green on the third attempt after two fixed delays", async () => {
     const http = requestSequence([httpStatus(500), httpFailure("connection refused"), httpStatus(200)]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { retry: 3, delaySeconds: 10 },
@@ -51,7 +52,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("fixed backoff waits only between attempts", async () => {
     const http = requestSequence([httpFailure("connection refused")]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { retry: 3, delaySeconds: 10 },
@@ -74,7 +75,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("per-attempt timeout resolves red with a timeout detail", async () => {
     const http = requestSequence([httpSleep("30 seconds", 200)]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { retry: 2, delaySeconds: 10, timeoutSeconds: 5 },
@@ -96,7 +97,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("responses outside 2xx and okCodes classify yellow with statusCode detail", async () => {
     const http = requestSequence([httpStatus(500)]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { retry: 1 },
@@ -116,7 +117,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("okCodes extends the accepted statuses beyond 2xx", async () => {
     const redirectHttp = requestSequence([httpStatus(301)]);
-    const redirectSource = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const redirectSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const yellowRedirect = await drive(
       makeUrlScanner(
         { request: redirectHttp.request, listEndpoints: redirectSource.listEndpoints },
@@ -127,7 +128,7 @@ describe("makeUrlScanner probe behavior", () => {
     expect(yellowRedirect.endpoints[0]?.statusCode).toBe(301);
 
     const okHttp = requestSequence([httpStatus(301)]);
-    const okSource = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const okSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const green = await drive(
       makeUrlScanner(
         { request: okHttp.request, listEndpoints: okSource.listEndpoints },
@@ -141,7 +142,7 @@ describe("makeUrlScanner probe behavior", () => {
 
   test("redacts transport failures before they leave the scanner", async () => {
     const http = requestSequence([httpFailure(`proxy saw ${secret}`)]);
-    const source = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const source = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const scanner = makeUrlScanner(
       { request: http.request, listEndpoints: source.listEndpoints },
       { retry: 1 },
@@ -153,7 +154,7 @@ describe("makeUrlScanner probe behavior", () => {
     expect(redacted.endpoints[0]?.detail).toContain(marker);
 
     const fallbackHttp = requestSequence([httpFailure("proxy saw MY_TOKEN=abc123")]);
-    const fallbackSource = endpointsOf([{ service: web, protocol: "http", port: 8080 }]);
+    const fallbackSource = endpointsOf([publishedEndpoint(web, "http", 8080)]);
     const fallback = await drive(
       makeUrlScanner(
         { request: fallbackHttp.request, listEndpoints: fallbackSource.listEndpoints },
@@ -171,13 +172,12 @@ describe("makeUrlScanner probe behavior", () => {
       [
         appOne,
         [
-          { service: web, protocol: "http" as const, port: 8080 },
-          { service: worker, protocol: "tcp" as const, port: 9000 },
-          { service: db, protocol: "tcp" as const, port: 9000 },
-          { service: worker, protocol: "unix" as const },
+          publishedEndpoint(web, "http", 8080),
+          publishedEndpoint(worker, "tcp", 9000),
+          publishedEndpoint(db, "tcp", 9000),
         ],
       ],
-      [appTwo, [{ service: web, protocol: "http" as const, port: 8080 }]],
+      [appTwo, [publishedEndpoint(web, "http", 8080)]],
     ]);
     const scanner = makeUrlScanner({
       request: requestSequence([httpStatus(200)]).request,

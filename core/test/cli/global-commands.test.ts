@@ -145,7 +145,9 @@ const fakeServiceType = makeLegacyServiceTypeFake({
       },
       mounts: [],
       storage: [],
-      endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+      endpoints: [
+        { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
+      ],
       routes: [],
       dependsOn: [],
       hostAliases: [],
@@ -214,7 +216,9 @@ const makeHarness = async (
         providerId,
         status: "running",
         state: "running",
-        endpoints: [{ protocol: "http", port: 8080, name: "http" }],
+        endpoints: [
+          { _tag: "published", protocol: "http", port: 8080, name: "http", publication: { hostPort: 8080 } },
+        ],
       });
     },
   };

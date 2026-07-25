@@ -56,7 +56,7 @@ describe("elasticsearch service type — live integration: cluster health endpoi
       try {
         const landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "esinttest",
-          services: { search: { type: "elasticsearch", port: ES_PORT } },
+          services: { search: { type: "elasticsearch", port: ES_PORT, ports: [`${ES_PORT}:${ES_PORT}`] } },
         });
         const service = landofile.services?.[ServiceName.make("search")];
         if (service === undefined) throw new Error("search service missing");

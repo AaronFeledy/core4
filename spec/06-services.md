@@ -385,16 +385,27 @@ dev.lando.storage-service: <service>      # not on global
 
 ```yaml
 endpoints:
-  - 8080/http              # short form
-  - 8443/https
-  - port: 5432
+  - _tag: internal
+    port: 8080
+    protocol: http
+  - _tag: published
+    port: 8443
+    protocol: https
+    publication: {}
+  - _tag: published
+    port: 5432
     protocol: tcp
-    bind: 127.0.0.1
-  - path: /var/run/foo.sock
+    publication:
+      bindAddress: 127.0.0.1
+      hostPort: 15432
+  - _tag: internal
+    socketPath: /var/run/foo.sock
     protocol: unix
 ```
 
-The `/http` and `/https` suffixes on short-form entries are *intent* signals: the planner annotates the endpoint as proxy-routable and the URL scanner picks it up. The actual transport on the wire is `tcp`.
+`EndpointInput` and `EndpointPlan` are discriminated unions. An `InternalEndpoint` is reachable only through service networking and carries either a network `protocol` plus `port`, or `protocol: unix` plus `socketPath`. A `PublishedEndpoint` is limited to `http`, `https`, `tcp`, or `udp`, requires a nested `publication` object, and is the only endpoint variant that may become host-visible. `publication: {}` explicitly requests publication with policy defaults; omitted `bindAddress` means `127.0.0.1`, and omitted `hostPort` asks the provider to assign one. Unix-socket endpoints cannot carry publication.
+
+`publication.hostPort` is desired-state input only when authored. A provider-assigned host port is recorded under the published endpoint's runtime `materialization` result returned by inspection/`ServiceInfo`; it is never copied back into publication intent.
 
 **Hostnames** are extra DNS aliases for the service on the provider's network.
 
@@ -407,6 +418,8 @@ hostnames:
 The planner always adds the canonical alias `<service>.<app>.internal` when the provider supports `sharedCrossAppNetwork`.
 
 **Routes** are host-facing HTTP/TLS mappings. They live at the Landofile top level under `proxy:` (kept for compat) or under each service's `routes:` (preferred).
+
+Every planned `RoutePlan` includes a resolved `backend: { service, protocol: "http" | "https", port }`. Core resolves an authored endpoint name or port against the target service during planning. A proxy consumes this backend directly and MUST NOT guess a service port. Route authority ports are proxy-layer materialization and are not part of `RoutePlan`.
 
 ```yaml
 proxy:
@@ -442,7 +455,7 @@ Plugins contribute additional filter types via `provides.routeFilters`. Proxy pl
 
 **Default hostnames.** Generated as `<service>.<app>.<domain>`, where `<domain>` defaults to `lndo.site` and is overridable via global config or Landofile.
 
-**Default bind address.** Host-exposed endpoints bind to `127.0.0.1` by default. LAN exposure is opt-in via global `bindAddress` and emits a security warning.
+**Default bind address.** Published endpoints bind to `127.0.0.1` when `publication.bindAddress` is omitted. LAN exposure is opt-in via a validated IP address and emits a security warning. Internal endpoints never create a host binding.
 
 **Routes inside scratch apps.** When the resolved app is a **scratch Lando app** (§21), the planner automatically applies a built-in `ScratchHostnameSuffix` route filter that rewrites every route hostname `<host>.<domain>` to `<host>--<scratch-id>.<domain>` (§21.9.2). This avoids hostname collisions when a fork-mode scratch runs alongside the source app whose Landofile defined the original routes. The transformation is idempotent and is suppressed per-host with `--hostname <host>` (§21.10.1) or globally for the scratch with `--no-hostname-suffix`. The filter is published in `@lando/sdk` as `RouteFilter.ScratchHostnameSuffix` for plugins that need to compose around it; user-authored Landofiles do not declare the filter directly.
 

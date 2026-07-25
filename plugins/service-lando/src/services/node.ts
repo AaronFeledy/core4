@@ -4,6 +4,8 @@ import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 export const SUPPORTED_NODE_VERSIONS = ["lts", "22"] as const;
 export type SupportedNodeVersion = (typeof SUPPORTED_NODE_VERSIONS)[number];
 
@@ -12,7 +14,7 @@ export const NODE_FEATURE_PRIORITY = 600;
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 const DEFAULT_COMMAND = ["sh", "-c", "tail -f /dev/null"] as const;
-const DEFAULT_PORT = "3000:3000";
+const DEFAULT_PORT = 3000;
 
 const NodeFeatureConfigSchema = Schema.Struct({
   version: Schema.Literal(...SUPPORTED_NODE_VERSIONS),
@@ -64,13 +66,7 @@ const applyNodeFeature = (ctx: ServiceFeatureContext): void => {
   ctx.setAppMount(appMount);
   ctx.addMount(bindMount);
 
-  for (const port of service.ports ?? [DEFAULT_PORT]) {
-    ctx.addEndpoint({
-      port: Number(port.split(":").at(-1)?.split("/")[0] ?? 3000),
-      protocol: "http",
-      name: ctx.serviceName,
-    });
-  }
+  addServicePortEndpoints(ctx, { port: DEFAULT_PORT, protocol: "http" });
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   for (const dependency of service.dependsOn ?? []) {

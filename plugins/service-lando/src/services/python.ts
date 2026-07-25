@@ -4,6 +4,8 @@ import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
+import { addServicePortEndpoints } from "./_port-helpers.ts";
+
 export const SUPPORTED_PYTHON_VERSIONS = ["3.12"] as const;
 export type SupportedPythonVersion = (typeof SUPPORTED_PYTHON_VERSIONS)[number];
 
@@ -121,7 +123,7 @@ const applyPythonFeature = (ctx: ServiceFeatureContext): void => {
     realization: "passthrough",
   };
   ctx.addMount(mount);
-  ctx.addEndpoint({ port, protocol: "http", name: ctx.serviceName });
+  addServicePortEndpoints(ctx, { port, protocol: "http" });
   ctx.setHealthcheck({
     kind: "command",
     command: ["bash", "-c", `exec 3<>/dev/tcp/127.0.0.1/${port}`],
