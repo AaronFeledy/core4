@@ -131,7 +131,7 @@ export class WindowsMachineOsUnsupportedError extends ProviderUnavailableError {
 }
 
 export interface PodmanCommandRunner {
-  readonly version: Effect.Effect<string, PodmanNotInstalledError>;
+  readonly version: Effect.Effect<string, ProviderUnavailableError>;
 }
 
 export type PodmanMachineStatus = "missing" | "stopped" | "running";
@@ -185,6 +185,7 @@ export interface SetupOptions {
 export type RuntimeSetupPhase = "prerequisites" | "launch" | "readiness";
 
 export interface RuntimeSetupProgress {
+  readonly runtimeBundleVersion?: string;
   readonly run: <A, E>(phase: RuntimeSetupPhase, body: Effect.Effect<A, E>) => Effect.Effect<A, E>;
 }
 
@@ -493,6 +494,21 @@ const missingBundledMachineToolingError = (
     ...(podmanBin === undefined ? {} : { details: { platform, podmanBin } }),
   });
 
+const bundledPodmanLaunchError = (
+  platform: HostPlatform,
+  podmanBin: string,
+  cause: PodmanNotInstalledError,
+): ProviderUnavailableError =>
+  new ProviderUnavailableError({
+    providerId: PROVIDER_ID,
+    operation: "setup",
+    message: `The managed runtime bundle Podman executable at ${podmanBin} failed to launch.`,
+    remediation:
+      "Reinstall the managed runtime with `lando setup`; if the bundled executable still fails, report the managed runtime bundle failure.",
+    details: { platform, podmanBin },
+    cause: cause.cause ?? cause,
+  });
+
 const missingBundledMachineHelperError = (helper: string): ProviderUnavailableError =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
@@ -518,7 +534,12 @@ const resolveSetupPodmanCommandRunner = (
     return Effect.fail(missingBundledMachineToolingError(platform, podmanBin));
   }
 
-  return Effect.succeed(makeSystemPodmanCommandRunner(podmanBin));
+  const runner = makeSystemPodmanCommandRunner(podmanBin);
+  return Effect.succeed({
+    version: runner.version.pipe(
+      Effect.mapError((cause) => bundledPodmanLaunchError(platform, podmanBin, cause)),
+    ),
+  });
 };
 
 const resolveSetupMachineRunner = (
@@ -979,6 +1000,7 @@ export const setupProviderLando = (options: SetupOptions = {}): Effect.Effect<Se
       const podmanVersion = infoPodmanVersion(info) ?? detectedPodmanVersion;
       if (options.managedRuntimeSetup !== undefined) {
         const progress: RuntimeSetupProgress = {
+          ...(bundle === undefined ? {} : { runtimeBundleVersion: bundle.version }),
           run: (phase, body) => {
             const step = steps.find((candidate) => candidate.taskId === phase);
             return step === undefined

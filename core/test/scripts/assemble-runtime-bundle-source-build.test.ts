@@ -93,7 +93,9 @@ describe("Linux Podman source build", () => {
           expect(command).toContain("SOURCE_DATE_EPOCH=1783532707");
           expect(command).toContain("CGO_ENABLED=1");
           expect(command).toContain("GOFLAGS=-trimpath -buildvcs=false");
-          expect(command).toContain("BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp");
+          expect(command).toContain(
+            "BUILDTAGS=grpcnotrace libsqlite3 systemd seccomp containers_image_openpgp",
+          );
           expect(command).toContain("EXTRA_LDFLAGS=-buildid=");
           if (cwd === undefined) throw new Error("source build requires cwd");
           await mkdir(join(cwd, "bin"), { recursive: true });

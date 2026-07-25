@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 
-import { Effect, Exit, Schema } from "effect";
+import { Deferred, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
@@ -66,6 +66,44 @@ const spec = (
 });
 
 describe("LandoPluginContext stateStore scoping", () => {
+  test("a plugin advisory lock serializes concurrent critical sections", async () => {
+    const plugin = await makeContext("plugin-a");
+
+    const secondEnteredWhileFirstHeld = await run(
+      Effect.gen(function* () {
+        const firstEntered = yield* Deferred.make<void>();
+        const releaseFirst = yield* Deferred.make<void>();
+        const secondEntered = yield* Deferred.make<void>();
+        const first = yield* Effect.fork(
+          plugin.stateStore.withLock(
+            "runtime-launch",
+            Deferred.succeed(firstEntered, undefined).pipe(Effect.zipRight(Deferred.await(releaseFirst))),
+          ),
+        );
+        yield* Deferred.await(firstEntered);
+        const second = yield* Effect.fork(
+          plugin.stateStore.withLock("runtime-launch", Deferred.succeed(secondEntered, undefined)),
+        );
+        yield* Effect.yieldNow();
+        const observed = yield* Deferred.poll(secondEntered);
+        yield* Deferred.succeed(releaseFirst, undefined);
+        yield* Fiber.join(first);
+        yield* Fiber.join(second);
+        return Option.isSome(observed);
+      }),
+    );
+
+    expect(secondEnteredWhileFirstHeld).toBe(false);
+  });
+
+  test("a plugin advisory lock rejects a traversal key", async () => {
+    const plugin = await makeContext("plugin-a");
+
+    const error = await failure(plugin.stateStore.withLock("../runtime-launch", Effect.void));
+
+    expect(error.reason).toBe("path");
+  });
+
   test("a plugin reads and writes durable state inside its own subtree", async () => {
     const plugin = await makeContext("plugin-a");
 

@@ -21,7 +21,7 @@ const lddWith = (line: string): string => `
 	/lib/ld-linux-aarch64.so.1 (0x0000ffff00000000)
 `;
 
-const portableLdd = lddWith("libassuan.so.9 => /lib/aarch64-linux-gnu/libassuan.so.9 (0x0000ffff00000000)");
+const portableLdd = lddWith("libcrypto.so.3 => /lib/aarch64-linux-gnu/libcrypto.so.3 (0x0000ffff00000000)");
 
 const expectPortabilityFailure = async (ldd: string, message: RegExp): Promise<void> => {
   let failure: unknown;
@@ -98,11 +98,15 @@ describe("Linux runtime bundle verification", () => {
     );
   });
 
-  test("accepts supported libassuan SONAME variants from the host gpgme closure", async () => {
-    await verifyLinuxPodmanPortability("linux-x64", "/stage", async () =>
-      lddWith("libassuan.so.0 => /lib/x86_64-linux-gnu/libassuan.so.0 (0x00007f0000000000)"),
-    );
-  });
+  test.each(["libgpgme.so.11", "libassuan.so.0", "libassuan.so.9", "libgpg-error.so.0"])(
+    "rejects the host GPGME closure dependency %s",
+    async (soname) => {
+      await expectPortabilityFailure(
+        lddWith(`${soname} => /lib/x86_64-linux-gnu/${soname} (0x00007f0000000000)`),
+        new RegExp(soname.replaceAll(".", "\\."), "i"),
+      );
+    },
+  );
 
   test("rejects resolved libsubid dependencies", async () => {
     await expectPortabilityFailure(

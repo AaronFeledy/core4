@@ -8,6 +8,23 @@ import { Effect } from "effect";
 import { writeManagedRuntimeContainersConf } from "../src/runtime-config.ts";
 
 const MANAGED_LOOPBACK_IPS = ["127.0.0.1", "::1"] as const;
+const MANAGED_POLICY = `{
+  "default": [
+    {
+      "type": "insecureAcceptAnything"
+    }
+  ],
+  "transports": {
+    "docker-daemon": {
+      "": [
+        {
+          "type": "insecureAcceptAnything"
+        }
+      ]
+    }
+  }
+}
+`;
 
 interface ManagedContainersConf {
   readonly containers?: { readonly log_driver?: string };
@@ -24,12 +41,21 @@ interface ManagedRegistriesConf {
   readonly "unqualified-search-registries"?: ReadonlyArray<string>;
 }
 
+interface ManagedPolicy {
+  readonly default?: ReadonlyArray<{ readonly type?: string }>;
+  readonly transports?: {
+    readonly "docker-daemon"?: Record<string, ReadonlyArray<{ readonly type?: string }>>;
+  };
+}
+
 const writeAndParse = async (): Promise<{
   readonly runtimeBinDir: string;
   readonly body: string;
   readonly registriesBody: string;
+  readonly policyBody: string;
   readonly parsed: ManagedContainersConf;
   readonly registriesParsed: ManagedRegistriesConf;
+  readonly policyParsed: ManagedPolicy;
 }> => {
   const root = await mkdtemp(join(tmpdir(), "lando-runtime-config-"));
   const runtimeBinDir = join(root, "runtime", "bin");
@@ -38,12 +64,15 @@ const writeAndParse = async (): Promise<{
     await Effect.runPromise(writeManagedRuntimeContainersConf({ runtimeBinDir, runtimeConfigDir }));
     const body = await readFile(join(runtimeConfigDir, "containers.conf"), "utf8");
     const registriesBody = await readFile(join(runtimeConfigDir, "registries.conf"), "utf8");
+    const policyBody = await readFile(join(runtimeConfigDir, "containers", "policy.json"), "utf8");
     return {
       runtimeBinDir,
       body,
       registriesBody,
+      policyBody,
       parsed: Bun.TOML.parse(body) as ManagedContainersConf,
       registriesParsed: Bun.TOML.parse(registriesBody) as ManagedRegistriesConf,
+      policyParsed: JSON.parse(policyBody) as ManagedPolicy,
     };
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -94,5 +123,12 @@ describe("writeManagedRuntimeContainersConf", () => {
     const { registriesBody, registriesParsed } = await writeAndParse();
     expect(registriesBody).toBe('unqualified-search-registries = ["docker.io"]\n');
     expect(registriesParsed["unqualified-search-registries"]).toEqual(["docker.io"]);
+  });
+
+  test("writes the permissive signature policy in the managed containers config directory", async () => {
+    const { policyBody, policyParsed } = await writeAndParse();
+    expect(policyBody).toBe(MANAGED_POLICY);
+    expect(policyParsed.default?.[0]?.type).toBe("insecureAcceptAnything");
+    expect(policyParsed.transports?.["docker-daemon"]?.[""]?.[0]?.type).toBe("insecureAcceptAnything");
   });
 });
