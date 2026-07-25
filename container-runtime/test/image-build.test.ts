@@ -218,6 +218,37 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
   expect(failure.message).toContain("control characters");
 });
 
+test("buildContainerArtifact pins a resolved base digest in derived Dockerfiles", async () => {
+  // Given
+  const bodies: string[] = [];
+  const api = {
+    request: (request: ContainerBuildHttpRequest) =>
+      Effect.promise(async () => {
+        if (request.method === "POST") bodies.push(new TextDecoder().decode(await collect(request.stdin)));
+        return { status: 200, body: request.method === "GET" ? "{}" : "" };
+      }),
+  };
+  const derived = service({
+    artifact: { kind: "ref", ref: "php:8.4-apache-bookworm", digest: "sha256:resolved-base" },
+    extensions: {
+      "@lando/core/service-features": {
+        buildSteps: [{ id: "extension", phase: "build", command: ["echo", "build"] }],
+      },
+    },
+  });
+
+  // When
+  await Effect.runPromise(
+    buildContainerArtifact(
+      { app: appId, service: serviceName, plan: plan(derived), buildKey: "resolved-base" },
+      { providerId, api },
+    ),
+  );
+
+  // Then
+  expect(bodies[0]).toContain("FROM php:8.4-apache-bookworm@sha256:resolved-base");
+});
+
 test("buildContainerArtifact redacts raw and encoded build args from provider errors", async () => {
   const rawSecret = "topsecret";
   const encodedSecret = encodeURIComponent(rawSecret);

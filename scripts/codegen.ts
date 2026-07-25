@@ -84,6 +84,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "php-base-images",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-php-base-images.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "ci-workflow",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-ci-workflow.ts`],
     cwd: REPO_ROOT,
@@ -106,6 +111,11 @@ const generators: ReadonlyArray<Generator> = [
   {
     id: "runtime-bundle-workflow",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-runtime-bundle-workflow.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
+    id: "php-base-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-php-base-workflow.ts`],
     cwd: REPO_ROOT,
   },
 ] satisfies ReadonlyArray<Generator>;

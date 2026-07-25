@@ -254,8 +254,10 @@
             "opensearch",
             "opensearch:2",
             "postgres",
+            "php:8.1",
             "php:8.2",
             "php:8.3",
+            "php:8.4",
             "python:3.12",
             "redis",
             "ruby:3.3",
@@ -597,6 +599,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -1090,6 +1096,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -1622,6 +1632,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -2115,6 +2129,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -2689,6 +2707,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -3182,6 +3204,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -3884,6 +3910,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -4377,6 +4407,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -4909,6 +4943,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -5402,6 +5440,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -8399,6 +8441,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -8892,6 +8938,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -9447,6 +9497,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -9940,6 +9994,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -10495,6 +10553,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -10988,6 +11050,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -11543,6 +11609,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -12036,6 +12106,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -12591,6 +12665,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -13084,6 +13162,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"
@@ -32825,6 +32907,10 @@
           "additionalProperties": {
             "additionalProperties": false,
             "properties": {
+              "allowOverride": {
+                "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                "type": "boolean"
+              },
               "api": {
                 "enum": [4],
                 "type": "number"
@@ -33318,6 +33404,10 @@
                   "type": "string"
                 },
                 "type": "array"
+              },
+              "webroot": {
+                "description": "Container path served as this service's HTTP document root.",
+                "type": "string"
               },
               "workingDirectory": {
                 "type": "string"
@@ -54431,6 +54521,10 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
+        "allowOverride": {
+          "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+          "type": "boolean"
+        },
         "api": {
           "enum": [4],
           "type": "number"
@@ -54924,6 +55018,10 @@
             "type": "string"
           },
           "type": "array"
+        },
+        "webroot": {
+          "description": "Container path served as this service's HTTP document root.",
+          "type": "string"
         },
         "workingDirectory": {
           "type": "string"
@@ -57294,6 +57392,10 @@
               "additionalProperties": {
                 "additionalProperties": false,
                 "properties": {
+                  "allowOverride": {
+                    "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+                    "type": "boolean"
+                  },
                   "api": {
                     "enum": [4],
                     "type": "number"
@@ -57787,6 +57889,10 @@
                       "type": "string"
                     },
                     "type": "array"
+                  },
+                  "webroot": {
+                    "description": "Container path served as this service's HTTP document root.",
+                    "type": "string"
                   },
                   "workingDirectory": {
                     "type": "string"

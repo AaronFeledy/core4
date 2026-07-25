@@ -17,6 +17,7 @@ export type {
 
 interface BuildStep {
   readonly command: string | ReadonlyArray<string>;
+  readonly phase: string;
 }
 
 const isControlCharacterCode = (code: number): boolean => code < 32 || code === 127;
@@ -67,10 +68,11 @@ const serviceBuildSteps = (service: ServicePlan): ReadonlyArray<BuildStep> => {
   if (!isRecord(extension) || !Array.isArray(extension.buildSteps)) return [];
   return extension.buildSteps.flatMap((step): ReadonlyArray<BuildStep> => {
     if (!isRecord(step)) return [];
-    if (typeof step.command === "string") return [{ command: step.command }];
+    if (step.phase !== "build") return [];
+    if (typeof step.command === "string") return [{ command: step.command, phase: step.phase }];
     if (!Array.isArray(step.command)) return [];
     const command = step.command.filter((part): part is string => typeof part === "string");
-    return command.length === step.command.length ? [{ command }] : [];
+    return command.length === step.command.length ? [{ command, phase: step.phase }] : [];
   });
 };
 
@@ -79,6 +81,11 @@ const deterministicRef = (input: ArtifactBuildSpec): string =>
     /[^a-zA-Z0-9_.-]/gu,
     "-",
   );
+
+const resolvedBaseRef = (artifact: Extract<ServicePlan["artifact"], { readonly kind: "ref" }>): string =>
+  artifact.digest === undefined || artifact.ref.includes("@")
+    ? artifact.ref
+    : `${artifact.ref}@${artifact.digest}`;
 
 const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/${string}` => {
   const params = new URLSearchParams({ t: tag });
@@ -159,7 +166,11 @@ export const buildContainerArtifact = (
         });
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
-      const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, artifact.ref, steps);
+      const dockerfile = yield* dockerfileForDerivedBuild(
+        options.providerId,
+        resolvedBaseRef(artifact),
+        steps,
+      );
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
       ];
