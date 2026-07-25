@@ -28,34 +28,34 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
     return {
       disposition: "rejected",
       rationale: "Compose service inheritance is replaced by Lando composition primitives.",
-      remediation: "Use type: inheritance, a recipe, or includes:.",
+      remediation: `Replace ${path} with Lando type: inheritance.`,
     };
   }
   if (path === "container_name") {
     return {
       disposition: "rejected",
       rationale: "Lando owns container naming for multi-app isolation.",
-      remediation: "Remove container_name and use Lando service names.",
+      remediation: `Remove ${path} and use the Lando service key as the container identity.`,
     };
   }
   if (path === "network_mode" || path === "links") {
     return {
       disposition: "rejected",
       rationale: "Legacy Compose network shortcuts bypass Lando network planning.",
-      remediation: "Use networks:, routes:, or endpoints:.",
+      remediation: `Translate ${path} to Lando networks: configuration.`,
     };
   }
   if (path.startsWith("deploy.") && !path.startsWith("deploy.resources")) {
     return {
       disposition: "rejected",
       rationale: "Swarm orchestration is outside the per-service Compose vocabulary.",
-      remediation: "Use Lando lifecycle intent or a provider extension.",
+      remediation: `Move ${path} to a provider extension.`,
     };
   }
   return {
     disposition: "rejected",
     rationale: "This upstream Compose key has no documented Lando plan or preservation contract.",
-    remediation: "Use a documented Lando service key, provider extension, or config translator.",
+    remediation: `Translate ${path} with a Compose-to-Lando config translator.`,
   };
 };
 
