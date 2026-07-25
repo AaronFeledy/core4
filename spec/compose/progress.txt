@@ -48,3 +48,9 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: none; no absorbed feature or gate conflict was found, and later-story key-shape boundaries remain unchanged.
 - Verification: typecheck, lint, vendor refresh, compose coverage, focused walker/vendor/gate/CI checks, and CI idempotence passed; the broader adjacent codegen suite remains red on its pre-existing CI platform-matrix expectation.
 ---
+
+## 2026-07-25 16:10 CDT - US-466 Verify
+- Compiled `core/dist/lando`; sandbox `setup --yes --no-interactive --skip-provider` succeeded; story gates exercised end-to-end: pin/checksum match (compose-go v2.13.0), `bun run check:compose-coverage` green (362 service + 10 top-level), focused walker/vendor/coverage/CI tests green, CI workflow lists the gate with peer boundary checks, offline `codegen` does not invoke `codegen:compose-vendor`. Adjacent compiled-binary smoke (`--version`, `--help`, `config`/`list` help, throwaway app `info`) passed.
+- Full managed-provider `lando setup` still fails on clean Ubuntu 26.04 sandbox: bundled podman needs `libgpgme.so.11` (`libgpgme11t64`) not present in the dependency-free baseline — pre-existing runtime/host-deps gap, not introduced by US-466.
+- **Learnings for future iterations:** Clean `lando4-dev` baseline lacks `libgpgme`; full provider setup verification needs either a runtime bundle that ships/static-links gpgme or setup installing the host package before launching podman.
+---
