@@ -65,6 +65,7 @@ const normalizedServicePaths = [
   "build.args.*",
   "build.context",
   "build.dockerfile",
+  "build.dockerfile_inline",
   "build.target",
   "command",
   "depends_on",
@@ -239,7 +240,6 @@ const rejectedServicePaths = [
   "build.additional_contexts.*",
   "build.cache_from",
   "build.cache_to",
-  "build.dockerfile_inline",
   "build.entitlements",
   "build.extra_hosts",
   "build.extra_hosts.*",
@@ -444,14 +444,43 @@ if (Object.keys(composeServiceDispositions).length !== serviceEntries.length) {
 }
 
 export const composeTopLevelDispositions: Readonly<Record<string, ComposeDispositionEntry>> = {
-  services: NORMALIZED_ENTRY,
-  volumes: NORMALIZED_ENTRY,
-  networks: NORMALIZED_ENTRY,
-  configs: NORMALIZED_ENTRY,
-  secrets: NORMALIZED_ENTRY,
-  include: NORMALIZED_ENTRY,
-  version: NORMALIZED_ENTRY,
-  name: NORMALIZED_ENTRY,
-  "x-*": PRESERVED_ENTRY,
+  services: {
+    disposition: "normalized",
+    rationale: "Normalizes into AppPlan.services.",
+  },
+  volumes: {
+    disposition: "normalized",
+    rationale: "Normalizes into AppPlan.stores.",
+  },
+  networks: {
+    disposition: "normalized",
+    rationale: "Normalizes into AppPlan.networks.",
+  },
+  configs: {
+    disposition: "preserved",
+    rationale:
+      "Preserved losslessly in AppPlan.extensions.compose and capability-checked because AppPlan has no provider-neutral configs field.",
+  },
+  secrets: {
+    disposition: "preserved",
+    rationale:
+      "Preserved losslessly in AppPlan.extensions.compose and capability-checked because AppPlan has no provider-neutral secrets field.",
+  },
+  include: {
+    disposition: "normalized",
+    rationale: "Normalizes into Lando includes.",
+  },
+  version: {
+    disposition: "normalized",
+    rationale: "Accepted and ignored after a deprecation notice as normalized compatibility handling.",
+  },
+  name: {
+    disposition: "normalized",
+    rationale: "Normalizes into AppPlan.name.",
+  },
+  "x-*": {
+    disposition: "preserved",
+    rationale: "Preserved losslessly in AppPlan.extensions.compose.",
+  },
   models: rejectedEntry("models"),
 };

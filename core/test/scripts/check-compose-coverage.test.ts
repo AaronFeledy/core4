@@ -40,6 +40,7 @@ describe("compose coverage gate", () => {
         [
           "image",
           "build.context",
+          "build.dockerfile_inline",
           "depends_on.*.condition",
           "healthcheck.test",
           "ports.target",
@@ -58,6 +59,7 @@ describe("compose coverage gate", () => {
     ).toEqual({
       image: "normalized",
       "build.context": "normalized",
+      "build.dockerfile_inline": "normalized",
       "depends_on.*.condition": "normalized",
       "healthcheck.test": "normalized",
       "ports.target": "normalized",
@@ -71,6 +73,23 @@ describe("compose coverage gate", () => {
       network_mode: "rejected",
       links: "rejected",
       "deploy.replicas": "rejected",
+    });
+  });
+
+  test("classifies top-level normalized and preserved contract paths", () => {
+    expect(
+      Object.fromEntries(
+        ["services", "volumes", "networks", "configs", "secrets"].map((path) => [
+          path,
+          composeTopLevelDispositions[path]?.disposition,
+        ]),
+      ),
+    ).toEqual({
+      services: "normalized",
+      volumes: "normalized",
+      networks: "normalized",
+      configs: "preserved",
+      secrets: "preserved",
     });
   });
 
