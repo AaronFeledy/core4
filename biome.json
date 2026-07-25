@@ -16,7 +16,8 @@
       "**/*.tsbuildinfo",
       "oclif.manifest.json",
       "**/oclif.manifest.json",
-      "bun.lock"
+      "bun.lock",
+      "spec/compose/vendor/compose-spec.json"
     ]
   },
   "formatter": {

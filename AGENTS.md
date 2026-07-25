@@ -31,7 +31,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 ## Generated Files
 
-- Do not hand-edit generated CI workflows or generated runtime/plugin tables. Edit the generator, run the matching `bun run codegen:*`, and verify drift with `git diff --exit-code` on the generated paths.
+- Do not hand-edit generated CI workflows, generated runtime/plugin tables, or `spec/compose/vendor/compose-spec.json`. Edit the generator, run the matching `bun run codegen:*`, and verify drift with `git diff --exit-code` on the generated paths. The Compose vendor generator writes checksum-pinned upstream bytes verbatim and must not format that file.
 - `bun run codegen` runs generators in dependency order: guide scenarios, recipe READMEs, bundled plugins, bundled recipes, bootstrap layers, schema snapshot, OCLIF manifest, and CI/nightly/release/provider workflows.
 - Bootstrap layers under `core/src/runtime/generated/layers/`, bundled plugin/recipe tables, `.github/workflows/*.yml`, `core/src/cli/oclif/compiled-manifest.ts`, and schema artifacts are generator outputs.
 - Codegen scripts are expected to finish with `biome check --write` on emitted files; do not replace that with formatting-only steps.
