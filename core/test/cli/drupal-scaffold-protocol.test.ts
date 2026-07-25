@@ -239,4 +239,30 @@ describe("Drupal scaffold copy protocol", () => {
       expect(new Set(staged).size).toBe(2);
     });
   });
+
+  test("populates empty mounted cache-volume and working-dir targets instead of skipping them", async () => {
+    await withTempDir(async (dir) => {
+      // Given: /app/vendor (a mounted cache volume) and /app/web (the container
+      // working_dir) already exist as empty directories before scaffolding, as
+      // they do once the appserver has started.
+      const appRoot = join(dir, "app");
+      const stagingParent = join(dir, "staging");
+      const binDir = join(dir, "bin");
+      const composerLog = join(dir, "composer.log");
+      await mkdir(join(appRoot, "vendor"), { recursive: true });
+      await mkdir(join(appRoot, "web"), { recursive: true });
+      await mkdir(binDir, { recursive: true });
+      await writeFakeComposer(binDir);
+
+      // When
+      const result = await run(dir, baseEnv(appRoot, stagingParent, binDir, composerLog));
+
+      // Then
+      expect(result.exitCode).toBe(0);
+      expect(await Bun.file(join(appRoot, "vendor/bin/drush")).exists()).toBe(true);
+      expect((await stat(join(appRoot, "vendor/bin/drush"))).mode & 0o111).not.toBe(0);
+      expect((await stat(join(appRoot, "web"))).isDirectory()).toBe(true);
+      expect(await Bun.file(join(appRoot, "composer.json")).exists()).toBe(true);
+    });
+  });
 });
