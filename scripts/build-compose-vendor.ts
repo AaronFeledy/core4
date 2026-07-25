@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 
-import { readComposeVendorPin, sha256Hex, verifyComposeVendorChecksum } from "./compose-vendor.ts";
+import { readComposeVendorPin, sha256Hex } from "./compose-vendor.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const PIN_PATH = resolve(REPO_ROOT, "spec/compose/vendor/pin.json");
@@ -32,8 +32,6 @@ export const refreshComposeVendor = async (): Promise<void> => {
 
   // Formatting would violate the byte-identical upstream pin.
   await Bun.write(SCHEMA_PATH, bytes);
-  const result = await verifyComposeVendorChecksum({ pinPath: PIN_PATH, schemaPath: SCHEMA_PATH });
-  if (!result.ok) throw new ComposeVendorFetchError(pin.sourceUrl);
 
   process.stdout.write(`[build-compose-vendor] wrote ${SCHEMA_PATH} (${pin.tag})\n`);
 };
