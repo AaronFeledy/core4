@@ -51,6 +51,7 @@ describe("ci workflow", () => {
 
     expect(activeWorkflowFiles).toEqual([
       "ci.yml",
+      "compose-vendor-bump.yml",
       "nightly.yml",
       "php-base-images.yml",
       "provider-matrix.yml",

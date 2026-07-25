@@ -39,7 +39,7 @@
         "Lint passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 7.4 'bumping the pin is a deliberate act'. Generated workflows are codegen outputs per root AGENTS.md; edit the generator, not the YAML. Blocked by US-466."
     },
     {

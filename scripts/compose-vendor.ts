@@ -56,6 +56,55 @@ export const readComposeVendorPin = async (pinPath: string): Promise<ComposeVend
 export const sha256Hex = (bytes: ArrayBuffer): string =>
   createHash("sha256").update(new Uint8Array(bytes)).digest("hex");
 
+export const composeVendorSourceUrl = (tag: string): string =>
+  `https://raw.githubusercontent.com/compose-spec/compose-go/${tag}/schema/compose-spec.json`;
+
+export const buildComposeVendorPin = (tag: string, bytes: ArrayBuffer): ComposeVendorPin => ({
+  tag,
+  sourceUrl: composeVendorSourceUrl(tag),
+  sha256: sha256Hex(bytes),
+});
+
+const STABLE_TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/u;
+
+const parseStableTag = (tag: string): readonly [number, number, number] | undefined => {
+  const match = STABLE_TAG_PATTERN.exec(tag);
+  if (match === null) return undefined;
+  return [Number(match[1]), Number(match[2]), Number(match[3])];
+};
+
+const compareStableTags = (
+  left: readonly [number, number, number],
+  right: readonly [number, number, number],
+): number => {
+  for (let index = 0; index < 3; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return 0;
+};
+
+export const selectNewerComposeGoTag = (
+  currentTag: string,
+  candidateTags: ReadonlyArray<string>,
+): string | undefined => {
+  const current = parseStableTag(currentTag);
+  if (current === undefined) {
+    throw new Error(`Unparseable current compose-go tag: ${currentTag}`);
+  }
+
+  let newest: { readonly tag: string; readonly version: readonly [number, number, number] } | undefined;
+  for (const candidate of candidateTags) {
+    const version = parseStableTag(candidate);
+    if (version === undefined) continue;
+    if (compareStableTags(version, current) <= 0) continue;
+    if (newest === undefined || compareStableTags(version, newest.version) > 0) {
+      newest = { tag: candidate, version };
+    }
+  }
+
+  return newest?.tag;
+};
+
 export const verifyComposeVendorChecksum = async (
   paths: ComposeVendorPaths,
 ): Promise<ComposeVendorChecksumResult> => {

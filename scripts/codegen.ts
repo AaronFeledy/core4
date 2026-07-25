@@ -118,6 +118,11 @@ const generators: ReadonlyArray<Generator> = [
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-php-base-workflow.ts`],
     cwd: REPO_ROOT,
   },
+  {
+    id: "compose-vendor-bump-workflow",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-compose-vendor-bump-workflow.ts`],
+    cwd: REPO_ROOT,
+  },
 ] satisfies ReadonlyArray<Generator>;
 
 const run = async (cmd: Array<string>, cwd: string): Promise<void> => {

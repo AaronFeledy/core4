@@ -6,6 +6,8 @@ import {
   collectComposeServiceKeyPaths,
   collectComposeTopLevelKeyPaths,
   compareComposeCoverage,
+  diffComposeSchemaKeyPaths,
+  formatComposeSchemaDiffMarkdown,
 } from "../../../scripts/compose-schema.ts";
 
 const fixturePath = resolve(import.meta.dirname, "fixtures/compose-schema.json");
@@ -40,5 +42,58 @@ describe("compose schema walker", () => {
       missingFromMatrix: ["working_dir"],
       missingFromSchema: ["obsolete"],
     });
+  });
+});
+
+const omitKey = (record: Record<string, unknown>, key: string): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(record).filter(([entryKey]) => entryKey !== key));
+
+describe("compose schema diff reporter", () => {
+  const buildBumpedSchema = (base: Record<string, unknown>): Record<string, unknown> => {
+    const next = structuredClone(base);
+    const root = next.properties as Record<string, unknown>;
+    next.properties = { ...omitKey(root, "version"), configs: { type: "object" } };
+    const defs = next.$defs as Record<string, Record<string, unknown>>;
+    const service = defs.service;
+    const serviceProps = service.properties as Record<string, unknown>;
+    service.properties = { ...omitKey(serviceProps, "image"), restart: { type: "string" } };
+    return next;
+  };
+
+  test("lists added and removed service and top-level key paths across a synthetic bump", async () => {
+    const oldSchema = (await Bun.file(fixturePath).json()) as Record<string, unknown>;
+    const newSchema = buildBumpedSchema(oldSchema);
+
+    expect(diffComposeSchemaKeyPaths(oldSchema, newSchema)).toEqual({
+      addedServicePaths: ["restart"],
+      removedServicePaths: ["image"],
+      addedTopLevelPaths: ["configs"],
+      removedTopLevelPaths: ["version"],
+    });
+  });
+
+  test("renders the diff as PR-body markdown naming each changed path", async () => {
+    const oldSchema = (await Bun.file(fixturePath).json()) as Record<string, unknown>;
+    const newSchema = buildBumpedSchema(oldSchema);
+
+    const markdown = formatComposeSchemaDiffMarkdown(diffComposeSchemaKeyPaths(oldSchema, newSchema));
+
+    expect(markdown).toContain("restart");
+    expect(markdown).toContain("image");
+    expect(markdown).toContain("configs");
+    expect(markdown).toContain("version");
+  });
+
+  test("renders an explicit no-change summary when the schema is unchanged", async () => {
+    const schema = (await Bun.file(fixturePath).json()) as Record<string, unknown>;
+
+    const diff = diffComposeSchemaKeyPaths(schema, structuredClone(schema));
+    expect(diff).toEqual({
+      addedServicePaths: [],
+      removedServicePaths: [],
+      addedTopLevelPaths: [],
+      removedTopLevelPaths: [],
+    });
+    expect(formatComposeSchemaDiffMarkdown(diff)).toContain("No key path changes");
   });
 });

@@ -166,3 +166,50 @@ export const compareComposeCoverage = (
     missingFromSchema: sorted(matrixPaths.filter((path) => !schema.has(path))),
   };
 };
+
+export interface ComposeSchemaDiff {
+  readonly addedServicePaths: ReadonlyArray<string>;
+  readonly removedServicePaths: ReadonlyArray<string>;
+  readonly addedTopLevelPaths: ReadonlyArray<string>;
+  readonly removedTopLevelPaths: ReadonlyArray<string>;
+}
+
+const missing = (from: ReadonlyArray<string>, present: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const set = new Set(present);
+  return sorted(from.filter((path) => !set.has(path)));
+};
+
+export const diffComposeSchemaKeyPaths = (oldSchema: unknown, newSchema: unknown): ComposeSchemaDiff => {
+  const oldService = collectComposeServiceKeyPaths(oldSchema);
+  const newService = collectComposeServiceKeyPaths(newSchema);
+  const oldTopLevel = collectComposeTopLevelKeyPaths(oldSchema);
+  const newTopLevel = collectComposeTopLevelKeyPaths(newSchema);
+  return {
+    addedServicePaths: missing(newService, oldService),
+    removedServicePaths: missing(oldService, newService),
+    addedTopLevelPaths: missing(newTopLevel, oldTopLevel),
+    removedTopLevelPaths: missing(oldTopLevel, newTopLevel),
+  };
+};
+
+const markdownSection = (heading: string, paths: ReadonlyArray<string>): string =>
+  paths.length === 0
+    ? `### ${heading}\n\n_None_\n`
+    : `### ${heading}\n\n${paths.map((path) => `- \`${path}\``).join("\n")}\n`;
+
+export const formatComposeSchemaDiffMarkdown = (diff: ComposeSchemaDiff): string => {
+  const unchanged =
+    diff.addedServicePaths.length === 0 &&
+    diff.removedServicePaths.length === 0 &&
+    diff.addedTopLevelPaths.length === 0 &&
+    diff.removedTopLevelPaths.length === 0;
+  if (unchanged) return "## Compose schema key path changes\n\nNo key path changes.\n";
+
+  return [
+    "## Compose schema key path changes\n",
+    markdownSection("Added service key paths", diff.addedServicePaths),
+    markdownSection("Removed service key paths", diff.removedServicePaths),
+    markdownSection("Added top-level key paths", diff.addedTopLevelPaths),
+    markdownSection("Removed top-level key paths", diff.removedTopLevelPaths),
+  ].join("\n");
+};
