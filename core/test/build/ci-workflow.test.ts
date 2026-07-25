@@ -301,6 +301,7 @@ describe("ci workflow", () => {
     expect(triggers).toContain("  pull_request:");
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
+    expect(triggers).toContain("  workflow_dispatch:");
     expect(staticChecksPlatform).toContain("        include:");
     expect(staticChecksPlatform).toContain(`          - platform: linux-x64
             runs-on: ubuntu-24.04`);

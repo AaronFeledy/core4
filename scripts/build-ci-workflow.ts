@@ -742,6 +742,7 @@ on:
     branches: [main]
   push:
     branches: [main]
+  workflow_dispatch:
 
 defaults:
   run:
