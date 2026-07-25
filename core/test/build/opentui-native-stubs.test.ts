@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const generatorPath = resolve(repoRoot, "scripts/build-opentui-native-stubs.ts");
@@ -27,14 +27,22 @@ const targetToNativeRoot = {
   "windows-x64": "@opentui/core-win32-x64",
 } as const;
 
-const runGenerator = () =>
-  Bun.spawnSync([process.execPath, generatorPath], {
+const runGenerator = async (): Promise<{ exitCode: number; stderr: string }> => {
+  const proc = Bun.spawn([process.execPath, generatorPath], {
     cwd: repoRoot,
     stdout: "pipe",
     stderr: "pipe",
   });
+  const [exitCode, stderrBytes] = await Promise.all([proc.exited, new Response(proc.stderr).arrayBuffer()]);
+  return { exitCode: exitCode ?? 1, stderr: Buffer.from(stderrBytes).toString() };
+};
 
 describe("OpenTUI native stub catalog", () => {
+  beforeAll(async () => {
+    const first = await runGenerator();
+    expect({ exitCode: first.exitCode, stderr: first.stderr }).toMatchObject({ exitCode: 0 });
+  }, 60_000);
+
   test("only the renderer workspace declares the OpenTUI dependency", async () => {
     const declarations: string[] = [];
     for (const pattern of [
@@ -69,72 +77,51 @@ describe("OpenTUI native stub catalog", () => {
     expect(declarations).toEqual([resolve(repoRoot, "plugins/renderer-lando/package.json")]);
   });
 
-  test(
-    "generates the fixed roots, release mappings, and exact-root resolver contract",
-    async () => {
-      // Given the installed OpenTUI package, renderer dependency, and lockfile pins
-      // When the catalog generator runs
-      const proc = runGenerator();
+  test("generates the fixed roots, release mappings, and exact-root resolver contract", async () => {
+    const { opentuiNativeCatalog } = await import(`${catalogPath}?t=${Date.now()}`);
+    expect(opentuiNativeCatalog.allNativeRoots).toEqual(nativeRoots);
+    expect(opentuiNativeCatalog.targetToNativeRoot).toEqual(targetToNativeRoot);
+    expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64")).toBeTrue();
+    expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64/subpath")).toBeFalse();
+    expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core/testing")).toBeFalse();
+    expect(opentuiNativeCatalog.rootImportFilter.test("./@opentui/core-linux-x64")).toBeFalse();
+    expect(opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64")).toBe(
+      resolve(generatedRoot, "stubs/windows-x64/core-linux-x64.generated.ts"),
+    );
+    expect(() => opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-win32-x64")).toThrow(
+      /target native root/u,
+    );
+    expect(() => opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64/subpath")).toThrow(
+      /unknown OpenTUI native root/u,
+    );
+  });
 
-      // Then the generated catalog exposes only the specified roots and targets
-      expect({ exitCode: proc.exitCode, stderr: proc.stderr.toString() }).toMatchObject({ exitCode: 0 });
-      const { opentuiNativeCatalog } = await import(catalogPath);
-      expect(opentuiNativeCatalog.allNativeRoots).toEqual(nativeRoots);
-      expect(opentuiNativeCatalog.targetToNativeRoot).toEqual(targetToNativeRoot);
-      expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64")).toBeTrue();
-      expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64/subpath")).toBeFalse();
-      expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core/testing")).toBeFalse();
-      expect(opentuiNativeCatalog.rootImportFilter.test("./@opentui/core-linux-x64")).toBeFalse();
-      expect(opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64")).toBe(
-        resolve(generatedRoot, "stubs/windows-x64/core-linux-x64.generated.ts"),
+  test("generates exactly 35 deterministic import-free throwing stubs", async () => {
+    const targets = Object.keys(targetToNativeRoot);
+    const files = (
+      await Promise.all(
+        targets.map(async (target) =>
+          (await readdir(resolve(generatedRoot, "stubs", target))).map((file) => `${target}/${file}`),
+        ),
+      )
+    ).flat();
+
+    expect(files).toHaveLength(35);
+    for (const relativePath of files) {
+      const [target, file] = relativePath.split("/");
+      const source = await Bun.file(resolve(generatedRoot, "stubs", relativePath)).text();
+      expect(source).not.toMatch(/\b(?:import|require)\s*(?:\(|["'{*])/u);
+      expect(source).toContain(
+        `OpenTUI native package @opentui/${file?.replace(".generated.ts", "")} is unreachable`,
       );
-      expect(() => opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-win32-x64")).toThrow(
-        /target native root/u,
-      );
-      expect(() =>
-        opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64/subpath"),
-      ).toThrow(/unknown OpenTUI native root/u);
-    },
-    { timeout: 30_000 },
-  );
-
-  test(
-    "generates exactly 35 deterministic import-free throwing stubs",
-    async () => {
-      // Given a generated catalog
-      // When every target stub directory is inspected
-      const proc = runGenerator();
-      expect(proc.exitCode).toBe(0);
-      const targets = Object.keys(targetToNativeRoot);
-      const files = (
-        await Promise.all(
-          targets.map(async (target) =>
-            (await readdir(resolve(generatedRoot, "stubs", target))).map((file) => `${target}/${file}`),
-          ),
-        )
-      ).flat();
-
-      // Then each target has seven stable, import-free modules that name its mismatched root
-      expect(files).toHaveLength(35);
-      for (const relativePath of files) {
-        const [target, file] = relativePath.split("/");
-        const source = await Bun.file(resolve(generatedRoot, "stubs", relativePath)).text();
-        expect(source).not.toMatch(/\b(?:import|require)\s*(?:\(|["'{*])/u);
-        expect(source).toContain(
-          `OpenTUI native package @opentui/${file?.replace(".generated.ts", "")} is unreachable`,
-        );
-        expect(source).toContain(`release target ${target}`);
-        expect(source).toMatch(/^throw new Error\([\s\S]+\);\n$/u);
-      }
-    },
-    { timeout: 30_000 },
-  );
+      expect(source).toContain(`release target ${target}`);
+      expect(source).toMatch(/^throw new Error\([\s\S]+\);\n$/u);
+    }
+  });
 
   test("fails closed when pinned package inputs diverge", async () => {
-    // Given the generator's pinned input validator
     const module = await import(generatorPath);
 
-    // When any independently pinned input diverges, then generation is rejected
     expect(() =>
       module.validatePinnedInputs({
         installedVersion: "0.4.4",
@@ -172,11 +159,8 @@ describe("OpenTUI native stub catalog", () => {
   test(
     "is byte-stable on rerun",
     async () => {
-      // Given one complete generation
-      expect(runGenerator().exitCode).toBe(0);
       const before = new Map<string, string>();
-      const catalog = await Bun.file(catalogPath).text();
-      before.set("catalog.generated.ts", catalog);
+      before.set("catalog.generated.ts", await Bun.file(catalogPath).text());
       for (const target of Object.keys(targetToNativeRoot)) {
         for (const file of await readdir(resolve(generatedRoot, "stubs", target))) {
           const relativePath = `stubs/${target}/${file}`;
@@ -184,10 +168,9 @@ describe("OpenTUI native stub catalog", () => {
         }
       }
 
-      // When generation runs again
-      expect(runGenerator().exitCode).toBe(0);
+      const rerun = await runGenerator();
+      expect({ exitCode: rerun.exitCode, stderr: rerun.stderr }).toMatchObject({ exitCode: 0 });
 
-      // Then all 36 generated files remain byte-identical
       expect(before.size).toBe(36);
       for (const [relativePath, source] of before) {
         expect(await Bun.file(resolve(generatedRoot, relativePath)).text()).toBe(source);

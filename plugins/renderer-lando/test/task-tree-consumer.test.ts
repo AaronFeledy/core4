@@ -444,9 +444,15 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
             const events = yield* EventService;
             yield* events.publish(treeStart(["web"]));
             yield* events.publish(taskStart("web", transcriptPath));
-            yield* Effect.sleep("50 millis");
-            inject?.("\r");
-            for (let attempt = 0; attempt < 40; attempt += 1) {
+            for (let attempt = 0; attempt < 40 && inject === undefined; attempt += 1) {
+              yield* Effect.sleep("25 millis");
+            }
+            const sendInput = inject;
+            if (sendInput === undefined) {
+              throw new Error("interactive input subscription was not installed");
+            }
+            sendInput("\r");
+            for (let attempt = 0; attempt < 80; attempt += 1) {
               const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
               if (latest?.kind === "setFooter" && latest.lines.join("\n").includes("persisted output")) {
                 return;
