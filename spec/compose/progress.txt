@@ -16,7 +16,35 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - The disposition matrix (US-466) is the single classification source: coverage gate, docs matrix, rejection remediation text, and conformance skip-list are all derived artifacts. Never hand-maintain a second key list.
 - The vendored Compose schema is a coverage oracle, not a codegen source: Effect Schema in @lando/sdk stays hand-authored per spec §1.2.
 - Pin source is a compose-go tag (compose-spec/compose-spec is an untagged mirror; never pin to it).
+- Keep the networked `codegen:compose-vendor` refresh outside generic offline `codegen`; tests and coverage gates read only committed bytes.
+- The vendored upstream schema is checksum-pinned byte-for-byte and excluded from formatting; format the pin and tooling, never the schema payload.
+- Top-level Compose dispositions need AppPlan-specific rationales; `configs` and `secrets` are preserved because AppPlan has no provider-neutral fields for them.
 
 ## Log
 
-(no entries yet)
+## 2026-07-25 14:47 CDT - US-466
+- Pinned the compose-go service schema by tagged checksum, added the exhaustive normalized/preserved/rejected disposition matrix, and made schema drift fail through an offline coverage gate wired into generated CI.
+- Verification: typecheck and lint passed; focused walker, checksum, coverage, and generated-CI tests passed; adjacent CI workflow and codegen idempotence spot checks passed.
+- **Learnings for future iterations:**
+  - The v2.13.0 schema currently exposes 362 service key paths and 10 top-level paths; new upstream paths remain unclassified until the committed matrix is deliberately updated.
+  - Pattern-property maps use `*` while Compose extensions use `x-*`, keeping dynamic entries stable and human-readable in gate output.
+---
+
+## 2026-07-25 15:15 CDT - US-466 Review
+- Corrected the disposition contract so `build.dockerfile_inline` normalizes per spec 6.2, top-level `configs` and `secrets` preserve into Compose extensions, and project-level rationales describe AppPlan outcomes; synchronized the CI runbook with the new gate.
+- Guide-Coverage-Skip: US-466 changes internal classification metadata and CI documentation only; it does not change current user-visible Landofile behavior.
+- Review notes (deferred/rejected): Per-key service normalization targets remain owned by US-477's generated docs matrix; expanding all 362 rows here would exceed US-466's rationale contract.
+- Review notes (deferred/rejected): Resource limits, timeout hardening, root-level schema references, and stricter CI-test scoping are non-blocking hardening or test-design follow-ups outside this story; the pinned schema, checksum boundary, generated workflow, and current walker shapes were verified directly.
+- Review notes (deferred/rejected): Post-fix Bugbot findings for `env_file.{path,format,required}` and `ports.mode` conflict with the documented supported subsets: US-468 owns string/list `env_file`, while US-469's long-port contract names `target`, `published`, `host_ip`, `protocol`, `name`, and `app_protocol`; those unsupported children remain deliberately rejected.
+- Verification: typecheck and lint passed; 11 focused checksum, walker, coverage, and generated-CI tests passed with 17 assertions; coverage remained exhaustive at 362 service paths and 10 top-level paths; CI generation was idempotent.
+---
+
+## 2026-07-25 15:58 CDT - US-466 Drift Audit
+- Trigger: 2 cycles, 3115 changed lines, 3 commits
+- Weakened proofs: restored black-box coverage-command failure proof and made the remediation invariant reject non-actionable placeholders.
+- Review scar tissue: removed redundant post-write checksum revalidation while retaining pre-write verification and the offline committed-byte gate.
+- Contract drift: replaced generic rejected-key guidance with path-specific remediation that selects a concrete Lando, provider-extension, or translator route.
+- Fixed: simplified the vendor refresh and restored production-boundary proof without adding a test-only runtime seam.
+- Split/excise decisions: none; no absorbed feature or gate conflict was found, and later-story key-shape boundaries remain unchanged.
+- Verification: typecheck, lint, vendor refresh, compose coverage, focused walker/vendor/gate/CI checks, and CI idempotence passed; the broader adjacent codegen suite remains red on its pre-existing CI platform-matrix expectation.
+---
