@@ -300,9 +300,11 @@ describe("ci workflow", () => {
     expect(triggers).toContain("  pull_request:");
     expect(triggers).toContain("    branches: [main]");
     expect(triggers).toContain("  push:");
-    expect(staticChecksPlatform).toContain(
-      "        platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]",
-    );
+    expect(staticChecksPlatform).toContain("        include:");
+    expect(staticChecksPlatform).toContain(`          - platform: linux-x64
+            runs-on: ubuntu-24.04`);
+    expect(staticChecksPlatform).toContain(`          - platform: linux-x64
+            runs-on: ubuntu-26.04`);
     expect(staticChecksPlatform).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(staticChecksPlatform).toContain("    timeout-minutes: 35");
     expect(staticChecksPlatform).toContain("        uses: oven-sh/setup-bun@v2");
@@ -324,7 +326,7 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run check:machine-output");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(
-      "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64",
+      "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04",
     );
     expect(staticChecksPlatform).not.toContain("bun run test:unit");
     expect(staticChecksPlatform).not.toContain(
@@ -334,7 +336,9 @@ describe("ci workflow", () => {
       "bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
     );
     expect(staticChecksPlatform).not.toContain("bun test core/test/library sdk/test/library");
-    expect(staticChecksPlatform).toContain("::notice title=ci-timing::static-checks/${{ matrix.platform }}");
+    expect(staticChecksPlatform).toContain(
+      "::notice title=ci-timing::static-checks/${{ matrix.platform }}/${{ matrix.runs-on }}",
+    );
     expect(staticChecks).toContain("    needs: [static-checks-platform]");
     expect(staticChecks).toContain("    if: always()");
     expect(staticChecks).toContain(
@@ -349,7 +353,8 @@ describe("ci workflow", () => {
     const unitTestShards = findIndentedBlock(jobs, "unit-tests-linux-x64-shard", 2);
     expect(unitTestShards).not.toContain("    needs:");
     expect(unitTestShards).toContain("        shard: [1, 2, 3]");
-    expect(unitTestShards).toContain("    runs-on: ubuntu-24.04");
+    expect(unitTestShards).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(unitTestShards).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(unitTestShards).toContain("    timeout-minutes: 25");
     expect(unitTestShards).toContain("      - name: Unit test shard");
     expect(unitTestShards).toContain("        run: bun run test:unit:shard ${{ matrix.shard }}/3");
@@ -601,103 +606,119 @@ describe("ci workflow", () => {
   test("runs library API and recipe test layers as branch-protectable jobs", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
+    const libraryApiTestsRunner = findIndentedBlock(jobs, "library-api-tests-runner", 2);
     const libraryApiTests = findIndentedBlock(jobs, "library-api-tests", 2);
+    const recipeTestsRunner = findIndentedBlock(jobs, "recipe-tests-runner", 2);
     const recipeTests = findIndentedBlock(jobs, "recipe-tests", 2);
 
-    expect(libraryApiTests).toContain("    runs-on: ubuntu-24.04");
-    expect(libraryApiTests).toContain("      - name: Run library API tests");
-    expect(libraryApiTests).toContain("        run: bun test core/test/library sdk/test/library");
+    expect(libraryApiTestsRunner).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(libraryApiTestsRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
+    expect(libraryApiTestsRunner).toContain("      - name: Run library API tests");
+    expect(libraryApiTestsRunner).toContain("        run: bun test core/test/library sdk/test/library");
+    expect(libraryApiTests).toContain("    needs: [library-api-tests-runner]");
+    expect(libraryApiTests).toContain("    if: always()");
 
-    expect(recipeTests).toContain("    runs-on: ubuntu-24.04");
-    expect(recipeTests).toContain("      - name: Run recipe test layer");
-    expect(recipeTests).toContain(
+    expect(recipeTestsRunner).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(recipeTestsRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
+    expect(recipeTestsRunner).toContain("      - name: Run recipe test layer");
+    expect(recipeTestsRunner).toContain(
       "        run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
     );
+    expect(recipeTests).toContain("    needs: [recipe-tests-runner]");
+    expect(recipeTests).toContain("    if: always()");
   });
 
   test("runs generated guide scenarios as a branch-protectable Linux x64 gate", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
+    const guideScenariosRunner = findIndentedBlock(jobs, "guide-scenarios-linux-x64-runner", 2);
     const guideScenarios = findIndentedBlock(jobs, "guide-scenarios-linux-x64", 2);
 
-    expect(guideScenarios).toContain("    needs: [static-checks, build-linux-x64]");
-    expect(guideScenarios).toContain("    runs-on: ubuntu-24.04");
-    expect(guideScenarios).toContain("        uses: oven-sh/setup-bun@v2");
-    expect(guideScenarios).toContain("          bun-version-file: .bun-version");
-    expect(guideScenarios).toContain("        run: bun install --frozen-lockfile");
-    expect(guideScenarios).toContain("        run: bun run codegen");
-    expect(guideScenarios).toContain("        run: bun run typecheck");
-    expect(guideScenarios).toContain("        run: bun run lint:guides");
-    expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
-    expect(guideScenarios).toContain("          fetch-depth: 0");
-    expect(guideScenarios).toContain("      - name: Check guide drift");
-    expect(guideScenarios).toContain("        if: ${{ github.event_name == 'pull_request' }}");
-    expect(guideScenarios).toContain(
+    expect(guideScenariosRunner).toContain("    needs: [static-checks, build-linux-x64]");
+    expect(guideScenariosRunner).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(guideScenariosRunner).toContain("    runs-on: ${{ matrix.runs-on }}");
+    expect(guideScenarios).toContain("    needs: [guide-scenarios-linux-x64-runner]");
+    expect(guideScenarios).toContain("    if: always()");
+    expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
+    expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
+    expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
+    expect(guideScenariosRunner).toContain("        run: bun run codegen");
+    expect(guideScenariosRunner).toContain("        run: bun run typecheck");
+    expect(guideScenariosRunner).toContain("        run: bun run lint:guides");
+    expect(guideScenariosRunner).toContain("        run: bun run check:guide-coverage");
+    expect(guideScenariosRunner).toContain("          fetch-depth: 0");
+    expect(guideScenariosRunner).toContain("      - name: Check guide drift");
+    expect(guideScenariosRunner).toContain("        if: ${{ github.event_name == 'pull_request' }}");
+    expect(guideScenariosRunner).toContain(
       "          GUIDE_DRIFT_BASE_SHA: ${{ github.event.pull_request.base.sha }}",
     );
-    expect(guideScenarios).toContain(
+    expect(guideScenariosRunner).toContain(
       "          GUIDE_DRIFT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}",
     );
-    expect(guideScenarios).toContain("          GH_TOKEN: ${{ github.token }}");
-    expect(guideScenarios).toContain(
+    expect(guideScenariosRunner).toContain("          GH_TOKEN: ${{ github.token }}");
+    expect(guideScenariosRunner).toContain(
       '          GUIDE_DRIFT_PR_BODY="$(gh pr view ${{ github.event.pull_request.number }} --json body --jq .body)" bun run check:guide-drift',
     );
-    expect(guideScenarios).toContain(guideScenarioRunLine);
-    expect(guideScenarios).toContain("      - name: Download Linux x64 binary artifact");
-    expect(guideScenarios).toContain("          name: lando-linux-x64");
-    expect(guideScenarios).toContain("        run: chmod +x dist/lando");
-    expect(guideScenarios).toContain("      - name: Provision rootless runtime prerequisites");
-    expect(guideScenarios).toContain("      - name: Prepare provider via lando setup");
-    expect(guideScenarios).toContain("          dist/lando setup --yes --provider=lando");
-    expect(guideScenarios).toContain("      - name: Verify managed runtime socket");
-    expect(guideScenarios).not.toContain(
+    expect(guideScenariosRunner).toContain(guideScenarioRunLine);
+    expect(guideScenariosRunner).toContain("      - name: Download Linux x64 binary artifact");
+    expect(guideScenariosRunner).toContain("          name: lando-linux-x64");
+    expect(guideScenariosRunner).toContain("        run: chmod +x dist/lando");
+    expect(guideScenariosRunner).toContain("      - name: Provision rootless runtime prerequisites");
+    expect(guideScenariosRunner).toContain("      - name: Prepare provider via lando setup");
+    expect(guideScenariosRunner).toContain("          dist/lando setup --yes --provider=lando");
+    expect(guideScenariosRunner).toContain("      - name: Verify managed runtime socket");
+    expect(guideScenariosRunner).not.toContain(
       '          echo "LANDO_TEST_PODMAN_SOCKET=/tmp/podman.sock" >> "$GITHUB_ENV"',
     );
-    expect(guideScenarios).toContain("      - name: Install Podman 6 toolchain");
-    expect(guideScenarios).toContain("      - name: Assert Podman 6 host contract");
-    expect(guideScenarios).not.toContain("podman system service");
-    expect(guideScenarios).toContain("      - name: Run e2e smoke guide scenarios");
-    expect(guideScenarios).toContain('          LANDO_GUIDE_E2E: "1"');
-    expect(guideScenarios).toContain(
+    expect(guideScenariosRunner).toContain("      - name: Install Podman 6 toolchain");
+    expect(guideScenariosRunner).toContain("      - name: Assert Podman 6 host contract");
+    expect(guideScenariosRunner).not.toContain("podman system service");
+    expect(guideScenariosRunner).toContain("      - name: Run e2e smoke guide scenarios");
+    expect(guideScenariosRunner).toContain('          LANDO_GUIDE_E2E: "1"');
+    expect(guideScenariosRunner).toContain(
       `        run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" ${guideScenarioRunCommand} --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"`,
     );
-    expect(guideScenarios).toContain("      - name: Teardown guide e2e provider");
-    expect(guideScenarios).toContain("          dist/lando poweroff || true");
-    expect(guideScenarios).toContain('          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"');
-    expect(guideScenarios).toContain("      - name: Upload guide e2e provider diagnostics");
-    expect(guideScenarios).toContain("        if: failure()");
-    expect(guideScenarios).toContain("        uses: actions/upload-artifact@v4");
-    expect(guideScenarios).toContain("          name: guide-scenario-transcripts-${{ github.run_id }}.zip");
-    expect(guideScenarios).toContain("          path: dist/transcripts/guides/**/*.json");
-    expect(guideScenarios).toContain("          if-no-files-found: ignore");
-    expect(guideScenarios).toContain("          retention-days: 7");
+    expect(guideScenariosRunner).toContain("      - name: Teardown guide e2e provider");
+    expect(guideScenariosRunner).toContain("          dist/lando poweroff || true");
+    expect(guideScenariosRunner).toContain(
+      '          LANDO_PODMAN="$HOME/.local/share/lando/runtime/bin/podman"',
+    );
+    expect(guideScenariosRunner).toContain("      - name: Upload guide e2e provider diagnostics");
+    expect(guideScenariosRunner).toContain("        if: failure()");
+    expect(guideScenariosRunner).toContain("        uses: actions/upload-artifact@v4");
+    expect(guideScenariosRunner).toContain(
+      "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
+    );
+    expect(guideScenariosRunner).toContain("          path: dist/transcripts/guides/**/*.json");
+    expect(guideScenariosRunner).toContain("          if-no-files-found: ignore");
+    expect(guideScenariosRunner).toContain("          retention-days: 7");
 
-    expect(guideScenarios.indexOf("bun install --frozen-lockfile")).toBeLessThan(
-      guideScenarios.indexOf("bun run codegen"),
+    expect(guideScenariosRunner.indexOf("bun install --frozen-lockfile")).toBeLessThan(
+      guideScenariosRunner.indexOf("bun run codegen"),
     );
-    expect(guideScenarios.indexOf("bun run codegen")).toBeLessThan(
-      guideScenarios.indexOf("bun run typecheck"),
+    expect(guideScenariosRunner.indexOf("bun run codegen")).toBeLessThan(
+      guideScenariosRunner.indexOf("bun run typecheck"),
     );
-    expect(guideScenarios.indexOf("bun run typecheck")).toBeLessThan(
-      guideScenarios.indexOf("bun run lint:guides"),
+    expect(guideScenariosRunner.indexOf("bun run typecheck")).toBeLessThan(
+      guideScenariosRunner.indexOf("bun run lint:guides"),
     );
-    expect(guideScenarios.indexOf("bun run lint:guides")).toBeLessThan(
-      guideScenarios.indexOf("bun run check:guide-coverage"),
+    expect(guideScenariosRunner.indexOf("bun run lint:guides")).toBeLessThan(
+      guideScenariosRunner.indexOf("bun run check:guide-coverage"),
     );
-    expect(guideScenarios.indexOf("bun run check:guide-coverage")).toBeLessThan(
-      guideScenarios.indexOf("bun run check:guide-drift"),
+    expect(guideScenariosRunner.indexOf("bun run check:guide-coverage")).toBeLessThan(
+      guideScenariosRunner.indexOf("bun run check:guide-drift"),
     );
-    expect(guideScenarios.indexOf("bun run check:guide-drift")).toBeLessThan(
-      guideScenarios.indexOf(guideScenarioRunCommand),
+    expect(guideScenariosRunner.indexOf("bun run check:guide-drift")).toBeLessThan(
+      guideScenariosRunner.indexOf(guideScenarioRunCommand),
     );
-    expect(guideScenarios.indexOf(guideScenarioRunCommand)).toBeLessThan(
-      guideScenarios.indexOf("Download Linux x64 binary artifact"),
+    expect(guideScenariosRunner.indexOf(guideScenarioRunCommand)).toBeLessThan(
+      guideScenariosRunner.indexOf("Download Linux x64 binary artifact"),
     );
-    expect(guideScenarios.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
-      guideScenarios.indexOf("Run e2e smoke guide scenarios"),
+    expect(guideScenariosRunner.indexOf("Download Linux x64 binary artifact")).toBeLessThan(
+      guideScenariosRunner.indexOf("Run e2e smoke guide scenarios"),
     );
-    expect(guideScenarios.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
-      guideScenarios.indexOf("Run e2e smoke guide scenarios"),
+    expect(guideScenariosRunner.indexOf("Upload guide scenario transcripts")).toBeGreaterThan(
+      guideScenariosRunner.indexOf("Run e2e smoke guide scenarios"),
     );
   });
 
@@ -761,11 +782,16 @@ describe("ci workflow", () => {
   test("prepares the Lando provider via lando setup with no manual socket bring-up", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
-    const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
+    const providerIntegrationRunner = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
+    const providerIntegrationGate = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
+    const providerIntegration = providerIntegrationRunner;
 
     expect(providerIntegration).toContain("    needs: [build-linux-x64]");
-    expect(providerIntegration).toContain("    runs-on: ubuntu-24.04");
+    expect(providerIntegration).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
+    expect(providerIntegration).toContain("    runs-on: ${{ matrix.runs-on }}");
     expect(providerIntegration).toContain("    timeout-minutes: 25");
+    expect(providerIntegrationGate).toContain("    needs: [provider-integration-linux-x64-runner]");
+    expect(providerIntegrationGate).toContain("    if: always()");
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
     expect(providerIntegration).toContain(
       "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
@@ -891,7 +917,9 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
     expect(providerIntegration).toContain("        uses: actions/upload-artifact@v4");
-    expect(providerIntegration).toContain("          name: provider-integration-diagnostics-linux-x64");
+    expect(providerIntegration).toContain(
+      "          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}",
+    );
     expect(providerIntegration).toContain("          if-no-files-found: ignore");
     expect(providerIntegration).not.toContain("--silent");
 
@@ -997,6 +1025,8 @@ describe("ci workflow", () => {
     expect(workflow).toContain("runs-on: macos-15-intel");
     expect(workflow).toContain("runs-on: ubuntu-24.04-arm");
     expect(workflow).toContain("runs-on: ubuntu-24.04");
+    expect(workflow).toContain("runs-on: ubuntu-26.04");
+    expect(workflow).toContain("runs-on: [ubuntu-24.04, ubuntu-26.04]");
     expect(workflow).toContain("runs-on: windows-2022");
     expect(workflow).toContain(
       "--target bun-windows-x64 --outfile ./dist/lando-windows-x64.exe --minify --sourcemap=external",
