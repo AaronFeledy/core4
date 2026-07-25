@@ -240,7 +240,7 @@ jobs:
         run: |
           echo "::notice title=ci-timing::bundled-codegen completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
-  library-api-tests:
+  library-api-tests-runner:
     strategy:
       fail-fast: false
       matrix:
@@ -269,7 +269,21 @@ jobs:
         run: |
           echo "::notice title=ci-timing::library-api-tests/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
 
-  recipe-tests:
+  library-api-tests:
+    needs: [library-api-tests-runner]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm library-api-tests matrix
+        run: |
+          if [[ "${{ needs.library-api-tests-runner.result }}" != "success" ]]; then
+            echo "library-api-tests matrix result: ${{ needs.library-api-tests-runner.result }}"
+            exit 1
+          fi
+          echo "library-api-tests matrix passed on ubuntu-24.04, ubuntu-26.04"
+
+  recipe-tests-runner:
     strategy:
       fail-fast: false
       matrix:
@@ -297,6 +311,20 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::recipe-tests/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 15m)"
+
+  recipe-tests:
+    needs: [recipe-tests-runner]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm recipe-tests matrix
+        run: |
+          if [[ "${{ needs.recipe-tests-runner.result }}" != "success" ]]; then
+            echo "recipe-tests matrix result: ${{ needs.recipe-tests-runner.result }}"
+            exit 1
+          fi
+          echo "recipe-tests matrix passed on ubuntu-24.04, ubuntu-26.04"
 
   guide-scenarios-darwin-arm64:
     needs: [static-checks]
@@ -454,7 +482,7 @@ jobs:
         run: |
           echo "::notice title=ci-timing::guide-scenarios-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
 
-  guide-scenarios-linux-x64:
+  guide-scenarios-linux-x64-runner:
     needs: [static-checks, build-linux-x64]
     strategy:
       fail-fast: false
@@ -765,6 +793,20 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::guide-scenarios-linux-x64/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 30m)"
+
+  guide-scenarios-linux-x64:
+    needs: [guide-scenarios-linux-x64-runner]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm guide-scenarios-linux-x64 matrix
+        run: |
+          if [[ "${{ needs.guide-scenarios-linux-x64-runner.result }}" != "success" ]]; then
+            echo "guide-scenarios-linux-x64 matrix result: ${{ needs.guide-scenarios-linux-x64-runner.result }}"
+            exit 1
+          fi
+          echo "guide-scenarios-linux-x64 matrix passed on ubuntu-24.04, ubuntu-26.04"
 
   guide-scenarios-windows-x64:
     needs: [static-checks]
@@ -1337,7 +1379,7 @@ jobs:
         run: |
           echo "::notice title=ci-timing::provider-integration-linux-arm64 completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
 
-  provider-integration-linux-x64:
+  provider-integration-linux-x64-runner:
     needs: [build-linux-x64]
     strategy:
       fail-fast: false
@@ -1634,6 +1676,20 @@ jobs:
         if: always()
         run: |
           echo "::notice title=ci-timing::provider-integration-linux-x64/${{ matrix.runs-on }} completed in $(($(date +%s)-CI_JOB_STARTED_AT))s (timeout cap: 25m)"
+
+  provider-integration-linux-x64:
+    needs: [provider-integration-linux-x64-runner]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Confirm provider-integration-linux-x64 matrix
+        run: |
+          if [[ "${{ needs.provider-integration-linux-x64-runner.result }}" != "success" ]]; then
+            echo "provider-integration-linux-x64 matrix result: ${{ needs.provider-integration-linux-x64-runner.result }}"
+            exit 1
+          fi
+          echo "provider-integration-linux-x64 matrix passed on ubuntu-24.04, ubuntu-26.04"
 
   provider-integration-windows-x64:
     needs: [build-windows-x64, runtime-bundle-win32-x64]

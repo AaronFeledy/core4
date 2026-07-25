@@ -2,9 +2,9 @@ import { resolve } from "node:path";
 
 import {
   CI_PLATFORMS,
+  type CiPlatform,
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_PRIMARY_RUNNER,
-  type CiPlatform,
 } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { UNIT_SHARD_COUNT } from "./test-shards.ts";
@@ -31,6 +31,21 @@ const staticCheckMatrixInclude = (): string => {
     .map((cell) => `          - platform: ${cell.platform}\n            runs-on: ${cell.runsOn}`)
     .join("\n");
 };
+
+const renderLinuxX64MatrixGate = (jobId: string, matrixJobId: string, label: string): string => `  ${jobId}:
+    needs: [${matrixJobId}]
+    if: always()
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 5
+    steps:
+      - name: Confirm ${label} matrix
+        run: |
+          if [[ "\${{ needs.${matrixJobId}.result }}" != "success" ]]; then
+            echo "${label} matrix result: \${{ needs.${matrixJobId}.result }}"
+            exit 1
+          fi
+          echo "${label} matrix passed on ${linuxX64RunnerList}"
+`;
 
 const buildNeeds = "[static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]";
 
@@ -515,6 +530,9 @@ const providerIntegrationSteps = (platform: CiPlatform): string => {
 
 const renderProviderIntegrationJob = (platform: CiPlatform): string => {
   const isLinuxX64 = platform.id === "linux-x64";
+  const jobId = isLinuxX64
+    ? `provider-integration-${platform.id}-runner`
+    : `provider-integration-${platform.id}`;
   const matrixBlock = isLinuxX64
     ? `    strategy:
       fail-fast: false
@@ -530,7 +548,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
     ? `provider-integration-${platform.id}/\${{ matrix.runs-on }}`
     : `provider-integration-${platform.id}`;
 
-  return `  provider-integration-${platform.id}:
+  const runnerJob = `  ${jobId}:
     needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : `[build-${platform.id}]`}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
@@ -563,6 +581,14 @@ ${providerIntegrationSteps(platform)}
 
 ${timingNoticeStep(timingLabel, platform.providerTimeoutMinutes)}
 `;
+
+  if (!isLinuxX64) return runnerJob;
+  return `${runnerJob}
+${renderLinuxX64MatrixGate(
+  `provider-integration-${platform.id}`,
+  `provider-integration-${platform.id}-runner`,
+  `provider-integration-${platform.id}`,
+)}`;
 };
 
 const guideScenarioRunCommand =
@@ -621,6 +647,7 @@ ${landoManagedPodmanTeardownCommands}
 
 const renderGuideScenariosJob = (platform: CiPlatform): string => {
   const isLinuxX64 = platform.id === "linux-x64";
+  const runnerJobId = isLinuxX64 ? `guide-scenarios-${platform.id}-runner` : `guide-scenarios-${platform.id}`;
   const matrixBlock = isLinuxX64
     ? `    strategy:
       fail-fast: false
@@ -633,7 +660,7 @@ const renderGuideScenariosJob = (platform: CiPlatform): string => {
     ? `guide-scenarios-${platform.id}/\${{ matrix.runs-on }}`
     : `guide-scenarios-${platform.id}`;
 
-  return `  guide-scenarios-${platform.id}:
+  const runnerJob = `  ${runnerJobId}:
     needs: ${isLinuxX64 ? "[static-checks, build-linux-x64]" : "[static-checks]"}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: 30
@@ -688,6 +715,14 @@ ${linuxGuideScenarioE2eSteps}`
 
 ${timingNoticeStep(timingLabel, 30)}
 `;
+
+  if (!isLinuxX64) return runnerJob;
+  return `${runnerJob}
+${renderLinuxX64MatrixGate(
+  `guide-scenarios-${platform.id}`,
+  `guide-scenarios-${platform.id}-runner`,
+  `guide-scenarios-${platform.id}`,
+)}`;
 };
 
 export const renderCiWorkflow = (): string => {
@@ -775,7 +810,7 @@ ${setupBunSteps}
 
 ${timingNoticeStep("bundled-codegen", 15)}
 
-  library-api-tests:
+  library-api-tests-runner:
     strategy:
       fail-fast: false
       matrix:
@@ -794,7 +829,8 @@ ${setupBunSteps}
 
 ${timingNoticeStep("library-api-tests/${{ matrix.runs-on }}", 15)}
 
-  recipe-tests:
+${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner", "library-api-tests")}
+  recipe-tests-runner:
     strategy:
       fail-fast: false
       matrix:
@@ -813,6 +849,7 @@ ${setupBunSteps}
 
 ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 
+${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner", "recipe-tests")}
 ${guideScenarioJobs}
 ${buildJobs}
 ${windowsRuntimeBundleJob}
