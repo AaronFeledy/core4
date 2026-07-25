@@ -65,6 +65,17 @@ jobs:
           GH_TOKEN: \${{ github.token }}
         run: |
           set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          gh auth setup-git
+          if git ls-remote --exit-code --heads origin automation/compose-go-bump >/dev/null 2>&1; then
+            git fetch origin main:refs/remotes/origin/main automation/compose-go-bump:refs/remotes/origin/automation/compose-go-bump
+            git checkout -B automation/compose-go-bump origin/automation/compose-go-bump
+            git merge --no-edit origin/main
+          else
+            git checkout -b automation/compose-go-bump
+          fi
+
           NEW_TAG="$(gh api --paginate repos/compose-spec/compose-go/tags --jq '.[].name' | bun -e '${selectNewerTagScript}')"
           if [ -z "$NEW_TAG" ]; then
             echo "::notice title=compose-vendor-bump::compose-go pin is already current; nothing to bump."
@@ -81,13 +92,9 @@ jobs:
             exit 0
           fi
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -B automation/compose-go-bump
           git add spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json
           git commit -m "bump compose-go vendored schema to $NEW_TAG"
-          gh auth setup-git
-          git push --force origin HEAD:automation/compose-go-bump
+          git push origin HEAD:automation/compose-go-bump
 
           TITLE="bump compose-go vendored schema to $NEW_TAG"
           if [ -z "$(gh pr list --state open --head automation/compose-go-bump --json number --jq '.[].number')" ]; then

@@ -60,6 +60,18 @@ describe("compose-go bump workflow", () => {
     expect(workflow).toContain("gh workflow run ci.yml --ref automation/compose-go-bump");
   });
 
+  test("preserves commits already added to the rolling PR branch", () => {
+    const workflow = renderComposeVendorBumpWorkflow();
+
+    expect(workflow).toContain("git fetch origin");
+    expect(workflow).toContain(
+      "git checkout -B automation/compose-go-bump origin/automation/compose-go-bump",
+    );
+    expect(workflow).toContain("git merge --no-edit origin/main");
+    expect(workflow).toContain("git push origin HEAD:automation/compose-go-bump");
+    expect(workflow).not.toContain("git push --force");
+  });
+
   test("comments on one exact-title failure issue or creates it without labels", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
