@@ -444,9 +444,17 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
             const events = yield* EventService;
             yield* events.publish(treeStart(["web"]));
             yield* events.publish(taskStart("web", transcriptPath));
-            yield* Effect.sleep("20 millis");
+            yield* Effect.sleep("50 millis");
             inject?.("\r");
-            yield* Effect.sleep("20 millis");
+            for (let attempt = 0; attempt < 40; attempt += 1) {
+              const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+              if (latest?.kind === "setFooter" && latest.lines.join("\n").includes("persisted output")) {
+                return;
+              }
+              yield* Effect.sleep("25 millis");
+            }
+            const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
+            expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("persisted output");
           }).pipe(
             Effect.provide(
               Layer.provideMerge(
@@ -459,9 +467,6 @@ describe("makeLandoEventConsumer — split-footer substrate routing", () => {
           ),
         ),
       );
-
-      const latest = [...controller.calls].reverse().find((call) => call.kind === "setFooter");
-      expect(latest?.kind === "setFooter" && latest.lines.join("\n")).toContain("persisted output");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

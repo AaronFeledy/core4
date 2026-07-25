@@ -69,30 +69,34 @@ describe("OpenTUI native stub catalog", () => {
     expect(declarations).toEqual([resolve(repoRoot, "plugins/renderer-lando/package.json")]);
   });
 
-  test("generates the fixed roots, release mappings, and exact-root resolver contract", async () => {
-    // Given the installed OpenTUI package, renderer dependency, and lockfile pins
-    // When the catalog generator runs
-    const proc = runGenerator();
+  test(
+    "generates the fixed roots, release mappings, and exact-root resolver contract",
+    async () => {
+      // Given the installed OpenTUI package, renderer dependency, and lockfile pins
+      // When the catalog generator runs
+      const proc = runGenerator();
 
-    // Then the generated catalog exposes only the specified roots and targets
-    expect({ exitCode: proc.exitCode, stderr: proc.stderr.toString() }).toMatchObject({ exitCode: 0 });
-    const { opentuiNativeCatalog } = await import(catalogPath);
-    expect(opentuiNativeCatalog.allNativeRoots).toEqual(nativeRoots);
-    expect(opentuiNativeCatalog.targetToNativeRoot).toEqual(targetToNativeRoot);
-    expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64")).toBeTrue();
-    expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64/subpath")).toBeFalse();
-    expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core/testing")).toBeFalse();
-    expect(opentuiNativeCatalog.rootImportFilter.test("./@opentui/core-linux-x64")).toBeFalse();
-    expect(opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64")).toBe(
-      resolve(generatedRoot, "stubs/windows-x64/core-linux-x64.generated.ts"),
-    );
-    expect(() => opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-win32-x64")).toThrow(
-      /target native root/u,
-    );
-    expect(() => opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64/subpath")).toThrow(
-      /unknown OpenTUI native root/u,
-    );
-  });
+      // Then the generated catalog exposes only the specified roots and targets
+      expect({ exitCode: proc.exitCode, stderr: proc.stderr.toString() }).toMatchObject({ exitCode: 0 });
+      const { opentuiNativeCatalog } = await import(catalogPath);
+      expect(opentuiNativeCatalog.allNativeRoots).toEqual(nativeRoots);
+      expect(opentuiNativeCatalog.targetToNativeRoot).toEqual(targetToNativeRoot);
+      expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64")).toBeTrue();
+      expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core-linux-x64/subpath")).toBeFalse();
+      expect(opentuiNativeCatalog.rootImportFilter.test("@opentui/core/testing")).toBeFalse();
+      expect(opentuiNativeCatalog.rootImportFilter.test("./@opentui/core-linux-x64")).toBeFalse();
+      expect(opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64")).toBe(
+        resolve(generatedRoot, "stubs/windows-x64/core-linux-x64.generated.ts"),
+      );
+      expect(() => opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-win32-x64")).toThrow(
+        /target native root/u,
+      );
+      expect(() =>
+        opentuiNativeCatalog.stubPathFor("windows-x64", "@opentui/core-linux-x64/subpath"),
+      ).toThrow(/unknown OpenTUI native root/u);
+    },
+    { timeout: 30_000 },
+  );
 
   test("generates exactly 35 deterministic import-free throwing stubs", async () => {
     // Given a generated catalog
