@@ -33,7 +33,6 @@ describe("compose endpoint intent", () => {
     expect(plan.endpoints).toEqual([
       {
         _tag: "published",
-        name: "worker",
         protocol: "tcp",
         port: 80,
         publication: { bindAddress: "127.0.0.1", hostPort: 38080 },
@@ -55,9 +54,7 @@ describe("compose endpoint intent", () => {
   test("leaves the host port unset for a container-only port", async () => {
     const plan = await planService({ type: "compose", image: "alpine:3", ports: ["8080"] });
 
-    expect(plan.endpoints).toEqual([
-      { _tag: "published", name: "worker", protocol: "tcp", port: 8080, publication: {} },
-    ]);
+    expect(plan.endpoints).toEqual([{ _tag: "published", protocol: "tcp", port: 8080, publication: {} }]);
   });
 
   test("parses an IPv4 dynamic host-port publication", async () => {
@@ -66,7 +63,6 @@ describe("compose endpoint intent", () => {
     expect(plan.endpoints).toEqual([
       {
         _tag: "published",
-        name: "worker",
         protocol: "tcp",
         port: 80,
         publication: { bindAddress: "127.0.0.1" },
@@ -80,7 +76,6 @@ describe("compose endpoint intent", () => {
     expect(plan.endpoints).toEqual([
       {
         _tag: "published",
-        name: "worker",
         protocol: "tcp",
         port: 80,
         publication: { bindAddress: "::1" },

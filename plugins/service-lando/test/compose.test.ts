@@ -72,14 +72,12 @@ describe("compose ServiceType (raw passthrough)", () => {
         _tag: "published",
         port: 9000,
         protocol: "tcp",
-        name: "worker",
         publication: { hostPort: 9000 },
       },
       {
         _tag: "published",
         port: 9001,
         protocol: "udp",
-        name: "worker",
         publication: { hostPort: 9001 },
       },
     ]);

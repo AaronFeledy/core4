@@ -105,7 +105,7 @@ describe("node:lts ServiceType", () => {
     expect(plan.command).toBe("npm start");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "published", port: 3000, protocol: "http", name: "web", publication: { hostPort: 3001 } },
+      { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3001 } },
     ]);
   });
 
@@ -195,7 +195,7 @@ describe("node:22 ServiceType", () => {
     expect(plan.command).toBe("npm run dev");
     expect(plan.environment).toMatchObject({ NODE_ENV: "development" });
     expect(plan.endpoints).toEqual([
-      { _tag: "published", port: 3000, protocol: "http", name: "web", publication: { hostPort: 3001 } },
+      { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3001 } },
     ]);
   });
 

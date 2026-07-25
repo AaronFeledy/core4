@@ -178,11 +178,13 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   } else {
     for (const portEntry of service.ports ?? []) {
       const parsed = parsePublishedPort(portEntry);
+      // Shorthand compose `ports` carry no endpoint-name intent, so synthesized
+      // endpoints stay unnamed; naming each after the service would collide when
+      // a service publishes several ports (e.g. traefik 80/443/8080).
       ctx.addEndpoint({
         _tag: "published",
         port: parsed.port,
         protocol: parsed.protocol,
-        name: ctx.serviceName,
         publication: publicationFor(parsed),
       });
     }

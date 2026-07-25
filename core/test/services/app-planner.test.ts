@@ -1371,7 +1371,7 @@ describe("AppPlannerLive", () => {
         realization: "passthrough",
       });
       expect(web?.endpoints).toEqual([
-        { _tag: "published", port: 3000, protocol: "http", name: "web", publication: { hostPort: 3000 } },
+        { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3000 } },
       ]);
       expect(web?.dependsOn).toEqual([{ service: ServiceName.make("db"), condition: "started" }]);
 
@@ -1381,9 +1381,32 @@ describe("AppPlannerLive", () => {
       expect(db?.environment.POSTGRES_DB).toBe("myapp");
       expect(db?.environment.POSTGRES_PASSWORD).toBe("lando");
       expect(db?.endpoints).toEqual([
-        { _tag: "published", port: 5432, protocol: "tcp", name: "db", publication: { hostPort: 5432 } },
+        { _tag: "published", port: 5432, protocol: "tcp", publication: { hostPort: 5432 } },
       ]);
       expect(db?.storage[0]?.target).toBe(PortablePath.make("/var/lib/postgresql/data"));
+    });
+  });
+
+  test("plans a compose service publishing several ports without duplicate endpoint names", async () => {
+    await withTempCwd(async () => {
+      const appPlan = await plan({
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("proxy")]: {
+            type: "compose",
+            image: "traefik:v3.3",
+            ports: ["80", "443", "8080"],
+          },
+        },
+      });
+
+      const proxy = appPlan.services[ServiceName.make("proxy")];
+      expect(proxy?.endpoints).toEqual([
+        { _tag: "published", port: 80, protocol: "tcp", publication: {} },
+        { _tag: "published", port: 443, protocol: "tcp", publication: {} },
+        { _tag: "published", port: 8080, protocol: "tcp", publication: {} },
+      ]);
     });
   });
 

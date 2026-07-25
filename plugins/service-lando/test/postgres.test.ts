@@ -108,7 +108,6 @@ describe("postgres ServiceType", () => {
         _tag: "published",
         port: 5432,
         protocol: "tcp",
-        name: "db",
         publication: { bindAddress: "127.0.0.1", hostPort: 15432 },
       },
     ]);

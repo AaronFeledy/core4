@@ -163,7 +163,6 @@ describe("compose passthrough — scenario: third-party image with default endpo
         _tag: "published",
         port: 80,
         protocol: "tcp",
-        name: "whoami",
         publication: { hostPort: 8080 },
       },
     ]);
@@ -241,7 +240,6 @@ describe("compose passthrough — scenario: third-party image with default endpo
         _tag: "published",
         port: 80,
         protocol: "tcp",
-        name: "sidekick",
         publication: { hostPort: 9090 },
       },
     ]);

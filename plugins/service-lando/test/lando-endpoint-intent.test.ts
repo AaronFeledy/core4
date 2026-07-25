@@ -29,7 +29,6 @@ describe("lando endpoint intent", () => {
     expect(plan.endpoints).toEqual([
       {
         _tag: "published",
-        name: "worker",
         protocol: "udp",
         port: 53,
         publication: { bindAddress: "127.0.0.1", hostPort: 5353 },

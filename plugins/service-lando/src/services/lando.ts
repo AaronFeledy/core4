@@ -47,7 +47,6 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
       _tag: "published",
       port: parsed.port,
       protocol: parsed.protocol,
-      name: ctx.serviceName,
       publication: publicationFor(parsed),
     });
   }

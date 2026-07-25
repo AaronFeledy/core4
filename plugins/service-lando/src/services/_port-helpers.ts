@@ -86,7 +86,6 @@ export const addServicePortEndpoints = (
       _tag: "published",
       port: parsed.port,
       protocol: parsed.protocol === "udp" ? "udp" : fallback.protocol,
-      name: ctx.serviceName,
       publication: publicationFor(parsed),
     });
   }
