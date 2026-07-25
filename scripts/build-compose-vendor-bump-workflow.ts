@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path";
 
+import { RUNTIME_BUNDLE_ACTION_PINS } from "./runtime-bundle-supply-chain.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, ".github/workflows/compose-vendor-bump.yml");
 const GENERATED_HEADER =
@@ -16,7 +18,7 @@ const selectNewerTagScript = [
 
 export const renderComposeVendorBumpWorkflow = (): string => `${GENERATED_HEADER}
 #
-# Weekly checks the latest tagged compose-spec/compose-go release against the
+# Daily checks the latest tagged compose-spec/compose-go release against the
 # committed pin. When a newer tag exists it re-vendors the pinned schema and
 # opens or updates a single rolling PR whose body lists the added and removed
 # service key paths. Unclassified new keys fail check:compose-coverage on the
@@ -25,11 +27,17 @@ name: compose-vendor-bump
 
 on:
   schedule:
-    - cron: '0 12 * * 1'
+    - cron: '0 4 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: compose-vendor-bump
+  cancel-in-progress: false
+
 permissions:
+  actions: write
   contents: write
+  issues: write
   pull-requests: write
 
 jobs:
@@ -38,13 +46,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}
         with:
           fetch-depth: 0
-          persist-credentials: true
+          persist-credentials: false
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}
         with:
           bun-version-file: .bun-version
 
@@ -85,6 +93,29 @@ jobs:
             gh pr create --base main --head automation/compose-go-bump --title "$TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
           else
             gh pr edit automation/compose-go-bump --title "$TITLE" --body-file "$RUNNER_TEMP/pr-body.md"
+          fi
+
+          gh workflow run ci.yml --ref automation/compose-go-bump
+
+  report-failure:
+    needs: [bump]
+    if: \${{ failure() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: \${{ github.token }}
+      RUN_URL: \${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}
+    steps:
+      - name: Open or update rolling failure issue
+        run: |
+          set -euo pipefail
+          TITLE='compose-vendor-bump automation failure'
+          printf -v BODY 'Workflow run failed: %s' "$RUN_URL"
+          ISSUE_NUMBER="$(gh issue list --state open --limit 100 --json number,title --jq '[.[] | select(.title == "compose-vendor-bump automation failure")] | .[0].number // ""')"
+          if [[ -n "$ISSUE_NUMBER" ]]; then
+            gh issue comment "$ISSUE_NUMBER" --body "$BODY"
+          else
+            gh issue create --title "$TITLE" --body "$BODY"
           fi
 `;
 

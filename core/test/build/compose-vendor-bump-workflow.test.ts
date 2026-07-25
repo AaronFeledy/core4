@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
 import { renderComposeVendorBumpWorkflow } from "../../../scripts/build-compose-vendor-bump-workflow.ts";
+import { RUNTIME_BUNDLE_ACTION_PINS } from "../../../scripts/runtime-bundle-supply-chain.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const workflowPath = resolve(repoRoot, ".github/workflows/compose-vendor-bump.yml");
@@ -14,15 +15,28 @@ describe("compose-go bump workflow", () => {
     expect(() => Bun.YAML.parse(committed)).not.toThrow();
   });
 
-  test("runs on a unique weekly schedule and manual dispatch with PR-authoring permissions", () => {
+  test("runs daily with concurrency and automation permissions", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
     expect(workflow).toContain("name: compose-vendor-bump");
     expect(workflow).toContain("  schedule:");
-    expect(workflow).toContain("    - cron: '0 12 * * 1'");
+    expect(workflow).toContain("    - cron: '0 4 * * *'");
     expect(workflow).toContain("  workflow_dispatch:");
+    expect(workflow).toContain("concurrency:\n  group: compose-vendor-bump\n  cancel-in-progress: false");
     expect(workflow).toContain("  contents: write");
     expect(workflow).toContain("  pull-requests: write");
+    expect(workflow).toContain("  actions: write");
+    expect(workflow).toContain("  issues: write");
+  });
+
+  test("uses reviewed action pins without persisting checkout credentials", () => {
+    const workflow = renderComposeVendorBumpWorkflow();
+
+    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout}`);
+    expect(workflow).toContain(`uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun}`);
+    expect(workflow).toContain("          persist-credentials: false");
+    expect(workflow).not.toContain("actions/checkout@v5");
+    expect(workflow).not.toContain("oven-sh/setup-bun@v2");
   });
 
   test("checks the latest compose-go tag against the pin and bumps only when newer", () => {
@@ -42,6 +56,24 @@ describe("compose-go bump workflow", () => {
     expect(workflow).toContain("automation/compose-go-bump");
     expect(workflow).toContain("gh pr list --state open --head automation/compose-go-bump");
     expect(workflow).toContain("gh pr create");
+    expect(workflow).toContain("gh pr edit automation/compose-go-bump");
+    expect(workflow).toContain("gh workflow run ci.yml --ref automation/compose-go-bump");
+  });
+
+  test("comments on one exact-title failure issue or creates it without labels", () => {
+    const workflow = renderComposeVendorBumpWorkflow();
+
+    expect(workflow).toContain("  report-failure:");
+    expect(workflow).toContain("    if: ${{ failure() }}");
+    expect(workflow).toContain("compose-vendor-bump automation failure");
+    expect(workflow).toContain(
+      "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+    );
+    expect(workflow).toContain("gh issue list --state open");
+    expect(workflow).toContain('select(.title == "compose-vendor-bump automation failure")');
+    expect(workflow).toContain('gh issue comment "$ISSUE_NUMBER" --body "$BODY"');
+    expect(workflow).toContain('gh issue create --title "$TITLE" --body "$BODY"');
+    expect(workflow).not.toContain("--label");
   });
 
   test("delegates classification to the coverage gate without auto-classifying keys", () => {
