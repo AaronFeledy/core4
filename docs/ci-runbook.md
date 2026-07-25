@@ -4,7 +4,7 @@ Use these commands to reproduce the CI jobs locally.
 
 ## Static checks
 
-CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64`; the stable `static-checks` summary job is the branch-protection check for those portable static gates.
+CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root and core `package.json#engines.bun`. Update `.bun-version` first when validating a new Bun release. The default PR gate runs `static-checks-platform` as a five-platform matrix over `darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, and `windows-x64` (with `linux-x64` cells on both `ubuntu-24.04` and `ubuntu-26.04`); the stable `static-checks` summary job is the branch-protection check for those portable static gates.
 
 Every platform cell runs the fork-safe portable static gates:
 
@@ -24,7 +24,7 @@ bun run check:network-boundary
 bun run check:machine-output
 ```
 
-The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
+The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
 
 `bun run test` prints the exact shard commands CI runs:
 
