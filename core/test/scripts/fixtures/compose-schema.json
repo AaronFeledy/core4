@@ -1,0 +1,68 @@
+{
+  "$defs": {
+    "dependency": {
+      "oneOf": [
+        { "type": "string" },
+        {
+          "type": "object",
+          "properties": {
+            "condition": { "type": "string" }
+          }
+        }
+      ]
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "depends_on": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/dependency" }
+        },
+        "image": { "type": "string" },
+        "labels": {
+          "type": "object",
+          "patternProperties": {
+            "^.+$": { "type": "string" }
+          }
+        },
+        "volumes": {
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "type": { "type": "string" },
+                  "volume": {
+                    "type": "object",
+                    "properties": {
+                      "subpath": { "type": "string" }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      "patternProperties": {
+        "^x-": {}
+      }
+    }
+  },
+  "type": "object",
+  "properties": {
+    "name": { "type": "string" },
+    "services": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-zA-Z0-9._-]+$": { "$ref": "#/$defs/service" }
+      }
+    },
+    "version": { "type": "string" }
+  },
+  "patternProperties": {
+    "^x-": {}
+  }
+}

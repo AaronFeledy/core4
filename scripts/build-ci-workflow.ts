@@ -116,6 +116,9 @@ ${setupBunSteps}
       - name: Network boundary lint
         run: bun run check:network-boundary
 
+      - name: Compose schema coverage
+        run: bun run check:compose-coverage
+
       - name: Libpod API prefix lint
         run: bun run check:libpod-prefix
 

@@ -22,7 +22,7 @@
         "Lint passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 7.4 'Vendored upstream schema' + 'Disposition matrix' rules; spec 5.5.1 (planning consults the matrix). Pin source MUST be a compose-go tag, never the untagged compose-spec mirror. The matrix is the single source for the coverage gate, the published docs matrix (US-477), rejection remediation text (US-475), and the fixture skip-list (US-476). Merged from former US-466 + US-467."
     },
     {
