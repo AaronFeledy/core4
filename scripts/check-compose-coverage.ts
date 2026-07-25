@@ -6,11 +6,11 @@ import {
   composeTopLevelDispositions,
 } from "../core/src/landofile/compose/dispositions.ts";
 import {
+  type ComposeCoverageDiff,
   collectComposeServiceKeyPaths,
   collectComposeTopLevelKeyPaths,
   compareComposeCoverage,
 } from "./compose-schema.ts";
-import type { ComposeCoverageDiff } from "./compose-schema.ts";
 import { type ComposeVendorChecksumResult, verifyComposeVendorChecksum } from "./compose-vendor.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");

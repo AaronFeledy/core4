@@ -40,11 +40,6 @@ const resolveLocalRef = (document: unknown, ref: string): unknown => {
 
 const patternSegment = (pattern: string): string => (pattern.startsWith("^x-") ? "x-*" : "*");
 
-const appendPath = (prefix: ReadonlyArray<string>, segment: string): ReadonlyArray<string> => [
-  ...prefix,
-  segment,
-];
-
 const addPath = (paths: Set<string>, path: ReadonlyArray<string>): void => {
   if (path.length > 0) paths.add(path.join("."));
 };
@@ -69,7 +64,7 @@ const walkSchema = (
     for (const [key, child] of Object.entries(requireObject(properties, "properties must be an object")).sort(
       ([left], [right]) => left.localeCompare(right),
     )) {
-      const path = appendPath(prefix, key);
+      const path = [...prefix, key];
       addPath(paths, path);
       walkSchema(document, child, path, paths, activeRefs);
     }
@@ -80,7 +75,7 @@ const walkSchema = (
     for (const [pattern, child] of Object.entries(
       requireObject(patternProperties, "patternProperties must be an object"),
     ).sort(([left], [right]) => left.localeCompare(right))) {
-      const path = appendPath(prefix, patternSegment(pattern));
+      const path = [...prefix, patternSegment(pattern)];
       addPath(paths, path);
       walkSchema(document, child, path, paths, activeRefs);
     }
@@ -88,7 +83,7 @@ const walkSchema = (
 
   const additionalProperties = schema.additionalProperties;
   if (additionalProperties === true || isJsonObject(additionalProperties)) {
-    const path = appendPath(prefix, "*");
+    const path = [...prefix, "*"];
     addPath(paths, path);
     if (isJsonObject(additionalProperties)) {
       walkSchema(document, additionalProperties, path, paths, activeRefs);

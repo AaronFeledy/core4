@@ -15,7 +15,7 @@ export class ComposeDispositionMatrixError extends Error {
 
 const NORMALIZED_ENTRY = {
   disposition: "normalized",
-  rationale: "Normalizes into provider-neutral service plan fields per spec 6.2.",
+  rationale: "Normalizes into provider-neutral service plan fields.",
 } as const satisfies ComposeDispositionEntry;
 
 const PRESERVED_ENTRY = {
