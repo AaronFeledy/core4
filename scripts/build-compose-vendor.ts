@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import {
   buildComposeVendorPin,
   composeVendorSourceUrl,
+  isStableComposeGoTag,
   readComposeVendorPin,
   sha256Hex,
 } from "./compose-vendor.ts";
@@ -57,7 +58,9 @@ export const parseComposeVendorArgs = (argv: ReadonlyArray<string>): ComposeVend
   }
 
   if (tag === undefined) return { mode: "verify" };
-  if (!tag.startsWith("v")) throw new ComposeVendorArgsError(`compose-go tag must start with "v": ${tag}`);
+  if (!isStableComposeGoTag(tag)) {
+    throw new ComposeVendorArgsError(`compose-go tag must be stable vMAJOR.MINOR.PATCH: ${tag}`);
+  }
   return { mode: "bump", tag };
 };
 

@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { applyComposeVendorBump, parseComposeVendorArgs } from "../../../scripts/build-compose-vendor.ts";
+import {
+  ComposeVendorArgsError,
+  applyComposeVendorBump,
+  parseComposeVendorArgs,
+} from "../../../scripts/build-compose-vendor.ts";
 import { readComposeVendorPin, sha256Hex } from "../../../scripts/compose-vendor.ts";
 
 describe("compose vendor args", () => {
@@ -24,9 +28,12 @@ describe("compose vendor args", () => {
     expect(() => parseComposeVendorArgs(["--tag"])).toThrow();
   });
 
-  test("rejects a tag that does not start with v", () => {
-    expect(() => parseComposeVendorArgs(["--tag", "2.14.0"])).toThrow();
-  });
+  test.each(["2.14.0", "v2", "v2.14", "v2.14.0-rc.1", "v2.14.0/schema"])(
+    "rejects non-stable compose-go tag %s",
+    (tag) => {
+      expect(() => parseComposeVendorArgs(["--tag", tag])).toThrow(ComposeVendorArgsError);
+    },
+  );
 });
 
 describe("apply compose vendor bump", () => {

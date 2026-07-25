@@ -31,13 +31,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const SHA256_PATTERN = /^[0-9a-f]{64}$/u;
+const STABLE_TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/u;
+
+export const isStableComposeGoTag = (tag: string): boolean => STABLE_TAG_PATTERN.test(tag);
 
 export const parseComposeVendorPin = (value: unknown, pinPath: string): ComposeVendorPin => {
   if (!isRecord(value)) throw new ComposeVendorPinError(pinPath);
   const { tag, sourceUrl, sha256 } = value;
   if (
     typeof tag !== "string" ||
-    !tag.startsWith("v") ||
+    !isStableComposeGoTag(tag) ||
     typeof sourceUrl !== "string" ||
     !sourceUrl.startsWith(`https://raw.githubusercontent.com/compose-spec/compose-go/${tag}/`) ||
     typeof sha256 !== "string" ||
@@ -64,8 +67,6 @@ export const buildComposeVendorPin = (tag: string, bytes: ArrayBuffer): ComposeV
   sourceUrl: composeVendorSourceUrl(tag),
   sha256: sha256Hex(bytes),
 });
-
-const STABLE_TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)$/u;
 
 const parseStableTag = (tag: string): readonly [number, number, number] | undefined => {
   const match = STABLE_TAG_PATTERN.exec(tag);
