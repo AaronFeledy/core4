@@ -35,7 +35,7 @@ const providerLandoE2eJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 ${bunSetupStep}
 
 ${renderInstallPodman6Step()}
@@ -91,7 +91,7 @@ ${renderAssertPodman6Step()}
 
       - name: Upload provider-lando e2e diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-lando-e2e-diagnostics-linux-x64
           path: provider-lando-e2e-diagnostics
@@ -103,7 +103,7 @@ const publishedManifestSetupJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 ${bunSetupStep}
 
 ${renderInstallPodman6Step()}
@@ -174,7 +174,7 @@ const distributionRehearsalJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 ${bunSetupStep}
 
       - name: Build OCLIF manifest
@@ -197,7 +197,7 @@ ${distributionSanitizeLines}
         run: bun run scripts/dist-bundle.ts --verify dist/bundle
 
       - name: Upload distribution rehearsal bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-dist-rehearsal-v4.0.0-nightly.\${{ github.run_number }}
           path: dist/bundle
@@ -222,7 +222,7 @@ const renderJob = (job: NightlyJob): string => `
     runs-on: ${job.runsOn}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 ${bunSetupStep}
 ${contractTestStep(job.platform)}`;
 
@@ -231,7 +231,7 @@ const nightlyTierUnitTestsJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 ${bunSetupStep}
 
       - name: Run nightly-tier unit tests
@@ -242,7 +242,7 @@ const runtimeBundleManifestLiveJob = `
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 ${bunSetupStep}
 
       - name: Verify committed runtime-bundle manifest resolves live

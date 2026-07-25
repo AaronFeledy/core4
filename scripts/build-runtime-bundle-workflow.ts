@@ -62,7 +62,7 @@ jobs:
       runtime_tag: \${{ steps.classify.outputs.runtime_tag }}
       desired_sources_sha: \${{ steps.classify.outputs.desired_sources_sha }}
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
+      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
         with:
           persist-credentials: false
 
@@ -152,7 +152,7 @@ ${expectedAssetLines}
         include:
 ${matrixInclude}
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
+      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
         with:
           persist-credentials: false
 
@@ -183,7 +183,7 @@ ${matrixInclude}
         run: bun run scripts/assemble-runtime-bundle.ts --platform \${{ matrix.hostKey }}
 
       - name: Upload assembled bundle
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.uploadArtifact} # v4.6.2
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.uploadArtifact} # v6.0.0
         with:
           name: runtime-bundle-\${{ matrix.hostKey }}
           path: dist/cache/runtime-bundle/\${{ matrix.filename }}
@@ -198,7 +198,7 @@ ${matrixInclude}
       actions: write
     runs-on: ubuntu-24.04
     steps:
-      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
+      - uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
         with:
           persist-credentials: false
 
@@ -209,7 +209,7 @@ ${matrixInclude}
 
       - name: Download assembled bundles
         if: needs.classify.outputs.state == 'publish_new'
-        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.downloadArtifact} # v4.3.0
+        uses: ${supplyChain.RUNTIME_BUNDLE_ACTION_PINS.downloadArtifact} # v5.0.0
         with:
           pattern: runtime-bundle-*
           merge-multiple: true

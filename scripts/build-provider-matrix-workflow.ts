@@ -126,7 +126,7 @@ ${matrixInclude}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${setupBunSteps}
 
@@ -189,7 +189,7 @@ ${renderAssertPodman6Step({ condition: "matrix.cell == 'podman-podman6-linux'" }
 
       - name: Upload provider matrix cell report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-matrix-report-\${{ matrix.cell }}
           path: provider-matrix-reports/\${{ matrix.cell }}.json
@@ -221,7 +221,7 @@ ${managedLandoTeardown}
 
       - name: Upload provider matrix diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-matrix-diagnostics-\${{ matrix.cell }}
           path: provider-matrix-diagnostics

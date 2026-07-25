@@ -1,11 +1,11 @@
 export const RUNTIME_BUNDLE_ACTION_PINS = {
-  checkout: "actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955",
-  downloadArtifact: "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093",
+  checkout: "actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8",
+  downloadArtifact: "actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131",
   rustToolchain: "dtolnay/rust-toolchain@4e529fb27e59237866a6523e61ab248308c068b4",
   setupBun: "oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76",
   setupGo: "actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5",
   setupNode: "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020",
-  uploadArtifact: "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02",
+  uploadArtifact: "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
 } as const;
 
 export const RUNTIME_BUNDLE_UBUNTU_SNAPSHOT = "20260701T000000Z";

@@ -36,7 +36,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -126,7 +126,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -165,7 +165,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -201,7 +201,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -248,7 +248,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -291,7 +291,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -331,7 +331,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -383,7 +383,7 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -435,7 +435,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -491,7 +491,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -537,7 +537,7 @@ jobs:
         run: bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/**
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: dist
@@ -773,7 +773,7 @@ jobs:
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip
           path: dist/transcripts/guides/**/*.json
@@ -782,7 +782,7 @@ jobs:
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}.zip
           path: guide-e2e-provider-diagnostics
@@ -813,7 +813,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -865,7 +865,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -905,7 +905,7 @@ jobs:
 
       - name: Upload darwin-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-darwin-arm64
           path: |
@@ -925,7 +925,7 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -965,7 +965,7 @@ jobs:
 
       - name: Upload darwin-x64 binary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-darwin-x64
           path: |
@@ -985,7 +985,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1025,7 +1025,7 @@ jobs:
 
       - name: Upload linux-arm64 binary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-linux-arm64
           path: |
@@ -1045,7 +1045,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1085,7 +1085,7 @@ jobs:
 
       - name: Upload linux-x64 binary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-linux-x64
           path: |
@@ -1105,7 +1105,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1119,7 +1119,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: linux-sidecars
@@ -1146,7 +1146,7 @@ jobs:
 
       - name: Upload windows-x64 binary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-windows-x64
           path: |
@@ -1165,7 +1165,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1182,7 +1182,7 @@ jobs:
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -1199,7 +1199,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1213,7 +1213,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: dist
@@ -1237,7 +1237,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1251,7 +1251,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download darwin-arm64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-darwin-arm64
           path: dist
@@ -1269,7 +1269,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-integration-diagnostics-darwin-arm64
           path: provider-diagnostics
@@ -1286,7 +1286,7 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1300,7 +1300,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download darwin-x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-darwin-x64
           path: dist
@@ -1318,7 +1318,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-integration-diagnostics-darwin-x64
           path: provider-diagnostics
@@ -1335,7 +1335,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1349,7 +1349,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download linux-arm64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-arm64
           path: dist
@@ -1367,7 +1367,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-integration-diagnostics-linux-arm64
           path: provider-diagnostics
@@ -1388,7 +1388,7 @@ jobs:
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1402,7 +1402,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download linux-x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: dist
@@ -1665,7 +1665,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}
           path: provider-diagnostics
@@ -1696,7 +1696,7 @@ jobs:
     runs-on: windows-2022
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -1710,7 +1710,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download windows-x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-windows-x64
           path: dist
@@ -1719,7 +1719,7 @@ jobs:
         run: chmod +x dist/lando-windows-x64.exe
 
       - name: Download current-commit Windows runtime bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle
@@ -1757,7 +1757,7 @@ jobs:
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: provider-integration-diagnostics-windows-x64
           path: provider-diagnostics

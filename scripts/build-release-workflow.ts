@@ -53,7 +53,7 @@ jobs:
     if: github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-24.04
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
 
       - name: Setup Bun
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
@@ -106,7 +106,7 @@ jobs:
     needs: [dev-prerelease-linux-x64]
     runs-on: ubuntu-24.04
     steps:
-      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v4.3.0
+      - uses: ${RUNTIME_BUNDLE_ACTION_PINS.checkout} # v5.0.0
 
       - name: Setup Bun
         uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupBun} # v2.0.2
@@ -114,7 +114,7 @@ jobs:
           bun-version-file: .bun-version
 
       - name: Setup Node for npm trusted publishing
-        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupNode} # v4.4.0
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupNode} # v4.0
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org

@@ -267,7 +267,7 @@ describe("ci workflow", () => {
     expect(rehearsal).toContain("        run: bun run scripts/dist-bundle.ts --verify dist/bundle");
 
     expect(rehearsal).toContain("      - name: Upload distribution rehearsal bundle");
-    expect(rehearsal).toContain("        uses: actions/upload-artifact@v4");
+    expect(rehearsal).toContain("        uses: actions/upload-artifact@v6");
     expect(rehearsal).toContain(
       "          name: lando-dist-rehearsal-v4.0.0-nightly.${{ github.run_number }}",
     );
@@ -425,7 +425,7 @@ describe("ci workflow", () => {
     expect(buildLinux).toContain("          ./dist/lando --version");
     expect(buildLinux).toContain("          ./dist/lando --help");
     expect(buildLinux).toContain("          ./dist/lando shellenv");
-    expect(buildLinux).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildLinux).toContain("        uses: actions/upload-artifact@v6");
     expect(buildLinux).toContain("        if: always()");
     expect(buildLinux).toContain("          name: lando-linux-x64");
     expect(buildLinux).toContain("          path: |");
@@ -439,7 +439,7 @@ describe("ci workflow", () => {
       buildLinux.indexOf("./dist/lando shellenv"),
     );
     expect(buildLinux.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildLinux.indexOf("uses: actions/upload-artifact@v4"),
+      buildLinux.indexOf("uses: actions/upload-artifact@v6"),
     );
   });
 
@@ -461,7 +461,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("          ./dist/lando --version");
     expect(buildDarwin).toContain("          ./dist/lando --help");
     expect(buildDarwin).toContain("          ./dist/lando shellenv");
-    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v6");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-arm64");
     expect(buildDarwin).toContain("          path: |");
@@ -475,7 +475,7 @@ describe("ci workflow", () => {
       buildDarwin.indexOf("./dist/lando shellenv"),
     );
     expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildDarwin.indexOf("uses: actions/upload-artifact@v4"),
+      buildDarwin.indexOf("uses: actions/upload-artifact@v6"),
     );
   });
 
@@ -510,7 +510,7 @@ describe("ci workflow", () => {
     expect(buildWindows).not.toContain("[Console]::OutputEncoding");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe --version");
     expect(buildWindows).not.toContain("          ./dist/lando-windows-x64.exe shellenv");
-    expect(buildWindows).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildWindows).toContain("        uses: actions/upload-artifact@v6");
     expect(buildWindows).toContain("        if: always()");
     expect(buildWindows).toContain("          name: lando-windows-x64");
     expect(buildWindows).toContain("          path: |");
@@ -527,7 +527,7 @@ describe("ci workflow", () => {
       buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts"),
     );
     expect(buildWindows.indexOf("bun run scripts/smoke-windows-binary.ts")).toBeLessThan(
-      buildWindows.indexOf("uses: actions/upload-artifact@v4"),
+      buildWindows.indexOf("uses: actions/upload-artifact@v6"),
     );
   });
 
@@ -549,7 +549,7 @@ describe("ci workflow", () => {
     expect(buildDarwin).toContain("          ./dist/lando --version");
     expect(buildDarwin).toContain("          ./dist/lando --help");
     expect(buildDarwin).toContain("          ./dist/lando shellenv");
-    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildDarwin).toContain("        uses: actions/upload-artifact@v6");
     expect(buildDarwin).toContain("        if: always()");
     expect(buildDarwin).toContain("          name: lando-darwin-x64");
     expect(buildDarwin).toContain("          path: |");
@@ -563,7 +563,7 @@ describe("ci workflow", () => {
       buildDarwin.indexOf("./dist/lando shellenv"),
     );
     expect(buildDarwin.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildDarwin.indexOf("uses: actions/upload-artifact@v4"),
+      buildDarwin.indexOf("uses: actions/upload-artifact@v6"),
     );
   });
 
@@ -585,7 +585,7 @@ describe("ci workflow", () => {
     expect(buildLinuxArm).toContain("          ./dist/lando --version");
     expect(buildLinuxArm).toContain("          ./dist/lando --help");
     expect(buildLinuxArm).toContain("          ./dist/lando shellenv");
-    expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v4");
+    expect(buildLinuxArm).toContain("        uses: actions/upload-artifact@v6");
     expect(buildLinuxArm).toContain("        if: always()");
     expect(buildLinuxArm).toContain("          name: lando-linux-arm64");
     expect(buildLinuxArm).toContain("          path: |");
@@ -599,7 +599,7 @@ describe("ci workflow", () => {
       buildLinuxArm.indexOf("./dist/lando shellenv"),
     );
     expect(buildLinuxArm.indexOf("./dist/lando shellenv")).toBeLessThan(
-      buildLinuxArm.indexOf("uses: actions/upload-artifact@v4"),
+      buildLinuxArm.indexOf("uses: actions/upload-artifact@v6"),
     );
   });
 
@@ -685,7 +685,7 @@ describe("ci workflow", () => {
     );
     expect(guideScenariosRunner).toContain("      - name: Upload guide e2e provider diagnostics");
     expect(guideScenariosRunner).toContain("        if: failure()");
-    expect(guideScenariosRunner).toContain("        uses: actions/upload-artifact@v4");
+    expect(guideScenariosRunner).toContain("        uses: actions/upload-artifact@v6");
     expect(guideScenariosRunner).toContain(
       "          name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
     );
@@ -916,7 +916,7 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("        if: failure()");
     expect(providerIntegration).toContain('          journalctl --no-pager --since "-30 minutes"');
     expect(providerIntegration).toContain("      - name: Upload provider integration diagnostics");
-    expect(providerIntegration).toContain("        uses: actions/upload-artifact@v4");
+    expect(providerIntegration).toContain("        uses: actions/upload-artifact@v6");
     expect(providerIntegration).toContain(
       "          name: provider-integration-diagnostics-linux-x64-${{ matrix.runs-on }}",
     );

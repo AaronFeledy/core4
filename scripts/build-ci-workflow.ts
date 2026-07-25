@@ -74,7 +74,7 @@ ${staticCheckMatrixInclude()}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 35
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -157,7 +157,7 @@ const renderUnitTests = (): string => `  unit-tests-linux-x64-shard:
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -208,7 +208,7 @@ const renderHostProxyShimDownloadStep = (platform: CiPlatform): string =>
     ? `
 
       - name: Download Linux sidecars from Linux artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: linux-sidecars`
@@ -219,7 +219,7 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
     runs-on: ${platform.runsOn}
     timeout-minutes: ${platform.timeoutMinutes}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -247,7 +247,7 @@ ${renderSmokeCommands(platform)}
 
       - name: Upload ${platform.id} binary
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lando-${platform.id}
           path: |
@@ -265,14 +265,14 @@ const renderPerfBudgetJob = (): string => `  perf-budget-linux-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
 ${setupBunSteps}
 
       - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: dist
@@ -471,7 +471,7 @@ const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -481,7 +481,7 @@ ${setupBunSteps}
         run: bun run scripts/assemble-runtime-bundle.ts --platform win32-x64
 
       - name: Upload current-commit Windows runtime bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle/lando-runtime-win32-x64.zip
@@ -492,7 +492,7 @@ ${timingNoticeStep("runtime-bundle-win32-x64", 15)}
 `;
 
 const windowsManagedSetupSteps = `      - name: Download current-commit Windows runtime bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: runtime-bundle-win32-x64-current
           path: dist/cache/runtime-bundle
@@ -553,14 +553,14 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
 ${setupBunSteps}
 
       - name: Download ${platform.id} binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-${platform.id}
           path: dist
@@ -572,7 +572,7 @@ ${providerIntegrationSteps(platform)}
 
       - name: Upload provider integration diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: ${diagnosticsName}
           path: provider-diagnostics
@@ -599,7 +599,7 @@ const linuxGuideE2eProviderSetupSteps = `${landoRootlessPrereqSteps}
 ${landoRuntimeBundleSetupSteps}`;
 
 const linuxGuideScenarioE2eSteps = `      - name: Download Linux x64 binary artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: lando-linux-x64
           path: dist
@@ -629,7 +629,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide scenario transcripts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: guide-scenario-transcripts-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
           path: dist/transcripts/guides/**/*.json
@@ -638,7 +638,7 @@ ${landoManagedPodmanTeardownCommands}
 
       - name: Upload guide e2e provider diagnostics
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: guide-e2e-provider-diagnostics-\${{ github.run_id }}-\${{ matrix.runs-on }}.zip
           path: guide-e2e-provider-diagnostics
@@ -665,7 +665,7 @@ const renderGuideScenariosJob = (platform: CiPlatform): string => {
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -755,7 +755,7 @@ ${renderUnitTests()}
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -781,7 +781,7 @@ ${timingNoticeStep("schema-snapshot", 15)}
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -818,7 +818,7 @@ ${timingNoticeStep("bundled-codegen", 15)}
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
@@ -838,7 +838,7 @@ ${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner", "lib
     runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
 ${timingStartStep}
 
