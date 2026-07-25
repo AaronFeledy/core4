@@ -631,6 +631,13 @@ describe("@lando/sdk package exports", () => {
     expect(sdkTest.makePluginSourceContractSuite).toBeDefined();
   });
 
+  test("test entry point exports the proxy service contract suite", async () => {
+    const sdkTest = await import("@lando/sdk/test");
+
+    expect(sdkTest.runProxyServiceContractSuite).toBeDefined();
+    expect(sdkTest.makeProxyServiceContractSuite).toBeDefined();
+  });
+
   test("test entry point exports the renderer panel contract suite", async () => {
     const sdkTest = await import("@lando/sdk/test");
 

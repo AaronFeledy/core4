@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Stream } from "effect";
 
 import { FileNotFoundError } from "@lando/core/errors";
 import { FileSystem } from "@lando/core/services";
-import { FileSystemLive } from "../../src/services/file-system.ts";
+import { FileSystemLive, writeAtomicFile } from "../../src/services/file-system.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-file-system-"));
@@ -90,6 +90,27 @@ describe("FileSystemLive", () => {
 
       expect(result.text).toBe("new");
       expect(result.entries).toEqual(["atomic.txt"]);
+    });
+  });
+
+  test("keeps the destination intact until atomic rename", async () => {
+    await withTempDir(async (dir) => {
+      const filePath = join(dir, "atomic.txt");
+      await writeFile(filePath, "old");
+      const replace = async (source: string, destination: string): Promise<void> => {
+        expect(destination).toBe(filePath);
+        expect(source).toMatch(/atomic\.txt\.tmp-[0-9a-f-]+$/);
+        expect(await readFile(source, "utf8")).toBe("new");
+        expect(await readFile(destination, "utf8")).toBe("old");
+        throw new Error("simulated crash before rename");
+      };
+
+      await expect(writeAtomicFile(filePath, "new", replace)).rejects.toThrow(
+        "simulated crash before rename",
+      );
+
+      expect(await readFile(filePath, "utf8")).toBe("old");
+      expect(await readdir(dir)).toEqual(["atomic.txt"]);
     });
   });
 

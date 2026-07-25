@@ -16,7 +16,7 @@
  */
 import { Effect, Layer } from "effect";
 
-import { ProxyError } from "@lando/sdk/errors";
+import { ProxyApplyError, ProxyError, ProxySetupError } from "@lando/sdk/errors";
 import { ProxyService } from "@lando/sdk/services";
 
 export { ProxyService };
@@ -27,10 +27,26 @@ const PROXY_UNAVAILABLE_MESSAGE =
 
 export const ProxyServiceUnavailableLive = Layer.succeed(ProxyService, {
   id: PROXY_UNAVAILABLE_ID,
+  capabilities: { wildcardHostnames: false, tls: false, pathPrefixes: false },
   setup: () =>
-    Effect.fail(new ProxyError({ message: PROXY_UNAVAILABLE_MESSAGE, proxyId: PROXY_UNAVAILABLE_ID })),
+    Effect.fail(
+      new ProxySetupError({
+        message: PROXY_UNAVAILABLE_MESSAGE,
+        proxyId: PROXY_UNAVAILABLE_ID,
+        remediation: "Install and select a ProxyService plugin, then rerun setup.",
+      }),
+    ),
   applyRoutes: (_routes, _appId) =>
-    Effect.fail(new ProxyError({ message: PROXY_UNAVAILABLE_MESSAGE, proxyId: PROXY_UNAVAILABLE_ID })),
+    Effect.fail(
+      new ProxyApplyError({
+        message: PROXY_UNAVAILABLE_MESSAGE,
+        proxyId: PROXY_UNAVAILABLE_ID,
+        app: String(_appId),
+        remediation: "Install and select a ProxyService plugin, then retry route application.",
+      }),
+    ),
   removeRoutes: (_appId) =>
     Effect.fail(new ProxyError({ message: PROXY_UNAVAILABLE_MESSAGE, proxyId: PROXY_UNAVAILABLE_ID })),
+  status: Effect.succeed({ state: "stopped" as const, authorities: [], configuredApps: [] }),
+  stop: Effect.void,
 });

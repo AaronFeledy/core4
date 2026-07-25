@@ -24,7 +24,7 @@ export interface BundledPluginEntry {
     readonly loggers?: ReadonlyArray<string>;
     readonly renderers?: ReadonlyArray<string>;
     readonly fileSyncEngines?: ReadonlyArray<string>;
-    readonly proxies?: ReadonlyArray<string>;
+    readonly proxyServices?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
     readonly templateEngines?: ReadonlyArray<string>;
     readonly subscribers?: ReadonlyArray<{
@@ -85,7 +85,7 @@ export const buildConfig: BuildConfig = {
     {
       name: "@lando/proxy-traefik",
       path: "plugins/proxy-traefik",
-      contributes: { proxies: ["traefik"], globalServices: ["traefik"] },
+      contributes: { proxyServices: ["traefik"], globalServices: ["traefik"] },
     },
     {
       name: "@lando/template-handlebars",

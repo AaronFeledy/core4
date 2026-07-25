@@ -52,6 +52,8 @@ export class ProxyService extends Context.Service<ProxyService, {
 - Route status appears in `lando info` and post-start messages.
 - Offline/custom-domain workflows are supported via the global `domain` config.
 - Proxy plugins reconcile stale routes during rebuild and destroy.
+- `stop` disables routing durably by removing all app route definitions; it does not stop unrelated
+  global-app services or require process-local state. `status` reports this durable routing state.
 - Proxy plugins consume `RouteFilter` plugin contributions to translate filters into native middleware.
 
 **§10.2.1 Default Live Layer realization through the global app**

@@ -1,0 +1,16 @@
+---
+title: Proxy Status
+description: Current ingress and configured-app status reported by a proxy implementation.
+---
+
+# Proxy Status
+
+Current ingress and configured-app status reported by a proxy implementation.
+
+[JSON Schema artifact](../../../dist/schemas/proxy-status.json)
+
+| Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `state` | Yes | `string` | Current proxy ingress state. | — | `running`, `stopped` | — | — |
+| `authorities` | Yes | `array` | Authorities currently exposed by the proxy. | — | — | — | — |
+| `configuredApps` | Yes | `array` | Apps with durable route configuration. | — | — | — | — |

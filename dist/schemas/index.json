@@ -451,6 +451,51 @@
   },
   {
     "deprecated": false,
+    "description": "Proxy route features truthfully supported by an implementation.",
+    "docsPath": "docs/reference/schemas/proxy-capabilities.mdx",
+    "id": "ProxyCapabilities",
+    "jsonSchemaPath": "dist/schemas/proxy-capabilities.json",
+    "packageExport": "@lando/sdk/schema#ProxyCapabilities",
+    "title": "Proxy Capabilities"
+  },
+  {
+    "deprecated": false,
+    "description": "Proxy setup configuration supplied by core.",
+    "docsPath": "docs/reference/schemas/proxy-config.mdx",
+    "id": "ProxyConfig",
+    "jsonSchemaPath": "dist/schemas/proxy-config.json",
+    "packageExport": "@lando/sdk/schema#ProxyConfig",
+    "title": "Proxy Config"
+  },
+  {
+    "deprecated": false,
+    "description": "Externally visible authority selected by a proxy implementation.",
+    "docsPath": "docs/reference/schemas/proxy-authority.mdx",
+    "id": "ProxyAuthority",
+    "jsonSchemaPath": "dist/schemas/proxy-authority.json",
+    "packageExport": "@lando/sdk/schema#ProxyAuthority",
+    "title": "Proxy Authority"
+  },
+  {
+    "deprecated": false,
+    "description": "Durable route-application result returned by a proxy implementation.",
+    "docsPath": "docs/reference/schemas/proxy-apply-result.mdx",
+    "id": "ProxyApplyResult",
+    "jsonSchemaPath": "dist/schemas/proxy-apply-result.json",
+    "packageExport": "@lando/sdk/schema#ProxyApplyResult",
+    "title": "Proxy Apply Result"
+  },
+  {
+    "deprecated": false,
+    "description": "Current ingress and configured-app status reported by a proxy implementation.",
+    "docsPath": "docs/reference/schemas/proxy-status.mdx",
+    "id": "ProxyStatus",
+    "jsonSchemaPath": "dist/schemas/proxy-status.json",
+    "packageExport": "@lando/sdk/schema#ProxyStatus",
+    "title": "Proxy Status"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Healthcheck Plan.",
     "docsPath": "docs/reference/schemas/healthcheck-plan.mdx",
     "id": "HealthcheckPlan",
@@ -1393,6 +1438,15 @@
     "jsonSchemaPath": "dist/schemas/plugin-manifest.json",
     "packageExport": "@lando/sdk/schema#PluginManifest",
     "title": "Plugin Manifest"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Proxy Service Contribution.",
+    "docsPath": "docs/reference/schemas/proxy-service-contribution.mdx",
+    "id": "ProxyServiceContribution",
+    "jsonSchemaPath": "dist/schemas/proxy-service-contribution.json",
+    "packageExport": "@lando/sdk/schema#ProxyServiceContribution",
+    "title": "Proxy Service Contribution"
   },
   {
     "deprecated": false,

@@ -11,19 +11,14 @@ provides:
   proxyServices:
     - id: traefik
       module: ./src/proxy.ts
-  routeFilters:
-    - id: requestHeader
-      module: ./src/filters/request-header.ts
-    - id: responseHeader
-      module: ./src/filters/response-header.ts
-    - id: redirect
-      module: ./src/filters/redirect.ts
-    - id: rewritePath
-      module: ./src/filters/rewrite-path.ts
-    - id: stripPrefix
-      module: ./src/filters/strip-prefix.ts
-    - id: addPrefix
-      module: ./src/filters/add-prefix.ts
+      defaultFor:
+        platform: [darwin, linux, win32]
+  globalServices:
+    - id: traefik
+      module: ./src/global-services/traefik.ts
+      enabledByDefault: true
+      requires:
+        providerCapabilities: [sharedCrossAppNetwork]
 
 requires:
   "@lando/core": "^4.0.0"

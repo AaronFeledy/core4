@@ -65,7 +65,8 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
       : 'import { Effect, type Layer } from "effect";',
     "",
     'import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";',
-    'import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";',
+    'import type { ProxyError } from "@lando/sdk/errors";',
+    'import type { AppFeatureDefinition, FileSystem, GlobalAppService, PathsService, ProxyService, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";',
     'import type { TemplateEngine } from "@lando/sdk/template";',
     "",
   ];
@@ -89,6 +90,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
         `    ...serviceFeaturesFrom({ ...${moduleName} }),`,
         `    ...appFeaturesFrom({ ...${moduleName} }),`,
         `    ...globalServicesFrom({ ...${moduleName} }),`,
+        `    ...proxyServicesFrom({ ...${moduleName} }),`,
         `    ...templateEnginesFrom({ ...${moduleName} }),`,
         ...(entry.contributes?.subscribers === undefined
           ? []
@@ -180,6 +182,20 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "): { readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect> } =>",
     "  isGlobalServiceMap(module.globalServices) ? { globalServices: module.globalServices } : {};",
     "",
+    "type ProxyServiceLayer = Layer.Layer<",
+    "  ProxyService,",
+    "  ProxyError,",
+    "  FileSystem | GlobalAppService | PathsService",
+    ">;",
+    "",
+    "const isProxyServiceMap = (value: unknown): value is ReadonlyMap<string, ProxyServiceLayer> =>",
+    "  value instanceof Map && [...value.values()].every((entry) => Layer.isLayer(entry));",
+    "",
+    "const proxyServicesFrom = (",
+    "  module: BundledPluginModule,",
+    "): { readonly proxyServices?: ReadonlyMap<string, ProxyServiceLayer> } =>",
+    "  isProxyServiceMap(module.proxyServices) ? { proxyServices: module.proxyServices } : {};",
+    "",
     "const isTemplateEngine = (value: unknown): value is TemplateEngine =>",
     '  typeof value === "object" &&',
     "  value !== null &&",
@@ -206,6 +222,7 @@ const renderModuleBody = (entries: typeof buildConfig.bundledPlugins): string =>
     "  readonly serviceFeatures?: ReadonlyMap<string, ServiceFeatureDefinition>;",
     "  readonly appFeatures?: ReadonlyMap<string, AppFeatureDefinition>;",
     "  readonly globalServices?: ReadonlyMap<string, GlobalServiceEffect>;",
+    "  readonly proxyServices?: ReadonlyMap<string, ProxyServiceLayer>;",
     "  readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;",
     "  readonly subscriberFactoryLoaders?: ReadonlyMap<string, () => Promise<unknown>>;",
     "}> = [",
@@ -223,7 +240,7 @@ const layerExportFor = (
   if (entry.contributes?.loggers !== undefined) return "logger";
   if (entry.contributes?.renderers !== undefined) return "renderer";
   if (entry.contributes?.fileSyncEngines !== undefined) return "engine";
-  if (entry.contributes?.proxies !== undefined) return "proxy";
+  if (entry.contributes?.proxyServices !== undefined) return "proxy";
   if (entry.contributes?.templateEngines !== undefined) return "templateEngine";
 
   throw new Error(`Bundled plugin ${entry.name} does not declare a supported layer contribution.`);

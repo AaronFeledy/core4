@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "DeprecationNotice": {
+      "additionalProperties": false,
+      "description": "A structured deprecation declaration attached to a public surface.",
+      "properties": {
+        "docsUrl": {
+          "format": "uri",
+          "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://",
+          "type": "string"
+        },
+        "note": {
+          "type": "string"
+        },
+        "removeIn": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "replacement": {
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warn",
+            "error"
+          ],
+          "type": "string"
+        },
+        "since": {
+          "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)$",
+          "type": "string"
+        },
+        "ticket": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "since",
+        "note"
+      ],
+      "title": "Deprecation Notice",
+      "type": "object"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "capabilities": {
+      "additionalProperties": false,
+      "description": "Static capability declaration available before loading the implementation.",
+      "properties": {
+        "pathPrefixes": {
+          "description": "Whether path-prefix route matching is supported.",
+          "type": "boolean"
+        },
+        "tls": {
+          "description": "Whether HTTPS route intent is supported.",
+          "type": "boolean"
+        },
+        "wildcardHostnames": {
+          "description": "Whether wildcard Host rules are supported.",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "wildcardHostnames",
+        "tls",
+        "pathPrefixes"
+      ],
+      "type": "object"
+    },
+    "defaultFor": {
+      "additionalProperties": false,
+      "description": "Host matchers that nominate this implementation as a default.",
+      "properties": {
+        "platform": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "deprecated": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/DeprecationNotice"
+        }
+      ],
+      "description": "Optional lifecycle notice for this contribution."
+    },
+    "enabledByDefault": {
+      "description": "Whether this contribution starts enabled after installation.",
+      "type": "boolean"
+    },
+    "id": {
+      "description": "Unique ProxyService implementation id.",
+      "type": "string"
+    },
+    "module": {
+      "description": "Contained plugin module exporting the ProxyService Layer.",
+      "type": "string"
+    },
+    "summary": {
+      "description": "One-line implementation description for listings and diagnostics.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "id",
+    "module"
+  ],
+  "type": "object"
+}

@@ -18,6 +18,22 @@ export class CacheError extends Schema.TaggedError<CacheError>()("CacheError", {
 export class ProxyError extends Schema.TaggedError<ProxyError>()("ProxyError", {
   message: Schema.String,
   proxyId: Schema.String,
+  remediation: Schema.optional(Schema.String),
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+export class ProxySetupError extends Schema.TaggedError<ProxySetupError>()("ProxySetupError", {
+  message: Schema.String,
+  proxyId: Schema.String,
+  remediation: Schema.String,
+  cause: Schema.optional(Schema.Unknown),
+}) {}
+
+export class ProxyApplyError extends Schema.TaggedError<ProxyApplyError>()("ProxyApplyError", {
+  message: Schema.String,
+  proxyId: Schema.String,
+  app: Schema.String,
+  remediation: Schema.String,
   cause: Schema.optional(Schema.Unknown),
 }) {}
 

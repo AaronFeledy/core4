@@ -10,7 +10,7 @@ tags: [beta, docs, subsystems, proxy, traefik]
   <Scenario id="proxy-sdk-contract" render={false} reason="The ProxyService SDK contract is exercised against an in-memory test double; the Traefik Live Layer requires the global app and running containers">
     <Step name="proxy-contract">
       <Variable name="sdkTag" value="ProxyService" display="Effect Service tag published in @lando/sdk; plugins implement ProxyServiceShape" />
-      <Variable name="contractRunner" value="runProxyServiceContract" display="Contract runner from @lando/sdk/test validates id, setup, applyRoutes, removeRoutes" />
+      <Variable name="contractRunner" value="runProxyServiceContractSuite" display="Contract suite from @lando/sdk/test (alias: makeProxyServiceContractSuite) validates capabilities, setup, applyRoutes, removeRoutes, status, stop" />
       <Variable name="testDouble" value="TestProxyService / makeTestProxyService" display="In-memory test double for ProxyService; tracks routes by appId" />
     </Step>
   </Scenario>
@@ -18,15 +18,15 @@ tags: [beta, docs, subsystems, proxy, traefik]
   <Scenario id="proxy-route-derivation" render={false} reason="Route auto-derivation from service endpoints is exercised by core/test/services/app-planner.test.ts; live Traefik routing requires the global app">
     <Step name="route-derivation">
       <Variable name="defaultDomain" value="lndo.site" display="Default proxy domain; produces hostnames like web.myapp.lndo.site" />
-      <Variable name="derivationRule" value="HTTP/HTTPS service endpoints → RoutePlan (hostname=service.app.lndo.site, scheme=https)" display="Planner auto-derives routes from service endpoints — no proxy: Landofile block required" />
-      <Variable name="appPlanField" value="AppPlan.routes: RoutePlan[]" display="Planner populates AppPlan.routes with derived route plans" />
+      <Variable name="derivationRule" value="HTTP/HTTPS service endpoints → RoutePlan (hostname=service.app.lndo.site, scheme=https, backend={service,protocol,port})" display="Planner auto-derives one canonical route per service from its published HTTP/HTTPS endpoints — no routes: Landofile block required; authored routes: entries resolve against named endpoints when disambiguation is needed" />
+      <Variable name="appPlanField" value="AppPlan.routes: RoutePlan[]" display="Planner populates AppPlan.routes with derived or authored route plans, each carrying a plan-time-resolved backend" />
     </Step>
   </Scenario>
 
   <Scenario id="proxy-unavailable-layer" render={false} reason="The fail-closed ProxyServiceUnavailableLive stub is exercised by unit tests; the Traefik Live Layer requires the global app and running containers">
     <Step name="unavailable-layer">
-      <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="Fails closed with actionable remediation when the global app has not provided the Traefik service yet" />
-      <Variable name="liveLayer" value="Traefik global service" display="The full Traefik Live Layer is wired through the global app's globalServices: contribution" />
+      <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="ProxyServiceRegistry's fallback layer when zero ProxyService plugins are registered; fails closed with remediation to install/select a plugin and rerun setup" />
+      <Variable name="liveLayer" value="SelectedProxyServiceLive" display="Resolved from ProxyServiceRegistry (built from each installed plugin's proxyServices: manifest contribution, §4.3 explicit/default/sole-installed precedence); the bundled Traefik implementation additionally depends on the global app for actual ingress via GlobalAppService.ensureRunning" />
     </Step>
   </Scenario>
 
