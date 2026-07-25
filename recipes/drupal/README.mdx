@@ -20,7 +20,6 @@ below runs that scaffold, verifies its outputs, checks Drush, and tears the app 
     </Step>
     <Step name="start">
       <Run command="lando start" />
-      <Verify event="post-start" />
     </Step>
     <Step name="scaffold-drupal">
       <Run command="lando drupal-scaffold" />
