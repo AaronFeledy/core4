@@ -65,7 +65,9 @@ describe("meilisearch service type — live integration: index create + document
       try {
         const landofile = Schema.decodeUnknownSync(LandofileShape)({
           name: "meilinttest",
-          services: { search: { type: "meilisearch", port: MEILI_PORT } },
+          services: {
+            search: { type: "meilisearch", port: MEILI_PORT, ports: [`${MEILI_PORT}:${MEILI_PORT}`] },
+          },
         });
         const service = landofile.services?.[ServiceName.make("search")];
         if (service === undefined) throw new Error("search service missing");
