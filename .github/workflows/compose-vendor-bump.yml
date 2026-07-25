@@ -2,9 +2,10 @@
 #
 # Daily checks the latest tagged compose-spec/compose-go release against the
 # committed pin. When a newer tag exists it re-vendors the pinned schema and
-# opens or updates a single rolling PR whose body lists the added and removed
-# service key paths. Unclassified new keys fail check:compose-coverage on the
-# PR, which is the intended merge blocker; this workflow never classifies keys.
+# opens or updates a single rolling PR whose body lists added and removed
+# service and top-level key paths. Unclassified new keys fail
+# check:compose-coverage on the PR (the merge blocker); this workflow never
+# classifies keys.
 name: compose-vendor-bump
 
 on:

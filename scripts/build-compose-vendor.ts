@@ -85,6 +85,7 @@ export const refreshComposeVendor = async (): Promise<void> => {
   const bytes = await response.arrayBuffer();
   if (sha256Hex(bytes) !== pin.sha256) throw new ComposeVendorFetchError(pin.sourceUrl);
 
+  // Write upstream bytes verbatim; formatting would break the pin checksum.
   await Bun.write(SCHEMA_PATH, bytes);
 
   process.stdout.write(`[build-compose-vendor] wrote ${SCHEMA_PATH} (${pin.tag})\n`);
