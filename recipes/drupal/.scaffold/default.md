@@ -1,8 +1,9 @@
 # Drupal
 
 Spin up a Drupal 11 stack with PHP, MariaDB, Drush, and Composer. After the app
-starts, scaffold the codebase with `lando composer create-project drupal/recommended-project .`.
-The walkthrough below scaffolds the recipe, starts the app, and tears it back down.
+starts, use `lando drupal-scaffold` to install the pinned Drupal 11 project and
+project-local Drush through a retryable stage-then-commit workflow. The walkthrough
+below runs that scaffold, verifies its outputs, checks Drush, and tears the app down.
 
 ## 1. scaffold
 
@@ -16,10 +17,16 @@ lando init --recipe drupal --name=my-drupal-app --yes
 lando start
 ```
 
-## 3. inspect
+## 3. scaffold-drupal
 
+```bash
+lando drupal-scaffold
 ```
-(generated at runtime)
+
+## 4. check-drush
+
+```bash
+lando drush --version
 ```
 
 ## Cleanup
