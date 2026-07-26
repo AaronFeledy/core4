@@ -68,6 +68,7 @@ const appRefFor = (input: AppBuildInput) =>
 const runGate = (
   input: AppBuildInput,
   gate: Extract<AppNode, { readonly _tag: "gate" }>,
+  signal?: AbortSignal,
 ): Effect.Effect<ScheduleOutcome> => {
   const service: ServiceName = gate.service;
   switch (gate.condition) {
@@ -77,10 +78,10 @@ const runGate = (
       const healthcheck = Object.values(input.plan.services).find(
         (candidate) => String(candidate.name) === String(service),
       )?.healthcheck;
-      if (healthcheck === undefined || healthcheck.kind !== "command") {
-        return Effect.succeed<ScheduleOutcome>("succeeded");
+      if (healthcheck === undefined || healthcheck.kind !== "command" || healthcheck.command === undefined) {
+        return Effect.succeed<ScheduleOutcome>("failed");
       }
-      return makeHealthcheckRunner({ exec: input.provider.exec })
+      return makeHealthcheckRunner({ exec: input.provider.exec, ...(signal === undefined ? {} : { signal }) })
         .run(healthcheck, input.plan.id, service)
         .pipe(
           Effect.map((result): ScheduleOutcome => (result.healthy ? "succeeded" : "failed")),
@@ -88,7 +89,12 @@ const runGate = (
         );
     }
     case "service_completed_successfully":
-      return Effect.scoped(input.provider.waitForExit({ app: input.plan.id, service })).pipe(
+      return Effect.scoped(
+        input.provider.waitForExit(
+          { app: input.plan.id, service },
+          signal === undefined ? undefined : { signal },
+        ),
+      ).pipe(
         Effect.map((result): ScheduleOutcome => (result.exitCode === 0 ? "succeeded" : "failed")),
         Effect.catchAll(() => Effect.succeed<ScheduleOutcome>("failed")),
       );
@@ -226,10 +232,27 @@ export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {})
       });
 
     const execution = Effect.gen(function* () {
+      const nodeById = new Map(graphPlan.graph.nodes.map((node) => [node.id, node.value]));
       const settled = yield* runDependencySchedule(graphPlan.graph, {
         concurrency: Math.max(1, Math.min(4, availableParallelism())),
-        run: (node, blockedBy) =>
-          node.value._tag === "gate" ? runGate(input, node.value) : runStep(node.value.appStep, blockedBy),
+        run: (node, blockedBy) => {
+          if (node.value._tag === "gate") return runGate(input, node.value, options.signal);
+          const labels = blockedBy.map((id) => {
+            const blockedNode = nodeById.get(id);
+            return blockedNode?._tag === "gate"
+              ? `${String(blockedNode.service)}:${
+                  blockedNode.condition === "service_started"
+                    ? "running"
+                    : blockedNode.condition === "service_healthy"
+                      ? "healthy"
+                      : "completed"
+                }`
+              : blockedNode?._tag === "step"
+                ? blockedNode.appStep.step.id
+                : id;
+          });
+          return runStep(node.value.appStep, labels);
+        },
       });
       if (settled._tag === "Cycle") return yield* planError(input, settled.edges);
       const ordered = steps.flatMap(({ step }) => {
@@ -259,7 +282,24 @@ export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {})
         });
       }
     });
-    yield* execution.pipe(
+    const interruptOnAbort =
+      options.signal === undefined
+        ? execution
+        : Effect.raceFirst(
+            execution,
+            Effect.async<void>((resume) => {
+              const signal = options.signal;
+              if (signal === undefined) return;
+              if (signal.aborted) {
+                resume(Effect.interrupt);
+                return;
+              }
+              const abort = () => resume(Effect.interrupt);
+              signal.addEventListener("abort", abort, { once: true });
+              return Effect.sync(() => signal.removeEventListener("abort", abort));
+            }),
+          );
+    yield* interruptOnAbort.pipe(
       Effect.onExit((exit) => {
         if (Exit.isSuccess(exit) || treeSettled) return Effect.void;
         const summary = Cause.isInterruptedOnly(exit.cause) ? "interrupted" : "failed";

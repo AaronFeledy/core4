@@ -217,7 +217,10 @@ export const startApp = (
 
           yield* compensateFailure(
             withBuildProvider(
-              builds.buildApp(builtPlan, execution.forceAppBuild === true ? { force: true } : undefined),
+              builds.buildApp(builtPlan, {
+                ...(execution.forceAppBuild === true ? { force: true } : {}),
+                ...(options.signal === undefined ? {} : { signal: options.signal }),
+              }),
               provider,
             ),
             removeRoutesAndDestroyApp(proxy, provider, plan),

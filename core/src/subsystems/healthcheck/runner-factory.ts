@@ -122,6 +122,7 @@ const timeoutError = (context: TimeoutContext): HealthcheckTimeoutError => {
 
 export const makeHealthcheckRunner: (deps: {
   readonly exec: RuntimeProviderShape["exec"];
+  readonly signal?: AbortSignal;
 }) => HealthcheckRunnerShape = (deps) => ({
   id: "provider-exec",
   run: (plan, appId, service) =>
@@ -138,7 +139,12 @@ export const makeHealthcheckRunner: (deps: {
 
       if (plan.command === undefined) return yield* Effect.fail(missingCommand(service));
 
-      const { provider: command, rendered } = normalizeCommand(plan.command);
+      const normalized = normalizeCommand(plan.command);
+      const command = {
+        ...normalized.provider,
+        ...(deps.signal === undefined ? {} : { signal: deps.signal }),
+      };
+      const rendered = normalized.rendered;
       const target: ExecTarget = { app: appId, service };
       const status = yield* Ref.make<AttemptStatus>({
         _tag: "provider",
