@@ -114,3 +114,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; 540 focused schema, compatibility, planner, cache, loader, app-config render, and generated-artifact tests passed; compose coverage plus renderer, paths, import-cycle, machine-output, state-store, probe, and redaction boundary gates passed; schema codegen was idempotent.
 - **Learnings for future iterations:** env-file content and resolved paths are plan-cache inputs, not only Landofile bytes; accepted authoring schemas should use refinement-preserving encoded bounds so unrelated nested constraints survive JSON Schema generation.
 ---
+
+## 2026-07-25 23:41 CDT - US-468 Review
+- Fixed the final review defects: env files now follow Compose inline-comment rules and reject reserved `__proto__`; discovered Landofile app-root provenance survives nested-directory invocation so relative env files cannot bind to the caller's CWD; null environment values fail with the documented host-resolution remediation while null labels canonicalize to empty strings; cache artifacts containing resolved environment values are created owner-only (`0600`).
+- Review notes (deferred/rejected): the direct-`ServiceConfig` alias finding was a contract naming ambiguity, so the normative text now names the published `ServiceConfigInput` authoring boundary and canonical `ServiceConfig` output instead of turning the canonical struct into a transform that breaks public schema tooling.
+- Review notes (deferred/rejected): chmod migration for old permissive cache files was rejected because v4 is unreleased and has no shipped cache contract; new writes and atomic replacements are `0600`.
+- Guide-Coverage-Skip: US-468 changes Compose schema decoding and planner normalization, while the executable Compose guide and published key matrix are explicitly owned by US-477; no current owned guide covers this surface.
+- Verification: typecheck and lint passed; focused parser, cache, Landofile, planner, include-resolution, app-resolution, public-schema, and schema-snapshot test files passed; Compose coverage and guide-drift-with-skip gates passed; schema codegen was idempotent.
+- **Learnings for future iterations:** loader-only source identity belongs in an Effect-free WeakMap provenance sidecar so canonical schemas and serialized output stay portable; cache files can contain resolved secrets even when their source files are private, so the cache writer must enforce owner-only mode.
+---
