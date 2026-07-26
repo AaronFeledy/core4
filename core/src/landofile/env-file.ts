@@ -37,11 +37,23 @@ export const parseEnvFile = (content: string, source: string): EnvFileParseResul
         },
       };
     }
+    if (key === "__proto__") {
+      return {
+        ok: false,
+        issue: {
+          source,
+          line: index + 1,
+          message: 'The environment variable name "__proto__" is reserved.',
+        },
+      };
+    }
 
     const rawValue = entry.slice(separator + 1).trim();
     const quote = rawValue[0];
     if (quote === '"' || quote === "'") {
-      if (rawValue.length < 2 || rawValue.at(-1) !== quote) {
+      const closingQuote = rawValue.lastIndexOf(quote);
+      const suffix = closingQuote < 1 ? rawValue : rawValue.slice(closingQuote + 1).trimStart();
+      if (closingQuote < 1 || (suffix.length > 0 && !suffix.startsWith("#"))) {
         return {
           ok: false,
           issue: {
@@ -51,10 +63,11 @@ export const parseEnvFile = (content: string, source: string): EnvFileParseResul
           },
         };
       }
-      environment[key] = rawValue.slice(1, -1);
+      environment[key] = rawValue.slice(1, closingQuote);
       continue;
     }
-    environment[key] = rawValue;
+    const comment = rawValue.search(/[ \t]+#/u);
+    environment[key] = comment < 0 ? rawValue : rawValue.slice(0, comment).trimEnd();
   }
   return { ok: true, environment };
 };

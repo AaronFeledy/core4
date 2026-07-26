@@ -31,6 +31,30 @@ describe("parseEnvFile", () => {
     });
   });
 
+  test("parses Compose inline comments without stripping literal hashes", () => {
+    // Given
+    const content = [
+      "UNQUOTED=value # comment",
+      "LITERAL=value#not-a-comment",
+      'QUOTED="value # literal"',
+      'QUOTED_COMMENT="value" # comment',
+    ].join("\n");
+
+    // When
+    const result = parseEnvFile(content, "/app/comments.env");
+
+    // Then
+    expect(result).toEqual({
+      ok: true,
+      environment: {
+        UNQUOTED: "value",
+        LITERAL: "value#not-a-comment",
+        QUOTED: "value # literal",
+        QUOTED_COMMENT: "value",
+      },
+    });
+  });
+
   test("reports the source and line for malformed entries", () => {
     // Given
     const content = "VALID=yes\nMISSING_SEPARATOR";
@@ -45,6 +69,24 @@ describe("parseEnvFile", () => {
         source: "/app/broken.env",
         line: 2,
         message: "Expected KEY=VALUE.",
+      },
+    });
+  });
+
+  test("rejects the reserved __proto__ key instead of silently dropping it", () => {
+    // Given
+    const content = "SAFE=yes\n__proto__=polluted";
+
+    // When
+    const result = parseEnvFile(content, "/app/reserved.env");
+
+    // Then
+    expect(result).toEqual({
+      ok: false,
+      issue: {
+        source: "/app/reserved.env",
+        line: 2,
+        message: 'The environment variable name "__proto__" is reserved.',
       },
     });
   });
