@@ -7,6 +7,7 @@ import { PortNumber } from "./primitives.ts";
 
 const PortProtocol = Schema.Literal("tcp", "udp");
 const Forbidden = Schema.optional(Schema.Never);
+const DecimalPortToken = /^[0-9]{1,5}$/;
 
 export const ComposePortEntry = Schema.Struct({
   target: PortNumber,
@@ -27,14 +28,20 @@ const ComposePortLongInput = Schema.Struct({
   app_protocol: Schema.optional(Schema.String),
   hostIp: Forbidden,
   appProtocol: Forbidden,
+  mode: Schema.optional(Schema.Never).annotations({ description: "Compose ports.mode is unsupported." }),
 });
 
 const ComposePortCanonicalInput = Schema.extend(
   ComposePortEntry,
-  Schema.Struct({ host_ip: Forbidden, app_protocol: Forbidden }),
+  Schema.Struct({
+    host_ip: Forbidden,
+    app_protocol: Forbidden,
+    mode: Schema.optional(Schema.Never).annotations({ description: "Compose ports.mode is unsupported." }),
+  }),
 );
 
 const decodePort = (value: string | number): PortNumber | undefined => {
+  if (typeof value === "string" && !DecimalPortToken.test(value)) return undefined;
   const numeric = typeof value === "number" ? value : Number(value);
   const decoded = Schema.decodeUnknownEither(PortNumber)(numeric);
   return Either.isRight(decoded) ? decoded.right : undefined;

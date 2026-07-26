@@ -111,6 +111,26 @@ describe("ComposePortsField", () => {
     expectPortFailure(entry);
   });
 
+  test.each([
+    ["exponent target", "1e3"],
+    ["hex target", "0x50"],
+    ["float target", "80.0"],
+    ["positive signed target", "+80"],
+    ["negative signed target", "-80"],
+    ["whitespace-padded target", " 80 "],
+    ["empty target", ""],
+    ["exponent published port", "1e3:80"],
+    ["hex published port", "0x50:80"],
+    ["float published port", "80.0:80"],
+    ["signed published port", "+80:80"],
+    ["whitespace-padded published port", " 80 :80"],
+    ["exponent range bound", "80-8e1"],
+    ["empty range bound", "80-"],
+  ])("rejects a non-decimal %s token", (_label, entry) => {
+    // Given / When / Then
+    expectPortFailure(entry);
+  });
+
   test("expands a container-only range", () => {
     // Given
     const input = ["3000-3005"];
@@ -148,18 +168,27 @@ describe("ComposePortsField", () => {
     expectPortFailure({ target: 80, published: "8083-9000" }, "enumerate");
   });
 
-  test("rejects the unsupported long-form mode key", () => {
+  test("rejects the unsupported long-form mode key under default and strict decoding", () => {
     // Given
     const input = [{ target: 80, mode: "host" }];
 
     // When
-    const result = Schema.decodeUnknownEither(ComposePortsField)(input, {
-      onExcessProperty: "error",
-    });
+    const defaultResult = Schema.decodeUnknownEither(ComposePortsField)(input);
+    const strictResult = Schema.decodeUnknownEither(ComposePortsField)(input, { onExcessProperty: "error" });
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(String(result.left)).toContain("mode");
+    for (const result of [defaultResult, strictResult]) {
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        expect(String(result.left)).toContain("[0]");
+        expect(String(result.left)).toContain("mode");
+      }
+    }
+  });
+
+  test("rejects an exponent long-form published token at its array index", () => {
+    // Given / When / Then
+    expectPortFailure({ target: 80, published: "1e3" });
   });
 
   test("canonicalizes numeric and string published ports identically", () => {
@@ -234,5 +263,17 @@ describe("ComposeExposeField", () => {
     // Then
     expect(decoded).toHaveLength(11);
     expect(decoded).toEqual(Array.from({ length: 11 }, (_, offset) => 8000 + offset));
+  });
+
+  test("rejects an exponent container port token at its array index", () => {
+    // Given
+    const input = ["8e1"];
+
+    // When
+    const result = Schema.decodeUnknownEither(ComposeExposeField)(input);
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) expect(String(result.left)).toContain("[0]");
   });
 });
