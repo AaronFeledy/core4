@@ -74,6 +74,14 @@ describe("parseComposeDuration", () => {
       expect(["30s", "1m30s", "1h2m3s"].some((example) => message.includes(example))).toBe(true);
     });
   }
+
+  test("rejects a long invalid scalar without rescanning every suffix", () => {
+    // Given
+    const literal = "9".repeat(64_000);
+
+    // When / Then
+    expect(() => parseComposeDuration(literal)).toThrow(ParseResult.Type);
+  });
 });
 
 describe("Landofile remediation surfacing", () => {

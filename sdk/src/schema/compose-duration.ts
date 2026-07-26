@@ -40,17 +40,20 @@ export const parseComposeDuration = (literal: string): number => {
   const value = literal.startsWith("+") ? literal.slice(1) : literal;
   if (value === "0") return 0;
 
+  const componentPattern = /([0-9]+(?:\.[0-9]+)?)(ns|us|µs|μs|ms|s|m|h)/y;
   let cursor = 0;
   let seconds = 0;
-  for (const match of value.matchAll(/([0-9]+(?:\.[0-9]+)?)(ns|us|µs|μs|ms|s|m|h)/g)) {
-    if (match.index !== cursor) throw durationFailure(literal);
+  while (cursor < value.length) {
+    componentPattern.lastIndex = cursor;
+    const match = componentPattern.exec(value);
+    if (match === null) throw durationFailure(literal);
     const decimal = match[1];
     if (decimal === undefined) throw durationFailure(literal);
     const component = componentSeconds(decimal, match[2] ?? "");
     if (component === undefined) throw durationFailure(literal);
 
     seconds += component;
-    cursor += match[0].length;
+    cursor = componentPattern.lastIndex;
   }
 
   if (cursor === 0 || cursor !== value.length || !Number.isFinite(seconds)) {
