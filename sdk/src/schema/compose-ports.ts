@@ -3,8 +3,6 @@ import { Either, ParseResult, Schema } from "effect";
 import { BindAddress } from "./endpoint.ts";
 import { PortNumber } from "./primitives.ts";
 
-// ==== Canonical Compose port entries (Compose Specification: services.ports / services.expose) ====
-
 const PortProtocol = Schema.Literal("tcp", "udp");
 const Forbidden = Schema.optional(Schema.Never);
 const DecimalPortToken = /^[0-9]{1,5}$/;
@@ -126,8 +124,6 @@ const parseShortPort = (value: string): Either.Either<ReadonlyArray<ComposePortE
   );
 };
 
-// ==== Compose ports field — normalize short and long authoring forms ====
-
 const ComposePortInput = Schema.Union(
   Schema.String,
   Schema.Number,
@@ -190,8 +186,6 @@ export const ComposePortsField = Schema.transformOrFail(
       ),
   },
 );
-
-// ==== Compose expose field — normalize container-only ports and ranges ====
 
 export const ComposeExposeField = Schema.transformOrFail(
   Schema.Array(Schema.Union(Schema.String, Schema.Number)),

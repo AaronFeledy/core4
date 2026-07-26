@@ -1,9 +1,5 @@
 import { ParseResult, Schema } from "effect";
 
-// ============================================================================
-// Compose volume grammar (SPEC: Compose volume short and long syntax)
-// ============================================================================
-
 const DRIVE_LETTER_PATH = /^[A-Za-z]:[\\/]/;
 
 const ComposeVolumeType = Schema.Literal("bind", "volume", "tmpfs");
