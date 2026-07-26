@@ -165,3 +165,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Public schemas are decoded with default options by the global-service loaders, not just through the strict Landofile pipeline, so schema-level correctness cannot assume a strict caller.
   - Adding a value export to `sdk/src/schema/index.ts` requires an entry in the additive-exports list in `sdk/API_COMPATIBILITY.md`; type-only exports do not. The surface test names the offending symbol, so trust its diff.
 ---
+## 2026-07-26 04:13 CDT - US-469 Review
+- Closed the review blockers: Compose port `name` and `app_protocol` now reach provider-neutral endpoint fields; `volume.subpath` and `bind.create_host_path: false` now reach provider-neutral storage/mount fields and are realized by both structured container API mounts and Compose long syntax; option-bearing mounts cannot also appear in legacy `Binds`. Malformed non-decimal port tokens, incompatible long-volume option blocks, and named matrix-rejected fields now fail under both default and strict schema decoding instead of being coerced or stripped.
+- Review notes (deferred/rejected): Bugbot's tmpfs realization finding belongs to US-473 capability checking and US-474 provider realization; US-469 correctly preserves tmpfs under `extensions.compose.tmpfs`.
+- Review notes (deferred/rejected): Tagged matrix-sourced rejection and wildcard `x-*` rejection remain US-475; this review made the named rejected keys fail closed without preempting that error surface.
+- Review notes (deferred/rejected): No new provider capability was added because `bindMounts` and `persistentStorage` already gate plan fields that both bundled emitters realize; `app_protocol` remains metadata and does not rewrite transport/proxy protocol.
+- Guide-Coverage-Skip: US-469 changes Compose service-field normalization, while the executable Compose guide and published key matrix are explicitly owned by US-477; the currently mapped SDK guides do not document these spellings.
+- Verification: typecheck, lint, guide-drift with explicit base context, focused SDK/service-planner/container-runtime/provider tests, Compose coverage, import-cycle, renderer-boundary, schema codegen idempotence, and post-fix Bugbot review passed.
+- **Learnings for future iterations:** A matrix-`normalized` Compose child must end in a provider-neutral plan field and an emitter, not only survive under `extensions.compose`; accepted long-form option blocks must be discriminated before canonicalization so no type-specific data can disappear during planning.
+---

@@ -278,6 +278,10 @@
                         ],
                         "type": "string"
                       },
+                      "appProtocol": {
+                        "description": "Optional application-layer protocol metadata.",
+                        "type": "string"
+                      },
                       "name": {
                         "description": "Optional endpoint name.",
                         "type": "string"
@@ -317,6 +321,10 @@
                         ],
                         "type": "string"
                       },
+                      "appProtocol": {
+                        "description": "Optional application-layer protocol metadata.",
+                        "type": "string"
+                      },
                       "name": {
                         "description": "Optional endpoint name.",
                         "type": "string"
@@ -349,6 +357,10 @@
                     "enum": [
                       "published"
                     ],
+                    "type": "string"
+                  },
+                  "appProtocol": {
+                    "description": "Optional application-layer protocol metadata.",
                     "type": "string"
                   },
                   "name": {
@@ -693,6 +705,12 @@
                     "not": {},
                     "title": "never"
                   },
+                  "mode": {
+                    "$id": "/schemas/never",
+                    "description": "Compose ports.mode is unsupported.",
+                    "not": {},
+                    "title": "never"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -745,6 +763,12 @@
                   "hostIp": {
                     "format": "ip",
                     "type": "string"
+                  },
+                  "mode": {
+                    "$id": "/schemas/never",
+                    "description": "Compose ports.mode is unsupported.",
+                    "not": {},
+                    "title": "never"
                   },
                   "name": {
                     "type": "string"
@@ -899,12 +923,37 @@
                     "properties": {
                       "create_host_path": {
                         "type": "boolean"
+                      },
+                      "propagation": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "recursive": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "selinux": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
                       }
                     },
                     "required": [],
                     "type": "object"
                   },
+                  "consistency": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "createHostPath": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "image": {
                     "$id": "/schemas/never",
                     "not": {},
                     "title": "never"
@@ -959,6 +1008,16 @@
                   "volume": {
                     "additionalProperties": false,
                     "properties": {
+                      "labels": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "nocopy": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
                       "subpath": {
                         "type": "string"
                       }
@@ -980,8 +1039,18 @@
                     "not": {},
                     "title": "never"
                   },
+                  "consistency": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "createHostPath": {
                     "type": "boolean"
+                  },
+                  "image": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
                   },
                   "read_only": {
                     "$id": "/schemas/never",

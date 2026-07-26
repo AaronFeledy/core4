@@ -8,6 +8,9 @@
     "store": {
       "type": "string"
     },
+    "subpath": {
+      "type": "string"
+    },
     "target": {
       "type": "string"
     }
