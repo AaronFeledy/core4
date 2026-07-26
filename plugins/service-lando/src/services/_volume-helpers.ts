@@ -47,7 +47,7 @@ export const resolveBindSource = (source: string, appRoot: string): string => {
   return isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
 };
 
-export const kebabTarget = (target: string): string =>
+const kebabTarget = (target: string): string =>
   target
     .split("/")
     .filter((segment) => segment.length > 0)

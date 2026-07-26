@@ -9,7 +9,7 @@ import {
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext } from "@lando/sdk/services";
 
-export const publicationFor = (entry: ComposePortEntry): typeof EndpointPublication.Type => ({
+const publicationFor = (entry: ComposePortEntry): typeof EndpointPublication.Type => ({
   ...(entry.hostIp === undefined ? {} : { bindAddress: entry.hostIp }),
   ...(entry.published === undefined ? {} : { hostPort: entry.published }),
 });
