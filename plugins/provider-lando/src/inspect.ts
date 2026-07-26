@@ -54,13 +54,16 @@ const request = (
 ): Effect.Effect<PodmanHttpResponse, ProviderError> =>
   api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input);
 
-const parseJson = (response: PodmanHttpResponse): Effect.Effect<unknown, ProviderInternalError> =>
+const parseJson = (
+  response: PodmanHttpResponse,
+  operation = "inspect",
+): Effect.Effect<unknown, ProviderInternalError> =>
   Effect.try({
     try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
     catch: (cause) =>
       new ProviderInternalError({
         providerId: PROVIDER_ID,
-        operation: "inspect",
+        operation,
         message: "Podman API returned invalid JSON.",
         cause,
       }),
@@ -191,46 +194,22 @@ export const waitForExit = (
         }),
       );
     }
-    const inspectResponse = yield* request(
-      podmanApi,
-      {
-        method: "GET",
-        path: `/containers/${encodeURIComponent(containerName(plan, service))}/json`,
-      },
-      "waitForExit",
-    );
-    if (inspectResponse.status < 200 || inspectResponse.status >= 300) {
-      return yield* Effect.fail(
-        new ProviderUnavailableError({
-          providerId: PROVIDER_ID,
-          operation: "waitForExit",
-          message: withApiReason(`Podman inspect failed with HTTP ${inspectResponse.status}.`, {
-            body: inspectResponse.body,
-          }),
-          details: { service: service.name, body: inspectResponse.body },
-          remediation: "Inspect the service container state and retry the operation.",
-        }),
-      );
-    }
-    const decoded = yield* parseJson(inspectResponse);
-    const state =
-      typeof decoded === "object" && decoded !== null && "State" in decoded ? decoded.State : undefined;
-    if (
-      typeof state !== "object" ||
-      state === null ||
-      !("ExitCode" in state) ||
-      typeof state.ExitCode !== "number"
-    ) {
+    const decoded = yield* parseJson(response, "waitForExit");
+    const exitCode =
+      typeof decoded === "object" && decoded !== null && "StatusCode" in decoded
+        ? decoded.StatusCode
+        : undefined;
+    if (typeof exitCode !== "number") {
       return yield* Effect.fail(
         new ProviderInternalError({
           providerId: PROVIDER_ID,
           operation: "waitForExit",
-          message: "Podman inspect did not return a numeric container exit code.",
+          message: "Podman wait did not return a numeric container exit code.",
           details: { service: service.name },
           remediation: "Check the Podman API version and retry the operation.",
         }),
       );
     }
-    return { exitCode: state.ExitCode };
+    return { exitCode };
   });
 };
