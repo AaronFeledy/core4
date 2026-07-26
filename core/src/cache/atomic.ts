@@ -6,10 +6,6 @@ import { Effect } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 
-const removeIfPresent = async (path: string): Promise<void> => {
-  await unlink(path).catch(() => undefined);
-};
-
 export interface AtomicWriteOptions {
   readonly mode?: number;
   readonly randomId?: () => string;
@@ -36,7 +32,7 @@ export const writeFileAtomicViaRename = async (
     }
     await (options.renameFile ?? rename)(tempPath, path);
   } catch (cause) {
-    await removeIfPresent(tempPath);
+    await unlink(tempPath).catch(() => undefined);
     throw cause;
   }
 };

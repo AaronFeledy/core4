@@ -73,7 +73,7 @@ export const BuildBlock = Schema.Struct({
 });
 export type BuildBlock = typeof BuildBlock.Type;
 
-/** Compose `depends_on` condition vocabulary (§6.13). */
+/** Conditions supported by Compose `depends_on` entries. */
 export const ServiceDependencyCondition = Schema.Literal(
   "service_started",
   "service_healthy",
@@ -191,7 +191,8 @@ const ComposeEnvironmentInput = Schema.transformOrFail(
     strict: true,
     decode: (input, _options, ast) => {
       if (!Array.isArray(input)) {
-        const unresolved = Object.entries(input).find(([, value]) => value === null);
+        const entries = Object.entries(input);
+        const unresolved = entries.find(([, value]) => value === null);
         if (unresolved !== undefined) {
           return ParseResult.fail(
             new ParseResult.Type(
@@ -201,9 +202,7 @@ const ComposeEnvironmentInput = Schema.transformOrFail(
             ),
           );
         }
-        return ParseResult.succeed(
-          Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value)])),
-        );
+        return ParseResult.succeed(Object.fromEntries(entries.map(([key, value]) => [key, String(value)])));
       }
       const entries: Array<readonly [string, string]> = [];
       for (const entry of input) {

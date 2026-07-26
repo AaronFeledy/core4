@@ -22,7 +22,7 @@ const resolvedResult: AppConfigResult = {
 const renderWithFormat = (result: AppConfigResult, format: "json" | "table" | "yaml"): string =>
   Schema.decodeUnknownSync(Schema.String)(Reflect.apply(renderAppConfigResult, undefined, [result, format]));
 
-describe("app config yaml (US-468)", () => {
+describe("app config yaml", () => {
   test("renderAppConfigResult emits landofile-only YAML when format is yaml", () => {
     const yaml = renderWithFormat(resolvedResult, "yaml");
 

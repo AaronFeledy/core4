@@ -62,7 +62,7 @@ const landofile = [
   "",
 ].join("\n");
 
-describe("lando config renders post-normalization Compose spellings (US-468)", () => {
+describe("lando config renders post-normalization Compose spellings", () => {
   test("config get services.web returns canonical resolved values", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), landofile);

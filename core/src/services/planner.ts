@@ -1173,6 +1173,8 @@ const planApp = (
         applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
         service,
       );
+      const composeExtension = authoredServicePlanWithoutLabels.extensions.compose;
+      const composeLabels = isRecord(composeExtension) ? composeExtension.labels : undefined;
       const authoredServicePlan: ServicePlan =
         service.labels === undefined
           ? authoredServicePlanWithoutLabels
@@ -1181,14 +1183,9 @@ const planApp = (
               extensions: {
                 ...authoredServicePlanWithoutLabels.extensions,
                 compose: {
-                  ...(isRecord(authoredServicePlanWithoutLabels.extensions.compose)
-                    ? authoredServicePlanWithoutLabels.extensions.compose
-                    : {}),
+                  ...(isRecord(composeExtension) ? composeExtension : {}),
                   labels: {
-                    ...(isRecord(authoredServicePlanWithoutLabels.extensions.compose) &&
-                    isRecord(authoredServicePlanWithoutLabels.extensions.compose.labels)
-                      ? authoredServicePlanWithoutLabels.extensions.compose.labels
-                      : {}),
+                    ...(isRecord(composeLabels) ? composeLabels : {}),
                     ...service.labels,
                   },
                 },

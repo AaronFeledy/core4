@@ -386,7 +386,7 @@ const tableRender = (result: AppConfigResult): string => {
 const yamlRender = (result: AppConfigResult): string => {
   const landofile = result.landofile;
   if (landofile === undefined) return tableRender(result);
-  return emitLandofileYaml(Object.fromEntries(Object.entries(Schema.encodeSync(LandofileShape)(landofile))));
+  return emitLandofileYaml({ ...Schema.encodeSync(LandofileShape)(landofile) });
 };
 
 const getRender = (result: AppConfigResult): string => {

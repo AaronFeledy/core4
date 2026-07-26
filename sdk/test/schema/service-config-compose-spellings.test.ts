@@ -11,7 +11,6 @@ import {
   getJsonSchema,
 } from "../../src/schema/index.ts";
 
-// US-468 — Compose spellings & alternate scalar/list forms.
 // The user-facing Landofile boundary decodes through LandofileShape.services
 // (which wraps ServiceConfigInput -> ServiceConfig). ServiceConfig itself
 // canonicalizes the per-key alternate forms for direct decoders.
@@ -36,7 +35,7 @@ const expectReservedKeyRejection = (result: Either.Either<unknown, unknown>): vo
   if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
 };
 
-describe("ServiceConfig compose spellings & alternate forms (US-468)", () => {
+describe("ServiceConfig compose spellings and alternate forms", () => {
   describe("environment", () => {
     test("KEY=value list form canonicalizes to a map", () => {
       expect(decodeService({ environment: ["NODE_ENV=development", "PORT=3000"] }).environment).toEqual({

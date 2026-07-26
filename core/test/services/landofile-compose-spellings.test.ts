@@ -29,7 +29,7 @@ const discoverExit = () =>
 
 const write = (dir: string, body: string) => writeFile(join(dir, ".lando.yml"), body);
 
-describe("LandofileServiceLive — Compose service spellings (US-468)", () => {
+describe("LandofileServiceLive — Compose service spellings", () => {
   test("canonicalizes working_dir, depends_on map, environment list, and labels list", async () => {
     await withTempCwd(async (dir) => {
       await write(
