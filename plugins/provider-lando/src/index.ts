@@ -668,13 +668,14 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
-      waitForExit: (target) =>
+      waitForExit: (target, waitOptions) =>
         Effect.gen(function* () {
           const plan = yield* resolvePlan(target);
           if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "waitForExit"));
           yield* ensureEffect;
           return yield* waitForExit(plan, target, {
             ...(podmanApi === undefined ? {} : { podmanApi }),
+            ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
           });
         }),
       destroy: (target, destroyOptions) =>

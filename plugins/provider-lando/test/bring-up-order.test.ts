@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
 import { type PodmanApiClient, type PodmanHttpRequest, bringUp } from "@lando/provider-lando";
 import {
@@ -73,10 +73,15 @@ const planWithDependency = (dependentName: ServicePlan["name"], required: boolea
   };
 };
 
-const makePodmanApi = (healthExitCode: number) => {
+const makePodmanApi = (
+  healthExitCode: number,
+  existing: ReadonlyArray<string> = [],
+  failedStarts: ReadonlyArray<string> = [],
+) => {
   const requests: string[] = [];
-  const containers = new Set<string>();
+  const containers = new Set(existing);
   const running = new Set<string>();
+  const failedStartNames = new Set(failedStarts);
   const record = (request: PodmanHttpRequest) => requests.push(`${request.method} ${request.path}`);
   const podmanApi: PodmanApiClient = {
     info: Effect.succeed({ host: { arch: "x64" }, version: { Version: "6.0.0" } }),
@@ -99,6 +104,9 @@ const makePodmanApi = (healthExitCode: number) => {
           return { status: 201, body: "{}" };
         }
         if (request.method === "POST" && request.path.endsWith("/start") && name !== undefined) {
+          if (failedStartNames.has(name)) {
+            return { status: 500, body: '{"message":"synthetic start failure"}' };
+          }
           running.add(name);
           return { status: 204, body: "" };
         }
@@ -139,6 +147,20 @@ test("starts a service_healthy dependency and probes it before starting the depe
   expect(webStart).toBeGreaterThan(dbExec);
 });
 
+test("does not delete a pre-existing stopped container during rollback", async () => {
+  // Given
+  const plan = planWithDependency(dependentNames.web, true);
+  const db = "lando-bring-up-order-app-db";
+  const { podmanApi, requests } = makePodmanApi(1, [db]);
+
+  // When
+  await Effect.runPromise(bringUp(plan, { podmanApi }).pipe(Effect.flip));
+
+  // Then
+  expect(requests).toContain(`POST /containers/${db}/stop`);
+  expect(requests).not.toContain(`DELETE /containers/${db}?force=true`);
+});
+
 test("fails with ServiceStartError naming the unmet gate and rolls back when a required gate fails", async () => {
   // Given
   const plan = planWithDependency(dependentNames.web, true);
@@ -168,4 +190,43 @@ test("succeeds without rolling back when only an optional gate fails", async () 
   expect(requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
   expect(requests.filter((request) => request.endsWith("/stop"))).toHaveLength(0);
   expect(requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
+});
+
+test("cleans only a failed optional dependency and preserves an unrelated started service", async () => {
+  // Given
+  const base = planWithDependency(dependentNames.cache, false);
+  const api = servicePlan(ServiceName.make("api"), false);
+  const plan = { ...base, services: { api, ...base.services } };
+  const apiName = "lando-bring-up-order-app-api";
+  const db = "lando-bring-up-order-app-db";
+  const { podmanApi, requests } = makePodmanApi(0, [], [db]);
+
+  // When
+  await Effect.runPromise(bringUp(plan, { podmanApi }));
+
+  // Then
+  expect(requests).toContain(`POST /containers/${apiName}/start`);
+  expect(requests).toContain(`POST /containers/${db}/stop`);
+  expect(requests).toContain(`DELETE /containers/${db}?force=true`);
+  expect(requests).not.toContain(`POST /containers/${apiName}/stop`);
+  expect(requests).not.toContain(`DELETE /containers/${apiName}?force=true`);
+  expect(requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
+  expect(requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
+});
+
+test("interrupts an aborted optional dependency instead of starting its dependent", async () => {
+  // Given
+  const plan = planWithDependency(dependentNames.cache, false);
+  const { podmanApi, requests } = makePodmanApi(0);
+  const controller = new AbortController();
+  controller.abort();
+
+  // When
+  const exit = await Effect.runPromiseExit(bringUp(plan, { podmanApi, signal: controller.signal }));
+
+  // Then
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (Exit.isFailure(exit)) expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+  else throw new TypeError("aborted Podman bringUp unexpectedly succeeded");
+  expect(requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
 });

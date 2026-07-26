@@ -56,6 +56,8 @@ interface InspectResult {
 interface StartResult {
   readonly name: string;
   readonly changed: boolean;
+  readonly created: boolean;
+  readonly startedExisting: boolean;
 }
 
 export interface BringUpOptions {
@@ -388,6 +390,7 @@ const startService = (
   plan: AppPlan,
   service: ServicePlan,
   options: BringUpOptions,
+  recordTouched: (container: TouchedContainer) => void,
 ): Effect.Effect<StartResult, BringUpError> => {
   const name = containerName(plan, service);
   return Effect.gen(function* () {
@@ -409,6 +412,11 @@ const startService = (
     );
 
     const before = yield* inspectContainer(api, name);
+    recordTouched({
+      name,
+      created: !before.exists,
+      startedExisting: before.exists && !before.running,
+    });
     let changed = false;
     if (!before.exists) {
       yield* createContainer(api, plan, service, name);
@@ -437,21 +445,42 @@ const startService = (
       }),
     );
 
-    return { name, changed };
+    return { name, changed, created: !before.exists, startedExisting: before.exists && !before.running };
   });
 };
+
+interface TouchedContainer {
+  readonly name: string;
+  readonly created: boolean;
+  readonly startedExisting: boolean;
+}
+
+const cleanupTouchedContainers = (
+  api: PodmanApiClient,
+  touched: ReadonlyArray<TouchedContainer>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Effect.forEach(
+      touched.filter((container) => container.created || container.startedExisting),
+      (container) => stopContainerSilent(api, container.name),
+      { discard: true },
+    );
+    yield* Effect.forEach(
+      touched.filter((container) => container.created),
+      (container) => removeContainerSilent(api, container.name),
+      { discard: true },
+    );
+  });
 
 const rollbackPartialApply = (
   api: PodmanApiClient,
   plan: AppPlan,
-  touched: ReadonlyArray<string>,
+  touched: ReadonlyArray<TouchedContainer>,
   createdNetworks: ReadonlySet<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    // stop/DELETE are idempotent on 404 so this is safe for never-created
-    // containers. Volumes are preserved so rollback does not discard persistent data.
-    yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
-    yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
+    // Volumes are preserved so rollback does not discard persistent data.
+    yield* cleanupTouchedContainers(api, touched);
     yield* removeNetworkSilent(api, plan);
     yield* removeCreatedNetworksSilent(api, createdNetworks);
   });
@@ -477,29 +506,51 @@ export const bringUp = (
     for (const store of plan.stores) {
       changed = (yield* ensureVolume(resolvedApi, plan, store)) || changed;
     }
-    const touched: string[] = [];
+    const touched: TouchedContainer[] = [];
     const result = yield* runServiceStartSchedule(plan, {
       startService: (service) =>
         Effect.gen(function* () {
-          touched.push(containerName(plan, service));
           if (options.signal?.aborted === true) {
-            yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
-            return yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
+            return yield* Effect.interrupt;
           }
-          const started = yield* startService(resolvedApi, plan, service, options).pipe(
-            Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+          const started = yield* startService(resolvedApi, plan, service, options, (container) => {
+            touched.push(container);
+          }).pipe(
+            Effect.catchAll((error) =>
+              options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error),
+            ),
           );
           return { changed: started.changed };
         }),
+      cleanupOptionalStartFailure: (service) =>
+        Effect.gen(function* () {
+          const name = containerName(plan, service);
+          const index = touched.findIndex((container) => container.name === name);
+          const container = touched[index];
+          if (container === undefined) return;
+          yield* cleanupTouchedContainers(resolvedApi, [container]);
+          touched.splice(index, 1);
+        }),
       execHealthcheck: (service, command) =>
-        exec(plan, { app: plan.id, service: service.name }, { command }, { podmanApi: resolvedApi }).pipe(
-          Effect.map(({ exitCode }) => ({ exitCode })),
-        ),
+        exec(
+          plan,
+          { app: plan.id, service: service.name },
+          { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
+          { podmanApi: resolvedApi },
+        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
       waitForExit: (service) =>
-        waitForExit(plan, { app: plan.id, service: service.name }, { podmanApi: resolvedApi }).pipe(
-          Effect.map(({ exitCode }) => ({ exitCode })),
-        ),
-    });
+        waitForExit(
+          plan,
+          { app: plan.id, service: service.name },
+          {
+            podmanApi: resolvedApi,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+          },
+        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+    }).pipe(
+      Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+      Effect.onInterrupt(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+    );
 
     if (result._tag === "Cycle") {
       yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);

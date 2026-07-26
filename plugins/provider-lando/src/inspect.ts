@@ -27,6 +27,7 @@ interface ContainerInspect {
 
 export interface InspectOptions {
   readonly podmanApi?: PodmanApiClient;
+  readonly signal?: AbortSignal;
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) =>
@@ -178,6 +179,7 @@ export const waitForExit = (
       {
         method: "POST",
         path: `/containers/${encodeURIComponent(containerName(plan, service))}/wait`,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       "waitForExit",
     );
