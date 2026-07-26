@@ -207,3 +207,13 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - A matrix-`preserved` key means the ORIGINAL value under its ORIGINAL spelling. Canonicalizing or parsing it on the way into `extensions.compose` looks harmless and passes `check:compose-coverage` — that gate compares key-path SETS only and stays green even if the value is dropped or mangled, so preservation correctness must be pinned by an explicit assertion.
   - Deriving a schema in a module that `landofile.ts` imports lets the canonical base live there and be re-exported as the public schema, avoiding both an import cycle and a hand-maintained duplicate struct.
 ---
+
+## 2026-07-26 06:58 CDT - US-470 Review
+- Fixed quadratic invalid-duration parsing by anchoring each component match at the current cursor; a long-scalar regression now proves rejection stays within the normal test budget. Documented the additive public healthcheck authoring shape in the SDK compatibility record.
+- Guide-Coverage-Skip: US-470 changes Compose healthcheck schema normalization; the mapped SDK guides do not document service healthcheck authoring.
+- Review notes (deferred/rejected): Bounding collected healthcheck output is existing `HealthcheckRunner`/provider-exec hardening already reachable through Lando string commands, not introduced by the Compose authoring shape.
+- Review notes (deferred/rejected): Practical retry caps, minimum intervals, and an overall probe deadline are existing `HealthcheckInput`/`runProbe` policy questions already reachable through numeric Lando fields; US-470 preserves that runner contract rather than changing it.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable after two attempts because the configured Cursor account was out of usage; no Bugbot findings were available to triage.
+- Verification: typecheck and lint passed; focused duration, healthcheck schema, SDK compatibility, planner, Landofile, and healthcheck-runner tests passed; guide drift passed with explicit base and skip context; probe-boundary and Compose coverage gates passed.
+- **Learnings for future iterations:** Repeated-component parsers over untrusted Landofile scalars must anchor matching at the current cursor; global unanchored regex scans can turn an otherwise linear validation failure into quadratic work.
+---
