@@ -780,12 +780,15 @@ export const makeRuntimeProvider = (
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
-        waitForExit: (target) =>
+        waitForExit: (target, waitOptions) =>
           resolvePlan(target).pipe(
             Effect.flatMap((plan) =>
               plan === undefined
                 ? Effect.fail(makeNoPlanError(target.app, "waitForExit"))
-                : waitForExit(plan, target, { podmanApi }),
+                : waitForExit(plan, target, {
+                    podmanApi,
+                    ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+                  }),
             ),
           ),
         destroy: (target, destroyOptions) =>
