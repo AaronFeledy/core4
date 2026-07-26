@@ -93,10 +93,7 @@ const waitFailure = async (api: DockerApiClient, requestedService = serviceName)
 describe("provider-docker waitForExit", () => {
   test("returns exit code zero when the container exits successfully", async () => {
     // Given
-    const fake = makeFakeApi([
-      { status: 200, body: '{"StatusCode":0}' },
-      { status: 200, body: '{"State":{"ExitCode":0}}' },
-    ]);
+    const fake = makeFakeApi([{ status: 200, body: '{"StatusCode":0}' }]);
 
     // When
     const result = await waitForExit(fake.api);
@@ -107,10 +104,7 @@ describe("provider-docker waitForExit", () => {
 
   test("preserves the exact non-zero container exit code", async () => {
     // Given
-    const fake = makeFakeApi([
-      { status: 200, body: '{"StatusCode":137}' },
-      { status: 200, body: '{"State":{"ExitCode":137}}' },
-    ]);
+    const fake = makeFakeApi([{ status: 200, body: '{"StatusCode":137}' }]);
 
     // When
     const result = await waitForExit(fake.api);
@@ -155,12 +149,9 @@ describe("provider-docker waitForExit", () => {
     ]);
   });
 
-  test("fails with ProviderInternalError when inspect has no numeric exit code", async () => {
+  test("fails with ProviderInternalError when wait has no numeric exit code", async () => {
     // Given
-    const fake = makeFakeApi([
-      { status: 200, body: '{"StatusCode":0}' },
-      { status: 200, body: '{"State":{"ExitCode":null}}' },
-    ]);
+    const fake = makeFakeApi([{ status: 200, body: '{"StatusCode":null}' }]);
 
     // When
     const failure = await waitFailure(fake.api);
@@ -169,12 +160,9 @@ describe("provider-docker waitForExit", () => {
     expect(failure).toBeInstanceOf(ProviderInternalError);
   });
 
-  test("requests container wait before container inspect", async () => {
+  test("uses the container wait response without a second inspect request", async () => {
     // Given
-    const fake = makeFakeApi([
-      { status: 200, body: '{"StatusCode":0}' },
-      { status: 200, body: '{"State":{"ExitCode":0}}' },
-    ]);
+    const fake = makeFakeApi([{ status: 200, body: '{"StatusCode":0}' }]);
 
     // When
     await waitForExit(fake.api);
@@ -182,7 +170,6 @@ describe("provider-docker waitForExit", () => {
     // Then
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
       { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
-      { method: "GET", path: "/containers/lando-wait-for-exit-app-web/json" },
     ]);
   });
 });

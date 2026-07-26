@@ -62,11 +62,11 @@ const withApiReason = (message: string, details: unknown): string => {
   return reason === undefined ? message : `${message} ${reason}`;
 };
 
-const apiFailure = (service: ServicePlan, action: "wait" | "inspect", response: DockerHttpResponse) =>
+const apiFailure = (service: ServicePlan, response: DockerHttpResponse) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
     operation: "waitForExit",
-    message: withApiReason(`Docker ${action} failed with HTTP ${response.status}.`, response),
+    message: withApiReason(`Docker wait failed with HTTP ${response.status}.`, response),
     details: redactDetails({ service: service.name, body: response.body }),
     remediation: "Inspect the service container state and retry the operation.",
   });
@@ -100,36 +100,25 @@ export const waitForExit = (
       path: `/containers/${name}/wait`,
     });
     if (waitResponse.status < 200 || waitResponse.status >= 300) {
-      return yield* Effect.fail(apiFailure(service, "wait", waitResponse));
+      return yield* Effect.fail(apiFailure(service, waitResponse));
     }
 
-    const inspectResponse = yield* request(dockerApi, "waitForExit", {
-      method: "GET",
-      path: `/containers/${name}/json`,
-    });
-    if (inspectResponse.status < 200 || inspectResponse.status >= 300) {
-      return yield* Effect.fail(apiFailure(service, "inspect", inspectResponse));
-    }
-
-    const decoded = yield* parseJson(inspectResponse);
-    const state =
-      typeof decoded === "object" && decoded !== null && "State" in decoded ? decoded.State : undefined;
-    if (
-      typeof state !== "object" ||
-      state === null ||
-      !("ExitCode" in state) ||
-      typeof state.ExitCode !== "number"
-    ) {
+    const decoded = yield* parseJson(waitResponse);
+    const exitCode =
+      typeof decoded === "object" && decoded !== null && "StatusCode" in decoded
+        ? decoded.StatusCode
+        : undefined;
+    if (typeof exitCode !== "number") {
       return yield* Effect.fail(
         new ProviderInternalError({
           providerId: PROVIDER_ID,
           operation: "waitForExit",
-          message: "Docker inspect did not return a numeric container exit code.",
+          message: "Docker wait did not return a numeric container exit code.",
           details: { service: service.name },
           remediation: "Check the Docker API version and retry the operation.",
         }),
       );
     }
-    return { exitCode: state.ExitCode };
+    return { exitCode };
   });
 };
