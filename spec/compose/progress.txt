@@ -106,3 +106,11 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Order matters in `renderAppConfigResult`: the `get` and write-verb guards must stay ahead of the format branch, or `app config set ... --format yaml` starts dumping a whole Landofile.
   - The shared `invalid_option` remediation ("Supply --flag with one of its declared values.") never names the allowed values. Rather than widen that every-command message for one story, assert discoverability through `--help`; revisit centrally if more flags need it.
 ---
+
+## 2026-07-25 23:09 CDT - US-468 Review
+- Closed the review blockers: `env_file` now loads through the filesystem service into the planned environment with Compose precedence and cache invalidation; labels preserve under `ServicePlan.extensions.compose`; condition-map entries require `condition`; reserved `__proto__` map keys fail instead of disappearing; the authoring schema preserves existing endpoint constraints and is published separately; SDK compatibility and stale canonical-shape tests are reconciled.
+- Review notes (deferred/rejected): carrying and honoring dependency conditions in `ServicePlan` remains US-472; capability-checking preserved Compose extensions remains US-473; `raw`/`merged` app-config stages are a broader §8.2.1 contract gap outside US-468's resolved-view criterion; Bugbot reported no bugs.
+- Guide-Coverage-Skip: US-468 changes Compose schema decoding and planner normalization, while the executable Compose guide and published key matrix are explicitly owned by US-477; no current owned guide covers this surface.
+- Verification: typecheck and lint passed; 540 focused schema, compatibility, planner, cache, loader, app-config render, and generated-artifact tests passed; compose coverage plus renderer, paths, import-cycle, machine-output, state-store, probe, and redaction boundary gates passed; schema codegen was idempotent.
+- **Learnings for future iterations:** env-file content and resolved paths are plan-cache inputs, not only Landofile bytes; accepted authoring schemas should use refinement-preserving encoded bounds so unrelated nested constraints survive JSON Schema generation.
+---
