@@ -602,7 +602,7 @@ interface ResolvedService {
 type PlannedServiceDraft = {
   readonly name: string;
   readonly hostnames: ReadonlyArray<string>;
-  readonly build: ServiceConfig["build"];
+  readonly authoredArtifact: ServicePlan["artifact"];
   readonly authored: ReturnType<typeof authoredStorageScopes>;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
@@ -736,8 +736,10 @@ const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArr
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const toArray = (value: string | ReadonlyArray<string> | undefined): ReadonlyArray<string> =>
-  value === undefined ? [] : typeof value === "string" ? [value] : value;
+const normalizeBuildScripts = (value: string | ReadonlyArray<string> | undefined): ReadonlyArray<string> => {
+  if (value === undefined) return [];
+  return typeof value === "string" ? [value] : value;
+};
 
 const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const startInterval = service.healthcheck?.startInterval;
@@ -1221,9 +1223,10 @@ const planApp = (
       );
       const authoredServicePlan = mergeComposeExtension(authoredServicePlanWithoutLabels, service);
       const build = service.build;
-      const composeFamily = build !== undefined && isComposeBuild(build);
-      const artifactScripts = composeFamily ? [] : toArray(build?.artifact);
-      const appScripts = composeFamily ? [] : toArray(build?.app);
+      const authoredArtifact =
+        build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, appRoot) : undefined;
+      const artifactScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.artifact) : [];
+      const appScripts = authoredArtifact === undefined ? normalizeBuildScripts(build?.app) : [];
       const servicePlan: ServicePlan =
         artifactScripts.length === 0 && appScripts.length === 0
           ? authoredServicePlan
@@ -1252,7 +1255,7 @@ const planApp = (
       plannedServiceDrafts.push({
         name,
         hostnames: service.hostnames ?? [],
-        build,
+        authoredArtifact,
         authored,
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
@@ -1282,7 +1285,7 @@ const planApp = (
     for (const {
       name,
       hostnames,
-      build,
+      authoredArtifact,
       authored,
       draft,
       logSources,
@@ -1346,9 +1349,7 @@ const planApp = (
       }
 
       const withArtifact =
-        build !== undefined && isComposeBuild(build)
-          ? { ...servicePlan, artifact: composeBuildToArtifact(build, appRoot) }
-          : servicePlan;
+        authoredArtifact === undefined ? servicePlan : { ...servicePlan, artifact: authoredArtifact };
 
       if (withArtifact.artifact?.kind === "build" && !providerCapabilities.artifactBuild) {
         yield* Effect.fail(

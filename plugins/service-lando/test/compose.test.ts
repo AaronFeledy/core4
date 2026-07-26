@@ -166,7 +166,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     if (service === undefined) throw new Error("api service missing");
 
     let setArtifactCalls = 0;
-    const featureWithoutArtifact: ServiceFeatureDefinition = {
+    const featureWithArtifactSpy: ServiceFeatureDefinition = {
       ...composeServiceFeature,
       apply: (ctx) =>
         composeServiceFeature.apply({
@@ -180,7 +180,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     await planComposeService({
       service,
       serviceName: "api",
-      featureOverrides: new Map([[COMPOSE_FEATURE_ID, featureWithoutArtifact]]),
+      featureOverrides: new Map([[COMPOSE_FEATURE_ID, featureWithArtifactSpy]]),
     });
 
     expect(setArtifactCalls).toBe(0);

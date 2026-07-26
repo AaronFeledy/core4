@@ -71,8 +71,7 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const hasImage = service.image !== undefined && service.image.length > 0;
-  const build = service.build;
-  const hasComposeBuild = build !== undefined && "context" in build;
+  const hasComposeBuild = service.build !== undefined && "context" in service.build;
   if (!hasImage && !hasComposeBuild) {
     throw new Error(
       `compose service "${ctx.serviceName}" requires either "image:" or "build:" (Compose build block).`,

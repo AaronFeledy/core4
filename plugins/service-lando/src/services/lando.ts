@@ -68,9 +68,9 @@ export const landoServiceFeature: ServiceFeatureDefinition = {
 };
 
 /**
- * The raw `type: lando` base service: a user-supplied image on the full
+ * The raw `type: lando` base service: a user-supplied image or Compose build on the full
  * lando feature stack (identity env, app mount, storage, healthcheck).
- * No framework opinion, no default command — the image's own entrypoint
+ * No framework opinion, no default command — the artifact's own entrypoint
  * runs unless the Landofile overrides it.
  */
 export const landoServiceType: ServiceType = {

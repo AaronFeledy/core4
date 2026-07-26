@@ -363,8 +363,9 @@ test("injects the inline Dockerfile into the packed context and preserves real c
 
   // Then
   const entries = tarEntries(requestBody);
-  expect(entries.map((entry) => entry.name)).toContain("context-marker.txt");
-  expect(entries.map((entry) => entry.name)).toContain(".lando.Dockerfile.inline");
+  const entryNames = entries.map((entry) => entry.name);
+  expect(entryNames).toContain("context-marker.txt");
+  expect(entryNames).toContain(".lando.Dockerfile.inline");
   expect(entries.find((entry) => entry.name === ".lando.Dockerfile.inline")?.content).toBe(
     "FROM alpine:3.20",
   );

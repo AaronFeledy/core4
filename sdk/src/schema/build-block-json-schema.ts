@@ -2,13 +2,6 @@ const buildScriptJsonSchema = {
   oneOf: [{ type: "string" }, { type: "array", items: { type: "string" } }],
 } as const;
 
-const buildArgsJsonSchema = {
-  oneOf: [
-    { type: "object", additionalProperties: { type: "string" } },
-    { type: "array", items: { type: "string", pattern: "^[^=]+=" } },
-  ],
-} as const;
-
 export const buildBlockJsonSchema = {
   oneOf: [
     { type: "string" },
@@ -29,7 +22,12 @@ export const buildBlockJsonSchema = {
         dockerfile: { type: "string" },
         dockerfile_inline: { type: "string" },
         dockerfileInline: { type: "string" },
-        args: buildArgsJsonSchema,
+        args: {
+          oneOf: [
+            { type: "object", additionalProperties: { type: "string" } },
+            { type: "array", items: { type: "string", pattern: "^[^=]+=" } },
+          ],
+        },
         target: { type: "string" },
       },
       anyOf: [

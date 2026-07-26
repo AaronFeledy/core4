@@ -589,19 +589,21 @@ describe("AppPlannerLive", () => {
       // Then
       const extension =
         appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"];
-      const authoredSteps =
-        typeof extension === "object" && extension !== null && "buildSteps" in extension
-          ? Array.isArray(extension.buildSteps)
-            ? extension.buildSteps.filter(
-                (step) =>
-                  typeof step === "object" &&
-                  step !== null &&
-                  "id" in step &&
-                  typeof step.id === "string" &&
-                  step.id.startsWith("authored-"),
-              )
-            : []
+      const buildSteps =
+        typeof extension === "object" &&
+        extension !== null &&
+        "buildSteps" in extension &&
+        Array.isArray(extension.buildSteps)
+          ? extension.buildSteps
           : [];
+      const authoredSteps = buildSteps.filter(
+        (step) =>
+          typeof step === "object" &&
+          step !== null &&
+          "id" in step &&
+          typeof step.id === "string" &&
+          step.id.startsWith("authored-"),
+      );
       expect(authoredSteps).toEqual([
         {
           id: "authored-artifact:1",

@@ -266,12 +266,12 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
       const schema = getJsonSchema("ServiceConfigInput");
       const definitions = isRecord(schema) && isRecord(schema.$defs) ? schema.$defs : {};
       const serviceConfigInput = definitions.ServiceConfigInput;
-      const properties =
-        isRecord(schema) && isRecord(schema.properties)
-          ? schema.properties
-          : isRecord(serviceConfigInput) && isRecord(serviceConfigInput.properties)
-            ? serviceConfigInput.properties
-            : {};
+      const rootProperties = isRecord(schema) && isRecord(schema.properties) ? schema.properties : undefined;
+      const definitionProperties =
+        isRecord(serviceConfigInput) && isRecord(serviceConfigInput.properties)
+          ? serviceConfigInput.properties
+          : undefined;
+      const properties = rootProperties ?? definitionProperties ?? {};
       const build = properties.build;
       const branches = isRecord(build) && Array.isArray(build.oneOf) ? build.oneOf : [];
       const objectBranches = branches.filter(
