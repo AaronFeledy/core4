@@ -35,15 +35,15 @@ describe("buildAppGraph", () => {
 
     // Then
     if (result._tag !== "Graph") throw new TypeError("expected a graph");
-    expect(result.graph.nodes.filter((node) => node.id === "db:healthy")).toHaveLength(1);
+    expect(result.graph.nodes.filter((node) => node.id === "gate:db:healthy")).toHaveLength(1);
     expect(result.graph.edges).toContainEqual({
-      predecessor: "db:healthy",
-      dependent: "web:app:install",
+      predecessor: "gate:db:healthy",
+      dependent: "step:web:app:install",
       required: true,
     });
     expect(result.graph.edges).toContainEqual({
-      predecessor: "db:healthy",
-      dependent: "cache:app:install",
+      predecessor: "gate:db:healthy",
+      dependent: "step:cache:app:install",
       required: false,
     });
   });
@@ -61,8 +61,10 @@ describe("buildAppGraph", () => {
     // Then
     if (result._tag !== "Graph") throw new TypeError("expected a graph");
     expect(
-      result.graph.edges.filter((edge) => edge.predecessor === "db:completed").map((edge) => edge.dependent),
-    ).toEqual(["web:app:first", "web:app:second"]);
+      result.graph.edges
+        .filter((edge) => edge.predecessor === "gate:db:completed")
+        .map((edge) => edge.dependent),
+    ).toEqual(["step:web:app:first", "step:web:app:second"]);
   });
 
   test("marks internal step edges required and emits them before gate edges", () => {
@@ -78,11 +80,11 @@ describe("buildAppGraph", () => {
     // Then
     if (result._tag !== "Graph") throw new TypeError("expected a graph");
     expect(result.graph.edges[0]).toEqual({
-      predecessor: "web:app:first",
-      dependent: "web:app:second",
+      predecessor: "step:web:app:first",
+      dependent: "step:web:app:second",
       required: true,
     });
-    expect(result.graph.edges.slice(1).every((edge) => edge.predecessor === "db:running")).toBe(true);
+    expect(result.graph.edges.slice(1).every((edge) => edge.predecessor === "gate:db:running")).toBe(true);
   });
 
   test("creates no gate for a dependency the plan does not contain", () => {
@@ -97,7 +99,7 @@ describe("buildAppGraph", () => {
 
     // Then
     if (result._tag !== "Graph") throw new TypeError("expected a graph");
-    expect(result.graph.nodes.map((node) => node.id)).toEqual(["web:app:install"]);
+    expect(result.graph.nodes.map((node) => node.id)).toEqual(["step:web:app:install"]);
     expect(result.graph.edges).toEqual([]);
   });
 

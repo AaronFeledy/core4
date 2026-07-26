@@ -1,4 +1,4 @@
-import { gateId } from "@lando/container-runtime/dependency-gates";
+import { gateNodeId } from "@lando/container-runtime/dependency-gates";
 import type { ScheduleEdge, ScheduleGraph, ScheduleNode } from "@lando/container-runtime/dependency-schedule";
 
 import type { AppPlan, ServiceDependencyCondition, ServiceName } from "@lando/sdk/schema";
@@ -25,6 +25,8 @@ export type AppBuildGraphPlan =
   | { readonly _tag: "Cycle"; readonly edges: ReadonlyArray<string> }
   | { readonly _tag: "Graph"; readonly graph: ScheduleGraph<AppNode> };
 
+export const appStepNodeId = (id: string): string => `step:${id}`;
+
 /**
  * Builds the app-build graph, or reports a step cycle before anything runs.
  *
@@ -38,7 +40,7 @@ export const buildAppGraph = (plan: AppPlan, steps: ReadonlyArray<AppStep>): App
 
   const stepIds = new Set(steps.map(({ step }) => step.id));
   const nodes: Array<ScheduleNode<AppNode>> = steps.map((appStep) => ({
-    id: appStep.step.id,
+    id: appStepNodeId(appStep.step.id),
     value: { _tag: "step", appStep },
   }));
   const edges: Array<ScheduleEdge> = [];
@@ -46,7 +48,11 @@ export const buildAppGraph = (plan: AppPlan, steps: ReadonlyArray<AppStep>): App
   for (const { step } of steps) {
     for (const dependency of step.dependsOn) {
       if (!stepIds.has(dependency)) continue;
-      edges.push({ predecessor: dependency, dependent: step.id, required: true });
+      edges.push({
+        predecessor: appStepNodeId(dependency),
+        dependent: appStepNodeId(step.id),
+        required: true,
+      });
     }
   }
 
@@ -58,8 +64,8 @@ export const buildAppGraph = (plan: AppPlan, steps: ReadonlyArray<AppStep>): App
   for (const { step } of steps) {
     const key = String(step.service);
     const existing = stepsByService.get(key);
-    if (existing === undefined) stepsByService.set(key, [step.id]);
-    else existing.push(step.id);
+    if (existing === undefined) stepsByService.set(key, [appStepNodeId(step.id)]);
+    else existing.push(appStepNodeId(step.id));
   }
 
   for (const [serviceName, dependentStepIds] of stepsByService) {
@@ -68,7 +74,7 @@ export const buildAppGraph = (plan: AppPlan, steps: ReadonlyArray<AppStep>): App
     for (const dependency of service.dependsOn) {
       const targetName = String(dependency.service);
       if (!servicesByName.has(targetName)) continue;
-      const id = gateId(targetName, dependency.condition);
+      const id = gateNodeId(targetName, dependency.condition);
       if (!gates.has(id)) {
         gates.set(id, { _tag: "gate", service: dependency.service, condition: dependency.condition });
       }
