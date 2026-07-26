@@ -314,7 +314,8 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       services: {
         [TEST_SERVICE_NAME]: {
           ...makeTestServicePlan(providerId),
-          command: ["sh", "-c", "exit 0"],
+          // Keep the one-shot running long enough for providers to observe a successful start.
+          command: ["sh", "-c", "sleep 5; exit 0"],
         },
       },
     };
