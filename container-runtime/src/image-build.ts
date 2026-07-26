@@ -15,7 +15,7 @@ export type {
   ContainerBuildOptions,
 } from "./image-build-http.ts";
 
-export const LANDO_INLINE_DOCKERFILE_PATH = ".lando/Dockerfile.inline";
+const INLINE_DOCKERFILE_NAME = ".lando.Dockerfile.inline";
 
 interface BuildStep {
   readonly command: string | ReadonlyArray<string>;
@@ -95,7 +95,7 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
   if (!derived && artifact?.kind === "build") {
     params.set(
       "dockerfile",
-      artifact.specInline !== undefined ? LANDO_INLINE_DOCKERFILE_PATH : (artifact.spec ?? "Dockerfile"),
+      artifact.specInline !== undefined ? INLINE_DOCKERFILE_NAME : (artifact.spec ?? "Dockerfile"),
     );
     if (artifact.args !== undefined) params.set("buildargs", JSON.stringify(artifact.args));
     if (artifact.target !== undefined) params.set("target", artifact.target);
@@ -131,15 +131,6 @@ export const buildContainerArtifact = (
       );
     }
     const artifact = service.artifact;
-    if (artifact?.kind === "build" && artifact.spec !== undefined && artifact.specInline !== undefined) {
-      return yield* Effect.fail(
-        new ProviderInternalError({
-          providerId: options.providerId,
-          operation: "buildArtifact",
-          message: `Artifact build spec for service ${input.service} sets both spec and specInline; exactly one is allowed.`,
-        }),
-      );
-    }
     const steps = serviceBuildSteps(service);
     const tag = deterministicRef(input);
     let digest: string | undefined;
@@ -160,10 +151,10 @@ export const buildContainerArtifact = (
         artifact.specInline === undefined
           ? packed.tar
           : tarStream([
-              ...packed.entries.filter((entry) => entry.name !== LANDO_INLINE_DOCKERFILE_PATH),
+              ...packed.entries.filter((entry) => entry.name !== INLINE_DOCKERFILE_NAME),
               {
                 kind: "file",
-                name: LANDO_INLINE_DOCKERFILE_PATH,
+                name: INLINE_DOCKERFILE_NAME,
                 mode: 0o644,
                 content: tarText(artifact.specInline),
               },
