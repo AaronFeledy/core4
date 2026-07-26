@@ -378,7 +378,7 @@
         "The first use of each `(kind,id)` emits one warning line through the renderer, and later uses only increment the summary count.",
         "`severity: \"info\"` notices emit one end-of-run summary line instead of immediate warning spam.",
         "`--no-deprecation-warnings` and `LANDO_DEPRECATION_WARNINGS=0` suppress only renderer warning output.",
-        "`lando doctor --deprecations` and the `--format yaml` config views (`lando app config`, `lando meta config`) ignore suppression and still report deprecations.",
+        "`lando doctor --deprecations` and `lando config --format yaml` ignore suppression and still report deprecations.",
         "The JSON renderer emits structured `deprecation-used` events on stderr.",
         "Tests pass.",
         "Typecheck passes.",
