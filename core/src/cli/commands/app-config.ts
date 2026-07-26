@@ -383,12 +383,6 @@ const tableRender = (result: AppConfigResult): string => {
   return lines.join("\n");
 };
 
-const yamlRender = (result: AppConfigResult): string => {
-  const landofile = result.landofile;
-  if (landofile === undefined) return tableRender(result);
-  return emitLandofileYaml({ ...Schema.encodeSync(LandofileShape)(landofile) });
-};
-
 const getRender = (result: AppConfigResult): string => {
   if (result.value === undefined) return "";
   if (result.value !== null && typeof result.value === "object") return JSON.stringify(result.value);
@@ -422,7 +416,9 @@ export const renderAppConfigResult = (
 ): string => {
   if (result.subcommand === "get") return getRender(result);
   if (result.subcommand !== undefined && result.subcommand !== "view") return writeRender(result);
-  if (format === "yaml") return yamlRender(result);
+  if (format === "yaml" && result.landofile !== undefined) {
+    return emitLandofileYaml({ ...Schema.encodeSync(LandofileShape)(result.landofile) });
+  }
   return tableRender(result);
 };
 

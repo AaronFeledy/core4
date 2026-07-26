@@ -73,7 +73,6 @@ export const BuildBlock = Schema.Struct({
 });
 export type BuildBlock = typeof BuildBlock.Type;
 
-/** Conditions supported by Compose `depends_on` entries. */
 export const ServiceDependencyCondition = Schema.Literal(
   "service_started",
   "service_healthy",
@@ -86,11 +85,6 @@ export const ServiceDependencyCondition = Schema.Literal(
 });
 export type ServiceDependencyCondition = typeof ServiceDependencyCondition.Type;
 
-/**
- * ServiceDependency — the canonical long form of a `dependsOn` / `depends_on`
- * entry. Both the string-list form and the Compose condition-map form
- * canonicalize to an array of these.
- */
 export const ServiceDependency = Schema.Struct({
   service: Schema.String,
   condition: Schema.optional(ServiceDependencyCondition),
@@ -104,7 +98,6 @@ export const ServiceDependency = Schema.Struct({
 });
 export type ServiceDependency = typeof ServiceDependency.Type;
 
-/** Value shape of a Compose `depends_on` condition-map entry. */
 const ServiceDependencyInput = Schema.Struct({
   condition: ServiceDependencyCondition,
   required: Schema.optional(Schema.Boolean),
@@ -179,11 +172,6 @@ const ComposeScalarMapInput = Schema.transformOrFail(ReservedComposeScalarMapInp
   encode: (record) => ParseResult.succeed(record),
 });
 
-/**
- * `environment` — accepts a map (`KEY: value`) or a Compose `KEY=value` list,
- * canonicalizing to a map. A bare list entry without `=` or a null map value is
- * rejected: Landofiles do not read host environment variables.
- */
 const ComposeEnvironmentInput = Schema.transformOrFail(
   Schema.Union(ComposeScalarMapInput, Schema.Array(Schema.String)),
   StringRecord,
@@ -229,7 +217,6 @@ const ComposeEnvironmentInput = Schema.transformOrFail(
     "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.",
 });
 
-/** `labels` — accepts a map or a Compose `KEY=value` list, canonicalizing to a map (bare entry → empty value). */
 const ComposeLabelsInput = Schema.transformOrFail(
   Schema.Union(ComposeScalarMapInput, Schema.Array(Schema.String)),
   StringRecord,
@@ -259,7 +246,6 @@ const ComposeLabelsInput = Schema.transformOrFail(
     "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
 });
 
-/** `envFile` / Compose `env_file` — accepts a string or string list, canonicalizing to a list. */
 const ComposeEnvFileInput = Schema.transform(
   Schema.Union(Schema.String, Schema.Array(Schema.String)),
   Schema.Array(Schema.String),
@@ -273,11 +259,6 @@ const ComposeEnvFileInput = Schema.transform(
     "One or more env-file paths whose KEY=value lines seed the service environment. String or string list.",
 });
 
-/**
- * `dependsOn` / Compose `depends_on` — accepts a service-name list or a
- * condition-map (`{ <svc>: { condition, required?, restart? } }`) and
- * canonicalizes to an array of {@link ServiceDependency}.
- */
 const ComposeDependsOnInput = Schema.transformOrFail(
   Schema.Union(Schema.Array(Schema.String), ServiceDependencyInputRecord, Schema.Array(ServiceDependency)),
   Schema.Array(ServiceDependency),
