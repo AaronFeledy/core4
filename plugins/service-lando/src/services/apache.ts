@@ -72,7 +72,7 @@ const applyApacheFeature = (ctx: ServiceFeatureContext): void => {
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
   }
 };
 

@@ -38,7 +38,12 @@ const REMEDIATION = "Remove unsupported keys or update the documented Landofile 
 const COMPOSE_ALLOWLIST_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
-const SERVICE_CONFIG_KEYS = new Set(Object.keys(ServiceConfig.fields));
+const SERVICE_CONFIG_KEYS = new Set([
+  ...Object.keys(ServiceConfig.fields),
+  "working_dir",
+  "env_file",
+  "depends_on",
+]);
 
 const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   key: string;
@@ -127,7 +132,9 @@ const extractFailure = <E>(cause: Cause.Cause<E>): E | undefined => {
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {
     return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
+      issue.path.length === 0 || issue.message.startsWith("Landofile service")
+        ? issue.message
+        : issue.path.join("."),
     );
   }
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];

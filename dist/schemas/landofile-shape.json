@@ -41,6 +41,39 @@
       ],
       "title": "Deprecation Notice",
       "type": "object"
+    },
+    "ServiceDependency": {
+      "additionalProperties": false,
+      "description": "A single inter-service dependency with its optional Compose condition, required, and restart flags.",
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/ServiceDependencyCondition"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "restart": {
+          "type": "boolean"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "service"
+      ],
+      "title": "Service Dependency",
+      "type": "object"
+    },
+    "ServiceDependencyCondition": {
+      "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+      "enum": [
+        "service_started",
+        "service_healthy",
+        "service_completed_successfully"
+      ],
+      "title": "Service Dependency Condition",
+      "type": "string"
     }
   },
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -385,11 +418,73 @@
           "database": {
             "type": "string"
           },
+          "depends_on": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "condition": {
+                      "$ref": "#/$defs/ServiceDependencyCondition"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "restart": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            ]
+          },
           "dependsOn": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "condition": {
+                      "$ref": "#/$defs/ServiceDependencyCondition"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    },
+                    "restart": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              {
+                "items": {
+                  "$ref": "#/$defs/ServiceDependency"
+                },
+                "type": "array"
+              }
+            ]
           },
           "endpoints": {
             "items": {
@@ -411,11 +506,7 @@
                           "type": "string"
                         },
                         "port": {
-                          "description": "a number between 1 and 65535",
-                          "maximum": 65535,
-                          "minimum": 1,
-                          "title": "between(1, 65535)",
-                          "type": "integer"
+                          "type": "number"
                         },
                         "protocol": {
                           "description": "Service-facing network protocol.",
@@ -484,11 +575,7 @@
                       "type": "string"
                     },
                     "port": {
-                      "description": "a number between 1 and 65535",
-                      "maximum": 65535,
-                      "minimum": 1,
-                      "title": "between(1, 65535)",
-                      "type": "integer"
+                      "type": "number"
                     },
                     "protocol": {
                       "description": "Service-facing network protocol.",
@@ -502,18 +589,12 @@
                     },
                     "publication": {
                       "additionalProperties": false,
-                      "description": "Explicit host-publication intent and policy overrides.",
                       "properties": {
                         "bindAddress": {
-                          "format": "ip",
                           "type": "string"
                         },
                         "hostPort": {
-                          "description": "a number between 1 and 65535",
-                          "maximum": 65535,
-                          "minimum": 1,
-                          "title": "between(1, 65535)",
-                          "type": "integer"
+                          "type": "number"
                         }
                       },
                       "required": [],
@@ -545,23 +626,59 @@
               }
             ]
           },
-          "environment": {
-            "additionalProperties": {
-              "anyOf": [
-                {
+          "env_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
                   "type": "string"
                 },
-                {
-                  "type": "number"
+                "type": "array"
+              }
+            ]
+          },
+          "envFile": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
                 },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "properties": {},
-            "required": [],
-            "type": "object"
+                "type": "array"
+              }
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
           },
           "framework": {
             "type": "string"
@@ -622,6 +739,34 @@
           "image": {
             "type": "string"
           },
+          "labels": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
           "logs": {
             "items": {
               "additionalProperties": false,
@@ -637,7 +782,6 @@
                   "type": "string"
                 },
                 "stream": {
-                  "description": "Render and exit classification for this source's lines; defaults to stderr.",
                   "enum": [
                     "stdout",
                     "stderr"
@@ -828,6 +972,9 @@
           },
           "webroot": {
             "description": "Container path served as this service's HTTP document root.",
+            "type": "string"
+          },
+          "working_dir": {
             "type": "string"
           },
           "workingDirectory": {

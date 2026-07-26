@@ -1,4 +1,39 @@
 {
+  "$defs": {
+    "ServiceDependency": {
+      "additionalProperties": false,
+      "description": "A single inter-service dependency with its optional Compose condition, required, and restart flags.",
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/ServiceDependencyCondition"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "restart": {
+          "type": "boolean"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "service"
+      ],
+      "title": "Service Dependency",
+      "type": "object"
+    },
+    "ServiceDependencyCondition": {
+      "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+      "enum": [
+        "service_started",
+        "service_healthy",
+        "service_completed_successfully"
+      ],
+      "title": "Service Dependency Condition",
+      "type": "string"
+    }
+  },
   "$schema": "http://json-schema.org/draft-07/schema#",
   "additionalProperties": false,
   "properties": {
@@ -131,10 +166,42 @@
       "type": "string"
     },
     "dependsOn": {
-      "items": {
-        "type": "string"
-      },
-      "type": "array"
+      "anyOf": [
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        {
+          "additionalProperties": {
+            "additionalProperties": false,
+            "properties": {
+              "condition": {
+                "$ref": "#/$defs/ServiceDependencyCondition"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "restart": {
+                "type": "boolean"
+              }
+            },
+            "required": [],
+            "type": "object"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        {
+          "items": {
+            "$ref": "#/$defs/ServiceDependency"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries."
     },
     "endpoints": {
       "items": {
@@ -290,23 +357,48 @@
         }
       ]
     },
-    "environment": {
-      "additionalProperties": {
-        "anyOf": [
-          {
+    "envFile": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
             "type": "string"
           },
-          {
-            "type": "number"
+          "type": "array"
+        }
+      ],
+      "description": "One or more env-file paths (string or list) whose KEY=value lines seed the service environment."
+    },
+    "environment": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
           },
-          {
-            "type": "boolean"
-          }
-        ]
-      },
-      "properties": {},
-      "required": [],
-      "type": "object"
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry without '=' is rejected because Landofiles do not read host environment variables."
     },
     "framework": {
       "type": "string"
@@ -366,6 +458,35 @@
     },
     "image": {
       "type": "string"
+    },
+    "labels": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              }
+            ]
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map."
     },
     "logs": {
       "items": {

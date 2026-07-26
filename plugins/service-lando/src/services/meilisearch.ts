@@ -59,7 +59,7 @@ const applyMeilisearchFeature = (ctx: ServiceFeatureContext): void => {
   });
 
   for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
   }
 
   if (service.command !== undefined) ctx.setCommand(service.command);

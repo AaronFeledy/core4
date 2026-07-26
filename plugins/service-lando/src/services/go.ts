@@ -124,7 +124,7 @@ const applyGoFeature = (ctx: ServiceFeatureContext): void => {
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
   }
 
   ctx.addExtension("lando-service-go", {

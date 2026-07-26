@@ -80,7 +80,7 @@ const landofileFixture: LandofileShape = {
       image: "node:lts",
       ports: ["3000:3000"],
       environment: { NODE_ENV: "development" },
-      dependsOn: ["db"],
+      dependsOn: [{ service: "db" }],
     },
     [ServiceName.make("db")]: {
       image: "postgres:16",

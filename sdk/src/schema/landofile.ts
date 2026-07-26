@@ -1,4 +1,4 @@
-import { Schema } from "effect";
+import { ParseResult, Schema } from "effect";
 import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
@@ -73,6 +73,164 @@ export const BuildBlock = Schema.Struct({
 export type BuildBlock = typeof BuildBlock.Type;
 
 /**
+/** Compose `depends_on` condition vocabulary (§6.13). */
+export const ServiceDependencyCondition = Schema.Literal(
+  "service_started",
+  "service_healthy",
+  "service_completed_successfully",
+).annotations({
+  identifier: "ServiceDependencyCondition",
+  title: "Service Dependency Condition",
+  description:
+    "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+});
+export type ServiceDependencyCondition = typeof ServiceDependencyCondition.Type;
+
+/**
+ * ServiceDependency — the canonical long form of a `dependsOn` / `depends_on`
+ * entry. Both the string-list form and the Compose condition-map form
+ * canonicalize to an array of these.
+ */
+export const ServiceDependency = Schema.Struct({
+  service: Schema.String,
+  condition: Schema.optional(ServiceDependencyCondition),
+  required: Schema.optional(Schema.Boolean),
+  restart: Schema.optional(Schema.Boolean),
+}).annotations({
+  identifier: "ServiceDependency",
+  title: "Service Dependency",
+  description:
+    "A single inter-service dependency with its optional Compose condition, required, and restart flags.",
+});
+export type ServiceDependency = typeof ServiceDependency.Type;
+
+/** Value shape of a Compose `depends_on` condition-map entry. */
+const ServiceDependencyInput = Schema.Struct({
+  condition: Schema.optional(ServiceDependencyCondition),
+  required: Schema.optional(Schema.Boolean),
+  restart: Schema.optional(Schema.Boolean),
+});
+
+/** Record whose values coerce YAML scalars to strings. */
+const CoercedStringRecord = Schema.Record({
+  key: Schema.String,
+  value: Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Boolean), Schema.String, {
+    strict: true,
+    decode: String,
+    encode: (s) => s,
+  }),
+});
+
+/**
+ * `environment` — accepts a map (`KEY: value`) or a Compose `KEY=value` list,
+ * canonicalizing to a map. A bare list entry without `=` is rejected: Landofiles
+ * do not read host environment variables, so there is no value to interpolate.
+ */
+const ComposeEnvironmentInput = Schema.transformOrFail(
+  Schema.Union(CoercedStringRecord, Schema.Array(Schema.String)),
+  Schema.Record({ key: Schema.String, value: Schema.String }),
+  {
+    strict: true,
+    decode: (input, _options, ast) => {
+      if (!Array.isArray(input)) return ParseResult.succeed(input as Record<string, string>);
+      const out: Record<string, string> = {};
+      for (const entry of input) {
+        const separator = entry.indexOf("=");
+        if (separator < 0) {
+          return ParseResult.fail(
+            new ParseResult.Type(
+              ast,
+              input,
+              `Landofile service environment entry "${entry}" must be KEY=value; host-environment interpolation is unsupported in Landofiles — use the map form (environment: { KEY: value }).`,
+            ),
+          );
+        }
+        out[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return ParseResult.succeed(out);
+    },
+    encode: (record) => ParseResult.succeed(record),
+  },
+).annotations({
+  description:
+    "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry without '=' is rejected because Landofiles do not read host environment variables.",
+});
+
+/** `labels` — accepts a map or a Compose `KEY=value` list, canonicalizing to a map (bare entry → empty value). */
+const ComposeLabelsInput = Schema.transform(
+  Schema.Union(CoercedStringRecord, Schema.Array(Schema.String)),
+  Schema.Record({ key: Schema.String, value: Schema.String }),
+  {
+    strict: true,
+    decode: (input) => {
+      if (!Array.isArray(input)) return input as Record<string, string>;
+      const out: Record<string, string> = {};
+      for (const entry of input) {
+        const separator = entry.indexOf("=");
+        if (separator < 0) out[entry] = "";
+        else out[entry.slice(0, separator)] = entry.slice(separator + 1);
+      }
+      return out;
+    },
+    encode: (record) => record,
+  },
+).annotations({
+  description: "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map.",
+});
+
+/** `envFile` / Compose `env_file` — accepts a string or string list, canonicalizing to a list. */
+const ComposeEnvFileInput = Schema.transform(
+  Schema.Union(Schema.String, Schema.Array(Schema.String)),
+  Schema.Array(Schema.String),
+  {
+    strict: true,
+    decode: (input) => (typeof input === "string" ? [input] : input),
+    encode: (list) => list,
+  },
+).annotations({
+  description:
+    "One or more env-file paths whose KEY=value lines seed the service environment. String or string list.",
+});
+
+/**
+ * `dependsOn` / Compose `depends_on` — accepts a service-name list or a
+ * condition-map (`{ <svc>: { condition, required?, restart? } }`) and
+ * canonicalizes to an array of {@link ServiceDependency}.
+ */
+const ComposeDependsOnInput = Schema.transform(
+  Schema.Union(
+    Schema.Array(Schema.String),
+    Schema.Record({ key: Schema.String, value: ServiceDependencyInput }),
+    Schema.Array(ServiceDependency),
+  ),
+  Schema.Array(ServiceDependency),
+  {
+    strict: false,
+    decode: (input): ReadonlyArray<ServiceDependency> => {
+      if (Array.isArray(input)) {
+        return input.map((entry) => (typeof entry === "string" ? { service: entry } : entry));
+      }
+      return Object.entries(input).map(([service, spec]) => ({ service, ...spec }));
+    },
+    encode: (deps: ReadonlyArray<ServiceDependency>) => {
+      const allBare = deps.every(
+        (dep) => dep.condition === undefined && dep.required === undefined && dep.restart === undefined,
+      );
+      if (allBare) return deps.map((dep) => dep.service);
+      const record: Record<string, typeof ServiceDependencyInput.Type> = {};
+      for (const dep of deps) {
+        const { service, ...rest } = dep;
+        record[service] = rest;
+      }
+      return record;
+    },
+  },
+).annotations({
+  description:
+    "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
+});
+
+/**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
@@ -98,17 +256,14 @@ export const ServiceConfig = Schema.Struct({
     description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
   }),
   root: Schema.optional(Schema.String),
-  // Accept number/boolean values from YAML auto-typing and coerce to string.
-  environment: Schema.optional(
-    Schema.Record({
-      key: Schema.String,
-      value: Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Boolean), Schema.String, {
-        strict: true,
-        decode: String,
-        encode: (s) => s,
-      }),
-    }),
-  ),
+  environment: Schema.optional(ComposeEnvironmentInput),
+  envFile: Schema.optional(ComposeEnvFileInput).annotations({
+    description:
+      "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
+  }),
+  labels: Schema.optional(ComposeLabelsInput).annotations({
+    description: "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map.",
+  }),
 
   ports: Schema.optional(
     Schema.Array(
@@ -141,7 +296,7 @@ export const ServiceConfig = Schema.Struct({
   healthcheck: Schema.optional(HealthcheckInput),
   logs: Schema.optional(Schema.Array(LogSourceInput)),
   hostnames: Schema.optional(Schema.Array(Schema.String)),
-  dependsOn: Schema.optional(Schema.Array(Schema.String)),
+  dependsOn: Schema.optional(ComposeDependsOnInput),
 
   composeBuild: Schema.optional(
     Schema.Struct({
@@ -155,6 +310,49 @@ export const ServiceConfig = Schema.Struct({
   providers: Schema.optional(ProviderExtensionConfig),
 });
 export type ServiceConfig = typeof ServiceConfig.Type;
+
+/**
+ * ServiceConfigInput — the accepted authoring surface: every {@link ServiceConfig}
+ * key plus the Compose cross-key spellings (`working_dir`, `env_file`,
+ * `depends_on`). Used as the decode boundary for `services.<name>:`.
+ */
+export const ServiceConfigInput = Schema.extend(
+  Schema.encodedSchema(ServiceConfig),
+  Schema.Struct({
+    working_dir: Schema.optional(PortablePath),
+    env_file: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
+    depends_on: Schema.optional(
+      Schema.Union(
+        Schema.Array(Schema.String),
+        Schema.Record({ key: Schema.String, value: ServiceDependencyInput }),
+      ),
+    ),
+  }),
+);
+export type ServiceConfigInput = typeof ServiceConfigInput.Type;
+
+/**
+ * ServiceConfigDecode — canonicalizes Compose cross-key spellings to their Lando
+ * aliases, with the Lando key winning when both are present, then hands off to
+ * {@link ServiceConfig} for per-key form canonicalization. Its input is the
+ * encoded {@link ServiceConfig} surface plus the Compose spellings, so the
+ * per-field transforms run once, inside {@link ServiceConfig}.
+ */
+export const ServiceConfigDecode = Schema.transformOrFail(ServiceConfigInput, ServiceConfig, {
+  strict: false,
+  decode: (input) => {
+    const { working_dir, env_file, depends_on, ...rest } = input as Record<string, unknown>;
+    const canonical: Record<string, unknown> = { ...rest };
+    if (canonical.workingDirectory === undefined && working_dir !== undefined) {
+      canonical.workingDirectory = working_dir;
+    }
+    if (canonical.envFile === undefined && env_file !== undefined) canonical.envFile = env_file;
+    if (canonical.dependsOn === undefined && depends_on !== undefined) canonical.dependsOn = depends_on;
+    return ParseResult.succeed(canonical);
+  },
+  encode: (encoded) => ParseResult.succeed(encoded),
+});
+export type ServiceConfigDecode = typeof ServiceConfigDecode.Type;
 
 /**
  * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
@@ -364,7 +562,7 @@ const LandofileShapeBase = Schema.Struct({
   configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
   sshAgent: Schema.optional(SshAgentConfig),
-  services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfig })),
+  services: Schema.optional(Schema.Record({ key: ServiceName, value: ServiceConfigDecode })),
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
   tooling: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingTaskShape })),
