@@ -89,10 +89,10 @@ describe("lando config renders post-normalization Compose spellings (US-468)", (
     });
   });
 
-  test("config view --source resolved --format yaml renders post-normalization values", async () => {
+  test("config view --format yaml renders post-normalization values", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), landofile);
-      const result = await runCli(["app", "config", "view", "--source", "resolved", "--format", "yaml"], dir);
+      const result = await runCli(["app", "config", "view", "--format", "yaml"], dir);
       expect(result.exitCode).toBe(0);
       expect(result.stdout).toContain("workingDirectory: /app");
       expect(result.stdout).toContain("NODE_ENV: development");
@@ -124,35 +124,10 @@ describe("lando config renders post-normalization Compose spellings (US-468)", (
     });
   });
 
-  test("config get honors --source resolved", async () => {
-    await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), landofile);
-      const result = await runCli(
-        ["app", "config", "get", "services.web.workingDirectory", "--source", "resolved"],
-        dir,
-      );
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe("/app");
-    });
-  });
-
-  test("config view rejects an unsupported --source value", async () => {
-    await withTempCwd(async (dir) => {
-      await writeFile(join(dir, ".lando.yml"), landofile);
-      const result = await runCli(["app", "config", "view", "--source", "raw", "--format", "yaml"], dir);
-      const output = `${result.stdout}\n${result.stderr}`;
-      expect(result.exitCode).not.toBe(0);
-      expect(output).toMatch(/--source/);
-      expect(output).toMatch(/malformed value/i);
-    });
-  });
-
-  test("config help documents --source and its supported value", async () => {
+  test("config help documents yaml output", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), landofile);
       const result = await runCli(["app", "config", "--help"], dir);
-      expect(result.stdout).toMatch(/--source=<option>/);
-      expect(result.stdout).toMatch(/<options: resolved>/);
       expect(result.stdout).toMatch(/<options: table\|json\|yaml>/);
     });
   });

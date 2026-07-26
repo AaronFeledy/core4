@@ -48,7 +48,6 @@ export interface AppConfigOptions {
   readonly value?: string;
   readonly type?: ValueType;
   readonly format?: "json" | "yaml" | "table";
-  readonly source?: "resolved";
   readonly path?: string;
   readonly dryRun?: boolean;
   readonly editor?: string;
@@ -452,7 +451,7 @@ export const appConfig = (
     const landofile = yield* loadUserLandofile(landofileService);
     return {
       app: landofile.name ?? "",
-      source: options.source ?? "resolved",
+      source: "resolved",
       landofile,
     };
   });

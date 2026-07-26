@@ -25,7 +25,6 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
     value?: string;
     type?: ValueType;
     format?: "json" | "yaml" | "table";
-    source?: "resolved";
     path?: string;
     dryRun?: boolean;
     editor?: string;
@@ -35,7 +34,6 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
   const value = i.args?.value;
   const type = i.flags?.type;
   const format = i.flags?.format;
-  const source = i.flags?.source;
   const path = i.flags?.path;
   const editor = i.flags?.editor;
   if (typeof subcommand === "string" && subcommand.length > 0) opts.subcommand = subcommand;
@@ -43,7 +41,6 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
   if (typeof value === "string") opts.value = value;
   if (isValueType(type)) opts.type = type;
   if (format === "json" || format === "table" || format === "yaml") opts.format = format;
-  if (source === "resolved") opts.source = source;
   if (typeof path === "string") opts.path = path;
   if (i.flags?.["dry-run"] === true) opts.dryRun = true;
   if (typeof editor === "string") opts.editor = editor;
@@ -113,11 +110,6 @@ export default class AppConfigCommand extends LandoCommandBase {
       description: "Output format.",
       options: ["table", "json", "yaml"],
       default: "table",
-    }),
-    source: Flags.string({
-      description: "Config read source.",
-      options: ["resolved"],
-      default: "resolved",
     }),
     type: Flags.string({
       description: "Value type for set.",

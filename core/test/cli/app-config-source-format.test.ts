@@ -22,7 +22,7 @@ const resolvedResult: AppConfigResult = {
 const renderWithFormat = (result: AppConfigResult, format: "json" | "table" | "yaml"): string =>
   Schema.decodeUnknownSync(Schema.String)(Reflect.apply(renderAppConfigResult, undefined, [result, format]));
 
-describe("app config yaml + --source (US-468)", () => {
+describe("app config yaml (US-468)", () => {
   test("renderAppConfigResult emits landofile-only YAML when format is yaml", () => {
     const yaml = renderWithFormat(resolvedResult, "yaml");
 
@@ -53,27 +53,13 @@ describe("app config yaml + --source (US-468)", () => {
     expect(appConfigOptionsFromInput({ flags: { format: "yaml" } }).format).toBe("yaml");
   });
 
-  test("appConfigOptionsFromInput accepts source resolved", () => {
-    expect(Reflect.get(appConfigOptionsFromInput({ flags: { source: "resolved" } }), "source")).toBe(
-      "resolved",
-    );
-  });
-
-  test("appConfigOptionsFromInput ignores an unsupported source value", () => {
-    expect(Reflect.get(appConfigOptionsFromInput({ flags: { source: "raw" } }), "source")).toBeUndefined();
-  });
-
   describe("compiled dispatch parity", () => {
-    test("compiled input maps view --source resolved --format yaml", () => {
+    test("compiled input maps view --format yaml", () => {
       const options = appConfigOptionsFromInput(
-        compiledCommandInputFromArgv("app:config", ["view", "--format", "yaml", "--source", "resolved"]),
+        compiledCommandInputFromArgv("app:config", ["view", "--format", "yaml"]),
       );
 
-      expect(options).toEqual({ subcommand: "view", format: "yaml", source: "resolved" });
-    });
-
-    test("compiled input rejects an unsupported --source value", () => {
-      expect(() => compiledCommandInputFromArgv("app:config", ["view", "--source", "raw"])).toThrow();
+      expect(options).toEqual({ subcommand: "view", format: "yaml" });
     });
   });
 });

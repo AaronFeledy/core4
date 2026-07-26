@@ -95,15 +95,6 @@ export const COMPILED_OCLIF_MANIFEST = {
           allowNo: false,
           type: "boolean",
         },
-        source: {
-          description: "Config read source.",
-          name: "source",
-          default: "resolved",
-          hasDynamicHelp: false,
-          multiple: false,
-          options: ["resolved"],
-          type: "option",
-        },
         type: {
           description: "Value type for set.",
           name: "type",
