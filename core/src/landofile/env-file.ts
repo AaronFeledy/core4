@@ -1,10 +1,10 @@
-export type EnvFileParseIssue = {
+type EnvFileParseIssue = {
   readonly source: string;
   readonly line: number;
   readonly message: string;
 };
 
-export type EnvFileParseResult =
+type EnvFileParseResult =
   | { readonly ok: true; readonly environment: Readonly<Record<string, string>> }
   | { readonly ok: false; readonly issue: EnvFileParseIssue };
 
