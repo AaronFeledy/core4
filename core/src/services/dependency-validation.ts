@@ -19,6 +19,9 @@ type DependencyCycle = {
   readonly dependencies: ReadonlyArray<typeof DependencyPlan.Type>;
 };
 
+const ownService = <T>(services: Readonly<Record<string, T>>, name: string): T | undefined =>
+  Object.hasOwn(services, name) ? services[name] : undefined;
+
 export const validateServiceDependencies = (
   appRoot: string,
   services: AppPlan["services"] | Readonly<Record<string, unknown>>,
@@ -29,7 +32,7 @@ export const validateServiceDependencies = (
     for (const [dependentName, servicePlan] of Object.entries(servicePlans)) {
       for (const dependency of servicePlan.dependsOn) {
         const targetName = String(dependency.service);
-        const target = servicePlans[targetName];
+        const target = ownService(servicePlans, targetName);
         if (target === undefined) {
           if (dependency.required) {
             return yield* Effect.fail(
@@ -67,11 +70,11 @@ export const validateServiceDependencies = (
       activeIndexes.set(serviceName, pathServiceNames.length);
       pathServiceNames.push(serviceName);
 
-      const servicePlan = servicePlans[serviceName];
+      const servicePlan = ownService(servicePlans, serviceName);
       if (servicePlan !== undefined) {
         for (const dependency of servicePlan.dependsOn) {
           const targetName = String(dependency.service);
-          if (servicePlans[targetName] === undefined) continue;
+          if (ownService(servicePlans, targetName) === undefined) continue;
 
           const activeIndex = activeIndexes.get(targetName);
           if (activeIndex !== undefined) {
