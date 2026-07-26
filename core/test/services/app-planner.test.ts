@@ -467,7 +467,17 @@ describe("AppPlannerLive", () => {
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "compose-build",
         runtime: 4,
-        services: { worker: { type: "socket-only", build: "." } },
+        services: {
+          worker: {
+            type: "socket-only",
+            build: {
+              context: "./docker",
+              dockerfile: "Containerfile",
+              args: { NODE_ENV: "production" },
+              target: "runtime",
+            },
+          },
+        },
       });
 
       // When
@@ -476,7 +486,10 @@ describe("AppPlannerLive", () => {
       // Then
       expect(appPlan.services[ServiceName.make("worker")]?.artifact).toEqual({
         kind: "build",
-        context: AbsolutePath.make(appRoot),
+        context: AbsolutePath.make(join(appRoot, "docker")),
+        spec: PortablePath.make("Containerfile"),
+        args: { NODE_ENV: "production" },
+        target: "runtime",
       });
     });
   });

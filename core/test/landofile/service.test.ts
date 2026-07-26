@@ -65,6 +65,7 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
       const error = validationErrorFrom(await discoverExit());
 
       // Then: validationIssues keeps the schema remediation, not the dotted path
+      expect(error._tag).toBe("LandofileValidationError");
       const mixedIssue = error.issues.find((issue) => issue.startsWith("Landofile service"));
       expect(mixedIssue).toBeDefined();
       expect(mixedIssue?.startsWith("Landofile service")).toBe(true);
