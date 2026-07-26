@@ -110,7 +110,7 @@
       "stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>",
       "restoreVolume: (spec: VolumeRestoreSpec) => Effect.Effect<void, ProviderError, Scope.Scope>",
       "version: string",
-      "waitForExit: (target: ServiceSelector) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>"
+      "waitForExit: (target: ServiceSelector, options?: WaitForExitOptions) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>"
     ],
     "RuntimeProviderRegistry": [
       "capabilities: Effect.Effect<ProviderCapabilities, ProviderUnavailableError | ProviderConfigError | NoProviderInstalledError>",
