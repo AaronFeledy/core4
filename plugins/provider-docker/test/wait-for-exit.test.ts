@@ -72,10 +72,15 @@ const makeFakeApi = (responses: ReadonlyArray<DockerHttpResponse>) => {
   return { api, calls };
 };
 
-const waitForExit = async (api: DockerApiClient, requestedService = serviceName) => {
+const waitForExit = async (api: DockerApiClient, requestedService = serviceName, signal?: AbortSignal) => {
   const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
   return Effect.runPromise(
-    Effect.scoped(provider.waitForExit({ app: appId, service: requestedService, plan })),
+    Effect.scoped(
+      provider.waitForExit(
+        { app: appId, service: requestedService, plan },
+        signal === undefined ? undefined : { signal },
+      ),
+    ),
   );
 };
 
@@ -171,5 +176,17 @@ describe("provider-docker waitForExit", () => {
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
       { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
     ]);
+  });
+
+  test("forwards cancellation to the HTTP wait request", async () => {
+    // Given
+    const fake = makeFakeApi([{ status: 200, body: '{"StatusCode":0}' }]);
+    const controller = new AbortController();
+
+    // When
+    await waitForExit(fake.api, serviceName, controller.signal);
+
+    // Then
+    expect(fake.calls[0]?.signal).toBe(controller.signal);
   });
 });

@@ -11,6 +11,7 @@ const PROVIDER_ID = "docker";
 
 export interface WaitForExitOptions {
   readonly dockerApi?: DockerApiClient;
+  readonly signal?: AbortSignal;
 }
 
 const containerName = (plan: AppPlan, service: ServicePlan) =>
@@ -98,6 +99,7 @@ export const waitForExit = (
     const waitResponse = yield* request(dockerApi, "waitForExit", {
       method: "POST",
       path: `/containers/${name}/wait`,
+      ...(options.signal === undefined ? {} : { signal: options.signal }),
     });
     if (waitResponse.status < 200 || waitResponse.status >= 300) {
       return yield* Effect.fail(apiFailure(service, waitResponse));

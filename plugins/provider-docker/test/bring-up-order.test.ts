@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { DateTime, Effect, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
 import { type DockerApiClient, type DockerHttpResponse, makeRuntimeProvider } from "@lando/provider-docker";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -58,15 +58,29 @@ const planWith = (services: ReadonlyArray<ServicePlan>): AppPlan => ({
   extensions: {},
 });
 
-const makeFakeApi = (healthExitCode: number) => {
+const makeFakeApi = (
+  healthExitCode: number,
+  existing: ReadonlyArray<string> = [],
+  failedStarts: ReadonlyArray<string> = [],
+) => {
   const requests: string[] = [];
+  const existingNames = new Set(existing);
+  const failedStartNames = new Set(failedStarts);
   const responseFor = (method: string, path: string): DockerHttpResponse => {
     if (path === "/networks/create") return { status: 201, body: "" };
     if (method === "GET" && path.startsWith("/containers/") && path.endsWith("/json")) {
-      return { status: 404, body: "" };
+      const name = path.slice("/containers/".length, -"/json".length);
+      return existingNames.has(name)
+        ? { status: 200, body: '{"State":{"Running":false}}' }
+        : { status: 404, body: "" };
     }
     if (path.startsWith("/containers/create?")) return { status: 201, body: "" };
-    if (path.endsWith("/start")) return { status: 204, body: "" };
+    if (path.endsWith("/start")) {
+      const name = path.slice("/containers/".length, -"/start".length);
+      return failedStartNames.has(name)
+        ? { status: 500, body: '{"message":"synthetic start failure"}' }
+        : { status: 204, body: "" };
+    }
     if (method === "POST" && path.endsWith("/exec")) return { status: 201, body: '{"Id":"health"}' };
     if (path === "/exec/health/json") {
       return { status: 200, body: JSON.stringify({ ExitCode: healthExitCode }) };
@@ -89,9 +103,11 @@ const makeFakeApi = (healthExitCode: number) => {
   return { api, requests };
 };
 
-const apply = async (plan: AppPlan, api: DockerApiClient) => {
+const apply = async (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) => {
   const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: api }));
-  return Effect.runPromise(Effect.scoped(provider.apply(plan, { reconcile: false })));
+  return Effect.runPromise(
+    Effect.scoped(provider.apply(plan, { reconcile: false, ...(signal === undefined ? {} : { signal }) })),
+  );
 };
 
 const applyFailure = async (plan: AppPlan, api: DockerApiClient) => {
@@ -158,5 +174,72 @@ describe("provider-docker bringUp dependency order", () => {
     expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-cache/start");
     expect(fake.requests.filter((request) => request.endsWith("/stop"))).toHaveLength(0);
     expect(fake.requests.filter((request) => request.startsWith("DELETE /containers/"))).toHaveLength(0);
+  });
+
+  test("does not delete a pre-existing stopped container during rollback", async () => {
+    // Given
+    const web = service("web", {
+      dependsOn: [{ service: healthyDb.name, condition: "service_healthy", required: true }],
+      healthcheck: undefined,
+    });
+    const plan = planWith([web, healthyDb]);
+    const db = "lando-bring-up-order-app-db";
+    const fake = makeFakeApi(1, [db]);
+
+    // When
+    await applyFailure(plan, fake.api);
+
+    // Then
+    expect(fake.requests).toContain(`POST /containers/${db}/stop`);
+    expect(fake.requests).not.toContain(`DELETE /containers/${db}?force=true`);
+  });
+
+  test("cleans only a failed optional dependency and preserves an unrelated started service", async () => {
+    // Given
+    const api = service("api", { dependsOn: [], healthcheck: undefined });
+    const web = service("web", {
+      dependsOn: [{ service: healthyDb.name, condition: "service_started", required: false }],
+      healthcheck: undefined,
+    });
+    const plan = planWith([api, healthyDb, web]);
+    const apiName = "lando-bring-up-order-app-api";
+    const dbName = "lando-bring-up-order-app-db";
+    const fake = makeFakeApi(0, [], [dbName]);
+
+    // When
+    await apply(plan, fake.api);
+
+    // Then
+    expect(fake.requests).toContain(`POST /containers/${apiName}/start`);
+    expect(fake.requests).toContain(`POST /containers/${dbName}/stop`);
+    expect(fake.requests).toContain(`DELETE /containers/${dbName}?force=true`);
+    expect(fake.requests).not.toContain(`POST /containers/${apiName}/stop`);
+    expect(fake.requests).not.toContain(`DELETE /containers/${apiName}?force=true`);
+    expect(fake.requests).toContain("POST /containers/lando-bring-up-order-app-web/start");
+    expect(fake.requests.some((request) => request.startsWith("DELETE /networks/"))).toBe(false);
+  });
+
+  test("interrupts an aborted optional dependency instead of starting its dependent", async () => {
+    // Given
+    const cache = service("cache", {
+      dependsOn: [{ service: healthyDb.name, condition: "service_started", required: false }],
+      healthcheck: undefined,
+    });
+    const plan = planWith([cache, healthyDb]);
+    const fake = makeFakeApi(0);
+    const controller = new AbortController();
+    controller.abort();
+
+    // When
+    const provider = await Effect.runPromise(makeRuntimeProvider({ platform: "linux", dockerApi: fake.api }));
+    const exit = await Effect.runPromiseExit(
+      Effect.scoped(provider.apply(plan, { reconcile: false, signal: controller.signal })),
+    );
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
+    else throw new TypeError("aborted Docker apply unexpectedly succeeded");
+    expect(fake.requests).not.toContain("POST /containers/lando-bring-up-order-app-cache/start");
   });
 });
