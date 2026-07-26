@@ -983,7 +983,6 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
     yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: TouchedContainer[] = [];
-    let changed = false;
     const schedule = yield* runServiceStartSchedule(plan, {
       startService: (service) =>
         Effect.gen(function* () {
@@ -1003,18 +1002,12 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
             serviceChanged = true;
           }
           if (sharedNetwork !== undefined) {
-            const connectEffect = connectSharedNetwork(api, plan, service, name, sharedNetwork);
-            if (inspected.exists && inspected.running) {
-              yield* connectEffect;
-            } else {
-              yield* connectEffect;
-            }
+            yield* connectSharedNetwork(api, plan, service, name, sharedNetwork);
           }
           if (!inspected.running) {
             yield* startContainer(api, service, name);
             serviceChanged = true;
           }
-          changed = changed || serviceChanged;
           return { changed: serviceChanged };
         }).pipe(
           Effect.catchAll((error) => (signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
@@ -1075,7 +1068,7 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
         ),
       );
     }
-    return { changed };
+    return { changed: schedule.changed };
   });
 
 interface BringDownOptions {
