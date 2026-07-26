@@ -109,10 +109,10 @@ describe("buildServiceStartGraph", () => {
     const graph = buildServiceStartGraph(plan);
 
     // Then
-    expect(graph.nodes.map((node) => node.id)).toEqual(["svc:db", "svc:web", "db:healthy"]);
+    expect(graph.nodes.map((node) => node.id)).toEqual(["svc:db", "svc:web", "gate:db:healthy"]);
     expect(graph.edges).toEqual([
-      { predecessor: "svc:db", dependent: "db:healthy", required: true },
-      { predecessor: "db:healthy", dependent: "svc:web", required: true },
+      { predecessor: "svc:db", dependent: "gate:db:healthy", required: true },
+      { predecessor: "gate:db:healthy", dependent: "svc:web", required: true },
     ]);
   });
 
@@ -128,14 +128,14 @@ describe("buildServiceStartGraph", () => {
     const graph = buildServiceStartGraph(plan);
 
     // Then
-    expect(graph.nodes.filter((node) => node.id === "db:healthy")).toHaveLength(1);
+    expect(graph.nodes.filter((node) => node.id === "gate:db:healthy")).toHaveLength(1);
     expect(graph.edges).toContainEqual({
-      predecessor: "db:healthy",
+      predecessor: "gate:db:healthy",
       dependent: "svc:web",
       required: true,
     });
     expect(graph.edges).toContainEqual({
-      predecessor: "db:healthy",
+      predecessor: "gate:db:healthy",
       dependent: "svc:cache",
       required: false,
     });
@@ -248,6 +248,126 @@ describe("runServiceStartSchedule", () => {
     // Then
     expect(calls).toEqual(["start:db", "start:cache"]);
     expect(result).toEqual({ _tag: "Settled", changed: true, blocked: [] });
+  });
+
+  test("fails closed for a non-command service_healthy gate", async () => {
+    // Given
+    const plan = planOf([
+      service("db", { healthcheck: { ...commandHealthcheck, kind: "http", url: "http://localhost" } }),
+      service("web", { dependsOn: [dependency("db", "service_healthy")] }),
+    ]);
+    const calls: Array<string> = [];
+
+    // When
+    const result = await Effect.runPromise(runServiceStartSchedule(plan, recordingHandlers(calls)));
+
+    // Then
+    expect(calls).toEqual(["start:db"]);
+    expect(result).toEqual({
+      _tag: "Settled",
+      changed: true,
+      blocked: [{ service: "web", unmetGate: "db:healthy" }],
+    });
+  });
+
+  test("tolerates a start failure only when every consumer edge is optional", async () => {
+    // Given
+    const plan = planOf([
+      service("db"),
+      service("cache", { dependsOn: [dependency("db", "service_started", false)] }),
+    ]);
+    const calls: Array<string> = [];
+
+    // When
+    const result = await Effect.runPromise(
+      runServiceStartSchedule(
+        plan,
+        recordingHandlers(calls, {
+          startService: (target: ServicePlan) =>
+            String(target.name) === "db"
+              ? Effect.fail(new Error("optional dependency failed"))
+              : Effect.succeed({ changed: true }),
+        }),
+      ),
+    );
+
+    // Then
+    expect(result).toEqual({ _tag: "Settled", changed: true, blocked: [] });
+  });
+
+  test("cleans only the failed optional dependency before starting its dependent", async () => {
+    // Given
+    const plan = planOf([
+      service("db"),
+      service("cache", { dependsOn: [dependency("db", "service_started", false)] }),
+    ]);
+    const calls: Array<string> = [];
+    const handlers = {
+      ...recordingHandlers(calls, {
+        startService: (target: ServicePlan) =>
+          String(target.name) === "db"
+            ? Effect.fail(new Error("optional dependency failed"))
+            : Effect.sync(() => {
+                calls.push(`start:${String(target.name)}`);
+                return { changed: true };
+              }),
+      }),
+      cleanupOptionalStartFailure: (target: ServicePlan) =>
+        Effect.sync(() => {
+          calls.push(`cleanup:${String(target.name)}`);
+        }),
+    };
+
+    // When
+    await Effect.runPromise(runServiceStartSchedule(plan, handlers));
+
+    // Then
+    expect(calls).toEqual(["cleanup:db", "start:cache"]);
+  });
+
+  test("does not tolerate interruption of an optional-only dependency start", async () => {
+    // Given
+    const plan = planOf([
+      service("db"),
+      service("cache", { dependsOn: [dependency("db", "service_started", false)] }),
+    ]);
+    const calls: Array<string> = [];
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      runServiceStartSchedule(
+        plan,
+        recordingHandlers(calls, {
+          startService: (target: ServicePlan) =>
+            String(target.name) === "db"
+              ? Effect.interrupt
+              : Effect.sync(() => {
+                  calls.push(`start:${String(target.name)}`);
+                  return { changed: true };
+                }),
+        }),
+      ),
+    );
+
+    // Then
+    expect(exit._tag).toBe("Failure");
+    expect(calls).toEqual([]);
+  });
+
+  test("keeps a standalone start failure fatal", async () => {
+    // Given
+    const plan = planOf([service("db")]);
+    const handlers = {
+      startService: () => Effect.fail(new Error("fatal start")),
+      execHealthcheck: () => Effect.succeed({ exitCode: 0 }),
+      waitForExit: () => Effect.succeed({ exitCode: 0 }),
+    };
+
+    // When
+    const error = await Effect.runPromise(Effect.flip(runServiceStartSchedule(plan, handlers)));
+
+    // Then
+    expect(error.message).toBe("fatal start");
   });
 
   test("resolves a started gate without probing or waiting", async () => {

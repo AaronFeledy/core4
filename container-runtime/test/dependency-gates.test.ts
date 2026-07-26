@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { GATE_CONDITIONS, gateId, parseGateId } from "../src/dependency-gates.ts";
+import { GATE_CONDITIONS, gateId, gateNodeId, parseGateId } from "../src/dependency-gates.ts";
 
 describe("gateId", () => {
   test("maps each depends_on condition to its stable gate id", () => {
@@ -18,6 +18,12 @@ describe("gateId", () => {
     expect(GATE_CONDITIONS).toEqual(["service_started", "service_healthy", "service_completed_successfully"]);
     expect(new Set(ids).size).toBe(GATE_CONDITIONS.length);
   });
+});
+
+test("gate node ids are disjoint from user-facing gate labels", () => {
+  // Given / When / Then
+  expect(gateNodeId("db", "service_healthy")).toBe("gate:db:healthy");
+  expect(gateNodeId("db", "service_healthy")).not.toBe(gateId("db", "service_healthy"));
 });
 
 describe("parseGateId", () => {

@@ -39,6 +39,10 @@ export interface ParsedGateId {
 export const gateId = (service: string, condition: ServiceDependencyCondition): string =>
   `${service}:${SUFFIX_BY_CONDITION[condition]}`;
 
+/** Internal schedule-node id for a user-facing dependency gate label. */
+export const gateNodeId = (service: string, condition: ServiceDependencyCondition): string =>
+  `gate:${gateId(service, condition)}`;
+
 const isGateSuffix = (value: string): value is GateSuffix =>
   Object.hasOwn(CONDITION_BY_SUFFIX, value) && value !== "__proto__";
 
