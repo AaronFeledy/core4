@@ -2475,6 +2475,169 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("plans a Compose CMD healthcheck with parsed durations", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-healthcheck",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          healthcheck: {
+            test: ["CMD", "curl", "-f", "http://localhost"],
+            interval: "30s",
+            timeout: "1m30s",
+            retries: 3,
+            start_period: "1h2m3s",
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile);
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.healthcheck).toEqual({
+      kind: "command",
+      command: ["curl", "-f", "http://localhost"],
+      intervalSeconds: 30,
+      timeoutSeconds: 90,
+      retries: 3,
+      startPeriodSeconds: 3723,
+    });
+  });
+
+  test("plans a Compose CMD-SHELL healthcheck as a string command", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-shell-healthcheck",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          healthcheck: { test: ["CMD-SHELL", "echo ready"] },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile);
+
+    // Then
+    const healthcheck = appPlan.services[ServiceName.make("web")]?.healthcheck;
+    expect(healthcheck?.command).toBe("echo ready");
+    expect(healthcheck?.command).not.toEqual(["sh", "-c", "echo ready"]);
+  });
+
+  test("retains a Compose-disabled healthcheck without a command", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-disabled-healthcheck",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          healthcheck: { disable: true },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile);
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.healthcheck).toEqual({
+      kind: "none",
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+    });
+  });
+
+  test("preserves raw Compose start_interval only in the compose extension", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-start-interval",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          healthcheck: {
+            test: ["CMD", "true"],
+            start_interval: "5s",
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile);
+
+    // Then
+    const servicePlan = appPlan.services[ServiceName.make("web")];
+    expect(servicePlan?.extensions).toMatchObject({
+      compose: { healthcheck: { start_interval: "5s" } },
+    });
+    expect(servicePlan?.healthcheck).not.toHaveProperty("startInterval");
+    expect(servicePlan?.healthcheck).not.toHaveProperty("startIntervalSeconds");
+  });
+
+  test("preserves Compose labels and healthcheck start_interval together", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-healthcheck-and-labels",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          labels: { "io.lando.role": "web" },
+          healthcheck: {
+            test: ["CMD", "true"],
+            start_interval: "5s",
+          },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile);
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.extensions).toMatchObject({
+      compose: {
+        labels: { "io.lando.role": "web" },
+        healthcheck: { start_interval: "5s" },
+      },
+    });
+  });
+
+  test("uses Lando healthcheck defaults for a Compose healthcheck", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "compose-healthcheck-defaults",
+      runtime: 4,
+      services: {
+        web: {
+          image: "node:lts",
+          healthcheck: { test: ["CMD", "true"] },
+        },
+      },
+    });
+
+    // When
+    const appPlan = await plan(landofile);
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.healthcheck).toEqual({
+      kind: "command",
+      command: ["true"],
+      intervalSeconds: 10,
+      timeoutSeconds: 5,
+      retries: 5,
+    });
+  });
+
   test("applies the resolved base default feature stack alongside resolution and app features", async () => {
     await withTempCwd(async () => {
       // The whole lando base default stack is resolved through the registry;

@@ -3,6 +3,7 @@ import type * as AST from "effect/SchemaAST";
 import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
+import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
@@ -55,17 +56,8 @@ export const StorageInput = Schema.Union(
 );
 export type StorageInput = typeof StorageInput.Type;
 
-/** Healthcheck input as authored. */
-export const HealthcheckInput = Schema.Struct({
-  kind: Schema.optional(Schema.Literal("command", "http", "tcp", "none")),
-  command: Schema.optional(CommandSpec),
-  url: Schema.optional(Schema.String),
-  port: Schema.optional(Schema.Number),
-  intervalSeconds: Schema.optional(Schema.Number),
-  timeoutSeconds: Schema.optional(Schema.Number),
-  retries: Schema.optional(Schema.Number),
-  startPeriodSeconds: Schema.optional(Schema.Number),
-});
+/** Canonical Lando healthcheck schema; Compose-capable authoring is accepted by `ServiceConfig`. */
+export const HealthcheckInput = HealthcheckCanonicalBase;
 export type HealthcheckInput = typeof HealthcheckInput.Type;
 
 /** Build-script block authored under `services.<name>.build`. */
@@ -370,7 +362,10 @@ export const ServiceConfig = Schema.Struct({
   endpoints: Schema.optional(Schema.Array(EndpointInput)),
   routes: Schema.optional(Schema.Array(RouteInput)),
 
-  healthcheck: Schema.optional(HealthcheckInput),
+  healthcheck: Schema.optional(HealthcheckField).annotations({
+    description:
+      "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.",
+  }),
   logs: Schema.optional(Schema.Array(LogSourceInput)),
   hostnames: Schema.optional(Schema.Array(Schema.String)),
   dependsOn: Schema.optional(ComposeDependsOnInput),

@@ -64,7 +64,7 @@ One deliberate contract change rides here: **`build:` shape discrimination** (§
 - [ ] `test: "curl -f localhost"` (shell form), `test: ["CMD", "curl", "-f", "localhost"]`, `test: ["CMD-SHELL", "..."]`, and `test: ["NONE"]` / `disable: true` all decode; the latter two normalize to `kind: none`.
 - [ ] `interval`, `timeout`, `start_period` accept Compose duration strings (`"30s"`, `"1m30s"`, `"1h2m3s"`) parsed to seconds; invalid durations fail with remediation. `start_interval` follows its matrix disposition.
 - [ ] The Lando-shaped `HealthcheckInput` remains valid and wins when both shapes appear.
-- [ ] Normalized checks execute through the existing `HealthcheckRunner` path unchanged (probe-boundary gate untouched).
+- [ ] Normalized Compose checks produce the existing §6.7 `HealthcheckPlan` shape without adding or altering production `HealthcheckRunner` or start/readiness invocation; runner shipping remains Beta US-374 and `service_healthy` ordering remains US-472.
 - [ ] Schema snapshot refreshed.
 - [ ] Tests pass
 - [ ] Typecheck passes

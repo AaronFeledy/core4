@@ -38,7 +38,7 @@ Public Lando schema contract for Service Config.
 | `storage` | No | `array` | — | — | — | — | — |
 | `endpoints` | No | `array` | — | — | — | — | — |
 | `routes` | No | `array` | — | — | — | — | — |
-| `healthcheck` | No | `object` | — | — | — | — | — |
+| `healthcheck` | No | `object` | Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly. | — | — | — | — |
 | `logs` | No | `array` | — | — | — | — | — |
 | `hostnames` | No | `array` | — | — | — | — | — |
 | `dependsOn` | No | `array`, `object` | — | — | — | — | — |
