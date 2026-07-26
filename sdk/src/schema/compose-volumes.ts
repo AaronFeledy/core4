@@ -14,25 +14,32 @@ const ComposeVolumeTmpfs = Schema.Struct({
   mode: Schema.optional(Schema.Number),
 });
 
+const ComposeVolumeOptions = Schema.Struct({
+  subpath: Schema.optional(Schema.String),
+  nocopy: Forbidden,
+  labels: Forbidden,
+});
+
+const ComposeVolumeBind = Schema.Struct({
+  create_host_path: Schema.optional(Schema.Boolean),
+  propagation: Forbidden,
+  recursive: Forbidden,
+  selinux: Forbidden,
+});
+
 const ComposeVolumeLongInput = Schema.Struct({
   type: Schema.optional(ComposeVolumeType),
   source: Schema.optional(Schema.String),
   target: Schema.String,
   read_only: Schema.optional(Schema.Boolean),
-  volume: Schema.optional(
-    Schema.Struct({
-      subpath: Schema.optional(Schema.String),
-    }),
-  ),
-  bind: Schema.optional(
-    Schema.Struct({
-      create_host_path: Schema.optional(Schema.Boolean),
-    }),
-  ),
+  volume: Schema.optional(ComposeVolumeOptions),
+  bind: Schema.optional(ComposeVolumeBind),
   tmpfs: Schema.optional(ComposeVolumeTmpfs),
   readOnly: Forbidden,
   subpath: Forbidden,
   createHostPath: Forbidden,
+  consistency: Forbidden,
+  image: Forbidden,
 });
 
 const ComposeVolumeEntry = Schema.Struct({
@@ -48,7 +55,13 @@ export type ComposeVolumeEntry = typeof ComposeVolumeEntry.Type;
 
 const ComposeVolumeCanonicalInput = Schema.extend(
   ComposeVolumeEntry,
-  Schema.Struct({ read_only: Forbidden, volume: Forbidden, bind: Forbidden }),
+  Schema.Struct({
+    read_only: Forbidden,
+    volume: Forbidden,
+    bind: Forbidden,
+    consistency: Forbidden,
+    image: Forbidden,
+  }),
 );
 
 const isPathLikeSource = (source: string): boolean =>
@@ -149,6 +162,32 @@ const decodeLongVolume = (
   };
 };
 
+const longVolumeFailure = (
+  input: typeof ComposeVolumeLongInput.Type | typeof ComposeVolumeCanonicalInput.Type,
+): string | undefined => {
+  const type =
+    input.type ?? (input.source !== undefined && isPathLikeSource(input.source) ? "bind" : "volume");
+  switch (type) {
+    case "bind":
+      if (input.source === undefined) return 'Compose volume type "bind" requires source.';
+      if (input.volume !== undefined) return 'Compose volume type "bind" must not define volume options.';
+      if (input.tmpfs !== undefined) return 'Compose volume type "bind" must not define tmpfs options.';
+      return undefined;
+    case "volume":
+      if (input.type === "volume" && input.source !== undefined && isPathLikeSource(input.source)) {
+        return 'Compose volume type "volume" must not define a path-like source.';
+      }
+      if (input.bind !== undefined) return 'Compose volume type "volume" must not define bind options.';
+      if (input.tmpfs !== undefined) return 'Compose volume type "volume" must not define tmpfs options.';
+      return undefined;
+    case "tmpfs":
+      if (input.source !== undefined) return 'Compose volume type "tmpfs" must not define source.';
+      if (input.bind !== undefined) return 'Compose volume type "tmpfs" must not define bind options.';
+      if (input.volume !== undefined) return 'Compose volume type "tmpfs" must not define volume options.';
+      return undefined;
+  }
+};
+
 const encodeLongVolume = (entry: ComposeVolumeEntry): typeof ComposeVolumeLongInput.Type => ({
   type: entry.type,
   ...(entry.source === undefined ? {} : { source: entry.source }),
@@ -176,11 +215,8 @@ export const ComposeVolumesField = Schema.Array(
             ? ParseResult.succeed(parseShortVolume(input))
             : ParseResult.fail(new ParseResult.Type(ast, input, failure));
         }
-        if (input.type === "tmpfs" && input.source !== undefined) {
-          return ParseResult.fail(
-            new ParseResult.Type(ast, input, 'Compose volume type "tmpfs" must not define source.'),
-          );
-        }
+        const failure = longVolumeFailure(input);
+        if (failure !== undefined) return ParseResult.fail(new ParseResult.Type(ast, input, failure));
         return ParseResult.succeed(decodeLongVolume(input));
       },
       encode: (entry) => ParseResult.succeed(encodeLongVolume(entry)),

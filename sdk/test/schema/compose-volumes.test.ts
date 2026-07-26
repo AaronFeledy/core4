@@ -14,40 +14,28 @@ const decodeVolumes = (input: unknown): ReadonlyArray<ComposeVolumeEntry> =>
 const decodeVolumesEither = (input: unknown) =>
   Schema.decodeUnknownEither(ComposeVolumesField)(input, { onExcessProperty: "error" });
 
+const bindLongInput = { type: "bind", source: "./src", target: "/app" } as const;
+const volumeLongInput = { type: "volume", source: "db", target: "/data" } as const;
+
 const rejectedLongCases: ReadonlyArray<
   readonly [label: string, properties: ReadonlyArray<string>, input: unknown]
 > = [
-  ["consistency", ["consistency"], { type: "volume", source: "db", target: "/data", consistency: "cached" }],
-  [
-    "bind.propagation",
-    ["bind", "propagation"],
-    { type: "bind", source: "./src", target: "/app", bind: { propagation: "shared" } },
-  ],
-  [
-    "bind.recursive",
-    ["bind", "recursive"],
-    { type: "bind", source: "./src", target: "/app", bind: { recursive: "enabled" } },
-  ],
-  [
-    "bind.selinux",
-    ["bind", "selinux"],
-    { type: "bind", source: "./src", target: "/app", bind: { selinux: "Z" } },
-  ],
-  [
-    "volume.nocopy",
-    ["volume", "nocopy"],
-    { type: "volume", source: "db", target: "/data", volume: { nocopy: true } },
-  ],
-  [
-    "volume.labels",
-    ["volume", "labels"],
-    { type: "volume", source: "db", target: "/data", volume: { labels: { tier: "data" } } },
-  ],
-  [
-    "image.subpath",
-    ["image", "subpath"],
-    { type: "volume", source: "db", target: "/data", image: { subpath: "assets" } },
-  ],
+  ["consistency", ["consistency"], { ...volumeLongInput, consistency: "cached" }],
+  ["bind.propagation", ["bind", "propagation"], { ...bindLongInput, bind: { propagation: "shared" } }],
+  ["bind.recursive", ["bind", "recursive"], { ...bindLongInput, bind: { recursive: "enabled" } }],
+  ["bind.selinux", ["bind", "selinux"], { ...bindLongInput, bind: { selinux: "Z" } }],
+  ["volume.nocopy", ["volume", "nocopy"], { ...volumeLongInput, volume: { nocopy: true } }],
+  ["volume.labels", ["volume", "labels"], { ...volumeLongInput, volume: { labels: { tier: "data" } } }],
+  ["image.subpath", ["image", "subpath"], { ...volumeLongInput, image: { subpath: "assets" } }],
+];
+
+const incompatibleLongCases: ReadonlyArray<readonly [label: string, input: unknown]> = [
+  ["tmpfs options on a volume", { ...volumeLongInput, tmpfs: { size: "64m" } }],
+  ["volume options on a bind", { ...bindLongInput, volume: { subpath: "cfg" } }],
+  ["bind options on a volume", { ...volumeLongInput, bind: { create_host_path: false } }],
+  ["bind options on tmpfs", { type: "tmpfs", target: "/tmp", bind: { create_host_path: false } }],
+  ["bind without a source", { type: "bind", target: "/app" }],
+  ["explicit volume with a path source", { type: "volume", source: "./data", target: "/data" }],
 ];
 
 const rejectedShortCases: ReadonlyArray<readonly [token: string, matrixKey: string]> = [
@@ -183,12 +171,24 @@ describe("ComposeVolumesField", () => {
   });
 
   test.each(rejectedLongCases)("S30 rejects long %s", (_label, properties, input) => {
-    const result = decodeVolumesEither([input]);
+    // Given / When
+    const results = [Schema.decodeUnknownEither(ComposeVolumesField)([input]), decodeVolumesEither([input])];
 
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) {
-      for (const property of properties) expect(String(result.left)).toContain(property);
+    // Then
+    for (const result of results) {
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        for (const property of properties) expect(String(result.left)).toContain(property);
+      }
     }
+  });
+
+  test.each(incompatibleLongCases)("rejects %s under default and strict decoding", (_label, input) => {
+    // Given / When
+    const results = [Schema.decodeUnknownEither(ComposeVolumesField)([input]), decodeVolumesEither([input])];
+
+    // Then
+    expect(results.every(Either.isLeft)).toBe(true);
   });
 
   test.each(rejectedShortCases)("S31 rejects short mode %s", (token, matrixKey) => {
