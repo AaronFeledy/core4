@@ -30,7 +30,7 @@ The vocabulary promise is only honest if the boundary is sharp on both sides: ev
 - [ ] All §7.4 rejected keys produce it: `extends` (→ `type:` inheritance §6.11.1 / recipes / `includes:`), `container_name` (→ Lando naming), `network_mode`, `links`, Swarm `deploy` orchestration keys (keyPath-precise, e.g. `deploy.replicas` rejects while `deploy.resources` preserves).
 - [ ] `!reset` and `!override` YAML tags are rejected at YAML load with the same error shape and a §7.2-merge remediation; YAML anchors/aliases/merge-keys (`<<:`) continue to work, tested.
 - [ ] `kind: compose` include fragments route through the same decode path and produce identical errors with the fragment source attributed.
-- [ ] Errors surface through the standard CLI failure formatter and `--format json` envelope; `lando app config` on a rejecting file shows the tagged failure, not a stack.
+- [ ] Errors surface through the standard CLI failure formatter and `--format json` envelope; `lando config` on a rejecting file shows the tagged failure, not a stack.
 - [ ] Landofile lint reports rejected keys as errors with the same remediation.
 - [ ] Tests pass
 - [ ] Typecheck passes
