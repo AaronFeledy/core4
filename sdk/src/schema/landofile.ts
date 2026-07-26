@@ -440,7 +440,7 @@ export type ServiceConfigInput = typeof ServiceConfigInput.Type;
  * encoded {@link ServiceConfig} surface plus the Compose spellings, so the
  * per-field transforms run once, inside {@link ServiceConfig}.
  */
-export const ServiceConfigDecode = Schema.transformOrFail(ServiceConfigInput, ServiceConfig, {
+const ServiceConfigDecode = Schema.transformOrFail(ServiceConfigInput, ServiceConfig, {
   strict: false,
   decode: (input) => {
     const { working_dir, env_file, depends_on, ...rest } = input as Record<string, unknown>;
@@ -454,7 +454,6 @@ export const ServiceConfigDecode = Schema.transformOrFail(ServiceConfigInput, Se
   },
   encode: (encoded) => ParseResult.succeed(encoded),
 });
-export type ServiceConfigDecode = typeof ServiceConfigDecode.Type;
 
 /**
  * ToolingVarLiteral — a scalar literal value for a Landofile `tooling.<task>.vars.<name>`.
