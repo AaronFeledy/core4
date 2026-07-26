@@ -54,10 +54,7 @@ interface InspectResult {
 }
 
 interface StartResult {
-  readonly name: string;
   readonly changed: boolean;
-  readonly created: boolean;
-  readonly startedExisting: boolean;
 }
 
 export interface BringUpOptions {
@@ -445,7 +442,7 @@ const startService = (
       }),
     );
 
-    return { name, changed, created: !before.exists, startedExisting: before.exists && !before.running };
+    return { changed };
   });
 };
 

@@ -27,6 +27,9 @@ interface ContainerInspect {
 
 export interface InspectOptions {
   readonly podmanApi?: PodmanApiClient;
+}
+
+interface WaitForExitRequestOptions extends InspectOptions {
   readonly signal?: AbortSignal;
 }
 
@@ -166,7 +169,7 @@ export const inspect = (
 export const waitForExit = (
   plan: AppPlan,
   target: ServiceSelector,
-  options: InspectOptions = {},
+  options: WaitForExitRequestOptions = {},
 ): Effect.Effect<ServiceExitResult, ProviderError> => {
   const service = plan.services[target.service];
   if (service === undefined) return Effect.fail(missingService(target, "waitForExit"));
