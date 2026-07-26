@@ -181,7 +181,7 @@ export const waitForExit = (
       podmanApi,
       {
         method: "POST",
-        path: `/containers/${encodeURIComponent(containerName(plan, service))}/wait`,
+        path: `/libpod/containers/${encodeURIComponent(containerName(plan, service))}/wait`,
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       },
       "waitForExit",
@@ -200,10 +200,7 @@ export const waitForExit = (
       );
     }
     const decoded = yield* parseJson(response, "waitForExit");
-    const exitCode =
-      typeof decoded === "object" && decoded !== null && "StatusCode" in decoded
-        ? decoded.StatusCode
-        : undefined;
+    const exitCode = decoded;
     if (typeof exitCode !== "number") {
       return yield* Effect.fail(
         new ProviderInternalError({

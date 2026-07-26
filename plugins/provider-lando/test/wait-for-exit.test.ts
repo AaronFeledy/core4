@@ -69,7 +69,7 @@ const makeFakeApi = (response: PodmanHttpResponse) => {
 describe("provider-lando waitForExit", () => {
   test("returns the exit code from the container wait response", async () => {
     // Given
-    const fake = makeFakeApi({ status: 200, body: '{"StatusCode":137}' });
+    const fake = makeFakeApi({ status: 200, body: "137" });
 
     // When
     const result = await Effect.runPromise(waitForExit(plan, target, { podmanApi: fake.api }));
@@ -77,13 +77,13 @@ describe("provider-lando waitForExit", () => {
     // Then
     expect(result).toEqual({ exitCode: 137 });
     expect(fake.calls.map(({ method, path }) => ({ method, path }))).toEqual([
-      { method: "POST", path: "/containers/lando-wait-for-exit-app-web/wait" },
+      { method: "POST", path: "/libpod/containers/lando-wait-for-exit-app-web/wait" },
     ]);
   });
 
   test("fails when the wait response has no numeric exit code", async () => {
     // Given
-    const fake = makeFakeApi({ status: 200, body: '{"StatusCode":null}' });
+    const fake = makeFakeApi({ status: 200, body: "null" });
 
     // When
     const failure = await Effect.runPromise(Effect.flip(waitForExit(plan, target, { podmanApi: fake.api })));
