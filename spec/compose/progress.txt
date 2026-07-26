@@ -362,3 +362,15 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; 56 focused dependency-gate, app-build, provider-ordering, wait-for-exit, SDK-compatibility, and prototype-lookup tests passed; guide drift passed with explicit base context and the skip above; probe-boundary and import-cycle gates passed. LSP diagnostics were clean on smaller changed modules; four large modules timed out after two attempts but passed root typecheck.
 - **Learnings for future iterations:** Synthetic DAG nodes need type-disjoint internal ids even when user-facing labels are frozen; optional-failure recovery must preserve Effect interruption and clean only resources owned by the failed node, leaving whole-apply rollback to the fatal boundary.
 ---
+
+## 2026-07-26 17:05 CDT - US-472 Drift Audit
+- Trigger: 5 cycles, 5554 changed lines, 18 commits
+- Weakened proofs: added a production-adapter cancellation proof that failed before the Podman completion-wait signal was forwarded and passed after the fix.
+- Review scar tissue: removed a no-op provider branch, unused rollback result metadata, and test-only healthcheck aliases left by iterative repairs.
+- Ceremony modules: removed an unused root-package scheduler re-export while retaining the three subpaths consumed by production orchestration.
+- Collateral edits: narrowed the cancellation option to the completion-wait operation and reverted unrelated remediation added to existing stub failures.
+- Contract drift: corrected the provider compatibility record to describe the mandatory wait primitive as a pre-ship shape change rather than an additive interface change.
+- Fixed: restored completion-wait cancellation end to end and simplified provider adapters and healthcheck wiring without changing gate behavior.
+- Split/excise decisions: excised only dead exports and aliases; no adjacent feature or incomplete public contract required a follow-up story, and US-472 remains passing.
+- Verification: typecheck, lint, 17 focused test files, import-cycle, probe-boundary, Compose coverage, SDK compatibility, and changed-file diagnostics passed; two post-edit LSP refreshes timed out but root typecheck remained green.
+---
