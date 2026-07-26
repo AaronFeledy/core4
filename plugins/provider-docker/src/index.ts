@@ -65,6 +65,7 @@ import {
 } from "@lando/sdk/services";
 
 import { redactDetails, redactString } from "./redact.ts";
+import { waitForExit } from "./wait-for-exit.ts";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
@@ -1427,15 +1428,12 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
-        waitForExit: () =>
-          Effect.fail(
-            new ProviderUnavailableError({
-              providerId: PROVIDER_ID,
-              operation: "waitForExit",
-              message: "provider-docker does not implement waitForExit yet.",
-              remediation: "Use a runtime provider that implements service exit waiting.",
-            }),
-          ),
+        waitForExit: (target) => {
+          const plan = resolvePlan(target);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("waitForExit"))
+            : waitForExit(plan, target, { dockerApi });
+        },
         destroy: (target, destroyOptions) => {
           const plan = resolvePlan(target);
           return plan === undefined

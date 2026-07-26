@@ -26,7 +26,8 @@
     "./log-file-access": "./src/log-file-access.ts",
     "./log-file-helper-payloads": "./src/log-file-helper-payloads.ts",
     "./data-plane": "./src/data-plane.ts",
-    "./capabilities": "./src/capabilities.ts"
+    "./capabilities": "./src/capabilities.ts",
+    "./dependency-schedule": "./src/dependency-schedule.ts"
   },
   "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo"],
   "keywords": ["lando", "container-runtime", "provider"],

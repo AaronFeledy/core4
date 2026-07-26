@@ -77,6 +77,7 @@ import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
+import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
@@ -1204,7 +1205,10 @@ const planApp = (
       const cached = yield* readCachedAppPlan({ cacheRoot, appName, appRoot, key: cacheKey }).pipe(
         Effect.catchAll(() => Effect.succeed(null)),
       );
-      if (cached !== null) return cached;
+      if (cached !== null) {
+        yield* validateServiceDependencies(appRoot, cached.services);
+        return cached;
+      }
     }
 
     // Phase B (cache miss only): produce the per-service plans from the reused
@@ -1532,6 +1536,8 @@ const planApp = (
         );
       }
     }
+
+    yield* validateServiceDependencies(appRoot, services);
 
     if (aggregatedRoutes.length > 0 && !providerCapabilities.sharedCrossAppNetwork) {
       yield* Effect.fail(
