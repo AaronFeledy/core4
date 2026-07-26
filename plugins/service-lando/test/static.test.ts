@@ -171,7 +171,7 @@ describe("static ServiceType", () => {
 
     expect(plan.command).toEqual(["custom-static-server"]);
     expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
-    expect(plan.dependsOn).toEqual([{ service: ServiceName.make("database"), condition: "started" }]);
+    expect(plan.dependsOn).toEqual([]);
   });
 
   test("rejects unsupported static server with remediation", async () => {

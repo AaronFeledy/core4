@@ -21090,6 +21090,15 @@
     },
     {
       "deprecated": false,
+      "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+      "docsPath": "docs/reference/schemas/service-dependency-condition.mdx",
+      "id": "ServiceDependencyCondition",
+      "jsonSchemaPath": "dist/schemas/service-dependency-condition.json",
+      "packageExport": "@lando/sdk/schema#ServiceDependencyCondition",
+      "title": "Service Dependency Condition"
+    },
+    {
+      "deprecated": false,
       "description": "Public Lando schema contract for Dependency Plan.",
       "docsPath": "docs/reference/schemas/dependency-plan.mdx",
       "id": "DependencyPlan",
@@ -23500,6 +23509,7 @@
       "HealthcheckPlan",
       "CertificatePlan",
       "HostAliasPlan",
+      "ServiceDependencyCondition",
       "DependencyPlan",
       "NetworkPlan",
       "PerAppBridgePlan",
@@ -23916,6 +23926,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -24274,14 +24290,16 @@
                   "additionalProperties": false,
                   "properties": {
                     "condition": {
-                      "enum": ["started", "healthy"],
-                      "type": "string"
+                      "$ref": "#/$defs/ServiceDependencyCondition"
+                    },
+                    "required": {
+                      "type": "boolean"
                     },
                     "service": {
                       "type": "string"
                     }
                   },
-                  "required": ["service", "condition"],
+                  "required": ["service", "condition", "required"],
                   "type": "object"
                 },
                 "type": "array"
@@ -26412,6 +26430,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -26793,14 +26817,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -27615,18 +27641,28 @@
       "type": "object"
     },
     "DependencyPlan": {
+      "$defs": {
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
+        }
+      },
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
       "properties": {
         "condition": {
-          "enum": ["started", "healthy"],
-          "type": "string"
+          "$ref": "#/$defs/ServiceDependencyCondition"
+        },
+        "required": {
+          "type": "boolean"
         },
         "service": {
           "type": "string"
         }
       },
-      "required": ["service", "condition"],
+      "required": ["service", "condition", "required"],
       "type": "object"
     },
     "DeprecationNotice": {
@@ -30975,6 +31011,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -31634,14 +31676,16 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": ["started", "healthy"],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
                             }
                           },
-                          "required": ["service", "condition"],
+                          "required": ["service", "condition", "required"],
                           "type": "object"
                         },
                         "type": "array"
@@ -32457,14 +32501,16 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": ["started", "healthy"],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
                             }
                           },
-                          "required": ["service", "condition"],
+                          "required": ["service", "condition", "required"],
                           "type": "object"
                         },
                         "type": "array"
@@ -33480,14 +33526,16 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": ["started", "healthy"],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
                             }
                           },
-                          "required": ["service", "condition"],
+                          "required": ["service", "condition", "required"],
                           "type": "object"
                         },
                         "type": "array"
@@ -34316,14 +34364,16 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": ["started", "healthy"],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
                             }
                           },
-                          "required": ["service", "condition"],
+                          "required": ["service", "condition", "required"],
                           "type": "object"
                         },
                         "type": "array"
@@ -35210,14 +35260,16 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": ["started", "healthy"],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
                             }
                           },
-                          "required": ["service", "condition"],
+                          "required": ["service", "condition", "required"],
                           "type": "object"
                         },
                         "type": "array"
@@ -36030,14 +36082,16 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": ["started", "healthy"],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
                             }
                           },
-                          "required": ["service", "condition"],
+                          "required": ["service", "condition", "required"],
                           "type": "object"
                         },
                         "type": "array"
@@ -44504,6 +44558,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -44886,14 +44946,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -45431,6 +45493,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -45816,14 +45884,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -46838,6 +46908,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -47220,14 +47296,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -48401,6 +48479,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -48783,14 +48867,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -49322,6 +49408,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -49713,14 +49805,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -50707,6 +50801,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -51089,14 +51189,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"
@@ -53685,6 +53787,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -54372,14 +54480,16 @@
                               "additionalProperties": false,
                               "properties": {
                                 "condition": {
-                                  "enum": ["started", "healthy"],
-                                  "type": "string"
+                                  "$ref": "#/$defs/ServiceDependencyCondition"
+                                },
+                                "required": {
+                                  "type": "boolean"
                                 },
                                 "service": {
                                   "type": "string"
                                 }
                               },
-                              "required": ["service", "condition"],
+                              "required": ["service", "condition", "required"],
                               "type": "object"
                             },
                             "type": "array"
@@ -55202,14 +55312,16 @@
                               "additionalProperties": false,
                               "properties": {
                                 "condition": {
-                                  "enum": ["started", "healthy"],
-                                  "type": "string"
+                                  "$ref": "#/$defs/ServiceDependencyCondition"
+                                },
+                                "required": {
+                                  "type": "boolean"
                                 },
                                 "service": {
                                   "type": "string"
                                 }
                               },
-                              "required": ["service", "condition"],
+                              "required": ["service", "condition", "required"],
                               "type": "object"
                             },
                             "type": "array"
@@ -56232,14 +56344,16 @@
                               "additionalProperties": false,
                               "properties": {
                                 "condition": {
-                                  "enum": ["started", "healthy"],
-                                  "type": "string"
+                                  "$ref": "#/$defs/ServiceDependencyCondition"
+                                },
+                                "required": {
+                                  "type": "boolean"
                                 },
                                 "service": {
                                   "type": "string"
                                 }
                               },
-                              "required": ["service", "condition"],
+                              "required": ["service", "condition", "required"],
                               "type": "object"
                             },
                             "type": "array"
@@ -57075,14 +57189,16 @@
                               "additionalProperties": false,
                               "properties": {
                                 "condition": {
-                                  "enum": ["started", "healthy"],
-                                  "type": "string"
+                                  "$ref": "#/$defs/ServiceDependencyCondition"
+                                },
+                                "required": {
+                                  "type": "boolean"
                                 },
                                 "service": {
                                   "type": "string"
                                 }
                               },
-                              "required": ["service", "condition"],
+                              "required": ["service", "condition", "required"],
                               "type": "object"
                             },
                             "type": "array"
@@ -57976,14 +58092,16 @@
                               "additionalProperties": false,
                               "properties": {
                                 "condition": {
-                                  "enum": ["started", "healthy"],
-                                  "type": "string"
+                                  "$ref": "#/$defs/ServiceDependencyCondition"
+                                },
+                                "required": {
+                                  "type": "boolean"
                                 },
                                 "service": {
                                   "type": "string"
                                 }
                               },
-                              "required": ["service", "condition"],
+                              "required": ["service", "condition", "required"],
                               "type": "object"
                             },
                             "type": "array"
@@ -58803,14 +58921,16 @@
                               "additionalProperties": false,
                               "properties": {
                                 "condition": {
-                                  "enum": ["started", "healthy"],
-                                  "type": "string"
+                                  "$ref": "#/$defs/ServiceDependencyCondition"
+                                },
+                                "required": {
+                                  "type": "boolean"
                                 },
                                 "service": {
                                   "type": "string"
                                 }
                               },
-                              "required": ["service", "condition"],
+                              "required": ["service", "condition", "required"],
                               "type": "object"
                             },
                             "type": "array"
@@ -64674,6 +64794,18 @@
       "required": ["sourcePath"],
       "type": "object"
     },
+    "ServiceDependencyCondition": {
+      "$defs": {
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
+        }
+      },
+      "$ref": "#/$defs/ServiceDependencyCondition",
+      "$schema": "http://json-schema.org/draft-07/schema#"
+    },
     "ServiceInfo": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -64901,6 +65033,12 @@
         "DateTimeUtc": {
           "description": "a string to be decoded into a DateTime.Utc",
           "type": "string"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -65073,14 +65211,16 @@
             "additionalProperties": false,
             "properties": {
               "condition": {
-                "enum": ["started", "healthy"],
-                "type": "string"
+                "$ref": "#/$defs/ServiceDependencyCondition"
+              },
+              "required": {
+                "type": "boolean"
               },
               "service": {
                 "type": "string"
               }
             },
-            "required": ["service", "condition"],
+            "required": ["service", "condition", "required"],
             "type": "object"
           },
           "type": "array"
@@ -69457,6 +69597,12 @@
           },
           "required": ["app", "service", "mountKey", "source", "target", "mode", "excludes"],
           "type": "object"
+        },
+        "ServiceDependencyCondition": {
+          "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+          "enum": ["service_started", "service_healthy", "service_completed_successfully"],
+          "title": "Service Dependency Condition",
+          "type": "string"
         }
       },
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -69833,14 +69979,16 @@
                       "additionalProperties": false,
                       "properties": {
                         "condition": {
-                          "enum": ["started", "healthy"],
-                          "type": "string"
+                          "$ref": "#/$defs/ServiceDependencyCondition"
+                        },
+                        "required": {
+                          "type": "boolean"
                         },
                         "service": {
                           "type": "string"
                         }
                       },
-                      "required": ["service", "condition"],
+                      "required": ["service", "condition", "required"],
                       "type": "object"
                     },
                     "type": "array"

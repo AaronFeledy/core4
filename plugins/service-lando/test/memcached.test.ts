@@ -95,7 +95,7 @@ describe("memcached ServiceType", () => {
     expect(plan.environment).toMatchObject({ EXTRA_VAR: "extra" });
   });
 
-  test("passes through dependencies and optional process fields", async () => {
+  test("leaves authored dependencies for planner normalization while preserving optional process fields", async () => {
     const plan = await planMemcachedService({
       type: "memcached",
       dependsOn: ["db"],
@@ -104,7 +104,7 @@ describe("memcached ServiceType", () => {
       user: "memcache",
     });
 
-    expect(plan.dependsOn).toEqual([{ service: ServiceName.make("db"), condition: "started" }]);
+    expect(plan.dependsOn).toEqual([]);
     expect(plan.entrypoint).toEqual(["docker-entrypoint.sh"]);
     expect(String(plan.workingDirectory)).toBe("/tmp");
     expect(plan.user).toBe("memcache");

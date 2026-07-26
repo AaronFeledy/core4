@@ -13,6 +13,7 @@ import {
   isNonEmptyString,
   isStream,
   makeTestAppPlan,
+  makeTestServicePlan,
   mapProviderFailure,
   requireContract,
 } from "./_shared.ts";
@@ -306,6 +307,27 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       Array.isArray(listed),
       "list returns an array of service runtime snapshots",
       listed,
+    );
+
+    const completingAppPlan = {
+      ...testAppPlan,
+      services: {
+        [TEST_SERVICE_NAME]: {
+          ...makeTestServicePlan(providerId),
+          command: ["sh", "-c", "exit 0"],
+        },
+      },
+    };
+    yield* Effect.scoped(provider.apply(completingAppPlan, { reconcile: true })).pipe(
+      Effect.mapError(mapProviderFailure("apply succeeds for the completing service fixture")),
+    );
+    const exitResult = yield* Effect.scoped(
+      provider.waitForExit({ app: TEST_APP_ID, service: TEST_SERVICE_NAME, plan: completingAppPlan }),
+    ).pipe(Effect.mapError(mapProviderFailure("waitForExit resolves for a completing service")));
+    yield* requireContract(
+      exitResult.exitCode === 0,
+      "waitForExit resolves with the service exit code",
+      exitResult,
     );
 
     yield* provider

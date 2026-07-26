@@ -170,6 +170,7 @@ import type {
   ProviderSetupOptions,
   ProviderStatus,
   ProviderVersions,
+  ServiceExitResult,
   ServiceRuntimeInfo,
   ServiceSelector,
 } from "./provider.ts";
@@ -248,6 +249,9 @@ export interface RuntimeProviderShape {
   readonly start: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly stop: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
+  readonly waitForExit: (
+    target: ServiceSelector,
+  ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
   readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
 
   readonly exec: (target: ExecTarget, command: CommandSpec) => Effect.Effect<ExecResult, ProviderError>;

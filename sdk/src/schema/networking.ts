@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
+import { ServiceDependencyCondition } from "./service-dependency.ts";
 
 const HOST_PROXY_GATEWAY_HOSTNAME_PATTERN = /^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$/u;
 
@@ -99,8 +100,10 @@ export type HostAliasPlan = typeof HostAliasPlan.Type;
 export const DependencyPlan = Schema.Struct({
   /** The service this one depends on. */
   service: ServiceName,
-  /** Whether the dependency must be `healthy` or merely `started`. */
-  condition: Schema.Literal("started", "healthy"),
+  /** How the dependency must be satisfied before this service starts. */
+  condition: ServiceDependencyCondition,
+  /** Whether a missing or failed dependency blocks this service. Planner resolves the default (`true`). */
+  required: Schema.Boolean,
 });
 export type DependencyPlan = typeof DependencyPlan.Type;
 

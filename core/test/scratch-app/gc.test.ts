@@ -106,6 +106,7 @@ const makeLayer = (labelIds: ReadonlyArray<string>, pruned: string[]) => {
     start: () => die("start"),
     stop: () => die("stop"),
     restart: () => die("restart"),
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => die("destroy"),
     exec: () => die("exec"),
     execStream: () => Stream.die("scratch gc test provider should not call execStream"),

@@ -139,6 +139,7 @@ const makeRecordingLayer = (appliedPlans: AppPlan[], destroyCalls: DestroyCall[]
     start: () => die("start"),
     stop: () => die("stop"),
     restart: () => die("restart"),
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({

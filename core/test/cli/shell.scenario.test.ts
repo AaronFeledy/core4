@@ -126,6 +126,7 @@ const fakeProvider = (overrides: Partial<RuntimeProviderShape> = {}): RuntimePro
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.void,
     exec: () => Effect.die("not used"),
     execStream: () => Effect.die("not used") as never,

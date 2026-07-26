@@ -152,6 +152,7 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     start: () => die("start"),
     stop: () => die("stop"),
     restart: () => die("restart"),
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: (target, destroyOptions) =>
       Effect.sync(() => {
         recorded.destroyCalls.push({ app: String(target.app), volumes: destroyOptions.volumes });

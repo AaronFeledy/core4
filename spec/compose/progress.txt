@@ -280,3 +280,10 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: no follow-up split; `passes` remains true because all confirmed branch-owned drift was corrected and Review-required rejected-key transport detection remains intact.
 - Verification: typecheck, lint, Compose coverage, import-cycle, schema codegen hash-idempotence, and 228 focused tests across 11 schema, compatibility, loader, planner, runtime, CLI, and plugin files passed.
 ---
+
+## 2026-07-26 13:08 CDT - Babysit
+- PR: #634 https://github.com/AaronFeledy/core4/pull/634
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for alpha-4-11 SDK schema trigger; compose-passthrough already covers US-471)
+- Merge: merged (squash)
+---

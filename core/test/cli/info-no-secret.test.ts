@@ -124,6 +124,7 @@ const makeInfoLayer = () => {
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.void,
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),

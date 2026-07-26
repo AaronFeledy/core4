@@ -405,6 +405,7 @@ export const TestRuntimeProvider: RuntimeProviderShape = {
   start: (_target) => Effect.void,
   stop: (_target) => Effect.void,
   restart: (_target) => Effect.void,
+  waitForExit: (_target) => Effect.succeed({ exitCode: 0 }),
   destroy: (_target, _options) => Effect.void,
 
   exec: (_target, command) =>

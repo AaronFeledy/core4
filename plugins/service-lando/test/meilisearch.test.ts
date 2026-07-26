@@ -108,7 +108,7 @@ describe("meilisearch ServiceType", () => {
         expect(plan.healthcheck?.command).toEqual(["sh", "-c", "curl -sf http://localhost:17700/health"]);
       });
 
-      test("propagates authored process fields and dependencies", async () => {
+      test("preserves authored process fields and leaves dependencies for planner normalization", async () => {
         const plan = await planMeiliService(serviceType, {
           type: id,
           command: ["meilisearch", "--http-addr", "0.0.0.0:7700"],
@@ -122,9 +122,9 @@ describe("meilisearch ServiceType", () => {
         expect(plan.entrypoint).toEqual(["/bin/sh", "-c"]);
         expect(`${plan.workingDirectory}`).toBe("/meili_data");
         expect(plan.user).toBe("1000:1000");
-        expect(plan.dependsOn).toHaveLength(1);
-        expect(`${plan.dependsOn[0]?.service}`).toBe("api");
-        expect(plan.dependsOn[0]?.condition).toBe("started");
+        expect(plan.dependsOn).toHaveLength(0);
+        expect(plan.dependsOn[0]).toBeUndefined();
+        expect(plan.dependsOn[0]?.condition).toBeUndefined();
       });
 
       test("user environment variables merge into the plan environment", async () => {

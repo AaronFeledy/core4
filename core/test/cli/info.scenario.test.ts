@@ -155,7 +155,10 @@ const servicePlan = (name: "node" | "postgres" | "memcached" | "valkey"): Servic
               },
             ],
   routes: [],
-  dependsOn: name === "node" ? [{ service: ServiceName.make("postgres"), condition: "started" }] : [],
+  dependsOn:
+    name === "node"
+      ? [{ service: ServiceName.make("postgres"), condition: "service_started", required: true }]
+      : [],
   hostAliases: [],
   metadata,
   extensions: {},
@@ -259,6 +262,7 @@ const makeInfoLayer = (
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.void,
     exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
     execStream: () => Stream.die("not used"),
@@ -542,6 +546,7 @@ describe("lando info — resolved log sources", () => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
+      waitForExit: () => Effect.succeed({ exitCode: 0 }),
       destroy: () => Effect.void,
       exec: () => Effect.succeed({ exitCode: 0, stdout: "", stderr: "" }),
       execStream: () => Stream.die("not used"),

@@ -586,6 +586,33 @@ export const applyAuthoredHealthcheck = (servicePlan: ServicePlan, service: Serv
   return { ...servicePlan, healthcheck: merged };
 };
 
+export const applyAuthoredDependencies = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+  const authoredDependencies = new Map(
+    (service.dependsOn ?? []).map((dependency) => [
+      dependency.service,
+      {
+        service: ServiceName.make(dependency.service),
+        condition: dependency.condition ?? "service_started",
+        required: dependency.required ?? true,
+      },
+    ]),
+  );
+  if (authoredDependencies.size === 0) return servicePlan;
+
+  const contributedServices = new Set(servicePlan.dependsOn.map((dependency) => dependency.service));
+  return {
+    ...servicePlan,
+    dependsOn: [
+      ...servicePlan.dependsOn.map(
+        (dependency) => authoredDependencies.get(dependency.service) ?? dependency,
+      ),
+      ...[...authoredDependencies]
+        .filter(([service]) => !contributedServices.has(ServiceName.make(service)))
+        .map(([, dependency]) => dependency),
+    ],
+  };
+};
+
 interface ResolvedService {
   readonly name: string;
   readonly service: ServiceConfig;
@@ -743,7 +770,10 @@ const normalizeBuildScripts = (value: string | ReadonlyArray<string> | undefined
 
 const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const startInterval = service.healthcheck?.startInterval;
-  if (service.labels === undefined && startInterval === undefined) return servicePlan;
+  const hasDependencyRestart =
+    service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
+  if (service.labels === undefined && startInterval === undefined && !hasDependencyRestart)
+    return servicePlan;
 
   const composeExtension = servicePlan.extensions.compose;
   const compose = isRecord(composeExtension) ? { ...composeExtension } : {};
@@ -758,6 +788,18 @@ const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig)
       ...(isRecord(compose.healthcheck) ? compose.healthcheck : {}),
       start_interval: startInterval,
     };
+  }
+  if (hasDependencyRestart) {
+    const dependsOn = isRecord(compose.depends_on) ? { ...compose.depends_on } : {};
+    for (const dependency of service.dependsOn ?? []) {
+      if (dependency.restart === undefined) continue;
+      const existing = dependsOn[dependency.service];
+      dependsOn[dependency.service] = {
+        ...(isRecord(existing) ? existing : {}),
+        restart: dependency.restart,
+      };
+    }
+    compose.depends_on = dependsOn;
   }
 
   return {
@@ -1217,8 +1259,11 @@ const planApp = (
           features,
         }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       });
-      const authoredServicePlanWithoutLabels = applyAuthoredStorage(
-        applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
+      const authoredServicePlanWithoutLabels = applyAuthoredDependencies(
+        applyAuthoredStorage(
+          applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
+          service,
+        ),
         service,
       );
       const authoredServicePlan = mergeComposeExtension(authoredServicePlanWithoutLabels, service);

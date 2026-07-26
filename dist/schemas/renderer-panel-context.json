@@ -253,6 +253,16 @@
         "excludes"
       ],
       "type": "object"
+    },
+    "ServiceDependencyCondition": {
+      "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+      "enum": [
+        "service_started",
+        "service_healthy",
+        "service_completed_successfully"
+      ],
+      "title": "Service Dependency Condition",
+      "type": "string"
     }
   },
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -1122,11 +1132,10 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": [
-                                "started",
-                                "healthy"
-                              ],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
@@ -1134,7 +1143,8 @@
                           },
                           "required": [
                             "service",
-                            "condition"
+                            "condition",
+                            "required"
                           ],
                           "type": "object"
                         },
@@ -2126,11 +2136,10 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": [
-                                "started",
-                                "healthy"
-                              ],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
@@ -2138,7 +2147,8 @@
                           },
                           "required": [
                             "service",
-                            "condition"
+                            "condition",
+                            "required"
                           ],
                           "type": "object"
                         },
@@ -3419,11 +3429,10 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": [
-                                "started",
-                                "healthy"
-                              ],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
@@ -3431,7 +3440,8 @@
                           },
                           "required": [
                             "service",
-                            "condition"
+                            "condition",
+                            "required"
                           ],
                           "type": "object"
                         },
@@ -4434,11 +4444,10 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": [
-                                "started",
-                                "healthy"
-                              ],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
@@ -4446,7 +4455,8 @@
                           },
                           "required": [
                             "service",
-                            "condition"
+                            "condition",
+                            "required"
                           ],
                           "type": "object"
                         },
@@ -5547,11 +5557,10 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": [
-                                "started",
-                                "healthy"
-                              ],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
@@ -5559,7 +5568,8 @@
                           },
                           "required": [
                             "service",
-                            "condition"
+                            "condition",
+                            "required"
                           ],
                           "type": "object"
                         },
@@ -6547,11 +6557,10 @@
                           "additionalProperties": false,
                           "properties": {
                             "condition": {
-                              "enum": [
-                                "started",
-                                "healthy"
-                              ],
-                              "type": "string"
+                              "$ref": "#/$defs/ServiceDependencyCondition"
+                            },
+                            "required": {
+                              "type": "boolean"
                             },
                             "service": {
                               "type": "string"
@@ -6559,7 +6568,8 @@
                           },
                           "required": [
                             "service",
-                            "condition"
+                            "condition",
+                            "required"
                           ],
                           "type": "object"
                         },

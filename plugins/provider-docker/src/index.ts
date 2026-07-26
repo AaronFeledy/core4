@@ -1427,6 +1427,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
+        waitForExit: () =>
+          Effect.fail(
+            new ProviderUnavailableError({
+              providerId: PROVIDER_ID,
+              operation: "waitForExit",
+              message: "provider-docker does not implement waitForExit yet.",
+              remediation: "Use a runtime provider that implements service exit waiting.",
+            }),
+          ),
         destroy: (target, destroyOptions) => {
           const plan = resolvePlan(target);
           return plan === undefined

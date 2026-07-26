@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath, type ServiceConfig } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -124,9 +124,6 @@ const applyRubyFeature = (ctx: ServiceFeatureContext): void => {
   });
 
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
-  }
 
   ctx.addExtension("lando-service-ruby", {
     framework,

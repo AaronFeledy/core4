@@ -110,7 +110,7 @@ describe("mongodb ServiceType", () => {
     expect(plan.user).toBe("myuser");
   });
 
-  test("passes through service dependencies", async () => {
+  test("leaves authored service dependencies for planner normalization", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { db: { type: "mongodb", dependsOn: ["api"] } },
@@ -128,7 +128,7 @@ describe("mongodb ServiceType", () => {
       featureOverrides,
     });
 
-    expect(plan.dependsOn).toEqual([{ service: ServiceName.make("api"), condition: "started" }]);
+    expect(plan.dependsOn).toEqual([]);
   });
 
   test("includes a TCP healthcheck on port 27017", async () => {

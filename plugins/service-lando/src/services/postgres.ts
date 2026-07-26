@@ -4,7 +4,7 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { PortablePath, ServiceName } from "@lando/sdk/schema";
+import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { addServicePortEndpoints } from "./_port-helpers.ts";
@@ -36,10 +36,6 @@ const applyPostgresFeature = (ctx: ServiceFeatureContext): void => {
     readOnly: false,
   });
   addServicePortEndpoints(ctx, { port: service.port ?? DEFAULT_PORT, protocol: "tcp" });
-
-  for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
-  }
 
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);

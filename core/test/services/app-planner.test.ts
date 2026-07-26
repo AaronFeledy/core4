@@ -1787,6 +1787,56 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("applyAuthoredDependencies defaults condition to service_started and required to true", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "authored-dependencies",
+      runtime: 4,
+      services: {
+        web: { type: "appmount-only", dependsOn: ["db"] },
+        db: { type: "appmount-only" },
+      },
+    });
+
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
+      { service: ServiceName.make("db"), condition: "service_started", required: true },
+    ]);
+  });
+
+  test("mergeComposeExtension preserves an explicit restart: false on the compose extension", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "authored-dependency-restart",
+      runtime: 4,
+      services: {
+        web: { type: "appmount-only", dependsOn: [{ service: "db", restart: false }] },
+        db: { type: "appmount-only" },
+      },
+    });
+
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
+      depends_on: { db: { restart: false } },
+    });
+  });
+
   test("plans a Node and Postgres Landofile into a schema-valid AppPlan", async () => {
     await withTempCwd(async (appRoot) => {
       const appPlan = await plan(landofileFixture);
@@ -1813,7 +1863,9 @@ describe("AppPlannerLive", () => {
       expect(web?.endpoints).toEqual([
         { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3000 } },
       ]);
-      expect(web?.dependsOn).toEqual([{ service: ServiceName.make("db"), condition: "started" }]);
+      expect(web?.dependsOn).toEqual([
+        { service: ServiceName.make("db"), condition: "service_started", required: true },
+      ]);
 
       expect(db?.type).toBe("postgres");
       expect(db?.artifact).toEqual({ kind: "ref", ref: "postgres:16" });
