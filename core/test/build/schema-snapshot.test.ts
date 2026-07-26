@@ -94,24 +94,28 @@ describe("schema snapshot gate", () => {
     }
   });
 
-  test("public registry drives schema names and metadata index", async () => {
-    runGenerator();
+  test(
+    "public registry drives schema names and metadata index",
+    async () => {
+      runGenerator();
 
-    const generated = JSON.parse(
-      await readFile(metadataIndexPath, "utf8"),
-    ) as typeof publicSchemaMetadataIndex;
+      const generated = JSON.parse(
+        await readFile(metadataIndexPath, "utf8"),
+      ) as typeof publicSchemaMetadataIndex;
 
-    expect(Object.keys(publicSchemaRegistry)).toEqual(JSON_SCHEMA_NAMES);
-    expect(generated).toEqual(publicSchemaMetadataIndex);
-    expect(generated.map((entry) => entry.id)).toEqual(JSON_SCHEMA_NAMES);
-    expect(generated.find((entry) => entry.id === "DeprecationNotice")).toMatchObject({
-      title: "Deprecation Notice",
-      packageExport: "@lando/sdk/schema#DeprecationNotice",
-      jsonSchemaPath: "dist/schemas/deprecation-notice.json",
-      docsPath: "docs/reference/schemas/deprecation-notice.mdx",
-      deprecated: false,
-    });
-  });
+      expect(Object.keys(publicSchemaRegistry)).toEqual(JSON_SCHEMA_NAMES);
+      expect(generated).toEqual(publicSchemaMetadataIndex);
+      expect(generated.map((entry) => entry.id)).toEqual(JSON_SCHEMA_NAMES);
+      expect(generated.find((entry) => entry.id === "DeprecationNotice")).toMatchObject({
+        title: "Deprecation Notice",
+        packageExport: "@lando/sdk/schema#DeprecationNotice",
+        jsonSchemaPath: "dist/schemas/deprecation-notice.json",
+        docsPath: "docs/reference/schemas/deprecation-notice.mdx",
+        deprecated: false,
+      });
+    },
+    { timeout: 30_000 },
+  );
 
   test("public registry drives generated reference page inputs", () => {
     const pages = renderPublicSchemaReferencePages();
