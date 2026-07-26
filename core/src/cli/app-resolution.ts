@@ -24,6 +24,7 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
+import { rememberLandofileAppRoot } from "../landofile/app-root-provenance.ts";
 import { LANDOFILE_NAME } from "../landofile/discovery.ts";
 import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { landofileLayerPaths } from "../landofile/layers.ts";
@@ -185,7 +186,9 @@ export const loadUserLandofile = (
               }),
       }).pipe(
         Effect.flatMap(({ appRoot, filePath }) =>
-          resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }),
+          resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }).pipe(
+            Effect.map((resolved) => rememberLandofileAppRoot(resolved, appRoot)),
+          ),
         ),
         Effect.map((resolved) => ({ landofile: resolved, sourcePath: undefined })),
       );

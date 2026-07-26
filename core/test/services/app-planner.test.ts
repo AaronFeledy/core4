@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
@@ -24,7 +24,7 @@ import {
   ServiceName,
   ServicePlan,
 } from "@lando/core/schema";
-import { AppPlanner, ConfigService, PluginRegistry } from "@lando/core/services";
+import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/core/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
 import type { GlobalConfig } from "@lando/sdk/schema";
 
@@ -32,6 +32,7 @@ import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
+import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
@@ -748,6 +749,47 @@ describe("AppPlannerLive", () => {
         BASE_ONLY: "yes",
         LIST_ONLY: "yes",
       });
+    });
+  });
+
+  test("resolves env_file relative to the discovered app root from a nested directory", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given
+      const nested = join(appRoot, "nested");
+      await mkdir(nested);
+      await writeFile(
+        join(appRoot, ".lando.yml"),
+        [
+          "name: nested-env-file",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "    env_file: values.env",
+          "",
+        ].join("\n"),
+      );
+      await writeFile(join(appRoot, "values.env"), "FROM_APP_ROOT=yes\n");
+      await writeFile(join(nested, "values.env"), "FROM_NESTED=yes\n");
+      process.chdir(nested);
+      const landofile = await Effect.runPromise(
+        Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+          Effect.provide(LandofileServiceLive),
+        ),
+      );
+
+      // When
+      const appPlan = await Effect.runPromise(
+        Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, providerLandoCapabilities)).pipe(
+          Effect.provide(AppPlannerLive),
+          Effect.provide(PluginRegistryLive),
+          Effect.provide(FileSystemLive),
+        ),
+      );
+
+      // Then
+      expect(appPlan.root).toBe(AbsolutePath.make(appRoot));
+      expect(appPlan.services[ServiceName.make("web")]?.environment.FROM_APP_ROOT).toBe("yes");
+      expect(appPlan.services[ServiceName.make("web")]?.environment.FROM_NESTED).toBeUndefined();
     });
   });
 

@@ -22,6 +22,7 @@ import {
   rememberVersionConstraintEntries,
 } from "../config/version-constraint.ts";
 import { decodeOrFail } from "../schema/decode.ts";
+import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { resolveLandofileIncludes } from "./includes.ts";
@@ -249,6 +250,7 @@ export const loadLandofileFile = (
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   (filePath.endsWith(".ts") ? loadTsLandofile(filePath) : loadYamlLandofile(filePath)).pipe(
     Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
+    Effect.map((landofile) => rememberLandofileAppRoot(landofile, dirname(filePath))),
   );
 
 const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
@@ -324,14 +326,17 @@ export const loadLandofileLayers = (
       const merged = mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>));
       return validateLandofile(canonicalPath, merged).pipe(
         Effect.map((landofile) =>
-          rememberLocalIncludePaths(
-            rememberVersionConstraintEntries(
-              landofile,
-              loaded.flatMap(({ landofile, layer }) =>
-                getVersionConstraintEntries(landofile, layer.filePath),
+          rememberLandofileAppRoot(
+            rememberLocalIncludePaths(
+              rememberVersionConstraintEntries(
+                landofile,
+                loaded.flatMap(({ landofile, layer }) =>
+                  getVersionConstraintEntries(landofile, layer.filePath),
+                ),
               ),
+              loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
             ),
-            loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
+            appRoot,
           ),
         ),
       );

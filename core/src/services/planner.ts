@@ -66,6 +66,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "../config/version-constraint.ts";
+import { getLandofileAppRoot } from "../landofile/app-root-provenance.ts";
 import { parseEnvFile } from "../landofile/env-file.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
@@ -868,7 +869,7 @@ const planApp = (
   AppPlan,
   LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
 > => {
-  const appRoot = process.cwd();
+  const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
   const host = resolveHostFacts();
