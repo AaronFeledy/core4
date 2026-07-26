@@ -318,6 +318,9 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
         },
       },
     };
+    yield* provider
+      .destroy({ app: TEST_APP_ID }, { volumes: false })
+      .pipe(Effect.mapError(mapProviderFailure("destroy resets the running contract fixture")));
     yield* Effect.scoped(provider.apply(completingAppPlan, { reconcile: true })).pipe(
       Effect.mapError(mapProviderFailure("apply succeeds for the completing service fixture")),
     );
