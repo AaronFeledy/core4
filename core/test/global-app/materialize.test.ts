@@ -354,7 +354,7 @@ describe("GlobalAppService Landofile materialization", () => {
         web: {
           type: "node",
           cores: ["type: node", "app:"],
-          volumes: ["source: target", "cache:"],
+          hostnames: ["source: target", "cache:"],
         },
       };
 
@@ -367,7 +367,7 @@ describe("GlobalAppService Landofile materialization", () => {
       expect(content).toContain("      - 'app:'");
       expect(content).toContain("      - 'cache:'");
       expect(parsed.services?.web?.cores).toEqual(["type: node", "app:"]);
-      expect(parsed.services?.web?.volumes).toEqual(["source: target", "cache:"]);
+      expect(parsed.services?.web?.hostnames).toEqual(["source: target", "cache:"]);
     });
   });
 

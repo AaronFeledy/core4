@@ -62,6 +62,37 @@ const rejectedShortCases: ReadonlyArray<readonly [token: string, matrixKey: stri
   ["slave", "volumes.bind.propagation"],
 ];
 
+const idempotentVolumeInputs: ReadonlyArray<readonly [label: string, input: unknown]> = [
+  ["long bind", [{ type: "bind", source: "./src", target: "/app" }]],
+  ["long named volume", [{ type: "volume", source: "db", target: "/data" }]],
+  ["long tmpfs", [{ type: "tmpfs", target: "/tmp", tmpfs: { size: 1024, mode: 1777 } }]],
+  ["anonymous short volume", ["/data"]],
+  ["relative short bind", ["./src:/app"]],
+  ["read-only short volume", ["named:/data:ro"]],
+  ["long read_only", [{ type: "volume", source: "db", target: "/data", read_only: true }]],
+  ["long volume.subpath", [{ type: "volume", source: "db", target: "/data", volume: { subpath: "cfg" } }]],
+  [
+    "long bind.create_host_path",
+    [{ type: "bind", source: "./src", target: "/app", bind: { create_host_path: false } }],
+  ],
+  ["unknown short mode", ["src:/app:banana"]],
+  ["Windows drive-letter bind", ["C:\\src:/app:ro"]],
+  [
+    "multiple long entries",
+    [
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        read_only: true,
+        bind: { create_host_path: false },
+      },
+      { type: "volume", source: "db", target: "/data", volume: { subpath: "cfg" } },
+      { type: "tmpfs", target: "/tmp", tmpfs: { size: "64m", mode: 1777 } },
+    ],
+  ],
+];
+
 describe("ComposeVolumesField", () => {
   test("S21 decodes a long bind with canonical defaults", () => {
     expect(decodeVolumes([{ type: "bind", source: "./src", target: "/app" }])).toEqual([
@@ -187,6 +218,29 @@ describe("ComposeVolumesField", () => {
         createHostPath: true,
       },
     ]);
+  });
+
+  test.each(idempotentVolumeInputs)("is idempotent for %s", (_label, input) => {
+    // Given
+    const decoded = decodeVolumes(input);
+
+    // When
+    const decodedAgain = decodeVolumes(decoded);
+
+    // Then
+    expect(decodedAgain).toEqual(decoded);
+  });
+
+  test("rejects a mixed Compose and canonical long-form object", () => {
+    // Given
+    const input = [{ type: "bind", source: "./src", target: "/app", read_only: true, createHostPath: false }];
+
+    // When
+    const result = decodeVolumesEither(input);
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) expect(String(result.left)).toContain("createHostPath");
   });
 
   test("encodes every entry as a nested long object and round-trips lawfully", () => {

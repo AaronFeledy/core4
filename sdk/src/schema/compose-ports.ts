@@ -113,7 +113,7 @@ const parseShortPort = (value: string): Either.Either<ReadonlyArray<ComposePortE
 
 // ==== Compose ports field — normalize short and long authoring forms ====
 
-const ComposePortInput = Schema.Union(Schema.String, Schema.Number, ComposePortLongInput);
+const ComposePortInput = Schema.Union(Schema.String, Schema.Number, ComposePortLongInput, ComposePortEntry);
 
 export const ComposePortsField = Schema.transformOrFail(
   Schema.Array(ComposePortInput),
@@ -137,6 +137,10 @@ export const ComposePortsField = Schema.transformOrFail(
           entries.push({ target, protocol: "tcp" });
           continue;
         }
+        if ("hostIp" in entry || "appProtocol" in entry) {
+          entries.push(entry);
+          continue;
+        }
         if (typeof entry.published === "string" && entry.published.includes("-")) {
           return fail(entry.published, "Published port ranges in long form must enumerate scalar entries.");
         }
@@ -144,13 +148,15 @@ export const ComposePortsField = Schema.transformOrFail(
         if (entry.published !== undefined && published === undefined) {
           return fail(entry.published, "Expected a published port number from 1 through 65535.");
         }
+        const hostIp = "host_ip" in entry ? entry.host_ip : undefined;
+        const appProtocol = "app_protocol" in entry ? entry.app_protocol : undefined;
         entries.push({
           target: entry.target,
           ...(published === undefined ? {} : { published }),
-          ...(entry.host_ip === undefined ? {} : { hostIp: entry.host_ip }),
+          ...(hostIp === undefined ? {} : { hostIp }),
           protocol: entry.protocol ?? "tcp",
           ...(entry.name === undefined ? {} : { name: entry.name }),
-          ...(entry.app_protocol === undefined ? {} : { appProtocol: entry.app_protocol }),
+          ...(appProtocol === undefined ? {} : { appProtocol }),
         });
       }
       return ParseResult.succeed(entries);

@@ -36,10 +36,11 @@ describe("lando endpoint intent", () => {
     ]);
   });
 
-  test("rejects unsupported protocols with a tagged feature error", async () => {
+  test("rejects unsupported protocols at Landofile decode", async () => {
+    // Grammar moved into the service schema, so this now fails at decode, not feature-apply.
     const result = planService(["8080:80/sctp"]);
 
-    await expect(result).rejects.toHaveProperty("name", "(FiberFailure) ServiceFeatureError");
-    await expect(result).rejects.toHaveProperty("message", expect.stringContaining("Allowed: tcp, udp"));
+    await expect(result).rejects.toHaveProperty("name", "ParseError");
+    await expect(result).rejects.toHaveProperty("message", expect.stringContaining("tcp"));
   });
 });

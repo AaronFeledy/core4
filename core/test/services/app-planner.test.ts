@@ -80,13 +80,13 @@ const landofileFixture: LandofileShape = {
   services: {
     [ServiceName.make("web")]: {
       image: "node:lts",
-      ports: ["3000:3000"],
+      ports: [{ target: 3000, published: 3000, protocol: "tcp" }],
       environment: { NODE_ENV: "development" },
       dependsOn: [{ service: "db" }],
     },
     [ServiceName.make("db")]: {
       image: "postgres:16",
-      ports: ["5432:5432"],
+      ports: [{ target: 5432, published: 5432, protocol: "tcp" }],
       environment: { POSTGRES_PASSWORD: "lando" },
     },
   },
@@ -1584,7 +1584,11 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("proxy")]: {
             type: "compose",
             image: "traefik:v3.3",
-            ports: ["80", "443", "8080"],
+            ports: [
+              { target: 80, protocol: "tcp" },
+              { target: 443, protocol: "tcp" },
+              { target: 8080, protocol: "tcp" },
+            ],
           },
         },
       });
@@ -1964,7 +1968,10 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("worker")]: {
             type: "compose",
             image: "alpine:3",
-            volumes: ["worker-state:/var/state", "worker-cache:/var/cache"],
+            volumes: [
+              { type: "volume", source: "worker-state", target: "/var/state", readOnly: false },
+              { type: "volume", source: "worker-cache", target: "/var/cache", readOnly: false },
+            ],
           },
         },
       });
@@ -2012,7 +2019,7 @@ describe("AppPlannerLive", () => {
     });
   });
 
-  test("skips authored storage mounts whose container path is already in the service plan", async () => {
+  test("lets authored storage win over an overlapping compose volume at the same container path", async () => {
     await withTempCwd(async () => {
       const appPlan = await plan({
         name: "overlapapp",
@@ -2021,7 +2028,7 @@ describe("AppPlannerLive", () => {
           [ServiceName.make("web")]: {
             type: "compose",
             image: "node:22",
-            volumes: ["worker-cache:/var/cache"],
+            volumes: [{ type: "volume", source: "worker-cache", target: "/var/cache", readOnly: false }],
             storage: [
               {
                 store: "worker-cache",
@@ -2039,15 +2046,15 @@ describe("AppPlannerLive", () => {
 
       const webStorage = appPlan.services[ServiceName.make("web")]?.storage ?? [];
       expect(webStorage.filter((mount) => String(mount.target) === "/var/cache")).toEqual([
-        { store: "overlapapp-worker-cache", target: PortablePath.make("/var/cache"), readOnly: false },
+        { store: "lando-cache-var-cache", target: PortablePath.make("/var/cache"), readOnly: false },
       ]);
       expect(webStorage.map((mount) => mount.store)).toEqual(
-        expect.arrayContaining(["overlapapp-worker-cache", "extra-data"]),
+        expect.arrayContaining(["lando-cache-var-cache", "extra-data"]),
       );
       expect(appPlan.stores.map((store) => store.name)).toEqual(
-        expect.arrayContaining(["overlapapp-worker-cache", "extra-data"]),
+        expect.arrayContaining(["lando-cache-var-cache", "extra-data"]),
       );
-      expect(appPlan.stores.some((store) => store.name === "lando-cache-var-cache")).toBe(false);
+      expect(appPlan.stores.some((store) => store.name === "overlapapp-worker-cache")).toBe(false);
     });
   });
 

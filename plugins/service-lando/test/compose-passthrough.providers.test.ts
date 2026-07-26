@@ -57,8 +57,8 @@ const composeLandofile: LandofileShape = {
     [ServiceName.make("worker")]: {
       type: "compose",
       image: "ghcr.io/example/worker:latest",
-      ports: ["9000:9000"],
-      volumes: ["worker-state:/var/state"],
+      ports: [{ target: 9000, published: 9000, protocol: "tcp" }],
+      volumes: [{ type: "volume", source: "worker-state", target: "/var/state", readOnly: false }],
       environment: { WORKER_ENV: "prod" },
       providers: {
         lando: { labels: { "com.example.team": "platform" } },
@@ -141,7 +141,7 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
           type: "compose",
           image: "ghcr.io/example/worker:latest",
           appMount: false,
-          ports: ["9000:9000"],
+          ports: [{ target: 9000, published: 9000, protocol: "tcp" }],
         },
       },
     };

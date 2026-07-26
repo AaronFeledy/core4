@@ -976,6 +976,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -1133,6 +1168,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -2312,6 +2393,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -2469,6 +2585,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -3690,6 +3852,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -3847,6 +4044,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -5196,6 +5439,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -5353,6 +5631,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -6532,6 +6856,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -6689,6 +7048,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -10330,6 +10735,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -10487,6 +10927,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -11689,6 +12175,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -11846,6 +12367,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -13048,6 +13615,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -13205,6 +13807,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -14407,6 +15055,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -14564,6 +15247,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -15766,6 +16495,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -15923,6 +16687,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -36347,6 +37157,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -36504,6 +37349,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -58447,6 +59338,41 @@
                 },
                 "required": ["target"],
                 "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "appProtocol": {
+                    "type": "string"
+                  },
+                  "hostIp": {
+                    "format": "ip",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "enum": ["tcp", "udp"],
+                    "type": "string"
+                  },
+                  "published": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  },
+                  "target": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  }
+                },
+                "required": ["target", "protocol"],
+                "type": "object"
               }
             ]
           },
@@ -58605,6 +59531,52 @@
                   }
                 },
                 "required": ["target"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "createHostPath": {
+                    "type": "boolean"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "subpath": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "tmpfs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mode": {
+                        "type": "number"
+                      },
+                      "size": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "type": {
+                    "enum": ["bind", "volume", "tmpfs"],
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "target", "readOnly"],
                 "type": "object"
               }
             ]
@@ -59225,6 +60197,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -59382,6 +60389,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]
@@ -61967,6 +63020,41 @@
                     },
                     "required": ["target"],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "appProtocol": {
+                        "type": "string"
+                      },
+                      "hostIp": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "enum": ["tcp", "udp"],
+                        "type": "string"
+                      },
+                      "published": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "target": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["target", "protocol"],
+                    "type": "object"
                   }
                 ]
               },
@@ -62124,6 +63212,52 @@
                       }
                     },
                     "required": ["target"],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createHostPath": {
+                        "type": "boolean"
+                      },
+                      "readOnly": {
+                        "type": "boolean"
+                      },
+                      "source": {
+                        "type": "string"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      },
+                      "tmpfs": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "mode": {
+                            "type": "number"
+                          },
+                          "size": {
+                            "anyOf": [
+                              {
+                                "type": "number"
+                              },
+                              {
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [],
+                        "type": "object"
+                      },
+                      "type": {
+                        "enum": ["bind", "volume", "tmpfs"],
+                        "type": "string"
+                      }
+                    },
+                    "required": ["type", "target", "readOnly"],
                     "type": "object"
                   }
                 ]

@@ -150,22 +150,27 @@ const encodeLongVolume = (entry: ComposeVolumeEntry): typeof ComposeVolumeLongIn
 });
 
 export const ComposeVolumesField = Schema.Array(
-  Schema.transformOrFail(Schema.Union(Schema.String, ComposeVolumeLongInput), ComposeVolumeEntry, {
-    strict: true,
-    decode: (input, _options, ast) => {
-      if (typeof input === "string") {
-        const failure = shortVolumeFailure(input);
-        return failure === undefined
-          ? ParseResult.succeed(parseShortVolume(input))
-          : ParseResult.fail(new ParseResult.Type(ast, input, failure));
-      }
-      if (input.type === "tmpfs" && input.source !== undefined) {
-        return ParseResult.fail(
-          new ParseResult.Type(ast, input, 'Compose volume type "tmpfs" must not define source.'),
-        );
-      }
-      return ParseResult.succeed(decodeLongVolume(input));
+  Schema.transformOrFail(
+    Schema.Union(Schema.String, ComposeVolumeLongInput, ComposeVolumeEntry),
+    ComposeVolumeEntry,
+    {
+      strict: true,
+      decode: (input, _options, ast) => {
+        if (typeof input === "string") {
+          const failure = shortVolumeFailure(input);
+          return failure === undefined
+            ? ParseResult.succeed(parseShortVolume(input))
+            : ParseResult.fail(new ParseResult.Type(ast, input, failure));
+        }
+        if ("readOnly" in input) return ParseResult.succeed(input);
+        if (input.type === "tmpfs" && input.source !== undefined) {
+          return ParseResult.fail(
+            new ParseResult.Type(ast, input, 'Compose volume type "tmpfs" must not define source.'),
+          );
+        }
+        return ParseResult.succeed(decodeLongVolume(input));
+      },
+      encode: (entry) => ParseResult.succeed(encodeLongVolume(entry)),
     },
-    encode: (entry) => ParseResult.succeed(encodeLongVolume(entry)),
-  }),
+  ),
 );

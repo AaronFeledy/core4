@@ -8,6 +8,32 @@ const decodePorts = (input: unknown) =>
 
 const decodeExpose = (input: unknown) => Schema.decodeUnknownSync(ComposeExposeField)(input);
 
+const idempotentPortInputs: ReadonlyArray<readonly [label: string, input: unknown]> = [
+  [
+    "long form",
+    [
+      {
+        target: 80,
+        published: "8080",
+        host_ip: "127.0.0.1",
+        protocol: "udp",
+        name: "web",
+        app_protocol: "http",
+      },
+    ],
+  ],
+  ["scalar host mapping", ["8080:80"]],
+  ["IPv4 UDP mapping", ["127.0.0.1:8080:80/udp"]],
+  ["container-only port", ["80"]],
+  ["IPv6 mapping", ["[::1]:8080:80"]],
+  ["dynamic host port", ["127.0.0.1::80"]],
+  ["container-only range", ["3000-3005"]],
+  ["equal-length ranges", ["9090-9091:8080-8081"]],
+  ["numeric published port", [{ target: 80, published: 8080 }]],
+  ["string published port", [{ target: 80, published: "8080" }]],
+  ["multiple entries", ["127.0.0.1:8080:80/udp", "3000"]],
+];
+
 const expectPortFailure = (entry: unknown, expectedMessage?: string): void => {
   const result = Schema.decodeUnknownEither(ComposePortsField)([entry], {
     onExcessProperty: "error",
@@ -143,6 +169,22 @@ describe("ComposePortsField", () => {
 
     // When / Then
     expect(decodePorts(numeric)).toEqual(decodePorts(string));
+  });
+
+  test.each(idempotentPortInputs)("is idempotent for %s", (_label, input) => {
+    // Given
+    const decoded = decodePorts(input);
+
+    // When
+    const decodedAgain = decodePorts(decoded);
+
+    // Then
+    expect(decodedAgain).toEqual(decoded);
+  });
+
+  test("rejects a mixed Compose and canonical long-form object", () => {
+    // Given / When / Then
+    expectPortFailure({ target: 80, host_ip: "127.0.0.1", appProtocol: "http" }, "appProtocol");
   });
 
   test("encodes canonical ports as lawful long objects and round-trips", () => {
