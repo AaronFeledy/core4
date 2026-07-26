@@ -609,6 +609,10 @@
                       ],
                       "type": "string"
                     },
+                    "appProtocol": {
+                      "description": "Optional application-layer protocol metadata.",
+                      "type": "string"
+                    },
                     "name": {
                       "description": "Optional endpoint name.",
                       "type": "string"
@@ -839,6 +843,9 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "createHostPath": {
+                  "type": "boolean"
+                },
                 "readOnly": {
                   "type": "boolean"
                 },
@@ -906,6 +913,9 @@
                   "type": "boolean"
                 },
                 "store": {
+                  "type": "string"
+                },
+                "subpath": {
                   "type": "string"
                 },
                 "target": {

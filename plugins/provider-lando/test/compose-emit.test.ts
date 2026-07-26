@@ -219,6 +219,62 @@ describe("provider-lando Compose emission", () => {
     expect(volumesLines.every((l) => !l.includes("/tmp/cache"))).toBe(true);
   });
 
+  test("uses long volume syntax only for subpath and disabled bind path creation", () => {
+    const webWithMountOptions: ServicePlan = {
+      ...web,
+      mounts: [
+        ...web.mounts,
+        {
+          type: "bind",
+          source: "/srv/existing/config",
+          target: PortablePath.make("/existing-config"),
+          readOnly: false,
+          createHostPath: false,
+          realization: "passthrough",
+        },
+        {
+          type: "bind",
+          source: "/srv/synced",
+          target: PortablePath.make("/synced"),
+          readOnly: false,
+          createHostPath: false,
+          realization: "accelerated",
+        },
+      ],
+    };
+    const databaseWithSubpath: ServicePlan = {
+      ...database,
+      storage: [
+        {
+          store: "myapp_database_data",
+          target: PortablePath.make("/var/lib/postgresql/data"),
+          readOnly: true,
+          subpath: "tenant",
+        },
+      ],
+    };
+
+    const content = renderCompose({
+      ...plan,
+      services: {
+        [webWithMountOptions.name]: webWithMountOptions,
+        [databaseWithSubpath.name]: databaseWithSubpath,
+      },
+    });
+
+    expect(content).toContain('      - "/srv/apps/myapp:/app"\n');
+    expect(content).toContain('      - "/srv/shared/config:/config:ro"\n');
+    expect(content).toContain('      - "My-App-web-mount-2:/synced"\n');
+    expect(content).toContain(
+      '      - type: "bind"\n        source: "/srv/existing/config"\n        target: "/existing-config"\n        read_only: false\n        bind:\n          create_host_path: false\n',
+    );
+    expect(content).toContain(
+      '      - type: "volume"\n        source: "myapp_database_data"\n        target: "/var/lib/postgresql/data"\n        read_only: true\n        volume:\n          subpath: "tenant"\n',
+    );
+    expect(content).not.toContain('      - "/srv/existing/config:/existing-config"\n');
+    expect(content).not.toContain('      - "myapp_database_data:/var/lib/postgresql/data:ro"\n');
+  });
+
   test("writes compose.yml through FileSystem under the per-app data directory", async () => {
     const runtime = makeTestRuntime();
     const result = await Effect.runPromise(

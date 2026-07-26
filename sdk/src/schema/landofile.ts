@@ -3,6 +3,8 @@ import type * as AST from "effect/SchemaAST";
 import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
+import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
+import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
 import { LogSourceInput } from "./log-source.ts";
@@ -338,16 +340,18 @@ export const ServiceConfig = Schema.Struct({
       "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
   }),
 
-  ports: Schema.optional(
-    Schema.Array(
-      Schema.transform(Schema.Union(Schema.String, Schema.Number), Schema.String, {
-        strict: true,
-        decode: String,
-        encode: (s) => s,
-      }),
-    ),
-  ),
-  volumes: Schema.optional(Schema.Array(Schema.String)),
+  ports: Schema.optional(ComposePortsField).annotations({
+    description:
+      'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.',
+  }),
+  expose: Schema.optional(ComposeExposeField).annotations({
+    description:
+      "Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints.",
+  }),
+  volumes: Schema.optional(ComposeVolumesField).annotations({
+    description:
+      'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',
+  }),
 
   appMount: Schema.optional(
     Schema.Union(

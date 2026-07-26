@@ -1,0 +1,299 @@
+import { describe, expect, test } from "bun:test";
+import { Either, Schema } from "effect";
+
+import {
+  type ComposeVolumeEntry,
+  ComposeVolumesField,
+  parseShortVolume,
+} from "../../src/schema/compose-volumes.ts";
+
+const decodeVolumes = (input: unknown): ReadonlyArray<ComposeVolumeEntry> =>
+  Schema.decodeUnknownSync(ComposeVolumesField)(input, { onExcessProperty: "error" });
+
+const decodeVolumesEither = (input: unknown) =>
+  Schema.decodeUnknownEither(ComposeVolumesField)(input, { onExcessProperty: "error" });
+
+const bindLongInput = { type: "bind", source: "./src", target: "/app" } as const;
+const volumeLongInput = { type: "volume", source: "db", target: "/data" } as const;
+
+const rejectedLongCases: ReadonlyArray<
+  readonly [label: string, properties: ReadonlyArray<string>, input: unknown]
+> = [
+  ["consistency", ["consistency"], { ...volumeLongInput, consistency: "cached" }],
+  ["bind.propagation", ["bind", "propagation"], { ...bindLongInput, bind: { propagation: "shared" } }],
+  ["bind.recursive", ["bind", "recursive"], { ...bindLongInput, bind: { recursive: "enabled" } }],
+  ["bind.selinux", ["bind", "selinux"], { ...bindLongInput, bind: { selinux: "Z" } }],
+  ["volume.nocopy", ["volume", "nocopy"], { ...volumeLongInput, volume: { nocopy: true } }],
+  ["volume.labels", ["volume", "labels"], { ...volumeLongInput, volume: { labels: { tier: "data" } } }],
+  ["image.subpath", ["image", "subpath"], { ...volumeLongInput, image: { subpath: "assets" } }],
+];
+
+const incompatibleLongCases: ReadonlyArray<readonly [label: string, input: unknown]> = [
+  ["tmpfs options on a volume", { ...volumeLongInput, tmpfs: { size: "64m" } }],
+  ["volume options on a bind", { ...bindLongInput, volume: { subpath: "cfg" } }],
+  ["bind options on a volume", { ...volumeLongInput, bind: { create_host_path: false } }],
+  ["bind options on tmpfs", { type: "tmpfs", target: "/tmp", bind: { create_host_path: false } }],
+  ["bind without a source", { type: "bind", target: "/app" }],
+  ["explicit volume with a path source", { type: "volume", source: "./data", target: "/data" }],
+];
+
+const rejectedShortCases: ReadonlyArray<readonly [token: string, matrixKey: string]> = [
+  ["nocopy", "volumes.volume.nocopy"],
+  ["z", "volumes.bind.selinux"],
+  ["Z", "volumes.bind.selinux"],
+  ["rprivate", "volumes.bind.propagation"],
+  ["private", "volumes.bind.propagation"],
+  ["rshared", "volumes.bind.propagation"],
+  ["shared", "volumes.bind.propagation"],
+  ["rslave", "volumes.bind.propagation"],
+  ["slave", "volumes.bind.propagation"],
+];
+
+const idempotentVolumeInputs: ReadonlyArray<readonly [label: string, input: unknown]> = [
+  ["long bind", [{ type: "bind", source: "./src", target: "/app" }]],
+  ["long named volume", [{ type: "volume", source: "db", target: "/data" }]],
+  ["long tmpfs", [{ type: "tmpfs", target: "/tmp", tmpfs: { size: 1024, mode: 1777 } }]],
+  ["anonymous short volume", ["/data"]],
+  ["relative short bind", ["./src:/app"]],
+  ["read-only short volume", ["named:/data:ro"]],
+  ["long read_only", [{ type: "volume", source: "db", target: "/data", read_only: true }]],
+  ["long volume.subpath", [{ type: "volume", source: "db", target: "/data", volume: { subpath: "cfg" } }]],
+  [
+    "long bind.create_host_path",
+    [{ type: "bind", source: "./src", target: "/app", bind: { create_host_path: false } }],
+  ],
+  ["unknown short mode", ["src:/app:banana"]],
+  ["Windows drive-letter bind", ["C:\\src:/app:ro"]],
+  [
+    "multiple long entries",
+    [
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        read_only: true,
+        bind: { create_host_path: false },
+      },
+      { type: "volume", source: "db", target: "/data", volume: { subpath: "cfg" } },
+      { type: "tmpfs", target: "/tmp", tmpfs: { size: "64m", mode: 1777 } },
+    ],
+  ],
+];
+
+describe("ComposeVolumesField", () => {
+  test("S21 decodes a long bind with canonical defaults", () => {
+    expect(decodeVolumes([{ type: "bind", source: "./src", target: "/app" }])).toEqual([
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        readOnly: false,
+        createHostPath: true,
+      },
+    ]);
+  });
+
+  test("S22 decodes a long named volume", () => {
+    expect(decodeVolumes([{ type: "volume", source: "db", target: "/data" }])).toEqual([
+      { type: "volume", source: "db", target: "/data", readOnly: false },
+    ]);
+  });
+
+  test("S23 decodes long tmpfs options without a source", () => {
+    const decoded = decodeVolumes([{ type: "tmpfs", target: "/tmp", tmpfs: { size: 1024, mode: 1777 } }]);
+
+    expect(decoded).toEqual([
+      { type: "tmpfs", target: "/tmp", readOnly: false, tmpfs: { size: 1024, mode: 1777 } },
+    ]);
+    expect(Object.hasOwn(decoded[0] ?? {}, "source")).toBe(false);
+  });
+
+  test("S24 decodes an anonymous short volume", () => {
+    const decoded = decodeVolumes(["/data"]);
+
+    expect(decoded).toEqual([{ type: "volume", target: "/data", readOnly: false }]);
+    expect(decoded[0]?.source).toBeUndefined();
+  });
+
+  test("S25 parses a relative short bind without resolving its source", () => {
+    expect(parseShortVolume("./src:/app")).toEqual({
+      type: "bind",
+      source: "./src",
+      target: "/app",
+      readOnly: false,
+      createHostPath: true,
+    });
+  });
+
+  test("S26 decodes a read-only short named volume", () => {
+    expect(decodeVolumes(["named:/data:ro"])).toEqual([
+      { type: "volume", source: "named", target: "/data", readOnly: true },
+    ]);
+  });
+
+  test("S27 maps long read_only to canonical readOnly", () => {
+    expect(decodeVolumes([{ type: "volume", source: "db", target: "/data", read_only: true }])).toEqual([
+      { type: "volume", source: "db", target: "/data", readOnly: true },
+    ]);
+  });
+
+  test("S28 preserves long volume.subpath", () => {
+    expect(
+      decodeVolumes([{ type: "volume", source: "db", target: "/data", volume: { subpath: "cfg" } }]),
+    ).toEqual([{ type: "volume", source: "db", target: "/data", readOnly: false, subpath: "cfg" }]);
+  });
+
+  test("S29 preserves bind.create_host_path=false", () => {
+    expect(
+      decodeVolumes([{ type: "bind", source: "./src", target: "/app", bind: { create_host_path: false } }]),
+    ).toEqual([
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        readOnly: false,
+        createHostPath: false,
+      },
+    ]);
+  });
+
+  test("S29 defaults createHostPath to true for a bind", () => {
+    expect(decodeVolumes([{ type: "bind", source: "./src", target: "/app" }])).toEqual([
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        readOnly: false,
+        createHostPath: true,
+      },
+    ]);
+  });
+
+  test.each(rejectedLongCases)("S30 rejects long %s", (_label, properties, input) => {
+    // Given / When
+    const results = [Schema.decodeUnknownEither(ComposeVolumesField)([input]), decodeVolumesEither([input])];
+
+    // Then
+    for (const result of results) {
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        for (const property of properties) expect(String(result.left)).toContain(property);
+      }
+    }
+  });
+
+  test.each(incompatibleLongCases)("rejects %s under default and strict decoding", (_label, input) => {
+    // Given / When
+    const results = [Schema.decodeUnknownEither(ComposeVolumesField)([input]), decodeVolumesEither([input])];
+
+    // Then
+    expect(results.every(Either.isLeft)).toBe(true);
+  });
+
+  test.each([
+    ["bind/subpath", { type: "bind", source: "s", target: "/x", readOnly: false, subpath: "p" }],
+    [
+      "volume/createHostPath",
+      { type: "volume", source: "v", target: "/x", readOnly: false, createHostPath: false },
+    ],
+    ["tmpfs/createHostPath", { type: "tmpfs", target: "/x", readOnly: false, createHostPath: false }],
+  ] as const)("rejects canonical %s during decode and encode", (_label, input) => {
+    // Given / When / Then
+    expect(Schema.decodeUnknownEither(ComposeVolumesField)([input])._tag).toBe("Left");
+    expect(decodeVolumesEither([input])._tag).toBe("Left");
+    expect(Schema.encodeUnknownEither(ComposeVolumesField)([input])._tag).toBe("Left");
+  });
+
+  test.each(rejectedShortCases)("S31 rejects short mode %s", (token, matrixKey) => {
+    const result = decodeVolumesEither([`src:/app:${token}`]);
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) expect(String(result.left)).toContain(matrixKey);
+  });
+
+  test("S32 ignores an unknown short mode token", () => {
+    expect(decodeVolumes(["src:/app:banana"])).toEqual([
+      { type: "volume", source: "src", target: "/app", readOnly: false },
+    ]);
+  });
+
+  test("S33 decodes a Windows drive-letter source as a bind", () => {
+    expect(decodeVolumes(["C:\\src:/app:ro"])).toEqual([
+      {
+        type: "bind",
+        source: "C:\\src",
+        target: "/app",
+        readOnly: true,
+        createHostPath: true,
+      },
+    ]);
+  });
+
+  test.each(idempotentVolumeInputs)("is idempotent for %s", (_label, input) => {
+    // Given
+    const decoded = decodeVolumes(input);
+
+    // When
+    const decodedAgain = decodeVolumes(decoded);
+
+    // Then
+    expect(decodedAgain).toEqual(decoded);
+    expect(Schema.decodeUnknownSync(ComposeVolumesField)(decoded)).toEqual(decoded);
+  });
+
+  test("rejects a mixed Compose and canonical long-form object", () => {
+    // Given
+    const input = [{ type: "bind", source: "./src", target: "/app", read_only: true, createHostPath: false }];
+
+    // When
+    const defaultResult = Schema.decodeUnknownEither(ComposeVolumesField)(input);
+    const strictResult = decodeVolumesEither(input);
+
+    // Then
+    for (const result of [defaultResult, strictResult]) {
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) expect(String(result.left)).toContain("createHostPath");
+    }
+  });
+
+  test("encodes every entry as a nested long object and round-trips lawfully", () => {
+    const decoded = decodeVolumes([
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        read_only: true,
+        bind: { create_host_path: false },
+      },
+      { type: "volume", source: "db", target: "/data", volume: { subpath: "cfg" } },
+      { type: "tmpfs", target: "/tmp", tmpfs: { size: "64m", mode: 1777 } },
+    ]);
+
+    const encoded = Schema.encodeSync(ComposeVolumesField)(decoded);
+
+    expect(encoded).toEqual([
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app",
+        read_only: true,
+        bind: { create_host_path: false },
+      },
+      {
+        type: "volume",
+        source: "db",
+        target: "/data",
+        read_only: false,
+        volume: { subpath: "cfg" },
+      },
+      {
+        type: "tmpfs",
+        target: "/tmp",
+        read_only: false,
+        tmpfs: { size: "64m", mode: 1777 },
+      },
+    ]);
+    expect(encoded.every((entry) => typeof entry === "object" && entry !== null)).toBe(true);
+    expect(decodeVolumes(encoded)).toEqual(decoded);
+  });
+});

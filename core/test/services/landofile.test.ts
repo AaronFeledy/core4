@@ -188,9 +188,11 @@ describe("LandofileServiceLive", () => {
       const web = landofile.services?.[ServiceName.make("web")];
       const db = landofile.services?.[ServiceName.make("db")];
       expect(web?.image).toBe("node:lts");
-      expect(web?.ports).toEqual(["3000:3000"]);
+      expect(web?.ports).toEqual([{ target: 3000, published: 3000, protocol: "tcp" }]);
       expect(web?.environment).toEqual({ NODE_ENV: "development" });
-      expect(web?.volumes).toEqual(["./src:/app"]);
+      expect(web?.volumes).toEqual([
+        { type: "bind", source: "./src", target: "/app", readOnly: false, createHostPath: true },
+      ]);
       expect(web?.command).toBe("npm start");
       expect(web?.dependsOn).toEqual([{ service: "db" }]);
       expect(db?.image).toBe("postgres:16");
@@ -471,7 +473,7 @@ describe("LandofileServiceLive — numeric/boolean environment values", () => {
 });
 
 describe("LandofileServiceLive — numeric ports coercion (bugbot PR#28 finding 2)", () => {
-  test("coerces numeric port scalars in ports: list to strings", async () => {
+  test("canonicalizes numeric and short-string port scalars in ports: list", async () => {
     await withTempCwd(async (dir) => {
       await writeFile(
         join(dir, ".lando.yml"),
@@ -491,7 +493,10 @@ describe("LandofileServiceLive — numeric ports coercion (bugbot PR#28 finding 
       const landofile = await discover();
 
       const web = landofile.services?.[ServiceName.make("web")];
-      expect(web?.ports).toEqual(["8080", "9000:90"]);
+      expect(web?.ports).toEqual([
+        { target: 8080, protocol: "tcp" },
+        { target: 90, published: 9000, protocol: "tcp" },
+      ]);
     });
   });
 });

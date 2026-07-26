@@ -53,7 +53,7 @@ describe("traefik global service ServiceConfig", () => {
         publication: { bindAddress: "127.0.0.1", hostPort: 38443 },
       },
     ]);
-    expect(config.ports).toEqual(["8080"]);
+    expect(config.ports).toEqual([{ protocol: "tcp", target: 8080 }]);
   });
 
   test("mounts the durable route configuration into the file provider directory", async () => {

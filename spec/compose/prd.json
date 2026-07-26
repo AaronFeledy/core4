@@ -78,7 +78,7 @@
         "Lint passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 6.2 ports/expose and volumes bullets (amended to cover both forms + tmpfs routing). Coordinates with US-473 for the tmpfs knob shape. Merged from former US-470 + US-471."
     },
     {

@@ -30,8 +30,9 @@ Public Lando schema contract for Service Config.
 | `environment` | No | `object`, `array` | — | — | — | — | — |
 | `envFile` | No | `string`, `array` | One or more env-file paths (string or list) whose KEY=value lines seed the service environment. | — | — | — | — |
 | `labels` | No | `object`, `array` | Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings. | — | — | — | — |
-| `ports` | No | `array` | — | — | — | — | — |
-| `volumes` | No | `array` | — | — | — | — | — |
+| `ports` | No | `array` | Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints. | — | — | — | — |
+| `expose` | No | `array` | Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints. | — | — | — | — |
+| `volumes` | No | `array` | Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob. | — | — | — | — |
 | `appMount` | No | `boolean`, `object` | — | — | `false` | — | — |
 | `mounts` | No | `array` | — | — | — | — | — |
 | `storage` | No | `array` | — | — | — | — | — |

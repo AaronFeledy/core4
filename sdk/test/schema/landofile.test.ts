@@ -199,9 +199,11 @@ describe("LandofileShape (MVP)", () => {
     const web = decoded.services?.[ServiceName.make("web")];
     if (web === undefined) throw new Error("web service missing");
     expect(web.image).toBe("node:20");
-    expect(web.ports).toEqual(["3000:3000"]);
+    expect(web.ports).toEqual([{ target: 3000, published: 3000, protocol: "tcp" }]);
     expect(web.environment).toEqual({ NODE_ENV: "development" });
-    expect(web.volumes).toEqual(["./src:/app"]);
+    expect(web.volumes).toEqual([
+      { type: "bind", source: "./src", target: "/app", readOnly: false, createHostPath: true },
+    ]);
     expect(web.command).toBe("npm start");
     expect(web.dependsOn).toEqual([{ service: "db" }]);
   });
@@ -210,6 +212,76 @@ describe("LandofileShape (MVP)", () => {
     const fields = Object.keys(ServiceConfig.fields);
     for (const key of MVP_COMPOSE_SUBSET) {
       expect(fields).toContain(key);
+    }
+  });
+
+  test("ServiceConfig ports, expose, and volumes round-trip through encode", () => {
+    const decoded = Schema.decodeUnknownSync(ServiceConfig)(
+      {
+        ports: [
+          "8080:80",
+          {
+            target: 443,
+            published: "8443",
+            host_ip: "127.0.0.1",
+            protocol: "tcp",
+            name: "https",
+            app_protocol: "https",
+          },
+        ],
+        expose: ["3000-3001", 9229],
+        volumes: [
+          "./src:/app:ro",
+          {
+            type: "volume",
+            source: "cache",
+            target: "/cache",
+            read_only: true,
+            volume: { subpath: "npm" },
+          },
+        ],
+      },
+      { onExcessProperty: "error" },
+    );
+
+    const encoded = Schema.encodeSync(ServiceConfig)(decoded);
+
+    for (const entry of encoded.ports ?? []) {
+      expect(typeof entry).toBe("object");
+      expect(Object.getPrototypeOf(entry)).toBe(Object.prototype);
+    }
+    for (const entry of encoded.volumes ?? []) {
+      expect(typeof entry).toBe("object");
+      expect(Object.getPrototypeOf(entry)).toBe(Object.prototype);
+    }
+    expect(Schema.decodeUnknownSync(ServiceConfig)(encoded)).toEqual(decoded);
+  });
+
+  test("ServiceConfig rejects Compose keys rejected in the disposition matrix", () => {
+    const rejectedFields = [
+      {
+        service: { ports: [{ target: 80, mode: "host" }] },
+        propertyPath: "services.web.ports.0.mode",
+      },
+      {
+        service: {
+          volumes: [{ type: "bind", source: ".", target: "/a", consistency: "cached" }],
+        },
+        propertyPath: "services.web.volumes.0.consistency",
+      },
+    ] as const;
+
+    for (const { service, propertyPath } of rejectedFields) {
+      const result = Schema.decodeUnknownEither(LandofileShape)(
+        { name: "myapp", services: { web: service } },
+        { onExcessProperty: "error" },
+      );
+
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+        expect(issues.some((row) => row.path.join(".") === propertyPath)).toBe(true);
+      }
     }
   });
 
@@ -366,31 +438,34 @@ describe("GlobalConfig (MVP)", () => {
 });
 
 describe("ServiceConfig — ports numeric coercion (bugbot PR#28 finding 2)", () => {
-  test('decodes ports: [8080] (bare integer) as ["8080"]', () => {
+  test("decodes ports: [8080] (bare integer) as a canonical target", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { web: { image: "node:20", ports: [8080] } },
     });
     const web = decoded.services?.[ServiceName.make("web")];
-    expect(web?.ports).toEqual(["8080"]);
+    expect(web?.ports).toEqual([{ target: 8080, protocol: "tcp" }]);
   });
 
-  test('decodes ports: ["8080:80"] (string mapping) unchanged', () => {
+  test('decodes ports: ["8080:80"] (string mapping) as a canonical published port', () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { web: { image: "node:20", ports: ["8080:80"] } },
     });
     const web = decoded.services?.[ServiceName.make("web")];
-    expect(web?.ports).toEqual(["8080:80"]);
+    expect(web?.ports).toEqual([{ target: 80, published: 8080, protocol: "tcp" }]);
   });
 
-  test('decodes ports: [8080, "9000:90"] (mixed numeric + string) as ["8080", "9000:90"]', () => {
+  test("decodes mixed numeric and string ports as canonical entries", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { web: { image: "node:20", ports: [8080, "9000:90"] } },
     });
     const web = decoded.services?.[ServiceName.make("web")];
-    expect(web?.ports).toEqual(["8080", "9000:90"]);
+    expect(web?.ports).toEqual([
+      { target: 8080, protocol: "tcp" },
+      { target: 90, published: 9000, protocol: "tcp" },
+    ]);
   });
 });
 

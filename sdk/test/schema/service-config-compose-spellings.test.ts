@@ -173,7 +173,28 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
     });
   });
 
+  test("preserves canonical ports and volumes with default decode options", () => {
+    // Given
+    const input: ServiceConfig = {
+      ports: [{ target: 80, hostIp: "127.0.0.1", protocol: "tcp", appProtocol: "http" }],
+      volumes: [
+        { type: "volume", source: "data", target: "/var/lib/data", readOnly: true, subpath: "app" },
+        { type: "bind", source: "./src", target: "/app", readOnly: true, createHostPath: false },
+      ],
+    };
+
+    // When
+    const decoded = decodeService(input);
+
+    // Then
+    expect(decoded).toEqual(input);
+  });
+
   describe("Compose cross-key spellings via Landofile boundary (Lando key wins)", () => {
+    test("expose is accepted through the ServiceConfigInput and ServiceConfigDecode authoring boundary", () => {
+      expect(decodeAuthored({ expose: ["3000-3001", 9229] }).expose).toEqual([3000, 3001, 9229]);
+    });
+
     test("working_dir decodes to workingDirectory", () => {
       expect(decodeAuthored({ working_dir: "/app" }).workingDirectory).toBe(PortablePath.make("/app"));
     });

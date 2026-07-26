@@ -4,7 +4,7 @@ import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
 import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import { parsePublishedPort, publicationFor } from "./_port-helpers.ts";
+import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
 
 export const LANDO_FEATURE_ID = "service-lando.lando" as const;
 export const LANDO_FEATURE_PRIORITY = 600;
@@ -41,14 +41,8 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  for (const portEntry of service.ports ?? []) {
-    const parsed = parsePublishedPort(portEntry);
-    ctx.addEndpoint({
-      _tag: "published",
-      port: parsed.port,
-      protocol: parsed.protocol,
-      publication: publicationFor(parsed),
-    });
+  for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
+    ctx.addEndpoint(endpoint);
   }
 
   for (const dependency of service.dependsOn ?? []) {

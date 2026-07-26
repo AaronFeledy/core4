@@ -99,6 +99,10 @@
                 ],
                 "type": "string"
               },
+              "appProtocol": {
+                "description": "Optional application-layer protocol metadata.",
+                "type": "string"
+              },
               "materialization": {
                 "additionalProperties": false,
                 "properties": {

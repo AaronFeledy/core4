@@ -309,6 +309,10 @@
                     ],
                     "type": "string"
                   },
+                  "appProtocol": {
+                    "description": "Optional application-layer protocol metadata.",
+                    "type": "string"
+                  },
                   "name": {
                     "description": "Optional endpoint name.",
                     "type": "string"
@@ -435,6 +439,19 @@
               "type": "array"
             }
           ]
+        },
+        "expose": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "type": "array"
         },
         "framework": {
           "type": "string"
@@ -617,6 +634,122 @@
               },
               {
                 "type": "number"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "app_protocol": {
+                    "type": "string"
+                  },
+                  "appProtocol": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "host_ip": {
+                    "format": "ip",
+                    "type": "string"
+                  },
+                  "hostIp": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "mode": {
+                    "$id": "/schemas/never",
+                    "description": "Compose ports.mode is unsupported.",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "enum": [
+                      "tcp",
+                      "udp"
+                    ],
+                    "type": "string"
+                  },
+                  "published": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "number"
+                      }
+                    ]
+                  },
+                  "target": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "app_protocol": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "appProtocol": {
+                    "type": "string"
+                  },
+                  "host_ip": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "hostIp": {
+                    "format": "ip",
+                    "type": "string"
+                  },
+                  "mode": {
+                    "$id": "/schemas/never",
+                    "description": "Compose ports.mode is unsupported.",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "protocol": {
+                    "enum": [
+                      "tcp",
+                      "udp"
+                    ],
+                    "type": "string"
+                  },
+                  "published": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  },
+                  "target": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "target",
+                  "protocol"
+                ],
+                "type": "object"
               }
             ]
           },
@@ -728,7 +861,206 @@
         },
         "volumes": {
           "items": {
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "bind": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "create_host_path": {
+                        "type": "boolean"
+                      },
+                      "propagation": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "recursive": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "selinux": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "consistency": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "createHostPath": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "image": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "read_only": {
+                    "type": "boolean"
+                  },
+                  "readOnly": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "subpath": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "tmpfs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mode": {
+                        "type": "number"
+                      },
+                      "size": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "type": {
+                    "enum": [
+                      "bind",
+                      "volume",
+                      "tmpfs"
+                    ],
+                    "type": "string"
+                  },
+                  "volume": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "labels": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "nocopy": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "subpath": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "bind": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "consistency": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "createHostPath": {
+                    "type": "boolean"
+                  },
+                  "image": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "read_only": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "subpath": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "tmpfs": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "mode": {
+                        "type": "number"
+                      },
+                      "size": {
+                        "anyOf": [
+                          {
+                            "type": "number"
+                          },
+                          {
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  "type": {
+                    "enum": [
+                      "bind",
+                      "volume",
+                      "tmpfs"
+                    ],
+                    "type": "string"
+                  },
+                  "volume": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  }
+                },
+                "required": [
+                  "type",
+                  "target",
+                  "readOnly"
+                ],
+                "type": "object"
+              }
+            ]
           },
           "type": "array"
         },
