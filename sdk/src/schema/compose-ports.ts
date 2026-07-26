@@ -6,6 +6,7 @@ import { PortNumber } from "./primitives.ts";
 // ==== Canonical Compose port entries (Compose Specification: services.ports / services.expose) ====
 
 const PortProtocol = Schema.Literal("tcp", "udp");
+const Forbidden = Schema.optional(Schema.Never);
 
 export const ComposePortEntry = Schema.Struct({
   target: PortNumber,
@@ -24,7 +25,14 @@ const ComposePortLongInput = Schema.Struct({
   protocol: Schema.optional(PortProtocol),
   name: Schema.optional(Schema.String),
   app_protocol: Schema.optional(Schema.String),
+  hostIp: Forbidden,
+  appProtocol: Forbidden,
 });
+
+const ComposePortCanonicalInput = Schema.extend(
+  ComposePortEntry,
+  Schema.Struct({ host_ip: Forbidden, app_protocol: Forbidden }),
+);
 
 const decodePort = (value: string | number): PortNumber | undefined => {
   const numeric = typeof value === "number" ? value : Number(value);
@@ -113,7 +121,12 @@ const parseShortPort = (value: string): Either.Either<ReadonlyArray<ComposePortE
 
 // ==== Compose ports field — normalize short and long authoring forms ====
 
-const ComposePortInput = Schema.Union(Schema.String, Schema.Number, ComposePortLongInput, ComposePortEntry);
+const ComposePortInput = Schema.Union(
+  Schema.String,
+  Schema.Number,
+  ComposePortLongInput,
+  ComposePortCanonicalInput,
+);
 
 export const ComposePortsField = Schema.transformOrFail(
   Schema.Array(ComposePortInput),
@@ -137,10 +150,6 @@ export const ComposePortsField = Schema.transformOrFail(
           entries.push({ target, protocol: "tcp" });
           continue;
         }
-        if ("hostIp" in entry || "appProtocol" in entry) {
-          entries.push(entry);
-          continue;
-        }
         if (typeof entry.published === "string" && entry.published.includes("-")) {
           return fail(entry.published, "Published port ranges in long form must enumerate scalar entries.");
         }
@@ -148,8 +157,8 @@ export const ComposePortsField = Schema.transformOrFail(
         if (entry.published !== undefined && published === undefined) {
           return fail(entry.published, "Expected a published port number from 1 through 65535.");
         }
-        const hostIp = "host_ip" in entry ? entry.host_ip : undefined;
-        const appProtocol = "app_protocol" in entry ? entry.app_protocol : undefined;
+        const hostIp = entry.hostIp ?? entry.host_ip;
+        const appProtocol = entry.appProtocol ?? entry.app_protocol;
         entries.push({
           target: entry.target,
           ...(published === undefined ? {} : { published }),

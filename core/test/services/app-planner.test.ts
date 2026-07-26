@@ -1880,6 +1880,49 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("requires the host-port capability for a long-form Compose published port", async () => {
+    await withTempCwd(async () => {
+      const landofile: LandofileShape = {
+        name: "myapp",
+        runtime: 4,
+        services: {
+          [ServiceName.make("web")]: {
+            type: "compose",
+            image: "nginx:alpine",
+            ports: [{ target: 80, published: 8080, hostIp: "127.0.0.1", protocol: "tcp" }],
+          },
+        },
+      };
+
+      const exit = await planExit(landofile, {
+        ...providerLandoCapabilities,
+        hostPortPublish: "none",
+      });
+
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(PublicationUnsupportedError);
+      expect(failure).toMatchObject({
+        _tag: "PublicationUnsupportedError",
+        service: "web",
+        capability: "hostPortPublish",
+      });
+
+      // Proves the failure above came from a genuinely published endpoint, not a vacuous pass.
+      const appPlan = await plan(landofile, {
+        ...providerLandoCapabilities,
+        hostPortPublish: "native",
+      });
+      expect(appPlan.services[ServiceName.make("web")]?.endpoints).toEqual([
+        {
+          _tag: "published",
+          port: 80,
+          protocol: "tcp",
+          publication: { bindAddress: "127.0.0.1", hostPort: 8080 },
+        },
+      ]);
+    });
+  });
+
   test("does not require host port publishing for unix-socket endpoints", async () => {
     await withTempCwd(async () => {
       const appPlan = await planWithCustomRegistry(

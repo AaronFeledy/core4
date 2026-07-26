@@ -180,11 +180,24 @@ describe("ComposePortsField", () => {
 
     // Then
     expect(decodedAgain).toEqual(decoded);
+    expect(Schema.decodeUnknownSync(ComposePortsField)(decoded)).toEqual(decoded);
   });
 
   test("rejects a mixed Compose and canonical long-form object", () => {
-    // Given / When / Then
-    expectPortFailure({ target: 80, host_ip: "127.0.0.1", appProtocol: "http" }, "appProtocol");
+    // Given
+    const input = [{ target: 80, host_ip: "127.0.0.1", appProtocol: "http" }];
+
+    // When
+    const defaultResult = Schema.decodeUnknownEither(ComposePortsField)(input);
+    const strictResult = Schema.decodeUnknownEither(ComposePortsField)(input, {
+      onExcessProperty: "error",
+    });
+
+    // Then
+    for (const result of [defaultResult, strictResult]) {
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) expect(String(result.left)).toContain("appProtocol");
+    }
   });
 
   test("encodes canonical ports as lawful long objects and round-trips", () => {

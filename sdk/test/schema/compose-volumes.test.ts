@@ -229,6 +229,7 @@ describe("ComposeVolumesField", () => {
 
     // Then
     expect(decodedAgain).toEqual(decoded);
+    expect(Schema.decodeUnknownSync(ComposeVolumesField)(decoded)).toEqual(decoded);
   });
 
   test("rejects a mixed Compose and canonical long-form object", () => {
@@ -236,11 +237,14 @@ describe("ComposeVolumesField", () => {
     const input = [{ type: "bind", source: "./src", target: "/app", read_only: true, createHostPath: false }];
 
     // When
-    const result = decodeVolumesEither(input);
+    const defaultResult = Schema.decodeUnknownEither(ComposeVolumesField)(input);
+    const strictResult = decodeVolumesEither(input);
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
-    if (Either.isLeft(result)) expect(String(result.left)).toContain("createHostPath");
+    for (const result of [defaultResult, strictResult]) {
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) expect(String(result.left)).toContain("createHostPath");
+    }
   });
 
   test("encodes every entry as a nested long object and round-trips lawfully", () => {

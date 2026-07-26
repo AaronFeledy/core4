@@ -637,9 +637,19 @@
                   "app_protocol": {
                     "type": "string"
                   },
+                  "appProtocol": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "host_ip": {
                     "format": "ip",
                     "type": "string"
+                  },
+                  "hostIp": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
                   },
                   "name": {
                     "type": "string"
@@ -677,8 +687,18 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "app_protocol": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "appProtocol": {
                     "type": "string"
+                  },
+                  "host_ip": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
                   },
                   "hostIp": {
                     "format": "ip",
@@ -842,11 +862,26 @@
                     "required": [],
                     "type": "object"
                   },
+                  "createHostPath": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "read_only": {
                     "type": "boolean"
                   },
+                  "readOnly": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "source": {
                     "type": "string"
+                  },
+                  "subpath": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
                   },
                   "target": {
                     "type": "string"
@@ -898,8 +933,18 @@
               {
                 "additionalProperties": false,
                 "properties": {
+                  "bind": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
+                  },
                   "createHostPath": {
                     "type": "boolean"
+                  },
+                  "read_only": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
                   },
                   "readOnly": {
                     "type": "boolean"
@@ -940,6 +985,11 @@
                       "tmpfs"
                     ],
                     "type": "string"
+                  },
+                  "volume": {
+                    "$id": "/schemas/never",
+                    "not": {},
+                    "title": "never"
                   }
                 },
                 "required": [

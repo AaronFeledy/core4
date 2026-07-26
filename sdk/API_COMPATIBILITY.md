@@ -198,6 +198,7 @@
 - `ManagedFilePlan`
 - `ManagedFileResult`
 - `JSON_SCHEMA_NAMES`
+- `parseShortVolume`
 - `publicSchemaMetadataIndex`
 - `publicSchemaRegistry`
 - `renderPublicSchemaReferencePages`
