@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { Schema } from "effect";
 
-import { LandofileShape, ServiceName } from "@lando/sdk/schema";
+import { LandofileShape, PortablePath, ServiceName } from "@lando/sdk/schema";
 
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -47,7 +47,7 @@ test("resolves an authored relative bind mount into the Compose service plan", a
     {
       type: "bind",
       source: "/srv/apps/myapp/proxy-traefik/dynamic",
-      target: "/etc/traefik/dynamic",
+      target: PortablePath.make("/etc/traefik/dynamic"),
       readOnly: false,
       realization: "passthrough",
     },
@@ -84,7 +84,7 @@ test("accepts a Windows drive-letter bind mount short syntax", async () => {
     {
       type: "bind",
       source: "C:\\host\\dynamic",
-      target: "/etc/traefik/dynamic",
+      target: PortablePath.make("/etc/traefik/dynamic"),
       readOnly: true,
       realization: "passthrough",
     },
@@ -121,7 +121,7 @@ test("accepts a forward-slash Windows drive-letter bind mount short syntax", asy
     {
       type: "bind",
       source: "C:/host/dynamic",
-      target: "/etc/traefik/dynamic",
+      target: PortablePath.make("/etc/traefik/dynamic"),
       readOnly: false,
       realization: "passthrough",
     },

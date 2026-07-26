@@ -137,9 +137,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   );
   const occupied = occupiedTargets(service, APP_MOUNT_TARGET);
   const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
-  const preservedVolumes: Array<NonNullable<ClassifiedComposeVolume["extension"]>> = [];
   for (const volume of composeVolumes.filter((entry) => !occupied.has(entry.target))) {
-    if (volume.extension !== undefined) preservedVolumes.push(volume.extension);
     switch (volume._tag) {
       case "mount":
         ctx.addMount({
@@ -196,14 +194,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     const existing = service.providers?.compose;
     ctx.addExtension("compose", {
       ...(isRecord(existing) ? existing : {}),
-      ...(preservedVolumes.length === 0 ? {} : { volumes: preservedVolumes }),
       tmpfs: tmpfsEntries,
-    });
-  } else if (preservedVolumes.length > 0) {
-    const existing = service.providers?.compose;
-    ctx.addExtension("compose", {
-      ...(isRecord(existing) ? existing : {}),
-      volumes: preservedVolumes,
     });
   }
 };

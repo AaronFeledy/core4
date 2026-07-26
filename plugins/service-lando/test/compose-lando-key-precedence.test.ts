@@ -63,7 +63,7 @@ test("suppresses Compose storage at an authored Lando storage target", async () 
     image: "alpine:3",
     appMount: false,
     storage: [{ store: "s", target: "/y" }],
-    volumes: [{ type: "volume", source: "v", target: "/y" }],
+    volumes: [{ type: "volume", source: "v", target: "/y", volume: { subpath: "suppressed" } }],
   };
 
   // When
@@ -72,6 +72,7 @@ test("suppresses Compose storage at an authored Lando storage target", async () 
   // Then
   expect(plan.storage).toEqual([]);
   expect(plan.storage.some((entry) => entry.store === "us469-v")).toBe(false);
+  expect(plan.extensions?.compose).toBeUndefined();
 });
 
 test("suppresses a Compose volume at the active app mount target", async () => {

@@ -5,15 +5,6 @@ import { type ComposeVolumeEntry, type ServiceConfig, parseShortVolume } from "@
 
 const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
 
-interface ComposeVolumeExtensionEntry {
-  readonly type: "bind" | "volume";
-  readonly source?: string;
-  readonly target: string;
-  readonly readOnly: boolean;
-  readonly subpath?: string;
-  readonly createHostPath?: boolean;
-}
-
 interface ComposeTmpfsEntry {
   readonly target: string;
   readonly read_only?: true;
@@ -30,20 +21,23 @@ export type ClassifiedComposeVolume =
         readonly source: string;
         readonly target: string;
         readonly readOnly: boolean;
+        readonly createHostPath?: boolean;
       };
-      readonly extension?: ComposeVolumeExtensionEntry;
     }
   | {
       readonly _tag: "storage";
       readonly target: string;
-      readonly storage: { readonly store: string; readonly target: string; readonly readOnly: boolean };
-      readonly extension?: ComposeVolumeExtensionEntry;
+      readonly storage: {
+        readonly store: string;
+        readonly target: string;
+        readonly readOnly: boolean;
+        readonly subpath?: string;
+      };
     }
   | {
       readonly _tag: "tmpfs";
       readonly target: string;
       readonly tmpfs: ComposeTmpfsEntry;
-      readonly extension?: undefined;
     };
 
 export const resolveBindSource = (source: string, appRoot: string): string => {
@@ -73,18 +67,6 @@ export const occupiedTargets = (service: ServiceConfig, appMountTarget: string):
   return targets;
 };
 
-const extensionFor = (entry: ComposeVolumeEntry, source?: string): ComposeVolumeExtensionEntry | undefined =>
-  entry.subpath === undefined && entry.createHostPath === undefined
-    ? undefined
-    : {
-        type: entry.type === "bind" ? "bind" : "volume",
-        ...(source === undefined ? {} : { source }),
-        target: entry.target,
-        readOnly: entry.readOnly,
-        ...(entry.subpath === undefined ? {} : { subpath: entry.subpath }),
-        ...(entry.createHostPath === undefined ? {} : { createHostPath: entry.createHostPath }),
-      };
-
 export const classifyComposeVolume = (
   entry: ComposeVolumeEntry,
   context: { readonly appRoot: string; readonly appName: string; readonly serviceName: string },
@@ -94,12 +76,16 @@ export const classifyComposeVolume = (
       if (entry.source === undefined)
         throw new Error(`Compose bind mount at "${entry.target}" requires a source.`);
       const source = resolveBindSource(entry.source, context.appRoot);
-      const extension = extensionFor(entry, source);
       return {
         _tag: "mount",
         target: entry.target,
-        mount: { type: "bind", source, target: entry.target, readOnly: entry.readOnly },
-        ...(extension === undefined ? {} : { extension }),
+        mount: {
+          type: "bind",
+          source,
+          target: entry.target,
+          readOnly: entry.readOnly,
+          ...(entry.createHostPath === false ? { createHostPath: false } : {}),
+        },
       };
     }
     case "volume": {
@@ -107,12 +93,15 @@ export const classifyComposeVolume = (
         entry.source === undefined
           ? `${context.appName}-${context.serviceName}-${kebabTarget(entry.target)}`
           : `${context.appName}-${entry.source}`;
-      const extension = extensionFor(entry, entry.source);
       return {
         _tag: "storage",
         target: entry.target,
-        storage: { store, target: entry.target, readOnly: entry.readOnly },
-        ...(extension === undefined ? {} : { extension }),
+        storage: {
+          store,
+          target: entry.target,
+          readOnly: entry.readOnly,
+          ...(entry.subpath === undefined ? {} : { subpath: entry.subpath }),
+        },
       };
     }
     case "tmpfs":

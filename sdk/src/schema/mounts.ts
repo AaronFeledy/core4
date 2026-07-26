@@ -36,6 +36,8 @@ export const MountPlan = Schema.Struct({
   target: PortablePath,
   /** Read-only? */
   readOnly: Schema.Boolean,
+  /** For bind mounts, whether the provider may create a missing host source path. */
+  createHostPath: Schema.optional(Schema.Boolean),
   /** Realization strategy (same semantics as AppMountPlan.realization). */
   realization: Schema.Literal("passthrough", "accelerated"),
 });
@@ -75,5 +77,7 @@ export const DataStoreMountPlan = Schema.Struct({
   target: PortablePath,
   /** Read-only? */
   readOnly: Schema.Boolean,
+  /** Optional path within the data store to mount instead of its root. */
+  subpath: Schema.optional(Schema.String),
 });
 export type DataStoreMountPlan = typeof DataStoreMountPlan.Type;

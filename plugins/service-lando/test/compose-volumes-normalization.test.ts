@@ -49,6 +49,40 @@ test("normalizes a Compose bind volume into a resolved mount", async () => {
     },
   ]);
   expect(plan.storage).toEqual([]);
+  expect(plan.extensions?.compose).toBeUndefined();
+});
+
+test("carries an explicit false bind.create_host_path into mount intent", async () => {
+  // Given
+  const service = {
+    type: "compose",
+    image: "alpine:3",
+    appMount: false,
+    volumes: [
+      {
+        type: "bind",
+        source: "./src",
+        target: "/app2",
+        bind: { create_host_path: false },
+      },
+    ],
+  };
+
+  // When
+  const plan = await planService(service);
+
+  // Then
+  expect(plan.mounts.map((mount) => ({ ...mount, target: String(mount.target) }))).toEqual([
+    {
+      type: "bind",
+      source: resolve(appRoot, "src"),
+      target: "/app2",
+      readOnly: false,
+      createHostPath: false,
+      realization: "passthrough",
+    },
+  ]);
+  expect(plan.extensions?.compose).toBeUndefined();
 });
 
 test("normalizes a named Compose volume into app-scoped storage", async () => {
@@ -62,6 +96,26 @@ test("normalizes a named Compose volume into app-scoped storage", async () => {
   expect(plan.storage.map((storage) => ({ ...storage, target: String(storage.target) }))).toEqual([
     { store: "us469-db", target: "/data", readOnly: false },
   ]);
+  expect(plan.extensions?.compose).toBeUndefined();
+});
+
+test("carries volume.subpath into storage intent", async () => {
+  // Given
+  const service = {
+    type: "compose",
+    image: "alpine:3",
+    appMount: false,
+    volumes: [{ type: "volume", source: "db", target: "/data", volume: { subpath: "tenant" } }],
+  };
+
+  // When
+  const plan = await planService(service);
+
+  // Then
+  expect(plan.storage.map((storage) => ({ ...storage, target: String(storage.target) }))).toEqual([
+    { store: "us469-db", target: "/data", readOnly: false, subpath: "tenant" },
+  ]);
+  expect(plan.extensions?.compose).toBeUndefined();
 });
 
 test("assigns a deterministic store to an anonymous Compose volume", async () => {

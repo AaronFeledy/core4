@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
 import { AppPlanner } from "@lando/core/services";
-import { type LandofileShape, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { type LandofileShape, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
 
 import { PluginRegistryLive } from "../../../core/src/plugins/registry.ts";
 import { AppPlannerLive } from "../../../core/src/services/planner.ts";
@@ -107,6 +107,58 @@ describe("compose passthrough through provider-lando and provider-docker", () =>
       scope: "service",
       kind: "data",
     });
+  });
+
+  test("provider-neutral plans retain Compose bind creation and volume subpath intent", async () => {
+    // Given
+    const landofile: LandofileShape = {
+      name: "composeapp",
+      runtime: 4,
+      services: {
+        [ServiceName.make("worker")]: {
+          type: "compose",
+          image: "ghcr.io/example/worker:latest",
+          appMount: false,
+          volumes: [
+            {
+              type: "bind",
+              source: "./existing",
+              target: "/existing",
+              readOnly: false,
+              createHostPath: false,
+            },
+            {
+              type: "volume",
+              source: "worker-state",
+              target: "/var/state",
+              readOnly: false,
+              subpath: "tenant",
+            },
+          ],
+        },
+      },
+    };
+
+    // When
+    const plan = await planFor(landofile, "lando");
+
+    // Then
+    const worker = plan.services[ServiceName.make("worker")];
+    expect(worker?.mounts).toContainEqual({
+      type: "bind",
+      source: expect.stringContaining("/existing"),
+      target: PortablePath.make("/existing"),
+      readOnly: false,
+      createHostPath: false,
+      realization: "passthrough",
+    });
+    expect(worker?.storage).toContainEqual({
+      store: "composeapp-worker-state",
+      target: PortablePath.make("/var/state"),
+      readOnly: false,
+      subpath: "tenant",
+    });
+    expect(worker?.extensions.compose).toBeUndefined();
   });
 
   test("provider extensions in service.providers.<id> flow through to ServicePlan.extensions", async () => {
