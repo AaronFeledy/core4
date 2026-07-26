@@ -9,7 +9,7 @@ import { type AppStep, appStepBatches } from "./build-app-plan.ts";
  * Internal app-build DAG vocabulary.
  *
  * A `step` node is a real build step the user sees in the task tree. A `gate`
- * node is the synthetic §6.13 predecessor a `depends_on` condition resolves to
+ * node is the synthetic predecessor a `depends_on` condition resolves to
  * (`<svc>:running` / `<svc>:healthy` / `<svc>:completed`). Gates are runner-internal:
  * they never reach the task tree, the step counts, or any build-step event.
  */

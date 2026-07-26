@@ -1,5 +1,6 @@
 import { availableParallelism } from "node:os";
 
+import { gateId } from "@lando/container-runtime/dependency-gates";
 import type { ScheduleOutcome } from "@lando/container-runtime/dependency-schedule";
 import { runDependencySchedule } from "@lando/container-runtime/dependency-schedule";
 import { Cause, DateTime, Effect, Exit } from "effect";
@@ -238,17 +239,11 @@ export const runAppBuild = (input: AppBuildInput, options: BuildAppOptions = {})
           if (node.value._tag === "gate") return runGate(input, node.value, options.signal);
           const labels = blockedBy.map((id) => {
             const blockedNode = nodeById.get(id);
-            return blockedNode?._tag === "gate"
-              ? `${String(blockedNode.service)}:${
-                  blockedNode.condition === "service_started"
-                    ? "running"
-                    : blockedNode.condition === "service_healthy"
-                      ? "healthy"
-                      : "completed"
-                }`
-              : blockedNode?._tag === "step"
-                ? blockedNode.appStep.step.id
-                : id;
+            if (blockedNode?._tag === "gate") {
+              return gateId(String(blockedNode.service), blockedNode.condition);
+            }
+            if (blockedNode?._tag === "step") return blockedNode.appStep.step.id;
+            return id;
           });
           return runStep(node.value.appStep, labels);
         },
