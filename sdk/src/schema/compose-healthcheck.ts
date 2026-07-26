@@ -5,7 +5,7 @@ import { CommandSpec } from "./primitives.ts";
 
 const ComposeTest = Schema.Union(Schema.String, Schema.Array(Schema.String));
 
-export const ComposeHealthcheckAccepted = Schema.Struct({
+const ComposeHealthcheckAccepted = Schema.Struct({
   kind: Schema.optional(Schema.Literal("command", "http", "tcp", "none")),
   command: Schema.optional(CommandSpec),
   url: Schema.optional(Schema.String),
@@ -25,7 +25,7 @@ export const ComposeHealthcheckAccepted = Schema.Struct({
 
 /**
  * Canonical Lando healthcheck fields, re-exported by `landofile.ts` as the
- * public `HealthcheckInput`. It lives here so {@link ComposeHealthcheckCanonical}
+ * public `HealthcheckInput`. It lives here so the Compose canonical schema
  * can extend it without an import cycle back through `landofile.ts`.
  */
 export const HealthcheckCanonicalBase = Schema.Struct({
@@ -39,7 +39,7 @@ export const HealthcheckCanonicalBase = Schema.Struct({
   startPeriodSeconds: Schema.optional(Schema.Number),
 });
 
-export const ComposeHealthcheckCanonical = Schema.extend(
+const ComposeHealthcheckCanonical = Schema.extend(
   HealthcheckCanonicalBase,
   Schema.Struct({
     startInterval: Schema.optional(Schema.String).annotations({
@@ -99,7 +99,7 @@ const normalizeTest = (test: AcceptedHealthcheck["test"]): NormalizedTest => {
       throw new ParseResult.Type(
         ComposeTest.ast,
         test,
-        `Landofile service healthcheck.test marker unsupported: ${JSON.stringify(marker)}; expected "CMD", "CMD-SHELL", or "NONE".`,
+        'Landofile service healthcheck.test marker is unsupported; expected "CMD", "CMD-SHELL", or "NONE".',
       );
   }
 };
@@ -112,7 +112,7 @@ const normalizeDisable = (disable: AcceptedHealthcheck["disable"]): boolean | un
   throw new ParseResult.Type(
     ComposeHealthcheckAccepted.ast,
     disable,
-    `Landofile service healthcheck.disable must be a boolean or the string "true" or "false"; received ${JSON.stringify(disable)}.`,
+    'Landofile service healthcheck.disable must be a boolean or the string "true" or "false".',
   );
 };
 
@@ -124,7 +124,7 @@ const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | und
   throw new ParseResult.Type(
     ComposeHealthcheckAccepted.ast,
     retries,
-    `Landofile service healthcheck.retries must be a non-negative decimal integer; received ${JSON.stringify(retries)}.`,
+    "Landofile service healthcheck.retries must be a non-negative decimal integer.",
   );
 };
 

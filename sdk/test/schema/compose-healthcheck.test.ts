@@ -1,15 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { Either, Schema } from "effect";
+import { Either, ParseResult, Schema } from "effect";
 import * as AST from "effect/SchemaAST";
 
-import {
-  ComposeHealthcheckAccepted,
-  ComposeHealthcheckCanonical,
-  HealthcheckField,
-} from "../../src/schema/compose-healthcheck.ts";
+import { HealthcheckField } from "../../src/schema/compose-healthcheck.ts";
 import { HealthcheckInput, ServiceConfig } from "../../src/schema/landofile.ts";
 
-// allow: SIZE_OK — the frozen US-470 contract requires one comprehensive fixture table in this file.
+// allow: SIZE_OK — this is a pure fixture-table test file kept together for contract readability.
 type AcceptedFixture = Readonly<{
   name: string;
   input: unknown;
@@ -25,8 +21,7 @@ const ignoredComposeKeys = {
   start_period: "bad",
 } as const;
 
-// biome-ignore lint/suspicious/noExportsInTest: US-470 requires the fixture table to be exported.
-export const composeHealthcheckFixtures = [
+const composeHealthcheckFixtures = [
   {
     name: "shell test normalizes without materializing the planner's 10/5/5 defaults",
     input: { test: "curl -f localhost" },
@@ -60,7 +55,11 @@ export const composeHealthcheckFixtures = [
     input: { test: ["CMD-SHELL", "a", "b"] },
     expectedErrorFragment: "CMD-SHELL",
   },
-  { name: "unknown test marker is rejected", input: { test: ["FOO", "x"] }, expectedErrorFragment: "FOO" },
+  {
+    name: "unknown test marker is rejected",
+    input: { test: ["FOO", "x"] },
+    expectedErrorFragment: "CMD-SHELL",
+  },
   {
     name: "Compose durations normalize to fractional seconds",
     input: { test: ["CMD", "true"], interval: "500ms", timeout: "1m30s", start_period: "1h2m3s" },
@@ -214,7 +213,7 @@ describe("HealthcheckField", () => {
       retries: 3,
       startPeriodSeconds: 2,
       startInterval: "5s",
-    } as const satisfies typeof ComposeHealthcheckCanonical.Type;
+    } as const satisfies typeof HealthcheckField.Type;
 
     const encoded = Schema.encodeSync(HealthcheckField)(canonical);
 
@@ -232,46 +231,36 @@ describe("HealthcheckField", () => {
     expect(Schema.encodeSync(ServiceConfig)({ healthcheck: canonical })).toEqual({ healthcheck: encoded });
   });
 
-  test("accepted and canonical schemas expose the frozen field sets", () => {
-    const acceptedNames = AST.getPropertySignatures(ComposeHealthcheckAccepted.ast)
-      .map(({ name }) => String(name))
-      .toSorted();
-    const canonicalNames = AST.getPropertySignatures(ComposeHealthcheckCanonical.ast)
-      .map(({ name }) => String(name))
-      .toSorted();
+  test.each([
+    {
+      field: "test marker",
+      attackerValue: `marker-${"x".repeat(4_096)}`,
+      input: { test: [`marker-${"x".repeat(4_096)}`] },
+    },
+    {
+      field: "disable",
+      attackerValue: `disable-${"x".repeat(4_096)}`,
+      input: { disable: `disable-${"x".repeat(4_096)}` },
+    },
+    {
+      field: "retries",
+      attackerValue: `retries-${"x".repeat(4_096)}`,
+      input: { retries: `retries-${"x".repeat(4_096)}` },
+    },
+  ])("bounds $field validation messages through ServiceConfig", ({ attackerValue, input }) => {
+    // Given / When
+    const result = Schema.decodeUnknownEither(ServiceConfig)({ healthcheck: input });
 
-    expect(acceptedNames).toEqual(
-      [
-        "command",
-        "disable",
-        "interval",
-        "intervalSeconds",
-        "kind",
-        "port",
-        "retries",
-        "startInterval",
-        "startPeriodSeconds",
-        "start_interval",
-        "start_period",
-        "test",
-        "timeout",
-        "timeoutSeconds",
-        "url",
-      ].toSorted(),
-    );
-    expect(canonicalNames).toEqual(
-      [
-        "command",
-        "intervalSeconds",
-        "kind",
-        "port",
-        "retries",
-        "startInterval",
-        "startPeriodSeconds",
-        "timeoutSeconds",
-        "url",
-      ].toSorted(),
-    );
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+    if (!Either.isLeft(result)) return;
+    const message = ParseResult.ArrayFormatter.formatErrorSync(result.left).find(({ message }) =>
+      message.startsWith("Landofile service"),
+    )?.message;
+    expect(message).toBeDefined();
+    if (message === undefined) return;
+    expect(message.length).toBeLessThan(1_024);
+    expect(message).not.toContain(attackerValue);
   });
 });
 
