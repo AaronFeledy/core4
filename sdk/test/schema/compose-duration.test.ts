@@ -21,15 +21,7 @@ const acceptedDurations = [
 ] as const;
 
 const overflowingDuration = `${"9".repeat(309)}h`;
-const rejectedDurations = [
-  { literal: "", messageLiteral: '""' },
-  { literal: "30", messageLiteral: "30" },
-  { literal: "30 seconds", messageLiteral: "30 seconds" },
-  { literal: "-5s", messageLiteral: "-5s" },
-  { literal: "5x", messageLiteral: "5x" },
-  { literal: "s", messageLiteral: "s" },
-  { literal: overflowingDuration, messageLiteral: overflowingDuration },
-] as const;
+const rejectedDurations = ["", "30", "30 seconds", "-5s", "5x", "s", overflowingDuration] as const;
 
 describe("parseComposeDuration", () => {
   for (const { literal, expected } of acceptedDurations) {
@@ -54,8 +46,8 @@ describe("parseComposeDuration", () => {
     },
   );
 
-  for (const { literal, messageLiteral } of rejectedDurations) {
-    test(`rejects ${messageLiteral} with the literal and accepted grammar in the remediation`, () => {
+  for (const literal of rejectedDurations) {
+    test(`rejects ${JSON.stringify(literal)} with the accepted grammar in the remediation`, () => {
       // Given
       let failure: unknown;
 
@@ -69,11 +61,33 @@ describe("parseComposeDuration", () => {
 
       // Then
       expect(failure).toBeInstanceOf(ParseResult.Type);
-      const message = String(failure);
-      expect(message).toContain(messageLiteral);
+      if (!(failure instanceof ParseResult.Type)) return;
+      const message = failure.message;
+      expect(message).toBeDefined();
+      if (message === undefined) return;
       expect(["30s", "1m30s", "1h2m3s"].some((example) => message.includes(example))).toBe(true);
     });
   }
+
+  test("bounds remediation for a long invalid duration", () => {
+    // Given
+    const literal = `attacker-${"x".repeat(4_096)}`;
+
+    // When
+    let failure: ParseResult.Type | undefined;
+    try {
+      parseComposeDuration(literal);
+    } catch (error) {
+      if (error instanceof ParseResult.Type) failure = error;
+      else throw error;
+    }
+
+    // Then
+    expect(failure?.message).toBeDefined();
+    if (failure?.message === undefined) return;
+    expect(failure.message.length).toBeLessThan(512);
+    expect(failure.message).not.toContain(literal);
+  });
 
   test("rejects a long invalid scalar without rescanning every suffix", () => {
     // Given
@@ -82,15 +96,4 @@ describe("parseComposeDuration", () => {
     // When / Then
     expect(() => parseComposeDuration(literal)).toThrow(ParseResult.Type);
   });
-});
-
-describe("Landofile remediation surfacing", () => {
-  test.each([" 30 seconds", "-5s", "5x", ""])(
-    "prefixes %p failures so core's Landofile formatter surfaces the remediation",
-    (literal) => {
-      // core/src/landofile/service.ts only reports a nested issue's message when it
-      // starts with this prefix; otherwise the user sees the bare key path instead.
-      expect(() => parseComposeDuration(literal)).toThrow(/^Landofile service /u);
-    },
-  );
 });

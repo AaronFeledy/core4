@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/core/errors";
-import { ServiceName } from "@lando/core/schema";
+import { PortablePath, ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 
@@ -60,7 +60,7 @@ describe("LandofileServiceLive — Compose service spellings", () => {
       expect(Exit.isSuccess(exit)).toBe(true);
       if (!Exit.isSuccess(exit)) return;
       const web = exit.value.services?.[ServiceName.make("web")];
-      expect(web?.workingDirectory).toBe("/app");
+      expect(web?.workingDirectory).toBe(PortablePath.make("/app"));
       expect(web?.dependsOn).toEqual([{ service: "database", condition: "service_healthy", restart: true }]);
       expect(web?.environment).toEqual({ NODE_ENV: "development" });
       expect(web?.labels).toEqual({ "com.example.tier": "web" });
@@ -186,9 +186,11 @@ describe("LandofileServiceLive — Compose service spellings", () => {
       expect(failure.value).toBeInstanceOf(LandofileValidationError);
       if (!(failure.value instanceof LandofileValidationError)) return;
       expect(failure.value.issues).toContain("services.web.healthcheck");
-      expect(failure.value.message).toContain(
-        "Remove unsupported keys or update the documented Landofile service schema.",
-      );
+      const issues = failure.value.issues.join("\n");
+      expect(issues).toContain("Compose duration");
+      expect(issues).toContain("30s");
+      expect(issues).toContain("1m30s");
+      expect(issues).toContain("1h2m3s");
     });
   });
 });
