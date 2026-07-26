@@ -326,7 +326,7 @@
     {
       "id": "US-390",
       "title": "app config translate detect/list/from/file flow",
-      "description": "As a migrating user, `lando config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file \u2014 not just the cwd happy path.",
+      "description": "As a migrating user, `lando app config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file \u2014 not just the cwd happy path.",
       "acceptanceCriteria": [
         "Autodetection: with no args, the command probes registered ConfigTranslators' detect surfaces against the cwd and picks the unambiguous match; ambiguity fails with a list + remediation.",
         "`--list` enumerates registered translators (id, source format) through the machine-output contract.",

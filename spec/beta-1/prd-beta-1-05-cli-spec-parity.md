@@ -49,7 +49,7 @@ Found drift:
 
 ### US-390: `app config translate` detect/list/from/file flow
 
-**Description:** As a migrating user, `lando config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file — not just the cwd happy path.
+**Description:** As a migrating user, `lando app config translate` can detect the foreign config in my working tree, list supported translators, and translate from an explicit format or file — not just the cwd happy path.
 
 **Acceptance Criteria:**
 
