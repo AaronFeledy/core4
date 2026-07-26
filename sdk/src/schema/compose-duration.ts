@@ -51,7 +51,7 @@ export const parseComposeDuration = (literal: string): number => {
     cursor = componentPattern.lastIndex;
   }
 
-  if (cursor === 0 || cursor !== value.length || !Number.isFinite(seconds)) {
+  if (cursor === 0 || !Number.isFinite(seconds)) {
     throw durationFailure(literal);
   }
   return seconds;

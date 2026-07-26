@@ -3,8 +3,7 @@ import { ParseResult } from "effect";
 
 import { parseComposeDuration } from "../../src/schema/compose-duration.ts";
 
-// Contract choice: mirror parseShortVolume with `(literal: string): number`.
-// The helper returns seconds or throws ParseResult.Type for transformOrFail callers.
+// Contract choice: mirror parseShortVolume with a throwing `(literal: string): number` helper for transformOrFail callers.
 
 const acceptedDurations = [
   { literal: "30s", expected: 30 },

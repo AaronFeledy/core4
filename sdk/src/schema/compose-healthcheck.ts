@@ -118,9 +118,9 @@ const normalizeDisable = (disable: AcceptedHealthcheck["disable"]): boolean | un
 
 const normalizeRetries = (retries: AcceptedHealthcheck["retries"]): number | undefined => {
   if (retries === undefined) return undefined;
-  const normalized =
-    typeof retries === "number" ? retries : /^[0-9]+$/.test(retries) ? Number(retries) : Number.NaN;
-  if (Number.isSafeInteger(normalized) && normalized >= 0) return normalized;
+  const normalized = Number(retries);
+  const formatIsValid = typeof retries === "number" || /^[0-9]+$/.test(retries);
+  if (formatIsValid && Number.isSafeInteger(normalized) && normalized >= 0) return normalized;
   throw new ParseResult.Type(
     ComposeHealthcheckAccepted.ast,
     retries,
