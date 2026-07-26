@@ -57,7 +57,7 @@
         "Lint passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 6.2 normalization bullets (amended). Blocked by US-466 (keys must be classified normalized in the matrix in the same change)."
     },
     {
