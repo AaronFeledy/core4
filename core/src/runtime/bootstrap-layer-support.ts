@@ -61,7 +61,6 @@ const unsupportedProviderOperation = (operation: string) =>
     providerId: "stub",
     operation,
     message: `runtime provider stub cannot ${operation}`,
-    remediation: "Select and configure a runtime provider that implements this operation.",
   });
 
 export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider> = {
