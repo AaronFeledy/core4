@@ -52,51 +52,29 @@
           ]
         },
         "build": {
-          "anyOf": [
+          "oneOf": [
             {
               "type": "string"
             },
             {
-              "patternProperties": {
-                "": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                }
-              },
-              "properties": {
-                "additional_contexts": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
+              "additionalProperties": false,
+              "anyOf": [
+                {
+                  "required": [
+                    "artifact"
                   ]
                 },
-                "args": {
-                  "anyOf": [
+                {
+                  "required": [
+                    "app"
+                  ]
+                }
+              ],
+              "properties": {
+                "app": {
+                  "oneOf": [
                     {
-                      "additionalProperties": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
+                      "type": "string"
                     },
                     {
                       "items": {
@@ -107,7 +85,7 @@
                   ]
                 },
                 "artifact": {
-                  "anyOf": [
+                  "oneOf": [
                     {
                       "type": "string"
                     },
@@ -118,14 +96,87 @@
                       "type": "array"
                     }
                   ]
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "not": {
+                    "required": [
+                      "dockerfile",
+                      "dockerfile_inline"
+                    ]
+                  }
                 },
-                "cache_from": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
+                {
+                  "not": {
+                    "required": [
+                      "dockerfile",
+                      "dockerfileInline"
+                    ]
+                  }
                 },
-                "cache_to": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
+                {
+                  "not": {
+                    "required": [
+                      "dockerfile_inline",
+                      "dockerfileInline"
+                    ]
+                  }
+                }
+              ],
+              "anyOf": [
+                {
+                  "required": [
+                    "context"
+                  ]
+                },
+                {
+                  "required": [
+                    "dockerfile"
+                  ]
+                },
+                {
+                  "required": [
+                    "dockerfile_inline"
+                  ]
+                },
+                {
+                  "required": [
+                    "dockerfileInline"
+                  ]
+                },
+                {
+                  "required": [
+                    "args"
+                  ]
+                },
+                {
+                  "required": [
+                    "target"
+                  ]
+                }
+              ],
+              "properties": {
+                "args": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "pattern": "^[^=]+=",
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
                 },
                 "context": {
                   "type": "string"
@@ -139,118 +190,10 @@
                 "dockerfileInline": {
                   "type": "string"
                 },
-                "entitlements": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "extra_hosts": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "isolation": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "labels": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "network": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "no_cache": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "no_cache_filter": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "platforms": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "privileged": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "provenance": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "pull": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "sbom": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "secrets": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "shm_size": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "ssh": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "tags": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
                 "target": {
                   "type": "string"
-                },
-                "ulimits": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
                 }
               },
-              "propertyNames": {
-                "anyOf": [
-                  {
-                    "enum": [
-                      "artifact",
-                      "app",
-                      "additional_contexts",
-                      "context",
-                      "dockerfile",
-                      "dockerfile_inline",
-                      "dockerfileInline",
-                      "args",
-                      "cache_from",
-                      "cache_to",
-                      "entitlements",
-                      "extra_hosts",
-                      "isolation",
-                      "labels",
-                      "network",
-                      "no_cache",
-                      "no_cache_filter",
-                      "platforms",
-                      "privileged",
-                      "provenance",
-                      "pull",
-                      "sbom",
-                      "secrets",
-                      "shm_size",
-                      "ssh",
-                      "tags",
-                      "target",
-                      "ulimits"
-                    ]
-                  },
-                  {
-                    "pattern": "^x-"
-                  }
-                ]
-              },
-              "required": [],
               "type": "object"
             }
           ]

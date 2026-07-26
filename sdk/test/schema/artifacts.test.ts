@@ -21,3 +21,16 @@ test("ArtifactBuildSpec still accepts spec without specInline", () => {
   });
   expect(decoded.specInline).toBeUndefined();
 });
+
+test("ArtifactBuildSpec rejects spec together with specInline", () => {
+  const input = {
+    kind: "build",
+    context: "/abs/ctx",
+    spec: "Dockerfile",
+    specInline: "FROM alpine:3.20",
+  };
+
+  for (const options of [{}, { onExcessProperty: "error" }] as const) {
+    expect(() => Schema.decodeUnknownSync(ArtifactBuildSpec)(input, options)).toThrow();
+  }
+});

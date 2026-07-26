@@ -1,15 +1,44 @@
 import { ParseResult, Schema } from "effect";
 
 import { BuildScript } from "./artifacts.ts";
-import {
-  COMPOSE_BUILD_EXTENSION_KEY_PREFIX,
-  COMPOSE_BUILD_NORMALIZED_KEYS,
-  COMPOSE_BUILD_REJECTED_LITERAL_KEYS,
-} from "./compose-build-keys.ts";
+import { buildBlockJsonSchema } from "./build-block-json-schema.ts";
+
+const COMPOSE_BUILD_NORMALIZED_KEYS = [
+  "args",
+  "context",
+  "dockerfile",
+  "dockerfile_inline",
+  "target",
+] as const;
+
+const COMPOSE_BUILD_REJECTED_LITERAL_KEYS = [
+  "additional_contexts",
+  "cache_from",
+  "cache_to",
+  "entitlements",
+  "extra_hosts",
+  "isolation",
+  "labels",
+  "network",
+  "no_cache",
+  "no_cache_filter",
+  "platforms",
+  "privileged",
+  "provenance",
+  "pull",
+  "sbom",
+  "secrets",
+  "shm_size",
+  "ssh",
+  "tags",
+  "ulimits",
+] as const;
+
+const COMPOSE_BUILD_EXTENSION_KEY_PREFIX = "x-";
 
 const anti = () => Schema.optional(Schema.Never);
 
-export const LandoBuildBlock = Schema.Struct({
+const LandoBuildBlock = Schema.Struct({
   artifact: Schema.optional(BuildScript),
   app: Schema.optional(BuildScript),
   context: anti(),
@@ -19,7 +48,7 @@ export const LandoBuildBlock = Schema.Struct({
   target: anti(),
 });
 
-export const ComposeBuildBlock = Schema.Struct({
+const ComposeBuildBlock = Schema.Struct({
   context: Schema.String,
   dockerfile: Schema.optional(Schema.String),
   dockerfileInline: Schema.optional(Schema.String),
@@ -67,31 +96,20 @@ const BuildBlockObjectFields = {
   ulimits: Schema.optional(Schema.Unknown),
 } as const;
 
-const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields)
-  .pipe(
-    Schema.extend(
-      Schema.Record({
-        key: Schema.TemplateLiteral(COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String),
-        value: Schema.Unknown,
-      }),
-    ),
-  )
-  .annotations({
-    jsonSchema: {
-      propertyNames: {
-        anyOf: [
-          { enum: Object.keys(BuildBlockObjectFields) },
-          { pattern: `^${COMPOSE_BUILD_EXTENSION_KEY_PREFIX}` },
-        ],
-      },
-    },
-  });
+const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields).pipe(
+  Schema.extend(
+    Schema.Record({
+      key: Schema.TemplateLiteral(COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String),
+      value: Schema.Unknown,
+    }),
+  ),
+);
 
-const BuildBlockFrom = Schema.Union(Schema.String, BuildBlockObjectFrom);
+const BuildBlockFrom = Schema.Union(Schema.String, BuildBlockObjectFrom).annotations({
+  jsonSchema: buildBlockJsonSchema,
+});
 
-export type BuildBlockShape = typeof BuildBlockCanonical.Type;
-export type ComposeBuildShape = typeof ComposeBuildBlock.Type;
-export type LandoBuildShape = typeof LandoBuildBlock.Type;
+type BuildBlockShape = typeof BuildBlockCanonical.Type;
 
 type BuildBlockInput = typeof BuildBlockFrom.Type;
 

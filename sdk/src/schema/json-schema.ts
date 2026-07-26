@@ -1083,6 +1083,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "ArtifactBuildSpec.context",
   "ArtifactBuildSpec.kind",
   "ArtifactBuildSpec.spec",
+  "ArtifactBuildSpec.specInline",
   "ArtifactBuildSpec.target",
   "ArtifactRef.digest",
   "ArtifactRef.kind",

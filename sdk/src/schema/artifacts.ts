@@ -15,20 +15,10 @@ export const ArtifactRef = Schema.Struct({
 });
 export type ArtifactRef = typeof ArtifactRef.Type;
 
-/**
- * Build spec — describes an artifact build from
- * source.
- */
-export const ArtifactBuildSpec = Schema.Struct({
+const ArtifactBuildSpecCommon = Schema.Struct({
   kind: Schema.Literal("build"),
   /** Build context root (absolute, host path). */
   context: AbsolutePath,
-  /** Optional dockerfile/spec path relative to `context`. */
-  spec: Schema.optional(PortablePath),
-  /** Inline build-spec contents used in place of a context-relative spec file. */
-  specInline: Schema.optional(Schema.String).annotations({
-    description: "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
-  }),
   /** Build args (string-keyed; values may be expression-resolved upstream). */
   args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   /** Target stage (multi-stage builds). */
@@ -36,6 +26,27 @@ export const ArtifactBuildSpec = Schema.Struct({
   /** Content hash for buildKey computation. */
   contentHash: Schema.optional(Schema.String),
 });
+
+const ArtifactBuildSpecSource = Schema.Union(
+  Schema.Struct({
+    /** Optional dockerfile/spec path relative to `context`. */
+    spec: Schema.optional(PortablePath),
+    specInline: Schema.optional(Schema.Never),
+  }),
+  Schema.Struct({
+    spec: Schema.optional(Schema.Never),
+    /** Inline build-spec contents used in place of a context-relative spec file. */
+    specInline: Schema.String.annotations({
+      description: "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+    }),
+  }),
+);
+
+/**
+ * Build spec — describes an artifact build from
+ * source.
+ */
+export const ArtifactBuildSpec = ArtifactBuildSpecCommon.pipe(Schema.extend(ArtifactBuildSpecSource));
 export type ArtifactBuildSpec = typeof ArtifactBuildSpec.Type;
 
 /** Build script for `build.artifact:` and `build.app:` entries. */

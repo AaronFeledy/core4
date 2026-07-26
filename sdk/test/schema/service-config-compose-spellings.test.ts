@@ -33,14 +33,6 @@ const reservedKeyRecord = (value: unknown): Record<string, unknown> =>
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-const propertyNameAllows = (constraint: unknown, key: string): boolean => {
-  if (!isRecord(constraint)) return false;
-  const { anyOf: alternatives, enum: values, pattern } = constraint;
-  if (Array.isArray(alternatives)) return alternatives.some((entry) => propertyNameAllows(entry, key));
-  if (Array.isArray(values) && !values.includes(key)) return false;
-  return typeof pattern !== "string" || new RegExp(pattern, "u").test(key);
-};
-
 const expectReservedKeyRejection = (result: Either.Either<unknown, unknown>): void => {
   expect(Either.isLeft(result)).toBe(true);
   if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
@@ -270,7 +262,7 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
   });
 
   describe("ServiceConfigInput public schema", () => {
-    test("build property-name constraints allow declared keys and x-* extensions", () => {
+    test("build schema publishes only the accepted exclusive families", () => {
       const schema = getJsonSchema("ServiceConfigInput");
       const definitions = isRecord(schema) && isRecord(schema.$defs) ? schema.$defs : {};
       const serviceConfigInput = definitions.ServiceConfigInput;
@@ -281,21 +273,22 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
             ? serviceConfigInput.properties
             : {};
       const build = properties.build;
-      const branches = isRecord(build) && Array.isArray(build.anyOf) ? build.anyOf : [];
-      const objectBranch = branches.find(
+      const branches = isRecord(build) && Array.isArray(build.oneOf) ? build.oneOf : [];
+      const objectBranches = branches.filter(
         (branch): branch is Readonly<Record<string, unknown>> => isRecord(branch) && branch.type === "object",
       );
-      const declaredProperties =
-        objectBranch !== undefined && isRecord(objectBranch.properties)
-          ? Object.keys(objectBranch.properties)
-          : [];
+      const propertySets = objectBranches
+        .map((branch) => (isRecord(branch.properties) ? Object.keys(branch.properties).sort() : []))
+        .sort((left, right) => left.join(",").localeCompare(right.join(",")));
 
-      expect(declaredProperties.length).toBeGreaterThan(0);
-      for (const key of declaredProperties) {
-        expect(propertyNameAllows(objectBranch?.propertyNames, key)).toBe(true);
-      }
-      expect(propertyNameAllows(objectBranch?.propertyNames, "x-review")).toBe(true);
-      expect(propertyNameAllows(objectBranch?.propertyNames, "not-a-build-key")).toBe(false);
+      expect(branches).toHaveLength(3);
+      expect(objectBranches.every((branch) => branch.additionalProperties === false)).toBe(true);
+      expect(propertySets).toEqual([
+        ["app", "artifact"],
+        ["args", "context", "dockerfile", "dockerfileInline", "dockerfile_inline", "target"],
+      ]);
+      expect(JSON.stringify(build)).not.toContain("no_cache");
+      expect(JSON.stringify(build)).not.toContain('"^x-"');
     });
 
     test("contains canonical keys and Compose aliases", () => {
