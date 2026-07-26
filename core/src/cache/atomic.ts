@@ -6,11 +6,8 @@ import { Effect } from "effect";
 
 import { CacheError } from "@lando/sdk/errors";
 
-const removeIfPresent = async (path: string): Promise<void> => {
-  await unlink(path).catch(() => undefined);
-};
-
 export interface AtomicWriteOptions {
+  readonly mode?: number;
   readonly randomId?: () => string;
   readonly renameFile?: (from: string, to: string) => Promise<void>;
   readonly syncFile?: (handle: FileHandle) => Promise<void>;
@@ -26,7 +23,7 @@ export const writeFileAtomicViaRename = async (
   await mkdir(dirname(path), { recursive: true });
   const tempPath = `${path}.tmp-${options.randomId?.() ?? randomUUID()}`;
   try {
-    const handle = await open(tempPath, "w");
+    const handle = await open(tempPath, "w", options.mode);
     try {
       await handle.writeFile(content);
       await (options.syncFile ?? ((h: FileHandle) => h.sync()))(handle);
@@ -35,7 +32,7 @@ export const writeFileAtomicViaRename = async (
     }
     await (options.renameFile ?? rename)(tempPath, path);
   } catch (cause) {
-    await removeIfPresent(tempPath);
+    await unlink(tempPath).catch(() => undefined);
     throw cause;
   }
 };
@@ -45,7 +42,7 @@ export const writeAtomicCacheFile = (
   content: string | Uint8Array,
 ): Effect.Effect<void, CacheError> =>
   Effect.tryPromise({
-    try: () => writeFileAtomicViaRename(path, content),
+    try: () => writeFileAtomicViaRename(path, content, { mode: 0o600 }),
     catch: (cause) =>
       new CacheError({
         message: `Failed to atomically write cache file at ${path}.`,

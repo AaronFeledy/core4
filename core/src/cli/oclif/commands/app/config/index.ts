@@ -24,7 +24,7 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
     key?: string;
     value?: string;
     type?: ValueType;
-    format?: "json" | "table";
+    format?: "json" | "yaml" | "table";
     path?: string;
     dryRun?: boolean;
     editor?: string;
@@ -40,7 +40,7 @@ export const appConfigOptionsFromInput = (input: unknown): AppConfigOptions => {
   if (typeof key === "string") opts.key = key;
   if (typeof value === "string") opts.value = value;
   if (isValueType(type)) opts.type = type;
-  if (format === "json" || format === "table") opts.format = format;
+  if (format === "json" || format === "table" || format === "yaml") opts.format = format;
   if (typeof path === "string") opts.path = path;
   if (i.flags?.["dry-run"] === true) opts.dryRun = true;
   if (typeof editor === "string") opts.editor = editor;
@@ -108,7 +108,7 @@ export default class AppConfigCommand extends LandoCommandBase {
   static override flags = {
     format: Flags.string({
       description: "Output format.",
-      options: ["table", "json"],
+      options: ["table", "json", "yaml"],
       default: "table",
     }),
     type: Flags.string({

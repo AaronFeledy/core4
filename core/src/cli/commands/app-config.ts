@@ -19,6 +19,7 @@ import {
   LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
@@ -46,7 +47,7 @@ export interface AppConfigOptions {
   readonly key?: string;
   readonly value?: string;
   readonly type?: ValueType;
-  readonly format?: "json" | "table";
+  readonly format?: "json" | "yaml" | "table";
   readonly path?: string;
   readonly dryRun?: boolean;
   readonly editor?: string;
@@ -411,10 +412,13 @@ const writeRender = (result: AppConfigResult): string => {
 
 export const renderAppConfigResult = (
   result: AppConfigResult,
-  _format: "json" | "table" = "table",
+  format: "json" | "yaml" | "table" = "table",
 ): string => {
   if (result.subcommand === "get") return getRender(result);
   if (result.subcommand !== undefined && result.subcommand !== "view") return writeRender(result);
+  if (format === "yaml" && result.landofile !== undefined) {
+    return emitLandofileYaml({ ...Schema.encodeSync(LandofileShape)(result.landofile) });
+  }
   return tableRender(result);
 };
 

@@ -22,6 +22,7 @@ import {
   rememberVersionConstraintEntries,
 } from "../config/version-constraint.ts";
 import { decodeOrFail } from "../schema/decode.ts";
+import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { resolveLandofileIncludes } from "./includes.ts";
@@ -38,7 +39,12 @@ const REMEDIATION = "Remove unsupported keys or update the documented Landofile 
 const COMPOSE_ALLOWLIST_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
-const SERVICE_CONFIG_KEYS = new Set(Object.keys(ServiceConfig.fields));
+const SERVICE_CONFIG_KEYS = new Set([
+  ...Object.keys(ServiceConfig.fields),
+  "working_dir",
+  "env_file",
+  "depends_on",
+]);
 
 const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
   key: string;
@@ -127,7 +133,9 @@ const extractFailure = <E>(cause: Cause.Cause<E>): E | undefined => {
 const validationIssues = (cause: unknown): ReadonlyArray<string> => {
   if (ParseResult.isParseError(cause)) {
     return ParseResult.ArrayFormatter.formatErrorSync(cause).map((issue) =>
-      issue.path.length === 0 ? issue.message : issue.path.join("."),
+      issue.path.length === 0 || issue.message.startsWith("Landofile service")
+        ? issue.message
+        : issue.path.join("."),
     );
   }
   return [cause instanceof Error ? cause.message : "Invalid Landofile."];
@@ -242,6 +250,7 @@ export const loadLandofileFile = (
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   (filePath.endsWith(".ts") ? loadTsLandofile(filePath) : loadYamlLandofile(filePath)).pipe(
     Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
+    Effect.map((landofile) => rememberLandofileAppRoot(landofile, dirname(filePath))),
   );
 
 const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
@@ -317,14 +326,17 @@ export const loadLandofileLayers = (
       const merged = mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>));
       return validateLandofile(canonicalPath, merged).pipe(
         Effect.map((landofile) =>
-          rememberLocalIncludePaths(
-            rememberVersionConstraintEntries(
-              landofile,
-              loaded.flatMap(({ landofile, layer }) =>
-                getVersionConstraintEntries(landofile, layer.filePath),
+          rememberLandofileAppRoot(
+            rememberLocalIncludePaths(
+              rememberVersionConstraintEntries(
+                landofile,
+                loaded.flatMap(({ landofile, layer }) =>
+                  getVersionConstraintEntries(landofile, layer.filePath),
+                ),
               ),
+              loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
             ),
-            loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
+            appRoot,
           ),
         ),
       );

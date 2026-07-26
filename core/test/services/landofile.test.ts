@@ -192,7 +192,7 @@ describe("LandofileServiceLive", () => {
       expect(web?.environment).toEqual({ NODE_ENV: "development" });
       expect(web?.volumes).toEqual(["./src:/app"]);
       expect(web?.command).toBe("npm start");
-      expect(web?.dependsOn).toEqual(["db"]);
+      expect(web?.dependsOn).toEqual([{ service: "db" }]);
       expect(db?.image).toBe("postgres:16");
       expect(db?.environment).toEqual({ POSTGRES_PASSWORD: "lando" });
     });

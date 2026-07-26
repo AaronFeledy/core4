@@ -195,7 +195,7 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   if (service.user !== undefined) ctx.setUser(service.user);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
   for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency), condition: "started" });
+    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
   }
   for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
 };

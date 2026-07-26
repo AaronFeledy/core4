@@ -85,7 +85,7 @@ export const COMPILED_OCLIF_MANIFEST = {
           default: "table",
           hasDynamicHelp: false,
           multiple: false,
-          options: ["table", "json"],
+          options: ["table", "json", "yaml"],
           type: "option",
         },
         json: {

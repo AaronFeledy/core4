@@ -3,8 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
 
-import { writeFileAtomicViaRename } from "../../src/cache/atomic.ts";
+import { writeAtomicCacheFile, writeFileAtomicViaRename } from "../../src/cache/atomic.ts";
 
 const fileExists = async (path: string): Promise<boolean> =>
   stat(path).then(
@@ -13,6 +14,22 @@ const fileExists = async (path: string): Promise<boolean> =>
   );
 
 describe("writeFileAtomicViaRename", () => {
+  test("writes cache files with owner-only permissions", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-cache-atomic-"));
+    try {
+      // Given
+      const target = join(dir, "plan.bin");
+
+      // When
+      await Effect.runPromise(writeAtomicCacheFile(target, "secret\n"));
+
+      // Then
+      expect((await stat(target)).mode & 0o777).toBe(0o600);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("writes content through the default fsync path", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-cache-atomic-"));
     try {

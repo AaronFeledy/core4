@@ -41,6 +41,787 @@
       ],
       "title": "Deprecation Notice",
       "type": "object"
+    },
+    "ServiceConfigInput": {
+      "additionalProperties": false,
+      "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+      "properties": {
+        "allowOverride": {
+          "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+          "type": "boolean"
+        },
+        "api": {
+          "enum": [
+            4
+          ],
+          "type": "number"
+        },
+        "appMount": {
+          "anyOf": [
+            {
+              "enum": [
+                false
+              ],
+              "type": "boolean"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "excludes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "includes": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "readOnly": {
+                  "type": "boolean"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "target"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "build": {
+          "additionalProperties": false,
+          "properties": {
+            "app": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "artifact": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "command": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "composeBuild": {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "context": {
+              "type": "string"
+            },
+            "dockerfile": {
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "context"
+          ],
+          "type": "object"
+        },
+        "cores": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "database": {
+          "type": "string"
+        },
+        "depends_on": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "condition": {
+                    "enum": [
+                      "service_started",
+                      "service_healthy",
+                      "service_completed_successfully"
+                    ],
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "restart": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "condition"
+                ],
+                "type": "object"
+              },
+              "propertyNames": {
+                "not": {
+                  "const": "__proto__"
+                }
+              },
+              "type": "object"
+            }
+          ],
+          "description": "Compose alias for the canonical dependsOn service field; accepts a service-name list or condition map."
+        },
+        "dependsOn": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "additionalProperties": false,
+                "properties": {
+                  "condition": {
+                    "enum": [
+                      "service_started",
+                      "service_healthy",
+                      "service_completed_successfully"
+                    ],
+                    "type": "string"
+                  },
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "restart": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "condition"
+                ],
+                "type": "object"
+              },
+              "propertyNames": {
+                "not": {
+                  "const": "__proto__"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "items": {
+                "$ref": "#/$defs/ServiceDependency"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "endpoints": {
+          "items": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "_tag": {
+                        "description": "Discriminates a service-only endpoint.",
+                        "enum": [
+                          "internal"
+                        ],
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "Optional endpoint name.",
+                        "type": "string"
+                      },
+                      "port": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      },
+                      "protocol": {
+                        "description": "Service-facing network protocol.",
+                        "enum": [
+                          "http",
+                          "https",
+                          "tcp",
+                          "udp"
+                        ],
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "_tag",
+                      "protocol",
+                      "port"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "_tag": {
+                        "description": "Discriminates a service-only endpoint.",
+                        "enum": [
+                          "internal"
+                        ],
+                        "type": "string"
+                      },
+                      "name": {
+                        "description": "Optional endpoint name.",
+                        "type": "string"
+                      },
+                      "protocol": {
+                        "description": "Unix-socket endpoint protocol.",
+                        "enum": [
+                          "unix"
+                        ],
+                        "type": "string"
+                      },
+                      "socketPath": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "_tag",
+                      "protocol",
+                      "socketPath"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "_tag": {
+                    "description": "Discriminates an explicitly host-published endpoint.",
+                    "enum": [
+                      "published"
+                    ],
+                    "type": "string"
+                  },
+                  "name": {
+                    "description": "Optional endpoint name.",
+                    "type": "string"
+                  },
+                  "port": {
+                    "description": "a number between 1 and 65535",
+                    "maximum": 65535,
+                    "minimum": 1,
+                    "title": "between(1, 65535)",
+                    "type": "integer"
+                  },
+                  "protocol": {
+                    "description": "Service-facing network protocol.",
+                    "enum": [
+                      "http",
+                      "https",
+                      "tcp",
+                      "udp"
+                    ],
+                    "type": "string"
+                  },
+                  "publication": {
+                    "additionalProperties": false,
+                    "description": "Explicit host-publication intent and policy overrides.",
+                    "properties": {
+                      "bindAddress": {
+                        "format": "ip",
+                        "type": "string"
+                      },
+                      "hostPort": {
+                        "description": "a number between 1 and 65535",
+                        "maximum": 65535,
+                        "minimum": 1,
+                        "title": "between(1, 65535)",
+                        "type": "integer"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  }
+                },
+                "required": [
+                  "_tag",
+                  "protocol",
+                  "port",
+                  "publication"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "entrypoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "env_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Compose alias for the canonical envFile service field; accepts one path or a path list."
+        },
+        "envFile": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "environment": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "propertyNames": {
+                "not": {
+                  "const": "__proto__"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "framework": {
+          "type": "string"
+        },
+        "healthcheck": {
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "intervalSeconds": {
+              "type": "number"
+            },
+            "kind": {
+              "enum": [
+                "command",
+                "http",
+                "tcp",
+                "none"
+              ],
+              "type": "string"
+            },
+            "port": {
+              "type": "number"
+            },
+            "retries": {
+              "type": "number"
+            },
+            "startPeriodSeconds": {
+              "type": "number"
+            },
+            "timeoutSeconds": {
+              "type": "number"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": [],
+          "type": "object"
+        },
+        "hostnames": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "image": {
+          "type": "string"
+        },
+        "labels": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "propertyNames": {
+                "not": {
+                  "const": "__proto__"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ]
+        },
+        "logs": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "path": {
+                "description": "Single absolute in-container file path declared under `services.<name>.logs`.",
+                "type": "string"
+              },
+              "stream": {
+                "enum": [
+                  "stdout",
+                  "stderr"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "mounts": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "excludes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "includes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "enum": [
+                      "bind",
+                      "tmpfs",
+                      "volume"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "target"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "port": {
+          "type": "number"
+        },
+        "ports": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "primary": {
+          "type": "boolean"
+        },
+        "providers": {
+          "additionalProperties": {
+            "$id": "/schemas/unknown",
+            "title": "unknown"
+          },
+          "properties": {},
+          "required": [],
+          "type": "object"
+        },
+        "root": {
+          "type": "string"
+        },
+        "routes": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "endpoint": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "pathPrefix": {
+                "type": "string"
+              },
+              "scheme": {
+                "enum": [
+                  "http",
+                  "https",
+                  "both"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "hostname"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "storage": {
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "enum": [
+                      "data",
+                      "cache"
+                    ],
+                    "type": "string"
+                  },
+                  "readOnly": {
+                    "type": "boolean"
+                  },
+                  "scope": {
+                    "enum": [
+                      "service",
+                      "app",
+                      "global"
+                    ],
+                    "type": "string"
+                  },
+                  "store": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "store",
+                  "target"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "type": {
+          "type": "string"
+        },
+        "user": {
+          "type": "string"
+        },
+        "volumes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "webroot": {
+          "description": "Container path served as this service's HTTP document root.",
+          "type": "string"
+        },
+        "working_dir": {
+          "description": "Compose alias for the canonical workingDirectory service field.",
+          "type": "string"
+        },
+        "workingDirectory": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "title": "Service Config Input",
+      "type": "object"
+    },
+    "ServiceDependency": {
+      "additionalProperties": false,
+      "description": "A single inter-service dependency with its optional Compose condition, required, and restart flags.",
+      "properties": {
+        "condition": {
+          "$ref": "#/$defs/ServiceDependencyCondition"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "restart": {
+          "type": "boolean"
+        },
+        "service": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "service"
+      ],
+      "title": "Service Dependency",
+      "type": "object"
+    },
+    "ServiceDependencyCondition": {
+      "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+      "enum": [
+        "service_started",
+        "service_healthy",
+        "service_completed_successfully"
+      ],
+      "title": "Service Dependency Condition",
+      "type": "string"
     }
   },
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -255,587 +1036,7 @@
     },
     "services": {
       "additionalProperties": {
-        "additionalProperties": false,
-        "properties": {
-          "allowOverride": {
-            "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
-            "type": "boolean"
-          },
-          "api": {
-            "enum": [
-              4
-            ],
-            "type": "number"
-          },
-          "appMount": {
-            "anyOf": [
-              {
-                "enum": [
-                  false
-                ],
-                "type": "boolean"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "excludes": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "includes": {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  },
-                  "readOnly": {
-                    "type": "boolean"
-                  },
-                  "target": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "target"
-                ],
-                "type": "object"
-              }
-            ]
-          },
-          "build": {
-            "additionalProperties": false,
-            "properties": {
-              "app": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  }
-                ]
-              },
-              "artifact": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  }
-                ]
-              }
-            },
-            "required": [],
-            "type": "object"
-          },
-          "command": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            ]
-          },
-          "composeBuild": {
-            "additionalProperties": false,
-            "properties": {
-              "args": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "properties": {},
-                "required": [],
-                "type": "object"
-              },
-              "context": {
-                "type": "string"
-              },
-              "dockerfile": {
-                "type": "string"
-              },
-              "target": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "context"
-            ],
-            "type": "object"
-          },
-          "cores": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "database": {
-            "type": "string"
-          },
-          "dependsOn": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "endpoints": {
-            "items": {
-              "anyOf": [
-                {
-                  "anyOf": [
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "_tag": {
-                          "description": "Discriminates a service-only endpoint.",
-                          "enum": [
-                            "internal"
-                          ],
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Optional endpoint name.",
-                          "type": "string"
-                        },
-                        "port": {
-                          "description": "a number between 1 and 65535",
-                          "maximum": 65535,
-                          "minimum": 1,
-                          "title": "between(1, 65535)",
-                          "type": "integer"
-                        },
-                        "protocol": {
-                          "description": "Service-facing network protocol.",
-                          "enum": [
-                            "http",
-                            "https",
-                            "tcp",
-                            "udp"
-                          ],
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "_tag",
-                        "protocol",
-                        "port"
-                      ],
-                      "type": "object"
-                    },
-                    {
-                      "additionalProperties": false,
-                      "properties": {
-                        "_tag": {
-                          "description": "Discriminates a service-only endpoint.",
-                          "enum": [
-                            "internal"
-                          ],
-                          "type": "string"
-                        },
-                        "name": {
-                          "description": "Optional endpoint name.",
-                          "type": "string"
-                        },
-                        "protocol": {
-                          "description": "Unix-socket endpoint protocol.",
-                          "enum": [
-                            "unix"
-                          ],
-                          "type": "string"
-                        },
-                        "socketPath": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "_tag",
-                        "protocol",
-                        "socketPath"
-                      ],
-                      "type": "object"
-                    }
-                  ]
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "_tag": {
-                      "description": "Discriminates an explicitly host-published endpoint.",
-                      "enum": [
-                        "published"
-                      ],
-                      "type": "string"
-                    },
-                    "name": {
-                      "description": "Optional endpoint name.",
-                      "type": "string"
-                    },
-                    "port": {
-                      "description": "a number between 1 and 65535",
-                      "maximum": 65535,
-                      "minimum": 1,
-                      "title": "between(1, 65535)",
-                      "type": "integer"
-                    },
-                    "protocol": {
-                      "description": "Service-facing network protocol.",
-                      "enum": [
-                        "http",
-                        "https",
-                        "tcp",
-                        "udp"
-                      ],
-                      "type": "string"
-                    },
-                    "publication": {
-                      "additionalProperties": false,
-                      "description": "Explicit host-publication intent and policy overrides.",
-                      "properties": {
-                        "bindAddress": {
-                          "format": "ip",
-                          "type": "string"
-                        },
-                        "hostPort": {
-                          "description": "a number between 1 and 65535",
-                          "maximum": 65535,
-                          "minimum": 1,
-                          "title": "between(1, 65535)",
-                          "type": "integer"
-                        }
-                      },
-                      "required": [],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "_tag",
-                    "protocol",
-                    "port",
-                    "publication"
-                  ],
-                  "type": "object"
-                }
-              ]
-            },
-            "type": "array"
-          },
-          "entrypoint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            ]
-          },
-          "environment": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "boolean"
-                }
-              ]
-            },
-            "properties": {},
-            "required": [],
-            "type": "object"
-          },
-          "framework": {
-            "type": "string"
-          },
-          "healthcheck": {
-            "additionalProperties": false,
-            "properties": {
-              "command": {
-                "anyOf": [
-                  {
-                    "type": "string"
-                  },
-                  {
-                    "items": {
-                      "type": "string"
-                    },
-                    "type": "array"
-                  }
-                ]
-              },
-              "intervalSeconds": {
-                "type": "number"
-              },
-              "kind": {
-                "enum": [
-                  "command",
-                  "http",
-                  "tcp",
-                  "none"
-                ],
-                "type": "string"
-              },
-              "port": {
-                "type": "number"
-              },
-              "retries": {
-                "type": "number"
-              },
-              "startPeriodSeconds": {
-                "type": "number"
-              },
-              "timeoutSeconds": {
-                "type": "number"
-              },
-              "url": {
-                "type": "string"
-              }
-            },
-            "required": [],
-            "type": "object"
-          },
-          "hostnames": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "image": {
-            "type": "string"
-          },
-          "logs": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "id": {
-                  "type": "string"
-                },
-                "label": {
-                  "type": "string"
-                },
-                "path": {
-                  "description": "Single absolute in-container file path declared under `services.<name>.logs`.",
-                  "type": "string"
-                },
-                "stream": {
-                  "description": "Render and exit classification for this source's lines; defaults to stderr.",
-                  "enum": [
-                    "stdout",
-                    "stderr"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "path"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "mounts": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "excludes": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "includes": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    },
-                    "readOnly": {
-                      "type": "boolean"
-                    },
-                    "source": {
-                      "type": "string"
-                    },
-                    "target": {
-                      "type": "string"
-                    },
-                    "type": {
-                      "enum": [
-                        "bind",
-                        "tmpfs",
-                        "volume"
-                      ],
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "target"
-                  ],
-                  "type": "object"
-                }
-              ]
-            },
-            "type": "array"
-          },
-          "port": {
-            "type": "number"
-          },
-          "ports": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "number"
-                }
-              ]
-            },
-            "type": "array"
-          },
-          "primary": {
-            "type": "boolean"
-          },
-          "providers": {
-            "additionalProperties": {
-              "$id": "/schemas/unknown",
-              "title": "unknown"
-            },
-            "properties": {},
-            "required": [],
-            "type": "object"
-          },
-          "root": {
-            "type": "string"
-          },
-          "routes": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "endpoint": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "type": "number"
-                    }
-                  ]
-                },
-                "hostname": {
-                  "type": "string"
-                },
-                "pathPrefix": {
-                  "type": "string"
-                },
-                "scheme": {
-                  "enum": [
-                    "http",
-                    "https",
-                    "both"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "hostname"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "storage": {
-            "items": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "additionalProperties": false,
-                  "properties": {
-                    "key": {
-                      "type": "string"
-                    },
-                    "kind": {
-                      "enum": [
-                        "data",
-                        "cache"
-                      ],
-                      "type": "string"
-                    },
-                    "readOnly": {
-                      "type": "boolean"
-                    },
-                    "scope": {
-                      "enum": [
-                        "service",
-                        "app",
-                        "global"
-                      ],
-                      "type": "string"
-                    },
-                    "store": {
-                      "type": "string"
-                    },
-                    "target": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "store",
-                    "target"
-                  ],
-                  "type": "object"
-                }
-              ]
-            },
-            "type": "array"
-          },
-          "type": {
-            "type": "string"
-          },
-          "user": {
-            "type": "string"
-          },
-          "volumes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "webroot": {
-            "description": "Container path served as this service's HTTP document root.",
-            "type": "string"
-          },
-          "workingDirectory": {
-            "type": "string"
-          }
-        },
-        "required": [],
-        "type": "object"
+        "$ref": "#/$defs/ServiceConfigInput"
       },
       "properties": {},
       "required": [],

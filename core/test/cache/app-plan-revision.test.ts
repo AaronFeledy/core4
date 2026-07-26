@@ -100,7 +100,7 @@ test("ignores a valid revision-6 app plan without pinned PHP prerequisite identi
   expect(await readFile(path)).toEqual(persisted);
 });
 
-test("includes revision 9 in the app-plan cache key", () => {
+test("includes revision 10 in the app-plan cache key", () => {
   // Given
   const input = {
     appRoot: "/workspace/revision-key",
@@ -112,6 +112,33 @@ test("includes revision 9 in the app-plan cache key", () => {
   const key = deriveAppPlanCacheKey(input);
 
   // Then
-  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(9n);
+  expect(APP_PLAN_CACHE_SCHEMA_VERSION).toBe(10n);
   expect(key).not.toBe("b7ee8b58156c17f30d73e11f3560e06267bc1961746b424e033b7a4885f98487");
+});
+
+test("changes the app-plan cache key when env-file content or resolved path changes", () => {
+  // Given
+  const input = {
+    appRoot: "/workspace/env-key",
+    landofile: { name: "env-key", runtime: 4 as const },
+    pluginManifests: [],
+  };
+
+  // When
+  const original = deriveAppPlanCacheKey({
+    ...input,
+    serviceInputs: { envFileInputs: [{ source: "/workspace/env-key/.env", hash: "first" }] },
+  });
+  const changedContent = deriveAppPlanCacheKey({
+    ...input,
+    serviceInputs: { envFileInputs: [{ source: "/workspace/env-key/.env", hash: "second" }] },
+  });
+  const changedPath = deriveAppPlanCacheKey({
+    ...input,
+    serviceInputs: { envFileInputs: [{ source: "/workspace/env-key/other.env", hash: "first" }] },
+  });
+
+  // Then
+  expect(changedContent).not.toBe(original);
+  expect(changedPath).not.toBe(original);
 });

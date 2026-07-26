@@ -24,6 +24,7 @@ import {
   defaultTarballRecipeFetcher,
 } from "../recipes/tarball-source.ts";
 import { makeStateStore } from "../state/service.ts";
+import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
@@ -904,14 +905,17 @@ export const resolveLandofileIncludes = (
 > => {
   if (options.landofile.includes === undefined || options.landofile.includes.length === 0) {
     return Effect.succeed(
-      rememberVersionConstraintEntries(
-        options.landofile,
-        ownVersionConstraintEntries(
+      rememberLandofileAppRoot(
+        rememberVersionConstraintEntries(
           options.landofile,
-          options.sourcePath ?? join(options.appRoot, ".lando.yml"),
-          options.layer ?? "canonical",
-          options.order ?? 3,
+          ownVersionConstraintEntries(
+            options.landofile,
+            options.sourcePath ?? join(options.appRoot, ".lando.yml"),
+            options.layer ?? "canonical",
+            options.order ?? 3,
+          ),
         ),
+        options.appRoot,
       ),
     );
   }
@@ -940,7 +944,7 @@ export const resolveLandofileIncludes = (
       options.order ?? 3,
     );
     yield* writeLockfileIfNeeded(ctx);
-    return resolved;
+    return rememberLandofileAppRoot(resolved, options.appRoot);
   });
 };
 

@@ -203,7 +203,7 @@ describe("LandofileShape (MVP)", () => {
     expect(web.environment).toEqual({ NODE_ENV: "development" });
     expect(web.volumes).toEqual(["./src:/app"]);
     expect(web.command).toBe("npm start");
-    expect(web.dependsOn).toEqual(["db"]);
+    expect(web.dependsOn).toEqual([{ service: "db" }]);
   });
 
   test("ServiceConfig exposes every MVP Compose-subset key as an optional field", () => {

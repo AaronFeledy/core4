@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import * as os from "node:os";
+import { resolve } from "node:path";
 
 import { type Context, DateTime, Effect, Either, Layer, ParseResult, Schema } from "effect";
 
@@ -40,6 +41,7 @@ import {
   AppPlanner,
   CacheService,
   ConfigService,
+  FileSystem,
   PluginRegistry,
   type ServiceBuildStepIntent,
   type ServiceType,
@@ -64,6 +66,8 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "../config/version-constraint.ts";
+import { getLandofileAppRoot } from "../landofile/app-root-provenance.ts";
+import { parseEnvFile } from "../landofile/env-file.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
   hostProxyExtensionForCapabilities,
@@ -591,6 +595,7 @@ interface ResolvedService {
   readonly baseDefaultIds: ReadonlyArray<string>;
   readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
   readonly resolvedArtifactTag: string | undefined;
+  readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
 }
 
 type PlannedServiceDraft = {
@@ -605,6 +610,66 @@ type PlannedServiceDraft = {
 
 const SERVICE_FEATURES_EXTENSION_KEY = "@lando/core/service-features";
 const LOG_SOURCES_EXTENSION_KEY = "@lando/core/log-sources";
+
+const loadServiceEnvFiles = (input: {
+  readonly appRoot: string;
+  readonly serviceName: string;
+  readonly service: ServiceConfig;
+  readonly fileSystem: Context.Tag.Service<typeof FileSystem> | undefined;
+}): Effect.Effect<
+  {
+    readonly environment: Readonly<Record<string, string>> | undefined;
+    readonly inputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
+  },
+  LandofileValidationError
+> =>
+  Effect.gen(function* () {
+    const envFiles = input.service.envFile ?? [];
+    if (envFiles.length === 0) {
+      return { environment: input.service.environment, inputs: [] };
+    }
+    if (input.fileSystem === undefined) {
+      return yield* Effect.fail(
+        new LandofileValidationError({
+          message: `Service ${input.serviceName} declares env_file, but the FileSystem service is unavailable. Provide FileSystem so env files can be read.`,
+          file: `${input.appRoot}/.lando.yml`,
+          issues: [`services.${input.serviceName}.envFile`],
+        }),
+      );
+    }
+
+    const environment: Record<string, string> = {};
+    const inputs: Array<{ readonly source: string; readonly hash: string }> = [];
+    for (const [index, authoredPath] of envFiles.entries()) {
+      const source = resolve(input.appRoot, authoredPath);
+      const content = yield* input.fileSystem.readText(source).pipe(
+        Effect.mapError(
+          (cause) =>
+            new LandofileValidationError({
+              message: `Unable to read env file ${source} for service ${input.serviceName}: ${cause.message}. Create a readable env file at that path or remove it from env_file.`,
+              file: source,
+              issues: [`services.${input.serviceName}.envFile[${index}]`],
+            }),
+        ),
+      );
+      const parsed = parseEnvFile(content, source);
+      if (!parsed.ok) {
+        return yield* Effect.fail(
+          new LandofileValidationError({
+            message: `Invalid env file entry at ${parsed.issue.source}:${parsed.issue.line}: ${parsed.issue.message} Use KEY=VALUE entries, optionally prefixed with export.`,
+            file: parsed.issue.source,
+            issues: [`line ${parsed.issue.line}`],
+          }),
+        );
+      }
+      Object.assign(environment, parsed.environment);
+      inputs.push({ source, hash: createHash("sha256").update(content).digest("hex") });
+    }
+    return {
+      environment: { ...environment, ...(input.service.environment ?? {}) },
+      inputs,
+    };
+  });
 
 const duplicateEndpointNameError = (
   appRoot: string,
@@ -797,13 +862,14 @@ const planApp = (
   pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
   cacheService: Context.Tag.Service<typeof CacheService> | undefined,
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
+  fileSystem: Context.Tag.Service<typeof FileSystem> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<
   AppPlan,
   LandofileValidationError | CapabilityError | NotImplementedError | PublicationUnsupportedError
 > => {
-  const appRoot = process.cwd();
+  const appRoot = getLandofileAppRoot(landofile) ?? process.cwd();
   const appName = landofile.name ?? "app";
   const appId = AppId.make(appName);
   const host = resolveHostFacts();
@@ -916,7 +982,12 @@ const planApp = (
     // verbatim in phase B on a cache miss; resolve() is never called twice.
     const resolvedServices: ResolvedService[] = [];
     for (const [name, service] of Object.entries(landofile.services ?? {})) {
-      const authored = authoredStorageScopes(appRoot, name, service);
+      const loadedEnvFiles = yield* loadServiceEnvFiles({ appRoot, serviceName: name, service, fileSystem });
+      const serviceWithEnvironment: ServiceConfig =
+        loadedEnvFiles.inputs.length === 0
+          ? service
+          : { ...service, environment: loadedEnvFiles.environment };
+      const authored = authoredStorageScopes(appRoot, name, serviceWithEnvironment);
       if (authored.invalidCacheEntry !== undefined) {
         yield* Effect.fail(authored.invalidCacheEntry);
       }
@@ -924,7 +995,7 @@ const planApp = (
         yield* Effect.fail(rejectGlobalScope(appRoot, name, authored.globalEntry));
       }
 
-      const serviceTypeId = serviceTypeFor(name, service);
+      const serviceTypeId = serviceTypeFor(name, serviceWithEnvironment);
       const { serviceType, version } = yield* loadServiceTypeWithVersion(pluginRegistry, serviceTypeId).pipe(
         Effect.mapError((error) =>
           error instanceof ServiceTypeCollisionError
@@ -939,7 +1010,9 @@ const planApp = (
       // (which reads service.image). The original authored image wins only when
       // no version pin was requested.
       const pinnedService: ServiceConfig =
-        resolvedArtifactTag === undefined ? service : { ...service, image: resolvedArtifactTag };
+        resolvedArtifactTag === undefined
+          ? serviceWithEnvironment
+          : { ...serviceWithEnvironment, image: resolvedArtifactTag };
 
       const resolution = yield* serviceType
         .resolve({
@@ -991,6 +1064,7 @@ const planApp = (
         baseDefaultIds,
         featureRefs,
         resolvedArtifactTag,
+        envFileInputs: loadedEnvFiles.inputs,
       });
     }
 
@@ -1017,6 +1091,7 @@ const planApp = (
             normalizedConfig: entry.resolution.normalizedConfig,
             logSources: entry.logSources,
             featureRefs: entry.featureRefs,
+            envFileInputs: entry.envFileInputs,
             ...(entry.resolvedArtifactTag === undefined
               ? {}
               : { resolvedArtifactTag: entry.resolvedArtifactTag }),
@@ -1094,10 +1169,28 @@ const planApp = (
           features,
         }).pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error)));
       });
-      const authoredServicePlan = applyAuthoredStorage(
+      const authoredServicePlanWithoutLabels = applyAuthoredStorage(
         applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
         service,
       );
+      const composeExtension = authoredServicePlanWithoutLabels.extensions.compose;
+      const composeLabels = isRecord(composeExtension) ? composeExtension.labels : undefined;
+      const authoredServicePlan: ServicePlan =
+        service.labels === undefined
+          ? authoredServicePlanWithoutLabels
+          : {
+              ...authoredServicePlanWithoutLabels,
+              extensions: {
+                ...authoredServicePlanWithoutLabels.extensions,
+                compose: {
+                  ...(isRecord(composeExtension) ? composeExtension : {}),
+                  labels: {
+                    ...(isRecord(composeLabels) ? composeLabels : {}),
+                    ...service.labels,
+                  },
+                },
+              },
+            };
       const authoredAppBuild = service.build?.app;
       const appBuildScripts =
         authoredAppBuild === undefined
@@ -1432,12 +1525,14 @@ export const AppPlannerLive = Layer.effect(
     const pluginRegistry = yield* PluginRegistry;
     const cacheService = yield* Effect.serviceOption(CacheService);
     const configService = yield* Effect.serviceOption(ConfigService);
+    const fileSystem = yield* Effect.serviceOption(FileSystem);
     return {
       plan: (landofile, providerCapabilities) =>
         planApp(
           pluginRegistry,
           cacheService._tag === "Some" ? cacheService.value : undefined,
           configService._tag === "Some" ? configService.value : undefined,
+          fileSystem._tag === "Some" ? fileSystem.value : undefined,
           landofile,
           providerCapabilities,
         ),
