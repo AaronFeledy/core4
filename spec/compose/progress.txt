@@ -174,3 +174,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck, lint, guide-drift with explicit base context, focused SDK/service-planner/container-runtime/provider tests, Compose coverage, import-cycle, renderer-boundary, schema codegen idempotence, and post-fix Bugbot review passed.
 - **Learnings for future iterations:** A matrix-`normalized` Compose child must end in a provider-neutral plan field and an emitter, not only survive under `extensions.compose`; accepted long-form option blocks must be discriminated before canonicalization so no type-specific data can disappear during planning.
 ---
+
+## 2026-07-26 04:44 CDT - US-469 Drift Audit
+- Trigger: 3 cycles, 9235 changed lines, 11 commits
+- Scope absorption: excised `appProtocol` from internal and Unix endpoint variants while retaining the published-endpoint path required by Compose ports.
+- Weakened proofs: restored default/strict decode and encode rejection coverage for type-incompatible canonical volume fields.
+- Review scar tissue: removed test-only and module-private helper exports without collapsing the justified parser/classifier module boundaries.
+- Contract drift: canonical volume objects can no longer encode bind-only or volume-only options onto the wrong volume type.
+- Fixed: narrowed endpoint metadata, rejected incoherent canonical volumes at both schema directions, and deleted dead export surface.
+- Split/excise decisions: excised only the unrelated internal-endpoint metadata; no PRD split, passes flip, or gate conflict was required.
+- Verification: typecheck, lint, Compose coverage, import-cycle, renderer boundary, 11 focused test files, no-excuse checks, and schema codegen idempotence passed.
+---
