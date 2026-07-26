@@ -117,6 +117,10 @@ export interface ServiceExitResult {
   readonly exitCode: number;
 }
 
+export interface WaitForExitOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface AppSelector {
   readonly app: AppId;
   readonly plan?: AppPlan;
@@ -245,6 +249,7 @@ export interface RuntimeProviderShape {
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly waitForExit: (
     target: ServiceSelector,
+    options?: WaitForExitOptions,
   ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
   readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
 

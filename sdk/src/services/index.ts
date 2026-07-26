@@ -173,6 +173,7 @@ import type {
   ServiceExitResult,
   ServiceRuntimeInfo,
   ServiceSelector,
+  WaitForExitOptions,
 } from "./provider.ts";
 import type { DatasetServiceError, RemoteSourceError } from "./remote-sync.ts";
 import type {
@@ -251,6 +252,7 @@ export interface RuntimeProviderShape {
   readonly restart: (target: ServiceSelector) => Effect.Effect<void, ProviderError>;
   readonly waitForExit: (
     target: ServiceSelector,
+    options?: WaitForExitOptions,
   ) => Effect.Effect<ServiceExitResult, ProviderError, Scope.Scope>;
   readonly destroy: (target: AppSelector, options: DestroyOptions) => Effect.Effect<void, ProviderError>;
 
@@ -529,6 +531,7 @@ export declare class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<
 
 export interface BuildAppOptions {
   readonly force?: boolean;
+  readonly signal?: AbortSignal;
 }
 
 export declare class BuildOrchestrator extends Context.Tag("@lando/core/BuildOrchestrator")<
