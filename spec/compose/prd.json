@@ -132,7 +132,7 @@
         "Lint passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 6.2 depends_on bullet (amended: conditions preserved and honored) + spec 6.13 DAG semantics. Blocked by US-468 (condition-map decode)."
     },
     {
