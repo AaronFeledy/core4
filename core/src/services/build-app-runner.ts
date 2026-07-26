@@ -62,8 +62,7 @@ const appRefFor = (input: AppBuildInput) =>
  * `service_started` resolves without inspecting provider state: a one-shot
  * dependency that already exited is still "started", and inspecting it would
  * wrongly fail its dependents. Only `kind: "command"` healthchecks are verifiable
- * through the provider exec channel, so any other shape resolves immediately
- * rather than blocking on a condition the runner cannot observe.
+ * through the provider exec channel, so any other shape fails closed.
  */
 const runGate = (
   input: AppBuildInput,
