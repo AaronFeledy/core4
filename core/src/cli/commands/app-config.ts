@@ -19,6 +19,7 @@ import {
   LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
+import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
@@ -46,7 +47,8 @@ export interface AppConfigOptions {
   readonly key?: string;
   readonly value?: string;
   readonly type?: ValueType;
-  readonly format?: "json" | "table";
+  readonly format?: "json" | "yaml" | "table";
+  readonly source?: "resolved";
   readonly path?: string;
   readonly dryRun?: boolean;
   readonly editor?: string;
@@ -382,6 +384,12 @@ const tableRender = (result: AppConfigResult): string => {
   return lines.join("\n");
 };
 
+const yamlRender = (result: AppConfigResult): string => {
+  const landofile = result.landofile;
+  if (landofile === undefined) return tableRender(result);
+  return emitLandofileYaml(Object.fromEntries(Object.entries(Schema.encodeSync(LandofileShape)(landofile))));
+};
+
 const getRender = (result: AppConfigResult): string => {
   if (result.value === undefined) return "";
   if (result.value !== null && typeof result.value === "object") return JSON.stringify(result.value);
@@ -411,10 +419,11 @@ const writeRender = (result: AppConfigResult): string => {
 
 export const renderAppConfigResult = (
   result: AppConfigResult,
-  _format: "json" | "table" = "table",
+  format: "json" | "yaml" | "table" = "table",
 ): string => {
   if (result.subcommand === "get") return getRender(result);
   if (result.subcommand !== undefined && result.subcommand !== "view") return writeRender(result);
+  if (format === "yaml") return yamlRender(result);
   return tableRender(result);
 };
 
@@ -443,7 +452,7 @@ export const appConfig = (
     const landofile = yield* loadUserLandofile(landofileService);
     return {
       app: landofile.name ?? "",
-      source: "resolved",
+      source: options.source ?? "resolved",
       landofile,
     };
   });

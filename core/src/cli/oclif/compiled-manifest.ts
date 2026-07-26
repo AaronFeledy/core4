@@ -85,7 +85,7 @@ export const COMPILED_OCLIF_MANIFEST = {
           default: "table",
           hasDynamicHelp: false,
           multiple: false,
-          options: ["table", "json"],
+          options: ["table", "json", "yaml"],
           type: "option",
         },
         json: {
@@ -94,6 +94,15 @@ export const COMPILED_OCLIF_MANIFEST = {
           name: "json",
           allowNo: false,
           type: "boolean",
+        },
+        source: {
+          description: "Config read source.",
+          name: "source",
+          default: "resolved",
+          hasDynamicHelp: false,
+          multiple: false,
+          options: ["resolved"],
+          type: "option",
         },
         type: {
           description: "Value type for set.",

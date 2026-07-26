@@ -88,4 +88,82 @@ describe("lando config renders post-normalization Compose spellings (US-468)", (
       expect(resolved.app).toBe("compose-spellings");
     });
   });
+
+  test("config view --source resolved --format yaml renders post-normalization values", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile);
+      const result = await runCli(["app", "config", "view", "--source", "resolved", "--format", "yaml"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("workingDirectory: /app");
+      expect(result.stdout).toContain("NODE_ENV: development");
+      expect(result.stdout).toContain("com.example.tier: web");
+      expect(result.stdout).toContain("condition: service_healthy");
+      expect(result.stdout).not.toContain("working_dir");
+      expect(result.stdout).not.toContain("depends_on");
+      expect(result.stdout).not.toContain("- NODE_ENV=development");
+      expect(result.stdout).not.toContain("source: resolved");
+      expect(result.stdout.startsWith("app:")).toBe(false);
+    });
+  });
+
+  test("bare config --format yaml renders the resolved Landofile", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile);
+      const result = await runCli(["app", "config", "--format", "yaml"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("workingDirectory: /app");
+      expect(result.stdout).toContain("NODE_ENV: development");
+      expect(result.stdout).toContain("com.example.tier: web");
+      expect(result.stdout).toContain("condition: service_healthy");
+      expect(result.stdout).not.toContain("working_dir");
+      expect(result.stdout).not.toContain("depends_on");
+      expect(result.stdout).not.toContain("- NODE_ENV=development");
+      expect(result.stdout).not.toContain("source: resolved");
+      expect(result.stdout.startsWith("app:")).toBe(false);
+      expect(result.stdout).not.toContain("services\t");
+    });
+  });
+
+  test("config get honors --source resolved", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile);
+      const result = await runCli(
+        ["app", "config", "get", "services.web.workingDirectory", "--source", "resolved"],
+        dir,
+      );
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout.trim()).toBe("/app");
+    });
+  });
+
+  test("config view rejects an unsupported --source value", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile);
+      const result = await runCli(["app", "config", "view", "--source", "raw", "--format", "yaml"], dir);
+      const output = `${result.stdout}\n${result.stderr}`;
+      expect(result.exitCode).not.toBe(0);
+      expect(output).toMatch(/--source/);
+      expect(output).toMatch(/malformed value/i);
+    });
+  });
+
+  test("config help documents --source and its supported value", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile);
+      const result = await runCli(["app", "config", "--help"], dir);
+      expect(result.stdout).toMatch(/--source=<option>/);
+      expect(result.stdout).toMatch(/<options: resolved>/);
+      expect(result.stdout).toMatch(/<options: table\|json\|yaml>/);
+    });
+  });
+
+  test("bare config still renders the table by default", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(join(dir, ".lando.yml"), landofile);
+      const result = await runCli(["app", "config"], dir);
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("app\tcompose-spellings");
+      expect(result.stdout).toMatch(/^services\t.+/m);
+    });
+  });
 });
