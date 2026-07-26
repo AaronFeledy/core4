@@ -56,7 +56,7 @@ export const StorageInput = Schema.Union(
 );
 export type StorageInput = typeof StorageInput.Type;
 
-/** Healthcheck input as authored. */
+/** Canonical Lando healthcheck schema; Compose-capable authoring is accepted by `ServiceConfig`. */
 export const HealthcheckInput = HealthcheckCanonicalBase;
 export type HealthcheckInput = typeof HealthcheckInput.Type;
 
