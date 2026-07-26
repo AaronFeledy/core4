@@ -30,6 +30,17 @@ const decodeAuthored = (service: Record<string, unknown>): ServiceConfig => {
 const reservedKeyRecord = (value: unknown): Record<string, unknown> =>
   Object.fromEntries([["__proto__", value]]);
 
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const propertyNameAllows = (constraint: unknown, key: string): boolean => {
+  if (!isRecord(constraint)) return false;
+  const { anyOf: alternatives, enum: values, pattern } = constraint;
+  if (Array.isArray(alternatives)) return alternatives.some((entry) => propertyNameAllows(entry, key));
+  if (Array.isArray(values) && !values.includes(key)) return false;
+  return typeof pattern !== "string" || new RegExp(pattern, "u").test(key);
+};
+
 const expectReservedKeyRejection = (result: Either.Either<unknown, unknown>): void => {
   expect(Either.isLeft(result)).toBe(true);
   if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
@@ -259,6 +270,34 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
   });
 
   describe("ServiceConfigInput public schema", () => {
+    test("build property-name constraints allow declared keys and x-* extensions", () => {
+      const schema = getJsonSchema("ServiceConfigInput");
+      const definitions = isRecord(schema) && isRecord(schema.$defs) ? schema.$defs : {};
+      const serviceConfigInput = definitions.ServiceConfigInput;
+      const properties =
+        isRecord(schema) && isRecord(schema.properties)
+          ? schema.properties
+          : isRecord(serviceConfigInput) && isRecord(serviceConfigInput.properties)
+            ? serviceConfigInput.properties
+            : {};
+      const build = properties.build;
+      const branches = isRecord(build) && Array.isArray(build.anyOf) ? build.anyOf : [];
+      const objectBranch = branches.find(
+        (branch): branch is Readonly<Record<string, unknown>> => isRecord(branch) && branch.type === "object",
+      );
+      const declaredProperties =
+        objectBranch !== undefined && isRecord(objectBranch.properties)
+          ? Object.keys(objectBranch.properties)
+          : [];
+
+      expect(declaredProperties.length).toBeGreaterThan(0);
+      for (const key of declaredProperties) {
+        expect(propertyNameAllows(objectBranch?.propertyNames, key)).toBe(true);
+      }
+      expect(propertyNameAllows(objectBranch?.propertyNames, "x-review")).toBe(true);
+      expect(propertyNameAllows(objectBranch?.propertyNames, "not-a-build-key")).toBe(false);
+    });
+
     test("contains canonical keys and Compose aliases", () => {
       const schema = getJsonSchema("ServiceConfigInput") as {
         readonly $defs?: Readonly<

@@ -53,7 +53,7 @@ describe("Compose build-key totality", () => {
     );
     expect(depthOneDispositions.some(([, disposition]) => disposition === "preserved")).toBe(false);
 
-    for (const [matrixKey] of depthOneDispositions) {
+    for (const [matrixKey, disposition] of depthOneDispositions) {
       const authoredKey = matrixKey === "x-*" ? "x-totality" : matrixKey;
       const input = { artifact: "x", [authoredKey]: buildValue(matrixKey) };
       for (const options of decodeOptions) {
@@ -68,6 +68,18 @@ describe("Compose build-key totality", () => {
         expect(message).toContain("Compose image-build keys");
         expect(message).toContain("Lando build-script keys");
         expect(message).toContain("image:");
+
+        const composeOnlyResult = Schema.decodeUnknownEither(BuildBlock)(
+          { [authoredKey]: buildValue(matrixKey) },
+          options,
+        );
+        expect(Either.isRight(composeOnlyResult)).toBe(disposition === "normalized");
+        if (disposition === "rejected" && Either.isLeft(composeOnlyResult)) {
+          const rejectedMessage = ParseResult.ArrayFormatter.formatErrorSync(composeOnlyResult.left)
+            .map(({ message: issue }) => issue)
+            .join("\n");
+          expect(rejectedMessage).toContain(authoredKey);
+        }
       }
     }
   });

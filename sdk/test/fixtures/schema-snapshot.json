@@ -581,8 +581,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -2266,8 +2301,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -3993,8 +4063,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -5848,8 +5953,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -7533,8 +7673,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -11680,8 +11855,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -13388,8 +13598,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -15096,8 +15341,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -16804,8 +17084,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -18512,8 +18827,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -39577,8 +39927,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -62244,8 +62629,43 @@
                 }
               },
               "propertyNames": {
-                "pattern": "^x-[\\s\\S]*?$",
-                "type": "string"
+                "anyOf": [
+                  {
+                    "enum": [
+                      "artifact",
+                      "app",
+                      "additional_contexts",
+                      "context",
+                      "dockerfile",
+                      "dockerfile_inline",
+                      "dockerfileInline",
+                      "args",
+                      "cache_from",
+                      "cache_to",
+                      "entitlements",
+                      "extra_hosts",
+                      "isolation",
+                      "labels",
+                      "network",
+                      "no_cache",
+                      "no_cache_filter",
+                      "platforms",
+                      "privileged",
+                      "provenance",
+                      "pull",
+                      "sbom",
+                      "secrets",
+                      "shm_size",
+                      "ssh",
+                      "tags",
+                      "target",
+                      "ulimits"
+                    ]
+                  },
+                  {
+                    "pattern": "^x-"
+                  }
+                ]
               },
               "required": [],
               "type": "object"
@@ -63329,8 +63749,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"
@@ -66438,8 +66893,43 @@
                     }
                   },
                   "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "enum": [
+                          "artifact",
+                          "app",
+                          "additional_contexts",
+                          "context",
+                          "dockerfile",
+                          "dockerfile_inline",
+                          "dockerfileInline",
+                          "args",
+                          "cache_from",
+                          "cache_to",
+                          "entitlements",
+                          "extra_hosts",
+                          "isolation",
+                          "labels",
+                          "network",
+                          "no_cache",
+                          "no_cache_filter",
+                          "platforms",
+                          "privileged",
+                          "provenance",
+                          "pull",
+                          "sbom",
+                          "secrets",
+                          "shm_size",
+                          "ssh",
+                          "tags",
+                          "target",
+                          "ulimits"
+                        ]
+                      },
+                      {
+                        "pattern": "^x-"
+                      }
+                    ]
                   },
                   "required": [],
                   "type": "object"

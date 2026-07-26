@@ -31,7 +31,7 @@ export const ComposeBuildBlock = Schema.Struct({
 
 const BuildBlockCanonical = Schema.Union(LandoBuildBlock, ComposeBuildBlock);
 
-const BuildBlockObjectFrom = Schema.Struct({
+const BuildBlockObjectFields = {
   artifact: Schema.optional(BuildScript),
   app: Schema.optional(BuildScript),
   additional_contexts: Schema.optional(Schema.Unknown),
@@ -65,14 +65,27 @@ const BuildBlockObjectFrom = Schema.Struct({
   tags: Schema.optional(Schema.Unknown),
   target: Schema.optional(Schema.String),
   ulimits: Schema.optional(Schema.Unknown),
-}).pipe(
-  Schema.extend(
-    Schema.Record({
-      key: Schema.TemplateLiteral(COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String),
-      value: Schema.Unknown,
-    }),
-  ),
-);
+} as const;
+
+const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields)
+  .pipe(
+    Schema.extend(
+      Schema.Record({
+        key: Schema.TemplateLiteral(COMPOSE_BUILD_EXTENSION_KEY_PREFIX, Schema.String),
+        value: Schema.Unknown,
+      }),
+    ),
+  )
+  .annotations({
+    jsonSchema: {
+      propertyNames: {
+        anyOf: [
+          { enum: Object.keys(BuildBlockObjectFields) },
+          { pattern: `^${COMPOSE_BUILD_EXTENSION_KEY_PREFIX}` },
+        ],
+      },
+    },
+  });
 
 const BuildBlockFrom = Schema.Union(Schema.String, BuildBlockObjectFrom);
 

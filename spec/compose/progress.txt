@@ -260,3 +260,10 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; 581 focused tests across 16 SDK, loader, planner, runtime, plugin, snapshot, compatibility, and contract files passed; Compose coverage, import-cycle, guide lint/coverage/public-transcript, and explicit-base guide-drift gates passed; schema codegen was hash-idempotent.
 - **Learnings for future iterations:** Effect transforms that discriminate key families must include rejected and extension keys in their input schema; otherwise default excess-property stripping can silently turn a mixed block into the wrong valid family before decode logic runs.
 ---
+
+## 2026-07-26 11:23 CDT - US-471 Review
+- Fixed the post-review public-schema regression: the build input's `propertyNames` constraint now permits every declared build key plus `x-*` instead of applying the extension-only pattern to ordinary keys such as `context` and `artifact`; runtime schema generation and committed JSON Schema artifacts are synchronized.
+- Strengthened the matrix-totality proof so every rejected depth-one build key also fails as a Compose-only block under default and strict Effect decoding, not only when mixed with Lando scripts.
+- Verification: typecheck and lint passed; 582 focused tests across 16 schema, loader, planner, runtime, plugin, snapshot, compatibility, and contract files passed; Compose coverage, import-cycle, and explicit-base guide-drift gates passed; schema codegen was hash-idempotent.
+- **Learnings for future iterations:** Extending a Struct with a template-key Record emits `propertyNames` for the whole object in draft-07; derive an explicit property-name union from the declared field map plus the template pattern, and test representative generated-schema names rather than trusting a snapshot alone.
+---
