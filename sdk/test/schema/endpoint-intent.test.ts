@@ -42,7 +42,21 @@ describe("endpoint publication intent", () => {
 
     // Then
     expect(Either.isRight(result)).toBe(true);
-    if (Either.isRight(result)) expect(result.right.appProtocol).toBe("http/1.1");
+    if (Either.isRight(result)) {
+      expect(result.right._tag).toBe("published");
+      if (result.right._tag === "published") expect(result.right.appProtocol).toBe("http/1.1");
+    }
+  });
+
+  test("rejects application protocol metadata on internal endpoints", () => {
+    // Given / When
+    const result = Schema.decodeUnknownEither(EndpointInput)(
+      { _tag: "internal", protocol: "tcp", port: 8080, appProtocol: "http/1.1" },
+      { onExcessProperty: "error" },
+    );
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
   });
 
   test("accepts internal unix endpoints", () => {

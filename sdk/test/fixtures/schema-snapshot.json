@@ -589,10 +589,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -619,10 +615,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -2125,10 +2117,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -2155,10 +2143,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -3703,10 +3687,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -3733,10 +3713,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -5409,10 +5385,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -5439,10 +5411,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -6945,10 +6913,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -6975,10 +6939,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -10943,10 +10903,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -10973,10 +10929,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -12502,10 +12454,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -12532,10 +12480,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -14061,10 +14005,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -14091,10 +14031,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -15620,10 +15556,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -15650,10 +15582,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -17179,10 +17107,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -17209,10 +17133,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -23233,10 +23153,6 @@
                               "enum": ["internal"],
                               "type": "string"
                             },
-                            "appProtocol": {
-                              "description": "Optional application-layer protocol metadata.",
-                              "type": "string"
-                            },
                             "name": {
                               "description": "Optional endpoint name.",
                               "type": "string"
@@ -23263,10 +23179,6 @@
                             "_tag": {
                               "description": "Discriminates a service-only endpoint.",
                               "enum": ["internal"],
-                              "type": "string"
-                            },
-                            "appProtocol": {
-                              "description": "Optional application-layer protocol metadata.",
                               "type": "string"
                             },
                             "name": {
@@ -25576,10 +25488,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -25606,10 +25514,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -26905,10 +26809,6 @@
                   "enum": ["internal"],
                   "type": "string"
                 },
-                "appProtocol": {
-                  "description": "Optional application-layer protocol metadata.",
-                  "type": "string"
-                },
                 "name": {
                   "description": "Optional endpoint name.",
                   "type": "string"
@@ -26935,10 +26835,6 @@
                 "_tag": {
                   "description": "Discriminates a service-only endpoint.",
                   "enum": ["internal"],
-                  "type": "string"
-                },
-                "appProtocol": {
-                  "description": "Optional application-layer protocol metadata.",
                   "type": "string"
                 },
                 "name": {
@@ -27025,10 +26921,6 @@
                   "enum": ["internal"],
                   "type": "string"
                 },
-                "appProtocol": {
-                  "description": "Optional application-layer protocol metadata.",
-                  "type": "string"
-                },
                 "name": {
                   "description": "Optional endpoint name.",
                   "type": "string"
@@ -27055,10 +26947,6 @@
                 "_tag": {
                   "description": "Discriminates a service-only endpoint.",
                   "enum": ["internal"],
-                  "type": "string"
-                },
-                "appProtocol": {
-                  "description": "Optional application-layer protocol metadata.",
                   "type": "string"
                 },
                 "name": {
@@ -29152,10 +29040,6 @@
               "enum": ["internal"],
               "type": "string"
             },
-            "appProtocol": {
-              "description": "Optional application-layer protocol metadata.",
-              "type": "string"
-            },
             "name": {
               "description": "Optional endpoint name.",
               "type": "string"
@@ -29182,10 +29066,6 @@
             "_tag": {
               "description": "Discriminates a service-only endpoint.",
               "enum": ["internal"],
-              "type": "string"
-            },
-            "appProtocol": {
-              "description": "Optional application-layer protocol metadata.",
               "type": "string"
             },
             "name": {
@@ -30403,10 +30283,6 @@
                                       "enum": ["internal"],
                                       "type": "string"
                                     },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
-                                      "type": "string"
-                                    },
                                     "name": {
                                       "description": "Optional endpoint name.",
                                       "type": "string"
@@ -30433,10 +30309,6 @@
                                     "_tag": {
                                       "description": "Discriminates a service-only endpoint.",
                                       "enum": ["internal"],
-                                      "type": "string"
-                                    },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -31188,10 +31060,6 @@
                                       "enum": ["internal"],
                                       "type": "string"
                                     },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
-                                      "type": "string"
-                                    },
                                     "name": {
                                       "description": "Optional endpoint name.",
                                       "type": "string"
@@ -31218,10 +31086,6 @@
                                     "_tag": {
                                       "description": "Discriminates a service-only endpoint.",
                                       "enum": ["internal"],
-                                      "type": "string"
-                                    },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -32173,10 +32037,6 @@
                                       "enum": ["internal"],
                                       "type": "string"
                                     },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
-                                      "type": "string"
-                                    },
                                     "name": {
                                       "description": "Optional endpoint name.",
                                       "type": "string"
@@ -32203,10 +32063,6 @@
                                     "_tag": {
                                       "description": "Discriminates a service-only endpoint.",
                                       "enum": ["internal"],
-                                      "type": "string"
-                                    },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -32971,10 +32827,6 @@
                                       "enum": ["internal"],
                                       "type": "string"
                                     },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
-                                      "type": "string"
-                                    },
                                     "name": {
                                       "description": "Optional endpoint name.",
                                       "type": "string"
@@ -33001,10 +32853,6 @@
                                     "_tag": {
                                       "description": "Discriminates a service-only endpoint.",
                                       "enum": ["internal"],
-                                      "type": "string"
-                                    },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -33827,10 +33675,6 @@
                                       "enum": ["internal"],
                                       "type": "string"
                                     },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
-                                      "type": "string"
-                                    },
                                     "name": {
                                       "description": "Optional endpoint name.",
                                       "type": "string"
@@ -33857,10 +33701,6 @@
                                     "_tag": {
                                       "description": "Discriminates a service-only endpoint.",
                                       "enum": ["internal"],
-                                      "type": "string"
-                                    },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -34609,10 +34449,6 @@
                                       "enum": ["internal"],
                                       "type": "string"
                                     },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
-                                      "type": "string"
-                                    },
                                     "name": {
                                       "description": "Optional endpoint name.",
                                       "type": "string"
@@ -34639,10 +34475,6 @@
                                     "_tag": {
                                       "description": "Discriminates a service-only endpoint.",
                                       "enum": ["internal"],
-                                      "type": "string"
-                                    },
-                                    "appProtocol": {
-                                      "description": "Optional application-layer protocol metadata.",
                                       "type": "string"
                                     },
                                     "name": {
@@ -38139,10 +37971,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -38169,10 +37997,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -43325,10 +43149,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -43355,10 +43175,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -44217,10 +44033,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -44247,10 +44059,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -45583,10 +45391,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -45613,10 +45417,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -47108,10 +46908,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -47138,10 +46934,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -48000,10 +47792,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -48030,10 +47818,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -49338,10 +49122,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -49368,10 +49148,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {
@@ -52583,10 +52359,6 @@
                                           "enum": ["internal"],
                                           "type": "string"
                                         },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
-                                          "type": "string"
-                                        },
                                         "name": {
                                           "description": "Optional endpoint name.",
                                           "type": "string"
@@ -52613,10 +52385,6 @@
                                         "_tag": {
                                           "description": "Discriminates a service-only endpoint.",
                                           "enum": ["internal"],
-                                          "type": "string"
-                                        },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
                                           "type": "string"
                                         },
                                         "name": {
@@ -53375,10 +53143,6 @@
                                           "enum": ["internal"],
                                           "type": "string"
                                         },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
-                                          "type": "string"
-                                        },
                                         "name": {
                                           "description": "Optional endpoint name.",
                                           "type": "string"
@@ -53405,10 +53169,6 @@
                                         "_tag": {
                                           "description": "Discriminates a service-only endpoint.",
                                           "enum": ["internal"],
-                                          "type": "string"
-                                        },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
                                           "type": "string"
                                         },
                                         "name": {
@@ -54367,10 +54127,6 @@
                                           "enum": ["internal"],
                                           "type": "string"
                                         },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
-                                          "type": "string"
-                                        },
                                         "name": {
                                           "description": "Optional endpoint name.",
                                           "type": "string"
@@ -54397,10 +54153,6 @@
                                         "_tag": {
                                           "description": "Discriminates a service-only endpoint.",
                                           "enum": ["internal"],
-                                          "type": "string"
-                                        },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
                                           "type": "string"
                                         },
                                         "name": {
@@ -55172,10 +54924,6 @@
                                           "enum": ["internal"],
                                           "type": "string"
                                         },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
-                                          "type": "string"
-                                        },
                                         "name": {
                                           "description": "Optional endpoint name.",
                                           "type": "string"
@@ -55202,10 +54950,6 @@
                                         "_tag": {
                                           "description": "Discriminates a service-only endpoint.",
                                           "enum": ["internal"],
-                                          "type": "string"
-                                        },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
                                           "type": "string"
                                         },
                                         "name": {
@@ -56035,10 +55779,6 @@
                                           "enum": ["internal"],
                                           "type": "string"
                                         },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
-                                          "type": "string"
-                                        },
                                         "name": {
                                           "description": "Optional endpoint name.",
                                           "type": "string"
@@ -56065,10 +55805,6 @@
                                         "_tag": {
                                           "description": "Discriminates a service-only endpoint.",
                                           "enum": ["internal"],
-                                          "type": "string"
-                                        },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
                                           "type": "string"
                                         },
                                         "name": {
@@ -56824,10 +56560,6 @@
                                           "enum": ["internal"],
                                           "type": "string"
                                         },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
-                                          "type": "string"
-                                        },
                                         "name": {
                                           "description": "Optional endpoint name.",
                                           "type": "string"
@@ -56854,10 +56586,6 @@
                                         "_tag": {
                                           "description": "Discriminates a service-only endpoint.",
                                           "enum": ["internal"],
-                                          "type": "string"
-                                        },
-                                        "appProtocol": {
-                                          "description": "Optional application-layer protocol metadata.",
                                           "type": "string"
                                         },
                                         "name": {
@@ -60670,10 +60398,6 @@
                         "enum": ["internal"],
                         "type": "string"
                       },
-                      "appProtocol": {
-                        "description": "Optional application-layer protocol metadata.",
-                        "type": "string"
-                      },
                       "name": {
                         "description": "Optional endpoint name.",
                         "type": "string"
@@ -60700,10 +60424,6 @@
                       "_tag": {
                         "description": "Discriminates a service-only endpoint.",
                         "enum": ["internal"],
-                        "type": "string"
-                      },
-                      "appProtocol": {
-                        "description": "Optional application-layer protocol metadata.",
                         "type": "string"
                       },
                       "name": {
@@ -61640,10 +61360,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -61670,10 +61386,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -62497,10 +62209,6 @@
                         "enum": ["internal"],
                         "type": "string"
                       },
-                      "appProtocol": {
-                        "description": "Optional application-layer protocol metadata.",
-                        "type": "string"
-                      },
                       "name": {
                         "description": "Optional endpoint name.",
                         "type": "string"
@@ -62527,10 +62235,6 @@
                       "_tag": {
                         "description": "Discriminates a service-only endpoint.",
                         "enum": ["internal"],
-                        "type": "string"
-                      },
-                      "appProtocol": {
-                        "description": "Optional application-layer protocol metadata.",
                         "type": "string"
                       },
                       "name": {
@@ -62859,10 +62563,6 @@
                         "enum": ["internal"],
                         "type": "string"
                       },
-                      "appProtocol": {
-                        "description": "Optional application-layer protocol metadata.",
-                        "type": "string"
-                      },
                       "name": {
                         "description": "Optional endpoint name.",
                         "type": "string"
@@ -62889,10 +62589,6 @@
                       "_tag": {
                         "description": "Discriminates a service-only endpoint.",
                         "enum": ["internal"],
-                        "type": "string"
-                      },
-                      "appProtocol": {
-                        "description": "Optional application-layer protocol metadata.",
                         "type": "string"
                       },
                       "name": {
@@ -64612,10 +64308,6 @@
                             "enum": ["internal"],
                             "type": "string"
                           },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
-                            "type": "string"
-                          },
                           "name": {
                             "description": "Optional endpoint name.",
                             "type": "string"
@@ -64642,10 +64334,6 @@
                           "_tag": {
                             "description": "Discriminates a service-only endpoint.",
                             "enum": ["internal"],
-                            "type": "string"
-                          },
-                          "appProtocol": {
-                            "description": "Optional application-layer protocol metadata.",
                             "type": "string"
                           },
                           "name": {
@@ -67479,10 +67167,6 @@
                                   "enum": ["internal"],
                                   "type": "string"
                                 },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
-                                  "type": "string"
-                                },
                                 "name": {
                                   "description": "Optional endpoint name.",
                                   "type": "string"
@@ -67509,10 +67193,6 @@
                                 "_tag": {
                                   "description": "Discriminates a service-only endpoint.",
                                   "enum": ["internal"],
-                                  "type": "string"
-                                },
-                                "appProtocol": {
-                                  "description": "Optional application-layer protocol metadata.",
                                   "type": "string"
                                 },
                                 "name": {

@@ -1406,7 +1406,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "DeprecationUse.timestamp",
   "DeprecationUsedEvent._tag",
   "InternalEndpoint._tag",
-  "InternalEndpoint.appProtocol",
   "InternalEndpoint.name",
   "InternalEndpoint.protocol",
   "EndpointInput.name",

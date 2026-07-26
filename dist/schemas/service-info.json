@@ -26,10 +26,6 @@
                     ],
                     "type": "string"
                   },
-                  "appProtocol": {
-                    "description": "Optional application-layer protocol metadata.",
-                    "type": "string"
-                  },
                   "name": {
                     "description": "Optional endpoint name.",
                     "type": "string"
@@ -67,10 +63,6 @@
                     "enum": [
                       "internal"
                     ],
-                    "type": "string"
-                  },
-                  "appProtocol": {
-                    "description": "Optional application-layer protocol metadata.",
                     "type": "string"
                   },
                   "name": {

@@ -36,6 +36,8 @@ export type EndpointPublication = typeof EndpointPublication.Type;
 
 const commonFields = {
   name: Schema.optional(Schema.String).annotations({ description: "Optional endpoint name." }),
+};
+const applicationProtocolField = {
   appProtocol: Schema.optional(Schema.String).annotations({
     description: "Optional application-layer protocol metadata.",
   }),
@@ -78,6 +80,7 @@ export const PublishedEndpointInput = Schema.Struct({
   port: PortNumber,
   publication: publicationField,
   ...commonFields,
+  ...applicationProtocolField,
 });
 export type PublishedEndpointInput = typeof PublishedEndpointInput.Type;
 
@@ -105,6 +108,7 @@ export const PublishedEndpoint = Schema.Struct({
   port: PortNumber,
   publication: publicationField,
   ...commonFields,
+  ...applicationProtocolField,
 });
 export type PublishedEndpoint = typeof PublishedEndpoint.Type;
 
