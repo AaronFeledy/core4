@@ -5,7 +5,6 @@ import {
   type ComposeVolumeEntry,
   ComposeVolumesField,
   parseShortVolume,
-  splitVolumeSpec,
 } from "../../src/schema/compose-volumes.ts";
 
 const decodeVolumes = (input: unknown): ReadonlyArray<ComposeVolumeEntry> =>
@@ -191,6 +190,20 @@ describe("ComposeVolumesField", () => {
     expect(results.every(Either.isLeft)).toBe(true);
   });
 
+  test.each([
+    ["bind/subpath", { type: "bind", source: "s", target: "/x", readOnly: false, subpath: "p" }],
+    [
+      "volume/createHostPath",
+      { type: "volume", source: "v", target: "/x", readOnly: false, createHostPath: false },
+    ],
+    ["tmpfs/createHostPath", { type: "tmpfs", target: "/x", readOnly: false, createHostPath: false }],
+  ] as const)("rejects canonical %s during decode and encode", (_label, input) => {
+    // Given / When / Then
+    expect(Schema.decodeUnknownEither(ComposeVolumesField)([input])._tag).toBe("Left");
+    expect(decodeVolumesEither([input])._tag).toBe("Left");
+    expect(Schema.encodeUnknownEither(ComposeVolumesField)([input])._tag).toBe("Left");
+  });
+
   test.each(rejectedShortCases)("S31 rejects short mode %s", (token, matrixKey) => {
     const result = decodeVolumesEither([`src:/app:${token}`]);
 
@@ -202,10 +215,6 @@ describe("ComposeVolumesField", () => {
     expect(decodeVolumes(["src:/app:banana"])).toEqual([
       { type: "volume", source: "src", target: "/app", readOnly: false },
     ]);
-  });
-
-  test("S33 preserves a Windows drive-letter source while splitting", () => {
-    expect(splitVolumeSpec("C:\\src:/app:ro")).toEqual(["C:\\src", "/app", "ro"]);
   });
 
   test("S33 decodes a Windows drive-letter source as a bind", () => {

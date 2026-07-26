@@ -90,7 +90,7 @@ const rejectedModeMatrixKey = (token: string): string | undefined => {
   }
 };
 
-export const splitVolumeSpec = (spec: string): readonly string[] => {
+const splitVolumeSpec = (spec: string): readonly string[] => {
   if (!DRIVE_LETTER_PATH.test(spec)) return spec.split(":");
   const [path = "", ...rest] = spec.slice(2).split(":");
   return [`${spec.slice(0, 2)}${path}`, ...rest];
@@ -171,6 +171,7 @@ const longVolumeFailure = (
     case "bind":
       if (input.source === undefined) return 'Compose volume type "bind" requires source.';
       if (input.volume !== undefined) return 'Compose volume type "bind" must not define volume options.';
+      if (input.subpath !== undefined) return 'Compose volume type "bind" must not define volume subpath.';
       if (input.tmpfs !== undefined) return 'Compose volume type "bind" must not define tmpfs options.';
       return undefined;
     case "volume":
@@ -178,12 +179,17 @@ const longVolumeFailure = (
         return 'Compose volume type "volume" must not define a path-like source.';
       }
       if (input.bind !== undefined) return 'Compose volume type "volume" must not define bind options.';
+      if (input.createHostPath !== undefined)
+        return 'Compose volume type "volume" must not define bind path creation.';
       if (input.tmpfs !== undefined) return 'Compose volume type "volume" must not define tmpfs options.';
       return undefined;
     case "tmpfs":
       if (input.source !== undefined) return 'Compose volume type "tmpfs" must not define source.';
       if (input.bind !== undefined) return 'Compose volume type "tmpfs" must not define bind options.';
+      if (input.createHostPath !== undefined)
+        return 'Compose volume type "tmpfs" must not define bind path creation.';
       if (input.volume !== undefined) return 'Compose volume type "tmpfs" must not define volume options.';
+      if (input.subpath !== undefined) return 'Compose volume type "tmpfs" must not define volume subpath.';
       return undefined;
   }
 };
@@ -219,7 +225,12 @@ export const ComposeVolumesField = Schema.Array(
         if (failure !== undefined) return ParseResult.fail(new ParseResult.Type(ast, input, failure));
         return ParseResult.succeed(decodeLongVolume(input));
       },
-      encode: (entry) => ParseResult.succeed(encodeLongVolume(entry)),
+      encode: (entry, _options, ast) => {
+        const failure = longVolumeFailure(entry);
+        return failure === undefined
+          ? ParseResult.succeed(encodeLongVolume(entry))
+          : ParseResult.fail(new ParseResult.Type(ast, entry, failure));
+      },
     },
   ),
 );
