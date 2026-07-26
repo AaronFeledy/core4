@@ -15,6 +15,8 @@ export type {
   ContainerBuildOptions,
 } from "./image-build-http.ts";
 
+export const LANDO_INLINE_DOCKERFILE_PATH = ".lando/Dockerfile.inline";
+
 interface BuildStep {
   readonly command: string | ReadonlyArray<string>;
   readonly phase: string;
@@ -91,7 +93,10 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
   const params = new URLSearchParams({ t: tag });
   const artifact = input.plan.services[input.service]?.artifact;
   if (!derived && artifact?.kind === "build") {
-    params.set("dockerfile", artifact.spec ?? "Dockerfile");
+    params.set(
+      "dockerfile",
+      artifact.specInline !== undefined ? LANDO_INLINE_DOCKERFILE_PATH : (artifact.spec ?? "Dockerfile"),
+    );
     if (artifact.args !== undefined) params.set("buildargs", JSON.stringify(artifact.args));
     if (artifact.target !== undefined) params.set("target", artifact.target);
   } else {
@@ -126,6 +131,15 @@ export const buildContainerArtifact = (
       );
     }
     const artifact = service.artifact;
+    if (artifact?.kind === "build" && artifact.spec !== undefined && artifact.specInline !== undefined) {
+      return yield* Effect.fail(
+        new ProviderInternalError({
+          providerId: options.providerId,
+          operation: "buildArtifact",
+          message: `Artifact build spec for service ${input.service} sets both spec and specInline; exactly one is allowed.`,
+        }),
+      );
+    }
     const steps = serviceBuildSteps(service);
     const tag = deterministicRef(input);
     let digest: string | undefined;
@@ -142,13 +156,25 @@ export const buildContainerArtifact = (
             cause,
           }),
       });
+      const stdin =
+        artifact.specInline === undefined
+          ? packed.tar
+          : tarStream([
+              ...packed.entries.filter((entry) => entry.name !== LANDO_INLINE_DOCKERFILE_PATH),
+              {
+                kind: "file",
+                name: LANDO_INLINE_DOCKERFILE_PATH,
+                mode: 0o644,
+                content: tarText(artifact.specInline),
+              },
+            ]);
       const baseTag = steps.length === 0 ? tag : `${tag}-base`;
       digest = yield* requestContainerBuild({
         request,
         options,
         path: buildPath(input, baseTag, false),
         tag: baseTag,
-        stdin: packed.tar,
+        stdin,
         secretValues,
       });
       if (steps.length > 0) {

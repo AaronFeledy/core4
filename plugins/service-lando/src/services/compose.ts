@@ -1,4 +1,4 @@
-import { basename, isAbsolute, resolve as resolvePath } from "node:path";
+import { basename } from "node:path";
 
 import { Effect, Schema } from "effect";
 
@@ -71,38 +71,21 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
   const hasImage = service.image !== undefined && service.image.length > 0;
-  const hasBuild = service.composeBuild !== undefined;
-  if (!hasImage && !hasBuild) {
+  const build = service.build;
+  const hasComposeBuild = build !== undefined && "context" in build;
+  if (!hasImage && !hasComposeBuild) {
     throw new Error(
-      `compose service "${ctx.serviceName}" requires either "image:" or "composeBuild:" (Compose build block).`,
+      `compose service "${ctx.serviceName}" requires either "image:" or "build:" (Compose build block).`,
     );
   }
-  if (hasImage && hasBuild) {
+  if (hasImage && hasComposeBuild) {
     throw new Error(
-      `compose service "${ctx.serviceName}" must declare exactly one of "image:" or "composeBuild:", not both.`,
-    );
-  }
-  if (service.build !== undefined) {
-    throw new Error(
-      `compose service "${ctx.serviceName}" does not accept Lando "build:" (artifact/app scripts). Use "composeBuild:" with Compose-spec fields, or move provider-specific build to "providers.<id>".`,
+      `compose service "${ctx.serviceName}" must declare exactly one of "image:" or "build:", not both.`,
     );
   }
 
-  const composeBuild = service.composeBuild;
   if (hasImage) {
     ctx.setArtifact({ kind: "ref", ref: service.image as string });
-  } else if (composeBuild !== undefined) {
-    ctx.setArtifact({
-      kind: "build",
-      context: AbsolutePath.make(
-        isAbsolute(composeBuild.context)
-          ? composeBuild.context
-          : resolvePath(ctx.appRoot, composeBuild.context),
-      ),
-      ...(composeBuild.dockerfile === undefined ? {} : { spec: PortablePath.make(composeBuild.dockerfile) }),
-      ...(composeBuild.args === undefined ? {} : { args: composeBuild.args }),
-      ...(composeBuild.target === undefined ? {} : { target: composeBuild.target }),
-    });
   }
 
   const appName = appNameFor(ctx);

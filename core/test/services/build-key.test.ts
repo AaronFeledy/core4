@@ -217,4 +217,72 @@ describe("buildKeyForService", () => {
 
     expect(await key(base)).not.toBe(await key(sameContentOtherRoot));
   });
+
+  test("changing only specInline changes the build key", async () => {
+    // Given: two plans identical except artifact.specInline
+    const context = await mkdtemp(join(tmpdir(), "lando-build-key-spec-inline-"));
+    await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+    const baseArtifact = {
+      kind: "build" as const,
+      context: AbsolutePath.make(context),
+      specInline: "FROM alpine\n",
+    };
+    const base = service({ artifact: baseArtifact });
+    const changed = service({
+      artifact: { ...baseArtifact, specInline: "FROM busybox\n" },
+    });
+
+    // When
+    const baseKey = await key(base);
+    const changedKey = await key(changed);
+
+    // Then
+    expect(changedKey).not.toBe(baseKey);
+  });
+
+  test("changing only contentHash changes the build key", async () => {
+    // Given: two plans identical except artifact.contentHash
+    const context = await mkdtemp(join(tmpdir(), "lando-build-key-content-hash-"));
+    await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+    const baseArtifact = {
+      kind: "build" as const,
+      context: AbsolutePath.make(context),
+      contentHash: "hash-a",
+    };
+    const base = service({ artifact: baseArtifact });
+    const changed = service({
+      artifact: { ...baseArtifact, contentHash: "hash-b" },
+    });
+
+    // When
+    const baseKey = await key(base);
+    const changedKey = await key(changed);
+
+    // Then
+    expect(changedKey).not.toBe(baseKey);
+  });
+
+  test("identical artifacts produce an identical build key", async () => {
+    // Given
+    const context = await mkdtemp(join(tmpdir(), "lando-build-key-identical-"));
+    await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+    const plan = service({
+      artifact: {
+        kind: "build",
+        context: AbsolutePath.make(context),
+        spec: PortablePath.make("Dockerfile"),
+        specInline: "FROM alpine\n",
+        contentHash: "stable-hash",
+        args: { FLAVOR: "bookworm" },
+        target: "runtime",
+      },
+    });
+
+    // When
+    const first = await key(plan);
+    const second = await key(plan);
+
+    // Then
+    expect(second).toBe(first);
+  });
 });

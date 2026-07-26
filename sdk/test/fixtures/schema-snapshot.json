@@ -421,37 +421,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -465,30 +512,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -1994,37 +2017,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -2038,30 +2108,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -3609,37 +3655,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -3653,30 +3746,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -5352,37 +5421,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -5396,30 +5512,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -6925,37 +7017,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -6969,30 +7108,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -10960,37 +11075,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -11004,30 +11166,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -12556,37 +12694,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -12600,30 +12785,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -14152,37 +14313,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -14196,30 +14404,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -15748,37 +15932,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -15792,30 +16023,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -17344,37 +17551,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -17388,30 +17642,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -23532,6 +23762,10 @@
                       "spec": {
                         "type": "string"
                       },
+                      "specInline": {
+                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                        "type": "string"
+                      },
                       "target": {
                         "type": "string"
                       }
@@ -24055,6 +24289,10 @@
         "spec": {
           "type": "string"
         },
+        "specInline": {
+          "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+          "type": "string"
+        },
         "target": {
           "type": "string"
         }
@@ -24211,6 +24449,10 @@
                       "spec": {
                         "type": "string"
                       },
+                      "specInline": {
+                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                        "type": "string"
+                      },
                       "target": {
                         "type": "string"
                       }
@@ -24328,6 +24570,10 @@
                   "type": "string"
                 },
                 "spec": {
+                  "type": "string"
+                },
+                "specInline": {
+                  "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                   "type": "string"
                 },
                 "target": {
@@ -25865,6 +26111,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -30662,6 +30912,10 @@
                               "spec": {
                                 "type": "string"
                               },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
                               "target": {
                                 "type": "string"
                               }
@@ -31437,6 +31691,10 @@
                                 "type": "string"
                               },
                               "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                                 "type": "string"
                               },
                               "target": {
@@ -32416,6 +32674,10 @@
                               "spec": {
                                 "type": "string"
                               },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
                               "target": {
                                 "type": "string"
                               }
@@ -33204,6 +33466,10 @@
                                 "type": "string"
                               },
                               "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                                 "type": "string"
                               },
                               "target": {
@@ -34054,6 +34320,10 @@
                               "spec": {
                                 "type": "string"
                               },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
                               "target": {
                                 "type": "string"
                               }
@@ -34826,6 +35096,10 @@
                                 "type": "string"
                               },
                               "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                                 "type": "string"
                               },
                               "target": {
@@ -38253,37 +38527,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -38297,30 +38618,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -43573,6 +43870,10 @@
                           "spec": {
                             "type": "string"
                           },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
                           "target": {
                             "type": "string"
                           }
@@ -44455,6 +44756,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -45813,6 +46118,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -47332,6 +47641,10 @@
                           "spec": {
                             "type": "string"
                           },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
                           "target": {
                             "type": "string"
                           }
@@ -48214,6 +48527,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -49544,6 +49861,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -52783,6 +53104,10 @@
                                   "spec": {
                                     "type": "string"
                                   },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
                                   "target": {
                                     "type": "string"
                                   }
@@ -53565,6 +53890,10 @@
                                     "type": "string"
                                   },
                                   "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                                     "type": "string"
                                   },
                                   "target": {
@@ -54551,6 +54880,10 @@
                                   "spec": {
                                     "type": "string"
                                   },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
                                   "target": {
                                     "type": "string"
                                   }
@@ -55346,6 +55679,10 @@
                                     "type": "string"
                                   },
                                   "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                                     "type": "string"
                                   },
                                   "target": {
@@ -56203,6 +56540,10 @@
                                   "spec": {
                                     "type": "string"
                                   },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
                                   "target": {
                                     "type": "string"
                                   }
@@ -56982,6 +57323,10 @@
                                     "type": "string"
                                   },
                                   "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                                     "type": "string"
                                   },
                                   "target": {
@@ -60760,37 +61105,84 @@
           ]
         },
         "build": {
-          "additionalProperties": false,
-          "properties": {
-            "app": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                }
-              ]
+          "anyOf": [
+            {
+              "type": "string"
             },
-            "artifact": {
-              "anyOf": [
-                {
+            {
+              "additionalProperties": false,
+              "properties": {
+                "app": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "args": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "artifact": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "context": {
                   "type": "string"
                 },
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
+                "dockerfile": {
+                  "type": "string"
+                },
+                "dockerfile_inline": {
+                  "type": "string"
+                },
+                "dockerfileInline": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
                 }
-              ]
+              },
+              "required": [],
+              "type": "object"
             }
-          },
-          "required": [],
-          "type": "object"
+          ]
         },
         "command": {
           "anyOf": [
@@ -60804,30 +61196,6 @@
               "type": "array"
             }
           ]
-        },
-        "composeBuild": {
-          "additionalProperties": false,
-          "properties": {
-            "args": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "properties": {},
-              "required": [],
-              "type": "object"
-            },
-            "context": {
-              "type": "string"
-            },
-            "dockerfile": {
-              "type": "string"
-            },
-            "target": {
-              "type": "string"
-            }
-          },
-          "required": ["context"],
-          "type": "object"
         },
         "cores": {
           "items": {
@@ -61733,37 +62101,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -61777,30 +62192,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -63076,6 +63467,10 @@
                   "type": "string"
                 },
                 "spec": {
+                  "type": "string"
+                },
+                "specInline": {
+                  "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                   "type": "string"
                 },
                 "target": {
@@ -64726,37 +65121,84 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "anyOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
-                  "anyOf": [
-                    {
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "app": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "args": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
                       "type": "string"
                     },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
                     }
-                  ]
+                  },
+                  "required": [],
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -64770,30 +65212,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -67725,6 +68143,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {

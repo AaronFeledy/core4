@@ -4,6 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 
 import { LandofileShape, type ServiceConfig, ServiceName } from "@lando/sdk/schema";
+import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { COMPOSE_FEATURE_ID, composeServiceFeature, composeServiceType } from "../src/services/compose.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
@@ -14,12 +15,13 @@ const metadata = {
   runtime: 4 as const,
 };
 
-const featureOverrides = new Map([[COMPOSE_FEATURE_ID, composeServiceFeature]]);
+const defaultFeatureOverrides = new Map([[COMPOSE_FEATURE_ID, composeServiceFeature]]);
 
 const planComposeService = (args: {
   readonly service: ServiceConfig;
   readonly serviceName?: string;
   readonly appRoot?: string;
+  readonly featureOverrides?: ReadonlyMap<string, ServiceFeatureDefinition>;
 }) =>
   composeServicePlan({
     serviceType: composeServiceType,
@@ -27,7 +29,7 @@ const planComposeService = (args: {
     appRoot: args.appRoot ?? "/srv/apps/myapp",
     metadata,
     serviceName: args.serviceName ?? "worker",
-    featureOverrides,
+    featureOverrides: args.featureOverrides ?? defaultFeatureOverrides,
   });
 
 const landoEnvKeys = (environment: Readonly<Record<string, string>>): ReadonlyArray<string> =>
@@ -145,13 +147,13 @@ describe("compose ServiceType (raw passthrough)", () => {
     expect(plan.storage).toEqual([]);
   });
 
-  test("accepts Compose composeBuild: block", async () => {
+  test("type compose with only a Compose build sets no artifact in the plugin", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: {
         api: {
           type: "compose",
-          composeBuild: {
+          build: {
             context: "./services/api",
             dockerfile: "Dockerfile.prod",
             args: { NODE_ENV: "production" },
@@ -163,15 +165,25 @@ describe("compose ServiceType (raw passthrough)", () => {
     const service = landofile.services?.[ServiceName.make("api")];
     if (service === undefined) throw new Error("api service missing");
 
-    const plan = await planComposeService({ service, serviceName: "api" });
+    let setArtifactCalls = 0;
+    const featureWithoutArtifact: ServiceFeatureDefinition = {
+      ...composeServiceFeature,
+      apply: (ctx) =>
+        composeServiceFeature.apply({
+          ...ctx,
+          setArtifact: () => {
+            setArtifactCalls += 1;
+          },
+        }),
+    };
 
-    expect(plan.artifact).toMatchObject({
-      kind: "build",
-      context: "/srv/apps/myapp/services/api",
-      spec: "Dockerfile.prod",
-      args: { NODE_ENV: "production" },
-      target: "runtime",
+    await planComposeService({
+      service,
+      serviceName: "api",
+      featureOverrides: new Map([[COMPOSE_FEATURE_ID, featureWithoutArtifact]]),
     });
+
+    expect(setArtifactCalls).toBe(0);
   });
 
   test("routes provider-specific extensions through service.providers.<id>", async () => {
@@ -200,7 +212,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     });
   });
 
-  test("rejects compose service without image: or composeBuild:", () => {
+  test("type compose with neither image nor a Compose build fails", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: { api: { type: "compose" } },
@@ -210,18 +222,18 @@ describe("compose ServiceType (raw passthrough)", () => {
 
     return expectComposePlanRejects(
       planComposeService({ service, serviceName: "api" }),
-      /requires either "image:" or "composeBuild:"/,
+      /requires either "image:" or "build:"/,
     );
   });
 
-  test("rejects compose service that declares both image: and composeBuild:", () => {
+  test("type compose with image and a Compose build fails", () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: {
         api: {
           type: "compose",
           image: "alpine:3",
-          composeBuild: { context: "./svc" },
+          build: { context: "." },
         },
       },
     });
@@ -230,28 +242,27 @@ describe("compose ServiceType (raw passthrough)", () => {
 
     return expectComposePlanRejects(
       planComposeService({ service, serviceName: "api" }),
-      /must declare exactly one of "image:" or "composeBuild:"/,
+      /must declare exactly one of "image:" or "build:"/,
     );
   });
 
-  test("rejects Lando-style build: blocks (use composeBuild instead)", () => {
+  test("type compose with image and a Lando family build is valid", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: {
         api: {
           type: "compose",
           image: "alpine:3",
-          build: { artifact: "RUN echo hi" },
+          build: { app: ["echo hi"] },
         },
       },
     });
     const service = landofile.services?.[ServiceName.make("api")];
     if (service === undefined) throw new Error("api service missing");
 
-    return expectComposePlanRejects(
-      planComposeService({ service, serviceName: "api" }),
-      /does not accept Lando "build:".*Use "composeBuild:"/,
-    );
+    const plan = await planComposeService({ service, serviceName: "api" });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "alpine:3" });
   });
 
   describe("tilde expansion in volume bind sources", () => {

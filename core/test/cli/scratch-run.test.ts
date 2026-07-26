@@ -486,7 +486,7 @@ describe("scratchRun", () => {
           "  web:",
           "    type: compose",
           "    primary: true",
-          "    composeBuild:",
+          "    build:",
           "      context: .",
           "      dockerfile: Dockerfile",
           "",

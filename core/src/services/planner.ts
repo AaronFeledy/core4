@@ -76,6 +76,7 @@ import { CORE_VERSION } from "../version.ts";
 import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures } from "./app-feature.ts";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
+import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
@@ -601,6 +602,7 @@ interface ResolvedService {
 type PlannedServiceDraft = {
   readonly name: string;
   readonly hostnames: ReadonlyArray<string>;
+  readonly build: ServiceConfig["build"];
   readonly authored: ReturnType<typeof authoredStorageScopes>;
   readonly draft: AppFeatureServiceDraft;
   readonly logSources: ReadonlyArray<LogSource>;
@@ -733,6 +735,9 @@ const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArr
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const toArray = (value: string | ReadonlyArray<string> | undefined): ReadonlyArray<string> =>
+  value === undefined ? [] : typeof value === "string" ? [value] : value;
 
 const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const startInterval = service.healthcheck?.startInterval;
@@ -1202,15 +1207,12 @@ const planApp = (
         service,
       );
       const authoredServicePlan = mergeComposeExtension(authoredServicePlanWithoutLabels, service);
-      const authoredAppBuild = service.build?.app;
-      const appBuildScripts =
-        authoredAppBuild === undefined
-          ? []
-          : Array.isArray(authoredAppBuild)
-            ? authoredAppBuild
-            : [authoredAppBuild];
+      const build = service.build;
+      const composeFamily = build !== undefined && isComposeBuild(build);
+      const artifactScripts = composeFamily ? [] : toArray(build?.artifact);
+      const appScripts = composeFamily ? [] : toArray(build?.app);
       const servicePlan: ServicePlan =
-        appBuildScripts.length === 0
+        artifactScripts.length === 0 && appScripts.length === 0
           ? authoredServicePlan
           : {
               ...authoredServicePlan,
@@ -1220,7 +1222,12 @@ const planApp = (
                   ...serviceFeatureExtension(authoredServicePlan.extensions),
                   buildSteps: [
                     ...serviceFeatureBuildSteps(authoredServicePlan.extensions),
-                    ...appBuildScripts.map((script, index) => ({
+                    ...artifactScripts.map((script, index) => ({
+                      id: `authored-artifact:${index + 1}`,
+                      phase: "build",
+                      command: { command: ["sh", "-lc", script] },
+                    })),
+                    ...appScripts.map((script, index) => ({
                       id: `authored-app:${index + 1}`,
                       phase: "app",
                       command: { command: ["sh", "-lc", script] },
@@ -1232,6 +1239,7 @@ const planApp = (
       plannedServiceDrafts.push({
         name,
         hostnames: service.hostnames ?? [],
+        build,
         authored,
         draft: toAppFeatureDraft(name, servicePlan, resolution, baseDefaultIds),
         logSources,
@@ -1258,7 +1266,16 @@ const planApp = (
       yield* Effect.fail(appFeatureCapabilityError(provider, offending?.id ?? "appFeatures", capability));
     }
 
-    for (const { name, hostnames, authored, draft, logSources, routes, extensions } of plannedServiceDrafts) {
+    for (const {
+      name,
+      hostnames,
+      build,
+      authored,
+      draft,
+      logSources,
+      routes,
+      extensions,
+    } of plannedServiceDrafts) {
       const followLogSources = runtimeFollowLogSources(logSources);
       const providerSupportsLogSources = providerCapabilities.serviceLogSources === true;
       if (!providerSupportsLogSources) {
@@ -1315,7 +1332,12 @@ const planApp = (
         );
       }
 
-      if (servicePlan.artifact?.kind === "build" && !providerCapabilities.artifactBuild) {
+      const withArtifact =
+        servicePlan.artifact === undefined && build !== undefined && isComposeBuild(build)
+          ? { ...servicePlan, artifact: composeBuildToArtifact(build, appRoot) }
+          : servicePlan;
+
+      if (withArtifact.artifact?.kind === "build" && !providerCapabilities.artifactBuild) {
         yield* Effect.fail(
           missingCapability(
             provider,
@@ -1328,7 +1350,7 @@ const planApp = (
       }
 
       const realization = bindRealization(providerCapabilities);
-      const shadowResult = expandExcludesToShadows(appName, name, servicePlan);
+      const shadowResult = expandExcludesToShadows(appName, name, withArtifact);
       const planWithShadows = shadowResult.servicePlan;
 
       const appMount = planWithShadows.appMount;

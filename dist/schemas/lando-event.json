@@ -988,6 +988,10 @@
                           "spec": {
                             "type": "string"
                           },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
                           "target": {
                             "type": "string"
                           }
@@ -1938,6 +1942,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -3181,6 +3189,10 @@
                           "spec": {
                             "type": "string"
                           },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
                           "target": {
                             "type": "string"
                           }
@@ -4142,6 +4154,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {
@@ -5205,6 +5221,10 @@
                           "spec": {
                             "type": "string"
                           },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
                           "target": {
                             "type": "string"
                           }
@@ -6151,6 +6171,10 @@
                             "type": "string"
                           },
                           "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
                             "type": "string"
                           },
                           "target": {

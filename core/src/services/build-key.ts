@@ -96,8 +96,10 @@ const artifactBuildInput = (
   return {
     kind: artifact.kind,
     spec: artifact.spec,
+    specInline: artifact.specInline,
     args: artifact.args === undefined ? undefined : stableStringRecord(artifact.args),
     target: artifact.target,
+    contentHash: artifact.contentHash,
     contentDigest,
   };
 };

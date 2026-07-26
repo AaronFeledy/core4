@@ -289,3 +289,203 @@ test("buildContainerArtifact redacts raw and encoded build args from provider er
   expect(JSON.stringify(failure)).not.toContain(encodedSecret);
   expect(failure.message).toContain("buildargs=[redacted]");
 });
+
+test("injects the inline Dockerfile into the packed context and preserves real context entries", async () => {
+  // Given
+  const context = await mkdtemp(join(tmpdir(), "lando-context-inline-"));
+  await writeFile(join(context, "context-marker.txt"), "preserved\n");
+  let requestBody: Uint8Array = new Uint8Array();
+  const api = {
+    request: (request: ContainerBuildHttpRequest) =>
+      Effect.promise(async () => {
+        if (request.method === "POST") requestBody = await collect(request.stdin);
+        return { status: 200, body: "" };
+      }),
+  };
+
+  // When
+  await Effect.runPromise(
+    buildContainerArtifact(
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(
+          service({
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(context),
+              specInline: "FROM alpine:3.20",
+            },
+          }),
+        ),
+        buildKey: "inline-preserves-context",
+      },
+      { providerId, api },
+    ),
+  );
+
+  // Then
+  const entries = tarEntries(requestBody);
+  expect(entries.map((entry) => entry.name)).toContain("context-marker.txt");
+  expect(entries.map((entry) => entry.name)).toContain(".lando/Dockerfile.inline");
+  expect(entries.find((entry) => entry.name === ".lando/Dockerfile.inline")?.content).toBe(
+    "FROM alpine:3.20",
+  );
+});
+
+test("points the daemon dockerfile param at the Lando owned path", async () => {
+  // Given
+  const context = await mkdtemp(join(tmpdir(), "lando-context-inline-path-"));
+  let requestPath = "";
+  const api = {
+    request: (request: ContainerBuildHttpRequest) => {
+      if (request.method === "POST") requestPath = request.path;
+      return Effect.succeed({ status: 200, body: "" });
+    },
+  };
+
+  // When
+  await Effect.runPromise(
+    buildContainerArtifact(
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(
+          service({
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(context),
+              specInline: "FROM alpine:3.20",
+            },
+          }),
+        ),
+        buildKey: "inline-daemon-path",
+      },
+      { providerId, api },
+    ),
+  );
+
+  // Then
+  expect(requestPath).toContain("dockerfile=.lando%2FDockerfile.inline");
+});
+
+test("drops a colliding user entry at the Lando owned path", async () => {
+  // Given
+  const context = await mkdtemp(join(tmpdir(), "lando-context-inline-collision-"));
+  await mkdir(join(context, ".lando"));
+  await writeFile(join(context, ".lando", "Dockerfile.inline"), "FROM user-content");
+  let requestBody: Uint8Array = new Uint8Array();
+  const api = {
+    request: (request: ContainerBuildHttpRequest) =>
+      Effect.promise(async () => {
+        if (request.method === "POST") requestBody = await collect(request.stdin);
+        return { status: 200, body: "" };
+      }),
+  };
+
+  // When
+  await Effect.runPromise(
+    buildContainerArtifact(
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(
+          service({
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(context),
+              specInline: "FROM inline-content",
+            },
+          }),
+        ),
+        buildKey: "inline-collision",
+      },
+      { providerId, api },
+    ),
+  );
+
+  // Then
+  const inlineEntries = tarEntries(requestBody).filter((entry) => entry.name === ".lando/Dockerfile.inline");
+  expect(inlineEntries).toHaveLength(1);
+  expect(inlineEntries[0]?.content).toBe("FROM inline-content");
+});
+
+test("fails when spec and specInline are both set", async () => {
+  // Given
+  const context = await mkdtemp(join(tmpdir(), "lando-context-inline-conflict-"));
+  await writeFile(join(context, "Dockerfile"), "FROM context-spec");
+  const api = {
+    request: () => Effect.succeed({ status: 200, body: "" }),
+  };
+
+  // When
+  const failure = await Effect.runPromise(
+    Effect.flip(
+      buildContainerArtifact(
+        {
+          app: appId,
+          service: serviceName,
+          plan: plan(
+            service({
+              artifact: {
+                kind: "build",
+                context: AbsolutePath.make(context),
+                spec: PortablePath.make("Dockerfile"),
+                specInline: "FROM inline-spec",
+              },
+            }),
+          ),
+          buildKey: "inline-conflict",
+        },
+        { providerId, api },
+      ),
+    ),
+  );
+
+  // Then
+  expect(failure._tag).toBe("ProviderInternalError");
+  expect(failure.message).toContain("spec");
+  expect(failure.message).toContain("specInline");
+});
+
+test("builds from the packed context unchanged when specInline is absent", async () => {
+  // Given
+  const context = await mkdtemp(join(tmpdir(), "lando-context-file-spec-"));
+  await writeFile(join(context, "Containerfile"), "FROM alpine:3.20");
+  await writeFile(join(context, "context-marker.txt"), "preserved\n");
+  let capturedRequest: ContainerBuildHttpRequest | undefined;
+  const api = {
+    request: (request: ContainerBuildHttpRequest) =>
+      Effect.promise(async () => {
+        if (request.method === "POST") capturedRequest = request;
+        return { status: 200, body: "" };
+      }),
+  };
+
+  // When
+  await Effect.runPromise(
+    buildContainerArtifact(
+      {
+        app: appId,
+        service: serviceName,
+        plan: plan(
+          service({
+            artifact: {
+              kind: "build",
+              context: AbsolutePath.make(context),
+              spec: PortablePath.make("Containerfile"),
+            },
+          }),
+        ),
+        buildKey: "file-spec-regression",
+      },
+      { providerId, api },
+    ),
+  );
+
+  // Then
+  expect(capturedRequest?.path).toContain("dockerfile=Containerfile");
+  const entries = tarEntries(await collect(capturedRequest?.stdin));
+  expect(entries.map((entry) => entry.name)).toEqual(["Containerfile", "context-marker.txt"]);
+  expect(entries.map((entry) => entry.name)).not.toContain(".lando/Dockerfile.inline");
+});

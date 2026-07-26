@@ -25,6 +25,10 @@ export const ArtifactBuildSpec = Schema.Struct({
   context: AbsolutePath,
   /** Optional dockerfile/spec path relative to `context`. */
   spec: Schema.optional(PortablePath),
+  /** Inline build-spec contents used in place of a context-relative spec file. */
+  specInline: Schema.optional(Schema.String).annotations({
+    description: "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+  }),
   /** Build args (string-keyed; values may be expression-resolved upstream). */
   args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
   /** Target stage (multi-stage builds). */
