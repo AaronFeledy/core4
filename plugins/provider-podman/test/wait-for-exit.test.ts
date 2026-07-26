@@ -61,7 +61,7 @@ test("waitForExit forwards cancellation to the Podman wait request", async () =>
     request: (request) =>
       Effect.sync(() => {
         observedSignal = request.signal;
-        return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
+        return { status: 200, body: "0" };
       }),
   };
   const provider = await Effect.runPromise(
