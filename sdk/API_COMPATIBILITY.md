@@ -257,6 +257,10 @@
 - `RunProps`
 - `ScenarioProps`
 - `ServiceConfig`
+- `ServiceConfigDecode`
+- `ServiceConfigInput`
+- `ServiceDependency`
+- `ServiceDependencyCondition`
 - `SkipProps`
 - `SshAgentConfig`
 - `StepProps`

@@ -604,6 +604,15 @@
   },
   {
     "deprecated": false,
+    "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+    "docsPath": "docs/reference/schemas/service-config-input.mdx",
+    "id": "ServiceConfigInput",
+    "jsonSchemaPath": "dist/schemas/service-config-input.json",
+    "packageExport": "@lando/sdk/schema#ServiceConfigInput",
+    "title": "Service Config Input"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Log Source.",
     "docsPath": "docs/reference/schemas/log-source.mdx",
     "id": "LogSource",

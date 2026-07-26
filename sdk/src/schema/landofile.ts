@@ -1,4 +1,5 @@
 import { ParseResult, Schema } from "effect";
+import type * as AST from "effect/SchemaAST";
 import validRange from "semver/ranges/valid.js";
 
 import { BuildScript } from "./artifacts.ts";
@@ -72,7 +73,6 @@ export const BuildBlock = Schema.Struct({
 });
 export type BuildBlock = typeof BuildBlock.Type;
 
-/**
 /** Compose `depends_on` condition vocabulary (§6.13). */
 export const ServiceDependencyCondition = Schema.Literal(
   "service_started",
@@ -106,20 +106,86 @@ export type ServiceDependency = typeof ServiceDependency.Type;
 
 /** Value shape of a Compose `depends_on` condition-map entry. */
 const ServiceDependencyInput = Schema.Struct({
-  condition: Schema.optional(ServiceDependencyCondition),
+  condition: ServiceDependencyCondition,
   required: Schema.optional(Schema.Boolean),
   restart: Schema.optional(Schema.Boolean),
 });
 
-/** Record whose values coerce YAML scalars to strings. */
-const CoercedStringRecord = Schema.Record({
-  key: Schema.String,
-  value: Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Boolean), Schema.String, {
-    strict: true,
-    decode: String,
-    encode: (s) => s,
-  }),
+const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;
+
+const ReservedCoercedStringMapInput = Schema.Unknown.annotations({
+  jsonSchema: {
+    type: "object",
+    propertyNames: RESERVED_KEY_PROPERTY_NAMES,
+    additionalProperties: {
+      anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+    },
+  },
 });
+
+const ReservedDependencyMapInput = Schema.Unknown.annotations({
+  jsonSchema: {
+    type: "object",
+    propertyNames: RESERVED_KEY_PROPERTY_NAMES,
+    additionalProperties: {
+      type: "object",
+      required: ["condition"],
+      properties: {
+        condition: {
+          type: "string",
+          enum: ["service_started", "service_healthy", "service_completed_successfully"],
+        },
+        required: { type: "boolean" },
+        restart: { type: "boolean" },
+      },
+      additionalProperties: false,
+    },
+  },
+});
+
+const reservedMapKeyFailure = (input: unknown, ast: AST.Transformation) =>
+  ParseResult.fail(
+    new ParseResult.Type(
+      ast,
+      input,
+      'The key "__proto__" is reserved and cannot be used in a Landofile map; choose another key.',
+    ),
+  );
+
+const decodeReservedKeyMap = (input: unknown, ast: AST.Transformation) =>
+  typeof input === "object" && input !== null && Object.hasOwn(input, "__proto__")
+    ? reservedMapKeyFailure(input, ast)
+    : ParseResult.succeed(input);
+
+const StringRecord = Schema.Record({ key: Schema.String, value: Schema.String });
+
+const ServiceDependencyInputRecord = Schema.transformOrFail(
+  ReservedDependencyMapInput,
+  Schema.Record({ key: Schema.String, value: ServiceDependencyInput }),
+  {
+    strict: false,
+    decode: (input, _options, ast) => decodeReservedKeyMap(input, ast),
+    encode: (record) => ParseResult.succeed(record),
+  },
+);
+
+/** Record whose values coerce YAML scalars to strings. */
+const CoercedStringRecord = Schema.transformOrFail(
+  ReservedCoercedStringMapInput,
+  Schema.Record({
+    key: Schema.String,
+    value: Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Boolean), Schema.String, {
+      strict: true,
+      decode: String,
+      encode: (s) => s,
+    }),
+  }),
+  {
+    strict: false,
+    decode: (input, _options, ast) => decodeReservedKeyMap(input, ast),
+    encode: (record) => ParseResult.succeed(record),
+  },
+);
 
 /**
  * `environment` — accepts a map (`KEY: value`) or a Compose `KEY=value` list,
@@ -128,12 +194,12 @@ const CoercedStringRecord = Schema.Record({
  */
 const ComposeEnvironmentInput = Schema.transformOrFail(
   Schema.Union(CoercedStringRecord, Schema.Array(Schema.String)),
-  Schema.Record({ key: Schema.String, value: Schema.String }),
+  StringRecord,
   {
     strict: true,
     decode: (input, _options, ast) => {
       if (!Array.isArray(input)) return ParseResult.succeed(input as Record<string, string>);
-      const out: Record<string, string> = {};
+      const entries: Array<readonly [string, string]> = [];
       for (const entry of input) {
         const separator = entry.indexOf("=");
         if (separator < 0) {
@@ -145,9 +211,11 @@ const ComposeEnvironmentInput = Schema.transformOrFail(
             ),
           );
         }
-        out[entry.slice(0, separator)] = entry.slice(separator + 1);
+        entries.push([entry.slice(0, separator), entry.slice(separator + 1)]);
       }
-      return ParseResult.succeed(out);
+      const record = Object.fromEntries(entries);
+      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record, ast);
+      return ParseResult.succeed(record);
     },
     encode: (record) => ParseResult.succeed(record),
   },
@@ -157,22 +225,23 @@ const ComposeEnvironmentInput = Schema.transformOrFail(
 });
 
 /** `labels` — accepts a map or a Compose `KEY=value` list, canonicalizing to a map (bare entry → empty value). */
-const ComposeLabelsInput = Schema.transform(
+const ComposeLabelsInput = Schema.transformOrFail(
   Schema.Union(CoercedStringRecord, Schema.Array(Schema.String)),
-  Schema.Record({ key: Schema.String, value: Schema.String }),
+  StringRecord,
   {
     strict: true,
-    decode: (input) => {
-      if (!Array.isArray(input)) return input as Record<string, string>;
-      const out: Record<string, string> = {};
-      for (const entry of input) {
-        const separator = entry.indexOf("=");
-        if (separator < 0) out[entry] = "";
-        else out[entry.slice(0, separator)] = entry.slice(separator + 1);
-      }
-      return out;
+    decode: (input, _options, ast) => {
+      if (!Array.isArray(input)) return ParseResult.succeed(input);
+      const record = Object.fromEntries(
+        input.map((entry) => {
+          const separator = entry.indexOf("=");
+          return separator < 0 ? [entry, ""] : [entry.slice(0, separator), entry.slice(separator + 1)];
+        }),
+      );
+      if (Object.hasOwn(record, "__proto__")) return reservedMapKeyFailure(record, ast);
+      return ParseResult.succeed(record);
     },
-    encode: (record) => record,
+    encode: (record) => ParseResult.succeed(record),
   },
 ).annotations({
   description: "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map.",
@@ -197,32 +266,42 @@ const ComposeEnvFileInput = Schema.transform(
  * condition-map (`{ <svc>: { condition, required?, restart? } }`) and
  * canonicalizes to an array of {@link ServiceDependency}.
  */
-const ComposeDependsOnInput = Schema.transform(
-  Schema.Union(
-    Schema.Array(Schema.String),
-    Schema.Record({ key: Schema.String, value: ServiceDependencyInput }),
-    Schema.Array(ServiceDependency),
-  ),
+const ComposeDependsOnInput = Schema.transformOrFail(
+  Schema.Union(Schema.Array(Schema.String), ServiceDependencyInputRecord, Schema.Array(ServiceDependency)),
   Schema.Array(ServiceDependency),
   {
     strict: false,
-    decode: (input): ReadonlyArray<ServiceDependency> => {
+    decode: (input) => {
       if (Array.isArray(input)) {
-        return input.map((entry) => (typeof entry === "string" ? { service: entry } : entry));
+        return ParseResult.succeed(
+          input.map((entry) => (typeof entry === "string" ? { service: entry } : entry)),
+        );
       }
-      return Object.entries(input).map(([service, spec]) => ({ service, ...spec }));
+      return ParseResult.succeed(Object.entries(input).map(([service, spec]) => ({ service, ...spec })));
     },
-    encode: (deps: ReadonlyArray<ServiceDependency>) => {
+    encode: (deps: ReadonlyArray<ServiceDependency>, _options, ast) => {
       const allBare = deps.every(
         (dep) => dep.condition === undefined && dep.required === undefined && dep.restart === undefined,
       );
-      if (allBare) return deps.map((dep) => dep.service);
-      const record: Record<string, typeof ServiceDependencyInput.Type> = {};
-      for (const dep of deps) {
-        const { service, ...rest } = dep;
-        record[service] = rest;
+      if (allBare) return ParseResult.succeed(deps.map((dep) => dep.service));
+      const reserved = deps.find((dep) => dep.service === "__proto__");
+      if (reserved !== undefined) {
+        return ParseResult.fail(
+          new ParseResult.Type(
+            ast,
+            deps,
+            'The dependency service "__proto__" cannot be encoded as a map key; choose another service name.',
+          ),
+        );
       }
-      return record;
+      return ParseResult.succeed(
+        Object.fromEntries(
+          deps.map((dep) => {
+            const { service, ...rest } = dep;
+            return [service, { ...rest, condition: rest.condition ?? "service_started" }];
+          }),
+        ),
+      );
     },
   },
 ).annotations({
@@ -317,18 +396,27 @@ export type ServiceConfig = typeof ServiceConfig.Type;
  * `depends_on`). Used as the decode boundary for `services.<name>:`.
  */
 export const ServiceConfigInput = Schema.extend(
-  Schema.encodedSchema(ServiceConfig),
+  Schema.encodedBoundSchema(ServiceConfig),
   Schema.Struct({
-    working_dir: Schema.optional(PortablePath),
-    env_file: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))),
+    working_dir: Schema.optional(PortablePath).annotations({
+      description: "Compose alias for the canonical workingDirectory service field.",
+    }),
+    env_file: Schema.optional(Schema.Union(Schema.String, Schema.Array(Schema.String))).annotations({
+      description: "Compose alias for the canonical envFile service field; accepts one path or a path list.",
+    }),
     depends_on: Schema.optional(
-      Schema.Union(
-        Schema.Array(Schema.String),
-        Schema.Record({ key: Schema.String, value: ServiceDependencyInput }),
-      ),
-    ),
+      Schema.Union(Schema.Array(Schema.String), ServiceDependencyInputRecord),
+    ).annotations({
+      description:
+        "Compose alias for the canonical dependsOn service field; accepts a service-name list or condition map.",
+    }),
   }),
-);
+).annotations({
+  identifier: "ServiceConfigInput",
+  title: "Service Config Input",
+  description:
+    "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+});
 export type ServiceConfigInput = typeof ServiceConfigInput.Type;
 
 /**
