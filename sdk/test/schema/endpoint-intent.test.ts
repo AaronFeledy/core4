@@ -30,6 +30,21 @@ describe("endpoint publication intent", () => {
     expect(Either.isRight(result)).toBe(true);
   });
 
+  test("preserves optional application protocol metadata", () => {
+    // Given / When
+    const result = decodePlan({
+      _tag: "published",
+      protocol: "tcp",
+      port: 8080,
+      appProtocol: "http/1.1",
+      publication: {},
+    });
+
+    // Then
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) expect(result.right.appProtocol).toBe("http/1.1");
+  });
+
   test("accepts internal unix endpoints", () => {
     const result = decodeInput({
       _tag: "internal",

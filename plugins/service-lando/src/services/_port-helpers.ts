@@ -23,8 +23,8 @@ export const publishedEndpointsFromPorts = (
     port: entry.target,
     protocol: entry.protocol === "udp" ? "udp" : (fallbackProtocol ?? "tcp"),
     publication: publicationFor(entry),
-    // Compose `ports` carry no endpoint-name intent. Keeping synthesized endpoints
-    // unnamed avoids collisions when a service publishes several ports.
+    ...(entry.name === undefined ? {} : { name: entry.name }),
+    ...(entry.appProtocol === undefined ? {} : { appProtocol: entry.appProtocol }),
   }));
 
 export const internalEndpointsFromExpose = (

@@ -36,6 +36,9 @@ export type EndpointPublication = typeof EndpointPublication.Type;
 
 const commonFields = {
   name: Schema.optional(Schema.String).annotations({ description: "Optional endpoint name." }),
+  appProtocol: Schema.optional(Schema.String).annotations({
+    description: "Optional application-layer protocol metadata.",
+  }),
 };
 
 const internalTag = Schema.propertySignature(Schema.Literal("internal")).annotations({
