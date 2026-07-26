@@ -3,6 +3,7 @@ import {
   containerCreateBodyFragment,
   containerHostConfigFragment,
 } from "@lando/container-runtime/plan";
+import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
@@ -11,6 +12,7 @@ import {
   type AppPlan,
   type AppRef,
   ProviderId,
+  ServiceName,
   type ServicePlan,
   landoAppNetworkName,
   landoNetworkNames,
@@ -20,6 +22,8 @@ import {
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
+import { exec } from "./exec.ts";
+import { waitForExit } from "./inspect.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
 import { volumeSelectorValue } from "./volume-prune.ts";
 
@@ -474,18 +478,64 @@ export const bringUp = (
       changed = (yield* ensureVolume(resolvedApi, plan, store)) || changed;
     }
     const touched: string[] = [];
-    for (const service of Object.values(plan.services)) {
-      if (options.signal?.aborted === true) {
-        yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
-        yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
-      }
-      const thisName = containerName(plan, service);
-      touched.push(thisName);
-      const result = yield* startService(resolvedApi, plan, service, options).pipe(
-        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+    const result = yield* runServiceStartSchedule(plan, {
+      startService: (service) =>
+        Effect.gen(function* () {
+          touched.push(containerName(plan, service));
+          if (options.signal?.aborted === true) {
+            yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
+            return yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
+          }
+          const started = yield* startService(resolvedApi, plan, service, options).pipe(
+            Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+          );
+          return { changed: started.changed };
+        }),
+      execHealthcheck: (service, command) =>
+        exec(plan, { app: plan.id, service: service.name }, { command }, { podmanApi: resolvedApi }).pipe(
+          Effect.map(({ exitCode }) => ({ exitCode })),
+        ),
+      waitForExit: (service) =>
+        waitForExit(plan, { app: plan.id, service: service.name }, { podmanApi: resolvedApi }).pipe(
+          Effect.map(({ exitCode }) => ({ exitCode })),
+        ),
+    });
+
+    if (result._tag === "Cycle") {
+      yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
+      return yield* Effect.fail(
+        new ProviderInternalError({
+          providerId: PROVIDER_ID,
+          operation: "bringUp.schedule",
+          message: "Podman bringUp service schedule contains a dependency cycle.",
+          remediation: APPLY_REMEDIATION,
+          details: redactDetails({ edges: result.edges }),
+        }),
       );
-      changed = changed || result.changed;
+    }
+    const [blocked] = result.blocked;
+    if (blocked !== undefined) {
+      yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
+      const service = plan.services[ServiceName.make(blocked.service)];
+      if (service === undefined) {
+        return yield* Effect.fail(
+          new ProviderInternalError({
+            providerId: PROVIDER_ID,
+            operation: "bringUp.schedule",
+            message: "Podman bringUp schedule blocked an unknown service.",
+            remediation: APPLY_REMEDIATION,
+            details: redactDetails(blocked),
+          }),
+        );
+      }
+      return yield* Effect.fail(
+        podmanFailure(
+          service,
+          "bringUp.schedule",
+          `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+        ),
+      );
     }
 
-    return { changed };
+    return { changed: result.changed || changed };
   });

@@ -14,6 +14,7 @@ import {
   containerCreateBodyFragment,
   containerHostConfigFragment,
 } from "@lando/container-runtime/plan";
+import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
   makeLogDecoder as makeRuntimeLogDecoder,
@@ -43,6 +44,7 @@ import {
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  ServiceName,
   type ServicePlan,
   landoAppNetworkName,
   landoNetworkNames,
@@ -960,36 +962,73 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
     const sharedNetwork = landoSharedNetworkName(plan);
     const touched: string[] = [];
     let changed = false;
-    for (const service of Object.values(plan.services)) {
-      if (signal?.aborted === true) {
-        yield* rollbackPartialApply(api, plan, touched);
-        yield* Effect.fail(serviceStartFailure(service, "Docker bringUp was cancelled."));
-      }
-      const name = containerName(plan, service);
-      touched.push(name);
-      const inspected = yield* inspectContainer(api, name);
-      let serviceChanged = false;
-      if (!inspected.exists) {
-        yield* createContainer(api, plan, service, name).pipe(
-          Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+    const schedule = yield* runServiceStartSchedule(plan, {
+      startService: (service) =>
+        Effect.gen(function* () {
+          if (signal?.aborted === true) {
+            yield* rollbackPartialApply(api, plan, touched);
+            yield* Effect.fail(serviceStartFailure(service, "Docker bringUp was cancelled."));
+          }
+          const name = containerName(plan, service);
+          touched.push(name);
+          const inspected = yield* inspectContainer(api, name);
+          let serviceChanged = false;
+          if (!inspected.exists) {
+            yield* createContainer(api, plan, service, name).pipe(
+              Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+            );
+            serviceChanged = true;
+          }
+          if (sharedNetwork !== undefined) {
+            const connectEffect = connectSharedNetwork(api, plan, service, name, sharedNetwork);
+            if (inspected.exists && inspected.running) {
+              yield* connectEffect;
+            } else {
+              yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
+            }
+          }
+          if (!inspected.running) {
+            yield* startContainer(api, service, name).pipe(
+              Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+            );
+            serviceChanged = true;
+          }
+          changed = changed || serviceChanged;
+          return { changed: serviceChanged };
+        }),
+      execHealthcheck: (service, command) =>
+        exec(plan, { app: plan.id, service: service.name }, { command }, api).pipe(
+          Effect.map(({ exitCode }) => ({ exitCode })),
+        ),
+      waitForExit: (service) =>
+        waitForExit(plan, { app: plan.id, service: service.name }, { dockerApi: api }),
+    });
+    if (schedule._tag === "Cycle") {
+      yield* rollbackPartialApply(api, plan, touched);
+      return yield* Effect.fail(
+        internal("bringUp.schedule", "Docker bringUp dependency schedule contains a cycle.", {
+          edges: schedule.edges,
+        }),
+      );
+    }
+    const [blocked] = schedule.blocked;
+    if (blocked !== undefined) {
+      yield* rollbackPartialApply(api, plan, touched);
+      const service = plan.services[ServiceName.make(blocked.service)];
+      if (service === undefined) {
+        return yield* Effect.fail(
+          internal("bringUp.schedule", "Docker bringUp schedule returned an unknown blocked service.", {
+            service: blocked.service,
+            unmetGate: blocked.unmetGate,
+          }),
         );
-        serviceChanged = true;
       }
-      if (sharedNetwork !== undefined) {
-        const connectEffect = connectSharedNetwork(api, plan, service, name, sharedNetwork);
-        if (inspected.exists && inspected.running) {
-          yield* connectEffect;
-        } else {
-          yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
-        }
-      }
-      if (!inspected.running) {
-        yield* startContainer(api, service, name).pipe(
-          Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
-        );
-        serviceChanged = true;
-      }
-      changed = changed || serviceChanged;
+      return yield* Effect.fail(
+        serviceStartFailure(
+          service,
+          `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+        ),
+      );
     }
     return { changed };
   });

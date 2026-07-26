@@ -5,7 +5,14 @@ import { join } from "node:path";
 import { DateTime, Effect, Layer } from "effect";
 
 import { PathsService, RuntimeProviderRegistry } from "@lando/core/services";
-import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  AppId,
+  type AppPlan,
+  ProviderId,
+  ServiceName,
+  type ServicePlan,
+} from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 import { makeLandoPaths } from "../../src/config/paths.ts";
@@ -22,7 +29,10 @@ const metadata = {
   runtime: 4 as const,
 };
 
-export const planWith = (stepsByService: Readonly<Record<string, ReadonlyArray<unknown>>>): AppPlan => ({
+export const planWith = (
+  stepsByService: Readonly<Record<string, ReadonlyArray<unknown>>>,
+  overridesByService: Readonly<Record<string, Partial<ServicePlan>>> = {},
+): AppPlan => ({
   id: AppId.make("app-build-runner"),
   name: "App build runner",
   slug: "app-build-runner",
@@ -48,6 +58,7 @@ export const planWith = (stepsByService: Readonly<Record<string, ReadonlyArray<u
           hostAliases: [],
           metadata,
           extensions: { "@lando/core/service-features": { buildSteps } },
+          ...overridesByService[rawName],
         },
       ];
     }),
