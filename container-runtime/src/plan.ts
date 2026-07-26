@@ -59,6 +59,61 @@ const missingBindMountSource = (mount: ServicePlan["mounts"][number]): never => 
   throw new ContainerPlanError("Container bind mounts require a source.", { mount });
 };
 
+interface ContainerBindMountObject {
+  readonly Type: "bind";
+  readonly Source: string;
+  readonly Target: string;
+  readonly ReadOnly: boolean;
+  readonly BindOptions: { readonly CreateMountpoint: false };
+}
+
+interface ContainerVolumeMountObject {
+  readonly Type: "volume";
+  readonly Source: string;
+  readonly Target: string;
+  readonly ReadOnly: boolean;
+  readonly VolumeOptions: { readonly Subpath: string };
+}
+
+type ContainerMountObject = ContainerBindMountObject | ContainerVolumeMountObject;
+
+const containerMountObjects = (
+  service: ServicePlan,
+  options: ContainerHostConfigOptions = {},
+): ReadonlyArray<ContainerMountObject> => [
+  ...service.mounts.flatMap((mount): ReadonlyArray<ContainerBindMountObject> => {
+    if (sameAppMountTarget(service.appMount, mount)) return [];
+    if (mount.type !== "bind" || mount.realization !== "passthrough" || mount.createHostPath !== false) {
+      return [];
+    }
+    if (mount.source === undefined)
+      return (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
+    return [
+      {
+        Type: "bind",
+        Source: mount.source,
+        Target: mount.target,
+        ReadOnly: mount.readOnly,
+        BindOptions: { CreateMountpoint: false },
+      },
+    ];
+  }),
+  ...service.storage.flatMap(
+    (storeMount): ReadonlyArray<ContainerVolumeMountObject> =>
+      storeMount.subpath === undefined
+        ? []
+        : [
+            {
+              Type: "volume",
+              Source: storeMount.store,
+              Target: storeMount.target,
+              ReadOnly: storeMount.readOnly,
+              VolumeOptions: { Subpath: storeMount.subpath },
+            },
+          ],
+  ),
+];
+
 export const bindMountStrings = (
   plan: AppPlan,
   service: ServicePlan,
@@ -80,14 +135,17 @@ export const bindMountStrings = (
     if (mount.source === undefined) {
       (options.onMissingBindMountSource ?? missingBindMountSource)(mount);
     }
+    if (mount.realization === "passthrough" && mount.createHostPath === false) return [];
     const source =
       mount.realization === "accelerated"
         ? fileSyncVolumeName(plan.name, String(service.name), `mount-${index}`)
         : mount.source;
     return [`${source}:${mount.target}${mountSuffix(mount.readOnly)}`];
   });
-  const storage = service.storage.map(
-    (storeMount) => `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`,
+  const storage = service.storage.flatMap((storeMount) =>
+    storeMount.subpath === undefined
+      ? [`${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`]
+      : [],
   );
   return Array.from(new Set([...appMounts, ...binds, ...storage]));
 };
@@ -118,9 +176,11 @@ export const containerHostConfigFragment = (
     service.endpoints.flatMap((endpoint) => (endpoint._tag === "published" ? [endpoint] : [])),
   );
   const binds = bindMountStrings(plan, service, options);
+  const mounts = containerMountObjects(service, options);
   return {
     ...(Object.keys(portBindings).length > 0 ? { PortBindings: portBindings } : {}),
     ...(binds.length > 0 ? { Binds: binds } : {}),
+    ...(mounts.length > 0 ? { Mounts: mounts } : {}),
   };
 };
 

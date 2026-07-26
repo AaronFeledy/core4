@@ -33,12 +33,30 @@ interface DependsOnEntry {
   readonly condition: string;
 }
 
+interface ComposeBindVolume {
+  readonly type: "bind";
+  readonly source: string;
+  readonly target: string;
+  readonly read_only: boolean;
+  readonly bind: { readonly create_host_path: false };
+}
+
+interface ComposeStorageVolume {
+  readonly type: "volume";
+  readonly source: string;
+  readonly target: string;
+  readonly read_only: boolean;
+  readonly volume: { readonly subpath: string };
+}
+
+type ComposeVolumeEntry = string | ComposeBindVolume | ComposeStorageVolume;
+
 interface ComposeService {
   readonly image: string;
   readonly ports?: ReadonlyArray<string>;
   readonly expose?: ReadonlyArray<string>;
   readonly environment?: Readonly<Record<string, string>>;
-  readonly volumes?: ReadonlyArray<string>;
+  readonly volumes?: ReadonlyArray<ComposeVolumeEntry>;
   readonly tmpfs?: ReadonlyArray<string>;
   readonly depends_on?: Readonly<Record<string, DependsOnEntry>>;
   readonly networks?: Readonly<Record<string, { readonly aliases?: ReadonlyArray<string> }>>;
@@ -87,7 +105,7 @@ const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
 const volumeSpec = (source: string, target: string, readOnly: boolean): string =>
   `${source}:${target}${mountSuffix(readOnly)}`;
 
-const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<string> => {
+const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<ComposeVolumeEntry> => {
   const appMount =
     service.appMount === undefined
       ? []
@@ -100,7 +118,7 @@ const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<stri
             service.appMount.readOnly,
           ),
         ];
-  const mounts = service.mounts.flatMap((mount, index) => {
+  const mounts = service.mounts.flatMap((mount, index): ReadonlyArray<ComposeVolumeEntry> => {
     if (mount.type === "tmpfs") {
       // tmpfs mounts are emitted under the service-level `tmpfs:` key, not `volumes:`.
       return [];
@@ -115,6 +133,18 @@ const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<stri
       });
     }
 
+    if (mount.type === "bind" && mount.realization === "passthrough" && mount.createHostPath === false) {
+      return [
+        {
+          type: "bind",
+          source: mount.source,
+          target: mount.target,
+          read_only: mount.readOnly,
+          bind: { create_host_path: false },
+        },
+      ];
+    }
+
     return [
       volumeSpec(
         mount.type === "bind" && mount.realization === "accelerated"
@@ -126,7 +156,16 @@ const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<stri
     ];
   });
   const storage = service.storage.map(
-    (storeMount) => `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`,
+    (storeMount): ComposeVolumeEntry =>
+      storeMount.subpath === undefined
+        ? `${storeMount.store}:${storeMount.target}${mountSuffix(storeMount.readOnly)}`
+        : {
+            type: "volume",
+            source: storeMount.store,
+            target: storeMount.target,
+            read_only: storeMount.readOnly,
+            volume: { subpath: storeMount.subpath },
+          },
   );
 
   return [...appMount, ...mounts, ...storage];
@@ -252,6 +291,34 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
 
 const scalar = (value: string) => JSON.stringify(value);
 
+const writeVolumeList = (lines: Array<string>, entries: ReadonlyArray<ComposeVolumeEntry>): void => {
+  for (const entry of entries) {
+    if (typeof entry === "string") {
+      lines.push(`      - ${scalar(entry)}`);
+      continue;
+    }
+
+    lines.push(
+      `      - type: ${scalar(entry.type)}`,
+      `        source: ${scalar(entry.source)}`,
+      `        target: ${scalar(entry.target)}`,
+      `        read_only: ${entry.read_only ? "true" : "false"}`,
+    );
+    switch (entry.type) {
+      case "bind":
+        lines.push("        bind:", "          create_host_path: false");
+        break;
+      case "volume":
+        lines.push("        volume:", `          subpath: ${scalar(entry.volume.subpath)}`);
+        break;
+      default: {
+        const unreachable: never = entry;
+        throw composeError("Unsupported Compose volume entry.", { entry: unreachable });
+      }
+    }
+  }
+};
+
 const writeScalarMap = (lines: string[], indent: string, entries: Readonly<Record<string, string>>) => {
   for (const [key, value] of Object.entries(entries).sort(([left], [right]) => left.localeCompare(right))) {
     lines.push(`${indent}${key}: ${scalar(value)}`);
@@ -288,7 +355,7 @@ export const renderCompose = (plan: AppPlan): string => {
 
     if (service.volumes !== undefined) {
       lines.push("    volumes:");
-      writeScalarList(lines, "      ", service.volumes);
+      writeVolumeList(lines, service.volumes);
     }
 
     if (service.tmpfs !== undefined) {

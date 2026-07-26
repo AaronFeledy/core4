@@ -8,7 +8,7 @@ import {
   envArrayFromRecord,
   mountSuffix,
 } from "@lando/container-runtime/plan";
-import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
+import { type AppPlan, PortablePath, type ServicePlan } from "@lando/sdk/schema";
 
 const plan = {
   id: "app-id",
@@ -59,6 +59,93 @@ describe("container plan helpers", () => {
     expect(containerHostConfigFragment(plan, service)).toEqual({
       PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
       Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
+    });
+  });
+
+  test("emits option-bearing mounts as HostConfig Mounts without duplicate Binds", () => {
+    const serviceWithMountOptions: ServicePlan = {
+      ...service,
+      appMount: undefined,
+      mounts: [
+        {
+          type: "bind",
+          source: "/host/existing",
+          target: PortablePath.make("/existing"),
+          readOnly: true,
+          createHostPath: false,
+          realization: "passthrough",
+        },
+        {
+          type: "bind",
+          source: "/host/synced",
+          target: PortablePath.make("/synced"),
+          readOnly: false,
+          createHostPath: false,
+          realization: "accelerated",
+        },
+        {
+          type: "bind",
+          source: "/host/ordinary",
+          target: PortablePath.make("/ordinary"),
+          readOnly: false,
+          realization: "passthrough",
+        },
+      ],
+      storage: [
+        {
+          store: "lando-data",
+          target: PortablePath.make("/data"),
+          readOnly: true,
+          subpath: "tenant",
+        },
+        { store: "lando-cache", target: PortablePath.make("/cache"), readOnly: false },
+      ],
+    };
+
+    const hostConfig = containerHostConfigFragment(plan, serviceWithMountOptions);
+
+    expect(hostConfig).toEqual({
+      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      Binds: ["myapp-web-mount-1:/synced", "/host/ordinary:/ordinary", "lando-cache:/cache"],
+      Mounts: [
+        {
+          Type: "bind",
+          Source: "/host/existing",
+          Target: "/existing",
+          ReadOnly: true,
+          BindOptions: { CreateMountpoint: false },
+        },
+        {
+          Type: "volume",
+          Source: "lando-data",
+          Target: "/data",
+          ReadOnly: true,
+          VolumeOptions: { Subpath: "tenant" },
+        },
+      ],
+    });
+  });
+
+  test("omits an option-bearing bind that overlaps the app mount from Binds and Mounts", () => {
+    const serviceWithOverlap: ServicePlan = {
+      ...service,
+      mounts: [
+        {
+          type: "bind",
+          source: "/host/app",
+          target: PortablePath.make("/app"),
+          readOnly: true,
+          createHostPath: false,
+          realization: "passthrough",
+        },
+      ],
+    };
+
+    const hostConfig = containerHostConfigFragment(plan, serviceWithOverlap);
+
+    expect(hostConfig).toEqual({
+      PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
+      Binds: ["/host/app:/app:ro", "lando-cache-npm:/home/node/.npm"],
     });
   });
 
