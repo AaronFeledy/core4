@@ -123,3 +123,13 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; focused parser, cache, Landofile, planner, include-resolution, app-resolution, public-schema, and schema-snapshot test files passed; Compose coverage and guide-drift-with-skip gates passed; schema codegen was idempotent.
 - **Learnings for future iterations:** loader-only source identity belongs in an Effect-free WeakMap provenance sidecar so canonical schemas and serialized output stay portable; cache files can contain resolved secrets even when their source files are private, so the cache writer must enforce owner-only mode.
 ---
+
+## 2026-07-26 00:06 CDT - US-468 Drift Audit
+- Trigger: 4 cycles, 34,908 changed lines, 13 commits
+- Scope absorption: reverted command-name corrections that altered unrelated normative sections and other stories' PRDs.
+- Review scar tissue: removed a decode-only public SDK export, dead parser type exports, duplicate source-plumbing tests, and the single-value `--source resolved` path.
+- Contract drift: narrowed the story proof to the existing resolved default view instead of partially implementing the frozen `raw | merged | resolved` source selector; dependency conditions remain canonical config only until US-472 carries and honors them.
+- Fixed: deleted the partial CLI surface and its generated help/manifest entries while preserving production-path YAML rendering, env-file planning, app-root provenance, cache invalidation, owner-only cache writes, and label preservation.
+- Split/excise decisions: excised the separable partial source selector; no follow-up story was added because the complete app-config source-stage contract already exists in spec §8.2.1 outside this Compose-normalization story.
+- Verification: typecheck, lint, 12 focused schema/loader/planner/CLI/cache test files, schema/CLI codegen idempotence, Compose coverage, and renderer/paths/state-store/probe/redaction/machine-output/import-cycle boundaries passed.
+---
