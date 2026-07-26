@@ -295,7 +295,7 @@ The renderer is the only component that surfaces deprecation to the end user. Th
 - Subsequent events for the same `(kind, id)` increment the per-(kind, id) counter and do not re-emit.
 - At end of run, if any `severity: "info"` deprecations fired, the renderer emits a single `message.info` summary line: `N deprecation notices recorded — run \`lando doctor --deprecations\` for details.` `severity: "warn"` and `"error"` deprecations are not summarized (they were already shown).
 - `--no-deprecation-warnings` flag and `LANDO_DEPRECATION_WARNINGS=0` env suppress the per-(kind,id) renderer line. They do not suppress recording, the lifecycle event, telemetry, or `lando doctor` output. CI pipelines that need clean output during a planned migration window are the intended consumers.
-- `lando doctor --deprecations` and the `--format yaml` config views (`lando app config` for `landofile-key` deprecations, `lando meta config` for `config-key` deprecations) ignore the suppression flag entirely. Their output always includes deprecations.
+- `lando doctor --deprecations` and `lando config --format yaml` ignore the suppression flag entirely. Their output always includes deprecations.
 - The JSON renderer (§8.9) emits deprecations as structured `deprecation-used` events on stderr alongside the typed result on stdout. The structured form is the intended consumer for CI deprecation-tracking pipelines.
 
 The first-paint contract (§8.9.1) is unaffected: deprecations are post-paint and never block the banner.

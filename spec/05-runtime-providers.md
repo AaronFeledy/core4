@@ -306,7 +306,7 @@ Rules:
 
 - A Landofile that uses provider extensions is not portable across providers unless the extension declares a portable fallback.
 - Compose-spec keys written directly in the Landofile are not provider extensions. They are accepted by the shared schema and are either normalized into provider-neutral plan fields or capability-checked as preserved Compose extensions (§5.5.1).
-- Generated docs and `lando app config` mark provider extensions as non-portable.
+- Generated docs and `lando config` mark provider extensions as non-portable.
 - Provider plugins MUST validate their extension schema with Effect Schema and emit `ProviderConfigError` on invalid input.
 
 ### 5.7 Provider errors
