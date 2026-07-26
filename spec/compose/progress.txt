@@ -217,3 +217,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; focused duration, healthcheck schema, SDK compatibility, planner, Landofile, and healthcheck-runner tests passed; guide drift passed with explicit base and skip context; probe-boundary and Compose coverage gates passed.
 - **Learnings for future iterations:** Repeated-component parsers over untrusted Landofile scalars must anchor matching at the current cursor; global unanchored regex scans can turn an otherwise linear validation failure into quadratic work.
 ---
+
+## 2026-07-26 07:27 CDT - US-470 Drift Audit
+- Trigger: 2 cycles, 1898 changed lines, 4 commits
+- Weakened proofs: restored a production Landofile-boundary assertion that requires the Compose duration grammar remediation instead of accepting only generic schema guidance.
+- Review scar tissue: removed a test-only fixture export, internal schema exports frozen only by tests, and a custom parse-error class used only to alter direct stringification.
+- Contract drift: corrected the runner criterion to the existing HealthcheckPlan output; Beta US-374 owns production runner shipping and US-472 owns `service_healthy` ordering.
+- Deferred-work laundering: separated pre-existing runner-output hardening from branch-owned validation-message amplification and removed attacker-controlled values from the new errors.
+- Fixed: bounded validation failures without truncating valid data, simplified schema tests, clarified canonical `startInterval` encoding, and retained the existing module boundaries because each owns substantive parsing or normalization logic.
+- Split/excise decisions: no production split or new story; existing US-374 and US-472 already own the excised runner/readiness claims, and US-470 remains passing on its narrowed normalization contract.
+- Verification: typecheck, lint, Compose coverage, probe boundary, import-cycle, no-excuse checks, and focused duration, healthcheck, Landofile, planner, compatibility, and schema-snapshot spot checks passed; the full test suite was not run because this step prohibits it.
+---
