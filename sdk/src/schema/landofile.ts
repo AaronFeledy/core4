@@ -113,12 +113,12 @@ const ServiceDependencyInput = Schema.Struct({
 
 const RESERVED_KEY_PROPERTY_NAMES = { not: { const: "__proto__" } } as const;
 
-const ReservedCoercedStringMapInput = Schema.Unknown.annotations({
+const ReservedComposeScalarMapInput = Schema.Unknown.annotations({
   jsonSchema: {
     type: "object",
     propertyNames: RESERVED_KEY_PROPERTY_NAMES,
     additionalProperties: {
-      anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }],
+      anyOf: [{ type: "string" }, { type: "number" }, { type: "boolean" }, { type: "null" }],
     },
   },
 });
@@ -158,6 +158,10 @@ const decodeReservedKeyMap = (input: unknown, ast: AST.Transformation) =>
     : ParseResult.succeed(input);
 
 const StringRecord = Schema.Record({ key: Schema.String, value: Schema.String });
+const ComposeScalarRecord = Schema.Record({
+  key: Schema.String,
+  value: Schema.Union(Schema.String, Schema.Number, Schema.Boolean, Schema.Null),
+});
 
 const ServiceDependencyInputRecord = Schema.transformOrFail(
   ReservedDependencyMapInput,
@@ -169,36 +173,38 @@ const ServiceDependencyInputRecord = Schema.transformOrFail(
   },
 );
 
-/** Record whose values coerce YAML scalars to strings. */
-const CoercedStringRecord = Schema.transformOrFail(
-  ReservedCoercedStringMapInput,
-  Schema.Record({
-    key: Schema.String,
-    value: Schema.transform(Schema.Union(Schema.String, Schema.Number, Schema.Boolean), Schema.String, {
-      strict: true,
-      decode: String,
-      encode: (s) => s,
-    }),
-  }),
-  {
-    strict: false,
-    decode: (input, _options, ast) => decodeReservedKeyMap(input, ast),
-    encode: (record) => ParseResult.succeed(record),
-  },
-);
+const ComposeScalarMapInput = Schema.transformOrFail(ReservedComposeScalarMapInput, ComposeScalarRecord, {
+  strict: false,
+  decode: (input, _options, ast) => decodeReservedKeyMap(input, ast),
+  encode: (record) => ParseResult.succeed(record),
+});
 
 /**
  * `environment` — accepts a map (`KEY: value`) or a Compose `KEY=value` list,
- * canonicalizing to a map. A bare list entry without `=` is rejected: Landofiles
- * do not read host environment variables, so there is no value to interpolate.
+ * canonicalizing to a map. A bare list entry without `=` or a null map value is
+ * rejected: Landofiles do not read host environment variables.
  */
 const ComposeEnvironmentInput = Schema.transformOrFail(
-  Schema.Union(CoercedStringRecord, Schema.Array(Schema.String)),
+  Schema.Union(ComposeScalarMapInput, Schema.Array(Schema.String)),
   StringRecord,
   {
     strict: true,
     decode: (input, _options, ast) => {
-      if (!Array.isArray(input)) return ParseResult.succeed(input as Record<string, string>);
+      if (!Array.isArray(input)) {
+        const unresolved = Object.entries(input).find(([, value]) => value === null);
+        if (unresolved !== undefined) {
+          return ParseResult.fail(
+            new ParseResult.Type(
+              ast,
+              input,
+              `Landofile service environment entry "${unresolved[0]}" has no value; host-environment interpolation is unsupported in Landofiles — provide a concrete value.`,
+            ),
+          );
+        }
+        return ParseResult.succeed(
+          Object.fromEntries(Object.entries(input).map(([key, value]) => [key, String(value)])),
+        );
+      }
       const entries: Array<readonly [string, string]> = [];
       for (const entry of input) {
         const separator = entry.indexOf("=");
@@ -221,17 +227,23 @@ const ComposeEnvironmentInput = Schema.transformOrFail(
   },
 ).annotations({
   description:
-    "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry without '=' is rejected because Landofiles do not read host environment variables.",
+    "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables.",
 });
 
 /** `labels` — accepts a map or a Compose `KEY=value` list, canonicalizing to a map (bare entry → empty value). */
 const ComposeLabelsInput = Schema.transformOrFail(
-  Schema.Union(CoercedStringRecord, Schema.Array(Schema.String)),
+  Schema.Union(ComposeScalarMapInput, Schema.Array(Schema.String)),
   StringRecord,
   {
     strict: true,
     decode: (input, _options, ast) => {
-      if (!Array.isArray(input)) return ParseResult.succeed(input);
+      if (!Array.isArray(input)) {
+        return ParseResult.succeed(
+          Object.fromEntries(
+            Object.entries(input).map(([key, value]) => [key, value === null ? "" : String(value)]),
+          ),
+        );
+      }
       const record = Object.fromEntries(
         input.map((entry) => {
           const separator = entry.indexOf("=");
@@ -244,7 +256,8 @@ const ComposeLabelsInput = Schema.transformOrFail(
     encode: (record) => ParseResult.succeed(record),
   },
 ).annotations({
-  description: "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map.",
+  description:
+    "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
 });
 
 /** `envFile` / Compose `env_file` — accepts a string or string list, canonicalizing to a list. */
@@ -341,7 +354,8 @@ export const ServiceConfig = Schema.Struct({
       "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
   }),
   labels: Schema.optional(ComposeLabelsInput).annotations({
-    description: "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map.",
+    description:
+      "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
   }),
 
   ports: Schema.optional(

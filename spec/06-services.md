@@ -30,12 +30,12 @@ A v4 service is a planned runtime component built from a **base** plus a sequenc
 
 ### 6.2 Common service schema
 
-`ServiceConfig` accepts the documented Compose service-key subset (§7.4) at the same level as Lando's additional keys. Lando-specific keys are conveniences or higher-level intent; they do not make supported Compose keys invalid. Unsupported Compose service keys fail validation unless they are moved under a provider extension that explicitly owns them.
+The published `ServiceConfigInput` authoring boundary accepts the documented Compose service-key subset (§7.4) at the same level as Lando's additional keys and decodes into the canonical `ServiceConfig` long form. Lando-specific keys are conveniences or higher-level intent; they do not make supported Compose keys invalid. Unsupported Compose service keys fail validation unless they are moved under a provider extension that explicitly owns them.
 
 Core normalizes Compose service keys with portable equivalents before creating a `ServicePlan`. Both the Compose spelling and the Lando alias are accepted, and where Compose defines a short and a long syntax for a key, **both forms are accepted** and canonicalized to the long form before normalization:
 
 - `image:` / Compose `build:` map into the service artifact model when the selected provider can build or pull artifacts. `build:` is **shape-discriminated**: a block containing Compose build keys (`context`, `dockerfile`, `dockerfile_inline`, `args`, `target`, ...) is a Compose build and normalizes into the artifact model; a block containing Lando build-script keys (`artifact:`, `app:`) is the §6.13 build-script block; a block mixing the two families fails with a tagged error and remediation. This shape discrimination replaces any separate `composeBuild:` spelling.
-- `command:`, `entrypoint:`, `user:`, `working_dir:`, `environment:` (map form and `KEY=value` list form), and `env_file:` (string and list forms) map directly to execution and environment fields.
+- `command:`, `entrypoint:`, `user:`, `working_dir:`, `environment:` (map form and `KEY=value` list form), and `env_file:` (string and list forms) map directly to execution and environment fields. A bare environment-list entry or null environment-map value fails with remediation because Landofiles do not inherit host environment values; a null label-map value canonicalizes to an empty string.
 - `volumes:` entries (short-string and long-object forms) map to `mounts` or `storage` depending on whether the source is a host path, named volume, or anonymous volume; a long-form `type: tmpfs` entry routes to the preserved `tmpfs` runtime knob.
 - `ports:` (short-string and long-object forms) and `expose:` map to `endpoints`; `ports:` with host bindings require the provider's host-port capability.
 - `depends_on:` (list form and condition-map form) maps to `dependsOn` and is used for lifecycle ordering. `condition: service_started | service_healthy | service_completed_successfully` is preserved into the plan and honored by build/start orchestration (§6.13): `service_healthy` gates on the dependency's healthcheck, `service_completed_successfully` on its successful exit.
@@ -49,7 +49,7 @@ Lando aliases such as `workingDirectory`, `envFile`, `appMount`, `mounts`, `stor
 Effect Schema definition (illustrative; final schema lives in `@lando/sdk`):
 
 ```ts
-export const ServiceConfig = Schema.extend(ComposeServiceConfig, Schema.Struct({
+export const ServiceConfigInput = Schema.extend(ComposeServiceConfig, Schema.Struct({
   api: Schema.optional(Schema.Literal(4)),
   type: Schema.optional(Schema.String),         // defaults to "lando"
   primary: Schema.optional(Schema.Boolean),

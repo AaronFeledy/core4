@@ -739,6 +739,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -824,6 +827,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -1954,6 +1960,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -2039,6 +2048,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -3211,6 +3223,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -3296,6 +3311,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -4596,6 +4614,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -4681,6 +4702,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -5811,6 +5835,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -5896,6 +5923,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -9488,6 +9518,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -9573,6 +9606,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -10726,6 +10762,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -10811,6 +10850,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -11964,6 +12006,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -12049,6 +12094,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -13202,6 +13250,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -13287,6 +13338,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -14440,6 +14494,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -14525,6 +14582,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -34900,6 +34960,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -34985,6 +35048,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -56874,6 +56940,9 @@
                   },
                   {
                     "type": "boolean"
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -56891,7 +56960,7 @@
               "type": "array"
             }
           ],
-          "description": "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry without '=' is rejected because Landofiles do not read host environment variables."
+          "description": "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables."
         },
         "framework": {
           "type": "string"
@@ -56960,6 +57029,9 @@
                   },
                   {
                     "type": "boolean"
+                  },
+                  {
+                    "type": "null"
                   }
                 ]
               },
@@ -56977,7 +57049,7 @@
               "type": "array"
             }
           ],
-          "description": "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map."
+          "description": "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings."
         },
         "logs": {
           "items": {
@@ -57533,6 +57605,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -57618,6 +57693,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -60154,6 +60232,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },
@@ -60239,6 +60320,9 @@
                       },
                       {
                         "type": "boolean"
+                      },
+                      {
+                        "type": "null"
                       }
                     ]
                   },

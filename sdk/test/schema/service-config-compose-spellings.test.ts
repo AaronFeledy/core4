@@ -59,6 +59,14 @@ describe("ServiceConfig compose spellings & alternate forms (US-468)", () => {
       }
     });
 
+    test("null map value fails with host-environment remediation", () => {
+      const result = Schema.decodeUnknownEither(ServiceConfig)({ environment: { NODE_ENV: null } });
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        expect(String(result.left)).toContain("host-environment interpolation is unsupported");
+      }
+    });
+
     test.each([
       ["map", reservedKeyRecord("polluted")],
       ["list", ["__proto__=polluted"]],
@@ -78,6 +86,12 @@ describe("ServiceConfig compose spellings & alternate forms (US-468)", () => {
       expect(decodeService({ labels: ["com.example.tier=web", "bare"] }).labels).toEqual({
         "com.example.tier": "web",
         bare: "",
+      });
+    });
+
+    test("null map value canonicalizes to an empty string", () => {
+      expect(decodeService({ labels: { "com.example.empty": null } }).labels).toEqual({
+        "com.example.empty": "",
       });
     });
 

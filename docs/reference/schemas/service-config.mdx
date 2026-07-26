@@ -29,7 +29,7 @@ Public Lando schema contract for Service Config.
 | `root` | No | `string` | — | — | — | — | — |
 | `environment` | No | `object`, `array` | — | — | — | — | — |
 | `envFile` | No | `string`, `array` | One or more env-file paths (string or list) whose KEY=value lines seed the service environment. | — | — | — | — |
-| `labels` | No | `object`, `array` | Service labels as a map or a Compose-style KEY=value list; canonicalized to a map. | — | — | — | — |
+| `labels` | No | `object`, `array` | Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings. | — | — | — | — |
 | `ports` | No | `array` | — | — | — | — | — |
 | `volumes` | No | `array` | — | — | — | — | — |
 | `appMount` | No | `boolean`, `object` | — | — | `false` | — | — |

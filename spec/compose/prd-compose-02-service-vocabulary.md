@@ -27,9 +27,9 @@ One deliberate contract change rides here: **`build:` shape discrimination** (§
 
 **Acceptance Criteria:**
 
-- [ ] `ServiceConfig` accepts `depends_on` (string-list and `{<svc>: {condition, restart?, required?}}` map), `working_dir`, `env_file` (string | string-list), `environment` list form, and `labels` map+list forms; all canonicalize to one internal long form before normalization.
+- [ ] The published `ServiceConfigInput` authoring boundary accepts `depends_on` (string-list and `{<svc>: {condition, restart?, required?}}` map), `working_dir`, `env_file` (string | string-list), `environment` list form, and `labels` map+list forms; all decode into the canonical `ServiceConfig` long form before normalization.
 - [ ] Compose spelling and Lando alias may coexist; the Lando key wins per §6.2/§7.4, covered by tests for `working_dir` vs `workingDirectory` and `depends_on` vs `dependsOn`.
-- [ ] `environment` list entries without `=` resolve from the host environment per Compose semantics or fail with remediation — behavior chosen, documented in the schema annotation, and tested.
+- [ ] `environment` list entries without `=` and null map values resolve from the host environment per Compose semantics or fail with remediation — behavior chosen, documented in the schema annotation, and tested; null label values canonicalize to empty strings.
 - [ ] `lando app config view --source resolved --format yaml` renders the post-normalization resolved values.
 - [ ] Schema snapshot refreshed (`codegen:schema-snapshot`); `sdk/API_COMPATIBILITY.md` updated (additive).
 - [ ] Tests pass
