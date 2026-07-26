@@ -78,11 +78,6 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
       `compose service "${ctx.serviceName}" requires either "image:" or "build:" (Compose build block).`,
     );
   }
-  if (hasImage && hasComposeBuild) {
-    throw new Error(
-      `compose service "${ctx.serviceName}" must declare exactly one of "image:" or "build:", not both.`,
-    );
-  }
 
   if (hasImage) {
     ctx.setArtifact({ kind: "ref", ref: service.image as string });

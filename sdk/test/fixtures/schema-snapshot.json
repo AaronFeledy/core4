@@ -426,8 +426,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -479,6 +488,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -491,9 +508,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -2022,8 +2111,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -2075,6 +2173,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -2087,9 +2193,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -3660,8 +3838,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -3713,6 +3900,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -3725,9 +3920,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -5426,8 +5693,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -5479,6 +5755,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -5491,9 +5775,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -7022,8 +7378,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -7075,6 +7440,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -7087,9 +7460,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -11080,8 +11525,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -11133,6 +11587,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -11145,9 +11607,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -12699,8 +13233,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -12752,6 +13295,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -12764,9 +13315,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -14318,8 +14941,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -14371,6 +15003,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -14383,9 +15023,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -15937,8 +16649,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -15990,6 +16711,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -16002,9 +16731,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -17556,8 +18357,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -17609,6 +18419,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -17621,9 +18439,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -38532,8 +39422,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -38585,6 +39484,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -38597,9 +39504,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -61110,8 +62089,17 @@
               "type": "string"
             },
             {
-              "additionalProperties": false,
+              "patternProperties": {
+                "": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                }
+              },
               "properties": {
+                "additional_contexts": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
                 "app": {
                   "anyOf": [
                     {
@@ -61163,6 +62151,14 @@
                     }
                   ]
                 },
+                "cache_from": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "cache_to": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
                 "context": {
                   "type": "string"
                 },
@@ -61175,9 +62171,81 @@
                 "dockerfileInline": {
                   "type": "string"
                 },
+                "entitlements": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "extra_hosts": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "isolation": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "labels": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "network": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "no_cache": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "no_cache_filter": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "platforms": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "privileged": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "provenance": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "pull": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "sbom": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "secrets": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "shm_size": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "ssh": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "tags": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
                 "target": {
                   "type": "string"
+                },
+                "ulimits": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
                 }
+              },
+              "propertyNames": {
+                "pattern": "^x-[\\s\\S]*?$",
+                "type": "string"
               },
               "required": [],
               "type": "object"
@@ -62106,8 +63174,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -62159,6 +63236,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -62171,9 +63256,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -65126,8 +66283,17 @@
                   "type": "string"
                 },
                 {
-                  "additionalProperties": false,
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
                   "properties": {
+                    "additional_contexts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "app": {
                       "anyOf": [
                         {
@@ -65179,6 +66345,14 @@
                         }
                       ]
                     },
+                    "cache_from": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "cache_to": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "context": {
                       "type": "string"
                     },
@@ -65191,9 +66365,81 @@
                     "dockerfileInline": {
                       "type": "string"
                     },
+                    "entitlements": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "extra_hosts": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "isolation": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "labels": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "network": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "no_cache_filter": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "platforms": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "privileged": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "provenance": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "pull": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "sbom": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "secrets": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "shm_size": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "ssh": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
+                    "tags": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    },
                     "target": {
                       "type": "string"
+                    },
+                    "ulimits": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
                     }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
                   },
                   "required": [],
                   "type": "object"

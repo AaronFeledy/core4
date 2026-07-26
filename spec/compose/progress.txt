@@ -249,3 +249,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - The schema snapshot couples otherwise-independent schema changes into one commit: an additive field and a field replacement both land in that single generated file, so splitting them produces an intermediate commit whose snapshot test fails. Prefer one honest commit over a broken bisect point.
   - A union that fails validation emits one issue per member, so a mixed-family error legitimately appears alongside bare dotted key paths from the sibling member. Assert that the remediation issue EXISTS and is well-formed; asserting that no dotted path appears anywhere is over-strict and will fail for a correct implementation.
 ---
+
+## 2026-07-26 10:56 CDT - US-471 Review
+- Closed three acceptance blockers: every vendored depth-one Compose build key now participates in family detection before Effect can discard excess properties; an authored Compose build now overrides type-seeded artifact defaults and always reaches the planning-time `artifactBuild` capability check; and authored `build.artifact` scripts now use the canonical build-step command shape consumed by the container runtime.
+- Corrected mixed-family remediation to offer a valid split through `image:` rather than directing users back to Compose keys in the same `build:` block. Rejected Compose-only build keys fail closed under default and strict decoding; matrix-sourced `ComposeKeyRejectedError` remediation remains owned by US-475.
+- Guide-Coverage-Skip: US-471 changes Compose service build normalization; mapped SDK guides do not document service build authoring.
+- Review notes (deferred/rejected): `image:` plus a Compose build remains a tagged conflict for parity; using `image:` as the output tag of a build would require a new artifact-model contract outside US-471.
+- Review notes (deferred/rejected): Build-context path escape semantics and multi-line script/block-scalar limitations predate this branch; the security lane found no new exploit boundary, and the existing progress entry already assigns YAML block scalars to the shared parser follow-up.
+- Review notes (deferred/rejected): Per-service `failFast`/`concurrency` policy remains the later 4.1 orchestration wave; Cursor Bugbot produced no report because the configured account was out of usage.
+- Verification: typecheck and lint passed; 581 focused tests across 16 SDK, loader, planner, runtime, plugin, snapshot, compatibility, and contract files passed; Compose coverage, import-cycle, guide lint/coverage/public-transcript, and explicit-base guide-drift gates passed; schema codegen was hash-idempotent.
+- **Learnings for future iterations:** Effect transforms that discriminate key families must include rejected and extension keys in their input schema; otherwise default excess-property stripping can silently turn a mixed block into the wrong valid family before decode logic runs.
+---

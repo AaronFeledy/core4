@@ -1020,6 +1020,19 @@ const planApp = (
         loadedEnvFiles.inputs.length === 0
           ? service
           : { ...service, environment: loadedEnvFiles.environment };
+      if (
+        serviceWithEnvironment.image !== undefined &&
+        serviceWithEnvironment.build !== undefined &&
+        isComposeBuild(serviceWithEnvironment.build)
+      ) {
+        yield* Effect.fail(
+          new LandofileValidationError({
+            message: `Service ${name} must declare exactly one of image or a Compose build, not both. Remove image or replace build with a Lando build-script block.`,
+            file: `${appRoot}/.lando.yml`,
+            issues: [`services.${name}.build`],
+          }),
+        );
+      }
       const authored = authoredStorageScopes(appRoot, name, serviceWithEnvironment);
       if (authored.invalidCacheEntry !== undefined) {
         yield* Effect.fail(authored.invalidCacheEntry);
@@ -1225,7 +1238,7 @@ const planApp = (
                     ...artifactScripts.map((script, index) => ({
                       id: `authored-artifact:${index + 1}`,
                       phase: "build",
-                      command: { command: ["sh", "-lc", script] },
+                      command: ["sh", "-lc", script],
                     })),
                     ...appScripts.map((script, index) => ({
                       id: `authored-app:${index + 1}`,
@@ -1333,7 +1346,7 @@ const planApp = (
       }
 
       const withArtifact =
-        servicePlan.artifact === undefined && build !== undefined && isComposeBuild(build)
+        build !== undefined && isComposeBuild(build)
           ? { ...servicePlan, artifact: composeBuildToArtifact(build, appRoot) }
           : servicePlan;
 

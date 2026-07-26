@@ -226,7 +226,7 @@ describe("compose ServiceType (raw passthrough)", () => {
     );
   });
 
-  test("type compose with image and a Compose build fails", () => {
+  test("the compose feature leaves image and Compose build conflict validation to the planner", async () => {
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
       name: "myapp",
       services: {
@@ -240,10 +240,9 @@ describe("compose ServiceType (raw passthrough)", () => {
     const service = landofile.services?.[ServiceName.make("api")];
     if (service === undefined) throw new Error("api service missing");
 
-    return expectComposePlanRejects(
-      planComposeService({ service, serviceName: "api" }),
-      /must declare exactly one of "image:" or "build:"/,
-    );
+    const plan = await planComposeService({ service, serviceName: "api" });
+
+    expect(plan.artifact).toEqual({ kind: "ref", ref: "alpine:3" });
   });
 
   test("type compose with image and a Lando family build is valid", async () => {

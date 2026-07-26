@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Either, ParseResult, Schema } from "effect";
 
-import { BuildBlock, ServiceConfig } from "../../src/schema/landofile.ts";
+import { BuildBlock, LandofileShape, ServiceConfig } from "../../src/schema/landofile.ts";
 
 const decodeOptions = [{}, { onExcessProperty: "error" }] as const;
 
@@ -94,6 +94,83 @@ describe("BuildBlock", () => {
       "Lando build-script",
       "remove",
     ]);
+  });
+
+  test("fails every mixed Lando and rejected Compose build-key shape before excess keys can be dropped", () => {
+    // Given
+    const fixtures = [
+      { input: { artifact: "x", no_cache: true }, keys: ["artifact", "no_cache"] },
+      { input: { app: "x", platforms: ["linux/amd64"] }, keys: ["app", "platforms"] },
+      { input: { artifact: "x", "x-builder": { mode: "fast" } }, keys: ["artifact", "x-builder"] },
+      {
+        input: { artifact: "x", app: "x", no_cache: true, platforms: [], "x-builder": true },
+        keys: ["artifact", "app", "no_cache", "platforms", "x-builder"],
+      },
+    ] as const;
+
+    for (const { input, keys } of fixtures) {
+      // When / Then
+      expectLandofileFailure(input, [...keys, "Compose", "Lando build-script", "image:"]);
+      for (const options of decodeOptions) {
+        const result = Schema.decodeUnknownEither(BuildBlock)(input, options);
+        expect(Either.isLeft(result)).toBe(true);
+        if (!Either.isLeft(result)) continue;
+        const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
+          .map(({ message }) => message)
+          .join("\n");
+        expect(message).not.toContain("build.dockerfile");
+      }
+    }
+  });
+
+  test("fails closed for unsupported Compose-only build keys under default and strict decode", () => {
+    // Given
+    const fixtures = [
+      { no_cache: true },
+      { platforms: ["linux/amd64"] },
+      { "x-builder": { mode: "fast" } },
+    ] as const;
+
+    for (const input of fixtures) {
+      for (const options of decodeOptions) {
+        // When
+        const result = Schema.decodeUnknownEither(BuildBlock)(input, options);
+
+        // Then
+        expect(Either.isLeft(result)).toBe(true);
+        if (!Either.isLeft(result)) continue;
+        expect(ParseResult.isParseError(result.left)).toBe(true);
+        const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
+          .map(({ message }) => message)
+          .join("\n");
+        expect(message).not.toContain("Translate build.");
+        expect(message).not.toContain("ComposeKeyRejectedError");
+      }
+    }
+  });
+
+  test("rejects mixed families at the Landofile authoring boundary under default and strict decode", () => {
+    // Given
+    const input = {
+      name: "app",
+      services: { web: { build: { artifact: "x", no_cache: true } } },
+    };
+
+    for (const options of decodeOptions) {
+      // When
+      const result = Schema.decodeUnknownEither(LandofileShape)(input, options);
+
+      // Then
+      expect(Either.isLeft(result)).toBe(true);
+      if (!Either.isLeft(result)) continue;
+      const message = ParseResult.ArrayFormatter.formatErrorSync(result.left)
+        .map(({ message }) => message)
+        .join("\n");
+      expect(message).toContain("artifact");
+      expect(message).toContain("no_cache");
+      expect(message).toContain("image:");
+      expect(message).not.toContain("build.dockerfile");
+    }
   });
 
   test("decodes a Lando family block", () => {

@@ -523,7 +523,7 @@ describe("AppPlannerLive", () => {
           {
             id: "authored-artifact:1",
             phase: "build",
-            command: { command: ["sh", "-lc", "install-dependencies"] },
+            command: ["sh", "-lc", "install-dependencies"],
           },
         ],
       });
@@ -593,20 +593,20 @@ describe("AppPlannerLive", () => {
         {
           id: "authored-artifact:1",
           phase: "build",
-          command: { command: ["sh", "-lc", "artifact-one"] },
+          command: ["sh", "-lc", "artifact-one"],
         },
         {
           id: "authored-artifact:2",
           phase: "build",
-          command: { command: ["sh", "-lc", "artifact-two"] },
+          command: ["sh", "-lc", "artifact-two"],
         },
         { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "app-one"] } },
       ]);
     });
   });
 
-  test("a plugin set artifact is not overwritten by the Compose build conversion", async () => {
-    await withTempCwd(async () => {
+  test("an authored Compose build overrides a plugin-set artifact", async () => {
+    await withTempCwd(async (appRoot) => {
       // Given
       const landofile = Schema.decodeUnknownSync(LandofileShape)({
         name: "plugin-artifact",
@@ -619,8 +619,106 @@ describe("AppPlannerLive", () => {
 
       // Then
       expect(appPlan.services[ServiceName.make("worker")]?.artifact).toEqual({
+        kind: "build",
+        context: AbsolutePath.make(appRoot),
+      });
+    });
+  });
+
+  test("a typed service Compose build requires provider artifactBuild capability", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "typed-compose-build",
+        runtime: 4,
+        services: { worker: { type: "appmount-only", build: "." } },
+      });
+
+      // When
+      const exit = await planExitWithCustomRegistry(landofile, {
+        ...providerLandoCapabilities,
+        artifactBuild: false,
+      });
+
+      // Then
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      if (failure instanceof CapabilityError) {
+        expect(failure.capability).toBe("artifactBuild");
+        expect(failure.service).toBe("worker");
+      }
+    });
+  });
+
+  test("image plus a Compose build fails for a non-compose service type", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "conflicting-artifact-sources",
+        runtime: 4,
+        services: {
+          worker: { type: "appmount-only", image: "alpine:3", build: { context: "." } },
+        },
+      });
+
+      // When
+      const exit = await planExitWithCustomRegistry(landofile);
+
+      // Then
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(LandofileValidationError);
+      if (failure instanceof LandofileValidationError) {
+        expect(failure._tag).toBe("LandofileValidationError");
+        expect(failure.issues).toEqual(["services.worker.build"]);
+      }
+    });
+  });
+
+  test("raw lando accepts a Compose build without an image", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "raw-lando-compose-build",
+        runtime: 4,
+        services: { worker: { type: "lando", build: { context: "." } } },
+      });
+
+      // When
+      const appPlan = await plan(landofile);
+
+      // Then
+      expect(appPlan.services[ServiceName.make("worker")]?.artifact).toEqual({
+        kind: "build",
+        context: AbsolutePath.make(appRoot),
+      });
+    });
+  });
+
+  test("image plus Lando-family build scripts remains valid", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: "lando-build-scripts",
+        runtime: 4,
+        services: {
+          worker: { type: "lando", image: "alpine:3", build: { app: "echo ready" } },
+        },
+      });
+
+      // When
+      const appPlan = await plan(landofile);
+
+      // Then
+      expect(appPlan.services[ServiceName.make("worker")]?.artifact).toEqual({
         kind: "ref",
-        ref: "appmount-only:latest",
+        ref: "alpine:3",
+      });
+      expect(
+        appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"],
+      ).toMatchObject({
+        buildSteps: [
+          { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "echo ready"] } },
+        ],
       });
     });
   });

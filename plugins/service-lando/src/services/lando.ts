@@ -13,13 +13,15 @@ const APP_MOUNT_TARGET = PortablePath.make("/app");
 
 const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
-  if (service.image === undefined || service.image.length === 0) {
+  const hasImage = service.image !== undefined && service.image.length > 0;
+  const hasComposeBuild = service.build !== undefined && "context" in service.build;
+  if (!hasImage && !hasComposeBuild) {
     throw new Error(
-      `lando service "${ctx.serviceName}" requires "image:" — the raw \`type: lando\` base has no default image. Pin a version-tagged image (e.g. "debian:12.11-slim").`,
+      `lando service "${ctx.serviceName}" requires "image:" or "build:" (Compose build block) — the raw \`type: lando\` base has no default artifact.`,
     );
   }
 
-  ctx.setArtifact({ kind: "ref", ref: service.image });
+  if (hasImage) ctx.setArtifact({ kind: "ref", ref: service.image });
   ctx.setWorkingDirectory(service.workingDirectory ?? APP_MOUNT_TARGET);
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);

@@ -36,17 +36,16 @@ const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValida
   if (failure._tag !== "Some") {
     throw new Error("expected a typed failure cause");
   }
-  expect(failure.value).toBeInstanceOf(LandofileValidationError);
-  if (failure.value._tag !== "LandofileValidationError") {
+  if (!(failure.value instanceof LandofileValidationError)) {
     throw new Error("expected LandofileValidationError");
   }
   return failure.value;
 };
 
 describe("LandofileServiceLive — build shape discrimination boundary", () => {
-  test("a mixed family build error surfaces its full remediation, not the dotted key path", async () => {
+  test("a rejected Compose build key still reaches mixed-family remediation at the loader boundary", async () => {
     await withTempCwd(async (dir) => {
-      // Given: a service build block that mixes Compose (context) and Lando (app) families
+      // Given: a service build block that mixes a rejected Compose key with the Lando family
       await writeFile(
         join(dir, ".lando.yml"),
         [
@@ -55,9 +54,8 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
           "  web:",
           "    image: node:lts",
           "    build:",
-          '      context: "."',
-          "      app:",
-          "        - echo hi",
+          "      artifact: echo hi",
+          "      no_cache: true",
           "",
         ].join("\n"),
       );
@@ -72,7 +70,11 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
       expect(mixedIssue?.startsWith("Landofile service")).toBe(true);
       expect(mixedIssue).toContain("Compose");
       expect(mixedIssue).toContain("Lando build-script");
+      expect(mixedIssue).toContain("artifact");
+      expect(mixedIssue).toContain("no_cache");
       expect(mixedIssue).toContain("remove");
+      expect(mixedIssue).toContain("image:");
+      expect(mixedIssue).not.toContain("build.dockerfile");
       expect(mixedIssue).not.toBe("services.web.build");
     });
   });

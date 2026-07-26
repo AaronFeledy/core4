@@ -218,6 +218,43 @@ test("buildContainerArtifact preserves shell and exec RUN forms and rejects cont
   expect(failure.message).toContain("control characters");
 });
 
+test("buildContainerArtifact renders an authored build step over a referenced artifact", async () => {
+  // Given
+  const bodies: string[] = [];
+  const api = {
+    request: (request: ContainerBuildHttpRequest) =>
+      Effect.promise(async () => {
+        bodies.push(new TextDecoder().decode(await collect(request.stdin)));
+        return { status: 200, body: "" };
+      }),
+  };
+  const authored = service({
+    artifact: { kind: "ref", ref: "debian:12" },
+    extensions: {
+      "@lando/core/service-features": {
+        buildSteps: [
+          {
+            id: "authored-artifact:1",
+            phase: "build",
+            command: ["sh", "-lc", "install-dependencies"],
+          },
+        ],
+      },
+    },
+  });
+
+  // When
+  await Effect.runPromise(
+    buildContainerArtifact(
+      { app: appId, service: serviceName, plan: plan(authored), buildKey: "authored-build-step" },
+      { providerId, api },
+    ),
+  );
+
+  // Then
+  expect(bodies[0]).toContain('RUN ["sh","-lc","install-dependencies"]');
+});
+
 test("buildContainerArtifact pins a resolved base digest in derived Dockerfiles", async () => {
   // Given
   const bodies: string[] = [];
