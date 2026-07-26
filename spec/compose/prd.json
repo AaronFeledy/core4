@@ -96,7 +96,7 @@
         "Lint passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 6.2 healthcheck bullet (added) + spec 6.7 model."
     },
     {

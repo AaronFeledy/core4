@@ -472,6 +472,19 @@
                 }
               ]
             },
+            "disable": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "interval": {
+              "type": "string"
+            },
             "intervalSeconds": {
               "type": "number"
             },
@@ -488,10 +501,42 @@
               "type": "number"
             },
             "retries": {
-              "type": "number"
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "start_interval": {
+              "type": "string"
+            },
+            "start_period": {
+              "type": "string"
+            },
+            "startInterval": {
+              "type": "string"
             },
             "startPeriodSeconds": {
               "type": "number"
+            },
+            "test": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "timeout": {
+              "type": "string"
             },
             "timeoutSeconds": {
               "type": "number"

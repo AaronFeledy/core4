@@ -734,6 +734,39 @@ const baseDefaultFeatureIds = (base: ServiceTypeResolution["base"]): ReadonlyArr
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
+  const composeExtension = servicePlan.extensions.compose;
+  const compose = isRecord(composeExtension) ? composeExtension : {};
+  const startInterval = service.healthcheck?.startInterval;
+  if (service.labels === undefined && startInterval === undefined) return servicePlan;
+
+  return {
+    ...servicePlan,
+    extensions: {
+      ...servicePlan.extensions,
+      compose: {
+        ...compose,
+        ...(service.labels === undefined
+          ? {}
+          : {
+              labels: {
+                ...(isRecord(compose.labels) ? compose.labels : {}),
+                ...service.labels,
+              },
+            }),
+        ...(startInterval === undefined
+          ? {}
+          : {
+              healthcheck: {
+                ...(isRecord(compose.healthcheck) ? compose.healthcheck : {}),
+                start_interval: startInterval,
+              },
+            }),
+      },
+    },
+  };
+};
+
 const serviceFeatureExtension = (
   extensions: ServicePlan["extensions"],
 ): Record<string, unknown> | undefined => {
@@ -1173,24 +1206,7 @@ const planApp = (
         applyAuthoredHealthcheck(applyAuthoredAppMount(mergeDefaultExcludes(rawPlan), service), service),
         service,
       );
-      const composeExtension = authoredServicePlanWithoutLabels.extensions.compose;
-      const composeLabels = isRecord(composeExtension) ? composeExtension.labels : undefined;
-      const authoredServicePlan: ServicePlan =
-        service.labels === undefined
-          ? authoredServicePlanWithoutLabels
-          : {
-              ...authoredServicePlanWithoutLabels,
-              extensions: {
-                ...authoredServicePlanWithoutLabels.extensions,
-                compose: {
-                  ...(isRecord(composeExtension) ? composeExtension : {}),
-                  labels: {
-                    ...(isRecord(composeLabels) ? composeLabels : {}),
-                    ...service.labels,
-                  },
-                },
-              },
-            };
+      const authoredServicePlan = mergeComposeExtension(authoredServicePlanWithoutLabels, service);
       const authoredAppBuild = service.build?.app;
       const appBuildScripts =
         authoredAppBuild === undefined

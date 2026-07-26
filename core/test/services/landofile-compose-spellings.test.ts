@@ -94,4 +94,101 @@ describe("LandofileServiceLive — Compose service spellings", () => {
       expect((failure.value as LandofileValidationError).message).toContain("KEY=value");
     });
   });
+
+  test("canonicalizes Compose healthchecks through both Landofile decode passes", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await write(
+        dir,
+        [
+          "name: composeapp",
+          "runtime: 4",
+          "services:",
+          "  disabled:",
+          "    image: node:lts",
+          "    healthcheck:",
+          "      disable: true",
+          "  none:",
+          "    image: node:lts",
+          "    healthcheck:",
+          "      test:",
+          "        - NONE",
+          "  mixed:",
+          "    image: node:lts",
+          "    healthcheck:",
+          "      command:",
+          "        - echo",
+          "        - lando",
+          "      disable: true",
+          "      test:",
+          "        - NONE",
+          "      interval: 30s",
+          "      intervalSeconds: 12",
+          '      retries: "3"',
+          "      start_interval: 5s",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      // When
+      const exit = await discoverExit();
+
+      // Then
+      expect(Exit.isSuccess(exit)).toBe(true);
+      if (!Exit.isSuccess(exit)) return;
+      expect(exit.value.services?.[ServiceName.make("disabled")]?.healthcheck).toEqual({
+        kind: "none",
+      });
+      expect(exit.value.services?.[ServiceName.make("none")]?.healthcheck).toEqual({
+        kind: "none",
+      });
+      expect(exit.value.services?.[ServiceName.make("mixed")]?.healthcheck).toEqual({
+        kind: "command",
+        command: ["echo", "lando"],
+        intervalSeconds: 12,
+        retries: 3,
+        startInterval: "5s",
+      });
+    });
+  });
+
+  test("reports remediation for an invalid Compose healthcheck duration", async () => {
+    await withTempCwd(async (dir) => {
+      // Given
+      await write(
+        dir,
+        [
+          "name: composeapp",
+          "runtime: 4",
+          "services:",
+          "  web:",
+          "    image: node:lts",
+          "    healthcheck:",
+          "      test:",
+          "        - CMD",
+          '        - "true"',
+          "      interval: 30 seconds",
+          "",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      // When
+      const exit = await discoverExit();
+
+      // Then
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (!Exit.isFailure(exit)) return;
+      const failure = Cause.failureOption(exit.cause);
+      expect(failure._tag).toBe("Some");
+      if (failure._tag !== "Some") return;
+      expect(failure.value).toBeInstanceOf(LandofileValidationError);
+      if (!(failure.value instanceof LandofileValidationError)) return;
+      expect(failure.value.issues).toContain("services.web.healthcheck");
+      expect(failure.value.message).toContain(
+        "Remove unsupported keys or update the documented Landofile service schema.",
+      );
+    });
+  });
 });
