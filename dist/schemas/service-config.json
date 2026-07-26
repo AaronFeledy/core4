@@ -416,6 +416,20 @@
       ],
       "description": "Service environment variables as a map (KEY: value) or a Compose-style KEY=value list. A bare list entry or null map value is rejected because Landofiles do not read host environment variables."
     },
+    "expose": {
+      "description": "Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints.",
+      "items": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          }
+        ]
+      },
+      "type": "array"
+    },
     "framework": {
       "type": "string"
     },
@@ -592,6 +606,7 @@
       "type": "number"
     },
     "ports": {
+      "description": "Published container ports as Compose short strings (\"8080:80\", \"127.0.0.1:8080:80/udp\", \"80\", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.",
       "items": {
         "anyOf": [
           {
@@ -599,6 +614,49 @@
           },
           {
             "type": "number"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "app_protocol": {
+                "type": "string"
+              },
+              "host_ip": {
+                "format": "ip",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "protocol": {
+                "enum": [
+                  "tcp",
+                  "udp"
+                ],
+                "type": "string"
+              },
+              "published": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "target": {
+                "description": "a number between 1 and 65535",
+                "maximum": 65535,
+                "minimum": 1,
+                "title": "between(1, 65535)",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -709,8 +767,79 @@
       "type": "string"
     },
     "volumes": {
+      "description": "Compose volumes as short strings (\"./src:/app\", \"named:/data:ro\", \"/data\") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.",
       "items": {
-        "type": "string"
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "bind": {
+                "additionalProperties": false,
+                "properties": {
+                  "create_host_path": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "read_only": {
+                "type": "boolean"
+              },
+              "source": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string"
+              },
+              "tmpfs": {
+                "additionalProperties": false,
+                "properties": {
+                  "mode": {
+                    "type": "number"
+                  },
+                  "size": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [],
+                "type": "object"
+              },
+              "type": {
+                "enum": [
+                  "bind",
+                  "volume",
+                  "tmpfs"
+                ],
+                "type": "string"
+              },
+              "volume": {
+                "additionalProperties": false,
+                "properties": {
+                  "subpath": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "type": "object"
+          }
+        ]
       },
       "type": "array"
     },

@@ -133,3 +133,9 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: excised the separable partial source selector; no follow-up story was added because the complete app-config source-stage contract already exists in spec §8.2.1 outside this Compose-normalization story.
 - Verification: typecheck, lint, 12 focused schema/loader/planner/CLI/cache test files, schema/CLI codegen idempotence, Compose coverage, and renderer/paths/state-store/probe/redaction/machine-output/import-cycle boundaries passed.
 ---
+## 2026-07-26 01:35 CDT - Babysit
+- PR: #631 https://github.com/AaronFeledy/core4/pull/631
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip for Compose alternate-form normalization; mapped guides do not document service field spellings)
+- Merge: merged (squash)
+---

@@ -1,13 +1,24 @@
-import { homedir } from "node:os";
 import { basename, isAbsolute, resolve as resolvePath } from "node:path";
 
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import { AbsolutePath, type MountInput, PortablePath, ServiceName } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  type MountInput,
+  PortablePath,
+  ServiceName,
+  parseShortVolume,
+} from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import { parsePublishedPort, publicationFor } from "./_port-helpers.ts";
+import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
+import {
+  type ClassifiedComposeVolume,
+  classifyComposeVolume,
+  occupiedTargets,
+  resolveBindSource,
+} from "./_volume-helpers.ts";
 
 const APP_MOUNT_TARGET = PortablePath.make("/app");
 
@@ -21,52 +32,20 @@ type VolumeMount = {
   readonly readOnly: boolean;
 };
 
-// Windows drive-letter prefix ("C:\" or "C:/") whose ":" is a path char, not a Compose separator.
-const DRIVE_LETTER_PREFIX = /^[A-Za-z]:[\\/]/;
-
-// Split on ":" but keep a leading drive letter attached: "C:\src:/app:ro" -> ["C:\src","/app","ro"].
-const splitMountEntry = (entry: string): ReadonlyArray<string> => {
-  if (!DRIVE_LETTER_PREFIX.test(entry)) return entry.split(":");
-  const driveLetter = entry.slice(0, 2);
-  const [firstSegment, ...rest] = entry.slice(2).split(":");
-  return [`${driveLetter}${firstSegment ?? ""}`, ...rest];
-};
-
-const resolveBindSource = (source: string, appRoot: string): string => {
-  if (DRIVE_LETTER_PREFIX.test(source)) return source;
-  const expanded =
-    source === "~" ? homedir() : source.startsWith("~/") ? homedir() + source.slice(1) : source;
-  return isAbsolute(expanded) ? expanded : resolvePath(appRoot, expanded);
-};
-
-const parseVolumeShortForm = (entry: string, appRoot: string): VolumeMount => {
-  const parts = splitMountEntry(entry);
-  if (parts.length < 2 || parts.length > 3) {
-    throw new Error(
-      `Invalid compose volume entry "${entry}". Expected short form "<source>:<target>[:ro|rw]".`,
-    );
-  }
-  const [rawSource, rawTarget, mode] = parts as [string, string, string | undefined];
-  if (rawSource.length === 0 || rawTarget.length === 0) {
-    throw new Error(`Invalid compose volume entry "${entry}". Source and target must be non-empty.`);
-  }
-  const readOnly = mode === "ro";
-  if (mode !== undefined && mode !== "ro" && mode !== "rw") {
-    throw new Error(`Invalid compose volume mode "${mode}" in "${entry}". Allowed: ro, rw.`);
-  }
-  const isPathLike =
-    rawSource.startsWith(".") ||
-    rawSource.startsWith("/") ||
-    rawSource.startsWith("~") ||
-    DRIVE_LETTER_PREFIX.test(rawSource);
-  if (isPathLike) {
-    return { type: "bind", source: resolveBindSource(rawSource, appRoot), target: rawTarget, readOnly };
-  }
-  return { type: "volume", source: rawSource, target: rawTarget, readOnly };
-};
-
 const parseMount = (entry: MountInput, appRoot: string): VolumeMount => {
-  if (typeof entry === "string") return parseVolumeShortForm(entry, appRoot);
+  if (typeof entry === "string") {
+    const parsed = parseShortVolume(entry);
+    const source =
+      parsed.type === "bind" && parsed.source !== undefined
+        ? resolveBindSource(parsed.source, appRoot)
+        : parsed.source;
+    return {
+      type: parsed.type,
+      ...(source === undefined ? {} : { source }),
+      target: parsed.target,
+      readOnly: parsed.readOnly,
+    };
+  }
   const type = entry.type ?? "bind";
   if (type === "bind" && entry.source === undefined) {
     throw new Error(`Compose bind mount at "${entry.target}" requires a source.`);
@@ -85,6 +64,9 @@ const appNameFor = (ctx: ServiceFeatureContext): string => {
   if (ctx.appName !== undefined && ctx.appName.length > 0) return ctx.appName;
   return basename(ctx.appRoot) || "app";
 };
+
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const applyCompose = (ctx: ServiceFeatureContext): void => {
   const service = ctx.normalizedConfig;
@@ -150,20 +132,34 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     });
   }
 
-  for (const volume of (service.volumes ?? []).map((entry) => parseVolumeShortForm(entry, ctx.appRoot))) {
-    if (volume.type === "bind") {
-      ctx.addMount({
-        type: "bind",
-        source: volume.source,
-        target: PortablePath.make(volume.target),
-        readOnly: volume.readOnly,
-      });
-    } else if (volume.type === "volume") {
-      ctx.addStorage({
-        store: `${appName}-${volume.source}`,
-        target: PortablePath.make(volume.target),
-        readOnly: volume.readOnly,
-      });
+  const composeVolumes = (service.volumes ?? []).map((entry) =>
+    classifyComposeVolume(entry, { appRoot: ctx.appRoot, appName, serviceName: ctx.serviceName }),
+  );
+  const occupied = occupiedTargets(service, APP_MOUNT_TARGET);
+  const tmpfsEntries: Array<Extract<ClassifiedComposeVolume, { readonly _tag: "tmpfs" }>["tmpfs"]> = [];
+  const preservedVolumes: Array<NonNullable<ClassifiedComposeVolume["extension"]>> = [];
+  for (const volume of composeVolumes.filter((entry) => !occupied.has(entry.target))) {
+    if (volume.extension !== undefined) preservedVolumes.push(volume.extension);
+    switch (volume._tag) {
+      case "mount":
+        ctx.addMount({
+          ...volume.mount,
+          target: PortablePath.make(volume.mount.target),
+        });
+        break;
+      case "storage":
+        ctx.addStorage({
+          ...volume.storage,
+          target: PortablePath.make(volume.storage.target),
+        });
+        break;
+      case "tmpfs":
+        tmpfsEntries.push(volume.tmpfs);
+        break;
+      default: {
+        const exhaustive: never = volume;
+        throw new Error(`Unsupported classified Compose volume: ${exhaustive}`);
+      }
     }
   }
 
@@ -176,17 +172,15 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
       }
     }
   } else {
-    for (const portEntry of service.ports ?? []) {
-      const parsed = parsePublishedPort(portEntry);
-      // Shorthand compose `ports` carry no endpoint-name intent, so synthesized
-      // endpoints stay unnamed; naming each after the service would collide when
-      // a service publishes several ports (e.g. traefik 80/443/8080).
-      ctx.addEndpoint({
-        _tag: "published",
-        port: parsed.port,
-        protocol: parsed.protocol,
-        publication: publicationFor(parsed),
-      });
+    for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
+      ctx.addEndpoint(endpoint);
+    }
+    for (const endpoint of internalEndpointsFromExpose(service.expose ?? [], "tcp")) {
+      if (endpoint.protocol === "unix") {
+        ctx.addEndpoint({ ...endpoint, socketPath: PortablePath.make(endpoint.socketPath) });
+      } else {
+        ctx.addEndpoint(endpoint);
+      }
     }
   }
 
@@ -198,6 +192,20 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
     ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
   }
   for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
+  if (tmpfsEntries.length > 0) {
+    const existing = service.providers?.compose;
+    ctx.addExtension("compose", {
+      ...(isRecord(existing) ? existing : {}),
+      ...(preservedVolumes.length === 0 ? {} : { volumes: preservedVolumes }),
+      tmpfs: tmpfsEntries,
+    });
+  } else if (preservedVolumes.length > 0) {
+    const existing = service.providers?.compose;
+    ctx.addExtension("compose", {
+      ...(isRecord(existing) ? existing : {}),
+      volumes: preservedVolumes,
+    });
+  }
 };
 
 export const composeServiceFeature: ServiceFeatureDefinition = {
