@@ -421,37 +421,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -465,30 +554,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -1994,37 +2059,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -2038,30 +2192,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -3609,37 +3739,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -3653,30 +3872,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -5352,37 +5547,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -5396,30 +5680,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -6925,37 +7185,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -6969,30 +7318,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -10960,37 +11285,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -11004,30 +11418,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -12556,37 +12946,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -12600,30 +13079,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -14152,37 +14607,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -14196,30 +14740,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -15748,37 +16268,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -15792,30 +16401,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -17344,37 +17929,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -17388,30 +18062,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -23509,35 +24159,81 @@
                     "type": "object"
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "args": {
-                        "additionalProperties": {
-                          "type": "string"
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["build"],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "$id": "/schemas/never",
+                            "not": {},
+                            "title": "never"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
                         },
-                        "properties": {},
-                        "required": [],
+                        "required": ["kind", "context"],
                         "type": "object"
                       },
-                      "contentHash": {
-                        "type": "string"
-                      },
-                      "context": {
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": ["build"],
-                        "type": "string"
-                      },
-                      "spec": {
-                        "type": "string"
-                      },
-                      "target": {
-                        "type": "string"
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["build"],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "$id": "/schemas/never",
+                            "not": {},
+                            "title": "never"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "context", "specInline"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind", "context"],
-                    "type": "object"
+                    ]
                   }
                 ]
               },
@@ -24032,35 +24728,81 @@
     },
     "ArtifactBuildSpec": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "additionalProperties": false,
-      "properties": {
-        "args": {
-          "additionalProperties": {
-            "type": "string"
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "contentHash": {
+              "type": "string"
+            },
+            "context": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": ["build"],
+              "type": "string"
+            },
+            "spec": {
+              "type": "string"
+            },
+            "specInline": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "target": {
+              "type": "string"
+            }
           },
-          "properties": {},
-          "required": [],
+          "required": ["kind", "context"],
           "type": "object"
         },
-        "contentHash": {
-          "type": "string"
-        },
-        "context": {
-          "type": "string"
-        },
-        "kind": {
-          "enum": ["build"],
-          "type": "string"
-        },
-        "spec": {
-          "type": "string"
-        },
-        "target": {
-          "type": "string"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "args": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            },
+            "contentHash": {
+              "type": "string"
+            },
+            "context": {
+              "type": "string"
+            },
+            "kind": {
+              "enum": ["build"],
+              "type": "string"
+            },
+            "spec": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "specInline": {
+              "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+              "type": "string"
+            },
+            "target": {
+              "type": "string"
+            }
+          },
+          "required": ["kind", "context", "specInline"],
+          "type": "object"
         }
-      },
-      "required": ["kind", "context"],
-      "type": "object"
+      ]
     },
     "ArtifactManifestEntry": {
       "$schema": "http://json-schema.org/draft-07/schema#",
@@ -24188,35 +24930,81 @@
                     "type": "object"
                   },
                   {
-                    "additionalProperties": false,
-                    "properties": {
-                      "args": {
-                        "additionalProperties": {
-                          "type": "string"
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["build"],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "type": "string"
+                          },
+                          "specInline": {
+                            "$id": "/schemas/never",
+                            "not": {},
+                            "title": "never"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
                         },
-                        "properties": {},
-                        "required": [],
+                        "required": ["kind", "context"],
                         "type": "object"
                       },
-                      "contentHash": {
-                        "type": "string"
-                      },
-                      "context": {
-                        "type": "string"
-                      },
-                      "kind": {
-                        "enum": ["build"],
-                        "type": "string"
-                      },
-                      "spec": {
-                        "type": "string"
-                      },
-                      "target": {
-                        "type": "string"
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "args": {
+                            "additionalProperties": {
+                              "type": "string"
+                            },
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "contentHash": {
+                            "type": "string"
+                          },
+                          "context": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "enum": ["build"],
+                            "type": "string"
+                          },
+                          "spec": {
+                            "$id": "/schemas/never",
+                            "not": {},
+                            "title": "never"
+                          },
+                          "specInline": {
+                            "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                            "type": "string"
+                          },
+                          "target": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "context", "specInline"],
+                        "type": "object"
                       }
-                    },
-                    "required": ["kind", "context"],
-                    "type": "object"
+                    ]
                   }
                 ]
               },
@@ -24307,35 +25095,81 @@
               "type": "object"
             },
             {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "args": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "contentHash": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": ["build"],
+                      "type": "string"
+                    },
+                    "spec": {
+                      "type": "string"
+                    },
+                    "specInline": {
+                      "$id": "/schemas/never",
+                      "not": {},
+                      "title": "never"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
                   },
-                  "properties": {},
-                  "required": [],
+                  "required": ["kind", "context"],
                   "type": "object"
                 },
-                "contentHash": {
-                  "type": "string"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "kind": {
-                  "enum": ["build"],
-                  "type": "string"
-                },
-                "spec": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "args": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "contentHash": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": ["build"],
+                      "type": "string"
+                    },
+                    "spec": {
+                      "$id": "/schemas/never",
+                      "not": {},
+                      "title": "never"
+                    },
+                    "specInline": {
+                      "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["kind", "context", "specInline"],
+                  "type": "object"
                 }
-              },
-              "required": ["kind", "context"],
-              "type": "object"
+              ]
             }
           ]
         },
@@ -25844,35 +26678,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -30639,35 +31519,81 @@
                             "type": "object"
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "args": {
-                                "additionalProperties": {
-                                  "type": "string"
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
                                 },
-                                "properties": {},
-                                "required": [],
+                                "required": ["kind", "context"],
                                 "type": "object"
                               },
-                              "contentHash": {
-                                "type": "string"
-                              },
-                              "context": {
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": ["build"],
-                                "type": "string"
-                              },
-                              "spec": {
-                                "type": "string"
-                              },
-                              "target": {
-                                "type": "string"
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "context", "specInline"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind", "context"],
-                            "type": "object"
+                            ]
                           }
                         ]
                       },
@@ -31416,35 +32342,81 @@
                             "type": "object"
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "args": {
-                                "additionalProperties": {
-                                  "type": "string"
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
                                 },
-                                "properties": {},
-                                "required": [],
+                                "required": ["kind", "context"],
                                 "type": "object"
                               },
-                              "contentHash": {
-                                "type": "string"
-                              },
-                              "context": {
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": ["build"],
-                                "type": "string"
-                              },
-                              "spec": {
-                                "type": "string"
-                              },
-                              "target": {
-                                "type": "string"
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "context", "specInline"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind", "context"],
-                            "type": "object"
+                            ]
                           }
                         ]
                       },
@@ -32393,35 +33365,81 @@
                             "type": "object"
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "args": {
-                                "additionalProperties": {
-                                  "type": "string"
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
                                 },
-                                "properties": {},
-                                "required": [],
+                                "required": ["kind", "context"],
                                 "type": "object"
                               },
-                              "contentHash": {
-                                "type": "string"
-                              },
-                              "context": {
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": ["build"],
-                                "type": "string"
-                              },
-                              "spec": {
-                                "type": "string"
-                              },
-                              "target": {
-                                "type": "string"
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "context", "specInline"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind", "context"],
-                            "type": "object"
+                            ]
                           }
                         ]
                       },
@@ -33183,35 +34201,81 @@
                             "type": "object"
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "args": {
-                                "additionalProperties": {
-                                  "type": "string"
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
                                 },
-                                "properties": {},
-                                "required": [],
+                                "required": ["kind", "context"],
                                 "type": "object"
                               },
-                              "contentHash": {
-                                "type": "string"
-                              },
-                              "context": {
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": ["build"],
-                                "type": "string"
-                              },
-                              "spec": {
-                                "type": "string"
-                              },
-                              "target": {
-                                "type": "string"
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "context", "specInline"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind", "context"],
-                            "type": "object"
+                            ]
                           }
                         ]
                       },
@@ -34031,35 +35095,81 @@
                             "type": "object"
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "args": {
-                                "additionalProperties": {
-                                  "type": "string"
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
                                 },
-                                "properties": {},
-                                "required": [],
+                                "required": ["kind", "context"],
                                 "type": "object"
                               },
-                              "contentHash": {
-                                "type": "string"
-                              },
-                              "context": {
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": ["build"],
-                                "type": "string"
-                              },
-                              "spec": {
-                                "type": "string"
-                              },
-                              "target": {
-                                "type": "string"
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "context", "specInline"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind", "context"],
-                            "type": "object"
+                            ]
                           }
                         ]
                       },
@@ -34805,35 +35915,81 @@
                             "type": "object"
                           },
                           {
-                            "additionalProperties": false,
-                            "properties": {
-                              "args": {
-                                "additionalProperties": {
-                                  "type": "string"
+                            "anyOf": [
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "type": "string"
+                                  },
+                                  "specInline": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
                                 },
-                                "properties": {},
-                                "required": [],
+                                "required": ["kind", "context"],
                                 "type": "object"
                               },
-                              "contentHash": {
-                                "type": "string"
-                              },
-                              "context": {
-                                "type": "string"
-                              },
-                              "kind": {
-                                "enum": ["build"],
-                                "type": "string"
-                              },
-                              "spec": {
-                                "type": "string"
-                              },
-                              "target": {
-                                "type": "string"
+                              {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "args": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "contentHash": {
+                                    "type": "string"
+                                  },
+                                  "context": {
+                                    "type": "string"
+                                  },
+                                  "kind": {
+                                    "enum": ["build"],
+                                    "type": "string"
+                                  },
+                                  "spec": {
+                                    "$id": "/schemas/never",
+                                    "not": {},
+                                    "title": "never"
+                                  },
+                                  "specInline": {
+                                    "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                    "type": "string"
+                                  },
+                                  "target": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": ["kind", "context", "specInline"],
+                                "type": "object"
                               }
-                            },
-                            "required": ["kind", "context"],
-                            "type": "object"
+                            ]
                           }
                         ]
                       },
@@ -38253,37 +39409,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -38297,30 +39542,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -43550,35 +44771,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -44434,35 +45701,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -45792,35 +47105,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -47309,35 +48668,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -48193,35 +49598,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -49523,35 +50974,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },
@@ -52760,35 +54257,81 @@
                                 "type": "object"
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "args": {
-                                    "additionalProperties": {
-                                      "type": "string"
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "type": "string"
+                                      },
+                                      "specInline": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
                                     },
-                                    "properties": {},
-                                    "required": [],
+                                    "required": ["kind", "context"],
                                     "type": "object"
                                   },
-                                  "contentHash": {
-                                    "type": "string"
-                                  },
-                                  "context": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": ["build"],
-                                    "type": "string"
-                                  },
-                                  "spec": {
-                                    "type": "string"
-                                  },
-                                  "target": {
-                                    "type": "string"
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "specInline": {
+                                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                        "type": "string"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind", "context", "specInline"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind", "context"],
-                                "type": "object"
+                                ]
                               }
                             ]
                           },
@@ -53544,35 +55087,81 @@
                                 "type": "object"
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "args": {
-                                    "additionalProperties": {
-                                      "type": "string"
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "type": "string"
+                                      },
+                                      "specInline": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
                                     },
-                                    "properties": {},
-                                    "required": [],
+                                    "required": ["kind", "context"],
                                     "type": "object"
                                   },
-                                  "contentHash": {
-                                    "type": "string"
-                                  },
-                                  "context": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": ["build"],
-                                    "type": "string"
-                                  },
-                                  "spec": {
-                                    "type": "string"
-                                  },
-                                  "target": {
-                                    "type": "string"
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "specInline": {
+                                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                        "type": "string"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind", "context", "specInline"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind", "context"],
-                                "type": "object"
+                                ]
                               }
                             ]
                           },
@@ -54528,35 +56117,81 @@
                                 "type": "object"
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "args": {
-                                    "additionalProperties": {
-                                      "type": "string"
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "type": "string"
+                                      },
+                                      "specInline": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
                                     },
-                                    "properties": {},
-                                    "required": [],
+                                    "required": ["kind", "context"],
                                     "type": "object"
                                   },
-                                  "contentHash": {
-                                    "type": "string"
-                                  },
-                                  "context": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": ["build"],
-                                    "type": "string"
-                                  },
-                                  "spec": {
-                                    "type": "string"
-                                  },
-                                  "target": {
-                                    "type": "string"
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "specInline": {
+                                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                        "type": "string"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind", "context", "specInline"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind", "context"],
-                                "type": "object"
+                                ]
                               }
                             ]
                           },
@@ -55325,35 +56960,81 @@
                                 "type": "object"
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "args": {
-                                    "additionalProperties": {
-                                      "type": "string"
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "type": "string"
+                                      },
+                                      "specInline": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
                                     },
-                                    "properties": {},
-                                    "required": [],
+                                    "required": ["kind", "context"],
                                     "type": "object"
                                   },
-                                  "contentHash": {
-                                    "type": "string"
-                                  },
-                                  "context": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": ["build"],
-                                    "type": "string"
-                                  },
-                                  "spec": {
-                                    "type": "string"
-                                  },
-                                  "target": {
-                                    "type": "string"
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "specInline": {
+                                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                        "type": "string"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind", "context", "specInline"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind", "context"],
-                                "type": "object"
+                                ]
                               }
                             ]
                           },
@@ -56180,35 +57861,81 @@
                                 "type": "object"
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "args": {
-                                    "additionalProperties": {
-                                      "type": "string"
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "type": "string"
+                                      },
+                                      "specInline": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
                                     },
-                                    "properties": {},
-                                    "required": [],
+                                    "required": ["kind", "context"],
                                     "type": "object"
                                   },
-                                  "contentHash": {
-                                    "type": "string"
-                                  },
-                                  "context": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": ["build"],
-                                    "type": "string"
-                                  },
-                                  "spec": {
-                                    "type": "string"
-                                  },
-                                  "target": {
-                                    "type": "string"
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "specInline": {
+                                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                        "type": "string"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind", "context", "specInline"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind", "context"],
-                                "type": "object"
+                                ]
                               }
                             ]
                           },
@@ -56961,35 +58688,81 @@
                                 "type": "object"
                               },
                               {
-                                "additionalProperties": false,
-                                "properties": {
-                                  "args": {
-                                    "additionalProperties": {
-                                      "type": "string"
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "type": "string"
+                                      },
+                                      "specInline": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
                                     },
-                                    "properties": {},
-                                    "required": [],
+                                    "required": ["kind", "context"],
                                     "type": "object"
                                   },
-                                  "contentHash": {
-                                    "type": "string"
-                                  },
-                                  "context": {
-                                    "type": "string"
-                                  },
-                                  "kind": {
-                                    "enum": ["build"],
-                                    "type": "string"
-                                  },
-                                  "spec": {
-                                    "type": "string"
-                                  },
-                                  "target": {
-                                    "type": "string"
+                                  {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "args": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "properties": {},
+                                        "required": [],
+                                        "type": "object"
+                                      },
+                                      "contentHash": {
+                                        "type": "string"
+                                      },
+                                      "context": {
+                                        "type": "string"
+                                      },
+                                      "kind": {
+                                        "enum": ["build"],
+                                        "type": "string"
+                                      },
+                                      "spec": {
+                                        "$id": "/schemas/never",
+                                        "not": {},
+                                        "title": "never"
+                                      },
+                                      "specInline": {
+                                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                        "type": "string"
+                                      },
+                                      "target": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": ["kind", "context", "specInline"],
+                                    "type": "object"
                                   }
-                                },
-                                "required": ["kind", "context"],
-                                "type": "object"
+                                ]
                               }
                             ]
                           },
@@ -60760,37 +62533,126 @@
           ]
         },
         "build": {
-          "additionalProperties": false,
-          "properties": {
-            "app": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                }
-              ]
+          "oneOf": [
+            {
+              "type": "string"
             },
-            "artifact": {
+            {
+              "additionalProperties": false,
               "anyOf": [
                 {
-                  "type": "string"
+                  "required": ["artifact"]
                 },
                 {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
+                  "required": ["app"]
                 }
-              ]
+              ],
+              "properties": {
+                "app": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "artifact": {
+                  "oneOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                }
+              },
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "allOf": [
+                {
+                  "not": {
+                    "required": ["dockerfile", "dockerfile_inline"]
+                  }
+                },
+                {
+                  "not": {
+                    "required": ["dockerfile", "dockerfileInline"]
+                  }
+                },
+                {
+                  "not": {
+                    "required": ["dockerfile_inline", "dockerfileInline"]
+                  }
+                }
+              ],
+              "anyOf": [
+                {
+                  "required": ["context"]
+                },
+                {
+                  "required": ["dockerfile"]
+                },
+                {
+                  "required": ["dockerfile_inline"]
+                },
+                {
+                  "required": ["dockerfileInline"]
+                },
+                {
+                  "required": ["args"]
+                },
+                {
+                  "required": ["target"]
+                }
+              ],
+              "properties": {
+                "args": {
+                  "oneOf": [
+                    {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    },
+                    {
+                      "items": {
+                        "pattern": "^[^=]+=",
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "context": {
+                  "type": "string"
+                },
+                "dockerfile": {
+                  "type": "string"
+                },
+                "dockerfile_inline": {
+                  "type": "string"
+                },
+                "dockerfileInline": {
+                  "type": "string"
+                },
+                "target": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
             }
-          },
-          "required": [],
-          "type": "object"
+          ]
         },
         "command": {
           "anyOf": [
@@ -60804,30 +62666,6 @@
               "type": "array"
             }
           ]
-        },
-        "composeBuild": {
-          "additionalProperties": false,
-          "properties": {
-            "args": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "properties": {},
-              "required": [],
-              "type": "object"
-            },
-            "context": {
-              "type": "string"
-            },
-            "dockerfile": {
-              "type": "string"
-            },
-            "target": {
-              "type": "string"
-            }
-          },
-          "required": ["context"],
-          "type": "object"
         },
         "cores": {
           "items": {
@@ -61733,37 +63571,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -61777,30 +63704,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -63055,35 +64958,81 @@
               "type": "object"
             },
             {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "args": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "contentHash": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": ["build"],
+                      "type": "string"
+                    },
+                    "spec": {
+                      "type": "string"
+                    },
+                    "specInline": {
+                      "$id": "/schemas/never",
+                      "not": {},
+                      "title": "never"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
                   },
-                  "properties": {},
-                  "required": [],
+                  "required": ["kind", "context"],
                   "type": "object"
                 },
-                "contentHash": {
-                  "type": "string"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "kind": {
-                  "enum": ["build"],
-                  "type": "string"
-                },
-                "spec": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "args": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "properties": {},
+                      "required": [],
+                      "type": "object"
+                    },
+                    "contentHash": {
+                      "type": "string"
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": ["build"],
+                      "type": "string"
+                    },
+                    "spec": {
+                      "$id": "/schemas/never",
+                      "not": {},
+                      "title": "never"
+                    },
+                    "specInline": {
+                      "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["kind", "context", "specInline"],
+                  "type": "object"
                 }
-              },
-              "required": ["kind", "context"],
-              "type": "object"
+              ]
             }
           ]
         },
@@ -64726,37 +66675,126 @@
               ]
             },
             "build": {
-              "additionalProperties": false,
-              "properties": {
-                "app": {
-                  "anyOf": [
-                    {
-                      "type": "string"
-                    },
-                    {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
-                    }
-                  ]
+              "oneOf": [
+                {
+                  "type": "string"
                 },
-                "artifact": {
+                {
+                  "additionalProperties": false,
                   "anyOf": [
                     {
-                      "type": "string"
+                      "required": ["artifact"]
                     },
                     {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array"
+                      "required": ["app"]
                     }
-                  ]
+                  ],
+                  "properties": {
+                    "app": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "artifact": {
+                      "oneOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    }
+                  },
+                  "type": "object"
+                },
+                {
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfile_inline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile", "dockerfileInline"]
+                      }
+                    },
+                    {
+                      "not": {
+                        "required": ["dockerfile_inline", "dockerfileInline"]
+                      }
+                    }
+                  ],
+                  "anyOf": [
+                    {
+                      "required": ["context"]
+                    },
+                    {
+                      "required": ["dockerfile"]
+                    },
+                    {
+                      "required": ["dockerfile_inline"]
+                    },
+                    {
+                      "required": ["dockerfileInline"]
+                    },
+                    {
+                      "required": ["args"]
+                    },
+                    {
+                      "required": ["target"]
+                    }
+                  ],
+                  "properties": {
+                    "args": {
+                      "oneOf": [
+                        {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        },
+                        {
+                          "items": {
+                            "pattern": "^[^=]+=",
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      ]
+                    },
+                    "context": {
+                      "type": "string"
+                    },
+                    "dockerfile": {
+                      "type": "string"
+                    },
+                    "dockerfile_inline": {
+                      "type": "string"
+                    },
+                    "dockerfileInline": {
+                      "type": "string"
+                    },
+                    "target": {
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
                 }
-              },
-              "required": [],
-              "type": "object"
+              ]
             },
             "command": {
               "anyOf": [
@@ -64770,30 +66808,6 @@
                   "type": "array"
                 }
               ]
-            },
-            "composeBuild": {
-              "additionalProperties": false,
-              "properties": {
-                "args": {
-                  "additionalProperties": {
-                    "type": "string"
-                  },
-                  "properties": {},
-                  "required": [],
-                  "type": "object"
-                },
-                "context": {
-                  "type": "string"
-                },
-                "dockerfile": {
-                  "type": "string"
-                },
-                "target": {
-                  "type": "string"
-                }
-              },
-              "required": ["context"],
-              "type": "object"
             },
             "cores": {
               "items": {
@@ -67704,35 +69718,81 @@
                         "type": "object"
                       },
                       {
-                        "additionalProperties": false,
-                        "properties": {
-                          "args": {
-                            "additionalProperties": {
-                              "type": "string"
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "type": "string"
+                              },
+                              "specInline": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
                             },
-                            "properties": {},
-                            "required": [],
+                            "required": ["kind", "context"],
                             "type": "object"
                           },
-                          "contentHash": {
-                            "type": "string"
-                          },
-                          "context": {
-                            "type": "string"
-                          },
-                          "kind": {
-                            "enum": ["build"],
-                            "type": "string"
-                          },
-                          "spec": {
-                            "type": "string"
-                          },
-                          "target": {
-                            "type": "string"
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "args": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "contentHash": {
+                                "type": "string"
+                              },
+                              "context": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "enum": ["build"],
+                                "type": "string"
+                              },
+                              "spec": {
+                                "$id": "/schemas/never",
+                                "not": {},
+                                "title": "never"
+                              },
+                              "specInline": {
+                                "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                                "type": "string"
+                              },
+                              "target": {
+                                "type": "string"
+                              }
+                            },
+                            "required": ["kind", "context", "specInline"],
+                            "type": "object"
                           }
-                        },
-                        "required": ["kind", "context"],
-                        "type": "object"
+                        ]
                       }
                     ]
                   },

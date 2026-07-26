@@ -30,6 +30,9 @@ const decodeAuthored = (service: Record<string, unknown>): ServiceConfig => {
 const reservedKeyRecord = (value: unknown): Record<string, unknown> =>
   Object.fromEntries([["__proto__", value]]);
 
+const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
 const expectReservedKeyRejection = (result: Either.Either<unknown, unknown>): void => {
   expect(Either.isLeft(result)).toBe(true);
   if (Either.isLeft(result)) expect(String(result.left)).toContain("__proto__");
@@ -259,6 +262,35 @@ describe("ServiceConfig compose spellings and alternate forms", () => {
   });
 
   describe("ServiceConfigInput public schema", () => {
+    test("build schema publishes only the accepted exclusive families", () => {
+      const schema = getJsonSchema("ServiceConfigInput");
+      const definitions = isRecord(schema) && isRecord(schema.$defs) ? schema.$defs : {};
+      const serviceConfigInput = definitions.ServiceConfigInput;
+      const rootProperties = isRecord(schema) && isRecord(schema.properties) ? schema.properties : undefined;
+      const definitionProperties =
+        isRecord(serviceConfigInput) && isRecord(serviceConfigInput.properties)
+          ? serviceConfigInput.properties
+          : undefined;
+      const properties = rootProperties ?? definitionProperties ?? {};
+      const build = properties.build;
+      const branches = isRecord(build) && Array.isArray(build.oneOf) ? build.oneOf : [];
+      const objectBranches = branches.filter(
+        (branch): branch is Readonly<Record<string, unknown>> => isRecord(branch) && branch.type === "object",
+      );
+      const propertySets = objectBranches
+        .map((branch) => (isRecord(branch.properties) ? Object.keys(branch.properties).sort() : []))
+        .sort((left, right) => left.join(",").localeCompare(right.join(",")));
+
+      expect(branches).toHaveLength(3);
+      expect(objectBranches.every((branch) => branch.additionalProperties === false)).toBe(true);
+      expect(propertySets).toEqual([
+        ["app", "artifact"],
+        ["args", "context", "dockerfile", "dockerfileInline", "dockerfile_inline", "target"],
+      ]);
+      expect(JSON.stringify(build)).not.toContain("no_cache");
+      expect(JSON.stringify(build)).not.toContain('"^x-"');
+    });
+
     test("contains canonical keys and Compose aliases", () => {
       const schema = getJsonSchema("ServiceConfigInput") as {
         readonly $defs?: Readonly<

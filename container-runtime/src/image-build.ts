@@ -15,6 +15,8 @@ export type {
   ContainerBuildOptions,
 } from "./image-build-http.ts";
 
+const INLINE_DOCKERFILE_NAME = ".lando.Dockerfile.inline";
+
 interface BuildStep {
   readonly command: string | ReadonlyArray<string>;
   readonly phase: string;
@@ -91,7 +93,10 @@ const buildPath = (input: ArtifactBuildSpec, tag: string, derived: boolean): `/$
   const params = new URLSearchParams({ t: tag });
   const artifact = input.plan.services[input.service]?.artifact;
   if (!derived && artifact?.kind === "build") {
-    params.set("dockerfile", artifact.spec ?? "Dockerfile");
+    params.set(
+      "dockerfile",
+      artifact.specInline !== undefined ? INLINE_DOCKERFILE_NAME : (artifact.spec ?? "Dockerfile"),
+    );
     if (artifact.args !== undefined) params.set("buildargs", JSON.stringify(artifact.args));
     if (artifact.target !== undefined) params.set("target", artifact.target);
   } else {
@@ -142,13 +147,25 @@ export const buildContainerArtifact = (
             cause,
           }),
       });
+      const stdin =
+        artifact.specInline === undefined
+          ? packed.tar
+          : tarStream([
+              ...packed.entries.filter((entry) => entry.name !== INLINE_DOCKERFILE_NAME),
+              {
+                kind: "file",
+                name: INLINE_DOCKERFILE_NAME,
+                mode: 0o644,
+                content: tarText(artifact.specInline),
+              },
+            ]);
       const baseTag = steps.length === 0 ? tag : `${tag}-base`;
       digest = yield* requestContainerBuild({
         request,
         options,
         path: buildPath(input, baseTag, false),
         tag: baseTag,
-        stdin: packed.tar,
+        stdin,
         secretValues,
       });
       if (steps.length > 0) {

@@ -114,7 +114,7 @@
         "Lint passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 6.2 build bullet (amended: shape discrimination normative). The one deliberate contract change of the wave; composeBuild is unreleased so no compatibility shim per root AGENTS.md."
     },
     {

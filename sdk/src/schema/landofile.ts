@@ -2,7 +2,7 @@ import { ParseResult, Schema } from "effect";
 import type * as AST from "effect/SchemaAST";
 import validRange from "semver/ranges/valid.js";
 
-import { BuildScript } from "./artifacts.ts";
+import { BuildBlock } from "./build-block.ts";
 import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
@@ -16,6 +16,7 @@ import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 
 export { EndpointInput } from "./endpoint.ts";
+export { BuildBlock } from "./build-block.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
 export const RouteInput = Schema.Struct({
@@ -59,13 +60,6 @@ export type StorageInput = typeof StorageInput.Type;
 /** Canonical Lando healthcheck schema; Compose-capable authoring is accepted by `ServiceConfig`. */
 export const HealthcheckInput = HealthcheckCanonicalBase;
 export type HealthcheckInput = typeof HealthcheckInput.Type;
-
-/** Build-script block authored under `services.<name>.build`. */
-export const BuildBlock = Schema.Struct({
-  artifact: Schema.optional(BuildScript),
-  app: Schema.optional(BuildScript),
-});
-export type BuildBlock = typeof BuildBlock.Type;
 
 export const ServiceDependencyCondition = Schema.Literal(
   "service_started",
@@ -369,15 +363,6 @@ export const ServiceConfig = Schema.Struct({
   logs: Schema.optional(Schema.Array(LogSourceInput)),
   hostnames: Schema.optional(Schema.Array(Schema.String)),
   dependsOn: Schema.optional(ComposeDependsOnInput),
-
-  composeBuild: Schema.optional(
-    Schema.Struct({
-      context: Schema.String,
-      dockerfile: Schema.optional(Schema.String),
-      args: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.String })),
-      target: Schema.optional(Schema.String),
-    }),
-  ),
 
   providers: Schema.optional(ProviderExtensionConfig),
 });

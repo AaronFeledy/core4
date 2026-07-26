@@ -217,4 +217,26 @@ describe("buildKeyForService", () => {
 
     expect(await key(base)).not.toBe(await key(sameContentOtherRoot));
   });
+
+  test("changing only specInline changes the build key", async () => {
+    // Given: two plans identical except artifact.specInline
+    const context = await mkdtemp(join(tmpdir(), "lando-build-key-spec-inline-"));
+    await writeFile(join(context, "Dockerfile"), "FROM alpine\n");
+    const baseArtifact = {
+      kind: "build" as const,
+      context: AbsolutePath.make(context),
+      specInline: "FROM alpine\n",
+    };
+    const base = service({ artifact: baseArtifact });
+    const changed = service({
+      artifact: { ...baseArtifact, specInline: "FROM busybox\n" },
+    });
+
+    // When
+    const baseKey = await key(base);
+    const changedKey = await key(changed);
+
+    // Then
+    expect(changedKey).not.toBe(baseKey);
+  });
 });

@@ -63,40 +63,92 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
-                "properties": {
-                  "args": {
-                    "additionalProperties": {
-                      "type": "string"
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "context": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "build"
+                        ],
+                        "type": "string"
+                      },
+                      "spec": {
+                        "type": "string"
+                      },
+                      "specInline": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
                     },
-                    "properties": {},
-                    "required": [],
+                    "required": [
+                      "kind",
+                      "context"
+                    ],
                     "type": "object"
                   },
-                  "contentHash": {
-                    "type": "string"
-                  },
-                  "context": {
-                    "type": "string"
-                  },
-                  "kind": {
-                    "enum": [
-                      "build"
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "args": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "contentHash": {
+                        "type": "string"
+                      },
+                      "context": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "enum": [
+                          "build"
+                        ],
+                        "type": "string"
+                      },
+                      "spec": {
+                        "$id": "/schemas/never",
+                        "not": {},
+                        "title": "never"
+                      },
+                      "specInline": {
+                        "description": "Inline Dockerfile contents built in place of a context-relative Dockerfile.",
+                        "type": "string"
+                      },
+                      "target": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "context",
+                      "specInline"
                     ],
-                    "type": "string"
-                  },
-                  "spec": {
-                    "type": "string"
-                  },
-                  "target": {
-                    "type": "string"
+                    "type": "object"
                   }
-                },
-                "required": [
-                  "kind",
-                  "context"
-                ],
-                "type": "object"
+                ]
               }
             ]
           },
