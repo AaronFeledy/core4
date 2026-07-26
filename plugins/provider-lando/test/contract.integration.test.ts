@@ -187,8 +187,8 @@ const makeDataPlaneFakeApi = (options: { readonly failCopyTo?: boolean } = {}) =
             volumes.set(volume, snapshots.get(body.Image) ?? new Uint8Array());
           return { status: 204, body: "" };
         }
-        if (request.path.startsWith("/libpod/containers/") && request.path.endsWith("/wait"))
-          return { status: 200, body: "0" };
+        if (request.path.startsWith("/containers/") && request.path.endsWith("/wait"))
+          return { status: 200, body: JSON.stringify({ StatusCode: 0 }) };
         if (request.path.startsWith("/containers/") && request.path.endsWith("/json"))
           return { status: 200, body: JSON.stringify({ State: { ExitCode: 0 } }) };
         if (
