@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { DateTime, Effect } from "effect";
 
 import { type PodmanApiClient, type PodmanHttpRequest, makeRuntimeProvider } from "@lando/provider-lando";
@@ -69,7 +70,9 @@ test("provider-lando buildArtifact uses the managed Podman build API seam", asyn
         return { status: 200, body: "{}" };
       }),
   };
-  const provider = await Effect.runPromise(makeRuntimeProvider({ podmanApi, platform: "linux" }));
+  const provider = await Effect.runPromise(
+    makeRuntimeProvider({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi, platform: "linux" }),
+  );
 
   const artifact = await Effect.runPromise(
     provider.buildArtifact({ app: appId, service: serviceName, plan, buildKey: "lando-key" }),

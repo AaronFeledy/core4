@@ -26,12 +26,14 @@
     "manifest": "./plugin.yaml"
   },
   "peerDependencies": {
-    "@lando/core": "workspace:*",
     "@lando/sdk": "workspace:*"
   },
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "effect": "^3.21.2"
+  },
+  "devDependencies": {
+    "@lando/core": "workspace:*"
   },
   "scripts": {
     "build": "tsc -b",

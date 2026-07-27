@@ -7,14 +7,23 @@ import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
-import { type GlobalConfig, ProviderCapabilities, ProviderId, StreamFrame } from "@lando/sdk/schema";
+import { plugin as podmanPlugin } from "@lando/provider-podman";
+import {
+  AbsolutePath,
+  type GlobalConfig,
+  ProviderCapabilities,
+  ProviderId,
+  StreamFrame,
+} from "@lando/sdk/schema";
 import {
   type DoctorCheck,
+  type DoctorOptions,
   doctor,
   renderDoctorResult,
   renderDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
 const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");
@@ -72,10 +81,14 @@ const buildLayers = (
     Layer.succeed(ConfigService, buildConfigService(configOverrides)),
   );
 
+const doctorWithoutPluginChecks = (options: DoctorOptions = {}) => doctor(options, []);
+
 describe("meta:doctor command", () => {
   test("renders the selected provider and every declared ProviderCapabilities field", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const output = renderDoctorResult(result);
 
     expect(output).toContain("selected-provider: pass");
@@ -90,7 +103,9 @@ describe("meta:doctor command", () => {
 
   test("renders providerKind: managed for provider-lando", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const check = firstCheckPayload(ndjson);
@@ -103,7 +118,9 @@ describe("meta:doctor command", () => {
 
   test("renders providerKind: user-installed for provider-podman", async () => {
     const provider = { ...TestRuntimeProvider, id: "podman" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const check = firstCheckPayload(ndjson);
@@ -116,7 +133,9 @@ describe("meta:doctor command", () => {
 
   test("renders providerKind: user-installed for provider-docker", async () => {
     const provider = { ...TestRuntimeProvider, id: "docker" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const text = renderDoctorResult(result);
     expect(text).toContain("providerKind: user-installed");
     expect(result.checks[0]?.providerKind).toBe("user-installed");
@@ -124,7 +143,9 @@ describe("meta:doctor command", () => {
 
   test("renders providerKind: user-installed for unknown providers (safe default)", async () => {
     const provider = { ...TestRuntimeProvider, id: "third-party-thing" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     expect(result.checks[0]?.providerKind).toBe("user-installed");
   });
 
@@ -134,7 +155,9 @@ describe("meta:doctor command", () => {
       id: "lando",
       capabilities: { ...TestRuntimeProvider.capabilities, providerExtensions: ["compose", "exec"] },
     };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const output = renderDoctorResult(result);
 
     expect(output).toContain('providerExtensions: ["compose","exec"]');
@@ -143,7 +166,9 @@ describe("meta:doctor command", () => {
 
   test("renders empty array capabilities as []", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const output = renderDoctorResult(result);
 
     expect(output).toContain("providerExtensions: []");
@@ -156,7 +181,9 @@ describe("meta:doctor command", () => {
 
   test("ndjson output matches the meta-doctor.provider-status.ndjson fixture", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const actual = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const expected = readFileSync(FIXTURE_PATH, "utf-8");
 
@@ -165,7 +192,9 @@ describe("meta:doctor command", () => {
 
   test("ndjson stream carries every ProviderCapabilities field, provider identity, runtime info, severity, context, and a solution list", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     expect(decodeFrames(ndjson).at(-1)?._tag).toBe("result");
     expect(resultEnvelope(ndjson)).toMatchObject({
@@ -216,7 +245,9 @@ describe("meta:doctor command", () => {
       id: "lando",
       getStatus: Effect.succeed({ running: false, message: "podman socket unavailable" }),
     };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const text = renderDoctorResult(result);
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const check = firstCheckPayload(ndjson);
@@ -269,7 +300,9 @@ describe("meta:doctor command", () => {
       );
       const provider = { ...TestRuntimeProvider, id: "lando" };
       const result = await Effect.runPromise(
-        doctor().pipe(Effect.provide(buildLayers(provider, { userDataRoot: dataRoot }))),
+        doctorWithoutPluginChecks().pipe(
+          Effect.provide(buildLayers(provider, { userDataRoot: AbsolutePath.make(dataRoot) })),
+        ),
       );
       const text = renderDoctorResult(result);
       const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
@@ -301,7 +334,9 @@ describe("meta:doctor command", () => {
       id: "lando",
       getVersions: Effect.succeed({ provider: "0.0.0-test" }),
     };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const check = firstCheckPayload(ndjson);
 
@@ -346,7 +381,9 @@ describe("meta:doctor command", () => {
       },
       getVersions: Effect.succeed({ provider: "0.0.0-test", runtime: "0.0.0-test", bundle: "0.1.0-test" }),
     };
-    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+    const result = await Effect.runPromise(
+      doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
+    );
     const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
     const check = firstCheckPayload(ndjson);
 
@@ -370,11 +407,11 @@ describe("meta:doctor command", () => {
       const { makeProviderLayer } = await import("@lando/provider-lando");
       const { RuntimeProvider } = await import("@lando/sdk/services");
 
-      const layer = makeProviderLayer({ platform: "win32" });
+      const layer = makeProviderLayer({ platform: "win32", sanitizeAppliedPlan: stripHostProxyRunLando });
       const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
       const registry = buildRegistry(runtimeProvider as typeof TestRuntimeProvider);
       const result = await Effect.runPromise(
-        doctor().pipe(
+        doctorWithoutPluginChecks().pipe(
           Effect.provide(
             Layer.merge(
               Layer.succeed(RuntimeProviderRegistry, registry),
@@ -397,7 +434,7 @@ describe("meta:doctor command", () => {
     test("reports selectionSource: default when no inputs override the capability default", async () => {
       const provider = { ...TestRuntimeProvider, id: "lando" };
       const result = await Effect.runPromise(
-        doctor({ env: {} }).pipe(
+        doctorWithoutPluginChecks({ env: {} }).pipe(
           Effect.provide(
             Layer.merge(
               Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),
@@ -415,7 +452,9 @@ describe("meta:doctor command", () => {
 
     test("reports selectionSource: config and surfaces the config input", async () => {
       const provider = { ...TestRuntimeProvider, id: "lando" };
-      const result = await Effect.runPromise(doctor({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
+      const result = await Effect.runPromise(
+        doctorWithoutPluginChecks({ env: {} }).pipe(Effect.provide(buildLayers(provider))),
+      );
       const check = result.checks[0] as DoctorCheck;
       expect(check.selection?.source).toBe("config");
       expect(check.selection?.inputs.config).toBe("lando");
@@ -425,7 +464,9 @@ describe("meta:doctor command", () => {
     test("reports selectionSource: env when LANDO_PROVIDER is set", async () => {
       const provider = { ...TestRuntimeProvider, id: "podman" };
       const result = await Effect.runPromise(
-        doctor({ env: { LANDO_PROVIDER: "podman" } }).pipe(Effect.provide(buildLayers(provider))),
+        doctorWithoutPluginChecks({ env: { LANDO_PROVIDER: "podman" } }).pipe(
+          Effect.provide(buildLayers(provider)),
+        ),
       );
       const check = result.checks[0] as DoctorCheck;
       expect(check.selection?.source).toBe("env");
@@ -436,7 +477,9 @@ describe("meta:doctor command", () => {
     test("reports selectionSource: landofile when a Landofile provider is provided", async () => {
       const provider = { ...TestRuntimeProvider, id: "docker" };
       const result = await Effect.runPromise(
-        doctor({ env: {}, landofileProviderId: "docker" }).pipe(Effect.provide(buildLayers(provider))),
+        doctorWithoutPluginChecks({ env: {}, landofileProviderId: "docker" }).pipe(
+          Effect.provide(buildLayers(provider)),
+        ),
       );
       const check = result.checks[0] as DoctorCheck;
       expect(check.selection?.source).toBe("landofile");
@@ -446,7 +489,7 @@ describe("meta:doctor command", () => {
     test("reports selectionSource: flag when --provider is passed", async () => {
       const provider = { ...TestRuntimeProvider, id: "podman" };
       const result = await Effect.runPromise(
-        doctor({
+        doctorWithoutPluginChecks({
           env: { LANDO_PROVIDER: "docker" },
           flagProviderId: "podman",
           landofileProviderId: "docker",
@@ -462,7 +505,7 @@ describe("meta:doctor command", () => {
     test("renderDoctorResult surfaces selection metadata in plain text", async () => {
       const provider = { ...TestRuntimeProvider, id: "lando" };
       const result = await Effect.runPromise(
-        doctor({
+        doctorWithoutPluginChecks({
           env: { LANDO_PROVIDER: "podman" },
           flagProviderId: "lando",
         }).pipe(Effect.provide(buildLayers(provider))),
@@ -478,7 +521,9 @@ describe("meta:doctor command", () => {
     test("ndjson stream carries the selection record on the selected-provider check", async () => {
       const provider = { ...TestRuntimeProvider, id: "podman" };
       const result = await Effect.runPromise(
-        doctor({ env: { LANDO_PROVIDER: "podman" } }).pipe(Effect.provide(buildLayers(provider))),
+        doctorWithoutPluginChecks({ env: { LANDO_PROVIDER: "podman" } }).pipe(
+          Effect.provide(buildLayers(provider)),
+        ),
       );
       const ndjson = renderDoctorResultAsNdjson(result, { now: new Date("1970-01-01T00:00:00.000Z") });
       const check = firstCheckPayload(ndjson);
@@ -494,7 +539,8 @@ describe("meta:doctor command", () => {
   });
 
   describe("provider conflict diagnostics", () => {
-    const buildConfigServiceWith = (userDataRoot: string) => buildConfigService({ userDataRoot });
+    const buildConfigServiceWith = (userDataRoot: string) =>
+      buildConfigService({ userDataRoot: AbsolutePath.make(userDataRoot) });
 
     const writeProviderLandoState = async (stateRoot: string, socketPath: string): Promise<string> => {
       const dir = join(stateRoot, "providers", "provider-lando");
@@ -512,7 +558,7 @@ describe("meta:doctor command", () => {
         const provider = { ...TestRuntimeProvider, id: "podman" };
         const result = await Effect.runPromise(
           doctor({
-            env: { XDG_RUNTIME_DIR: "/run/user/1000" },
+            env: { LANDO_PROVIDER: "podman", XDG_RUNTIME_DIR: "/run/user/1000" },
             platform: "linux",
           }).pipe(
             Effect.provide(
@@ -524,8 +570,8 @@ describe("meta:doctor command", () => {
           ),
         );
 
-        expect(result.checks.length).toBe(2);
-        const conflictCheck = result.checks[1] as DoctorCheck;
+        expect(result.checks.length).toBe(1);
+        const conflictCheck = result.checks[0] as DoctorCheck;
         expect(conflictCheck.name).toBe("provider-conflict");
         expect(conflictCheck.status).toBe("warn");
         expect(conflictCheck.severity).toBe("warn");
@@ -550,7 +596,7 @@ describe("meta:doctor command", () => {
         const complete = resultEnvelope(ndjson).result as Record<string, unknown>;
         expect(complete.warned).toBe(1);
         expect(complete.failed).toBe(0);
-        expect(complete.checks).toBe(2);
+        expect(complete.checks).toBe(1);
       } finally {
         await rm(dataRoot, { recursive: true, force: true });
       }
@@ -598,10 +644,13 @@ describe("meta:doctor command", () => {
         await writeProviderLandoState(dataRoot, "/var/run/lando/podman.sock");
         const provider = { ...TestRuntimeProvider, id: "lando" };
         const result = await Effect.runPromise(
-          doctor({
-            env: { XDG_RUNTIME_DIR: "/run/user/1000" },
-            platform: "linux",
-          }).pipe(
+          doctor(
+            {
+              env: { LANDO_PROVIDER: "podman", XDG_RUNTIME_DIR: "/run/user/1000" },
+              platform: "linux",
+            },
+            [podmanPlugin],
+          ).pipe(
             Effect.provide(
               Layer.merge(
                 Layer.succeed(RuntimeProviderRegistry, buildRegistry(provider)),

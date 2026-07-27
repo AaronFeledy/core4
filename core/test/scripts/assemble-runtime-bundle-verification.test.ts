@@ -4,9 +4,9 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
+import { buildManagedRuntimeServiceArgs } from "../../../plugins/provider-lando/src/managed-runtime-service.ts";
 import { assembleBundle, parseRuntimeBundleSources } from "../../../scripts/assemble-runtime-bundle.ts";
 import { verifyLinuxPodmanPortability } from "../../../scripts/linux-podman-source-build.ts";
-import { buildManagedRuntimeServiceArgs } from "../../src/runtime/managed-runtime-service.ts";
 
 const podmanBytes = new TextEncoder().encode("pinned-podman-binary");
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");

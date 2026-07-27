@@ -18,7 +18,7 @@ import {
   validatePublicSchemaAnnotations,
 } from "../../../sdk/src/schema/index.ts";
 import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
-import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
@@ -60,7 +60,7 @@ describe("schema snapshot artifact-set gate", () => {
     const bundledPluginManifests = JSON.parse(
       await readFile(bundledPluginManifestsPath, "utf8"),
     ) as ReadonlyArray<{ readonly name: string }>;
-    const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
+    const bundledNames = BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name).sort();
     expect(bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
   });
 

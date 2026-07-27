@@ -89,6 +89,9 @@ ${setupBunSteps}
       - name: Import cycle lint
         run: bun run check:import-cycle
 
+      - name: Package DAG lint
+        run: bun run check:package-dag
+
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
@@ -822,7 +825,7 @@ ${setupBunSteps}
         run: bun run codegen:opentui-native-stubs
 
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/bundled.ts core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts scripts/generated/opentui-native
+        run: git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts scripts/generated/opentui-native
 
 ${timingNoticeStep("bundled-codegen", 15)}
 

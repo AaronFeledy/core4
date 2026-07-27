@@ -5,6 +5,7 @@
  */
 
 export * from "./downloader.ts";
+export * from "./host-proxy.ts";
 export * from "./data-mover.ts";
 export * from "./events.ts";
 export * from "./http-client.ts";

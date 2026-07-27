@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { runTooling } from "@lando/core/cli/operations";
-import { resolveLiveProviderSocket } from "@lando/core/testing";
+import { resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
 import { bringDown, bringUp, makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -169,7 +169,11 @@ describe("go service type — live integration: minimal Go HTTP server + lando g
 
         const api = makePodmanApiClient(socketPath);
         const provider = await Effect.runPromise(
-          RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: api }))),
+          RuntimeProvider.pipe(
+            Effect.provide(
+              makeProviderLayer({ podmanApi: api, sanitizeAppliedPlan: stripHostProxyRunLando }),
+            ),
+          ),
         );
 
         try {

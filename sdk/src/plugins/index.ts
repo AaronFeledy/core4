@@ -4,11 +4,11 @@
  */
 import type { Effect } from "effect";
 
-import type { EventError } from "../errors/index.ts";
+import type { EventError, StateStoreError } from "../errors/index.ts";
 import type { LandoEvent, RenderEvent } from "../events/index.ts";
 import type { PluginManifest } from "../schema/plugin.ts";
-import type { AbsolutePath } from "../schema/primitives.ts";
 import type { SubscriberManifestEntry } from "../schema/subscriber.ts";
+import type { StateBucket, StateBucketSpec } from "../services/state-store.ts";
 
 export type {
   PluginContribution,
@@ -29,6 +29,7 @@ export type {
   RendererPanelWatch,
 } from "../schema/renderer-panel.ts";
 export type { RenderEvent } from "../events/rich-render.ts";
+export * from "./module.ts";
 
 /**
  * Constrained publish-only seam onto the closed `RenderEvent` vocabulary.
@@ -45,12 +46,12 @@ export interface PluginManagedFiles {
   readonly pluginId: string;
 }
 
+/** Bucket spec a plugin may open; the durable-state root is host-assigned. */
+export type PluginStateBucketSpec<A, I> = Omit<StateBucketSpec<A, I>, "root">;
+
 export interface PluginStateStore {
-  readonly open: (spec: {
-    readonly id: string;
-    readonly schema: unknown;
-    readonly root?: { readonly path: AbsolutePath };
-  }) => Effect.Effect<unknown, unknown>;
+  readonly open: <A, I>(spec: PluginStateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
+  readonly withLock: <A, E>(key: string, body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
 }
 
 /**

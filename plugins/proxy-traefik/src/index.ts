@@ -14,6 +14,7 @@
  */
 import { type Effect, Schema } from "effect";
 
+import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
 import traefikGlobalService from "./global-services/traefik.ts";
@@ -55,4 +56,12 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     ],
   },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  layer: proxy,
+  proxyServices,
+  globalServices,
 });

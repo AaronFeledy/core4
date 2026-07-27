@@ -5,10 +5,12 @@ import { join } from "node:path";
 
 import { Effect, Layer } from "effect";
 
+import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 import { ConfigService } from "@lando/sdk/services";
 
 import { writeCwdAppMapEntry } from "../../src/cache/cwd-app-map.ts";
 import { poweroff, renderPoweroffResult } from "../../src/cli/commands/poweroff.ts";
+import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 
 let userDataRoot: string;
 let userCacheRoot: string;
@@ -141,6 +143,48 @@ describe("apps:poweroff command", () => {
       }).pipe(Effect.provide(fakeConfigService(userDataRoot))),
     );
 
+    expect(result.runtimeServiceStopped).toBe(false);
+    expect(result.runtimeServicePid).toBeUndefined();
+  });
+
+  test("runs teardown from the host maintenance registry", async () => {
+    // Given: a host maintainer that records the core-computed runtime paths.
+    const teardownInputs: Parameters<HostMaintenanceContribution["teardown"]>[0][] = [];
+    const maintainer: HostMaintenanceContribution = {
+      id: "fake-runtime",
+      teardown: (input) => {
+        teardownInputs.push(input);
+        return Effect.succeed({ terminated: true, pid: 4321 });
+      },
+    };
+    const services = Layer.mergeAll(
+      fakeConfigService(userDataRoot),
+      Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }),
+    );
+
+    // When: poweroff uses its default runtime teardown seam.
+    const result = await Effect.runPromise(
+      poweroff({ userDataRoot, userCacheRoot, stopApp: async () => {} }).pipe(Effect.provide(services)),
+    );
+
+    // Then: the maintainer receives canonical paths and drives the command result.
+    expect(teardownInputs).toHaveLength(1);
+    expect(teardownInputs[0]?.paths.runtimeBinDir).toBe(join(userDataRoot, "runtime", "bin"));
+    expect(result.runtimeServiceStopped).toBe(true);
+    expect(result.runtimeServicePid).toBe(4321);
+  });
+
+  test("skips host maintenance when the registry is absent", async () => {
+    // Given: only the command's required config service.
+
+    // When: poweroff uses its default runtime teardown seam without a registry.
+    const result = await Effect.runPromise(
+      poweroff({ userDataRoot, userCacheRoot, stopApp: async () => {} }).pipe(
+        Effect.provide(fakeConfigService(userDataRoot)),
+      ),
+    );
+
+    // Then: runtime teardown is a safe no-op.
     expect(result.runtimeServiceStopped).toBe(false);
     expect(result.runtimeServicePid).toBeUndefined();
   });

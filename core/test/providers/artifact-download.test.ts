@@ -12,7 +12,7 @@ import { Downloader } from "@lando/sdk/services";
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
-import { makeArtifactDownload } from "../../src/providers/registry.ts";
+import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const tempDirs: string[] = [];
 

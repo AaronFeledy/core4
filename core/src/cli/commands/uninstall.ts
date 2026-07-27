@@ -3,21 +3,18 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { Effect, Schema } from "effect";
+import { type Context, Effect, Option, Schema } from "effect";
 
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
 import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
+import { HostMaintenanceRegistry, teardownHostMaintainers } from "../../runtime/host-maintenance.ts";
 import {
   type ManagedProviderMachineClassification,
   classifyManagedProviderMachine,
   teardownManagedProviderMachine,
 } from "../../runtime/managed-provider-machine.ts";
-import {
-  buildManagedRuntimeServiceSpec,
-  terminateOwnedRuntimeService,
-} from "../../runtime/managed-runtime-service.ts";
 import type { RenderContext } from "../renderer-boundary.ts";
 import { type SummaryDocument, type SummaryTone, formatSummary } from "../renderer/summary.ts";
 
@@ -150,11 +147,15 @@ const defaultTeardownHostProxySessions = async (userDataRoot: string): Promise<v
 };
 
 const defaultTeardownRuntimeService = (
+  registry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
   userDataRoot: string,
 ): Promise<{ readonly terminated: boolean; readonly pid?: number }> => {
   const platform = normalizeHostPlatform();
-  const spec = buildManagedRuntimeServiceSpec({ ...makeLandoPaths({ userDataRoot, platform }), platform });
-  return Effect.runPromise(terminateOwnedRuntimeService(spec));
+  const paths = makeLandoPaths({ userDataRoot, platform });
+  return Option.match(registry, {
+    onNone: () => Promise.resolve({ terminated: false }),
+    onSome: (service) => Effect.runPromise(teardownHostMaintainers(service, { paths, platform })),
+  });
 };
 
 const managedProviderMachineStep = (
@@ -353,10 +354,16 @@ const writeUninstallReport = async (
   return reportPath;
 };
 
-const executeUninstall = async (options: UninstallOptions, mode: UninstallMode): Promise<UninstallResult> => {
+const executeUninstall = async (
+  options: UninstallOptions,
+  mode: UninstallMode,
+  hostMaintenanceRegistry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
+): Promise<UninstallResult> => {
   const userDataRoot = options.userDataRoot ?? resolveUserDataRoot();
   const remove = options.remove ?? defaultRemove;
-  const teardownRuntimeService = options.teardownRuntimeService ?? defaultTeardownRuntimeService;
+  const teardownRuntimeService =
+    options.teardownRuntimeService ??
+    ((root: string) => defaultTeardownRuntimeService(hostMaintenanceRegistry, root));
   const teardownProviderMachines =
     options.teardownProviderMachines ?? ((root: string) => teardownManagedProviderMachine(root));
   const teardownHostProxySessions = options.teardownHostProxySessions ?? defaultTeardownHostProxySessions;
@@ -428,13 +435,15 @@ const executeUninstall = async (options: UninstallOptions, mode: UninstallMode):
 };
 
 export const uninstall = (options: UninstallOptions = {}): Effect.Effect<UninstallResult> =>
-  Effect.promise(async () => {
+  Effect.gen(function* () {
+    const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
     const dryRun = options.dryRun === true;
     const yes = options.yes === true;
     const requestedMode: UninstallMode | undefined =
       options.purge === true ? "purge" : options.keepData === true ? "keep-data" : undefined;
     const mode = requestedMode ?? "keep-data";
-    if (!dryRun && yes) return executeUninstall(options, mode);
+    if (!dryRun && yes)
+      return yield* Effect.promise(() => executeUninstall(options, mode, hostMaintenanceRegistry));
     return {
       dryRun,
       refused: !dryRun && !yes,

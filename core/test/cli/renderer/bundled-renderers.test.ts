@@ -1,9 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
 
-import { renderer as landoContribution } from "@lando/renderer-lando";
 import { TaskStartEvent } from "@lando/sdk/events";
-
 import { EventService, Renderer } from "@lando/sdk/services";
 
 import {
@@ -12,20 +10,26 @@ import {
   resolveBundledRenderer,
 } from "../../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../../src/cli/renderer/io.ts";
+import { BUNDLED_RENDERER_MODULES } from "../../../src/plugins/generated/renderers.ts";
 import { EventServiceLive } from "../../../src/services/event-service.ts";
 
 describe("bundled renderer resolution", () => {
-  test("the @lando/renderer-lando plugin exports the real lando renderer contribution", () => {
-    expect(Layer.isLayer(landoContribution)).toBe(false);
-    expect(landoContribution.id).toBe("lando");
-    expect(typeof landoContribution.makeService).toBe("function");
-    expect(typeof landoContribution.makeEventConsumer).toBe("function");
-  });
+  test("core resolves the generated descriptor contribution by identity", () => {
+    const landoDescriptor = BUNDLED_RENDERER_MODULES.find((module) =>
+      module.renderers?.has("lando"),
+    )?.renderers?.get("lando");
+    if (landoDescriptor === undefined) {
+      throw new Error('Generated renderer descriptors must include "lando".');
+    }
 
-  test("core resolves the plugin's contribution by identity, not by reconstruction", () => {
-    expect(landoRenderer).toBe(landoContribution);
-    expect(resolveBundledRenderer("lando")).toBe(landoContribution);
-    expect(bundledRendererRegistry.get("lando")).toBe(landoContribution);
+    expect(Layer.isLayer(landoDescriptor)).toBe(false);
+    expect(landoDescriptor.id).toBe("lando");
+    expect(typeof landoDescriptor.makeService).toBe("function");
+    expect(typeof landoDescriptor.makeEventConsumer).toBe("function");
+    expect(typeof landoDescriptor.loadInteractivePromptDriver).toBe("function");
+    expect(landoRenderer).toBe(landoDescriptor);
+    expect(resolveBundledRenderer("lando")).toBe(landoDescriptor);
+    expect(bundledRendererRegistry.get("lando")).toBe(landoDescriptor);
   });
 
   test("resolving an unknown renderer id fails with a clear error", () => {

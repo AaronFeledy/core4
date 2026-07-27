@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { runPluginContract } from "@lando/sdk/test";
 
 describe("@lando/provider-lando package", () => {
@@ -8,7 +9,9 @@ describe("@lando/provider-lando package", () => {
     const plugin = await import("@lando/provider-lando");
 
     expect(plugin.PLUGIN_NAME).toBe("@lando/provider-lando");
-    expect(Layer.isLayer(plugin.provider)).toBe(true);
+    expect(Layer.isLayer(plugin.makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando }))).toBe(
+      true,
+    );
     expect(plugin.manifest).toMatchObject({
       name: "@lando/provider-lando",
       version: "0.0.0",
@@ -24,7 +27,9 @@ describe("@lando/provider-lando package", () => {
       Effect.runPromise(
         runPluginContract({
           manifest: plugin.manifest,
-          layers: { provider: plugin.provider },
+          layers: {
+            provider: plugin.makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando }),
+          },
         }),
       ),
     ).resolves.toBeUndefined();

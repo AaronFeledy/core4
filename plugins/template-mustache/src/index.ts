@@ -7,13 +7,14 @@
  *
  * The `templateEngines` map is the static, compiled-binary-safe contribution
  * surface: core resolves an engine by id from this map (captured in the
- * generated `BUNDLED_PLUGINS` table) instead of dynamically importing the
+ * generated `BUNDLED_PLUGIN_MODULES` table) instead of dynamically importing the
  * manifest `module:` path, which cannot resolve in a `bun build --compile`
  * binary. The manifest still records `module:` for documentation and the
  * non-bundled (future) dynamic-import fallback.
  */
 import { Layer, Schema } from "effect";
 
+import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { TemplateEngine } from "@lando/sdk/template";
 
@@ -38,4 +39,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     templateEngines: ["mustache"],
   },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  layer: templateEngine,
+  templateEngines,
 });

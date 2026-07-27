@@ -14,7 +14,7 @@ import { type EventService, Renderer } from "@lando/sdk/services";
 import { RedactionService } from "../redaction/service.ts";
 import type { ResultFormat } from "./format-flags.ts";
 import type { RendererMode } from "./renderer-selection.ts";
-import { landoRenderer, makeLandoNotificationConsumer } from "./renderer/bundled-renderers.ts";
+import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
 import {
   makeJsonNotificationRendererLive,
@@ -76,7 +76,7 @@ export const makeRendererNotificationConsumerLiveForMode = (
     case "json":
       return makeJsonNotificationRendererLive(io);
     case "lando":
-      return makeLandoNotificationConsumer(io);
+      return makeBundledLandoNotificationConsumer(io);
     case "plain":
     case "verbose":
       return undefined;

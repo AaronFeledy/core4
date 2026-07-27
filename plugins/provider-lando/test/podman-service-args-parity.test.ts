@@ -2,17 +2,14 @@ import { expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import {
-  buildManagedRuntimeServiceSpec,
-  managedRuntimePodmanArgv0,
-} from "@lando/core/managed-runtime-service";
 import { makeLandoPaths } from "@lando/core/paths";
+import { buildManagedRuntimeServiceSpec, managedRuntimePodmanArgv0 } from "../src/managed-runtime-service.ts";
 
 import { buildPodmanServiceArgs } from "../src/podman-service-runner.ts";
 
-test("buildPodmanServiceArgs stays byte-identical to the core managed runtime service argv", () => {
+test("buildPodmanServiceArgs stays byte-identical to the managed runtime service argv", () => {
   const paths = makeLandoPaths({ userDataRoot: "/tmp/lando-provider-parity" });
-  const coreSpec = buildManagedRuntimeServiceSpec({ ...paths, platform: "linux" });
+  const managedSpec = buildManagedRuntimeServiceSpec({ ...paths, platform: "linux" });
   // argv[0] match key must equal the exact spawned string, never a join-normalized path.
   const podmanBin = managedRuntimePodmanArgv0(paths.runtimeBinDir, "linux");
   const providerSpec = buildPodmanServiceArgs({
@@ -24,15 +21,15 @@ test("buildPodmanServiceArgs stays byte-identical to the core managed runtime se
   });
 
   expect(podmanBin).toBe(`${paths.runtimeBinDir}/podman`);
-  expect([providerSpec.command, ...providerSpec.args]).toEqual([coreSpec.command, ...coreSpec.args]);
-  expect(providerSpec.command).toBe(coreSpec.command);
-  expect(providerSpec.args).toEqual(coreSpec.args);
+  expect([providerSpec.command, ...providerSpec.args]).toEqual([managedSpec.command, ...managedSpec.args]);
+  expect(providerSpec.command).toBe(managedSpec.command);
+  expect(providerSpec.args).toEqual(managedSpec.args);
   expect(providerSpec.env).toEqual({
     CONTAINERS_CONF: `${paths.runtimeConfigDir}/containers.conf`,
     CONTAINERS_REGISTRIES_CONF: `${paths.runtimeConfigDir}/registries.conf`,
     XDG_CONFIG_HOME: paths.runtimeConfigDir,
   });
-  expect(providerSpec.socketPath).toBe(coreSpec.socketPath);
+  expect(providerSpec.socketPath).toBe(managedSpec.socketPath);
 });
 
 test("the production provider launch uses the shared managed-runtime argv0 helper", () => {
@@ -43,7 +40,7 @@ test("the production provider launch uses the shared managed-runtime argv0 helpe
   expect(source).not.toContain("`${runtimeBinDir}/podman`");
 });
 
-test("provider delegates Podman service arg shaping to the core managed runtime helper", () => {
+test("provider delegates Podman service arg shaping to the managed runtime helper", () => {
   const source = readFileSync(join(import.meta.dir, "../src/podman-service-runner.ts"), "utf8");
 
   expect(source).toContain("buildManagedRuntimeServiceArgs");

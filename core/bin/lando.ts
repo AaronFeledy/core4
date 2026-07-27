@@ -10,7 +10,7 @@
  * Notes:
  * - Compiled-binary constraints forbid dynamic `import()` of arbitrary paths
  *   at runtime. Bundled plugins are statically imported via the generated
- *   `src/plugins/bundled.ts`. User-installed plugins load from disk outside
+ *   `src/plugins/generated/bundled.ts`. User-installed plugins load from disk outside
  *   the binary using Bun's runtime loader.
  * - SIGINT handling and bridge-to-Effect-interrupt happen inside
  *   `@lando/core/cli`. This file does not install signal handlers directly.

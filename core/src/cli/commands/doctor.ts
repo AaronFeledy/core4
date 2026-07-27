@@ -1,14 +1,16 @@
-import { Effect } from "effect";
+import { Effect, Either } from "effect";
 
-import { makeLandoPaths } from "@lando/core/paths";
-import { MUTAGEN_TOOL_VERSION, readInstalledMutagenStatus } from "@lando/file-sync-mutagen";
-import type { ProviderLandoStateError } from "@lando/provider-podman";
 import type {
   ConfigError,
   NoProviderInstalledError,
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
+import type {
+  LandoPluginModule,
+  PluginDoctorCheckContribution,
+  PluginDoctorReport,
+} from "@lando/sdk/plugins";
 import {
   type HostPlatform,
   ProviderCapabilities,
@@ -17,7 +19,9 @@ import {
 } from "@lando/sdk/schema";
 import { ConfigService, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { type ProviderConflictReport, detectProviderConflicts } from "../../providers/conflict.ts";
+import { makeLandoPaths } from "../../config/paths.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
+import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   type ProviderSelectionInputs,
@@ -41,7 +45,6 @@ export type DoctorError =
   | NoProviderInstalledError
   | ProviderConfigError
   | ProviderError
-  | ProviderLandoStateError
   | ProviderUnavailableError;
 
 export type DoctorStatus = "pass" | "warn" | "fail";
@@ -170,53 +173,6 @@ const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSe
   },
 });
 
-const conflictSolution = (conflict: ProviderConflictReport): DoctorSolution => ({
-  kind: "manual",
-  description: conflict.remediation,
-  command: `lando setup --provider=${conflict.providerId}`,
-});
-
-const conflictCheck = (
-  conflict: ProviderConflictReport,
-  providerId: string,
-  providerName: string,
-  providerVersion: string,
-  platform: HostPlatform,
-  selection?: DoctorSelectionRecord,
-): DoctorCheck => {
-  const providerKind = providerKindFor(providerId);
-  const context: Record<string, string> = {
-    providerId,
-    providerKind,
-    providerVersion,
-    runtimeStatus: "conflict",
-    platform,
-    conflictKind: "provider-lando-podman-socket",
-  };
-  if (conflict.details !== undefined) {
-    const details = conflict.details;
-    if (typeof details.socketPath === "string") context.socketPath = details.socketPath;
-    if (typeof details.providerLandoStatePath === "string") {
-      context.providerLandoStatePath = details.providerLandoStatePath;
-    }
-  }
-  return {
-    name: "provider-conflict",
-    status: "warn",
-    severity: "warn",
-    providerId,
-    providerName,
-    providerVersion,
-    providerKind,
-    runtimeStatus: "conflict",
-    runtime: { running: false, message: conflict.message },
-    capabilities: {},
-    context,
-    solutions: [conflictSolution(conflict)],
-    ...(selection === undefined ? {} : { selection }),
-  };
-};
-
 const gatherSelectionInputs = (
   options: DoctorOptions,
 ): Effect.Effect<ProviderSelectionInputs, ConfigError, ConfigService> =>
@@ -246,54 +202,63 @@ const resolveStateDir = (
     return `${userDataRoot}/providers`;
   });
 
-const buildFileSyncDoctorCheck = (
-  provider: { readonly id: string; readonly displayName: string; readonly version: string },
-  userDataRoot: string | undefined,
-  selection?: DoctorSelectionRecord,
-): Effect.Effect<DoctorCheck, never> =>
+interface PluginDoctorInput {
+  readonly providerId: string;
+  readonly platform: HostPlatform;
+  readonly env: Readonly<Record<string, string | undefined>>;
+  readonly userDataRoot: string | undefined;
+  readonly binDir: string | undefined;
+  readonly stateDir: string | undefined;
+}
+
+interface PluginDoctorProvider {
+  readonly id: string;
+  readonly displayName: string;
+  readonly version: string;
+}
+
+interface PluginDoctorCheckMapping {
+  readonly report: PluginDoctorReport;
+  readonly provider: PluginDoctorProvider;
+  readonly selection: DoctorSelectionRecord;
+}
+
+interface PluginDoctorContributionReport {
+  readonly report: PluginDoctorReport;
+  readonly relevant: PluginDoctorCheckContribution["relevant"];
+}
+
+const pluginDoctorReports = (
+  modules: ReadonlyArray<LandoPluginModule>,
+  input: PluginDoctorInput,
+): Effect.Effect<ReadonlyArray<PluginDoctorContributionReport>, never> =>
   Effect.gen(function* () {
-    const installStatus =
-      userDataRoot === undefined
-        ? undefined
-        : yield* Effect.promise(() => readInstalledMutagenStatus(makeLandoPaths({ userDataRoot }).binDir));
-    const installedVersion = installStatus?.installedVersion;
-
-    const expectedVersion = MUTAGEN_TOOL_VERSION;
-    const isCurrent = installStatus?.isCurrent === true;
-    const checkStatus: DoctorStatus = isCurrent ? "pass" : "warn";
-    const kind = providerKindFor(provider.id);
-
-    return {
-      name: "file-sync",
-      status: checkStatus,
-      severity: (isCurrent ? "info" : "warn") as DoctorSeverity,
-      providerId: provider.id,
-      providerName: provider.displayName,
-      providerVersion: provider.version,
-      providerKind: kind,
-      runtimeStatus: installedVersion === undefined ? "not-installed" : "installed",
-      runtime: {
-        running: isCurrent,
-        ...(installedVersion !== undefined ? { version: installedVersion } : {}),
-      },
-      capabilities: {},
-      context: {
-        engineId: "mutagen",
-        mutagenVersion: installedVersion ?? "not-installed",
-        expectedVersion,
-      },
-      solutions: isCurrent
-        ? []
-        : [
-            {
-              kind: "manual" as const,
-              description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
-              command: "lando setup",
-            },
-          ],
-      ...(selection === undefined ? {} : { selection }),
-    } satisfies DoctorCheck;
+    const index = yield* Either.match(makePluginCapabilityIndex(modules), {
+      onLeft: (error) => Effect.die(error),
+      onRight: Effect.succeed,
+    });
+    return (yield* Effect.forEach([...index.doctorChecks.values()], (check) =>
+      check
+        .run(input)
+        .pipe(Effect.map((reports) => reports.map((report) => ({ report, relevant: check.relevant })))),
+    )).flat();
   });
+
+const mapPluginDoctorCheck = ({ report, provider, selection }: PluginDoctorCheckMapping): DoctorCheck => ({
+  name: report.name,
+  status: report.status,
+  severity: report.severity,
+  providerId: provider.id,
+  providerName: provider.displayName,
+  providerVersion: provider.version,
+  providerKind: providerKindFor(provider.id),
+  runtimeStatus: report.runtimeStatus ?? "unknown",
+  runtime: report.runtime ?? { running: report.status === "pass" },
+  capabilities: {},
+  context: report.context,
+  solutions: report.solutions,
+  selection,
+});
 
 const setupReadinessStepContextKey = (id: string): string =>
   `step${id
@@ -453,6 +418,7 @@ const buildRuntimeServiceDoctorCheck = (
 
 export const doctor = (
   options: DoctorOptions = {},
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
 ): Effect.Effect<DoctorResult, DoctorError, ConfigService | RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;
@@ -461,23 +427,32 @@ export const doctor = (
     const resolution = resolveProviderSelection(inputs);
     const selection = buildSelectionRecord(resolution);
     const stateDir = yield* resolveStateDir(configService);
-    const conflicts = yield* detectProviderConflicts({
+    const userDataRootRaw = yield* configService
+      .get("userDataRoot")
+      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const userDataRoot =
+      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    const platform = options.platform ?? platformFromProcess();
+    const reports = yield* pluginDoctorReports(modules, {
+      providerId: String(resolution.providerId),
+      platform,
       stateDir,
-      platform: options.platform ?? platformFromProcess(),
       env: options.env ?? process.env,
+      userDataRoot,
+      binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
     });
-    if (conflicts.length > 0 && String(resolution.providerId) === "podman") {
+    const preemptiveReports = reports
+      .map((entry) => entry.report)
+      .filter((report) => report.preempts === true);
+    if (preemptiveReports.length > 0) {
+      const providerId = String(resolution.providerId);
+      const provider = {
+        id: providerId,
+        displayName: providerId === "podman" ? "Podman Runtime Provider" : providerId,
+        version: preemptiveReports[0]?.context.providerVersion ?? "unknown",
+      };
       return {
-        checks: conflicts.map((conflict) =>
-          conflictCheck(
-            conflict,
-            String(resolution.providerId),
-            "Podman Runtime Provider",
-            "unknown",
-            options.platform ?? platformFromProcess(),
-            selection,
-          ),
-        ),
+        checks: preemptiveReports.map((report) => mapPluginDoctorCheck({ report, provider, selection })),
       };
     }
     const provider = yield* registry.select({
@@ -531,35 +506,9 @@ export const doctor = (
       selection,
     };
 
-    const conflictChecks = conflicts.map((conflict) =>
-      conflictCheck(
-        conflict,
-        provider.id,
-        provider.displayName,
-        provider.version,
-        options.platform ?? provider.platform,
-        selection,
-      ),
-    );
-
-    const fileSyncChecks: ReadonlyArray<DoctorCheck> =
-      provider.capabilities.bindMountPerformance === "slow"
-        ? yield* Effect.gen(function* () {
-            const userDataRootRaw = yield* configService
-              .get("userDataRoot")
-              .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-            const userDataRoot =
-              typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
-            const check = yield* buildFileSyncDoctorCheck(provider, userDataRoot, selection);
-            return [check] as ReadonlyArray<DoctorCheck>;
-          })
-        : [];
-
-    const userDataRootRaw = yield* configService
-      .get("userDataRoot")
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
-    const userDataRoot =
-      typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    const pluginChecks = reports
+      .filter((entry) => entry.relevant === undefined || entry.relevant(provider.capabilities))
+      .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider, selection }));
     const setupReadiness = yield* readSetupReadiness(userDataRoot);
     const setupReadinessChecks: ReadonlyArray<DoctorCheck> =
       setupReadiness === undefined
@@ -614,8 +563,7 @@ export const doctor = (
     return {
       checks: [
         primaryCheck,
-        ...conflictChecks,
-        ...fileSyncChecks,
+        ...pluginChecks,
         ...setupReadinessChecks,
         ...runtimeServiceChecks,
         ...hostProxyChecks,

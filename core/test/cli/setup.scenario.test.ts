@@ -14,6 +14,7 @@ import { ConfigService, EventService, RuntimeProviderRegistry } from "@lando/sdk
 
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 import { makeHttpClientLive } from "../../src/http-client/live.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 interface EventSink {
   readonly events: LandoEvent[];
@@ -47,6 +48,7 @@ const makeSetupLayer = async (sink: EventSink, stateDir: string) => {
   const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
   const provider = await Effect.runPromise(
     makeRuntimeProvider({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
       podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
       podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
       runtimeBundleDownloader: {
@@ -179,6 +181,7 @@ describe("meta:setup task tree progress", () => {
       };
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           podmanApi,
           podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
           runtimeBundleDownloader: {

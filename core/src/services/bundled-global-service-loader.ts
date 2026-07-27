@@ -6,7 +6,8 @@
  * cannot resolve from `global-services.ts`, and that a `bun build --compile`
  * binary cannot import at all. Bundled plugins therefore expose their global
  * services as a STATIC `globalServices` map (id → `Effect<ServiceConfig>`)
- * captured in the generated `BUNDLED_PLUGINS` table.
+ * captured on each `LandoPluginModule` in the generated `BUNDLED_PLUGIN_MODULES`
+ * descriptor table.
  *
  * This loader prefers that static map for any bundled plugin (compiled-binary
  * safe, no dynamic import). A bundled plugin that is missing the requested
@@ -18,9 +19,10 @@
 import { Effect, Schema } from "effect";
 
 import { GlobalAppError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ServiceConfig } from "@lando/sdk/schema";
 
-import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
 import {
   type GlobalServiceModuleLoader,
   type PendingGlobalServiceContribution,
@@ -28,11 +30,8 @@ import {
 } from "./global-services.ts";
 
 interface BundledGlobalServiceLoaderDeps {
-  readonly bundled: ReadonlyArray<{
-    readonly name: string;
-    readonly globalServices?: ReadonlyMap<string, Effect.Effect<ServiceConfig, unknown, never>>;
-  }>;
-  readonly fallback: GlobalServiceModuleLoader;
+  readonly modules?: ReadonlyArray<LandoPluginModule>;
+  readonly fallback?: GlobalServiceModuleLoader;
 }
 
 const loaderError = (message: string, remediation: string, cause?: unknown): GlobalAppError =>
@@ -44,51 +43,52 @@ const loaderError = (message: string, remediation: string, cause?: unknown): Glo
   });
 
 export const makeBundledFirstGlobalServiceLoader = (
-  deps: BundledGlobalServiceLoaderDeps,
-): GlobalServiceModuleLoader => ({
-  load: (entry: PendingGlobalServiceContribution) => {
-    const bundled = deps.bundled.find((plugin) => plugin.name === entry.plugin);
-    if (bundled === undefined) {
-      return deps.fallback.load(entry);
-    }
+  deps: BundledGlobalServiceLoaderDeps = {},
+): GlobalServiceModuleLoader => {
+  const modules = deps.modules ?? BUNDLED_PLUGIN_MODULES;
+  const fallback = deps.fallback ?? defaultGlobalServiceModuleLoader;
 
-    const effect = bundled.globalServices?.get(entry.contribution.id);
-    if (effect === undefined) {
-      return Effect.fail(
-        loaderError(
-          `Bundled plugin ${entry.plugin} does not export a static global service for ${entry.contribution.id}.`,
-          `Ensure ${entry.plugin} exports a \`globalServices\` map entry for ${entry.contribution.id} and regenerate core/src/plugins/bundled.ts.`,
-        ),
-      );
-    }
+  return {
+    load: (entry: PendingGlobalServiceContribution) => {
+      const descriptor = modules.find((plugin) => plugin.name === entry.plugin);
+      if (descriptor === undefined) {
+        return fallback.load(entry);
+      }
 
-    return effect.pipe(
-      Effect.mapError((cause) =>
-        loaderError(
-          `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} failed.`,
-          `Fix the global service module in ${entry.plugin}.`,
-          cause,
+      const effect = descriptor.globalServices?.get(entry.contribution.id);
+      if (effect === undefined) {
+        return Effect.fail(
+          loaderError(
+            `Bundled plugin ${entry.plugin} does not export a static global service for ${entry.contribution.id}.`,
+            `Ensure ${entry.plugin} exports a \`globalServices\` map entry for ${entry.contribution.id} and regenerate the BUNDLED_PLUGIN_MODULES descriptor table.`,
+          ),
+        );
+      }
+
+      return effect.pipe(
+        Effect.mapError((cause) =>
+          loaderError(
+            `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} failed.`,
+            `Fix the global service module in ${entry.plugin}.`,
+            cause,
+          ),
         ),
-      ),
-      Effect.flatMap((value) =>
-        Schema.decodeUnknown(ServiceConfig)(value).pipe(
-          Effect.mapError((cause) =>
-            loaderError(
-              `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} did not return a valid ServiceConfig.`,
-              `Update ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,
-              cause,
+        Effect.flatMap((value) =>
+          Schema.decodeUnknown(ServiceConfig)(value).pipe(
+            Effect.mapError((cause) =>
+              loaderError(
+                `Bundled global service ${entry.contribution.id} from plugin ${entry.plugin} did not return a valid ServiceConfig.`,
+                `Update ${entry.plugin} so global service ${entry.contribution.id} returns a valid ServiceConfig.`,
+                cause,
+              ),
             ),
           ),
         ),
-      ),
-    );
-  },
-});
+      );
+    },
+  };
+};
 
-/** Production loader: real bundled plugins + dynamic-import fallback. */
-export const bundledFirstGlobalServiceLoader: GlobalServiceModuleLoader = makeBundledFirstGlobalServiceLoader(
-  {
-    bundled: BUNDLED_PLUGINS,
-    fallback: defaultGlobalServiceModuleLoader,
-  },
-);
+/** Production loader: real bundled plugin descriptors + dynamic-import fallback. */
+export const bundledFirstGlobalServiceLoader: GlobalServiceModuleLoader =
+  makeBundledFirstGlobalServiceLoader();

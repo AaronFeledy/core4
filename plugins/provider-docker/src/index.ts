@@ -37,6 +37,7 @@ import {
   ServiceStartError,
 } from "@lando/sdk/errors";
 import { type LogFileAccess, followLogSources, logFollowLineChunks } from "@lando/sdk/log-follow";
+import { definePlugin } from "@lando/sdk/plugins";
 import {
   type AppId,
   type AppPlan,
@@ -57,6 +58,7 @@ import {
   type ExecResult,
   type ExecTarget,
   type LogChunk,
+  LogFileHelperAssets,
   type LogOptions,
   type LogTarget,
   type ProviderError,
@@ -1610,4 +1612,25 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   enabled: true,
   contributes: { providers: [PROVIDER_ID] },
   entry: "./src/index.ts",
+});
+
+const runtimeProviderId = ProviderId.make(PROVIDER_ID);
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  runtimeProviders: new Map([
+    [
+      runtimeProviderId,
+      {
+        id: runtimeProviderId,
+        make: () =>
+          Effect.gen(function* () {
+            const assets = yield* LogFileHelperAssets;
+            const logFileHelperPayloads = yield* assets.payloads;
+            return yield* makeRuntimeProvider({ logFileHelperPayloads });
+          }),
+      },
+    ],
+  ]),
 });

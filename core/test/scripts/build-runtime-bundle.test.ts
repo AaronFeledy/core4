@@ -19,7 +19,7 @@ import {
 } from "../../../scripts/build-runtime-bundle.ts";
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClientLive } from "../../src/http-client/live.ts";
-import { makeArtifactDownload } from "../../src/providers/registry.ts";
+import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const sha256 = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 

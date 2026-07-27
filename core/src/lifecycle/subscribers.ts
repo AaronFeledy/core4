@@ -3,6 +3,7 @@ import { type Context, Effect, Layer, Schema } from "effect";
 import { EventError, PluginLoadError } from "@lando/sdk/errors";
 import { LandoEvent as LandoEventSchema } from "@lando/sdk/events";
 import type { LandoEvent } from "@lando/sdk/events";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { AbsolutePath, type NotifyConfig, type PluginManifest } from "@lando/sdk/schema";
 import {
   CommandRegistry,
@@ -17,8 +18,8 @@ import {
 } from "@lando/sdk/services";
 
 import { BUILT_IN_COMMAND_IDS } from "../cli/generated/command-ids.ts";
-import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
 import { makeLandoPluginContext } from "../plugins/context.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
 import { GlobalPluginManifests } from "../plugins/global-manifests.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { EventDispatchControl } from "../services/event-service.ts";
@@ -48,15 +49,16 @@ export const canonicalSubscriberCommandIds = (
   return [...ids];
 };
 
-const loadFactory = (
+export const loadSubscriberFactory = (
   subscriber: IndexedSubscriber,
+  modules: ReadonlyArray<LandoPluginModule>,
 ): Effect.Effect<RuntimeSubscriberFactory, PluginLoadError> => {
   if (subscriber.entry.module.startsWith("file://")) {
     return loadExternalSubscriberFactory(subscriber);
   }
-  const bundled = BUNDLED_PLUGINS.find((plugin) => plugin.name === subscriber.pluginName);
-  if (bundled === undefined) return loadExternalSubscriberFactory(subscriber);
-  const loader = bundled.subscriberFactoryLoaders?.get(subscriber.entry.id);
+  const module = modules.find((candidate) => candidate.name === subscriber.pluginName);
+  if (module === undefined) return loadExternalSubscriberFactory(subscriber);
+  const loader = module.subscriberFactoryLoaders?.get(subscriber.entry.id);
   if (loader === undefined) {
     return Effect.fail(
       new PluginLoadError({
@@ -137,7 +139,9 @@ const dispatchEntry = (input: DispatchEntry): Effect.Effect<void, EventError> =>
   );
 };
 
-export const makeSubscriberRuntimeLive = () =>
+export const makeSubscriberRuntimeLive = (
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+) =>
   Layer.scopedDiscard(
     Effect.gen(function* () {
       const plugins = yield* PluginRegistry;
@@ -179,7 +183,7 @@ export const makeSubscriberRuntimeLive = () =>
             publishRender: makePublishRender(events, redaction),
           });
           const getHandler = yield* makeCachedSubscriberHandler(
-            loadFactory(subscriber),
+            loadSubscriberFactory(subscriber, modules),
             context,
             projectedConfig(subscriber, notify),
           );

@@ -12,7 +12,7 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 
-import { renderPlainLine } from "../../src/cli/renderer/format.ts";
+import { renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { drainRendererSync, renderJson, renderPlain } from "../../src/cli/renderer/runtime.ts";
 

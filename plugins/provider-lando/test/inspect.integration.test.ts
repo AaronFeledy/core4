@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { DateTime, Effect } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -144,7 +145,11 @@ describe("provider-lando inspect", () => {
   test("returns one structured snapshot per service without mutating provider state", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: fake.api }))),
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+        ),
+      ),
     );
 
     await Effect.runPromise(provider.apply(plan, { reconcile: true }).pipe(Effect.scoped));

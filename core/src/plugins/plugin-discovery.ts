@@ -10,11 +10,11 @@
 import { type Context, Effect } from "effect";
 
 import { PluginLoadError, PluginManifestError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { PluginManifest } from "@lando/sdk/schema";
 import type { Logger } from "@lando/sdk/services";
 import type { AppFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
-import { BUNDLED_PLUGINS } from "./bundled.ts";
 import { type ExternalPluginModule, loadInstalledPlugin } from "./installed-plugin-loader.ts";
 import { readInstalledPluginRegistry } from "./installed-registry.ts";
 import { pluginManifestError } from "./plugin-module-path.ts";
@@ -170,19 +170,10 @@ export const mergeDiscoveredPlugins = (
     return [...merged.values()];
   });
 
-export const systemPlugins: ReadonlyArray<DiscoveredPlugin> = BUNDLED_PLUGINS.map((plugin) => ({
-  source: "system" as const,
-  manifest: plugin.manifest,
-}));
-
-export const findBundledServiceType = (
-  id: string,
-  disabled: ReadonlySet<string>,
-): ServiceType | undefined => {
-  for (const bundledPlugin of BUNDLED_PLUGINS) {
-    if (disabled.has(bundledPlugin.manifest.name)) continue;
-    const serviceType = bundledPlugin.serviceTypes?.get(id);
-    if (serviceType !== undefined) return serviceType;
-  }
-  return undefined;
-};
+export const systemPluginsFromModules = (
+  modules: ReadonlyArray<LandoPluginModule>,
+): ReadonlyArray<DiscoveredPlugin> =>
+  modules.map((module) => ({
+    source: "system",
+    manifest: module.manifest,
+  }));

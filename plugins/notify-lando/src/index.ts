@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 
 export const PLUGIN_NAME = "@lando/notify-lando" as const;
@@ -21,4 +22,12 @@ export const manifest = Schema.decodeSync(PluginManifest)({
       configKey: "notify",
     },
   ],
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  subscriberFactoryLoaders: new Map([
+    ["notify-command-terminal", () => import("./notify.ts").then((module) => module.default)],
+  ]),
 });

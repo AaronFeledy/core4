@@ -3,9 +3,12 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
+
+import type { HostMaintenanceContribution } from "@lando/sdk/plugins";
 
 import { uninstall } from "../../src/cli/commands/uninstall.ts";
+import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 
 const makeRoots = () => {
   const root = mkdtempSync(join(tmpdir(), "lando-uninstall-runtime-service-test-"));
@@ -15,6 +18,71 @@ const makeRoots = () => {
 };
 
 describe("runtime-service uninstall execution", () => {
+  test("runs teardown from the host maintenance registry", async () => {
+    // Given: an owned runtime directory and a host maintainer fake.
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    const teardownInputs: Parameters<HostMaintenanceContribution["teardown"]>[0][] = [];
+    const maintainer: HostMaintenanceContribution = {
+      id: "fake-runtime",
+      teardown: (input) => {
+        teardownInputs.push(input);
+        return Effect.succeed({ terminated: true, pid: 9876 });
+      },
+    };
+    try {
+      mkdirSync(join(userDataRoot, "runtime"), { recursive: true });
+
+      // When: uninstall executes with the registry supplied.
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+        }).pipe(Effect.provide(Layer.succeed(HostMaintenanceRegistry, { maintainers: [maintainer] }))),
+      );
+
+      // Then: canonical paths reach the maintainer and teardown completes.
+      expect(teardownInputs).toHaveLength(1);
+      expect(teardownInputs[0]?.paths.providerPidPath).toBe(
+        join(userDataRoot, "runtime", "run", "podman.pid"),
+      );
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "completed",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test("skips host maintenance when the registry is absent", async () => {
+    // Given: an owned runtime directory without a host maintenance registry.
+    const { root, userDataRoot, userCacheRoot } = makeRoots();
+    try {
+      mkdirSync(join(userDataRoot, "runtime"), { recursive: true });
+
+      // When: uninstall executes its default runtime teardown seam.
+      const result = await Effect.runPromise(
+        uninstall({
+          yes: true,
+          keepData: true,
+          userDataRoot,
+          userCacheRoot,
+          execPath: join(root, "lando"),
+        }),
+      );
+
+      // Then: absence is a safe skipped teardown and uninstall continues.
+      expect(result.failed).toBe(false);
+      expect(result.steps.find((step) => step.id === "runtime-service")).toMatchObject({
+        outcome: "completed",
+      });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test("removes runtime artifacts when no owned runtime service is running", async () => {
     const { root, userDataRoot, userCacheRoot } = makeRoots();
     try {

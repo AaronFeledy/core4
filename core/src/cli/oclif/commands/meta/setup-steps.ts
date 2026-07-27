@@ -10,11 +10,9 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { Data, Effect } from "effect";
+import { Data, Effect, Layer, Option } from "effect";
 
-import { makeLandoPaths } from "@lando/core/paths";
-import { provisionMutagen } from "@lando/file-sync-mutagen";
-import { FileSyncEngine } from "@lando/sdk/services";
+import { Downloader, FileSyncEngine, type FileSyncError, PathsService } from "@lando/sdk/services";
 
 import { NetworkTrust } from "../../../../http-client/network-trust.ts";
 import {
@@ -28,6 +26,7 @@ import {
   setupFailureRemediation,
   writeSetupReadiness,
 } from "../../../commands/setup-readiness.ts";
+import { SetupFileSyncEngineLive } from "./setup-file-sync-engine.ts";
 import { type FileSyncStatus, inputSkipFileSync } from "./setup-inputs.ts";
 
 interface RuntimeServiceStatusForReadiness {
@@ -132,7 +131,9 @@ interface FileSyncSetupStepContext {
   readonly recorder: SetupReadinessRecorder;
 }
 
-export const runFileSyncSetupStep = (ctx: FileSyncSetupStepContext) =>
+export const runFileSyncSetupStep = (
+  ctx: FileSyncSetupStepContext,
+): Effect.Effect<FileSyncStatus, FileSyncError> =>
   Effect.gen(function* () {
     const { provider, input, userDataRoot, network, recorder } = ctx;
     let fileSyncStatus: FileSyncStatus = "satisfied";
@@ -160,31 +161,21 @@ export const runFileSyncSetupStep = (ctx: FileSyncSetupStepContext) =>
           ),
         );
 
-      const provisionFileSync = (evidence: string) => {
-        if (userDataRoot === undefined) {
-          fileSyncStatus = "unavailable";
-          return recorder.record({
-            id: "file-sync",
-            status: "unavailable",
-            evidence: "File-sync setup could not run because userDataRoot is not configured.",
-            remediation: "Configure userDataRoot and rerun `lando setup`.",
-          });
+      let fileSync = yield* Effect.serviceOption(FileSyncEngine);
+      if (fileSync._tag === "None") {
+        const paths = yield* Effect.serviceOption(PathsService);
+        const downloader = yield* Effect.serviceOption(Downloader);
+        if (paths._tag === "Some" && downloader._tag === "Some") {
+          const dependencies = Layer.merge(
+            Layer.succeed(PathsService, paths.value),
+            Layer.succeed(Downloader, downloader.value),
+          );
+          fileSync = yield* Effect.serviceOption(FileSyncEngine).pipe(
+            Effect.provide(SetupFileSyncEngineLive.pipe(Layer.provide(dependencies))),
+            Effect.catchAllCause(() => Effect.succeed(Option.none())),
+          );
         }
-        const paths = makeLandoPaths({ userDataRoot });
-        return Effect.scoped(
-          provisionMutagen({
-            binDir: paths.binDir,
-            toolDownloadsDir: paths.toolDownloadsDir("mutagen"),
-            force: false,
-          }),
-        ).pipe(
-          Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
-          Effect.tapError((cause) => recorder.recordFailure("file-sync", cause)),
-          Effect.tap(() => recordInstalledFileSync(evidence)),
-        );
-      };
-
-      const fileSync = yield* Effect.serviceOption(FileSyncEngine);
+      }
       if (fileSync._tag === "Some") {
         yield* Effect.scoped(fileSync.value.setup({ force: false, network })).pipe(
           Effect.provideService(NetworkTrust, networkTrustFromResolved(network)),
@@ -192,7 +183,8 @@ export const runFileSyncSetupStep = (ctx: FileSyncSetupStepContext) =>
           Effect.tap(() => recordInstalledFileSync("File-sync setup installed Mutagen acceleration.")),
         );
       } else {
-        yield* provisionFileSync("File-sync setup downloaded Mutagen acceleration.");
+        fileSyncStatus = "unavailable";
+        yield* recorder.recordUnavailable("file-sync", "File-sync engine");
       }
     } else {
       yield* recorder.record({

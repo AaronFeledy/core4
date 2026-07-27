@@ -1,12 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { basename, dirname } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 import type {
   LogFileHelperPayloadKey,
   LogFileHelperPayloads,
 } from "@lando/container-runtime/log-file-helper-payloads";
+import { LogFileHelperAssets } from "@lando/sdk/services";
 
 export const LOG_FILE_HELPER_DIST_ROOT_ENV = "LANDO_LOG_FILE_HELPER_DIST_ROOT";
 
@@ -62,3 +63,8 @@ export const loadLogFileHelperPayloads = (
     }
     return payloads;
   });
+
+export const LogFileHelperAssetsLive = Layer.effect(
+  LogFileHelperAssets,
+  Effect.cached(loadLogFileHelperPayloads()).pipe(Effect.map((payloads) => ({ payloads }))),
+);

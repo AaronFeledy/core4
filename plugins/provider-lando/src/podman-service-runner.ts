@@ -4,8 +4,8 @@ import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
-import { buildManagedRuntimeServiceArgs } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
+import { buildManagedRuntimeServiceArgs } from "./managed-runtime-service.ts";
 
 export interface PodmanServiceSpec {
   readonly command: string;

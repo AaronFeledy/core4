@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { DateTime, Duration, Effect, Stream } from "effect";
 
 import type { RetryPolicy } from "@lando/sdk/probe";
@@ -195,6 +196,7 @@ const withRuntimeProvider = async <A>(
   try {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
         podmanApi: makeFakePodmanApi(events, pingSuccessesBeforeEnsureFailure, launchesBeforePingSuccess),
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
@@ -302,6 +304,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
       const events: string[] = [];
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           podmanApi: makeFakePodmanApi(events),
           podmanService: makeFakeServiceRunner(events),
@@ -340,6 +343,7 @@ describe("provider-lando ensureRuntime factory wiring", () => {
       const events: string[] = [];
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           podmanApi: makeFakePodmanApi(events),
           podmanService: makeFakeServiceRunner(events),

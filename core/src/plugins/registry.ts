@@ -1,24 +1,26 @@
 import { join } from "node:path";
 
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Either, Layer } from "effect";
 
 import { PluginLoadError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, Logger, PluginRegistry } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "../config/paths.ts";
 import { resolveUserDataRoot } from "../config/roots.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";
-import { BUNDLED_PLUGINS } from "./bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "./generated/bundled.ts";
 import { GlobalPluginManifests } from "./global-manifests.ts";
+import { type PluginCapabilityIndex, makePluginCapabilityIndex } from "./module-set.ts";
 import {
+  type DiscoveredPlugin,
   discoverInstalledPlugins,
   ensureScopedAppFeature,
   externalAppFeature,
-  findBundledServiceType,
   findExternalServiceType,
   mergeDiscoveredPlugins,
-  systemPlugins,
+  systemPluginsFromModules,
 } from "./plugin-discovery.ts";
 
 interface PluginRegistryDiscoveryOptions {
@@ -33,16 +35,20 @@ interface PluginRegistryServices {
   readonly globalManifests: Context.Tag.Service<typeof GlobalPluginManifests>;
 }
 
+interface PluginRegistryInput {
+  readonly discovery: PluginRegistryDiscoveryOptions;
+  readonly bundledPlugins: ReadonlyArray<DiscoveredPlugin>;
+  readonly capabilities: PluginCapabilityIndex;
+}
+
 const makePluginRegistry = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   logger: Context.Tag.Service<typeof Logger> | undefined,
-  discovery: PluginRegistryDiscoveryOptions,
+  input: PluginRegistryInput,
 ): PluginRegistryServices => {
+  const { capabilities, discovery } = input;
   const disabled = new Set(discovery.disable ?? []);
   const discoverGlobalPlugins = Effect.gen(function* () {
-    const bundledPlugins = (discovery.bundled === false ? [] : systemPlugins).filter(
-      (plugin) => !disabled.has(plugin.manifest.name),
-    );
     const userDataRoot =
       configService === undefined
         ? resolveUserDataRoot()
@@ -51,7 +57,7 @@ const makePluginRegistry = (
       discovery.user === false || userDataRoot === undefined
         ? []
         : yield* discoverInstalledPlugins("user", makeLandoPaths({ userDataRoot }).pluginsDir, logger);
-    return yield* mergeDiscoveredPlugins([bundledPlugins, userPlugins], logger);
+    return yield* mergeDiscoveredPlugins([input.bundledPlugins, userPlugins], logger);
   });
   const discoverPlugins = Effect.gen(function* () {
     const globalPlugins = yield* discoverGlobalPlugins;
@@ -91,11 +97,10 @@ const makePluginRegistry = (
       }),
     loadServiceType: (id) =>
       Effect.gen(function* () {
-        const bundledServiceType =
-          discovery.bundled === false ? undefined : findBundledServiceType(id, disabled);
+        const bundledServiceType = capabilities.serviceTypes.get(id);
         if (bundledServiceType !== undefined) {
           return yield* composeExtendedServiceType(bundledServiceType, (parentId) =>
-            findBundledServiceType(parentId, disabled),
+            capabilities.serviceTypes.get(parentId),
           );
         }
 
@@ -105,8 +110,7 @@ const makePluginRegistry = (
           return yield* composeExtendedServiceType(
             externalType,
             (parentId) =>
-              findExternalServiceType(plugins, parentId) ??
-              (discovery.bundled === false ? undefined : findBundledServiceType(parentId, disabled)),
+              findExternalServiceType(plugins, parentId) ?? capabilities.serviceTypes.get(parentId),
           );
         }
 
@@ -127,14 +131,8 @@ const makePluginRegistry = (
         );
       }
 
-      for (const bundledPlugin of BUNDLED_PLUGINS) {
-        if (disabled.has(bundledPlugin.manifest.name)) continue;
-        const serviceFeature = bundledPlugin.serviceFeatures?.get(id);
-
-        if (serviceFeature !== undefined) {
-          return Effect.succeed(serviceFeature);
-        }
-      }
+      const serviceFeature = capabilities.serviceFeatures.get(id);
+      if (serviceFeature !== undefined) return Effect.succeed(serviceFeature);
 
       return Effect.fail(
         new PluginLoadError({
@@ -146,12 +144,8 @@ const makePluginRegistry = (
     loadAppFeature: (id) =>
       Effect.gen(function* () {
         if (discovery.bundled !== false) {
-          for (const bundledPlugin of BUNDLED_PLUGINS) {
-            if (disabled.has(bundledPlugin.manifest.name)) continue;
-            const appFeature = bundledPlugin.appFeatures?.get(id);
-
-            if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
-          }
+          const appFeature = capabilities.appFeatures.get(id);
+          if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
         }
 
         const plugins = yield* discoverPlugins;
@@ -174,15 +168,30 @@ const makePluginRegistry = (
 
 export { PluginRegistry };
 
-export const makePluginRegistryLive = (discovery: PluginRegistryDiscoveryOptions = {}) =>
+export const makePluginRegistryLive = (
+  discovery: PluginRegistryDiscoveryOptions = {},
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+) =>
   Layer.effectContext(
     Effect.gen(function* () {
       const configService = yield* Effect.serviceOption(ConfigService);
       const logger = yield* Effect.serviceOption(Logger);
+      const enabledModules =
+        discovery.bundled === false
+          ? []
+          : modules.filter((module) => !(discovery.disable ?? []).includes(module.manifest.name));
+      const capabilities = yield* Either.match(makePluginCapabilityIndex(enabledModules), {
+        onLeft: (error) => Effect.fail(error),
+        onRight: (index) => Effect.succeed(index),
+      }).pipe(Effect.orDie);
       const services = makePluginRegistry(
         configService._tag === "Some" ? configService.value : undefined,
         logger._tag === "Some" ? logger.value : undefined,
-        discovery,
+        {
+          discovery,
+          bundledPlugins: systemPluginsFromModules(enabledModules),
+          capabilities,
+        },
       );
       return Context.make(PluginRegistry, services.registry).pipe(
         Context.add(GlobalPluginManifests, services.globalManifests),

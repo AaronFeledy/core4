@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 
 import { Cause, Effect, Exit } from "effect";
 
@@ -98,6 +99,7 @@ describe("provider-lando setup Intel Mac host gate", () => {
     const calls: string[] = [];
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "darwin",
         arch: "x64",
         podmanApi: {

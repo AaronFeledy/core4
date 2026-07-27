@@ -5,6 +5,7 @@ import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gzipSync } from "node:zlib";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Cause, Effect, Exit } from "effect";
 
 import {
@@ -121,6 +122,7 @@ describe("provider-lando setup", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             podmanApi: {
               info: Effect.succeed({ version: { Version: "6.0.2" } }),
               ping: Effect.succeed(undefined),
@@ -287,6 +289,7 @@ describe("provider-lando setup", () => {
     try {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "win32",
           podmanApi: {
             info: Effect.succeed({ version: { Version: "6.0.2" } }),
@@ -349,6 +352,7 @@ describe("provider-lando setup", () => {
       try {
         const provider = await Effect.runPromise(
           makeRuntimeProvider({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "win32",
             podmanApi: {
               info: Effect.succeed({ version: { Version: "6.0.2" } }),

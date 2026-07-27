@@ -1,13 +1,10 @@
-import { Effect, Schema } from "effect";
+import { type Context, Effect, Option, Schema } from "effect";
 
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
 import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
-import {
-  buildManagedRuntimeServiceSpec,
-  terminateOwnedRuntimeService,
-} from "../../runtime/managed-runtime-service.ts";
+import { HostMaintenanceRegistry, teardownHostMaintainers } from "../../runtime/host-maintenance.ts";
 import { type AppsListEntry, listServices } from "./list.ts";
 
 export interface RuntimeServiceStopResult {
@@ -60,17 +57,23 @@ export const renderPoweroffResult = (result: PoweroffResult): string => {
   return lines.join("\n");
 };
 
-const stopManagedRuntimeService = (userDataRoot: string): Promise<RuntimeServiceStopResult> => {
+const stopManagedRuntimeService = (
+  registry: Option.Option<Context.Tag.Service<typeof HostMaintenanceRegistry>>,
+  userDataRoot: string,
+): Promise<RuntimeServiceStopResult> => {
   const platform = normalizeHostPlatform();
   const paths = makeLandoPaths({ userDataRoot, platform });
-  const spec = buildManagedRuntimeServiceSpec({ ...paths, platform });
-  return Effect.runPromise(terminateOwnedRuntimeService(spec));
+  return Option.match(registry, {
+    onNone: () => Promise.resolve({ terminated: false }),
+    onSome: (service) => Effect.runPromise(teardownHostMaintainers(service, { paths, platform })),
+  });
 };
 
 export const poweroff = (
   options: PoweroffOptions = {},
 ): Effect.Effect<PoweroffResult, ConfigError | LandoCommandError, ConfigService> =>
   Effect.gen(function* () {
+    const hostMaintenanceRegistry = yield* Effect.serviceOption(HostMaintenanceRegistry);
     const configService = yield* ConfigService;
     const userDataRoot = options.userDataRoot ?? (yield* configService.get("userDataRoot"));
     const list = yield* listServices({
@@ -83,7 +86,9 @@ export const poweroff = (
       (async (_entry: AppsListEntry) => {
         return;
       });
-    const stopRuntimeService = options.stopRuntimeService ?? stopManagedRuntimeService;
+    const stopRuntimeService =
+      options.stopRuntimeService ??
+      ((root: string) => stopManagedRuntimeService(hostMaintenanceRegistry, root));
 
     const targets: string[] = [];
     let keptScratch = 0;

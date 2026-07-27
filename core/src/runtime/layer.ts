@@ -19,6 +19,7 @@ import { Effect, Either, Layer, Schema } from "effect";
 
 import type { ConfigError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type {
+  AppPlanSanitizer,
   AppPlanner,
   BuildOrchestrator,
   CacheService,
@@ -27,11 +28,13 @@ import type {
   DataMover,
   Downloader,
   EventService,
+  FileSyncEngine,
   FileSystem,
   GlobalAppService,
   HttpClient,
   InteractionService,
   LandofileService,
+  LogFileHelperAssets,
   Logger,
   ManagedFileService,
   PathsService,
@@ -62,6 +65,7 @@ import { type BootstrapLifecycleTracker, makeBootstrapLifecycleTracker } from ".
 import type { BootstrapLevel } from "./bootstrap.ts";
 import { RuntimeCwd } from "./cwd.ts";
 import { makeGeneratedBootstrapLayer, mergeRuntimeWithHostLayers } from "./generated/layers/index.ts";
+import type { HostMaintenanceRegistry } from "./host-maintenance.ts";
 import { installSignalHandlers } from "./interrupt.ts";
 import {
   LandoRuntimeOptions,
@@ -95,7 +99,8 @@ type MinimalRuntimeServices =
   | SecretStore
   | StateStore
   | HttpClient
-  | Downloader;
+  | Downloader
+  | HostMaintenanceRegistry;
 type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
 type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
@@ -104,6 +109,8 @@ type ProviderRuntimeServices =
   | RuntimeProvider
   | RuntimeProviderRegistry
   | DataMover
+  | AppPlanSanitizer
+  | LogFileHelperAssets
   | GlobalAppService;
 type GlobalRuntimeServices = ProviderRuntimeServices | AppPlanner | BuildOrchestrator;
 type ScratchRuntimeServices =
@@ -122,6 +129,7 @@ export type AppRuntimeServices =
   | EventService
   | ToolingEngine
   | ShellRunner
+  | FileSyncEngine
   | ProxyService
   | RuntimeCwd;
 type RuntimeLayer =

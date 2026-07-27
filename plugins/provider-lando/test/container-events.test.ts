@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Effect } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -103,6 +104,7 @@ describe("provider-lando container died event collection", () => {
   test("provider exposes died events structurally for doctor", async () => {
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
         platform: "linux",
         podmanApi: {
           info: Effect.succeed({ host: { arch: "x64" } }),

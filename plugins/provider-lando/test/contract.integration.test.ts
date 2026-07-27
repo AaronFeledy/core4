@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Effect, Exit, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -301,7 +302,11 @@ describe("provider-lando RuntimeProvider contract", () => {
   test("passes the SDK provider contract suite", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: fake.api }))),
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+        ),
+      ),
     );
 
     await Effect.runPromise(runProviderContract(provider));
@@ -311,7 +316,14 @@ describe("provider-lando RuntimeProvider contract", () => {
 
   test("lists volumes through the Podman API", async () => {
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: makeDataPlaneFakeApi().api }))),
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            podmanApi: makeDataPlaneFakeApi().api,
+          }),
+        ),
+      ),
     );
 
     const volumes = await Effect.runPromise(provider.listVolumes({ app: appId }));
@@ -324,7 +336,12 @@ describe("provider-lando RuntimeProvider contract", () => {
     await Effect.runPromise(
       runProviderDataPlaneContract({
         providerName: "lando",
-        factory: () => RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: fake.api }))),
+        factory: () =>
+          RuntimeProvider.pipe(
+            Effect.provide(
+              makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+            ),
+          ),
         observations: {
           usedNativeVolumeSnapshot: () =>
             fake.calls.some((call) => call.method === "POST" && call.path.startsWith("/commit?")),
@@ -340,7 +357,12 @@ describe("provider-lando RuntimeProvider contract", () => {
   test("emits ServiceCopyError for copyToService failures", async () => {
     const provider = await Effect.runPromise(
       RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ podmanApi: makeDataPlaneFakeApi({ failCopyTo: true }).api })),
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            podmanApi: makeDataPlaneFakeApi({ failCopyTo: true }).api,
+          }),
+        ),
       ),
     );
     const exit = await Effect.runPromiseExit(
@@ -371,7 +393,12 @@ describe("provider-lando RuntimeProvider contract", () => {
 
       const provider = await Effect.runPromise(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: makePodmanApiClient(socketPath ?? "") })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: makePodmanApiClient(socketPath ?? ""),
+            }),
+          ),
         ),
       );
 
@@ -382,7 +409,15 @@ describe("provider-lando RuntimeProvider contract", () => {
 
   test("matrix: covers linux / darwin / win32 via fake Podman API", async () => {
     const buildProvider = (platform: "linux" | "darwin" | "win32") =>
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: makeFakeApi().api, platform })));
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
+            podmanApi: makeFakeApi().api,
+            platform,
+          }),
+        ),
+      );
 
     const report = await Effect.runPromise(
       runProviderContractMatrix({

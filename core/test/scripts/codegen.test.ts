@@ -4,7 +4,10 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const bundledPluginsPath = resolve(repoRoot, "core/src/plugins/bundled.ts");
+const bundledPluginPaths = [
+  resolve(repoRoot, "core/src/plugins/generated/bundled.ts"),
+  resolve(repoRoot, "core/src/plugins/generated/renderers.ts"),
+] as const;
 const bootstrapLayersIndexPath = resolve(repoRoot, "core/src/runtime/generated/layers/index.ts");
 const oclifManifestPath = resolve(repoRoot, "core/oclif.manifest.json");
 
@@ -29,17 +32,19 @@ describe("codegen orchestrator", () => {
   test("regenerates current MVP outputs idempotently", async () => {
     await runCodegen();
 
-    const firstBundledPlugins = await readFile(bundledPluginsPath, "utf8");
+    const firstBundledPlugins = await Promise.all(bundledPluginPaths.map((path) => readFile(path, "utf8")));
     const firstBootstrapLayersIndex = await readFile(bootstrapLayersIndexPath, "utf8");
     const firstOclifManifest = await readFile(oclifManifestPath, "utf8");
 
-    expect(firstBundledPlugins.length).toBeGreaterThan(0);
+    expect(firstBundledPlugins.every((source) => source.length > 0)).toBe(true);
     expect(firstBootstrapLayersIndex.length).toBeGreaterThan(0);
     expect(firstOclifManifest.length).toBeGreaterThan(0);
 
     await runCodegen();
 
-    expect(await readFile(bundledPluginsPath, "utf8")).toBe(firstBundledPlugins);
+    expect(await Promise.all(bundledPluginPaths.map((path) => readFile(path, "utf8")))).toEqual(
+      firstBundledPlugins,
+    );
     expect(await readFile(bootstrapLayersIndexPath, "utf8")).toBe(firstBootstrapLayersIndex);
     expect(await readFile(oclifManifestPath, "utf8")).toBe(firstOclifManifest);
     // Runs the whole generator catalog twice; the catalog grows over time, so the

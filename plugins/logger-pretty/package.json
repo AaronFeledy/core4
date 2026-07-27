@@ -26,7 +26,6 @@
     "manifest": "./plugin.yaml"
   },
   "peerDependencies": {
-    "@lando/core": "workspace:*",
     "@lando/sdk": "workspace:*"
   },
   "dependencies": {

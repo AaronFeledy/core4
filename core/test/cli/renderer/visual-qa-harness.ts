@@ -32,9 +32,9 @@ import {
   TaskTreeStartEvent,
 } from "@lando/sdk/events";
 
+import { TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
 import { displayWidth, stripAnsi } from "../../../src/cli/renderer/console-layout.ts";
 import { type SummaryDocument, formatSummary } from "../../../src/cli/renderer/summary.ts";
-import { TaskTreeViewModel } from "../../../src/cli/renderer/task-tree-tail.ts";
 
 export { displayWidth, stripAnsi };
 

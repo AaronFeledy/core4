@@ -10,10 +10,9 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { stripHostProxyRunLando } from "@lando/core/host-proxy-transport";
-import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
+import { definePlugin } from "@lando/sdk/plugins";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import {
   type AppId,
@@ -23,7 +22,15 @@ import {
   ProviderId,
   type ProviderSetupPlan,
 } from "@lando/sdk/schema";
-import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  AppPlanSanitizer,
+  type AppSelector,
+  Downloader,
+  LogFileHelperAssets,
+  PathsService,
+  RuntimeProvider,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 
 import { loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { bringDown } from "./bring-down.ts";
@@ -41,6 +48,12 @@ import { pullImage } from "./image-pull.ts";
 import { inspect, waitForExit } from "./inspect.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { logs } from "./logs.ts";
+import {
+  buildManagedRuntimeServiceSpec,
+  managedRuntimePodmanArgv0,
+  terminateOwnedRuntimeService,
+} from "./managed-runtime-service.ts";
+import { makePluginArtifactDownload, makePluginRuntimeState } from "./plugin-runtime.ts";
 import {
   type PodmanServiceRunner,
   buildPodmanServiceArgs,
@@ -322,6 +335,7 @@ export interface ProviderLayerOptions {
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
+  readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
 
 interface RuntimeProviderServiceControls {
@@ -334,7 +348,7 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
 };
 
-export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
+export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const plans = new Map<string, AppPlan>();
   const providerId = ProviderId.make("lando");
   const platform = options.platform ?? currentHostPlatform();
@@ -467,7 +481,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   };
 
   const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    const persistedPlan = stripHostProxyRunLando(plan);
+    const persistedPlan = options.sanitizeAppliedPlan(plan);
     plans.set(plan.id, persistedPlan);
     return stateDir === undefined
       ? Effect.void
@@ -840,10 +854,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   });
 };
 
-export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
+export const makeProviderLayer = (options: ProviderLayerOptions) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
-
-export const provider = makeProviderLayer();
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -870,4 +882,46 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     },
   },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  hostMaintainers: [
+    {
+      id: "lando-runtime-service",
+      teardown: ({ paths, platform }) =>
+        terminateOwnedRuntimeService(buildManagedRuntimeServiceSpec({ ...paths, platform })),
+    },
+  ],
+  runtimeProviders: new Map([
+    [
+      ProviderId.make("lando"),
+      {
+        id: ProviderId.make("lando"),
+        make: (ctx) =>
+          Effect.gen(function* () {
+            const paths = yield* PathsService;
+            const downloader = yield* Downloader;
+            const logFileHelperAssets = yield* LogFileHelperAssets;
+            const appPlanSanitizer = yield* AppPlanSanitizer;
+            const logFileHelperPayloads = yield* logFileHelperAssets.payloads;
+            const runtimeState = yield* makePluginRuntimeState(ctx, paths, manifest.name);
+            return yield* makeRuntimeProvider({
+              stateDir: `${paths.roots.userDataRoot}/providers`,
+              runtimeBinDir: paths.runtimeBinDir,
+              runtimeRunDir: paths.runtimeRunDir,
+              runtimeStorageDir: paths.runtimeStorageDir,
+              runtimeConfigDir: paths.runtimeConfigDir,
+              providerSocketPath: paths.providerSocketPath,
+              providerPidPath: paths.providerPidPath,
+              artifactDownload: makePluginArtifactDownload(downloader),
+              logFileHelperPayloads,
+              sanitizeAppliedPlan: appPlanSanitizer.sanitizeForPersistence,
+              ...runtimeState,
+            });
+          }),
+      },
+    ],
+  ]),
 });

@@ -25,10 +25,11 @@
 import { Effect } from "effect";
 
 import { LandofileParseError } from "@lando/sdk/errors";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import type { TemplateEngine } from "@lando/sdk/template";
 
-import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
 
 /** A resolved set of template engines, keyed by engine id. */
 export type TemplateEngineRegistry = ReadonlyMap<string, TemplateEngine>;
@@ -79,9 +80,12 @@ const blankLine = (content: string, lineIndex: number): string => {
   return lines.join("\n");
 };
 
-const buildBundledRegistry = (): TemplateEngineRegistry => {
+/** Registry from descriptor modules (first id wins; default: bundled modules). */
+export const buildTemplateEngineRegistry = (
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+): TemplateEngineRegistry => {
   const registry = new Map<string, TemplateEngine>();
-  for (const plugin of BUNDLED_PLUGINS) {
+  for (const plugin of modules) {
     if (plugin.templateEngines === undefined) continue;
     for (const [id, engine] of plugin.templateEngines) {
       if (!registry.has(id)) registry.set(id, engine);
@@ -91,7 +95,7 @@ const buildBundledRegistry = (): TemplateEngineRegistry => {
 };
 
 /** The template engines contributed by bundled plugins (handlebars, mustache). */
-export const bundledTemplateEngineRegistry: TemplateEngineRegistry = buildBundledRegistry();
+export const bundledTemplateEngineRegistry: TemplateEngineRegistry = buildTemplateEngineRegistry();
 
 const parseError = (
   filePath: string,

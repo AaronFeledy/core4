@@ -17,7 +17,7 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { renderJsonLine, renderPlainLine } from "../../src/cli/renderer/format.ts";
+import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import {
   makeJsonRendererLive,

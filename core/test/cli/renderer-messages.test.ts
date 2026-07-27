@@ -10,8 +10,8 @@ import {
 import { StreamFrame } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
+import { renderJsonLine, renderPlainLine } from "@lando/renderer-lando/format";
 import { landoRenderer } from "../../src/cli/renderer/bundled-renderers.ts";
-import { renderJsonLine, renderPlainLine } from "../../src/cli/renderer/format.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererLive, makePlainRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
