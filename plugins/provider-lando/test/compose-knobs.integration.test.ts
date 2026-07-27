@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect } from "effect";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
 import { bringUp, makePodmanApiClient } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -20,6 +19,7 @@ const providerId = ProviderId.make("lando");
 const appId = AppId.make("composeknobsapp");
 const appRoot = AbsolutePath.make("/tmp/lando-compose-knobs-app");
 const containerName = "lando-composeknobsapp-web";
+const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const metadata = {
   resolvedAt: DateTime.unsafeMake("2026-07-27T00:00:00Z"),
   source: "compose-knobs.integration.test",
@@ -72,12 +72,10 @@ const ulimitNames = (ulimits: unknown): ReadonlyArray<string> =>
   Array.isArray(ulimits) ? ulimits.map((entry) => String(field(entry, "Name"))) : [];
 
 describe("provider-lando Compose runtime knobs (live)", () => {
-  test.skipIf(resolveLiveProviderSocket() === undefined)(
+  test.skipIf(liveSocketPath.length === 0)(
     "Given privileged, ulimit, and host-entry knobs, when Podman creates the container, then inspect reports their live effects",
     async () => {
-      const socketPath = resolveLiveProviderSocket()?.socketPath;
-      expect(socketPath).toBeTruthy();
-      const api = makePodmanApiClient(socketPath ?? "");
+      const api = makePodmanApiClient(liveSocketPath);
       const liveRequest = api.request;
       if (liveRequest === undefined) throw new Error("live Podman client exposes no request transport");
 
@@ -88,7 +86,8 @@ describe("provider-lando Compose runtime knobs (live)", () => {
           liveRequest({ method: "GET", path: `/containers/${containerName}/json` }),
         );
         expect(response.status).toBe(200);
-        const hostConfig = field(JSON.parse(response.body) as unknown, "HostConfig");
+        const inspect: unknown = JSON.parse(response.body);
+        const hostConfig = field(inspect, "HostConfig");
 
         expect(field(hostConfig, "Privileged")).toBe(true);
 
