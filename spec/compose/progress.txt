@@ -449,3 +449,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Review notes (deferred/rejected): Cursor Bugbot produced no findings because both the required invocation and its Auto-mode retry were blocked by the configured account's usage limit.
 - Verification: typecheck passed; tracked-file Biome and deprecation checks passed; focused QA passed 286 tests with 1,236 assertions, and the repaired schema suite passed 76 tests with 239 assertions. Guide drift passed with explicit base and the skip above. Bare `bun run lint` remains blocked only by pre-existing errors in the ignored `.worktrees/plugin-dag` checkout.
 ---
+
+## 2026-07-26 22:24 CDT - US-473 Drift Audit
+- Trigger: 4 cycles, 16829 changed lines, 11 commits
+- Scope absorption: excised the partial US-475 deploy-sibling rejection path while retaining the US-473 resources-only schema; tagged rejected-tier handling remains with US-475.
+- Weakened proofs: replaced a test that blessed silent `deploy.resources` loss and added durable partial-test-provider accept/reject, provider-contract invariant, and all-knob matrix-disposition proofs.
+- Review scar tissue: removed the default-vs-strict branch that erased valid resources and the `tmpfs` deduplication that discarded authored intent.
+- Deferred-work laundering: closed the previously deferred provider-contract negative proof because the invariant was introduced by this branch; mixed deploy input now preserves the resources this branch owns.
+- Fixed: valid deploy resources survive unrelated sibling keys under default decoding, strict decoding still rejects excess siblings, and injected plus authored `tmpfs` entries remain lossless.
+- Split/excise decisions: no PRD split; the absorbed US-475 rejection behavior was excised cleanly, and US-473 remains passing with its original acceptance boundary.
+- Verification: typecheck, tracked-source Biome, deprecations, Compose coverage, import-cycle, machine-output, schema-codegen idempotence, and 11 focused test files passed; bare `bun run lint` failed only because it scans the pre-existing ignored `.worktrees/plugin-dag` checkout.
+---
