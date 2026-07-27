@@ -162,7 +162,22 @@ const addContributions = <Key, Value>(
   return undefined;
 };
 
+const capabilityIndexCache = new WeakMap<
+  ReadonlyArray<LandoPluginModule>,
+  Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError>
+>();
+
 export const makePluginCapabilityIndex = (
+  modules: ReadonlyArray<LandoPluginModule>,
+): Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError> => {
+  const cached = capabilityIndexCache.get(modules);
+  if (cached !== undefined) return cached;
+  const computed = computePluginCapabilityIndex(modules);
+  capabilityIndexCache.set(modules, computed);
+  return computed;
+};
+
+const computePluginCapabilityIndex = (
   modules: ReadonlyArray<LandoPluginModule>,
 ): Either.Either<PluginCapabilityIndex, PluginDescriptorMismatchError> => {
   const runtimeProviders = mutableMapFor<"runtimeProviders">();
