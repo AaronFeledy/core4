@@ -35,6 +35,8 @@ const TRUTHY_SPELLINGS = new Set(["true", "1", "yes", "on"]);
 const FALSY_SPELLINGS = new Set(["false", "0", "no", "off"]);
 const INTEGER_TEXT = /^[+-]?\d+$/u;
 
+const safeInteger = (value: number): number | undefined => (Number.isSafeInteger(value) ? value : undefined);
+
 export const knobBoolean = (
   knob: string,
   value: boolean | string | undefined,
@@ -79,8 +81,9 @@ const ulimitEntry = (name: string, limit: UlimitKnob, fail: InvalidKnob) => {
         value,
       });
 
-    if (typeof value === "number") return Number.isInteger(value) ? value : invalid();
-    return INTEGER_TEXT.test(value) ? Number.parseInt(value, 10) : invalid();
+    const parsed =
+      typeof value === "number" ? value : INTEGER_TEXT.test(value) ? Number.parseInt(value, 10) : Number.NaN;
+    return safeInteger(parsed) ?? invalid();
   };
 
   return { Name: name, Soft: bound("soft", limit.soft), Hard: bound("hard", limit.hard) };
@@ -98,19 +101,45 @@ export const ulimitEntries = (
 // target-to-options map, so the split is on the FIRST colon only.
 export const tmpfsMounts = (
   mounts: ReadonlyArray<string> | undefined,
+  fail: InvalidKnob,
 ): Record<string, string> | undefined => {
   if (mounts === undefined) return undefined;
 
   const map: Record<string, string> = {};
   for (const mount of mounts) {
     const separator = mount.indexOf(":");
-    if (separator === -1) {
-      map[mount] = "";
-      continue;
+    const target = separator === -1 ? mount : mount.slice(0, separator);
+    if (Object.hasOwn(map, target)) {
+      return fail("Compose runtime knob `tmpfs` repeats a container destination.", {
+        knob: "tmpfs",
+        target,
+      });
     }
-    map[mount.slice(0, separator)] = mount.slice(separator + 1);
+    map[target] = separator === -1 ? "" : mount.slice(separator + 1);
   }
   return map;
+};
+
+export const positiveInteger = (
+  knob: string,
+  value: number | undefined,
+  fail: InvalidKnob,
+): number | undefined => {
+  if (value === undefined) return undefined;
+  return safeInteger(value) !== undefined && value > 0
+    ? value
+    : fail(`Compose runtime knob \`${knob}\` requires a positive integer.`, { knob, value });
+};
+
+export const nonNegativeInteger = (
+  knob: string,
+  value: number | undefined,
+  fail: InvalidKnob,
+): number | undefined => {
+  if (value === undefined) return undefined;
+  return safeInteger(value) !== undefined && value >= 0
+    ? value
+    : fail(`Compose runtime knob \`${knob}\` requires a non-negative integer.`, { knob, value });
 };
 
 // One "host:address" entry per address — a hostname mapped to several addresses

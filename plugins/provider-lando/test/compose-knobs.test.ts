@@ -8,138 +8,7 @@ import {
   podmanComposeKnobsForPlatform,
   realizePodmanComposeKnobs,
 } from "../src/compose-knobs.ts";
-
-// =============================================================================
-// Hand-written expectation table for the Podman Compose runtime-knob mapping.
-//
-// Written independently of `compose-knobs.ts` internals — the inputs are the
-// canonical (post-decode) knob values core preserves into
-// `ServicePlan.extensions.compose`, and the outputs are the Podman
-// docker-compatible `POST /containers/create` slots each knob must land in.
-// A sibling declaration-vs-mapping diff test imports this table, so keep the
-// export name and shape stable.
-// =============================================================================
-
-interface KnobRealization {
-  readonly hostConfig: Record<string, unknown>;
-  readonly topLevel: Record<string, unknown>;
-  readonly query: Record<string, string>;
-}
-
-interface KnobFixture {
-  readonly input: Record<string, unknown>;
-  readonly expected: KnobRealization;
-}
-
-const inHostConfig = (fragment: Record<string, unknown>): KnobRealization => ({
-  hostConfig: fragment,
-  topLevel: {},
-  query: {},
-});
-
-const inTopLevel = (fragment: Record<string, unknown>): KnobRealization => ({
-  hostConfig: {},
-  topLevel: fragment,
-  query: {},
-});
-
-const inQuery = (fragment: Record<string, string>): KnobRealization => ({
-  hostConfig: {},
-  topLevel: {},
-  query: fragment,
-});
-
-const EMPTY_REALIZATION: KnobRealization = { hostConfig: {}, topLevel: {}, query: {} };
-
-// biome-ignore lint/suspicious/noExportsInTest: the sibling declaration-vs-mapping diff test imports this table.
-export const KNOB_FIXTURES = {
-  restart: {
-    input: { restart: "unless-stopped" },
-    expected: inHostConfig({ RestartPolicy: { Name: "unless-stopped" } }),
-  },
-  cap_add: {
-    input: { cap_add: ["NET_ADMIN", "SYS_PTRACE"] },
-    expected: inHostConfig({ CapAdd: ["NET_ADMIN", "SYS_PTRACE"] }),
-  },
-  cap_drop: {
-    input: { cap_drop: ["MKNOD"] },
-    expected: inHostConfig({ CapDrop: ["MKNOD"] }),
-  },
-  privileged: {
-    input: { privileged: true },
-    expected: inHostConfig({ Privileged: true }),
-  },
-  devices: {
-    input: { devices: [{ source: "/dev/sda", target: "/dev/xvda", permissions: "rwm" }] },
-    expected: inHostConfig({
-      Devices: [{ PathOnHost: "/dev/sda", PathInContainer: "/dev/xvda", CgroupPermissions: "rwm" }],
-    }),
-  },
-  ulimits: {
-    input: { ulimits: { nofile: { soft: 20000, hard: 40000 } } },
-    expected: inHostConfig({ Ulimits: [{ Name: "nofile", Soft: 20000, Hard: 40000 }] }),
-  },
-  sysctls: {
-    input: { sysctls: { "net.core.somaxconn": 1024 } },
-    expected: inHostConfig({ Sysctls: { "net.core.somaxconn": "1024" } }),
-  },
-  tmpfs: {
-    input: { tmpfs: ["/run", "/tmp:size=64m"] },
-    expected: inHostConfig({ Tmpfs: { "/run": "", "/tmp": "size=64m" } }),
-  },
-  shm_size: {
-    input: { shm_size: 67108864 },
-    expected: inHostConfig({ ShmSize: 67108864 }),
-  },
-  dns: {
-    input: { dns: ["8.8.8.8", "1.1.1.1"] },
-    expected: inHostConfig({ Dns: ["8.8.8.8", "1.1.1.1"] }),
-  },
-  dns_search: {
-    input: { dns_search: ["example.com"] },
-    expected: inHostConfig({ DnsSearch: ["example.com"] }),
-  },
-  dns_opt: {
-    input: { dns_opt: ["ndots:2"] },
-    expected: inHostConfig({ DnsOptions: ["ndots:2"] }),
-  },
-  extra_hosts: {
-    input: { extra_hosts: { "host.local": "10.0.0.1" } },
-    expected: inHostConfig({ ExtraHosts: ["host.local:10.0.0.1"] }),
-  },
-  init: {
-    input: { init: true },
-    expected: inHostConfig({ Init: true }),
-  },
-  stop_signal: {
-    input: { stop_signal: "SIGUSR1" },
-    expected: inTopLevel({ StopSignal: "SIGUSR1" }),
-  },
-  stop_grace_period: {
-    input: { stop_grace_period: 30 },
-    expected: inTopLevel({ StopTimeout: 30 }),
-  },
-  security_opt: {
-    input: { security_opt: ["label=disable"] },
-    expected: inHostConfig({ SecurityOpt: ["label=disable"] }),
-  },
-  group_add: {
-    input: { group_add: ["audio", 1001] },
-    expected: inHostConfig({ GroupAdd: ["audio", "1001"] }),
-  },
-  read_only: {
-    input: { read_only: true },
-    expected: inHostConfig({ ReadonlyRootfs: true }),
-  },
-  platform: {
-    input: { platform: "linux/amd64" },
-    expected: inQuery({ platform: "linux/amd64" }),
-  },
-  logging: {
-    input: { logging: { driver: "json-file", options: { "max-size": "10m" } } },
-    expected: inHostConfig({ LogConfig: { Type: "json-file", Config: { "max-size": "10m" } } }),
-  },
-} satisfies Record<string, KnobFixture>;
+import { EMPTY_REALIZATION, KNOB_FIXTURES, type KnobRealization } from "./compose-knobs-fixtures.ts";
 
 // =============================================================================
 // Fixtures
@@ -282,6 +151,15 @@ describe("podman Compose runtime knob value coercion", () => {
     expect(calls[0]?.message).toContain("ulimits");
   });
 
+  test("Given an unsafe integer ulimit, when realized, then onInvalid rejects the rounded bound", () => {
+    const calls = captureInvalid({
+      ulimits: { nofile: { soft: "9007199254740993", hard: "9007199254740993" } },
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.details).toMatchObject({ knob: "ulimits", bound: "soft" });
+  });
+
   test("Given null, numeric, and boolean sysctls, when realized, then each is stringified", () => {
     expect(
       realize({ sysctls: { "net.ipv4.ip_forward": 1, "kernel.shm": null, "net.debug": true } }).hostConfig,
@@ -295,6 +173,31 @@ describe("podman Compose runtime knob value coercion", () => {
       Tmpfs: { "/run": "", "/tmp": "size=64m,mode=1777" },
     });
   });
+
+  test("Given duplicate tmpfs destinations, when realized, then onInvalid rejects the lossy mapping", () => {
+    const calls = captureInvalid({ tmpfs: ["/tmp:size=64m", "/tmp:mode=1777"] });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.details).toMatchObject({ knob: "tmpfs", target: "/tmp" });
+  });
+
+  for (const stopGracePeriod of [0.5, -1, Number.MAX_SAFE_INTEGER + 1]) {
+    test(`Given stop_grace_period ${stopGracePeriod}, when realized, then onInvalid rejects it`, () => {
+      const calls = captureInvalid({ stop_grace_period: stopGracePeriod });
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.details).toMatchObject({ knob: "stop_grace_period", value: stopGracePeriod });
+    });
+  }
+
+  for (const shmSize of [0, -1]) {
+    test(`Given shm_size ${shmSize}, when realized, then onInvalid rejects it`, () => {
+      const calls = captureInvalid({ shm_size: shmSize });
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.details).toMatchObject({ knob: "shm_size", value: shmSize });
+    });
+  }
 
   test("Given an extra host with several addresses, when realized, then each becomes its own entry", () => {
     expect(realize({ extra_hosts: { "api.local": ["10.0.0.1", "10.0.0.2"] } }).hostConfig).toEqual({
