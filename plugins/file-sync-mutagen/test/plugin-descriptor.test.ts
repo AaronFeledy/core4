@@ -49,6 +49,7 @@ const runFileSyncCheck = async (userDataRoot: string) => {
       platform: currentPlatform(),
       env: {},
       userDataRoot,
+      binDir: join(userDataRoot, "bin"),
       stateDir: undefined,
     }),
   );

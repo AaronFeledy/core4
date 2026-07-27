@@ -15,6 +15,7 @@ import {
 } from "@lando/sdk/schema";
 import { ConfigService, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "../../config/paths.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import {
@@ -202,6 +203,7 @@ interface PluginDoctorInput {
   readonly platform: HostPlatform;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly userDataRoot: string | undefined;
+  readonly binDir: string | undefined;
   readonly stateDir: string | undefined;
 }
 
@@ -424,6 +426,7 @@ export const doctor = (
       stateDir,
       env: options.env ?? process.env,
       userDataRoot,
+      binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
     });
     const preemptiveReports = reports.filter((report) => report.preempts === true);
     if (preemptiveReports.length > 0) {

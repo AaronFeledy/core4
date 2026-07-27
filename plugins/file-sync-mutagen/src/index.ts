@@ -13,7 +13,6 @@
  */
 
 import path from "node:path";
-
 import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
@@ -187,12 +186,10 @@ export const engine = Layer.effect(
 
 export const fileSyncCheck: PluginDoctorCheckContribution = {
   id: "file-sync",
-  run: ({ userDataRoot }) =>
+  run: ({ binDir }) =>
     Effect.gen(function* () {
       const installStatus =
-        userDataRoot === undefined
-          ? undefined
-          : yield* Effect.promise(() => readInstalledMutagenStatus(path.join(userDataRoot, "bin")));
+        binDir === undefined ? undefined : yield* Effect.promise(() => readInstalledMutagenStatus(binDir));
       const installedVersion = installStatus?.installedVersion;
       const isCurrent = installStatus?.isCurrent === true;
 

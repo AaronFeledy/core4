@@ -66,6 +66,7 @@ export interface PluginDoctorCheckContribution {
     readonly platform: HostPlatform;
     readonly env: Readonly<Record<string, string | undefined>>;
     readonly userDataRoot: string | undefined;
+    readonly binDir: string | undefined;
     readonly stateDir: string | undefined;
   }) => Effect.Effect<ReadonlyArray<PluginDoctorReport>, never>;
 }
