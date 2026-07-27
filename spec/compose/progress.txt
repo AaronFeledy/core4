@@ -382,9 +382,9 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - **Learnings for future iterations:** Sandbox container networking needs a working systemd user session for aardvark-dns; installing matching SONAME host libs for the managed Podman bundle is required on Ubuntu 26.04 before full provider setup; YAML `command: true` becomes boolean — quote healthcheck/service commands as strings for Landofile fixtures.
 ---
 
-## 2026-07-26 19:10 CDT - Babysit
+## [2026-07-26T19:11:46-05:00] - Babysit
 - PR: #635 https://github.com/AaronFeledy/core4/pull/635
-- CI outcome: fail (provider-integration-* waitForExit fake Podman HTTP 500), then pass after fix
-- Review feedback: fixed (serve native Podman `/libpod/containers/{name}/wait` numeric fixture)
+- CI outcome: pass
+- Review feedback: fixed (native Podman wait endpoint; guide coverage + skip; Docker/Podman/Lando wait fixtures and completing-service race)
 - Merge: merged (squash)
 ---
