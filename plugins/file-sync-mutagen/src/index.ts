@@ -18,6 +18,11 @@ import { Effect, Layer, Schema, type Scope, type Stream } from "effect";
 
 import { FileSyncStartError } from "@lando/sdk/errors";
 import {
+  type PluginDoctorCheckContribution,
+  type PluginDoctorReport,
+  definePlugin,
+} from "@lando/sdk/plugins";
+import {
   type FileSyncEngineCapabilities as FileSyncEngineCapabilitiesType,
   type FileSyncEventChunk,
   type FileSyncSessionFilter,
@@ -37,7 +42,7 @@ import {
 import type { ToolError } from "@lando/sdk/tool-provisioning";
 
 import { type MutagenClient, makeUnavailableMutagenClient, toFileSyncSessionInfo } from "./mutagen-client.ts";
-import { MUTAGEN_TOOL_VERSION, provisionMutagen } from "./provision.ts";
+import { MUTAGEN_TOOL_VERSION, provisionMutagen, readInstalledMutagenStatus } from "./provision.ts";
 import { mutagenSessionName, mutagenSessionRef } from "./session-name.ts";
 
 export const PLUGIN_NAME = "@lando/file-sync-mutagen" as const;
@@ -180,6 +185,46 @@ export const engine = Layer.effect(
   }),
 );
 
+export const fileSyncCheck: PluginDoctorCheckContribution = {
+  id: "file-sync",
+  run: ({ userDataRoot }) =>
+    Effect.gen(function* () {
+      const installStatus =
+        userDataRoot === undefined
+          ? undefined
+          : yield* Effect.promise(() => readInstalledMutagenStatus(path.join(userDataRoot, "bin")));
+      const installedVersion = installStatus?.installedVersion;
+      const isCurrent = installStatus?.isCurrent === true;
+
+      return [
+        {
+          name: "file-sync",
+          status: isCurrent ? "pass" : "warn",
+          severity: isCurrent ? "info" : "warn",
+          runtimeStatus: installedVersion === undefined ? "not-installed" : "installed",
+          runtime: {
+            running: isCurrent,
+            ...(installedVersion === undefined ? {} : { version: installedVersion }),
+          },
+          context: {
+            engineId: ENGINE_ID,
+            mutagenVersion: installedVersion ?? "not-installed",
+            expectedVersion: MUTAGEN_TOOL_VERSION,
+          },
+          solutions: isCurrent
+            ? []
+            : [
+                {
+                  kind: "manual",
+                  description: "Run `lando setup` to download the Mutagen host CLI and agent binaries.",
+                  command: "lando setup",
+                },
+              ],
+        },
+      ] satisfies ReadonlyArray<PluginDoctorReport>;
+    }),
+};
+
 /** Test seam for building the Layer against a caller-supplied client. */
 export const makeEngineLayer = (options: MakeFileSyncEngineOptions = {}) =>
   Layer.succeed(FileSyncEngine, makeFileSyncEngine(options));
@@ -193,6 +238,13 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   enabled: true,
   contributes: { fileSyncEngines: [ENGINE_ID] },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  fileSyncEngines: new Map([[ENGINE_ID, engine]]),
+  doctorChecks: [fileSyncCheck],
 });
 
 export {
