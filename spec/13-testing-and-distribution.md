@@ -194,6 +194,12 @@ In §13.2 and every cross-reference to the **schema snapshot**, that term means 
 
 The artifact-set gate requires complete public-registry and canonical-command coverage, deterministic JSON Schema output, generated reference docs that are never hand-edited, and drift detection across every listed artifact plus `docs/reference/schemas/`. Drift detection MUST include newly generated untracked files, not only modifications to tracked files.
 
+The semantic compatibility gate (`bun run check:schema-compatibility`) runs after artifact regeneration and drift verification. It reads the "before" schema documents from git at `LANDO_SCHEMA_COMPATIBILITY_BASE_REF` (default `origin/main`) and compares them with the working-tree artifact set; it does not commit a duplicate baseline. When a base ref predates either artifact index, that family cannot be compared: the gate prints a visible notice, reports the exact number of skipped current surfaces in its summary, and continues without failing. Once an index exists in the base, missing or unreadable artifacts remain errors.
+
+Every detected change is classified as `compatible`, `breaking`, or `unknown`. Command result schemas are output surfaces. The explicit SDK polarity map marks only known authoring surfaces (including `LandofileShape`, `ServiceConfigInput`, and `GlobalConfig`) as input and known consumer-read surfaces as output; every unlisted SDK schema uses strict polarity. Input compatibility requires widening (`old ⊆ new`), so an optional property addition or enum widening is compatible while a required property addition, property removal, optional-to-required transition, or enum narrowing is breaking. Output compatibility protects consumers in the opposite direction: adding a property is compatible, while removing a property or changing required to optional is breaking. Strict polarity treats property removal and either narrowing direction as breaking rather than inferring a permissive direction.
+
+Changes involving rewritten `oneOf` / `anyOf` / `allOf`, conditionals, changed `$ref` targets or reference graphs, and schema keywords the checker does not model confidently are `unknown`. Both unaccepted `breaking` and `unknown` findings fail the gate. A deliberately accepted finding must be listed exactly in `sdk/compatibility-exceptions.json` by schema or canonical command surface, change kind, JSON path, and a non-empty human justification; wildcard or whole-schema exceptions are not supported.
+
 Core ships and validates schemas for:
 
 - Global config

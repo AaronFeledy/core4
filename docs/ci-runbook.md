@@ -51,7 +51,7 @@ CI fails if the generated schema artifact set or bundled plugin/recipe tables dr
 bun run codegen
 ```
 
-For focused local checks, CI runs `bun run codegen:schema-snapshot` and verifies path-scoped artifact status.
+For focused local checks, CI runs `bun run codegen:schema-snapshot`, verifies path-scoped artifact status, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout uses full git history so the compatibility checker can read base-ref artifacts; set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. If the base predates an SDK or command artifact index, the summary visibly counts that family as skipped instead of consulting the deleted combined snapshot.
 
 The same job checks path-scoped `git status --porcelain` output for the SDK schemas, command result schemas, both indexes, bundled manifest fixture, and generated reference docs, so modified, deleted, and newly generated untracked files all fail the gate. It also regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` is current. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
 

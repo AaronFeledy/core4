@@ -170,6 +170,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - name: Mark job start
         run: echo "CI_JOB_STARTED_AT=$(date +%s)" >> "$GITHUB_ENV"
@@ -192,6 +194,11 @@ jobs:
             printf "%s\n" "$schema_changes"
             exit 1
           fi
+
+      - name: Check schema compatibility
+        env:
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+        run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
         run: |

@@ -760,6 +760,8 @@ ${renderUnitTests()}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
 ${timingStartStep}
 
@@ -775,6 +777,11 @@ ${setupBunSteps}
             printf "%s\\n" "$schema_changes"
             exit 1
           fi
+
+      - name: Check schema compatibility
+        env:
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+        run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
         run: |

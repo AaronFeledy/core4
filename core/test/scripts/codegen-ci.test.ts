@@ -360,7 +360,15 @@ describe("ci workflow codegen", () => {
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v5`);
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0`);
+      expect(workflow).toContain("- name: Check schema compatibility");
+      expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+      expect(workflow).toContain("run: bun run check:schema-compatibility");
+      expect(workflow.indexOf("Verify schema artifact set is current")).toBeLessThan(
+        workflow.indexOf("Check schema compatibility"),
+      );
 
       expect(workflow).toContain("bundled-codegen:");
       expect(workflow).toContain("- name: Regenerate bundled plugins");
