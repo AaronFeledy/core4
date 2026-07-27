@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
+import { ProviderCapabilities } from "@lando/sdk/schema";
 
 describe("container runtime capability helpers", () => {
   test("builds common provider capability shapes from explicit constants", () => {
@@ -17,5 +19,34 @@ describe("container runtime capability helpers", () => {
     expect(capabilities.tlsCertificates).toBe("none");
     expect(capabilities.bindMountPerformance).toBe("native");
     expect(capabilities.copyOnWriteAppRoot).toBe(false);
+  });
+
+  test("defaults composeKnobs to an empty supported set when the constant is omitted", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "portable",
+      providerExtensions: [],
+    });
+
+    expect(capabilities.composeKnobs).toEqual({ supported: [] });
+  });
+
+  test("passes an explicit composeKnobs declaration through unchanged", () => {
+    const composeKnobs = { supported: ["restart", "tmpfs"] as const };
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "native",
+      composeKnobs: { supported: ["restart", "tmpfs"] },
+      providerExtensions: [],
+    });
+
+    expect(capabilities.composeKnobs).toEqual(composeKnobs);
+    expect(Schema.decodeSync(ProviderCapabilities)(capabilities)).toEqual(capabilities);
   });
 });

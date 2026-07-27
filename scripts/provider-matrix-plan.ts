@@ -1,4 +1,7 @@
-import { MACHINE_LIFECYCLE_ACCEPTANCE_CELLS } from "./provider-machine-lifecycle-plan.ts";
+import {
+  COMPOSE_KNOBS_TRANSPORT_CHECK,
+  MACHINE_LIFECYCLE_ACCEPTANCE_CELLS,
+} from "./provider-machine-lifecycle-plan.ts";
 
 export type ProviderAcceptanceCellId =
   | "docker-desktop-macos"
@@ -51,6 +54,7 @@ const landoChecks = [
     label: "Managed setup/readiness gates",
     command: bunTest("plugins/provider-lando/test/setup-version-gate.test.ts"),
   },
+  COMPOSE_KNOBS_TRANSPORT_CHECK,
   {
     id: "sdk-provider-contract",
     label: "SDK provider contract against live Podman socket",

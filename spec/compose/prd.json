@@ -162,8 +162,8 @@
       "title": "Podman realization of the common knobs",
       "description": "As a user on the bundled Podman provider, the common runtime knobs take real effect in the created container.",
       "acceptanceCriteria": [
-        "The Podman provider maps to libpod create-container fields: restart, cap_add/cap_drop, privileged, devices, ulimits, sysctls, tmpfs, shm_size, dns/dns_search/dns_opt, extra_hosts, init, stop_signal, stop_grace_period, security_opt, group_add, read_only, platform, pull_policy, and deploy.resources (cpus, memory, pids).",
-        "logging and gpus are declared per actual Podman support on each host platform; anything undeclared is excluded from the capability declaration (so the US-473 check rejects it) rather than best-effort mapped.",
+        "The Podman provider maps to libpod create-container fields: restart, cap_add/cap_drop, privileged, devices, ulimits, sysctls, tmpfs, shm_size, dns/dns_search/dns_opt, extra_hosts, init, stop_signal, stop_grace_period, security_opt, group_add, read_only, platform, and logging.",
+        "logging is declared on Linux, macOS, and Windows because Podman consumes its complete driver plus options shape and rejects invalid values loudly; the provider additionally rejects the remote-incompatible passthrough and passthrough-tty drivers before container creation. pull_policy, gpus, and deploy.resources are excluded from the capability declaration on every host platform in this wave because the frozen key-level capability contract cannot honestly represent their supported value or subfield subsets, so the US-473 check rejects them before provider action rather than best-effort or silently partial realization.",
         "The provider's declared knob set exactly matches the implemented mapping, asserted by a declaration-vs-mapping diff test.",
         "Unit tests cover request-body construction per knob; live effects (privileged, ulimit, extra_hosts) verified in the env-gated LANDO_TEST_PODMAN_SOCKET integration suite, serial per repo convention.",
         "Windows named-pipe and Linux socket transports both exercised where CI supports them.",
@@ -172,7 +172,7 @@
         "Lint passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 5.5.1 capability model made real for the bundled provider. Blocked by US-473. Win32 uses the \\\\.\\pipe\\podman-lando named-pipe transport per root AGENTS.md."
     },
     {

@@ -16,6 +16,7 @@ export interface ProviderCapabilityConstants {
   readonly tlsCertificates: ProviderCapabilitiesShape["tlsCertificates"];
   readonly rootless: ProviderCapabilitiesShape["rootless"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
+  readonly composeKnobs?: ProviderCapabilitiesShape["composeKnobs"];
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
   readonly hostProxy?: ProviderCapabilitiesShape["hostProxy"];
 }
@@ -51,7 +52,7 @@ export const buildProviderCapabilities = (
     rootless: constants.rootless,
     privilegedServices: false,
     composeSpec: constants.composeSpec,
-    composeKnobs: { supported: [] },
+    composeKnobs: constants.composeKnobs ?? { supported: [] },
     providerExtensions: constants.providerExtensions,
     ...(constants.hostProxy === undefined ? {} : { hostProxy: constants.hostProxy }),
   });

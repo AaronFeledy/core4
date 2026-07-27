@@ -166,7 +166,8 @@ describe("RuntimeProviderRegistryLive", () => {
     );
 
     expect(capabilities.serviceExec).toBe(true);
-    expect(capabilities.composeSpec).toBe("portable");
+    expect(capabilities.composeSpec).toBe("native");
+    expect(capabilities.composeKnobs?.supported).toContain("restart");
   });
 
   test("lists provider ids from PluginRegistry contributions", async () => {

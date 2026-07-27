@@ -1,5 +1,11 @@
 import type { ProviderAcceptanceCellPlan, ProviderAcceptanceCheckPlan } from "./provider-matrix-plan.ts";
 
+export const COMPOSE_KNOBS_TRANSPORT_CHECK = {
+  id: "compose-knobs-transport",
+  label: "Compose knob request serialization through platform IPC transport",
+  command: ["bun", "test", "plugins/provider-lando/test/compose-knobs-transport.test.ts"],
+} as const satisfies ProviderAcceptanceCheckPlan;
+
 const bunTest = (testNamePattern: string): readonly string[] => [
   "bun",
   "test",
@@ -14,6 +20,11 @@ const managedMachineChecks = [
     label: "Managed Podman machine start, stop, restart, and destroy",
     command: bunTest("managed machine start stop destroy"),
   },
+] as const satisfies readonly ProviderAcceptanceCheckPlan[];
+
+const managedWindowsMachineChecks = [
+  COMPOSE_KNOBS_TRANSPORT_CHECK,
+  ...managedMachineChecks,
 ] as const satisfies readonly ProviderAcceptanceCheckPlan[];
 
 const systemMachineChecks = [
@@ -55,7 +66,7 @@ export const MACHINE_LIFECYCLE_ACCEPTANCE_CELLS = [
     requiredEnv: "LANDO_TEST_PROVIDER_LANDO_MACHINE_LIFECYCLE",
     requiredEnvValue: "1",
     requiredCommand: podmanMachineCommand,
-    checks: managedMachineChecks,
+    checks: managedWindowsMachineChecks,
   },
   {
     id: "podman-machine-macos",

@@ -134,6 +134,7 @@ export type {
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
 export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";
+export { podmanComposeKnobs } from "./compose-knobs.ts";
 export { bringDown } from "./bring-down.ts";
 export type { BringDownOptions } from "./bring-down.ts";
 export { ensureRuntime } from "./ensure-runtime.ts";
