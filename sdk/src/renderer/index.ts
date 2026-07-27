@@ -17,6 +17,8 @@ import type { Layer } from "effect";
 
 import type { EventService, Renderer } from "../services/index.ts";
 
+export * from "./format.ts";
+
 export {
   RENDERER_CAPABILITIES_NONE,
   RENDERER_CAPABILITIES_TTY_INITIAL,
@@ -87,6 +89,10 @@ export interface RendererIO {
   readonly subscribeInput?: (onKey: (raw: string) => void) => () => void;
 }
 
+export interface InteractivePromptDriver {
+  readonly readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>;
+}
+
 /**
  * A resolved renderer contribution: the `Renderer` service layer and the
  * event-consumer layer for a given {@link RendererIO}, both built and owned by
@@ -96,4 +102,5 @@ export interface RendererContribution {
   readonly id: string;
   readonly makeService: (io: RendererIO) => Layer.Layer<Renderer>;
   readonly makeEventConsumer: (io: RendererIO) => Layer.Layer<never, never, EventService>;
+  readonly loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>;
 }

@@ -4,7 +4,7 @@
  */
 import type { Effect } from "effect";
 
-import type { EventError } from "../errors/index.ts";
+import type { EventError, StateStoreError } from "../errors/index.ts";
 import type { LandoEvent, RenderEvent } from "../events/index.ts";
 import type { PluginManifest } from "../schema/plugin.ts";
 import type { AbsolutePath } from "../schema/primitives.ts";
@@ -29,6 +29,7 @@ export type {
   RendererPanelWatch,
 } from "../schema/renderer-panel.ts";
 export type { RenderEvent } from "../events/rich-render.ts";
+export * from "./module.ts";
 
 /**
  * Constrained publish-only seam onto the closed `RenderEvent` vocabulary.
@@ -51,6 +52,7 @@ export interface PluginStateStore {
     readonly schema: unknown;
     readonly root?: { readonly path: AbsolutePath };
   }) => Effect.Effect<unknown, unknown>;
+  readonly withLock: <A, E>(key: string, body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
 }
 
 /**

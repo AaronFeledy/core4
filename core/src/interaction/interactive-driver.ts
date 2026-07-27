@@ -17,14 +17,11 @@
  * cli→core layering inversion.
  */
 
+import type { InteractivePromptDriver } from "@lando/sdk/renderer";
 import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver.ts";
 
-interface RawPromptDriver {
-  readonly readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>;
-}
-
 interface RendererPluginModule {
-  readonly loadInteractivePromptDriver?: () => Promise<RawPromptDriver>;
+  readonly loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>;
 }
 
 export interface InteractiveDriverGate {
@@ -63,7 +60,7 @@ const degradeOpenTuiPrompts = async (gate: InteractiveDriverGate, cause: unknown
   await gate.debug?.(DEGRADATION_NOTICE, { cause });
 };
 
-const adaptDriver = (raw: RawPromptDriver, gate: InteractiveDriverGate): PromptDriver => ({
+const adaptDriver = (raw: InteractivePromptDriver, gate: InteractiveDriverGate): PromptDriver => ({
   readRaw: async (request, signal) => {
     if (!openTuiPromptDriverAvailable) throw unavailableError();
     try {
