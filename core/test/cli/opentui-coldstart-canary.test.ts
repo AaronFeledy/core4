@@ -73,10 +73,12 @@ describe("OpenTUI cold-start canary", () => {
     expect(testingImports.length).toBeGreaterThan(0);
   });
 
-  test("the core driver loader reaches the renderer plugin only through a dynamic import", () => {
+  test("the core driver loader reaches the renderer descriptor table without importing the plugin by name", () => {
     const loader = readSource("core/src/interaction/interactive-driver.ts");
     expect(loader).not.toMatch(/import\s[^;]*from\s+["']@lando\/renderer-lando["']/);
-    expect(loader).toMatch(/import\(\s*["']@lando\/renderer-lando["']\s*\)/);
+    expect(loader).not.toMatch(/import\(\s*["']@lando\/renderer-lando["']\s*\)/);
+    expect(loader).toMatch(/from\s+["']\.\.\/plugins\/generated\/renderers\.ts["']/);
+    expect(loader).not.toContain("@opentui/core");
     expect(loader).not.toMatch(/import\(\s*[A-Za-z_$][\w$]*\s*\)/);
   });
 });

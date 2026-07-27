@@ -18,6 +18,7 @@
  */
 
 import type { InteractivePromptDriver } from "@lando/sdk/renderer";
+import { BUNDLED_RENDERER_MODULES } from "../plugins/generated/renderers.ts";
 import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver.ts";
 
 interface RendererPluginModule {
@@ -88,7 +89,13 @@ export const resolveInteractivePromptDriver = async (
 
   try {
     const importPlugin =
-      gate.importRendererPlugin ?? (() => import("@lando/renderer-lando") as Promise<RendererPluginModule>);
+      gate.importRendererPlugin ??
+      (async (): Promise<RendererPluginModule> => {
+        const contribution = BUNDLED_RENDERER_MODULES.find((module) =>
+          module.renderers?.has("lando"),
+        )?.renderers?.get("lando");
+        return contribution ?? {};
+      });
     const mod = await importPlugin();
     const loader = mod.loadInteractivePromptDriver;
     if (typeof loader !== "function") {

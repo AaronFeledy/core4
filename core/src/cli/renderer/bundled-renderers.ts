@@ -1,19 +1,18 @@
-import type { RendererContribution } from "@lando/sdk/renderer";
+import type { RendererContribution, RendererIO } from "@lando/sdk/renderer";
 
-import { renderer as landoRendererContribution } from "@lando/renderer-lando";
-export { makeNotificationConsumer as makeLandoNotificationConsumer } from "@lando/renderer-lando";
+import { BUNDLED_RENDERER_MODULES } from "../../plugins/generated/renderers.ts";
 
 /**
  * The renderer contributions supplied by bundled renderer plugins. Each plugin
  * owns and exports its finished `RendererContribution`; core only resolves the
  * contribution here — it does not assemble the renderer from parts.
  */
-const bundledRendererContributions: ReadonlyArray<RendererContribution> = [landoRendererContribution];
-
 const buildRegistry = (): ReadonlyMap<string, RendererContribution> => {
   const registry = new Map<string, RendererContribution>();
-  for (const contribution of bundledRendererContributions) {
-    if (!registry.has(contribution.id)) registry.set(contribution.id, contribution);
+  for (const module of BUNDLED_RENDERER_MODULES) {
+    for (const contribution of module.renderers?.values() ?? []) {
+      if (!registry.has(contribution.id)) registry.set(contribution.id, contribution);
+    }
   }
   return registry;
 };
@@ -29,3 +28,12 @@ export const resolveBundledRenderer = (id: string): RendererContribution => {
 };
 
 export const landoRenderer: RendererContribution = resolveBundledRenderer("lando");
+
+export const makeBundledLandoNotificationConsumer = (
+  io: RendererIO,
+): ReturnType<RendererContribution["makeEventConsumer"]> =>
+  landoRenderer.makeEventConsumer({
+    writeStdout: () => {},
+    writeStderr: () => {},
+    ...(io.isTTY === undefined ? {} : { isTTY: io.isTTY }),
+  });
