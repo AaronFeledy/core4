@@ -1,6 +1,8 @@
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
+import { definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 import { CertificateAuthority } from "@lando/sdk/services";
 
 export const PLUGIN_NAME = "@lando/ca-mkcert" as const;
@@ -18,3 +20,22 @@ export const makeCertificateAuthority = () => ({
 });
 
 export const engine = Layer.succeed(CertificateAuthority, makeCertificateAuthority());
+
+export const manifest = Schema.decodeSync(PluginManifest)({
+  name: PLUGIN_NAME,
+  version: "0.0.0",
+  api: 4,
+  requires: { "@lando/core": "^4.0.0" },
+  description: "mkcert-backed CertificateAuthority implementation.",
+  enabled: true,
+  contributes: {
+    cas: [CA_ID],
+  },
+  entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  layer: engine,
+});

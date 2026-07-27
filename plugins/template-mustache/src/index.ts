@@ -14,6 +14,7 @@
  */
 import { Layer, Schema } from "effect";
 
+import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { TemplateEngine } from "@lando/sdk/template";
 
@@ -38,4 +39,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
     templateEngines: ["mustache"],
   },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  layer: templateEngine,
+  templateEngines,
 });
