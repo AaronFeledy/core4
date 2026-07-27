@@ -3,11 +3,7 @@ import { DateTime } from "effect";
 
 import { ComposeServiceKnobKey, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
-import {
-  PODMAN_COMPOSE_KNOB_REGISTRY,
-  podmanComposeKnobsForPlatform,
-  realizePodmanComposeKnobs,
-} from "../src/compose-knobs.ts";
+import { podmanComposeKnobsForPlatform, realizePodmanComposeKnobs } from "../src/compose-knobs.ts";
 import { EMPTY_REALIZATION, KNOB_FIXTURES, type KnobRealization } from "./compose-knobs-fixtures.ts";
 
 // =============================================================================
@@ -73,23 +69,16 @@ const REMOTE_INVALID_LOG_DRIVERS = ["passthrough", "passthrough-tty"] as const;
 // Tests
 // =============================================================================
 
-describe("podman Compose runtime knob registry", () => {
-  test("Given the registry, when its keys are listed, then it declares exactly the mapped knobs", () => {
-    expect(Object.keys(PODMAN_COMPOSE_KNOB_REGISTRY).sort()).toEqual(Object.keys(KNOB_FIXTURES).sort());
-  });
-
-  test("Given the registry, when the unrealizable knobs are looked up, then none is declared", () => {
-    for (const knob of EXCLUDED_KNOBS) {
-      expect(Object.hasOwn(PODMAN_COMPOSE_KNOB_REGISTRY, knob)).toBe(false);
-    }
-  });
-
+describe("podman Compose runtime knob declaration", () => {
   for (const platform of ["linux", "darwin", "win32"] as const) {
     test(`Given host platform ${platform}, when knobs are listed, then every knob appears in published order`, () => {
       const supported = podmanComposeKnobsForPlatform(platform);
 
       expect(supported).toEqual(ComposeServiceKnobKey.literals.filter((key) => key in KNOB_FIXTURES));
       expect(supported).toHaveLength(21);
+      for (const knob of EXCLUDED_KNOBS) {
+        expect(supported).not.toContain(knob);
+      }
     });
   }
 });

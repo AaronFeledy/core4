@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect } from "effect";
 
-import { PODMAN_COMPOSE_KNOB_REGISTRY, podmanComposeKnobsForPlatform } from "@lando/provider-lando";
+import { podmanComposeKnobsForPlatform } from "@lando/provider-lando";
 import {
   InvalidPodmanMachineNameError,
   UnsupportedPodmanSocketError,
@@ -15,53 +15,51 @@ import {
   windowsPodmanCapabilities,
 } from "@lando/provider-podman";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
-import { ComposeServiceKnobKey, ProviderCapabilities } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey, type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
+import { KNOB_FIXTURES } from "../../provider-lando/test/compose-knobs-fixtures.ts";
+
+const declaredKnobs = (platform: HostPlatform) => {
+  const composeKnobs = podmanCapabilitiesForPlatform(platform).composeKnobs;
+  if (composeKnobs === undefined)
+    throw new Error(`provider-podman has no Compose knob declaration on ${platform}`);
+  return composeKnobs.supported;
+};
 
 describe("provider-podman capabilities", () => {
   test("declares native Compose support from the Podman knob registry on every platform", () => {
     const linux = podmanCapabilitiesForPlatform("linux");
     const macos = podmanCapabilitiesForPlatform("darwin");
     const windows = podmanCapabilitiesForPlatform("win32");
-    const linuxRegistryKeys = Object.entries(PODMAN_COMPOSE_KNOB_REGISTRY)
-      .filter(([, entry]) => entry.supportedOn.includes("linux"))
-      .map(([key]) => key);
-    const macosRegistryKeys = Object.entries(PODMAN_COMPOSE_KNOB_REGISTRY)
-      .filter(([, entry]) => entry.supportedOn.includes("darwin"))
-      .map(([key]) => key);
-    const windowsRegistryKeys = Object.entries(PODMAN_COMPOSE_KNOB_REGISTRY)
-      .filter(([, entry]) => entry.supportedOn.includes("win32"))
-      .map(([key]) => key);
+    const linuxKnobs = declaredKnobs("linux");
+    const macosKnobs = declaredKnobs("darwin");
+    const windowsKnobs = declaredKnobs("win32");
+    const fixtureKeys = new Set(Object.keys(KNOB_FIXTURES));
+    const expectedSupported = ComposeServiceKnobKey.literals.filter((key) => fixtureKeys.has(key));
 
     expect(linux.composeSpec).toBe("native");
     expect(macos.composeSpec).toBe("native");
     expect(windows.composeSpec).toBe("native");
-    expect(linux.composeKnobs.supported).toEqual(podmanComposeKnobsForPlatform("linux"));
-    expect(macos.composeKnobs.supported).toEqual(podmanComposeKnobsForPlatform("darwin"));
-    expect(windows.composeKnobs.supported).toEqual(podmanComposeKnobsForPlatform("win32"));
-    expect(linux.composeKnobs.supported).toHaveLength(21);
-    expect(macos.composeKnobs.supported).toHaveLength(21);
-    expect(windows.composeKnobs.supported).toHaveLength(21);
-    expect(linux.composeKnobs.supported).not.toContain("pull_policy");
-    expect(linux.composeKnobs.supported).not.toContain("gpus");
-    expect(linux.composeKnobs.supported).not.toContain("deploy.resources");
-    expect(macos.composeKnobs.supported).not.toContain("pull_policy");
-    expect(macos.composeKnobs.supported).not.toContain("gpus");
-    expect(macos.composeKnobs.supported).not.toContain("deploy.resources");
-    expect(windows.composeKnobs.supported).not.toContain("pull_policy");
-    expect(windows.composeKnobs.supported).not.toContain("gpus");
-    expect(windows.composeKnobs.supported).not.toContain("deploy.resources");
-    expect(new Set(linux.composeKnobs.supported)).toEqual(new Set(linuxRegistryKeys));
-    expect(new Set(macos.composeKnobs.supported)).toEqual(new Set(macosRegistryKeys));
-    expect(new Set(windows.composeKnobs.supported)).toEqual(new Set(windowsRegistryKeys));
-    expect(podmanComposeKnobsForPlatform("linux")).toEqual(
-      ComposeServiceKnobKey.literals.filter((key) => new Set(linuxRegistryKeys).has(key)),
-    );
-    expect(podmanComposeKnobsForPlatform("darwin")).toEqual(
-      ComposeServiceKnobKey.literals.filter((key) => new Set(macosRegistryKeys).has(key)),
-    );
-    expect(podmanComposeKnobsForPlatform("win32")).toEqual(
-      ComposeServiceKnobKey.literals.filter((key) => new Set(windowsRegistryKeys).has(key)),
-    );
+    expect(linuxKnobs).toEqual(podmanComposeKnobsForPlatform("linux"));
+    expect(macosKnobs).toEqual(podmanComposeKnobsForPlatform("darwin"));
+    expect(windowsKnobs).toEqual(podmanComposeKnobsForPlatform("win32"));
+    expect(linuxKnobs).toHaveLength(21);
+    expect(macosKnobs).toHaveLength(21);
+    expect(windowsKnobs).toHaveLength(21);
+    expect(linuxKnobs).not.toContain("pull_policy");
+    expect(linuxKnobs).not.toContain("gpus");
+    expect(linuxKnobs).not.toContain("deploy.resources");
+    expect(macosKnobs).not.toContain("pull_policy");
+    expect(macosKnobs).not.toContain("gpus");
+    expect(macosKnobs).not.toContain("deploy.resources");
+    expect(windowsKnobs).not.toContain("pull_policy");
+    expect(windowsKnobs).not.toContain("gpus");
+    expect(windowsKnobs).not.toContain("deploy.resources");
+    expect(linuxKnobs).toEqual(expectedSupported);
+    expect(macosKnobs).toEqual(expectedSupported);
+    expect(windowsKnobs).toEqual(expectedSupported);
+    expect(podmanComposeKnobsForPlatform("linux")).toEqual(expectedSupported);
+    expect(podmanComposeKnobsForPlatform("darwin")).toEqual(expectedSupported);
+    expect(podmanComposeKnobsForPlatform("win32")).toEqual(expectedSupported);
   });
 
   test("declares every ProviderCapabilities field for Linux, macOS, and Windows", () => {
