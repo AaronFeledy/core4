@@ -6,6 +6,7 @@
  */
 import { Layer, Schema } from "effect";
 
+import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 
 export const PLUGIN_NAME = "@lando/logger-pretty" as const;
@@ -21,4 +22,11 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   enabled: true,
   contributes: { loggers: ["pretty"] },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  layer: logger,
+  loggers: new Map([["pretty", logger]]),
 });
