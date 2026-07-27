@@ -43,6 +43,11 @@ import {
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import {
+  type PluginDoctorCheckContribution,
+  type PluginDoctorReport,
+  definePlugin,
+} from "@lando/sdk/plugins";
+import {
   AppId,
   AppPlan,
   type HostPlatform,
@@ -50,7 +55,13 @@ import {
   type ProviderCapabilities,
   ProviderId,
 } from "@lando/sdk/schema";
-import { type AppSelector, RuntimeProvider, type RuntimeProviderShape } from "@lando/sdk/services";
+import {
+  type AppSelector,
+  LogFileHelperAssets,
+  PathsService,
+  RuntimeProvider,
+  type RuntimeProviderShape,
+} from "@lando/sdk/services";
 
 import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
 import { redactDetails, redactString } from "./redact.ts";
@@ -933,6 +944,75 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   enabled: true,
   contributes: { providers: [PROVIDER_ID] },
   entry: "./src/index.ts",
+});
+
+const conflictCheck: PluginDoctorCheckContribution = {
+  id: "provider-conflict",
+  run: (input) => {
+    const stateDir = input.stateDir;
+    if (input.providerId !== PROVIDER_ID || stateDir === undefined || stateDir.length === 0) {
+      return Effect.succeed([]);
+    }
+    const socketPath = resolvePodmanSocket({ platform: input.platform, env: input.env });
+    return detectProviderLandoConflict(stateDir, socketPath).pipe(
+      Effect.as([]),
+      Effect.catchAll((error) => {
+        if (!(error instanceof ProviderLandoConflictError)) return Effect.die(error);
+        const report = {
+          name: "provider-conflict",
+          status: "warn",
+          severity: "warn",
+          runtimeStatus: "conflict",
+          runtime: { running: false },
+          context: {
+            providerId: input.providerId,
+            providerKind: "user-installed",
+            providerVersion: "unknown",
+            runtimeStatus: "conflict",
+            platform: input.platform,
+            conflictKind: "provider-lando-podman-socket",
+            socketPath,
+            providerLandoStatePath: providerLandoStatePath(stateDir),
+          },
+          solutions: [
+            {
+              kind: "manual",
+              description: error.remediation ?? "",
+              command: `lando setup --provider=${error.providerId}`,
+            },
+          ],
+          preempts: true,
+        } satisfies PluginDoctorReport;
+        return Effect.succeed([report]);
+      }),
+    );
+  },
+};
+
+const runtimeProviderId = ProviderId.make(PROVIDER_ID);
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  runtimeProviders: new Map([
+    [
+      runtimeProviderId,
+      {
+        id: runtimeProviderId,
+        make: () =>
+          Effect.gen(function* () {
+            const paths = yield* PathsService;
+            const assets = yield* LogFileHelperAssets;
+            const logFileHelperPayloads = yield* assets.payloads;
+            return yield* makeRuntimeProvider({
+              stateDir: `${paths.roots.userDataRoot}/providers`,
+              logFileHelperPayloads,
+            });
+          }),
+      },
+    ],
+  ]),
+  doctorChecks: [conflictCheck],
 });
 
 export type { PodmanApiClient } from "@lando/provider-lando";
