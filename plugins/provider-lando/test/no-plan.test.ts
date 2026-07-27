@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { makeRuntimeProvider } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, AppId, PortablePath, ProviderId, ServiceName } from "@lando/sdk/schema";
@@ -90,7 +91,9 @@ const makeMinimalFakeApi = (): PodmanApiClient => {
 
 describe("provider-lando no-plan error messages", () => {
   test("exec without an applied plan fails with precise ProviderUnavailableError", async () => {
-    const provider = await Effect.runPromise(makeRuntimeProvider());
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ sanitizeAppliedPlan: stripHostProxyRunLando }),
+    );
     const exit = await Effect.runPromiseExit(
       provider.exec({ app: appId, service: node.name }, { command: ["echo", "hi"] }),
     );
@@ -112,7 +115,9 @@ describe("provider-lando no-plan error messages", () => {
   });
 
   test("execStream without an applied plan fails with precise ProviderUnavailableError", async () => {
-    const provider = await Effect.runPromise(makeRuntimeProvider());
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ sanitizeAppliedPlan: stripHostProxyRunLando }),
+    );
     const exit = await Effect.runPromiseExit(
       provider
         .execStream({ app: appId, service: node.name }, { command: ["echo", "hi"] })
@@ -135,7 +140,9 @@ describe("provider-lando no-plan error messages", () => {
   });
 
   test("logs without an applied plan fails with precise ProviderUnavailableError", async () => {
-    const provider = await Effect.runPromise(makeRuntimeProvider());
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ sanitizeAppliedPlan: stripHostProxyRunLando }),
+    );
     const exit = await Effect.runPromiseExit(
       provider.logs({ app: appId, service: node.name }, {}).pipe(Stream.runCollect),
     );
@@ -156,7 +163,9 @@ describe("provider-lando no-plan error messages", () => {
   });
 
   test("inspect without an applied plan fails with precise ProviderUnavailableError", async () => {
-    const provider = await Effect.runPromise(makeRuntimeProvider());
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ sanitizeAppliedPlan: stripHostProxyRunLando }),
+    );
     const exit = await Effect.runPromiseExit(provider.inspect({ app: appId, service: node.name }));
 
     expect(Exit.isFailure(exit)).toBe(true);
@@ -176,7 +185,9 @@ describe("provider-lando no-plan error messages", () => {
 
   test("exec with target.plan bypasses no-plan guard and reaches the provider", async () => {
     const fakeApi = makeMinimalFakeApi();
-    const provider = await Effect.runPromise(makeRuntimeProvider({ podmanApi: fakeApi }));
+    const provider = await Effect.runPromise(
+      makeRuntimeProvider({ podmanApi: fakeApi, sanitizeAppliedPlan: stripHostProxyRunLando }),
+    );
     const result = await Effect.runPromise(
       provider.exec({ app: appId, service: node.name, plan }, { command: ["echo", "hi"] }),
     );

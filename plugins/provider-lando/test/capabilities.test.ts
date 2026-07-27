@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Effect, Exit } from "effect";
 
 import {
@@ -48,7 +49,9 @@ describe("provider-lando capabilities", () => {
 
   test("does not advertise artifact builds without a Podman API client", async () => {
     const runtimeProvider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ platform: "linux" }))),
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, platform: "linux" })),
+      ),
     );
     expect(runtimeProvider.capabilities.artifactBuild).toBe(false);
     expect(runtimeProvider.capabilities.artifactPull).toBe(false);
@@ -59,6 +62,7 @@ describe("provider-lando capabilities", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
           }),
@@ -71,6 +75,7 @@ describe("provider-lando capabilities", () => {
 
   test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
     const layer = makeProviderLayer({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "linux",
       podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
     });
@@ -94,6 +99,7 @@ describe("provider-lando capabilities", () => {
   test("advertises service log source following only when file access is injected", async () => {
     const fs = makeMemoryLogFileAccess();
     const layer = makeProviderLayer({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "linux",
       podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
       logFileAccess: fs.access,
@@ -105,6 +111,7 @@ describe("provider-lando capabilities", () => {
 
   test("advertises service log source following when a helper payload matches Podman info architecture", async () => {
     const layer = makeProviderLayer({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "linux",
       podmanApi: { info: Effect.succeed({ host: { arch: "x86_64" } }), ping: Effect.succeed(undefined) },
       logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
@@ -116,6 +123,7 @@ describe("provider-lando capabilities", () => {
 
   test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
     const layer = makeProviderLayer({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "linux",
       podmanApi: { info: Effect.succeed({ host: { arch: "aarch64" } }), ping: Effect.succeed(undefined) },
       logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
@@ -127,6 +135,7 @@ describe("provider-lando capabilities", () => {
 
   test("declares macOS support with slow bind mount performance", async () => {
     const layer = makeProviderLayer({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
       platform: "darwin",
       arch: "arm64",
       podmanApi: { info: Effect.succeed({ host: { arch: "arm64" } }), ping: Effect.succeed(undefined) },
@@ -144,7 +153,11 @@ describe("provider-lando capabilities", () => {
   });
 
   test("declares Windows support with slow bind mount performance", async () => {
-    const layer = makeProviderLayer({ platform: "win32", arch: "arm64" });
+    const layer = makeProviderLayer({
+      sanitizeAppliedPlan: stripHostProxyRunLando,
+      platform: "win32",
+      arch: "arm64",
+    });
     const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.platform).toBe("win32");
@@ -168,6 +181,7 @@ describe("provider-lando capabilities", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             arch: "x64",
             podmanApi: { info: Effect.succeed({ host: { arch: "arm64" } }), ping: Effect.succeed(undefined) },
@@ -186,6 +200,7 @@ describe("provider-lando capabilities", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             arch: "arm64",
             podmanApi: { info: Effect.succeed({ host: {} }), ping: Effect.succeed(undefined) },
@@ -203,6 +218,7 @@ describe("provider-lando capabilities", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             arch: "arm64",
             providerSocketPath: "/tmp/lando-managed-podman.sock",
@@ -234,6 +250,7 @@ describe("provider-lando capabilities", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             arch: "arm64",
             providerSocketPath: "/tmp/lando-managed-cold.sock",

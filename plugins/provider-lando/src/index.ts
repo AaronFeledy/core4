@@ -10,7 +10,6 @@ import {
   type LogFileHelperPayloads,
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
-import { stripHostProxyRunLando } from "@lando/core/host-proxy-transport";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { definePlugin } from "@lando/sdk/plugins";
@@ -336,7 +335,7 @@ export interface ProviderLayerOptions {
   readonly logFileHelperPayloads?: LogFileHelperPayloads;
   readonly runtimeLock?: <A, E>(body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
   readonly runtimeGenerationStore?: RuntimeGenerationStore;
-  readonly sanitizeAppliedPlan?: (plan: AppPlan) => AppPlan;
+  readonly sanitizeAppliedPlan: (plan: AppPlan) => AppPlan;
 }
 
 interface RuntimeProviderServiceControls {
@@ -349,7 +348,7 @@ type RuntimeProviderWithContainerEvents = RuntimeProviderWithServiceControls & {
   readonly getContainerDiedEvents: ReturnType<typeof getContainerDiedEvents>;
 };
 
-export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
+export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const plans = new Map<string, AppPlan>();
   const providerId = ProviderId.make("lando");
   const platform = options.platform ?? currentHostPlatform();
@@ -482,7 +481,7 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   };
 
   const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
-    const persistedPlan = (options.sanitizeAppliedPlan ?? stripHostProxyRunLando)(plan);
+    const persistedPlan = options.sanitizeAppliedPlan(plan);
     plans.set(plan.id, persistedPlan);
     return stateDir === undefined
       ? Effect.void
@@ -855,10 +854,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
   });
 };
 
-export const makeProviderLayer = (options: ProviderLayerOptions = {}) =>
+export const makeProviderLayer = (options: ProviderLayerOptions) =>
   Layer.effect(RuntimeProvider, makeRuntimeProvider(options));
-
-export const provider = makeProviderLayer();
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,

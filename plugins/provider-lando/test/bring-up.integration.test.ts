@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createServer as createHttpServer } from "node:http";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { Cause, DateTime, Effect, Exit } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -709,7 +710,11 @@ describe("provider-lando bringUp", () => {
   test("RuntimeProvider apply delegates to bringUp", async () => {
     const fake = makeFakeApi();
     const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(Effect.provide(makeProviderLayer({ podmanApi: fake.api }))),
+      RuntimeProvider.pipe(
+        Effect.provide(
+          makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, podmanApi: fake.api }),
+        ),
+      ),
     );
 
     const result = await Effect.runPromise(provider.apply(plan, { reconcile: true }).pipe(Effect.scoped));
@@ -786,6 +791,7 @@ describe("provider-lando bringUp", () => {
         RuntimeProvider.pipe(
           Effect.provide(
             makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: makePodmanApiClient(socketPath ?? ""),
               platform: "win32",
             }),

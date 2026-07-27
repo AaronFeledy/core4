@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { dirname, join } from "node:path";
 
-import { resolveLiveProviderSocket } from "@lando/core/testing";
+import { resolveLiveProviderSocket, stripHostProxyRunLando } from "@lando/core/testing";
 import { makePodmanApiClient, makeProviderLayer } from "@lando/provider-lando";
 import {
   AbsolutePath,
@@ -71,7 +71,12 @@ describe("stock PHP prerequisites — live provider", () => {
       if (socket === undefined) return;
       const provider = await Effect.runPromise(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: makePodmanApiClient(socket.socketPath) })),
+          Effect.provide(
+            makeProviderLayer({
+              podmanApi: makePodmanApiClient(socket.socketPath),
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+            }),
+          ),
         ),
       );
       const configuredService = Schema.decodeUnknownSync(LandofileShape)({

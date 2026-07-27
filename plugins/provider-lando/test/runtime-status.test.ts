@@ -1,6 +1,7 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
@@ -178,7 +179,11 @@ describe("probeRuntimeServiceStatus", () => {
 describe("provider-lando runtime status", () => {
   test("getStatus returns narrow {running, message} shape matching reachability", async () => {
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({ podmanApi: reachableApi(), platform: "linux" }),
+      makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
+        podmanApi: reachableApi(),
+        platform: "linux",
+      }),
     );
 
     const status = await Effect.runPromise(provider.getStatus);
@@ -190,7 +195,11 @@ describe("provider-lando runtime status", () => {
 
   test("teardownRuntimeService is a no-op when provider is not managing a runtime", async () => {
     const provider = await Effect.runPromise(
-      makeRuntimeProvider({ podmanApi: reachableApi(), platform: "linux" }),
+      makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
+        podmanApi: reachableApi(),
+        platform: "linux",
+      }),
     );
 
     const result = await Effect.runPromise(provider.teardownRuntimeService);

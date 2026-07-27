@@ -1,6 +1,7 @@
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
@@ -31,6 +32,7 @@ describe("provider-lando runtime path resolution", () => {
       };
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           podmanApiFactory,
           podmanService: fakeServiceRunner,
@@ -81,6 +83,7 @@ describe("provider-lando runtime path resolution", () => {
       };
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           podmanApiFactory,
           podmanService: fakeServiceRunner,
@@ -123,6 +126,7 @@ describe("provider-lando runtime path resolution", () => {
     try {
       await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "win32",
           podmanApiFactory: (socketPath) => {
             observedSockets.push(socketPath);
@@ -148,6 +152,7 @@ describe("provider-lando runtime path resolution", () => {
     try {
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "darwin",
           podmanApiFactory: () => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }),
           podmanService: fakeServiceRunner,
@@ -186,6 +191,7 @@ describe("provider-lando runtime path resolution", () => {
       const runtimeBinDir = join(tempDir, "runtime", "bin");
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "darwin",
           podmanApiFactory: () => ({ info: Effect.succeed({}), ping: Effect.succeed(undefined) }),
           podmanService: fakeServiceRunner,

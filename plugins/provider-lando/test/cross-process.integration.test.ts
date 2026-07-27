@@ -9,7 +9,8 @@ import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SHIM,
   HOST_PROXY_CONTAINER_SOCKET,
-} from "@lando/core/host-proxy-transport";
+  stripHostProxyRunLando,
+} from "@lando/core/testing";
 import { appliedPlanPath, makeProviderLayer } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {
@@ -322,7 +323,14 @@ describe("provider-lando cross-process state", () => {
 
       const provider = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
       await runOnce(provider.apply(hostProxyPlan, { reconcile: false }).pipe(Effect.scoped));
@@ -349,7 +357,14 @@ describe("provider-lando cross-process state", () => {
 
       const providerA = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
@@ -360,7 +375,14 @@ describe("provider-lando cross-process state", () => {
 
       const providerB = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
 
@@ -384,14 +406,28 @@ describe("provider-lando cross-process state", () => {
 
       const providerA = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
       const providerB = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
 
@@ -408,14 +444,28 @@ describe("provider-lando cross-process state", () => {
 
       const providerA = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
       await runOnce(providerA.apply(plan, { reconcile: false }).pipe(Effect.scoped));
 
       const providerB = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
       await runOnce(providerB.destroy({ app: plan.id }, { volumes: false, removeState: false }));
@@ -424,7 +474,14 @@ describe("provider-lando cross-process state", () => {
 
       const providerC = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
       const snapshot = await runOnce(providerC.inspect({ app: plan.id, service: web.name }));
@@ -466,6 +523,7 @@ describe("provider-lando cross-process state", () => {
         RuntimeProvider.pipe(
           Effect.provide(
             makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi,
               podmanService: serviceRunner,
               stateDir,
@@ -511,7 +569,14 @@ describe("provider-lando cross-process state", () => {
 
       const provider = await runOnce(
         RuntimeProvider.pipe(
-          Effect.provide(makeProviderLayer({ podmanApi: fake.api, stateDir, platform: "linux" })),
+          Effect.provide(
+            makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
+              podmanApi: fake.api,
+              stateDir,
+              platform: "linux",
+            }),
+          ),
         ),
       );
 

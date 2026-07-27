@@ -45,6 +45,7 @@ import { makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
 import type { HttpClient } from "../../src/http-client/service.ts";
 import { HostProxyServiceDisabledLive } from "../../src/subsystems/host-proxy/api.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const makeConfigService = (
   overrides: Partial<GlobalConfig> = {},
@@ -1939,6 +1940,7 @@ describe("meta:setup command", () => {
     const bundleBytes = new TextEncoder().encode("fake lando runtime bundle");
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
         podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {
@@ -1984,6 +1986,7 @@ describe("meta:setup command", () => {
     ]);
     const provider = await Effect.runPromise(
       makeRuntimeProvider({
+        sanitizeAppliedPlan: stripHostProxyRunLando,
         podmanApi: { info: Effect.succeed({ version: { Version: "6.0.2" } }) },
         podmanCommand: { version: Effect.succeed("podman version 6.0.2") },
         runtimeBundleDownloader: {

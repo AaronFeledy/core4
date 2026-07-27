@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 
 import { describe, expect, test } from "bun:test";
 import { DateTime, Effect, Schema, Stream } from "effect";
@@ -184,6 +185,7 @@ describe("provider-lando live container-file logs", () => {
       expect(Object.keys(logFileHelperPayloads).length).toBeGreaterThan(0);
       const provider = await Effect.runPromise(
         makeRuntimeProvider({
+          sanitizeAppliedPlan: stripHostProxyRunLando,
           platform: "linux",
           socketPath: socketPath ?? "",
           logFileHelperPayloads,

@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inspect } from "node:util";
+import { stripHostProxyRunLando } from "@lando/core/testing";
 import { DateTime, Effect, Exit, Schema, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
@@ -312,6 +313,7 @@ describe("provider pullArtifact", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             podmanApi: {
               info: Effect.succeed({ host: { arch: "x64" } }),
@@ -351,6 +353,7 @@ describe("provider pullArtifact", () => {
       RuntimeProvider.pipe(
         Effect.provide(
           makeProviderLayer({
+            sanitizeAppliedPlan: stripHostProxyRunLando,
             platform: "linux",
             podmanApi: {
               info: Effect.succeed({ host: { arch: "x64" } }),
@@ -388,6 +391,7 @@ describe("provider pullArtifact", () => {
         RuntimeProvider.pipe(
           Effect.provide(
             makeProviderLayer({
+              sanitizeAppliedPlan: stripHostProxyRunLando,
               platform: "linux",
               podmanApi: makePodmanApiClient(socketPath ?? ""),
               eventService: {

@@ -23,6 +23,7 @@ import {
   renderDoctorResultAsNdjson,
 } from "../../src/cli/commands/doctor.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
+import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
 const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");
@@ -406,7 +407,7 @@ describe("meta:doctor command", () => {
       const { makeProviderLayer } = await import("@lando/provider-lando");
       const { RuntimeProvider } = await import("@lando/sdk/services");
 
-      const layer = makeProviderLayer({ platform: "win32" });
+      const layer = makeProviderLayer({ platform: "win32", sanitizeAppliedPlan: stripHostProxyRunLando });
       const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
       const registry = buildRegistry(runtimeProvider as typeof TestRuntimeProvider);
       const result = await Effect.runPromise(
