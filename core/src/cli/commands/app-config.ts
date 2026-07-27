@@ -4,6 +4,7 @@ import { Effect, Either, Schema } from "effect";
 
 import type {
   AppIdReservedError,
+  ComposeKeyRejectedError,
   LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
@@ -19,7 +20,6 @@ import {
   LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";

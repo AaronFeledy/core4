@@ -62,7 +62,6 @@ export interface ResolveLandofileIncludesOptions {
 
 interface NormalizedInclude {
   readonly source: string;
-  readonly kind?: "landofile" | "compose";
   readonly path?: string;
   readonly version?: string;
   readonly checksum?: string;
@@ -136,7 +135,6 @@ const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
     ? { source: entry }
     : {
         source: entry.source,
-        ...(entry.kind === undefined ? {} : { kind: entry.kind }),
         ...(entry.path === undefined ? {} : { path: entry.path }),
         ...(entry.version === undefined ? {} : { version: entry.version }),
         ...(entry.checksum === undefined ? {} : { checksum: entry.checksum }),
@@ -144,10 +142,7 @@ const normalizeInclude = (entry: IncludeEntry): NormalizedInclude =>
 
 const authoredIncludeEntries = (
   landofile: Pick<LandofileShape, "include" | "includes">,
-): ReadonlyArray<IncludeEntry> => [
-  ...(landofile.includes ?? []),
-  ...(landofile.include ?? []).map((source) => ({ source, kind: "compose" as const })),
-];
+): ReadonlyArray<IncludeEntry> => [...(landofile.includes ?? []), ...(landofile.include ?? [])];
 
 const safeRelativeSubpath = (subpath: string | undefined, source: string): string => {
   if (subpath === undefined || subpath.trim() === "") {

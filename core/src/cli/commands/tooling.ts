@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import type { ToolingError as SdkToolingError, ToolingResult } from "@lando/sdk/app";
+import type { ToolingError, ToolingResult } from "@lando/sdk/app";
 import { type ComposeKeyRejectedError, ToolingCompileError } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
@@ -37,7 +37,7 @@ export interface RunToolingOptions {
 export type RunToolingResult = ToolingResult;
 export type { ToolingResult };
 
-type RunToolingError = SdkToolingError | ComposeKeyRejectedError;
+type RunToolingError = ToolingError | ComposeKeyRejectedError;
 
 type RunToolingServices =
   | AppPlanner
