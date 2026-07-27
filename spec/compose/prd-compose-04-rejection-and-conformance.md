@@ -70,6 +70,35 @@ The vocabulary promise is only honest if the boundary is sharp on both sides: ev
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+### US-478: Native YAML anchors, aliases, and merge keys
+
+**Description:** As a Landofile author, I can use native YAML anchors, aliases, and merge keys through the documented parser boundary without those forms being misclassified as rejected Compose vocabulary.
+
+**Acceptance Criteria:**
+
+- [ ] The canonical YAML parser resolves anchors and aliases before Landofile schema decoding for root files and included `landofile`/`compose` fragments.
+- [ ] YAML merge keys (`<<:`) merge mapping aliases with deterministic YAML precedence before the existing Landofile layer merge runs.
+- [ ] Unknown aliases, recursive alias graphs, invalid merge targets, and duplicate anchor definitions fail with `LandofileParseError` carrying source location and remediation; they never produce `ComposeKeyRejectedError`.
+- [ ] `!reset` and `!override` remain rejected through `ComposeKeyRejectedError`, while quoted occurrences remain ordinary strings.
+- [ ] Loader-, include-, and lint-level tests prove the production parser path and guard against tag-rejection misclassification.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-479: Unify tooling fragments under includes kind tooling
+
+**Description:** As a Landofile author, tooling-only fragments can use the canonical `includes:` surface with `kind: tooling` without publishing a schema literal ahead of its resolution and namespacing behavior.
+
+**Acceptance Criteria:**
+
+- [ ] `IncludeEntry.kind` additively accepts `tooling` only when the same change implements app-plan compile-time tooling-fragment resolution.
+- [ ] `kind: tooling` preserves the `toolingIncludes:` namespace, flatten, internal, aliases, excludes, and vars contract from spec §8.5.8.
+- [ ] `toolingIncludes:` and `includes:` entries with `kind: tooling` route through one implementation and produce equivalent plans; no compatibility shim or dual resolver is introduced.
+- [ ] Schema artifacts, API compatibility notes, generated references, and executable tooling guide coverage are updated together.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
 ## Functional Requirements
 
 - FR-1: One error shape for all rejections; remediation text sourced from the matrix.

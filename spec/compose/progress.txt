@@ -571,3 +571,13 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; explicit-base guide drift passed with the skip above; Compose coverage, import-cycle, renderer-boundary, and paths-boundary gates passed; focused rejection, tag, lint, include resolution/update/verify, CLI-envelope, and diagnostic-escaping tests passed. Rebuilt the compiled binary and verified root include rejection plus nested fragment attribution inside `lando4-dev`.
 - **Learnings for future iterations:** Keep relative-resolution base, security containment root, absolute identity, and authored provenance as four separate concepts; collapsing any pair produces wrong-directory reads, traversal mistakes, stale lock/cache identity, or misleading diagnostics.
 ---
+
+## 2026-07-27 15:26 CDT - US-475 Drift Audit
+- Trigger: 3 cycles, 2029 changed lines, 8 commits
+- Weakened proofs: restored source-CLI rejection coverage for app config, info, the JSON failure envelope, and lint; expanded the named §7.4 Swarm rejection proof and removed a vacuous coverage-gate duplicate.
+- Review scar tissue: deleted redundant negative-tag checking and routed the tag-detector test through the published package boundary instead of a deep workspace source import.
+- Contract drift: preserved the matrix rationale in the tagged error message and converted the parser-capability and tooling-include deferrals from progress prose into binding follow-up contracts.
+- Fixed: removed duplicate/redundant assertions, restored production-path proofs, and retained the three new production modules because each has a substantive responsibility and real production consumers.
+- Split/excise decisions: added US-478 for native YAML anchors/aliases/merge keys and US-479 for the complete kind: tooling include contract in the PRD index and source PRD; US-475 remains passing, with no gate conflict or incomplete public contract.
+- Verification: typecheck, lint, 13 focused test files, targeted no-excuse checks, PRD JSON parsing, Compose coverage, import-cycle, renderer-boundary, and paths-boundary passed.
+---
