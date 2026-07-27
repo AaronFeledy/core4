@@ -1,19 +1,12 @@
 import { ComposeServiceKnobKey } from "@lando/sdk/schema";
-import type {
-  ComposeKnobCapabilities,
-  ProviderCapabilities,
-  ServiceConfig,
-  ServicePlan,
-} from "@lando/sdk/schema";
+import type { ProviderCapabilities, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 
 export type ComposeKnobUse = {
   readonly service: string;
   readonly key: ComposeServiceKnobKey;
 };
 
-type ComposeCapabilityView = Pick<ProviderCapabilities, "composeSpec"> & {
-  readonly composeKnobs?: ComposeKnobCapabilities;
-};
+type ComposeCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeKnobs">;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
