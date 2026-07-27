@@ -563,7 +563,6 @@ describe("LandofileServiceLive — Beta-only section rejection (US-014)", () => 
     expect(error).toBeInstanceOf(NotImplementedError);
     if (!(error instanceof NotImplementedError)) return;
     expect(error._tag).toBe("NotImplementedError");
-    expect(error._tag).not.toBe("ComposeKeyRejectedError");
     expect(error.remediation).toContain("not supported yet");
   };
 

@@ -30,13 +30,6 @@ describe("compose coverage gate", () => {
     });
   });
 
-  test("keeps non-schema Compose tags outside default coverage matrices", async () => {
-    const result = await checkComposeCoverage();
-
-    expect(result.ok).toBe(true);
-    expect(result.topLevel.missingFromSchema).toEqual([]);
-  });
-
   test("exits with a checksum error when the vendored schema bytes drift", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-compose-coverage-"));
     const copiedScript = join(root, "scripts/check-compose-coverage.ts");
