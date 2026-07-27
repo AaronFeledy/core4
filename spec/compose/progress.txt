@@ -499,3 +499,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck, tracked-source Biome, deprecations, explicit-base guide drift with the skip above, no-excuse checks, and focused mapping, final-request, bring-up, transport, declaration, capability, and provider-registry tests passed. The sandbox live rerun was blocked because its dependency-free state currently has neither Bun nor a working Podman socket; the build step's fresh live proof covers the unchanged valid `privileged`, `ulimits`, and `extra_hosts` path. Bare `bun run lint` remains blocked only by the pre-existing ignored `.worktrees/plugin-dag` checkout.
 - **Learnings for future iterations:** A schema-valid value can still violate a provider's wire-domain contract; key-level capability declarations require adapter checks for numeric precision/range and duplicate-key collapse. Story-specific live tests that promise explicit opt-in must read the opt-in variable directly rather than use a generic resolver that falls back to a managed runtime.
 ---
+
+## 2026-07-27 02:23 CDT - US-474 Drift Audit
+- Trigger: 2 cycles, 1681 changed lines, 10 commits
+- Weakened proofs: replaced the transport dispatch smoke check with a knob-bearing create request over platform IPC and registered it in the managed Linux and Windows provider matrix cells.
+- Ceremony modules: removed dead and test-only public knob exports while retaining the one cross-provider capability export.
+- Deferred-work laundering: corrected the new knob-validation failure path to report the resolved provider instead of inheriting the shared adapter's `lando` identity.
+- Contract drift: confirmed the narrowed `pull_policy`, `gpus`, and `deploy.resources` boundary is an explicit spec-aligned reconciliation rather than absorbed implementation scope.
+- Fixed: simplified the public surface, restored assembly-to-transport proof, and corrected branch-owned provider error attribution.
+- Split/excise decisions: none; no absorbed feature, incomplete public contract, or gate conflict was found.
+- Verification: typecheck, scoped lint, deprecations, import-cycle, Compose coverage, and 171 focused checks passed; bare lint remains failed on pre-existing auxiliary-worktree diagnostics; live Podman effects were not rerun and remain unverified in this host-safe step.
+---
