@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { DateTime } from "effect";
 
-import { ComposeServiceKnobKey, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 
-import { podmanComposeKnobsForPlatform, realizePodmanComposeKnobs } from "../src/compose-knobs.ts";
+import { realizePodmanComposeKnobs } from "../src/compose-knobs.ts";
 import { EMPTY_REALIZATION, KNOB_FIXTURES, type KnobRealization } from "./compose-knobs-fixtures.ts";
 
 // =============================================================================
@@ -58,8 +58,6 @@ const BOOLEAN_KNOBS = [
 const TRUTHY_SPELLINGS = ["true", "1", "yes", "on", "YES", "On"];
 const FALSY_SPELLINGS = ["false", "0", "no", "off", "NO", "Off"];
 
-const EXCLUDED_KNOBS = ["pull_policy", "gpus", "deploy.resources"] as const;
-
 // Both bundled providers always speak to Podman over a REMOTE socket, where
 // these drivers are categorically rejected — unlike a merely unknown driver
 // name, which is an operand Podman itself validates.
@@ -68,20 +66,6 @@ const REMOTE_INVALID_LOG_DRIVERS = ["passthrough", "passthrough-tty"] as const;
 // =============================================================================
 // Tests
 // =============================================================================
-
-describe("podman Compose runtime knob declaration", () => {
-  for (const platform of ["linux", "darwin", "win32"] as const) {
-    test(`Given host platform ${platform}, when knobs are listed, then every knob appears in published order`, () => {
-      const supported = podmanComposeKnobsForPlatform(platform);
-
-      expect(supported).toEqual(ComposeServiceKnobKey.literals.filter((key) => key in KNOB_FIXTURES));
-      expect(supported).toHaveLength(21);
-      for (const knob of EXCLUDED_KNOBS) {
-        expect(supported).not.toContain(knob);
-      }
-    });
-  }
-});
 
 describe("podman Compose runtime knob realization", () => {
   for (const [knob, fixture] of Object.entries(KNOB_FIXTURES)) {

@@ -69,23 +69,12 @@ interface KnobFragment {
 }
 
 interface KnobRealizer {
-  /**
-   * Host platforms whose Podman honors the knob. Every knob currently supports
-   * all three: Podman always runs the container in a Linux runtime (native on
-   * Linux, a Podman machine VM on darwin and win32), so the compat create
-   * handler behaves identically. The field stays so future divergence is
-   * expressible without reshaping the registry.
-   */
-  readonly supportedOn: ReadonlyArray<HostPlatform>;
   readonly realize: (knobs: PodmanComposeKnobValues, fail: InvalidKnob) => KnobFragment;
 }
 
 type KnobReader = (knobs: PodmanComposeKnobValues, fail: InvalidKnob) => unknown;
 
-const PODMAN_KNOB_PLATFORMS: ReadonlyArray<HostPlatform> = ["linux", "darwin", "win32"];
-
 const hostConfigKnob = (field: string, read: KnobReader): KnobRealizer => ({
-  supportedOn: PODMAN_KNOB_PLATFORMS,
   realize: (knobs, fail) => {
     const value = read(knobs, fail);
     return value === undefined ? {} : { hostConfig: { [field]: value } };
@@ -93,7 +82,6 @@ const hostConfigKnob = (field: string, read: KnobReader): KnobRealizer => ({
 });
 
 const topLevelKnob = (field: string, read: KnobReader): KnobRealizer => ({
-  supportedOn: PODMAN_KNOB_PLATFORMS,
   realize: (knobs, fail) => {
     const value = read(knobs, fail);
     return value === undefined ? {} : { topLevel: { [field]: value } };
@@ -104,7 +92,6 @@ const queryKnob = (
   parameter: string,
   read: (knobs: PodmanComposeKnobValues) => string | undefined,
 ): KnobRealizer => ({
-  supportedOn: PODMAN_KNOB_PLATFORMS,
   realize: (knobs) => {
     const value = read(knobs);
     return value === undefined ? {} : { query: { [parameter]: value } };
@@ -165,8 +152,9 @@ const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.lit
   (key): key is PodmanKnobKey => Object.hasOwn(PodmanComposeKnobs.fields, key),
 );
 
-export const podmanComposeKnobsForPlatform = (platform: HostPlatform): ReadonlyArray<ComposeServiceKnobKey> =>
-  PODMAN_KNOB_KEYS.filter((key) => PODMAN_COMPOSE_KNOB_REGISTRY[key].supportedOn.includes(platform));
+export const podmanComposeKnobsForPlatform = (_platform: HostPlatform): ReadonlyArray<ComposeServiceKnobKey> => [
+  ...PODMAN_KNOB_KEYS,
+];
 
 interface PodmanComposeKnobRealization {
   readonly hostConfig: Record<string, unknown>;
