@@ -1,6 +1,6 @@
 import { Schema } from "effect";
 
-import type { RendererContribution } from "@lando/sdk/renderer";
+import type { InteractivePromptDriver, RendererContribution } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 
 import { landoRendererContribution } from "./renderer-runtime.ts";
@@ -16,9 +16,7 @@ export const PLUGIN_NAME = "@lando/renderer-lando" as const;
  */
 export const renderer: RendererContribution = landoRendererContribution;
 
-export const loadInteractivePromptDriver = async (): Promise<{
-  readRaw: (request: unknown, signal?: AbortSignal) => Promise<string>;
-}> => {
+export const loadInteractivePromptDriver = async (): Promise<InteractivePromptDriver> => {
   const mod = await import("./opentui/prompt-driver.ts");
   return mod.createOpenTuiPromptDriver();
 };

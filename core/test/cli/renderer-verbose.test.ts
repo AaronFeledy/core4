@@ -10,8 +10,8 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { renderVerboseLine } from "@lando/renderer-lando/format";
 import { RENDERER_MODES, isRendererMode, resolveRendererMode } from "../../src/cli/renderer-selection.ts";
-import { renderVerboseLine } from "../../src/cli/renderer/format.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeVerboseRendererLive } from "../../src/cli/renderer/runtime.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";

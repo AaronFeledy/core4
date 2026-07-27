@@ -16,10 +16,10 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
 import { makeLandoEventConsumer } from "../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererLive, renderPlain } from "../../src/cli/renderer/runtime.ts";
-import { TaskTreeViewModel } from "../../src/cli/renderer/task-tree-tail.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 class RecordingLiveRegion {

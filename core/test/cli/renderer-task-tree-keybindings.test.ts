@@ -10,8 +10,8 @@ import {
 } from "@lando/sdk/events";
 import { AbsolutePath } from "@lando/sdk/schema";
 
-import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "../../src/cli/renderer/keybindings.ts";
-import { TASK_DETAIL_TAIL_CAPACITY, TaskTreeViewModel } from "../../src/cli/renderer/task-tree-tail.ts";
+import { DEFAULT_KEYMAP, TaskTreeInputController, parseKey } from "@lando/renderer-lando/keybindings";
+import { TASK_DETAIL_TAIL_CAPACITY, TaskTreeViewModel } from "@lando/renderer-lando/task-tree-tail";
 
 const ts = "2026-05-19T12:00:00.000Z";
 

@@ -5,10 +5,13 @@ import {
   RENDERER_CAPABILITIES_NONE,
   RENDERER_CAPABILITIES_VERBOSE_TTY,
   type RendererCapabilities,
+  isRenderableTaskTreeEvent,
+  renderJsonLine,
+  renderPlainLine,
+  renderVerboseLine,
 } from "@lando/sdk/renderer";
 import { EventService, type LandoEvent, Renderer } from "@lando/sdk/services";
 
-import { isRenderableTaskTreeEvent, renderJsonLine, renderPlainLine, renderVerboseLine } from "./format.ts";
 import type { RendererIO } from "./io.ts";
 
 type LineFormatter = (event: LandoEvent) => string | null;
