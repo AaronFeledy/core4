@@ -46,7 +46,7 @@ describe("@lando/provider-podman plugin descriptor", () => {
     const runtimeProviderIds = [...(plugin.runtimeProviders?.keys() ?? [])].map(String);
 
     // Then
-    expect(runtimeProviderIds).toEqual(manifestProviderIds);
+    expect(runtimeProviderIds).toEqual([...manifestProviderIds]);
   });
 
   test("contributes a provider conflict doctor check", () => {
@@ -54,6 +54,22 @@ describe("@lando/provider-podman plugin descriptor", () => {
     // Then
     expect(plugin.doctorChecks).toHaveLength(1);
     expect(doctorCheck().id).toBe("provider-conflict");
+  });
+
+  test("conflict check returns no reports when stateDir is unavailable", async () => {
+    // Given / When
+    const reports = await Effect.runPromise(
+      doctorCheck().run({
+        providerId: "podman",
+        platform: "linux",
+        env: { XDG_RUNTIME_DIR: "/run/user/1000" },
+        userDataRoot: undefined,
+        stateDir: undefined,
+      }),
+    );
+
+    // Then
+    expect(reports).toEqual([]);
   });
 
   test("conflict check returns a preemptive report matching the current doctor shape", async () => {

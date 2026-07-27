@@ -1,33 +1,18 @@
 /**
- * Characterization test — pins the CURRENT plugin-coupled behavior of
- * `core/src/cli/commands/doctor.ts` before Wave 3 turns direct plugin imports
- * into contributed checks:
+ * Characterization test for doctor reports supplied by bundled plugin
+ * descriptors:
  *
- *   1. The "file-sync" check, built from a direct `import ... from
- *      "@lando/file-sync-mutagen"` (`readInstalledMutagenStatus` /
- *      `MUTAGEN_TOOL_VERSION`), gated on `provider.capabilities.bindMountPerformance
- *      === "slow"`. `buildFileSyncDoctorCheck` itself is a private, unexported
- *      helper with no injection seam — `readInstalledMutagenStatus` reads real
- *      files under `<userDataRoot>/bin`. So this test drives it the only way
- *      the command allows: real temp-directory fixtures on disk (deterministic,
- *      no network, no live mutagen binary) exercised through the public
- *      `doctor()` entry point — mirroring the temp-fixture style already used
- *      by `core/test/cli/doctor.test.ts`'s "consumes the latest setup readiness
- *      summary" test.
- *   2. The provider-conflict short-circuit: when `detectProviderConflicts`
- *      reports a conflict for the resolved provider id, `doctor()` returns
- *      ONLY conflict checks and never calls `registry.select()` at all. Wave 3
- *      turns this into a `preempts: true` contributed-check mechanism; this
- *      pins the CURRENT short-circuit shape it must reproduce.
+ *   1. The file-sync contribution reads real files under `<userDataRoot>/bin`.
+ *      These deterministic temp-directory fixtures preserve the report shapes
+ *      for missing, stale, current, and partially verified installs.
+ *   2. A provider-conflict contribution marked `preempts: true` returns ONLY
+ *      preemptive reports and never calls `registry.select()`.
  *
  * PRE-EXISTING COVERAGE (reused, not duplicated): `core/test/cli/doctor.test.ts`
  * already has an equivalent "emits a provider-conflict check before selecting
  * provider-podman" scenario (same `select: () => Effect.die(...)` trick). This
- * file re-derives that same contract here, alongside the file-sync coupling,
- * so the wave-3 rewrite has ONE place that names both plugin-coupled surfaces
- * doctor.ts must preserve. `core/test/cli/doctor.test.ts` has NO file-sync
- * check coverage at all (only asserts its ABSENCE for a fast provider) — the
- * file-sync scenarios below are net-new.
+ * file re-derives that same contract here alongside the file-sync contribution
+ * so the plugin wiring has one focused characterization surface.
  */
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -45,7 +30,7 @@ import {
   MUTAGEN_TOOL_VERSION,
   mutagenInstalledVersionPath,
 } from "@lando/file-sync-mutagen";
-import { type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { resolveHostKey } from "@lando/sdk/tool-provisioning";
 
 import { type DoctorCheck, doctor } from "../../src/cli/commands/doctor.ts";
@@ -82,7 +67,7 @@ const runDoctorWithUserDataRoot = (userDataRoot: string) =>
       Effect.provide(
         Layer.merge(
           Layer.succeed(RuntimeProviderRegistry, buildRegistry(slowBindMountProvider)),
-          Layer.succeed(ConfigService, buildConfigService({ userDataRoot })),
+          Layer.succeed(ConfigService, buildConfigService({ userDataRoot: AbsolutePath.make(userDataRoot) })),
         ),
       ),
     ),
@@ -104,7 +89,7 @@ const currentHostInstallPaths = (binDir: string): ReadonlyArray<string> => {
 
 const sha256Hex = (bytes: Uint8Array): string => createHash("sha256").update(bytes).digest("hex");
 
-describe('doctor() file-sync check (contract: gated on bindMountPerformance === "slow", built from @lando/file-sync-mutagen install-status)', () => {
+describe("doctor() file-sync plugin contribution", () => {
   test("missing: no mutagen install marker on disk yields a warn check with a `lando setup` solution", async () => {
     const dataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-file-sync-missing-"));
     try {
@@ -244,7 +229,7 @@ describe("doctor() provider-conflict short-circuit (contract: a detected conflic
           Effect.provide(
             Layer.merge(
               Layer.succeed(RuntimeProviderRegistry, registryThatMustNotConstruct),
-              Layer.succeed(ConfigService, buildConfigService({ userDataRoot: dataRoot })),
+              Layer.succeed(ConfigService, buildConfigService({ userDataRoot: AbsolutePath.make(dataRoot) })),
             ),
           ),
         ),
