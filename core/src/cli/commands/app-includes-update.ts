@@ -73,7 +73,7 @@ export type AppIncludesUpdateError =
   | ComposeKeyRejectedError;
 
 /**
- * Refresh every `includes:` lockfile entry for the current app's Landofile.
+ * Refresh every `includes:` and Compose `include:` lockfile entry for the current app's Landofile.
  * Discovers + parses the Landofile directly (no `LandofileService`), so the
  * command runs at the `minimal` bootstrap level and never pins against the
  * existing lock (that is exactly what `update` must override).
@@ -120,12 +120,14 @@ export const appIncludesUpdate = (
             }),
     });
     const includes = [];
+    const composeIncludes: string[] = [];
     for (const layer of layers) {
       const landofile = yield* loadLandofileFile(layer.filePath);
       includes.push(...(landofile.includes ?? []));
+      composeIncludes.push(...(landofile.include ?? []));
     }
     return yield* updateLandofileIncludes({
-      landofile: { includes },
+      landofile: { includes, include: composeIncludes },
       appRoot,
       ...(options.check === true ? { check: true } : {}),
       ...(options.deps === undefined ? {} : { deps: options.deps }),
