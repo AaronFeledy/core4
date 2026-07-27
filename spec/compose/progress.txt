@@ -28,6 +28,7 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Biome scans untracked sibling checkouts. A stale `.worktrees/` directory is git-excluded and invisible to `git status`, yet makes `bun run lint` fail on files outside the change; scope Biome to tracked package dirs before believing a repo-wide lint failure.
 - The machine-output envelope narrows every error to `{_tag, message, remediation}` by design. Structured error context belongs in the message and in the bug-report formatter's extra fields, not in a per-error widening of the shared envelope.
 - Schema parse-error messages can reach the plain terminal renderer unchanged. Never interpolate raw Landofile values into those messages; use constant grammar/remediation text so control bytes cannot alter terminal output.
+- Include resolution has two distinct roots: the app root is the containment boundary, while the including fragment's directory is the base for relative sources. Never reuse one as the other; preserve absolute source identity separately from authored provenance.
 
 ## Log
 
@@ -557,4 +558,16 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Keep non-schema tokens out of a matrix that a bidirectional coverage gate consumes. YAML tag tokens are dispositions but not key paths; a separate map keeps the exhaustive schema gate exact instead of forcing an exception into it.
   - Deep-relative imports into another workspace package's `src/` are not merely a style issue: the barrel path and the deep path can resolve to two distinct module instances, at which point an `instanceof` check on a tagged error silently fails and a typed Effect failure degrades into an unhandled defect. Route through the published barrel and the existing in-tree re-export seam.
   - Widening a service tag's Effect error channel is a frozen-surface change. It requires the `sdk-mvp-surface.json` fixture entry AND a compatibility note, and union MEMBER order inside that signature string is load-bearing because the comparison normalizes whitespace but never sorts unions.
+---
+
+## 2026-07-27 15:02 CDT - US-475 Review
+- Closed four review blockers: explicit-file loads and include lock refresh now honor top-level Compose `include:`, include verification rejects root Compose keys/tags through the shared tagged path, and nested relative includes resolve from the including fragment while retaining the app-root containment boundary.
+- Escaped attacker-controlled terminal controls on the new plain Compose-rejection and config-lint diagnostic surfaces without changing structured JSON fields, and synchronized the PRD index with the source PRD's quoted-tag and unsupported-anchor contract.
+- Guide-Coverage-Skip: US-475 changes Compose rejection and include-resolution internals; the executable Compose guide and published matrix are explicitly owned by US-477.
+- Review notes (deferred/rejected): widening the shared machine-result error envelope was rejected because its fixed contract intentionally carries only `_tag`, `message`, and `remediation`; `ComposeKeyRejectedError` retains structured fields internally and the JSON bug-report surface exposes them.
+- Review notes (deferred/rejected): resolving include graphs from schema-only lint was rejected because lint deliberately performs no fetch, lock, or include-resolution side effects; fragment rejection remains covered by the normal include resolver, while lint reports root/layer rejections with the matrix remediation.
+- Review notes (deferred/rejected): tag-specific lint source locations and suppression of unrelated schema-union fallback violations are not acceptance requirements; the tagged remediation is present, and the duplicate fallback is recorded as pre-existing.
+- Review notes (deferred/rejected): the required Bugbot invocation was blocked by the configured account's usage limit; the Auto-mode retry reported the two Compose-include parity bugs fixed above.
+- Verification: typecheck and lint passed; explicit-base guide drift passed with the skip above; Compose coverage, import-cycle, renderer-boundary, and paths-boundary gates passed; focused rejection, tag, lint, include resolution/update/verify, CLI-envelope, and diagnostic-escaping tests passed. Rebuilt the compiled binary and verified root include rejection plus nested fragment attribution inside `lando4-dev`.
+- **Learnings for future iterations:** Keep relative-resolution base, security containment root, absolute identity, and authored provenance as four separate concepts; collapsing any pair produces wrong-directory reads, traversal mistakes, stale lock/cache identity, or misleading diagnostics.
 ---
