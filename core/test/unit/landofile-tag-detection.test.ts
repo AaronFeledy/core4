@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
 
-import { detectLandofileTags, parseLandofile } from "../../../sdk/src/landofile/parser.ts";
+import { LandofileParseError } from "@lando/sdk/errors";
+import { detectLandofileTags, parseLandofile } from "@lando/sdk/landofile";
 
 const detect = (content: string) => detectLandofileTags({ content, file: "/workspace/.lando.yml" });
 
@@ -115,6 +116,8 @@ describe("detectLandofileTags", () => {
     try {
       detect(content);
     } catch (error) {
+      expect(error).toBeInstanceOf(LandofileParseError);
+      if (!(error instanceof LandofileParseError)) throw error;
       expect(error).toMatchObject({ _tag: "LandofileParseError" });
     }
   });
