@@ -203,11 +203,13 @@ export * from "./features.ts";
 export * from "./file-sync.ts";
 export * from "./file-system.ts";
 export * from "./global-app.ts";
+export * from "./host-assets.ts";
 export * from "./http-client.ts";
 export * from "./interaction.ts";
 export * from "./landofile.ts";
 export * from "./managed-file.ts";
 export * from "./paths.ts";
+export * from "./plan-sanitizer.ts";
 export * from "./planner.ts";
 export * from "./platform.ts";
 export * from "./plugins.ts";
@@ -826,6 +828,20 @@ export declare class PathsService extends Context.Tag("@lando/core/PathsService"
 export declare class StateStore extends Context.Tag("@lando/core/StateStore")<
   StateStore,
   StateStoreShape
+>() {}
+
+export declare class AppPlanSanitizer extends Context.Tag("@lando/core/AppPlanSanitizer")<
+  AppPlanSanitizer,
+  {
+    readonly sanitizeForPersistence: (plan: AppPlan) => AppPlan;
+  }
+>() {}
+
+export declare class LogFileHelperAssets extends Context.Tag("@lando/core/LogFileHelperAssets")<
+  LogFileHelperAssets,
+  {
+    readonly payloads: Effect.Effect<Readonly<Record<string, Uint8Array>>, never>;
+  }
 >() {}
 
 export declare class RemoteSource extends Context.Tag("@lando/core/RemoteSource")<

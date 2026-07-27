@@ -26,3 +26,15 @@ export class SubscriberLevelMismatchError extends Schema.TaggedError<SubscriberL
     eventLevel: Schema.Literal("minimal", "plugins", "commands", "tooling", "provider", "app"),
   },
 ) {}
+
+export class PluginDescriptorMismatchError extends Schema.TaggedError<PluginDescriptorMismatchError>()(
+  "PluginDescriptorMismatchError",
+  {
+    pluginName: Schema.String,
+    kind: Schema.String,
+    declared: Schema.Array(Schema.String),
+    provided: Schema.Array(Schema.String),
+    message: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
