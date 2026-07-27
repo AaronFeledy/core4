@@ -1,17 +1,17 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Either, Layer } from "effect";
 
 import { ProxyError } from "@lando/sdk/errors";
-import type { PluginManifest } from "@lando/sdk/schema";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   ConfigService,
   type FileSystem,
   type GlobalAppService,
   type PathsService,
-  PluginRegistry,
   type ProxyService,
 } from "@lando/sdk/services";
 
-import { BUNDLED_PLUGINS } from "../../plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
+import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import { ProxyServiceUnavailableLive } from "./api.ts";
 
 export type ProxyServiceLayer = Layer.Layer<
@@ -55,8 +55,6 @@ const selectionError = (message: string, proxyId: string): ProxyError =>
     remediation: "Install a ProxyService plugin or configure `defaultProxyService` to an installed id.",
   });
 
-const isProxyServiceLayer = (value: unknown): value is ProxyServiceLayer => Layer.isLayer(value);
-
 export const makeProxyServiceRegistry = (
   options: MakeProxyServiceRegistryOptions,
 ): ProxyServiceRegistryShape => {
@@ -92,82 +90,62 @@ export const makeProxyServiceRegistry = (
   };
 };
 
-const externalProxyLayer = (id: string, modulePath: string): ProxyServiceLayer =>
-  Layer.unwrapEffect(
-    Effect.tryPromise({
-      try: async () => {
-        const module: unknown = await import(modulePath);
-        if (
-          typeof module === "object" &&
-          module !== null &&
-          "proxy" in module &&
-          isProxyServiceLayer(module.proxy)
-        ) {
-          return module.proxy;
-        }
-        throw selectionError(`Proxy service module ${modulePath} does not export a ProxyService layer.`, id);
-      },
-      catch: (cause) =>
-        cause instanceof ProxyError
-          ? cause
-          : new ProxyError({
-              message: `Unable to load ProxyService ${id}.`,
-              proxyId: id,
-              remediation: "Verify the plugin manifest module path and reinstall the plugin.",
-              cause,
-            }),
-    }),
-  );
+const descriptorError = (cause: unknown): ProxyError =>
+  new ProxyError({
+    message: "Unable to discover ProxyService contributions.",
+    proxyId: "unknown",
+    remediation:
+      "Repair invalid plugin descriptors and regenerate the BUNDLED_PLUGIN_MODULES descriptor table.",
+    cause,
+  });
 
-const registrationsFromManifests = (
-  manifests: ReadonlyArray<PluginManifest>,
-): ReadonlyArray<ProxyServiceRegistration> =>
-  manifests.flatMap((manifest) =>
-    (manifest.contributes?.proxyServices ?? []).flatMap((contribution) => {
-      const bundled = BUNDLED_PLUGINS.find((plugin) => plugin.manifest === manifest);
-      const layer =
-        bundled?.proxyServices?.get(contribution.id) ??
-        externalProxyLayer(contribution.id, contribution.module);
-      return [
-        {
-          id: contribution.id,
-          layer,
-          ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
-        },
-      ];
-    }),
-  );
-
-export const ProxyServiceRegistryLive = Layer.effect(
-  ProxyServiceRegistry,
+const registrationsFromModules = (
+  modules: ReadonlyArray<LandoPluginModule>,
+): Effect.Effect<ReadonlyArray<ProxyServiceRegistration>, ProxyError> =>
   Effect.gen(function* () {
-    const config = yield* ConfigService;
-    const plugins = yield* PluginRegistry;
-    const manifests = yield* plugins.list.pipe(
-      Effect.mapError(
-        (cause) =>
-          new ProxyError({
-            message: "Unable to discover ProxyService contributions.",
-            proxyId: "unknown",
-            remediation: "Repair invalid plugin manifests and retry.",
-            cause,
-          }),
-      ),
-    );
-    const configured = config
-      .get("defaultProxyService")
-      .pipe(
-        Effect.mapError((cause) =>
-          selectionError(`Unable to read ProxyService selection: ${cause.message}`, "unknown"),
-        ),
-      );
-    return makeProxyServiceRegistry({
-      registrations: registrationsFromManifests(manifests),
-      configured,
-      platform: process.platform,
+    const indexResult = makePluginCapabilityIndex(modules);
+    if (Either.isLeft(indexResult)) return yield* Effect.fail(descriptorError(indexResult.left));
+    const index = indexResult.right;
+    const contributions = index.manifests.flatMap((manifest) => manifest.contributes?.proxyServices ?? []);
+    return yield* Effect.forEach(contributions, (contribution) => {
+      const layer = index.proxyServices.get(contribution.id);
+      return layer === undefined
+        ? Effect.fail(
+            new ProxyError({
+              message: `Proxy service descriptor does not export ${contribution.id}.`,
+              proxyId: contribution.id,
+              remediation:
+                "Repair the plugin proxyServices map and regenerate the BUNDLED_PLUGIN_MODULES descriptor table.",
+            }),
+          )
+        : Effect.succeed({
+            id: contribution.id,
+            layer,
+            ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
+          });
     });
-  }),
-);
+  });
+
+export const makeProxyServiceRegistryLive = (
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+) =>
+  Layer.effect(
+    ProxyServiceRegistry,
+    Effect.gen(function* () {
+      const config = yield* ConfigService;
+      const registrations = yield* registrationsFromModules(modules);
+      const configured = config
+        .get("defaultProxyService")
+        .pipe(
+          Effect.mapError((cause) =>
+            selectionError(`Unable to read ProxyService selection: ${cause.message}`, "unknown"),
+          ),
+        );
+      return makeProxyServiceRegistry({ registrations, configured, platform: process.platform });
+    }),
+  );
+
+export const ProxyServiceRegistryLive = makeProxyServiceRegistryLive();
 
 export const SelectedProxyServiceLive = Layer.unwrapEffect(
   Effect.flatMap(ProxyServiceRegistry, (registry) =>
