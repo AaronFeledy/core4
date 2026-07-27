@@ -15,9 +15,9 @@ tags: [beta, docs, schemas]
     </Step>
   </Scenario>
 
-  <Scenario id="reference-drift-gate" render={false} reason="The generated docs drift gate is the schema snapshot generator idempotency test plus the codegen diff gate">
+  <Scenario id="reference-drift-gate" render={false} reason="The generated docs drift gate is the schema artifact-set generator idempotency test plus the path-scoped tracked-and-untracked CI gate">
     <Step name="drift">
-      <Variable name="gate" value="core/test/build/schema-snapshot.test.ts" display="The generator test rewrites schema artifacts and reference pages, then fails when generated output differs from committed source" />
+      <Variable name="gate" value="core/test/build/schema-snapshot.test.ts" display="The generator test rewrites the artifact set and reference pages twice, proving deterministic idempotent output and complete index-to-file coverage" />
       <Variable name="coverage" value="JSON_SCHEMA_NAMES" display="One reference page is emitted for every public SDK schema, and stale MDX files under docs/reference/schemas are removed" />
       <Variable name="manualTables" value="not accepted" display="Public schema field tables come from renderPublicSchemaReferencePages, not hand-maintained guide tables" />
     </Step>

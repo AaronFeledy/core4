@@ -760,16 +760,28 @@ ${renderUnitTests()}
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
 ${timingStartStep}
 
 ${setupBunSteps}
 
-      - name: Regenerate schema snapshot
+      - name: Regenerate schema artifact set
         run: bun run codegen:schema-snapshot
 
-      - name: Verify schema snapshot is current
-        run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json dist/schemas docs/reference/schemas
+      - name: Verify schema artifact set is current
+        run: |
+          schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json dist/schemas dist/command-schemas docs/reference/schemas)"
+          if [[ -n "$schema_changes" ]]; then
+            printf "%s\\n" "$schema_changes"
+            exit 1
+          fi
+
+      - name: Check schema compatibility
+        env:
+          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main
+        run: bun run check:schema-compatibility
 
       - name: Regenerate command reference
         run: |

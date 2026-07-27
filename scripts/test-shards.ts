@@ -77,7 +77,7 @@ const WEIGHT_HINTS: Readonly<Record<string, number>> = {
   "core/test/build/version-embed.test.ts": 5,
   "core/test/scripts/release.test.ts": 5,
   "core/test/build/linux-acceptance-criteria-1-9.test.ts": 4,
-  "core/test/build/schema-snapshot.test.ts": 4,
+  "core/test/build/schema-snapshot.test.ts": 8,
   "core/test/cli/redaction-ac6.test.ts": 4,
 };
 

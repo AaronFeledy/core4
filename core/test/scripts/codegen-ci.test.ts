@@ -349,10 +349,25 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("schema-snapshot:");
-      expect(workflow).toContain("- name: Regenerate schema snapshot");
+      expect(workflow).toContain("- name: Regenerate schema artifact set");
       expect(workflow).toContain("run: bun run codegen:schema-snapshot");
       expect(workflow).toContain(
-        "run: git diff --exit-code -- sdk/test/fixtures/schema-snapshot.json dist/schemas docs/reference/schemas",
+        'schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json dist/schemas dist/command-schemas docs/reference/schemas)"',
+      );
+      expect(workflow).toContain('if [[ -n "$schema_changes" ]]; then');
+      expect(workflow).toContain('printf "%s\\n" "$schema_changes"');
+      expect(workflow).toContain(`  schema-snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0`);
+      expect(workflow).toContain("- name: Check schema compatibility");
+      expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
+      expect(workflow).toContain("run: bun run check:schema-compatibility");
+      expect(workflow.indexOf("Verify schema artifact set is current")).toBeLessThan(
+        workflow.indexOf("Check schema compatibility"),
       );
 
       expect(workflow).toContain("bundled-codegen:");
@@ -407,7 +422,9 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("static-checks-platform:");
-      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]");
+      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+        expect(workflow).toContain(`- platform: ${platform}`);
+      }
       expect(workflow).toContain("- name: Typecheck");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("- name: Lint");
@@ -467,8 +484,12 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(
         'run: LANDO_MVP_BINARY_PATH="$GITHUB_WORKSPACE/dist/lando" LANDO_SCENARIO_E2E_BINARY="$GITHUB_WORKSPACE/dist/lando" bun run scripts/test-reporters/run-guide-scenarios.ts test/scenarios/generated/guides/** --max-concurrency=1 --test-name-pattern="@smoke.*\\[e2e\\]"',
       );
-      expect(workflow).toContain("name: guide-scenario-transcripts-${{ github.run_id }}.zip");
-      expect(workflow).toContain("name: guide-e2e-provider-diagnostics-${{ github.run_id }}.zip");
+      expect(workflow).toContain(
+        "name: guide-scenario-transcripts-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
+      );
+      expect(workflow).toContain(
+        "name: guide-e2e-provider-diagnostics-${{ github.run_id }}-${{ matrix.runs-on }}.zip",
+      );
       expect(workflow).toContain("path: dist/transcripts/guides/**/*.json");
       expect(workflow).toContain("retention-days: 7");
 
@@ -590,7 +611,9 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("static-checks-platform:");
       expect(workflow).toContain("unit-tests-linux-x64:");
       expect(workflow).toContain("needs: [static-checks-platform]");
-      expect(workflow).toContain("platform: [darwin-arm64, darwin-x64, linux-arm64, linux-x64, windows-x64]");
+      for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
+        expect(workflow).toContain(`- platform: ${platform}`);
+      }
       expect(workflow).toContain(
         "run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts",
       );

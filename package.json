@@ -53,6 +53,7 @@
     "check:public-transcripts": "bun run scripts/check-public-transcripts.ts",
     "check:guide-drift": "bun run scripts/check-guide-drift.ts",
     "check:compose-coverage": "bun run scripts/check-compose-coverage.ts",
+    "check:schema-compatibility": "bun run scripts/check-schema-compatibility.ts",
     "codegen:bootstrap-layers": "bun run scripts/build-bootstrap-layers.ts",
     "codegen:bundled-plugins": "bun run scripts/build-bundled-plugins.ts",
     "codegen:setup-plugin-flags": "bun run scripts/build-setup-plugin-flags.ts",

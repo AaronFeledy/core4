@@ -21,8 +21,9 @@ import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const snapshotPath = resolve(repoRoot, "sdk/test/fixtures/schema-snapshot.json");
 const generatorPath = resolve(repoRoot, "scripts/build-schema-snapshot.ts");
+const bundledPluginManifestsPath = resolve(repoRoot, "sdk/test/fixtures/bundled-plugin-manifests.json");
+const commandSchemaIndexPath = resolve(repoRoot, "dist/command-schemas/index.json");
 const deprecationNoticeArtifactPath = resolve(repoRoot, "dist/schemas/deprecation-notice.json");
 const metadataIndexPath = resolve(repoRoot, "dist/schemas/index.json");
 const deprecationNoticeReferencePath = resolve(repoRoot, "docs/reference/schemas/deprecation-notice.mdx");
@@ -53,44 +54,36 @@ const runGenerator = (): void => {
   generatorRan = true;
 };
 
-describe("schema snapshot gate", () => {
-  test("snapshot scope is SDK schemas plus bundled plugin manifests", async () => {
-    const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as {
-      readonly scope: {
-        readonly sdkSchemas: ReadonlyArray<string>;
-        readonly bundledPluginManifests: ReadonlyArray<string>;
-      };
-      readonly sdkSchemas: Record<string, unknown>;
-      readonly bundledPluginManifests: ReadonlyArray<{ readonly name: string }>;
-    };
-
-    expect(Object.keys(snapshot.sdkSchemas).sort()).toEqual([...snapshot.scope.sdkSchemas].sort());
-    expect(snapshot.scope.sdkSchemas).toContain("PluginManifest");
-    expect(snapshot.scope.sdkSchemas).toContain("DeprecationNotice");
-    expect(snapshot.scope.sdkSchemas).toContain("AppPlan");
-    expect(snapshot.scope.sdkSchemas).toEqual(JSON_SCHEMA_NAMES);
-    expect(snapshot.scope.sdkSchemas).toContain("ServiceConfig");
-    expect(snapshot.scope.sdkSchemas).toContain("ExpressionTemplate");
-    expect(snapshot.scope.sdkSchemas).toContain("LandofileExpressionParseError");
-    expect(snapshot.scope.sdkSchemas).toContain("LandoEvent");
-
+describe("schema snapshot artifact-set gate", () => {
+  test("bundled plugin manifest fixture freezes every in-binary plugin manifest", async () => {
+    runGenerator();
+    const bundledPluginManifests = JSON.parse(
+      await readFile(bundledPluginManifestsPath, "utf8"),
+    ) as ReadonlyArray<{ readonly name: string }>;
     const bundledNames = BUNDLED_PLUGINS.map((plugin) => plugin.name).sort();
-    expect(snapshot.scope.bundledPluginManifests).toEqual(bundledNames);
-    expect(snapshot.bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
+    expect(bundledPluginManifests.map((plugin) => plugin.name).sort()).toEqual(bundledNames);
   });
 
-  test("snapshot freezes a result schema for every canonical command id", async () => {
-    const snapshot = JSON.parse(await readFile(snapshotPath, "utf8")) as {
-      readonly scope: { readonly commandResultSchemas: ReadonlyArray<string> };
-      readonly commandResultSchemas: Record<string, { readonly $schema?: string }>;
-    };
-
+  test("command schema index freezes a result schema for every canonical command id", async () => {
+    runGenerator();
+    const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
+      Record<string, string>
+    >;
     const canonicalIds = Object.keys(compiledCommands).sort();
 
-    expect(Object.keys(snapshot.commandResultSchemas).sort()).toEqual(canonicalIds);
-    expect([...snapshot.scope.commandResultSchemas].sort()).toEqual(canonicalIds);
+    expect(Object.keys(commandSchemaIndex).sort()).toEqual(canonicalIds);
+    expect(new Set(Object.values(commandSchemaIndex)).size).toBe(canonicalIds.length);
     for (const id of canonicalIds) {
-      expect(snapshot.commandResultSchemas[id]).toBeDefined();
+      const artifactPath = commandSchemaIndex[id];
+      if (artifactPath === undefined) {
+        throw new Error(`Command schema index is missing ${id}.`);
+      }
+      expect(artifactPath).toMatch(/^dist\/command-schemas\/[a-z0-9-]+\.json$/);
+      const artifact = JSON.parse(await readFile(resolve(repoRoot, artifactPath), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      expect(artifact.$schema, id).toBe("http://json-schema.org/draft-07/schema#");
     }
   });
 
@@ -534,28 +527,71 @@ describe("schema snapshot gate", () => {
     }
   });
 
-  test("generated JSON schema artifacts are tracked by git for the drift gate", () => {
-    const ignored = Bun.spawnSync(
-      ["git", "check-ignore", "-q", "--no-index", "dist/schemas/new-schema.json"],
+  test("generated schema artifact paths are visible to the git drift gate", async () => {
+    runGenerator();
+    const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
+      Record<string, string>
+    >;
+    const generatedPaths = [
+      "sdk/test/fixtures/bundled-plugin-manifests.json",
+      "dist/schemas/index.json",
+      ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
+      "dist/command-schemas/index.json",
+      ...Object.values(commandSchemaIndex),
+    ].sort();
+
+    for (const path of [
+      "sdk/test/fixtures/bundled-plugin-manifests.json",
+      "dist/schemas/new-schema.json",
+      "dist/command-schemas/new-command.json",
+    ]) {
+      const ignored = Bun.spawnSync(["git", "check-ignore", "-q", "--no-index", path], {
+        cwd: repoRoot,
+      });
+      expect(ignored.exitCode, path).toBe(1);
+    }
+
+    const visible = Bun.spawnSync(
+      ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", ...generatedPaths],
       {
         cwd: repoRoot,
+        stdout: "pipe",
+        stderr: "pipe",
       },
     );
-    expect(ignored.exitCode).toBe(1);
+    expect({ exitCode: visible.exitCode, stderr: visible.stderr.toString() }).toMatchObject({
+      exitCode: 0,
+    });
+    expect(visible.stdout.toString().trim().split("\n").sort()).toEqual(generatedPaths);
+  });
 
-    const tracked = Bun.spawnSync(["git", "ls-files", "dist/schemas"], {
+  test("generator is deterministic and idempotent across the schema artifact set", async () => {
+    runGenerator();
+    const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
+      Record<string, string>
+    >;
+    const generatedPaths = [
+      "sdk/test/fixtures/bundled-plugin-manifests.json",
+      "dist/schemas/index.json",
+      ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
+      "dist/command-schemas/index.json",
+      ...Object.values(commandSchemaIndex),
+    ].sort();
+    const before = await Promise.all(
+      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+    );
+
+    const secondRun = Bun.spawnSync([process.execPath, generatorPath], {
       cwd: repoRoot,
       stdout: "pipe",
       stderr: "pipe",
     });
-    expect({ exitCode: tracked.exitCode, stderr: tracked.stderr.toString() }).toMatchObject({
+    expect({ exitCode: secondRun.exitCode, stderr: secondRun.stderr.toString() }).toMatchObject({
       exitCode: 0,
     });
-
-    const trackedFiles = new Set(tracked.stdout.toString().trim().split("\n"));
-    expect(trackedFiles).toContain("dist/schemas/index.json");
-    for (const schemaName of JSON_SCHEMA_NAMES) {
-      expect(trackedFiles).toContain(`dist/schemas/${schemaArtifactFilename(schemaName)}`);
-    }
+    const after = await Promise.all(
+      generatedPaths.map(async (path) => [path, await readFile(resolve(repoRoot, path), "utf8")] as const),
+    );
+    expect(after).toEqual(before);
   });
 });
