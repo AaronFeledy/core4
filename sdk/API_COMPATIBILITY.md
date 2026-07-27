@@ -663,6 +663,9 @@
 
 ## Additive Beta test helper exports
 
+- `CollectImportBoundaryViolationsOptions`
+- `ImportBoundaryViolation`
+- `collectImportBoundaryViolations`
 - `ContractMatrixCell`
 - `ContractMatrixCellResult`
 - `ContractMatrixOptions`

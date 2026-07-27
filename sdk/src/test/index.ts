@@ -42,3 +42,14 @@ export * from "./doctor-tooling-plugin-source.ts";
 export * from "./http-client-contract.ts";
 export * from "./renderer-panel-protocol.ts";
 export * from "./renderer-panel-contract.ts";
+/**
+ * collectImportBoundaryViolations arguments:
+ * - packageRoot: plugin package directory (has package.json + src/).
+ * - sourceRoot / repoRoot / packageJson: optional fixture overrides.
+ * - alwaysAllowed: defaults to @lando/sdk + @lando/container-runtime.
+ */
+export {
+  type CollectImportBoundaryViolationsOptions,
+  type ImportBoundaryViolation,
+  collectImportBoundaryViolations,
+} from "./import-boundary.ts";

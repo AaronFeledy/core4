@@ -20,17 +20,8 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": [
-    "./src",
-    "./dist",
-    "!./dist/**/*.tsbuildinfo",
-    "./plugin.yaml"
-  ],
-  "keywords": [
-    "lando",
-    "lando-plugin",
-    "lando-provider"
-  ],
+  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml"],
+  "keywords": ["lando", "lando-plugin", "lando-provider"],
   "lando": {
     "manifest": "./plugin.yaml"
   },
