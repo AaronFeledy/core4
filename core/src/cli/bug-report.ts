@@ -141,6 +141,12 @@ const extractExtraTagFields = (
     const service = asString(record.service);
     if (service !== undefined) out.push(["service", service]);
   }
+  if (tag === "CapabilityError") {
+    for (const field of ["service", "key", "capability"] as const) {
+      const value = asString(record[field]);
+      if (value !== undefined) out.push([field, value]);
+    }
+  }
   if (tag === "RecipePostInitError") {
     const recipe = asString(record.recipe);
     if (recipe !== undefined) out.push(["recipe", recipe]);

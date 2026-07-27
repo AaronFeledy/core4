@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
-import { NotImplementedError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
+import {
+  CapabilityError,
+  NotImplementedError,
+  ProviderUnavailableError,
+  ServiceStartError,
+} from "@lando/sdk/errors";
 
 import {
   buildBugReport,
@@ -63,6 +68,30 @@ describe("buildBugReport: envelope extraction", () => {
     expect(env.providerId).toBe("lando");
     const serviceEntry = env.extra.find(([key]) => key === "service");
     expect(serviceEntry).toEqual(["service", "web"]);
+  });
+
+  test("extracts CapabilityError service, key, and capability as extra fields", () => {
+    const env = buildBugReport({
+      error: new CapabilityError({
+        message: "Service web uses Compose runtime knob shm_size, which provider lando does not support.",
+        service: "web",
+        key: "shm_size",
+        feature: "compose knob shm_size",
+        capability: "composeSpec",
+        providerId: "lando",
+        remediation:
+          "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+      }),
+      context: ctx(),
+    });
+    expect(env.extra).toEqual(
+      expect.arrayContaining([
+        ["service", "web"],
+        ["key", "shm_size"],
+        ["capability", "composeSpec"],
+      ]),
+    );
+    expect(env.providerId).toBe("lando");
   });
 
   test("redacts env-style secrets in the body", () => {
@@ -149,6 +178,26 @@ describe("renderPlainBugReport: stable multi-line output", () => {
     expect(text).toContain("commandId: meta:plugin:trust");
   });
 
+  test("includes CapabilityError service and key diagnostic lines", () => {
+    const text = renderPlainBugReport(
+      buildBugReport({
+        error: new CapabilityError({
+          message: "Service web uses Compose runtime knob shm_size, which provider lando does not support.",
+          service: "web",
+          key: "shm_size",
+          feature: "compose knob shm_size",
+          capability: "composeSpec",
+          providerId: "lando",
+          remediation:
+            "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+        }),
+        context: ctx(),
+      }),
+    );
+    expect(text).toContain("service: web");
+    expect(text).toContain("key: shm_size");
+  });
+
   test("output never contains ANSI control sequences", () => {
     const text = renderPlainBugReport(
       buildBugReport({
@@ -219,6 +268,30 @@ describe("renderJsonBugReport: single NDJSON line", () => {
   test("_tag is the first key in the serialized JSON", () => {
     const line = renderJsonBugReport(buildBugReport({ error: new Error("hi"), context: ctx() }));
     expect(line.startsWith('{"_tag":"message.error"')).toBe(true);
+  });
+
+  test("includes CapabilityError fields while keeping _tag first", () => {
+    const line = renderJsonBugReport(
+      buildBugReport({
+        error: new CapabilityError({
+          message: "Service web uses Compose runtime knob shm_size, which provider lando does not support.",
+          service: "web",
+          key: "shm_size",
+          feature: "compose knob shm_size",
+          capability: "composeSpec",
+          providerId: "lando",
+          remediation:
+            "Remove shm_size from service web, choose a provider that declares composeKnobs support for shm_size, or move the intent under providers.<id>.",
+        }),
+        context: ctx(),
+      }),
+    );
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+    expect(parsed.service).toBe("web");
+    expect(parsed.key).toBe("shm_size");
+    expect(parsed.capability).toBe("composeSpec");
+    expect(parsed.providerId).toBe("lando");
+    expect(Object.keys(parsed)[0]).toBe("_tag");
   });
 });
 
