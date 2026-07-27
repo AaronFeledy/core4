@@ -1,15 +1,5 @@
-// =============================================================================
-// Podman Compose runtime-knob value coercion.
-//
-// Turns canonical (post-decode) Compose knob values into the scalar shapes the
-// Podman docker-compatible `POST /containers/create` body expects. Every helper
-// is total or loud: a value that cannot be coerced raises through `InvalidKnob`
-// naming the offending knob, never silently defaults or drops.
-// =============================================================================
-
 /**
- * Caller-supplied failure channel. Never returns — `bring-up` wraps the
- * realizer in `Effect.try` and converts the throw into a tagged provider error.
+ * Preserves provider-specific error details across synchronous value conversion.
  */
 export type InvalidKnob = (message: string, details: Record<string, unknown>) => never;
 
@@ -72,17 +62,16 @@ export const deviceMappings = (devices: ReadonlyArray<DeviceKnob> | undefined) =
 
 const ulimitEntry = (name: string, limit: UlimitKnob, fail: InvalidKnob) => {
   const bound = (label: "soft" | "hard", value: number | string): number => {
-    const invalid = () =>
-      fail(`Compose runtime knob \`ulimits.${name}\` requires an integer ${label} limit.`, {
+    const parsed = typeof value === "number" ? value : Number.parseInt(value, 10);
+    if ((typeof value === "string" && !INTEGER_TEXT.test(value)) || !Number.isSafeInteger(parsed)) {
+      return fail(`Compose runtime knob \`ulimits.${name}\` requires an integer ${label} limit.`, {
         knob: "ulimits",
         limit: name,
         bound: label,
         value,
       });
-
-    const parsed =
-      typeof value === "number" ? value : INTEGER_TEXT.test(value) ? Number.parseInt(value, 10) : Number.NaN;
-    return safeInteger(parsed) ?? invalid();
+    }
+    return parsed;
   };
 
   return { Name: name, Soft: bound("soft", limit.soft), Hard: bound("hard", limit.hard) };
@@ -97,7 +86,7 @@ export const ulimitEntries = (
     : Object.entries(ulimits).map(([name, limit]) => ulimitEntry(name, limit, fail));
 
 // Compose tmpfs entries are "<target>" or "<target>:<options>"; Podman wants a
-// target-to-options map, so the split is on the FIRST colon only.
+// target-to-options map, so the split is on the first colon only.
 export const tmpfsMounts = (
   mounts: ReadonlyArray<string> | undefined,
   fail: InvalidKnob,

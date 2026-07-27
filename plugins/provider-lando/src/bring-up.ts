@@ -245,9 +245,7 @@ const createContainerRequest = (plan: AppPlan, service: ServicePlan, name: strin
     }),
     ...knobs.topLevel,
   };
-  const searchParams = new URLSearchParams();
-  searchParams.set("name", name);
-  for (const [key, value] of Object.entries(knobs.query)) searchParams.set(key, value);
+  const searchParams = new URLSearchParams({ name, ...knobs.query });
   const path: PodmanHttpRequest["path"] = `/containers/create?${searchParams.toString()}`;
   return { body, path };
 };

@@ -16,21 +16,12 @@ import {
   ulimitEntries,
 } from "./compose-knobs-values.ts";
 
-// =============================================================================
-// Podman Compose runtime-knob realization — preserved Compose knobs to the
-// docker-compatible `POST /containers/create` request. `HostConfig.*` targets
-// are flat inside `HostConfig` because Docker embeds `Resources` into it.
-// =============================================================================
-
 /**
  * Provider-edge revalidation schema. `ServicePlan.extensions` is typed
  * `Record<string, unknown>`, so canonicalized knob values arrive here untyped.
- * The property signatures are picked straight off `ServiceConfig` — which
- * spreads `ComposeServiceKnobFields` verbatim — so the provider never re-spells
- * an SDK schema. Decoding runs the full field transforms: a `ServiceConfig`
- * field transform must accept its own canonical output as an input variant
- * (`sdk/AGENTS.md`), so re-decoding a canonical value is idempotent and still
- * rejects anything core could not have produced.
+ * The property signatures come from `ServiceConfig`, so the provider does not
+ * duplicate the SDK schema. Its field transforms accept canonical output,
+ * making re-decoding idempotent while rejecting values core could not produce.
  */
 const PodmanComposeKnobs = ServiceConfig.pick(
   "restart",
@@ -58,10 +49,6 @@ const PodmanComposeKnobs = ServiceConfig.pick(
 type PodmanComposeKnobValues = typeof PodmanComposeKnobs.Type;
 type PodmanKnobKey = keyof PodmanComposeKnobValues;
 
-/**
- * Where one knob lands in the create request. Absent slots mean the knob was
- * not present on the service.
- */
 interface KnobFragment {
   readonly hostConfig?: Record<string, unknown>;
   readonly topLevel?: Record<string, unknown>;
@@ -105,7 +92,7 @@ const queryKnob = (
  * - `pull_policy` — Podman's compat `POST /containers/create` has no
  *   pull-policy field (pulls go through `/images/create`), and
  *   `ArtifactPullSpec` is `{ ref }` only. Realizing it would need a new
- *   provider-neutral plan field, which this wave forbids.
+ *   provider-neutral plan field that does not exist.
  * - `gpus` — Podman's compat handler honors `HostConfig.DeviceRequests` only
  *   for `Driver: "cdi"` plus `DeviceIDs`; `count`, `capabilities`, and
  *   `options` are parsed and ignored, so the mapping cannot be total.
@@ -182,11 +169,6 @@ const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanCompo
   });
 };
 
-/**
- * Realize every supported preserved Compose knob on `service` into the Podman
- * create request. Synchronous and loud: an unusable value raises through
- * `onInvalid`, which the caller wraps in `Effect.try`.
- */
 export const realizePodmanComposeKnobs = (
   service: ServicePlan,
   options: RealizePodmanComposeKnobsOptions,
