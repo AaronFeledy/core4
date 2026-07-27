@@ -407,3 +407,13 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - The vendored Compose schema is a coverage oracle, not a grammar oracle. Several value grammars (byte sizes especially) exist only as prose in the vendored file, so the real authority is compose-go's Go implementation. Pattern-matching the JSON Schema alone yields a parser stricter than Compose.
   - Adding an optional capability field costs nothing across the ~51 `ProviderCapabilities` construction sites; making it required would touch all of them. Prefer optional-plus-fail-closed-default over required whenever "absent" has an honest, safe meaning.
 ---
+
+## 2026-07-26 20:44 CDT - US-473 Drift Audit
+- Trigger: 1 cycle, 16358 changed lines, 1 commit
+- Weakened proofs: planner merge, dual-path capability gating, and CLI failure-envelope criteria remain isolated-seam or unproven; the story correctly remains non-passing until production wiring and real-CLI proof land.
+- Ceremony modules: removed the dead aggregate schema and forwarding export fanout; retained the substantive pure core helper because it maps directly to the still-open planner acceptance criteria.
+- Contract drift: narrowed the public SDK surface from 39 knob-schema values to the two documented capability declarations and corrected byte-size remediation to match the accepted decimal, tera/peta, and IEC grammar.
+- Fixed: deleted accidental public/dead exports, kept the parity inventory internal, and restored accurate user remediation without changing schema output.
+- Split/excise decisions: no story split; only accidental public exposure was excised. US-473 `passes` remains false pending planner merge, cached/fresh capability gates, app-planner regressions, and real-CLI proof.
+- Verification: typecheck, lint, schema-snapshot codegen idempotence, Compose coverage, import-cycle, machine-output, all five changed test files, SDK compatibility, and public-schema spot checks passed; the full test suite and container/provider integration were not run per Drift Audit host-safety rules.
+---
