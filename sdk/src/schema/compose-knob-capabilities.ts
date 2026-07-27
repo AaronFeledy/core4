@@ -2,7 +2,6 @@ import { Schema } from "effect";
 
 // =============================================================================
 // Compose runtime knob capabilities — provider-declared preserved knob support.
-// SPEC: §5.4, §5.5.1
 // =============================================================================
 
 export const ComposeServiceKnobKey = Schema.Literal(

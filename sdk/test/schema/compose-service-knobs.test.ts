@@ -242,7 +242,7 @@ describe("Compose service runtime knobs", () => {
     "Given a %s entry with terminal control bytes, when rejected, then remediation does not echo them",
     (key, remediation) => {
       // Given
-      const input = { [key]: ["\u001b]2;US-473-INJECTED\u0007"] };
+      const input = { [key]: ["\u001b]2;CONTROL-INJECTED\u0007"] };
 
       // When
       const result = Schema.decodeUnknownEither(ServiceConfig)(input);
