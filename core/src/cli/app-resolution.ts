@@ -210,9 +210,7 @@ export const loadUserLandofileFile = (
       ? loadLandofileLayers(appRoot, filePath)
       : loadLandofileFile(filePath).pipe(
           Effect.flatMap((landofile) =>
-            landofile.includes === undefined || landofile.includes.length === 0
-              ? Effect.succeed(landofile)
-              : resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }),
+            resolveLandofileIncludes({ landofile, appRoot, sourcePath: filePath }),
           ),
         )
   ).pipe(
