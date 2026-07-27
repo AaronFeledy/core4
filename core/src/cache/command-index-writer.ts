@@ -19,7 +19,7 @@ import { findLandofilePath } from "../landofile/discovery.ts";
 import { getLocalIncludePaths } from "../landofile/include-provenance.ts";
 import { presentLandofileLayers } from "../landofile/layers.ts";
 import { detectTemplateDirective } from "../landofile/template-render.ts";
-import { BUNDLED_PLUGINS } from "../plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";
 import { compilePluginCommands } from "./command-compiler.ts";
@@ -351,10 +351,14 @@ export const writeAppCommandCache = (
 
 export interface WritePluginCommandCacheOptions {
   readonly manifests?: ReadonlyArray<PluginManifest>;
+  readonly modules?: ReadonlyArray<{ readonly manifest: PluginManifest }>;
   readonly pluginNames?: ReadonlyArray<string>;
   readonly cacheRoot?: string;
   readonly now?: () => number;
 }
+
+const resolvePluginManifests = (options: WritePluginCommandCacheOptions): ReadonlyArray<PluginManifest> =>
+  options.manifests ?? (options.modules ?? BUNDLED_PLUGIN_MODULES).map((module) => module.manifest);
 
 const missingPluginNames = (
   manifests: ReadonlyArray<PluginManifest>,
@@ -365,7 +369,7 @@ const missingPluginNames = (
 };
 
 const writePluginCommandCacheTask = async (options: WritePluginCommandCacheOptions): Promise<string> => {
-  const manifests = options.manifests ?? BUNDLED_PLUGINS.map((plugin) => plugin.manifest);
+  const manifests = resolvePluginManifests(options);
   const pluginNames = options.pluginNames ?? manifests.map((manifest) => manifest.name);
   const missing = missingPluginNames(manifests, pluginNames);
   if (missing.length > 0) {
@@ -491,7 +495,7 @@ interface ReadPluginCommandCacheTaskOptions extends WritePluginCommandCacheOptio
 const readPluginCommandCacheTask = async (
   options: ReadPluginCommandCacheTaskOptions = {},
 ): Promise<PluginCommandIndexPayload | null> => {
-  const manifests = options.manifests ?? BUNDLED_PLUGINS.map((plugin) => plugin.manifest);
+  const manifests = resolvePluginManifests(options);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = pluginCommandCachePath(cacheRoot);
   const pluginListSha = derivePluginCommandPluginListSha(manifests);
