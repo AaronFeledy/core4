@@ -346,7 +346,7 @@ describe("LandofileServiceLive — TS form schema validation", () => {
         [
           "export default {",
           '  name: "myapp",',
-          '  services: { web: { image: "node:lts", deploy: { replicas: 3 } } },',
+          '  services: { web: { image: "node:lts", unsupported: true } },',
           "};",
           "",
         ].join("\n"),
@@ -356,7 +356,7 @@ describe("LandofileServiceLive — TS form schema validation", () => {
       const failure = failureFromExit(exit);
       expect(failure).toBeInstanceOf(LandofileValidationError);
       if (failure instanceof LandofileValidationError) {
-        expect(failure.issues.some((issue) => issue.includes("services.web.deploy"))).toBe(true);
+        expect(failure.issues).toContain("services.web.unsupported");
       }
     });
   });
