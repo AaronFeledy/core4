@@ -460,3 +460,10 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: no PRD split; the absorbed US-475 rejection behavior was excised cleanly, and US-473 remains passing with its original acceptance boundary.
 - Verification: typecheck, tracked-source Biome, deprecations, Compose coverage, import-cycle, machine-output, schema-codegen idempotence, and 11 focused test files passed; bare `bun run lint` failed only because it scans the pre-existing ignored `.worktrees/plugin-dag` checkout.
 ---
+## 2026-07-26 23:21 CDT - Babysit
+- PR: #636 https://github.com/AaronFeledy/core4/pull/636
+- CI outcome: pass
+- Review feedback: fixed (declare empty composeKnobs on built-in providers; refresh Landofile/deploy and doctor NDJSON fixtures for first-class knobs)
+- Drift check: clean
+- Merge: merged (squash)
+---
