@@ -17,7 +17,7 @@ import { JSONSchema, Schema } from "effect";
 
 import type { LandoCommandSpec } from "../core/src/cli/oclif/command-base.ts";
 import compiledCommands from "../core/src/cli/oclif/compiled-commands.ts";
-import { BUNDLED_PLUGINS } from "../core/src/plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import {
   JSON_SCHEMA_NAMES,
   PluginManifest,
@@ -125,7 +125,7 @@ const main = async (): Promise<void> => {
     }
   }
   const commandResultSchemas = generateCommandResultSchemas();
-  const bundledPluginManifests = BUNDLED_PLUGINS.map((plugin) => ({
+  const bundledPluginManifests = BUNDLED_PLUGIN_MODULES.map((plugin) => ({
     name: plugin.name,
     manifest: stable(Schema.encodeSync(PluginManifest)(plugin.manifest)),
   })).sort((left, right) => left.name.localeCompare(right.name));
