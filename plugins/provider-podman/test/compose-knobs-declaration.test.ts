@@ -1,26 +1,27 @@
 import { describe, expect, test } from "bun:test";
 
+import { providerLandoCapabilitiesForPlatform } from "@lando/provider-lando";
 import { podmanCapabilitiesForPlatform } from "@lando/provider-podman";
-import type { HostPlatform } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 import { KNOB_FIXTURES } from "../../provider-lando/test/compose-knobs-fixtures.ts";
 
-const declaredKnobs = (platform: HostPlatform) => {
-  const composeKnobs = podmanCapabilitiesForPlatform(platform).composeKnobs;
-  if (composeKnobs === undefined)
-    throw new Error(`provider-podman has no Compose knob declaration on ${platform}`);
-  return composeKnobs.supported;
-};
+const PLATFORMS = ["linux", "darwin", "win32"] as const;
+const PROVIDERS = [
+  ["lando", providerLandoCapabilitiesForPlatform],
+  ["podman", podmanCapabilitiesForPlatform],
+] as const;
+const fixtureKeys = new Set(Object.keys(KNOB_FIXTURES));
+const expectedKnobs = ComposeServiceKnobKey.literals.filter((key) => fixtureKeys.has(key));
 
-describe("provider-podman Compose knob declaration", () => {
-  test("matches the independently proven realization fixtures in both directions", () => {
-    const declared = new Set<string>([
-      ...declaredKnobs("linux"),
-      ...declaredKnobs("darwin"),
-      ...declaredKnobs("win32"),
-    ]);
-    const fixtures = new Set<string>(Object.keys(KNOB_FIXTURES));
+describe("Podman-backed Compose knob declarations", () => {
+  for (const [provider, capabilitiesForPlatform] of PROVIDERS) {
+    for (const platform of PLATFORMS) {
+      test(`${provider} on ${platform} exactly matches the independently proven realization fixtures`, () => {
+        const capabilities = capabilitiesForPlatform(platform);
 
-    expect([...declared].filter((key) => !fixtures.has(key))).toEqual([]);
-    expect([...fixtures].filter((key) => !declared.has(key))).toEqual([]);
-  });
+        expect(capabilities.composeSpec).toBe("native");
+        expect(capabilities.composeKnobs?.supported).toEqual(expectedKnobs);
+      });
+    }
+  }
 });

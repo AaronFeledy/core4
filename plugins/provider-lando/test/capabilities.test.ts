@@ -10,59 +10,13 @@ import {
   makePodmanPingRequest,
   makeProviderLayer,
   mvpProviderCapabilities,
-  podmanComposeKnobsForPlatform,
-  providerLandoCapabilitiesForPlatform,
 } from "@lando/provider-lando";
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
-import { ComposeServiceKnobKey, type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
+import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
-import { KNOB_FIXTURES } from "./compose-knobs-fixtures.ts";
-
-const declaredKnobs = (platform: HostPlatform) => {
-  const composeKnobs = providerLandoCapabilitiesForPlatform(platform).composeKnobs;
-  if (composeKnobs === undefined)
-    throw new Error(`provider-lando has no Compose knob declaration on ${platform}`);
-  return composeKnobs.supported;
-};
 
 describe("provider-lando capabilities", () => {
-  test("declares native Compose support from the Podman knob registry on every platform", () => {
-    const linux = providerLandoCapabilitiesForPlatform("linux");
-    const macos = providerLandoCapabilitiesForPlatform("darwin");
-    const windows = providerLandoCapabilitiesForPlatform("win32");
-    const linuxKnobs = declaredKnobs("linux");
-    const macosKnobs = declaredKnobs("darwin");
-    const windowsKnobs = declaredKnobs("win32");
-    const fixtureKeys = new Set(Object.keys(KNOB_FIXTURES));
-    const expectedSupported = ComposeServiceKnobKey.literals.filter((key) => fixtureKeys.has(key));
-
-    expect(linux.composeSpec).toBe("native");
-    expect(macos.composeSpec).toBe("native");
-    expect(windows.composeSpec).toBe("native");
-    expect(linuxKnobs).toEqual(podmanComposeKnobsForPlatform("linux"));
-    expect(macosKnobs).toEqual(podmanComposeKnobsForPlatform("darwin"));
-    expect(windowsKnobs).toEqual(podmanComposeKnobsForPlatform("win32"));
-    expect(linuxKnobs).toHaveLength(21);
-    expect(macosKnobs).toHaveLength(21);
-    expect(windowsKnobs).toHaveLength(21);
-    expect(linuxKnobs).not.toContain("pull_policy");
-    expect(linuxKnobs).not.toContain("gpus");
-    expect(linuxKnobs).not.toContain("deploy.resources");
-    expect(macosKnobs).not.toContain("pull_policy");
-    expect(macosKnobs).not.toContain("gpus");
-    expect(macosKnobs).not.toContain("deploy.resources");
-    expect(windowsKnobs).not.toContain("pull_policy");
-    expect(windowsKnobs).not.toContain("gpus");
-    expect(windowsKnobs).not.toContain("deploy.resources");
-    expect(linuxKnobs).toEqual(expectedSupported);
-    expect(macosKnobs).toEqual(expectedSupported);
-    expect(windowsKnobs).toEqual(expectedSupported);
-    expect(podmanComposeKnobsForPlatform("linux")).toEqual(expectedSupported);
-    expect(podmanComposeKnobsForPlatform("darwin")).toEqual(expectedSupported);
-    expect(podmanComposeKnobsForPlatform("win32")).toEqual(expectedSupported);
-  });
-
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
       .filter((field) => field !== "hostProxy")
