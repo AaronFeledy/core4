@@ -96,6 +96,9 @@ describe("parseComposeByteSize", () => {
       if (message === undefined) return;
       expect(message.startsWith("Landofile service ")).toBe(true);
       expect(message).toContain("64m");
+      expect(message).toContain("1.5g");
+      expect(message).toContain("1GiB");
+      expect(message).toContain("1P");
       expect(message).toContain("1gb");
       expect(message).toContain("134217728");
     });
