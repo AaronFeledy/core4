@@ -5,7 +5,7 @@ interface ProviderAcceptanceCellPlan {
   readonly runsOn: string;
   readonly provider: string;
   readonly releaseBlocking: boolean;
-  readonly checks: readonly { readonly id: string }[];
+  readonly checks: readonly { readonly id: string; readonly command: readonly string[] }[];
 }
 
 interface ProviderAcceptanceReport {
@@ -103,6 +103,21 @@ describe("provider machine lifecycle acceptance", () => {
     expect(cells.every((cell) => cell.checks.map((check) => check.id).includes("machine-lifecycle"))).toBe(
       true,
     );
+  });
+
+  test("runs the Compose knob transport proof in the managed Windows cell", () => {
+    // Given
+    const cell = requireCell("lando-machine-windows");
+
+    // When
+    const check = cell.checks.find((candidate) => candidate.id === "compose-knobs-transport");
+
+    // Then
+    expect(check?.command).toEqual([
+      "bun",
+      "test",
+      "plugins/provider-lando/test/compose-knobs-transport.test.ts",
+    ]);
   });
 
   test("requires an exact lifecycle opt-in before running a native host cell", () => {

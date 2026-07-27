@@ -137,6 +137,7 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.skip).toBeUndefined();
     expect(report.checks.map((check) => check.id)).toEqual([
       "managed-setup-readiness",
+      "compose-knobs-transport",
       "sdk-provider-contract",
       "lando-bring-up",
       "lando-bring-down",
@@ -158,6 +159,11 @@ describe("provider matrix acceptance reporting", () => {
     expect(report.checks.find((check) => check.id === "lando-image-resolution-pull")?.label).toBe(
       "Image pull seam coverage through provider-lando fake API",
     );
+    expect(report.checks.find((check) => check.id === "compose-knobs-transport")?.command).toEqual([
+      "bun",
+      "test",
+      "plugins/provider-lando/test/compose-knobs-transport.test.ts",
+    ]);
     expect(evaluateProviderAcceptanceReport(report).exitCode).toBe(0);
   });
 
