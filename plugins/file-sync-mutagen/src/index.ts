@@ -186,6 +186,7 @@ export const engine = Layer.effect(
 
 export const fileSyncCheck: PluginDoctorCheckContribution = {
   id: "file-sync",
+  relevant: (capabilities) => capabilities.bindMountPerformance === "slow",
   run: ({ binDir }) =>
     Effect.gen(function* () {
       const installStatus =

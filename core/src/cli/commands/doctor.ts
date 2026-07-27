@@ -6,7 +6,11 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import type { LandoPluginModule, PluginDoctorReport } from "@lando/sdk/plugins";
+import type {
+  LandoPluginModule,
+  PluginDoctorCheckContribution,
+  PluginDoctorReport,
+} from "@lando/sdk/plugins";
 import {
   type HostPlatform,
   ProviderCapabilities,
@@ -219,16 +223,25 @@ interface PluginDoctorCheckMapping {
   readonly selection: DoctorSelectionRecord;
 }
 
+interface PluginDoctorContributionReport {
+  readonly report: PluginDoctorReport;
+  readonly relevant: PluginDoctorCheckContribution["relevant"];
+}
+
 const pluginDoctorReports = (
   modules: ReadonlyArray<LandoPluginModule>,
   input: PluginDoctorInput,
-): Effect.Effect<ReadonlyArray<PluginDoctorReport>, never> =>
+): Effect.Effect<ReadonlyArray<PluginDoctorContributionReport>, never> =>
   Effect.gen(function* () {
     const index = yield* Either.match(makePluginCapabilityIndex(modules), {
       onLeft: (error) => Effect.die(error),
       onRight: Effect.succeed,
     });
-    return (yield* Effect.forEach([...index.doctorChecks.values()], (check) => check.run(input))).flat();
+    return (yield* Effect.forEach([...index.doctorChecks.values()], (check) =>
+      check
+        .run(input)
+        .pipe(Effect.map((reports) => reports.map((report) => ({ report, relevant: check.relevant })))),
+    )).flat();
   });
 
 const mapPluginDoctorCheck = ({ report, provider, selection }: PluginDoctorCheckMapping): DoctorCheck => ({
@@ -428,7 +441,9 @@ export const doctor = (
       userDataRoot,
       binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
     });
-    const preemptiveReports = reports.filter((report) => report.preempts === true);
+    const preemptiveReports = reports
+      .map((entry) => entry.report)
+      .filter((report) => report.preempts === true);
     if (preemptiveReports.length > 0) {
       const providerId = String(resolution.providerId);
       const provider = {
@@ -491,7 +506,9 @@ export const doctor = (
       selection,
     };
 
-    const pluginChecks = reports.map((report) => mapPluginDoctorCheck({ report, provider, selection }));
+    const pluginChecks = reports
+      .filter((entry) => entry.relevant === undefined || entry.relevant(provider.capabilities))
+      .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider, selection }));
     const setupReadiness = yield* readSetupReadiness(userDataRoot);
     const setupReadinessChecks: ReadonlyArray<DoctorCheck> =
       setupReadiness === undefined

@@ -2,7 +2,13 @@ import type { Effect, Layer } from "effect";
 
 import type { ProviderCapabilityError, ProviderUnavailableError, ProxyError } from "../errors/index.ts";
 import type { RendererContribution } from "../renderer/index.ts";
-import type { HostPlatform, PluginManifest, ProviderId, ServiceConfig } from "../schema/index.ts";
+import type {
+  HostPlatform,
+  PluginManifest,
+  ProviderCapabilities,
+  ProviderId,
+  ServiceConfig,
+} from "../schema/index.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
@@ -61,6 +67,7 @@ export interface HostTeardownResult {
 
 export interface PluginDoctorCheckContribution {
   readonly id: string;
+  readonly relevant?: (capabilities: ProviderCapabilities) => boolean;
   readonly run: (input: {
     readonly providerId: string;
     readonly platform: HostPlatform;
