@@ -66,5 +66,5 @@ export const loadLogFileHelperPayloads = (
 
 export const LogFileHelperAssetsLive = Layer.effect(
   LogFileHelperAssets,
-  loadLogFileHelperPayloads().pipe(Effect.map((payloads) => ({ payloads: Effect.succeed(payloads) }))),
+  Effect.cached(loadLogFileHelperPayloads()).pipe(Effect.map((payloads) => ({ payloads }))),
 );
