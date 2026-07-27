@@ -11,9 +11,14 @@ import {
   renderAppConfigResult,
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
+import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+const containerNameRemediation = composeServiceDispositions.container_name?.remediation;
+if (containerNameRemediation === undefined) {
+  throw new Error("container_name must declare Compose rejection remediation");
+}
 
 interface RunResult {
   readonly exitCode: number;
@@ -180,6 +185,63 @@ describe("lando app:config", () => {
       }>(result.stdout);
       expect(parsed.landofile?.name).toBe("test-app-config-json");
       expect(parsed.landofile?.recipe).toBe("node");
+    });
+  });
+
+  test("source CLI renders a rejected Compose key through the standard plain failure formatter", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: rejected-app\nservices:\n  web:\n    image: nginx\n    container_name: fixed-web\n",
+      );
+
+      const result = await runCli(["app:config"], dir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("code: ComposeKeyRejectedError");
+      expect(result.stderr).toContain("keyPath: container_name");
+      expect(result.stderr).toContain(containerNameRemediation);
+      expect(result.stderr).not.toMatch(/\n\s+at\s/);
+    });
+  });
+
+  test("source CLI emits a rejected Compose key through the standard JSON failure envelope", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: rejected-json-app\nservices:\n  web:\n    image: nginx\n    container_name: fixed-web\n",
+      );
+
+      const result = await runCli(["app:config", "--format", "json"], dir);
+      const envelope = JSON.parse(result.stdout) as {
+        readonly ok?: boolean;
+        readonly error?: Readonly<Record<string, unknown>>;
+      };
+
+      expect(result.exitCode).toBe(1);
+      expect(envelope.ok).toBe(false);
+      expect(envelope.error).toMatchObject({
+        _tag: "ComposeKeyRejectedError",
+        remediation: containerNameRemediation,
+      });
+      expect(envelope.error?.message).toContain("container_name");
+      expect(envelope.error).not.toHaveProperty("stack");
+    });
+  });
+
+  test("info rejects a Compose key before provider interaction through the standard formatter", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: rejected-info\nservices:\n  web:\n    image: nginx\n    container_name: fixed-web\n",
+      );
+
+      const result = await runCli(["info"], dir);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("code: ComposeKeyRejectedError");
+      expect(result.stderr).toContain("keyPath: container_name");
+      expect(result.stderr).not.toMatch(/\n\s+at\s/);
     });
   });
 });
