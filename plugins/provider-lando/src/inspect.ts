@@ -2,7 +2,12 @@ import { Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceNotFoundError } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
-import type { ProviderError, ServiceRuntimeInfo, ServiceSelector } from "@lando/sdk/services";
+import type {
+  ProviderError,
+  ServiceExitResult,
+  ServiceRuntimeInfo,
+  ServiceSelector,
+} from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
 import { withApiReason } from "./redact.ts";
@@ -16,6 +21,7 @@ interface ContainerInspect {
     readonly Running?: boolean;
     readonly Status?: string;
     readonly StartedAt?: string;
+    readonly ExitCode?: number;
   };
 }
 
@@ -23,20 +29,24 @@ export interface InspectOptions {
   readonly podmanApi?: PodmanApiClient;
 }
 
+interface WaitForExitRequestOptions extends InspectOptions {
+  readonly signal?: AbortSignal;
+}
+
 const containerName = (plan: AppPlan, service: ServicePlan) =>
   `lando-${plan.slug}-${service.name}`.replace(/[^a-zA-Z0-9_.-]/gu, "-");
 
-const missingApi = () =>
+const missingApi = (operation: string) =>
   new ProviderUnavailableError({
     providerId: PROVIDER_ID,
-    operation: "inspect",
-    message: "provider-lando inspect requires a Podman API client.",
+    operation,
+    message: `provider-lando ${operation} requires a Podman API client.`,
   });
 
-const missingService = (target: ServiceSelector) =>
+const missingService = (target: ServiceSelector, operation: string) =>
   new ServiceNotFoundError({
     providerId: PROVIDER_ID,
-    operation: "inspect",
+    operation,
     service: target.service,
     message: `Service ${target.service} is not present in the app plan.`,
   });
@@ -44,16 +54,20 @@ const missingService = (target: ServiceSelector) =>
 const request = (
   api: PodmanApiClient,
   input: PodmanHttpRequest,
+  operation: string,
 ): Effect.Effect<PodmanHttpResponse, ProviderError> =>
-  api.request === undefined ? Effect.fail(missingApi()) : api.request(input);
+  api.request === undefined ? Effect.fail(missingApi(operation)) : api.request(input);
 
-const parseJson = (response: PodmanHttpResponse): Effect.Effect<unknown, ProviderInternalError> =>
+const parseJson = (
+  response: PodmanHttpResponse,
+  operation = "inspect",
+): Effect.Effect<unknown, ProviderInternalError> =>
   Effect.try({
     try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
     catch: (cause) =>
       new ProviderInternalError({
         providerId: PROVIDER_ID,
-        operation: "inspect",
+        operation,
         message: "Podman API returned invalid JSON.",
         cause,
       }),
@@ -94,18 +108,22 @@ export const inspect = (
 ): Effect.Effect<ServiceRuntimeInfo, ProviderError> => {
   const service = plan.services[target.service];
   if (service === undefined) {
-    return Effect.fail(missingService(target));
+    return Effect.fail(missingService(target, "inspect"));
   }
   if (options.podmanApi === undefined) {
-    return Effect.fail(missingApi());
+    return Effect.fail(missingApi("inspect"));
   }
 
   const podmanApi = options.podmanApi;
   return Effect.gen(function* () {
-    const response = yield* request(podmanApi, {
-      method: "GET",
-      path: `/containers/${encodeURIComponent(containerName(plan, service))}/json`,
-    });
+    const response = yield* request(
+      podmanApi,
+      {
+        method: "GET",
+        path: `/containers/${encodeURIComponent(containerName(plan, service))}/json`,
+      },
+      "inspect",
+    );
 
     if (response.status === 404) {
       return {
@@ -145,5 +163,55 @@ export const inspect = (
       endpoints: service.endpoints,
       ...(startedAt === undefined ? {} : { lastStartedAt: startedAt }),
     };
+  });
+};
+
+export const waitForExit = (
+  plan: AppPlan,
+  target: ServiceSelector,
+  options: WaitForExitRequestOptions = {},
+): Effect.Effect<ServiceExitResult, ProviderError> => {
+  const service = plan.services[target.service];
+  if (service === undefined) return Effect.fail(missingService(target, "waitForExit"));
+  if (options.podmanApi === undefined) return Effect.fail(missingApi("waitForExit"));
+
+  const podmanApi = options.podmanApi;
+  return Effect.gen(function* () {
+    const response = yield* request(
+      podmanApi,
+      {
+        method: "POST",
+        path: `/libpod/containers/${encodeURIComponent(containerName(plan, service))}/wait`,
+        ...(options.signal === undefined ? {} : { signal: options.signal }),
+      },
+      "waitForExit",
+    );
+    if (response.status < 200 || response.status >= 300) {
+      return yield* Effect.fail(
+        new ProviderUnavailableError({
+          providerId: PROVIDER_ID,
+          operation: "waitForExit",
+          message: withApiReason(`Podman wait failed with HTTP ${response.status}.`, {
+            body: response.body,
+          }),
+          details: { service: service.name, body: response.body },
+          remediation: "Inspect the service container state and retry the operation.",
+        }),
+      );
+    }
+    const decoded = yield* parseJson(response, "waitForExit");
+    const exitCode = decoded;
+    if (typeof exitCode !== "number") {
+      return yield* Effect.fail(
+        new ProviderInternalError({
+          providerId: PROVIDER_ID,
+          operation: "waitForExit",
+          message: "Podman wait did not return a numeric container exit code.",
+          details: { service: service.name },
+          remediation: "Check the Podman API version and retry the operation.",
+        }),
+      );
+    }
+    return { exitCode };
   });
 };

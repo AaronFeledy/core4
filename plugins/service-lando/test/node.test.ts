@@ -199,7 +199,7 @@ describe("node:22 ServiceType", () => {
     ]);
   });
 
-  test("passes through entrypoint and dependsOn", async () => {
+  test("preserves entrypoint and leaves authored dependsOn for planner normalization", async () => {
     const plan = await composeNodePlan(node22ServiceType, {
       type: "node:22",
       entrypoint: ["docker-entrypoint.sh"],
@@ -207,7 +207,7 @@ describe("node:22 ServiceType", () => {
     });
 
     expect(plan.entrypoint).toEqual(["docker-entrypoint.sh"]);
-    expect(plan.dependsOn).toEqual([{ service: ServiceName.make("database"), condition: "started" }]);
+    expect(plan.dependsOn).toEqual([]);
   });
 
   test("rejects unsupported node versions with remediation", async () => {

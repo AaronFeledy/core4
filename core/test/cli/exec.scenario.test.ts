@@ -139,6 +139,7 @@ const makeProvider = (
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: () => Effect.void,
     exec: (target, spec) => {
       calls.push({

@@ -1,7 +1,7 @@
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError, ServiceTypeError } from "@lando/sdk/errors";
-import { AbsolutePath, PortablePath, ServiceName } from "@lando/sdk/schema";
+import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { publishedEndpointsFromPorts } from "./_port-helpers.ts";
@@ -45,10 +45,6 @@ const applyLandoFeature = (ctx: ServiceFeatureContext): void => {
 
   for (const endpoint of publishedEndpointsFromPorts(service.ports ?? [], "tcp")) {
     ctx.addEndpoint(endpoint);
-  }
-
-  for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
   }
 };
 

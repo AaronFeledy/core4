@@ -3,13 +3,7 @@ import { basename } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import {
-  AbsolutePath,
-  type MountInput,
-  PortablePath,
-  ServiceName,
-  parseShortVolume,
-} from "@lando/sdk/schema";
+import { AbsolutePath, type MountInput, PortablePath, parseShortVolume } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
 import { internalEndpointsFromExpose, publishedEndpointsFromPorts } from "./_port-helpers.ts";
@@ -163,9 +157,6 @@ const applyCompose = (ctx: ServiceFeatureContext): void => {
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
   if (service.user !== undefined) ctx.setUser(service.user);
   if (service.workingDirectory !== undefined) ctx.setWorkingDirectory(service.workingDirectory);
-  for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
-  }
   for (const [key, value] of Object.entries(service.providers ?? {})) ctx.addExtension(key, value);
   if (tmpfsEntries.length > 0) {
     const existing = service.providers?.compose;

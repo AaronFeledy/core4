@@ -3,6 +3,7 @@ import {
   containerCreateBodyFragment,
   containerHostConfigFragment,
 } from "@lando/container-runtime/plan";
+import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import { type Context, DateTime, Effect } from "effect";
 
 import { ProviderInternalError, ProviderUnavailableError, ServiceStartError } from "@lando/sdk/errors";
@@ -11,6 +12,7 @@ import {
   type AppPlan,
   type AppRef,
   ProviderId,
+  ServiceName,
   type ServicePlan,
   landoAppNetworkName,
   landoNetworkNames,
@@ -20,6 +22,8 @@ import {
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
+import { exec } from "./exec.ts";
+import { waitForExit } from "./inspect.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
 import { volumeSelectorValue } from "./volume-prune.ts";
 
@@ -50,7 +54,6 @@ interface InspectResult {
 }
 
 interface StartResult {
-  readonly name: string;
   readonly changed: boolean;
 }
 
@@ -384,6 +387,7 @@ const startService = (
   plan: AppPlan,
   service: ServicePlan,
   options: BringUpOptions,
+  recordTouched: (container: TouchedContainer) => void,
 ): Effect.Effect<StartResult, BringUpError> => {
   const name = containerName(plan, service);
   return Effect.gen(function* () {
@@ -405,6 +409,11 @@ const startService = (
     );
 
     const before = yield* inspectContainer(api, name);
+    recordTouched({
+      name,
+      created: !before.exists,
+      startedExisting: before.exists && !before.running,
+    });
     let changed = false;
     if (!before.exists) {
       yield* createContainer(api, plan, service, name);
@@ -433,21 +442,42 @@ const startService = (
       }),
     );
 
-    return { name, changed };
+    return { changed };
   });
 };
+
+interface TouchedContainer {
+  readonly name: string;
+  readonly created: boolean;
+  readonly startedExisting: boolean;
+}
+
+const cleanupTouchedContainers = (
+  api: PodmanApiClient,
+  touched: ReadonlyArray<TouchedContainer>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Effect.forEach(
+      touched.filter((container) => container.created || container.startedExisting),
+      (container) => stopContainerSilent(api, container.name),
+      { discard: true },
+    );
+    yield* Effect.forEach(
+      touched.filter((container) => container.created),
+      (container) => removeContainerSilent(api, container.name),
+      { discard: true },
+    );
+  });
 
 const rollbackPartialApply = (
   api: PodmanApiClient,
   plan: AppPlan,
-  touched: ReadonlyArray<string>,
+  touched: ReadonlyArray<TouchedContainer>,
   createdNetworks: ReadonlySet<string>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    // stop/DELETE are idempotent on 404 so this is safe for never-created
-    // containers. Volumes are preserved so rollback does not discard persistent data.
-    yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
-    yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
+    // Volumes are preserved so rollback does not discard persistent data.
+    yield* cleanupTouchedContainers(api, touched);
     yield* removeNetworkSilent(api, plan);
     yield* removeCreatedNetworksSilent(api, createdNetworks);
   });
@@ -473,19 +503,87 @@ export const bringUp = (
     for (const store of plan.stores) {
       changed = (yield* ensureVolume(resolvedApi, plan, store)) || changed;
     }
-    const touched: string[] = [];
-    for (const service of Object.values(plan.services)) {
-      if (options.signal?.aborted === true) {
-        yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
-        yield* Effect.fail(podmanFailure(service, "bringUp", "Podman bringUp was cancelled."));
-      }
-      const thisName = containerName(plan, service);
-      touched.push(thisName);
-      const result = yield* startService(resolvedApi, plan, service, options).pipe(
-        Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+    const touched: TouchedContainer[] = [];
+    const result = yield* runServiceStartSchedule(plan, {
+      startService: (service) =>
+        Effect.gen(function* () {
+          if (options.signal?.aborted === true) {
+            return yield* Effect.interrupt;
+          }
+          const started = yield* startService(resolvedApi, plan, service, options, (container) => {
+            touched.push(container);
+          }).pipe(
+            Effect.catchAll((error) =>
+              options.signal?.aborted === true ? Effect.interrupt : Effect.fail(error),
+            ),
+          );
+          return { changed: started.changed };
+        }),
+      cleanupOptionalStartFailure: (service) =>
+        Effect.gen(function* () {
+          const name = containerName(plan, service);
+          const index = touched.findIndex((container) => container.name === name);
+          const container = touched[index];
+          if (container === undefined) return;
+          yield* cleanupTouchedContainers(resolvedApi, [container]);
+          touched.splice(index, 1);
+        }),
+      execHealthcheck: (service, command) =>
+        exec(
+          plan,
+          { app: plan.id, service: service.name },
+          { command, ...(options.signal === undefined ? {} : { signal: options.signal }) },
+          { podmanApi: resolvedApi },
+        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+      waitForExit: (service) =>
+        waitForExit(
+          plan,
+          { app: plan.id, service: service.name },
+          {
+            podmanApi: resolvedApi,
+            ...(options.signal === undefined ? {} : { signal: options.signal }),
+          },
+        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+    }).pipe(
+      Effect.tapError(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+      Effect.onInterrupt(() => rollbackPartialApply(resolvedApi, plan, touched, createdNetworks)),
+    );
+
+    if (result._tag === "Cycle") {
+      yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
+      return yield* Effect.fail(
+        new ProviderInternalError({
+          providerId: PROVIDER_ID,
+          operation: "bringUp.schedule",
+          message: "Podman bringUp service schedule contains a dependency cycle.",
+          remediation: APPLY_REMEDIATION,
+          details: redactDetails({ edges: result.edges }),
+        }),
       );
-      changed = changed || result.changed;
+    }
+    const [blocked] = result.blocked;
+    if (blocked !== undefined) {
+      yield* rollbackPartialApply(resolvedApi, plan, touched, createdNetworks);
+      const service = plan.services[ServiceName.make(blocked.service)];
+      if (service === undefined) {
+        return yield* Effect.fail(
+          new ProviderInternalError({
+            providerId: PROVIDER_ID,
+            operation: "bringUp.schedule",
+            message: "Podman bringUp schedule blocked an unknown service.",
+            remediation: APPLY_REMEDIATION,
+            details: redactDetails(blocked),
+          }),
+        );
+      }
+      return yield* Effect.fail(
+        podmanFailure(
+          service,
+          "bringUp.schedule",
+          `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+        ),
+      );
     }
 
-    return { changed };
+    return { changed: result.changed || changed };
   });

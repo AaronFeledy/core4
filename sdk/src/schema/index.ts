@@ -62,6 +62,7 @@ export * from "./keymap.ts";
 export * from "./keymap-conflict.ts";
 export * from "./subscriber.ts";
 export * from "./service-info.ts";
+export * from "./service-dependency.ts";
 export * from "./template.ts";
 export * from "./tool-manifest.ts";
 export * from "./tunnel.ts";

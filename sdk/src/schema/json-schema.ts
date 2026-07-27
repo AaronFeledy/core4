@@ -300,6 +300,7 @@ import {
   StyledSpan,
   StyledSpanTone,
 } from "./renderer-panel.ts";
+import { ServiceDependencyCondition } from "./service-dependency.ts";
 import { ServiceInfo } from "./service-info.ts";
 import { PublishedGlobalConfigKey, SubscriberManifestEntry, SubscriberSelector } from "./subscriber.ts";
 import { TemplateRenderContext } from "./template.ts";
@@ -412,6 +413,7 @@ const rawPublicSchemaRegistry = {
   HealthcheckPlan,
   CertificatePlan,
   HostAliasPlan,
+  ServiceDependencyCondition,
   DependencyPlan,
   NetworkPlan,
   PerAppBridgePlan,
@@ -723,6 +725,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   HealthcheckPlan: "Public Lando schema contract for Healthcheck Plan.",
   CertificatePlan: "Public Lando schema contract for Certificate Plan.",
   HostAliasPlan: "Public Lando schema contract for Host Alias Plan.",
+  ServiceDependencyCondition: "How a service dependency must be satisfied before dependents start.",
   DependencyPlan: "Public Lando schema contract for Dependency Plan.",
   NetworkPlan: "Public Lando schema contract for Network Plan.",
   PerAppBridgePlan: "Public Lando schema contract for Per App Bridge Plan.",
@@ -1392,6 +1395,7 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "DataStorePlan.name",
   "DataStorePlan.scope",
   "DependencyPlan.condition",
+  "DependencyPlan.required",
   "DependencyPlan.service",
   "DeprecationNotice.docsUrl",
   "DeprecationNotice.note",

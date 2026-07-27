@@ -104,7 +104,10 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
       ? [{ port: 3000, protocol: "http", name: "http" }]
       : [{ port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
-  dependsOn: name === "web" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
+  dependsOn:
+    name === "web"
+      ? [{ service: ServiceName.make("database"), condition: "service_started", required: true }]
+      : [],
   hostAliases: [],
   metadata,
   extensions: {},
@@ -193,6 +196,7 @@ const makeStopLayer = (
     start: () => Effect.void,
     stop: () => Effect.void,
     restart: () => Effect.void,
+    waitForExit: () => Effect.succeed({ exitCode: 0 }),
     destroy: (target, options) =>
       Effect.sync(() => {
         destroyCalls.push({ target, options });
@@ -404,6 +408,7 @@ describe("lando stop", () => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
+      waitForExit: () => Effect.succeed({ exitCode: 0 }),
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");
@@ -631,6 +636,7 @@ describe("lando stop", () => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
+      waitForExit: () => Effect.succeed({ exitCode: 0 }),
       destroy: () =>
         Effect.sync(() => {
           callLog.push("provider.destroy");

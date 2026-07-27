@@ -7,7 +7,6 @@ import {
   LogSourceId,
   PortablePath,
   type ServiceConfig,
-  ServiceName,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
@@ -78,9 +77,6 @@ const applyNginxFeature = (ctx: ServiceFeatureContext): void => {
 
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);
-  for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
-  }
 };
 
 export const nginxServiceFeature: ServiceFeatureDefinition = {

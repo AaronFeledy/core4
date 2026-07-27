@@ -61,7 +61,10 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
         ]
       : [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
-  dependsOn: name === "web" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
+  dependsOn:
+    name === "web"
+      ? [{ service: ServiceName.make("database"), condition: "service_started", required: true }]
+      : [],
   hostAliases: [],
   metadata,
   extensions: {},

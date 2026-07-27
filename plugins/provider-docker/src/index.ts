@@ -14,6 +14,7 @@ import {
   containerCreateBodyFragment,
   containerHostConfigFragment,
 } from "@lando/container-runtime/plan";
+import { runServiceStartSchedule } from "@lando/container-runtime/service-start-schedule";
 import {
   makeAttachDecoder as makeRuntimeAttachDecoder,
   makeLogDecoder as makeRuntimeLogDecoder,
@@ -43,6 +44,7 @@ import {
   PluginManifest,
   ProviderCapabilities,
   ProviderId,
+  ServiceName,
   type ServicePlan,
   landoAppNetworkName,
   landoNetworkNames,
@@ -65,6 +67,7 @@ import {
 } from "@lando/sdk/services";
 
 import { redactDetails, redactString } from "./redact.ts";
+import { waitForExit } from "./wait-for-exit.ts";
 
 export const PLUGIN_NAME = "@lando/provider-docker" as const;
 export const scratchLabelsForPlan = (plan: AppPlan): Record<string, string> => {
@@ -941,14 +944,36 @@ const removeVolumeSilent = (api: DockerApiClient, name: string): Effect.Effect<v
     Effect.catchAll(() => Effect.void),
   );
 
+interface TouchedContainer {
+  readonly name: string;
+  readonly created: boolean;
+  readonly startedExisting: boolean;
+}
+
+const cleanupTouchedContainers = (
+  api: DockerApiClient,
+  touched: ReadonlyArray<TouchedContainer>,
+): Effect.Effect<void> =>
+  Effect.gen(function* () {
+    yield* Effect.forEach(
+      touched.filter((container) => container.created || container.startedExisting),
+      (container) => stopContainerSilent(api, container.name),
+      { discard: true },
+    );
+    yield* Effect.forEach(
+      touched.filter((container) => container.created),
+      (container) => removeContainerSilent(api, container.name),
+      { discard: true },
+    );
+  });
+
 const rollbackPartialApply = (
   api: DockerApiClient,
   plan: AppPlan,
-  touched: ReadonlyArray<string>,
+  touched: ReadonlyArray<TouchedContainer>,
 ): Effect.Effect<void> =>
   Effect.gen(function* () {
-    yield* Effect.forEach(touched, (name) => stopContainerSilent(api, name), { discard: true });
-    yield* Effect.forEach(touched, (name) => removeContainerSilent(api, name), { discard: true });
+    yield* cleanupTouchedContainers(api, touched);
     yield* removeNetworkSilent(api, plan);
   });
 
@@ -957,40 +982,93 @@ const bringUp = (plan: AppPlan, api: DockerApiClient, signal?: AbortSignal) =>
     yield* Effect.forEach(networkNames(plan), (name) => ensureNetwork(api, name), { discard: true });
     yield* Effect.forEach(plan.stores, (store) => ensureVolume(api, plan, store), { discard: true });
     const sharedNetwork = landoSharedNetworkName(plan);
-    const touched: string[] = [];
-    let changed = false;
-    for (const service of Object.values(plan.services)) {
-      if (signal?.aborted === true) {
-        yield* rollbackPartialApply(api, plan, touched);
-        yield* Effect.fail(serviceStartFailure(service, "Docker bringUp was cancelled."));
-      }
-      const name = containerName(plan, service);
-      touched.push(name);
-      const inspected = yield* inspectContainer(api, name);
-      let serviceChanged = false;
-      if (!inspected.exists) {
-        yield* createContainer(api, plan, service, name).pipe(
-          Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
-        );
-        serviceChanged = true;
-      }
-      if (sharedNetwork !== undefined) {
-        const connectEffect = connectSharedNetwork(api, plan, service, name, sharedNetwork);
-        if (inspected.exists && inspected.running) {
-          yield* connectEffect;
-        } else {
-          yield* connectEffect.pipe(Effect.tapError(() => rollbackPartialApply(api, plan, touched)));
-        }
-      }
-      if (!inspected.running) {
-        yield* startContainer(api, service, name).pipe(
-          Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
-        );
-        serviceChanged = true;
-      }
-      changed = changed || serviceChanged;
+    const touched: TouchedContainer[] = [];
+    const schedule = yield* runServiceStartSchedule(plan, {
+      startService: (service) =>
+        Effect.gen(function* () {
+          if (signal?.aborted === true) {
+            return yield* Effect.interrupt;
+          }
+          const name = containerName(plan, service);
+          const inspected = yield* inspectContainer(api, name);
+          touched.push({
+            name,
+            created: !inspected.exists,
+            startedExisting: inspected.exists && !inspected.running,
+          });
+          let serviceChanged = false;
+          if (!inspected.exists) {
+            yield* createContainer(api, plan, service, name);
+            serviceChanged = true;
+          }
+          if (sharedNetwork !== undefined) {
+            yield* connectSharedNetwork(api, plan, service, name, sharedNetwork);
+          }
+          if (!inspected.running) {
+            yield* startContainer(api, service, name);
+            serviceChanged = true;
+          }
+          return { changed: serviceChanged };
+        }).pipe(
+          Effect.catchAll((error) => (signal?.aborted === true ? Effect.interrupt : Effect.fail(error))),
+        ),
+      cleanupOptionalStartFailure: (service) =>
+        Effect.gen(function* () {
+          const name = containerName(plan, service);
+          const index = touched.findIndex((container) => container.name === name);
+          const container = touched[index];
+          if (container === undefined) return;
+          yield* cleanupTouchedContainers(api, [container]);
+          touched.splice(index, 1);
+        }),
+      execHealthcheck: (service, command) =>
+        exec(
+          plan,
+          { app: plan.id, service: service.name },
+          { command, ...(signal === undefined ? {} : { signal }) },
+          api,
+        ).pipe(Effect.map(({ exitCode }) => ({ exitCode }))),
+      waitForExit: (service) =>
+        waitForExit(
+          plan,
+          { app: plan.id, service: service.name },
+          {
+            dockerApi: api,
+            ...(signal === undefined ? {} : { signal }),
+          },
+        ),
+    }).pipe(
+      Effect.tapError(() => rollbackPartialApply(api, plan, touched)),
+      Effect.onInterrupt(() => rollbackPartialApply(api, plan, touched)),
+    );
+    if (schedule._tag === "Cycle") {
+      yield* rollbackPartialApply(api, plan, touched);
+      return yield* Effect.fail(
+        internal("bringUp.schedule", "Docker bringUp dependency schedule contains a cycle.", {
+          edges: schedule.edges,
+        }),
+      );
     }
-    return { changed };
+    const [blocked] = schedule.blocked;
+    if (blocked !== undefined) {
+      yield* rollbackPartialApply(api, plan, touched);
+      const service = plan.services[ServiceName.make(blocked.service)];
+      if (service === undefined) {
+        return yield* Effect.fail(
+          internal("bringUp.schedule", "Docker bringUp schedule returned an unknown blocked service.", {
+            service: blocked.service,
+            unmetGate: blocked.unmetGate,
+          }),
+        );
+      }
+      return yield* Effect.fail(
+        serviceStartFailure(
+          service,
+          `Service ${blocked.service} could not start because dependency gate ${blocked.unmetGate} was not satisfied.`,
+        ),
+      );
+    }
+    return { changed: schedule.changed };
   });
 
 interface BringDownOptions {
@@ -1427,6 +1505,15 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
+        waitForExit: (target, options) => {
+          const plan = resolvePlan(target);
+          return plan === undefined
+            ? Effect.fail(makeUnavailable("waitForExit"))
+            : waitForExit(plan, target, {
+                dockerApi,
+                ...(options?.signal === undefined ? {} : { signal: options.signal }),
+              });
+        },
         destroy: (target, destroyOptions) => {
           const plan = resolvePlan(target);
           return plan === undefined

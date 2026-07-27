@@ -523,6 +523,15 @@
   },
   {
     "deprecated": false,
+    "description": "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
+    "docsPath": "docs/reference/schemas/service-dependency-condition.mdx",
+    "id": "ServiceDependencyCondition",
+    "jsonSchemaPath": "dist/schemas/service-dependency-condition.json",
+    "packageExport": "@lando/sdk/schema#ServiceDependencyCondition",
+    "title": "Service Dependency Condition"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Dependency Plan.",
     "docsPath": "docs/reference/schemas/dependency-plan.mdx",
     "id": "DependencyPlan",

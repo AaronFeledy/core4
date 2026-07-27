@@ -81,7 +81,10 @@ const servicePlan = (name: "web" | "database"): ServicePlan => ({
         ]
       : [{ _tag: "internal", port: 5432, protocol: "tcp", name: "database" }],
   routes: [],
-  dependsOn: name === "web" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
+  dependsOn:
+    name === "web"
+      ? [{ service: ServiceName.make("database"), condition: "service_started", required: true }]
+      : [],
   hostAliases: [],
   metadata,
   extensions: {},
@@ -180,7 +183,7 @@ describe("provider-lando Compose emission", () => {
   test("depends_on condition healthy maps to service_healthy in Compose long-form", () => {
     const healthyWeb: ServicePlan = {
       ...web,
-      dependsOn: [{ service: ServiceName.make("database"), condition: "healthy" }],
+      dependsOn: [{ service: ServiceName.make("database"), condition: "service_healthy", required: true }],
     };
     const content = renderCompose({
       ...plan,

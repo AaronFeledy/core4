@@ -7,6 +7,7 @@ import { HealthcheckRunner, RuntimeProvider, type RuntimeProviderShape } from "@
 import { TestRuntimeProvider, runHealthcheckContract } from "@lando/sdk/test";
 
 import * as liveModule from "../../../src/subsystems/healthcheck/live.ts";
+import { makeHealthcheckRunner } from "../../../src/subsystems/healthcheck/runner-factory.ts";
 import {
   appId,
   commandPlan,
@@ -25,7 +26,7 @@ import {
   withFakeRedaction,
 } from "./support.ts";
 
-const { HealthcheckRunnerDefaultLayer, HealthcheckRunnerLive, makeHealthcheckRunner } = liveModule;
+const { HealthcheckRunnerLive } = liveModule;
 
 describe("makeHealthcheckRunner", () => {
   test("kind none resolves skipped without calling exec", async () => {
@@ -253,6 +254,5 @@ describe("HealthcheckRunnerLive", () => {
 
     expect(runner.id).toBe("provider-exec");
     expect(["unavailable", "disabled"]).not.toContain(runner.id);
-    expect(HealthcheckRunnerDefaultLayer).toBe(HealthcheckRunnerLive);
   });
 });

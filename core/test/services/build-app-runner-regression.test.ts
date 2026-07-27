@@ -153,6 +153,42 @@ test("settles started app tasks when the build fiber is interrupted", async () =
   });
 });
 
+test("reports an already-aborted build signal as interruption", async () => {
+  await withTempRoots(async () => {
+    // Given
+    const provider = {
+      ...TestRuntimeProvider,
+      execStream: () => Stream.never,
+    } satisfies RuntimeProviderShape;
+    const plan = planWith({
+      web: [{ id: "install", phase: "app", command: { command: ["install"] } }],
+    });
+    const controller = new AbortController();
+    controller.abort();
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const eventService = yield* EventService;
+          const queue = yield* eventService.subscribeQueue;
+          const orchestrator = yield* BuildOrchestrator;
+          const exit = yield* Effect.exit(orchestrator.buildApp(plan, { signal: controller.signal }));
+          return { exit, events: [...(yield* Queue.takeAll(queue))] };
+        }),
+      ).pipe(Effect.provide(makeLayer(provider))),
+    );
+
+    // Then
+    expect(Exit.isFailure(result.exit)).toBe(true);
+    if (Exit.isFailure(result.exit)) expect(Cause.isInterruptedOnly(result.exit.cause)).toBe(true);
+    else throw new TypeError("aborted build unexpectedly succeeded");
+    expect(result.events.find((event) => event._tag === "task.tree.complete")).toMatchObject({
+      summary: "App dependency build interrupted",
+    });
+  });
+});
+
 test("bounds unterminated task detail while preserving the raw transcript", async () => {
   await withTempRoots(async () => {
     // Given

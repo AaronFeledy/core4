@@ -98,7 +98,10 @@ const servicePlan = (name: "node" | "database"): ServicePlan => ({
           },
         ],
   routes: [],
-  dependsOn: name === "node" ? [{ service: ServiceName.make("database"), condition: "started" }] : [],
+  dependsOn:
+    name === "node"
+      ? [{ service: ServiceName.make("database"), condition: "service_started", required: true }]
+      : [],
   hostAliases: [],
   metadata,
   extensions: {},

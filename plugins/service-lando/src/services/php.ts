@@ -7,7 +7,6 @@ import {
   LogSourceId,
   PortablePath,
   type ServiceConfig,
-  ServiceName,
 } from "@lando/sdk/schema";
 import type { ServiceFeatureContext, ServiceFeatureDefinition, ServiceType } from "@lando/sdk/services";
 
@@ -141,9 +140,6 @@ const applyPhpFeature = (ctx: ServiceFeatureContext): void => {
     startPeriodSeconds: 10,
   });
 
-  for (const dependency of service.dependsOn ?? []) {
-    ctx.addDependency({ service: ServiceName.make(dependency.service), condition: "started" });
-  }
   if (service.user !== undefined) ctx.setUser(service.user);
   if (service.command !== undefined) ctx.setCommand(service.command);
   if (service.entrypoint !== undefined) ctx.setEntrypoint(service.entrypoint);

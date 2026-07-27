@@ -126,6 +126,9 @@ const makeFakeApi = () => {
           running.add(name);
           return { status: 204, body: "" };
         }
+        if (request.path.startsWith("/libpod/containers/") && request.path.endsWith("/wait")) {
+          return { status: 200, body: "0" };
+        }
         if (request.path.endsWith("/stop")) {
           const name = decodeURIComponent(request.path.slice("/containers/".length, -"/stop".length));
           const wasRunning = running.delete(name);

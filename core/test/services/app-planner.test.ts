@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { deserialize } from "node:v8";
 import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import {
@@ -30,6 +31,7 @@ import type { GlobalConfig } from "@lando/sdk/schema";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { APP_PLAN_CACHE_HEADER_BYTES, writeCachedAppPlan } from "../../src/cache/app-plan.ts";
 import { appPlanCachePath } from "../../src/cache/paths.ts";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
@@ -1787,6 +1789,56 @@ describe("AppPlannerLive", () => {
     });
   });
 
+  test("applyAuthoredDependencies defaults condition to service_started and required to true", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "authored-dependencies",
+      runtime: 4,
+      services: {
+        web: { type: "appmount-only", dependsOn: ["db"] },
+        db: { type: "appmount-only" },
+      },
+    });
+
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
+      { service: ServiceName.make("db"), condition: "service_started", required: true },
+    ]);
+  });
+
+  test("mergeComposeExtension preserves an explicit restart: false on the compose extension", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "authored-dependency-restart",
+      runtime: 4,
+      services: {
+        web: { type: "appmount-only", dependsOn: [{ service: "db", restart: false }] },
+        db: { type: "appmount-only" },
+      },
+    });
+
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
+      depends_on: { db: { restart: false } },
+    });
+  });
+
   test("plans a Node and Postgres Landofile into a schema-valid AppPlan", async () => {
     await withTempCwd(async (appRoot) => {
       const appPlan = await plan(landofileFixture);
@@ -1813,7 +1865,9 @@ describe("AppPlannerLive", () => {
       expect(web?.endpoints).toEqual([
         { _tag: "published", port: 3000, protocol: "http", publication: { hostPort: 3000 } },
       ]);
-      expect(web?.dependsOn).toEqual([{ service: ServiceName.make("db"), condition: "started" }]);
+      expect(web?.dependsOn).toEqual([
+        { service: ServiceName.make("db"), condition: "service_started", required: true },
+      ]);
 
       expect(db?.type).toBe("postgres");
       expect(db?.artifact).toEqual({ kind: "ref", ref: "postgres:16" });
@@ -3475,6 +3529,311 @@ describe("AppPlannerLive", () => {
         expect(failure).toBeInstanceOf(LandofileValidationError);
         expect((failure as LandofileValidationError).message).toContain("unsupported version");
       });
+    });
+  });
+
+  test("rejects a required dependency whose target service is absent", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "missing-required-dependency",
+      runtime: 4,
+      services: {
+        web: {
+          type: "appmount-only",
+          dependsOn: [{ service: "db", condition: "service_started", required: true }],
+        },
+      },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    const failure = expectSomeFailure(exit);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
+    if (failure instanceof LandofileValidationError) {
+      expect(failure._tag).toBe("LandofileValidationError");
+      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.message).toContain(
+        "Service web depends on missing service db with condition service_started.",
+      );
+      expect(failure.message).toContain("Add service db to services or set required: false");
+    }
+  });
+
+  test("preserves an optional dependency whose target service is absent", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "missing-optional-dependency",
+      runtime: 4,
+      services: {
+        web: {
+          type: "appmount-only",
+          dependsOn: [
+            {
+              service: "db",
+              condition: "service_completed_successfully",
+              required: false,
+            },
+          ],
+        },
+      },
+    });
+
+    // When
+    const appPlan = await Effect.runPromise(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
+      {
+        service: ServiceName.make("db"),
+        condition: "service_completed_successfully",
+        required: false,
+      },
+    ]);
+  });
+
+  test("rejects a required service_healthy dependency on a target without a healthcheck", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "required-unhealthy-dependency",
+      runtime: 4,
+      services: {
+        web: {
+          type: "appmount-only",
+          dependsOn: [{ service: "db", condition: "service_healthy", required: true }],
+        },
+        db: { type: "appmount-only" },
+      },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    const failure = expectSomeFailure(exit);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
+    if (failure instanceof LandofileValidationError) {
+      expect(failure._tag).toBe("LandofileValidationError");
+      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.message).toContain(
+        "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
+      );
+      expect(failure.message).toContain(
+        "Add a healthcheck with kind: command to service db, or relax the dependency condition to service_started.",
+      );
+    }
+  });
+
+  test("rejects an optional service_healthy dependency on a target with healthcheck kind none", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "optional-disabled-healthcheck-dependency",
+      runtime: 4,
+      services: {
+        web: {
+          type: "appmount-only",
+          dependsOn: [{ service: "db", condition: "service_healthy", required: false }],
+        },
+        db: { type: "appmount-only", healthcheck: { disable: true } },
+      },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    const failure = expectSomeFailure(exit);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
+    if (failure instanceof LandofileValidationError) {
+      expect(failure._tag).toBe("LandofileValidationError");
+      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.message).toContain(
+        "Service web depends on service db with condition service_healthy, but service db has no enabled healthcheck.",
+      );
+      expect(failure.message).toContain(
+        "Setting required: false only allows the dependency to be missing or fail; it does not make an unsatisfiable condition valid.",
+      );
+    }
+  });
+
+  test("rejects a dependency cycle closed by an optional edge", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "optional-dependency-cycle",
+      runtime: 4,
+      services: {
+        web: {
+          type: "appmount-only",
+          dependsOn: [{ service: "db", condition: "service_started", required: true }],
+        },
+        db: {
+          type: "appmount-only",
+          dependsOn: [
+            {
+              service: "web",
+              condition: "service_completed_successfully",
+              required: false,
+            },
+          ],
+        },
+      },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    const failure = expectSomeFailure(exit);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
+    if (failure instanceof LandofileValidationError) {
+      expect(failure._tag).toBe("LandofileValidationError");
+      expect(failure.issues).toEqual(["services.db.dependsOn"]);
+      expect(failure.message).toContain(
+        "web --[service_started]--> db --[service_completed_successfully]--> web",
+      );
+      expect(failure.message).toContain(
+        "Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
+      );
+    }
+  });
+
+  test("rejects a service dependency on itself", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "self-dependency-cycle",
+      runtime: 4,
+      services: {
+        web: {
+          type: "appmount-only",
+          dependsOn: [{ service: "web", condition: "service_started", required: true }],
+        },
+      },
+    });
+
+    // When
+    const exit = await Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
+      ),
+    );
+
+    // Then
+    const failure = expectSomeFailure(exit);
+    expect(failure).toBeInstanceOf(LandofileValidationError);
+    if (failure instanceof LandofileValidationError) {
+      expect(failure._tag).toBe("LandofileValidationError");
+      expect(failure.issues).toEqual(["services.web.dependsOn"]);
+      expect(failure.message).toContain("web --[service_started]--> web");
+      expect(failure.message).toContain(
+        "Remove or redirect one dependency edge; required: false does not break a dependency cycle.",
+      );
+    }
+  });
+
+  test("validates dependency conditions in a pre-seeded cached plan", async () => {
+    await withTempCwd(async (appRoot) => {
+      // Given
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-invalid-dependency-cache-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      const appName = "cached-invalid-dependency";
+      const landofile = Schema.decodeUnknownSync(LandofileShape)({
+        name: appName,
+        runtime: 4,
+        services: { web: { type: "appmount-only" } },
+      });
+      const plannerLayer = AppPlannerLive.pipe(
+        Layer.provide(Layer.mergeAll(CacheServiceLive, Layer.succeed(PluginRegistry, customPluginRegistry))),
+      );
+
+      try {
+        const validPlan = await Effect.runPromise(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(landofile, providerLandoCapabilities),
+          ).pipe(Effect.provide(plannerLayer)),
+        );
+        const cachedBytes = await readFile(appPlanCachePath(cacheRoot, appName, appRoot));
+        const cachedPayload = Schema.decodeUnknownSync(Schema.Struct({ key: Schema.String }))(
+          deserialize(cachedBytes.subarray(APP_PLAN_CACHE_HEADER_BYTES)),
+        );
+        const web = validPlan.services[ServiceName.make("web")];
+        if (web === undefined) throw new Error("Expected cached web service plan");
+        const invalidPlan: AppPlan = {
+          ...validPlan,
+          services: {
+            ...validPlan.services,
+            [ServiceName.make("web")]: {
+              ...web,
+              dependsOn: [
+                {
+                  service: ServiceName.make("db"),
+                  condition: "service_started",
+                  required: true,
+                },
+              ],
+            },
+          },
+        };
+        await Effect.runPromise(
+          writeCachedAppPlan({
+            cacheRoot,
+            appName,
+            appRoot,
+            key: cachedPayload.key,
+            plan: invalidPlan,
+          }).pipe(Effect.provide(CacheServiceLive)),
+        );
+
+        // When
+        const exit = await Effect.runPromiseExit(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(landofile, providerLandoCapabilities),
+          ).pipe(Effect.provide(plannerLayer)),
+        );
+
+        // Then
+        const failure = expectSomeFailure(exit);
+        expect(failure).toBeInstanceOf(LandofileValidationError);
+        if (failure instanceof LandofileValidationError) {
+          expect(failure._tag).toBe("LandofileValidationError");
+          expect(failure.issues).toEqual(["services.web.dependsOn"]);
+          expect(failure.message).toContain(
+            "Service web depends on missing service db with condition service_started.",
+          );
+          expect(failure.message).toContain("Add service db to services or set required: false");
+        }
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
     });
   });
 });

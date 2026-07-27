@@ -81,6 +81,7 @@ export const runtimeProviderService: Context.Tag.Service<typeof RuntimeProvider>
   start: () => Effect.void,
   stop: () => Effect.void,
   restart: () => Effect.void,
+  waitForExit: () => Effect.fail(unsupportedProviderOperation("waitForExit")),
   destroy: () => Effect.void,
   exec: () => Effect.succeed({ exitCode: 1, stdout: "", stderr: "runtime provider stub cannot exec" }),
   execStream: () => Stream.empty,

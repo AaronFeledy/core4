@@ -38,7 +38,7 @@ import { getContainerDiedEvents } from "./container-events.ts";
 import { ensureRuntime } from "./ensure-runtime.ts";
 import { exec, execStream } from "./exec.ts";
 import { pullImage } from "./image-pull.ts";
-import { inspect } from "./inspect.ts";
+import { inspect, waitForExit } from "./inspect.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { logs } from "./logs.ts";
 import {
@@ -129,7 +129,7 @@ export { exec, execStream } from "./exec.ts";
 export type { ExecOptions } from "./exec.ts";
 export { waitForServiceHealth } from "./health.ts";
 export type { WaitForServiceHealthOptions } from "./health.ts";
-export { inspect } from "./inspect.ts";
+export { inspect, waitForExit } from "./inspect.ts";
 export type { InspectOptions } from "./inspect.ts";
 export { logs } from "./logs.ts";
 export type { LogsOptions } from "./logs.ts";
@@ -668,6 +668,16 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions = {}) => {
       start: () => Effect.void,
       stop: () => Effect.void,
       restart: () => Effect.void,
+      waitForExit: (target, waitOptions) =>
+        Effect.gen(function* () {
+          const plan = yield* resolvePlan(target);
+          if (plan === undefined) return yield* Effect.fail(makeNoPlanError(target.app, "waitForExit"));
+          yield* ensureEffect;
+          return yield* waitForExit(plan, target, {
+            ...(podmanApi === undefined ? {} : { podmanApi }),
+            ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+          });
+        }),
       destroy: (target, destroyOptions) =>
         Effect.gen(function* () {
           const plan = yield* resolvePlan(target);

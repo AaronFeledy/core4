@@ -12,11 +12,13 @@ import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
 import { DatasetBinding, RemoteConfig } from "./remote-sync.ts";
+import { ServiceDependencyCondition as ServiceDependencyConditionSchema } from "./service-dependency.ts";
 
 // Landofile input shape — what a user authors (services:, routes:, etc.).
 
 export { EndpointInput } from "./endpoint.ts";
 export { BuildBlock } from "./build-block.ts";
+export { ServiceDependencyCondition } from "./service-dependency.ts";
 
 /** Route input as authored under `services.<name>.routes` (or top-level `proxy:`). */
 export const RouteInput = Schema.Struct({
@@ -61,21 +63,9 @@ export type StorageInput = typeof StorageInput.Type;
 export const HealthcheckInput = HealthcheckCanonicalBase;
 export type HealthcheckInput = typeof HealthcheckInput.Type;
 
-export const ServiceDependencyCondition = Schema.Literal(
-  "service_started",
-  "service_healthy",
-  "service_completed_successfully",
-).annotations({
-  identifier: "ServiceDependencyCondition",
-  title: "Service Dependency Condition",
-  description:
-    "How a service dependency must be satisfied before dependents start: on process start, on healthcheck success, or on successful completion.",
-});
-export type ServiceDependencyCondition = typeof ServiceDependencyCondition.Type;
-
 export const ServiceDependency = Schema.Struct({
   service: Schema.String,
-  condition: Schema.optional(ServiceDependencyCondition),
+  condition: Schema.optional(ServiceDependencyConditionSchema),
   required: Schema.optional(Schema.Boolean),
   restart: Schema.optional(Schema.Boolean),
 }).annotations({
@@ -87,7 +77,7 @@ export const ServiceDependency = Schema.Struct({
 export type ServiceDependency = typeof ServiceDependency.Type;
 
 const ServiceDependencyInput = Schema.Struct({
-  condition: ServiceDependencyCondition,
+  condition: ServiceDependencyConditionSchema,
   required: Schema.optional(Schema.Boolean),
   restart: Schema.optional(Schema.Boolean),
 });

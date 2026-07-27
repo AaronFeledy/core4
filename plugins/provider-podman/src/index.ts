@@ -38,6 +38,7 @@ import {
   podmanVersionMeetsFloor,
   providerStatePath as providerLandoStatePath,
   pullImage,
+  waitForExit,
 } from "@lando/provider-lando";
 import { type ProviderCapabilityError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
@@ -779,6 +780,17 @@ export const makeRuntimeProvider = (
         start: () => Effect.void,
         stop: () => Effect.void,
         restart: () => Effect.void,
+        waitForExit: (target, waitOptions) =>
+          resolvePlan(target).pipe(
+            Effect.flatMap((plan) =>
+              plan === undefined
+                ? Effect.fail(makeNoPlanError(target.app, "waitForExit"))
+                : waitForExit(plan, target, {
+                    podmanApi,
+                    ...(waitOptions?.signal === undefined ? {} : { signal: waitOptions.signal }),
+                  }),
+            ),
+          ),
         destroy: (target, destroyOptions) =>
           Effect.gen(function* () {
             const plan = yield* resolvePlan(target);

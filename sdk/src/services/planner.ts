@@ -16,6 +16,7 @@ import type { ProviderError } from "./provider.ts";
 
 export interface BuildAppOptions {
   readonly force?: boolean;
+  readonly signal?: AbortSignal;
 }
 
 export class AppPlanner extends Context.Tag("@lando/core/AppPlanner")<

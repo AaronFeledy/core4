@@ -31,6 +31,7 @@ export interface EmitComposeResult {
 
 interface DependsOnEntry {
   readonly condition: string;
+  readonly required: boolean;
 }
 
 interface ComposeBindVolume {
@@ -191,15 +192,9 @@ const serviceExpose = (service: ServicePlan): ReadonlyArray<string> =>
       : [],
   );
 
-// Maps DependencyPlan conditions to Docker Compose long-form depends_on entries
-// so that `condition: "healthy"` correctly produces `service_healthy` (not the
-// default `service_started` implied by the short-form string list).
 const serviceDependsOn = (service: ServicePlan): Readonly<Record<string, DependsOnEntry>> =>
   Object.fromEntries(
-    service.dependsOn.map((dep) => [
-      dep.service,
-      { condition: dep.condition === "healthy" ? "service_healthy" : "service_started" },
-    ]),
+    service.dependsOn.map((dep) => [dep.service, { condition: dep.condition, required: dep.required }]),
   );
 
 const removeEmpty = (service: ComposeService): ComposeService => ({
