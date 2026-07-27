@@ -23,6 +23,7 @@ import { HttpClientLive } from "../../../http-client/live.ts";
 import { InteractionServiceLive } from "../../../interaction/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../../plugins/generated/bundled.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { RedactionServiceLive } from "../../../redaction/service.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
@@ -34,6 +35,7 @@ import { SecretStoreLive } from "../../../services/secret-store.ts";
 import { StateStoreLive } from "../../../state/service.ts";
 import { makeTelemetryLayer } from "../../../telemetry/service.ts";
 import { type BootstrapLayerInputs, makeLibraryRenderer } from "../../bootstrap-layer-support.ts";
+import { makeHostMaintenanceRegistryLayer } from "../../host-maintenance.ts";
 
 export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const telemetryLive = makeTelemetryLayer(inputs.telemetryEnabled);
@@ -56,6 +58,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     DeprecationServiceLive.pipe(Layer.provide(eventServiceLive)),
     DeprecationTelemetryLive.pipe(Layer.provide(Layer.mergeAll(eventServiceLive, telemetryLive))),
     PluginTrustStoreLive.pipe(Layer.provide(ConfigServiceLive)),
+    makeHostMaintenanceRegistryLayer(BUNDLED_PLUGIN_MODULES),
     CacheServiceLive,
     FileSystemLive,
     ProcessRunnerLive,

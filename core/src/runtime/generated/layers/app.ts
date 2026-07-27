@@ -13,11 +13,11 @@
 
 import { Context, Layer } from "effect";
 
-import { engine as FileSyncEngineLive } from "@lando/file-sync-mutagen";
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 import { GlobalAppRuntimeLive } from "../../../global-app/runtime.ts";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
+import { BundledFileSyncEngineLive } from "../../../plugins/file-sync-from-modules.ts";
 import { BuildOrchestratorLive } from "../../../services/build-orchestrator.ts";
 import { AppPlannerLive } from "../../../services/planner.ts";
 import { ShellRunnerLive } from "../../../services/shell-runner.ts";
@@ -35,7 +35,7 @@ export const makeAppBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     AppPlannerLive.pipe(Layer.provide(providerBase)),
     ProviderExecToolingEngineLive,
     ShellRunnerLive,
-    FileSyncEngineLive.pipe(Layer.provide(providerBase)),
+    BundledFileSyncEngineLive.pipe(Layer.provide(providerBase)),
   );
   const proxyRegistryLive = ProxyServiceRegistryLive.pipe(
     Layer.provide(appBase),

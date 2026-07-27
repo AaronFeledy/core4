@@ -77,4 +77,15 @@ describe("generated bootstrap layers", () => {
     expect(provider).toContain("Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))");
     expect(provider).toContain("urlScannerLive");
   });
+
+  test("app bootstrap does not import a file-sync plugin package", async () => {
+    // Given: the generated app bootstrap source.
+    const app = await readFile(resolve(generatedLayersDir, "app.ts"), "utf8");
+
+    // When: its imports are inspected.
+    const importsMutagenPackage = app.includes('from "@lando/file-sync-mutagen"');
+
+    // Then: file-sync resolution stays behind the core plugin-module seam.
+    expect(importsMutagenPackage).toBe(false);
+  });
 });

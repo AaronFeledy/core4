@@ -17,16 +17,21 @@ import { EventService, RuntimeProvider } from "@lando/sdk/services";
 import { DataMoverLive } from "../../../data-mover/service.ts";
 import { GlobalAppServiceLive } from "../../../global-app/service.ts";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
+import { LogFileHelperAssetsLive } from "../../../providers/log-file-helper-payloads.ts";
 import { RuntimeProviderRegistryLive } from "../../../providers/registry.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
 import { FileSystemLive } from "../../../services/file-system.ts";
+import { AppPlanSanitizerLive } from "../../../subsystems/host-proxy/plan-sanitizer-live.ts";
 import { UrlScannerLive } from "../../../subsystems/scanner/live.ts";
 import { type BootstrapLayerInputs, runtimeProviderService } from "../../bootstrap-layer-support.ts";
 import { makeCommandsBootstrapBaseLayer } from "./commands.ts";
 
 export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => {
   const pluginsRuntimeLive = makeCommandsBootstrapBaseLayer(inputs);
-  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(Layer.provide(pluginsRuntimeLive));
+  const providerSupportLive = Layer.mergeAll(AppPlanSanitizerLive, LogFileHelperAssetsLive);
+  const providerRegistryLive = RuntimeProviderRegistryLive.pipe(
+    Layer.provide(Layer.mergeAll(pluginsRuntimeLive, providerSupportLive)),
+  );
 
   const runtimeProviderLive = Layer.succeed(RuntimeProvider, runtimeProviderService);
   const urlScannerLive = UrlScannerLive.pipe(
@@ -35,6 +40,7 @@ export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => 
 
   return Layer.mergeAll(
     pluginsRuntimeLive,
+    providerSupportLive,
     runtimeProviderLive,
     urlScannerLive,
     DataMoverLive.pipe(Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))),
