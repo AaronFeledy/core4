@@ -1,5 +1,5 @@
 /**
- * Characterization test — pins CURRENT `core/src/runtime/managed-runtime-service.ts`
+ * Characterization test — pins CURRENT `plugins/provider-lando/src/managed-runtime-service.ts`
  * behavior byte-for-byte before Wave 1 moves this module into
  * `plugins/provider-lando`. These assertions describe OBSERVABLE behavior
  * (exact argv, spec shape, pid-ownership verification, termination
@@ -24,7 +24,7 @@ import {
   managedRuntimePodmanArgv0,
   terminateOwnedRuntimeService,
   verifyOwnedRuntimePid,
-} from "../../src/runtime/managed-runtime-service.ts";
+} from "../src/managed-runtime-service.ts";
 
 const run = <A>(effect: Effect.Effect<A, never>): Promise<A> => Effect.runPromise(effect);
 

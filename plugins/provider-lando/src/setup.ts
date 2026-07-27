@@ -4,7 +4,7 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 
 import { Cause, type Context, DateTime, Effect, Exit } from "effect";
 
-import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
+import { managedRuntimePodmanArgv0 } from "./managed-runtime-service.ts";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
 import {

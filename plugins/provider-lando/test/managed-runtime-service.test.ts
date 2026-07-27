@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { Effect } from "effect";
 
-import { makeLandoPaths } from "../../../src/config/paths.ts";
+import { makeLandoPaths } from "@lando/core/paths";
 import {
   type FsSeam,
   type ManagedRuntimeServiceSpec,
@@ -10,7 +10,7 @@ import {
   buildManagedRuntimeServiceSpec,
   terminateOwnedRuntimeService,
   verifyOwnedRuntimePid,
-} from "../../../src/runtime/managed-runtime-service.ts";
+} from "../src/managed-runtime-service.ts";
 
 const run = <A>(effect: Effect.Effect<A, never>): Promise<A> => Effect.runPromise(effect);
 

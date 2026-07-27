@@ -11,7 +11,6 @@ import {
   logFileHelperPayloadForTargets,
 } from "@lando/container-runtime/log-file-helper-payloads";
 import { stripHostProxyRunLando } from "@lando/core/host-proxy-transport";
-import { managedRuntimePodmanArgv0 } from "@lando/core/managed-runtime-service";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
 import { definePlugin } from "@lando/sdk/plugins";
@@ -50,6 +49,11 @@ import { pullImage } from "./image-pull.ts";
 import { inspect, waitForExit } from "./inspect.ts";
 import type { RuntimeGenerationStore } from "./linux-runtime-generation.ts";
 import { logs } from "./logs.ts";
+import {
+  buildManagedRuntimeServiceSpec,
+  managedRuntimePodmanArgv0,
+  terminateOwnedRuntimeService,
+} from "./managed-runtime-service.ts";
 import { makePluginArtifactDownload, makePluginRuntimeState } from "./plugin-runtime.ts";
 import {
   type PodmanServiceRunner,
@@ -886,6 +890,13 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
+  hostMaintainers: [
+    {
+      id: "lando-runtime-service",
+      teardown: ({ paths, platform }) =>
+        terminateOwnedRuntimeService(buildManagedRuntimeServiceSpec({ ...paths, platform })),
+    },
+  ],
   runtimeProviders: new Map([
     [
       ProviderId.make("lando"),

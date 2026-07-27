@@ -33,6 +33,9 @@
     "@lando/container-runtime": "workspace:*",
     "effect": "^3.21.2"
   },
+  "devDependencies": {
+    "@lando/core": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",

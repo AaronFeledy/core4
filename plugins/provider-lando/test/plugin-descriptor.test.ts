@@ -27,6 +27,16 @@ describe("provider-lando plugin descriptor", () => {
     expect(definePlugin(plugin)).toBe(plugin);
   });
 
+  test("contributes managed runtime host teardown", () => {
+    // Given: provider-lando's exported plugin descriptor.
+
+    // When: host maintenance contributions are inspected.
+    const maintainerIds = plugin.hostMaintainers?.map((maintainer) => maintainer.id);
+
+    // Then: the managed runtime service has one stable teardown contribution.
+    expect(maintainerIds).toEqual(["lando-runtime-service"]);
+  });
+
   test("builds the existing provider availability and setup surface when services are provided", async () => {
     // Given: the SDK services required by a runtime-provider factory and plugin-scoped state.
     const paths = makeLandoPaths({ userDataRoot: "/tmp/provider-lando-plugin-descriptor" });
