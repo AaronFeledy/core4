@@ -8,12 +8,7 @@ import {
   composeTagDispositions,
   composeTopLevelDispositions,
 } from "./dispositions.ts";
-import {
-  type DispositionTrieNode,
-  compileDispositionTrie,
-  matchDispositionChild,
-  matchDispositionPath,
-} from "./rejection-trie.ts";
+import { type DispositionTrieNode, compileDispositionTrie, matchDispositionChild } from "./rejection-trie.ts";
 
 export interface ComposeRejectionMatch {
   readonly matrixPath: string;
@@ -31,29 +26,10 @@ class ComposeRejectionMatrixInvariantError extends Error {
   }
 }
 
-const TOP_LEVEL_SCOPE = "top-level";
-const SERVICE_SCOPE = "service";
-
-const scopedDispositions = Object.fromEntries([
-  ...Object.entries(composeTopLevelDispositions).map(
-    ([path, entry]) => [`${TOP_LEVEL_SCOPE}.${path}`, entry] as const,
-  ),
-  ...Object.entries(composeServiceDispositions).map(
-    ([path, entry]) => [`${SERVICE_SCOPE}.${path}`, entry] as const,
-  ),
-]);
-
-const composeDispositionTrie = compileDispositionTrie(scopedDispositions);
-const topLevelTrie = matchDispositionPath(composeDispositionTrie, [TOP_LEVEL_SCOPE]);
-const serviceTrie = matchDispositionPath(composeDispositionTrie, [SERVICE_SCOPE]);
+let serviceDispositionTrie: DispositionTrieNode | undefined;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
-
-const matrixPathWithoutScope = (matrixPath: string): string => {
-  const separator = matrixPath.indexOf(".");
-  return separator < 0 ? matrixPath : matrixPath.slice(separator + 1);
-};
 
 const rejectedEntry = (
   entry: ComposeDispositionEntry,
@@ -82,7 +58,7 @@ const matchForNode = (
   const entry = rejectedEntry(node.entry, node.matrixPath);
   if (entry === undefined) return undefined;
   const match = {
-    matrixPath: matrixPathWithoutScope(node.matrixPath),
+    matrixPath: node.matrixPath,
     documentPath,
     rationale: entry.rationale,
     remediation: entry.remediation,
@@ -119,9 +95,10 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
 };
 
 const walkServices = (value: unknown, matches: ComposeRejectionMatch[]): void => {
-  if (!isRecord(value) || serviceTrie === undefined) return;
+  if (!isRecord(value)) return;
+  serviceDispositionTrie ??= compileDispositionTrie(composeServiceDispositions);
   for (const service of Object.keys(value)) {
-    walkValue(value[service], serviceTrie, {
+    walkValue(value[service], serviceDispositionTrie, {
       documentPath: `services.${service}`,
       service,
       matches,
@@ -130,18 +107,23 @@ const walkServices = (value: unknown, matches: ComposeRejectionMatch[]): void =>
 };
 
 export const analyzeComposeRejections = (parsed: unknown): ReadonlyArray<ComposeRejectionMatch> => {
-  if (!isRecord(parsed) || topLevelTrie === undefined) return [];
+  if (!isRecord(parsed)) return [];
   const matches: ComposeRejectionMatch[] = [];
   for (const key of Object.keys(parsed)) {
-    const child = matchDispositionChild(topLevelTrie, key);
-    if (child === undefined) continue;
-    const match = matchForNode(child, key);
-    if (match !== undefined) {
-      matches.push(match);
+    const matrixPath = key.startsWith("x-") ? "x-*" : key;
+    const entry = composeTopLevelDispositions[matrixPath];
+    if (entry === undefined) continue;
+    const rejection = rejectedEntry(entry, matrixPath);
+    if (rejection !== undefined) {
+      matches.push({
+        matrixPath,
+        documentPath: key,
+        rationale: rejection.rationale,
+        remediation: rejection.remediation,
+      });
       continue;
     }
     if (key === "services") walkServices(parsed[key], matches);
-    walkValue(parsed[key], child, { documentPath: key, matches });
   }
   return matches;
 };
