@@ -316,13 +316,13 @@ describe("LandofileShape (MVP)", () => {
     expect(decoded.args?.target?.deprecated).toEqual(notice);
   });
 
-  test("strict decoding rejects Compose keys outside the MVP allowlist (e.g. `deploy`)", () => {
+  test("strict decoding rejects Compose keys outside the MVP allowlist", () => {
     const withDisallowedKey = {
       name: "myapp",
       services: {
         web: {
           image: "node:20",
-          deploy: { replicas: 3 },
+          unsupported: true,
         },
       },
     };
@@ -335,7 +335,7 @@ describe("LandofileShape (MVP)", () => {
     if (Either.isLeft(result)) {
       expect(ParseResult.isParseError(result.left)).toBe(true);
       const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
-      const rejectionRow = issues.find((row) => row.path.includes("deploy"));
+      const rejectionRow = issues.find((row) => row.path.includes("unsupported"));
       expect(rejectionRow).toBeDefined();
       expect(rejectionRow?._tag).toBe("Unexpected");
     }
@@ -347,7 +347,7 @@ describe("LandofileShape (MVP)", () => {
       services: {
         web: {
           image: "node:20",
-          deploy: { replicas: 3 },
+          unsupported: true,
         },
       },
     };
@@ -368,8 +368,8 @@ describe("LandofileShape (MVP)", () => {
       issues: rejectedKeys,
     });
     expect(err._tag).toBe("LandofileValidationError");
-    expect(err.message).toContain("deploy");
-    expect(err.issues).toContain("services.web.deploy");
+    expect(err.message).toContain("unsupported");
+    expect(err.issues).toContain("services.web.unsupported");
   });
 
   test("non-strict decoding strips unknown keys by default", () => {
@@ -378,7 +378,7 @@ describe("LandofileShape (MVP)", () => {
       services: {
         web: {
           image: "node:20",
-          deploy: { replicas: 3 },
+          unsupported: true,
         },
       },
     };
@@ -386,7 +386,7 @@ describe("LandofileShape (MVP)", () => {
     const decoded = Schema.decodeUnknownSync(LandofileShape)(withDisallowedKey);
     const web = decoded.services?.[ServiceName.make("web")];
     if (web === undefined) throw new Error("web service missing");
-    expect((web as Record<string, unknown>).deploy).toBeUndefined();
+    expect((web as Record<string, unknown>).unsupported).toBeUndefined();
   });
 });
 
