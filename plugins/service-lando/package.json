@@ -1,6 +1,6 @@
 {
   "name": "@lando/service-lando",
-  "description": "The opinionated `lando` service base — boot scaffolding, env layer, packages, app mounts, healthchecks, certs, SSH agent, and run hooks.",
+  "description": "The opinionated `lando` service base \u2014 boot scaffolding, env layer, packages, app mounts, healthchecks, certs, SSH agent, and run hooks.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
@@ -20,13 +20,21 @@
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": ["./src", "./dist", "!./dist/**/*.tsbuildinfo", "./plugin.yaml", "./README.md"],
-  "keywords": ["lando", "lando-plugin"],
+  "files": [
+    "./src",
+    "./dist",
+    "!./dist/**/*.tsbuildinfo",
+    "./plugin.yaml",
+    "./README.md"
+  ],
+  "keywords": [
+    "lando",
+    "lando-plugin"
+  ],
   "lando": {
     "manifest": "./plugin.yaml"
   },
   "peerDependencies": {
-    "@lando/core": "workspace:*",
     "@lando/sdk": "workspace:*"
   },
   "dependencies": {
@@ -36,5 +44,8 @@
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",
     "typecheck": "tsc -b"
+  },
+  "devDependencies": {
+    "@lando/core": "workspace:*"
   }
 }
