@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { Cause, type Context, DateTime, Effect, Exit, Layer } from "effect";
 
 import { NoProviderInstalledError } from "@lando/core/errors";
-import { ConfigService, PathsService, RuntimeProviderRegistry } from "@lando/core/services";
+import {
+  AppPlanSanitizer,
+  ConfigService,
+  LogFileHelperAssets,
+  ManagedFileService,
+  PathsService,
+  RuntimeProviderRegistry,
+} from "@lando/core/services";
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DownloaderLive } from "../../src/downloader/service.ts";
@@ -10,6 +17,7 @@ import { HttpClientLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 import { StateStoreLive } from "../../src/state/service.ts";
+import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const appPlan: AppPlan = {
   id: AppId.make("myapp"),
@@ -51,8 +59,12 @@ const registryLayer = (
     load,
     get: (key) => Effect.map(load, (loadedConfig) => loadedConfig[key]),
   };
+  const managedFiles = Effect.runSync(makeTestManagedFileStore());
 
   return RuntimeProviderRegistryLive.pipe(
+    Layer.provideMerge(Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan })),
+    Layer.provideMerge(Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) })),
+    Layer.provideMerge(Layer.succeed(ManagedFileService, managedFiles.service)),
     Layer.provideMerge(PluginRegistryLive),
     Layer.provideMerge(DownloaderLive.pipe(Layer.provide(HttpClientLive))),
     Layer.provideMerge(StateStoreLive),

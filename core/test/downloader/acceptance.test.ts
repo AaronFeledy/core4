@@ -15,7 +15,7 @@ import type { HttpClientCapabilities, ToolArtifactEntry } from "@lando/sdk/schem
 
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
-import { makeArtifactDownload } from "../../src/providers/registry.ts";
+import { makeArtifactDownload } from "../testing/artifact-download.ts";
 
 const ACCEPTANCE_HTTP_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],

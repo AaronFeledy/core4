@@ -1,52 +1,42 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { Effect, Either, Layer, Schema } from "effect";
 
-import type { LogFileHelperPayloads } from "@lando/container-runtime/log-file-helper-payloads";
-import { type Context, Effect, Layer } from "effect";
-
-import { makeRuntimeProvider as makeDockerRuntimeProvider } from "@lando/provider-docker";
 import {
-  type ArtifactDownload,
-  type ArtifactDownloadResult,
-  ProviderBundleChecksumError,
-  makeRuntimeProvider as makeLandoRuntimeProvider,
-} from "@lando/provider-lando";
-import { makeRuntimeProvider as makePodmanRuntimeProvider } from "@lando/provider-podman";
-import {
-  DownloadChecksumError,
   NoProviderInstalledError,
+  PluginDescriptorMismatchError,
   ProviderCapabilityError,
   ProviderConfigError,
   ProviderUnavailableError,
 } from "@lando/sdk/errors";
-import { ProviderId } from "@lando/sdk/schema";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
+import { AbsolutePath, type PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
+  AppPlanSanitizer,
   ConfigService,
   Downloader,
   EventService,
+  LogFileHelperAssets,
+  ManagedFileService,
   PathsService,
   PluginRegistry,
-  RuntimeProvider,
   RuntimeProviderRegistry,
-  type RuntimeProviderShape,
   StateStore,
-  type StateStoreShape,
 } from "@lando/sdk/services";
 
-import { makeLandoRuntimeState } from "./lando-runtime-state.ts";
-import { loadLogFileHelperPayloads } from "./log-file-helper-payloads.ts";
+import { makePublishRender } from "../lifecycle/publish-render.ts";
+import { makeLandoPluginContext } from "../plugins/context.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
+import { makePluginCapabilityIndex } from "../plugins/module-set.ts";
+import { RedactionService } from "../redaction/service.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "./precedence.ts";
 
-type EventPublisher = Pick<Context.Tag.Service<typeof EventService>, "publish">;
-
-const contributionId = (entry: string | { readonly id: string }): string =>
-  typeof entry === "string" ? entry : entry.id;
-
-const providers: Readonly<Record<string, RuntimeProviderShape>> = {};
+const manifestProviderIds = (manifest: PluginManifest): ReadonlyArray<ProviderId> =>
+  (manifest.contributes?.providers ?? []).map((entry) =>
+    ProviderId.make(typeof entry === "string" ? entry : entry.id),
+  );
 
 const toProviderUnavailable = (cause: unknown) =>
   new ProviderUnavailableError({
@@ -79,191 +69,137 @@ const toProviderUnavailableFromCapability = (
     });
   }
   return new ProviderUnavailableError({
-    providerId: "lando",
+    providerId: "unknown",
     operation: "capabilities",
-    message: "Unable to initialize provider-lando capabilities.",
+    message: "Unable to initialize runtime provider capabilities.",
     cause,
   });
 };
 
-const toRuntimeBundleDownloadError = (cause: unknown): ProviderUnavailableError => {
-  if (cause instanceof DownloadChecksumError) {
-    return new ProviderBundleChecksumError("The Lando runtime bundle checksum did not match.", cause);
-  }
-  return new ProviderUnavailableError({
-    providerId: "lando",
-    operation: "setup",
-    message: "Failed to download the provider-lando runtime bundle.",
-    cause,
-  });
-};
+export const makeRuntimeProviderRegistry = (
+  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+) => {
+  const capabilityIndex = makePluginCapabilityIndex(modules);
 
-export const makeArtifactDownload =
-  (downloader: Context.Tag.Service<typeof Downloader>): ArtifactDownload =>
-  (req) =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const result = yield* downloader.download({
-          url: req.url,
-          destination: { kind: "file", directory: req.directory, filename: req.filename },
-          expectedSha256: req.expectedSha256,
-          ...(req.expectedSizeBytes === undefined ? {} : { expectedSizeBytes: req.expectedSizeBytes }),
-          allowFileSource: req.allowFileSource,
-        });
-        const path = result.path ?? join(req.directory, req.filename);
-        const bytes = yield* Effect.promise(() => readFile(path));
-        return { bytes: new Uint8Array(bytes), sha256: result.sha256, path } satisfies ArtifactDownloadResult;
-      }),
-    ).pipe(Effect.mapError(toRuntimeBundleDownloadError));
-
-const makeRuntimeProviderRegistry = (
-  configService: Context.Tag.Service<typeof ConfigService>,
-  pluginRegistry: Context.Tag.Service<typeof PluginRegistry>,
-  eventService: EventPublisher | undefined,
-  downloader: Context.Tag.Service<typeof Downloader>,
-  landoPaths: Context.Tag.Service<typeof PathsService>,
-  stateStore: StateStoreShape,
-): Context.Tag.Service<typeof RuntimeProviderRegistry> => {
-  const artifactDownload = makeArtifactDownload(downloader);
-  const runtimeState = makeLandoRuntimeState(stateStore, landoPaths);
-
-  const providerIds = Effect.mapError(
-    Effect.map(pluginRegistry.list, (manifests) =>
-      manifests
-        .flatMap((manifest) => manifest.contributes?.providers ?? [])
-        .map((entry) => ProviderId.make(contributionId(entry))),
-    ),
-    toProviderUnavailable,
-  );
-
-  const configuredProviderId = Effect.gen(function* () {
-    const defaultProviderId = yield* Effect.mapError(
-      configService.get("defaultProviderId"),
-      toProviderConfig,
-    );
-    const envProviderId = readProviderEnvVar(process.env);
-    return resolveProviderSelection({
-      ...(envProviderId === undefined ? {} : { env: envProviderId }),
-      ...(defaultProviderId === undefined || defaultProviderId === null ? {} : { config: defaultProviderId }),
-      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
-    }).providerId;
-  });
-
-  let cachedLogFileHelperPayloads: LogFileHelperPayloads | undefined;
-  const getLogFileHelperPayloads = Effect.gen(function* () {
-    if (cachedLogFileHelperPayloads !== undefined) return cachedLogFileHelperPayloads;
-    const payloads = yield* loadLogFileHelperPayloads();
-    cachedLogFileHelperPayloads = payloads;
-    return payloads;
-  });
-
-  const providerFor = (providerId: ProviderId) =>
+  return Layer.effect(
+    RuntimeProviderRegistry,
     Effect.gen(function* () {
-      const installedProviderIds = yield* providerIds;
-      const providerIdText = String(providerId);
-      const installed = installedProviderIds.some((installedId) => String(installedId) === providerIdText);
-      if (!installed) {
-        return yield* Effect.fail(
-          new NoProviderInstalledError({
-            message: `Runtime provider ${providerIdText} is not installed.`,
-          }),
-        );
-      }
+      const configService = yield* ConfigService;
+      const pluginRegistry = yield* PluginRegistry;
+      const eventService = yield* Effect.serviceOption(EventService);
+      const downloader = yield* Downloader;
+      const logFileHelperAssets = yield* LogFileHelperAssets;
+      const managedFileService = yield* ManagedFileService;
+      const paths = yield* PathsService;
+      const redaction = yield* Effect.serviceOption(RedactionService);
+      const appPlanSanitizer = yield* AppPlanSanitizer;
+      const stateStore = yield* StateStore;
 
-      const userDataRoot = landoPaths.roots.userDataRoot;
-      const provider =
-        providerIdText === "lando"
-          ? yield* getLogFileHelperPayloads.pipe(
-              Effect.flatMap((logFileHelperPayloads) =>
-                makeLandoRuntimeProvider({
-                  stateDir: `${userDataRoot}/providers`,
-                  runtimeBinDir: landoPaths.runtimeBinDir,
-                  runtimeRunDir: landoPaths.runtimeRunDir,
-                  runtimeStorageDir: landoPaths.runtimeStorageDir,
-                  runtimeConfigDir: landoPaths.runtimeConfigDir,
-                  providerSocketPath: landoPaths.providerSocketPath,
-                  providerPidPath: landoPaths.providerPidPath,
-                  ...(eventService === undefined ? {} : { eventService }),
-                  artifactDownload,
-                  logFileHelperPayloads,
-                  ...runtimeState,
+      const providerManifests = pluginRegistry.list.pipe(Effect.mapError(toProviderUnavailable));
+      const providerIds = providerManifests.pipe(
+        Effect.map((manifests) => manifests.flatMap(manifestProviderIds)),
+      );
+
+      const configuredProviderId = Effect.gen(function* () {
+        const defaultProviderId = yield* configService
+          .get("defaultProviderId")
+          .pipe(Effect.mapError(toProviderConfig));
+        const envProviderId = readProviderEnvVar(process.env);
+        return resolveProviderSelection({
+          ...(envProviderId === undefined ? {} : { env: envProviderId }),
+          ...(defaultProviderId === undefined || defaultProviderId === null
+            ? {}
+            : { config: defaultProviderId }),
+          capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+        }).providerId;
+      });
+
+      const providerFor = (providerId: ProviderId) =>
+        Effect.gen(function* () {
+          const manifests = yield* providerManifests;
+          const providerIdText = String(providerId);
+          const manifest = manifests.find((candidate) =>
+            manifestProviderIds(candidate).some((installedId) => String(installedId) === providerIdText),
+          );
+          if (manifest === undefined) {
+            return yield* Effect.fail(
+              new NoProviderInstalledError({
+                message: `Runtime provider ${providerIdText} is not installed.`,
+              }),
+            );
+          }
+
+          if (Either.isLeft(capabilityIndex)) return yield* Effect.die(capabilityIndex.left);
+          const contribution = capabilityIndex.right.runtimeProviders.get(providerId);
+          const module = modules.find(
+            (candidate) => candidate.runtimeProviders?.get(providerId) === contribution,
+          );
+          if (contribution === undefined || module === undefined) {
+            const manifestModule = modules.find((candidate) => candidate.name === manifest.name);
+            return yield* Effect.die(
+              new PluginDescriptorMismatchError({
+                pluginName: manifest.name,
+                kind: "providers",
+                declared: [providerIdText],
+                provided: [...(manifestModule?.runtimeProviders?.keys() ?? [])].map(String),
+                message: `Plugin ${manifest.name} manifest and descriptor disagree for providers.`,
+                remediation: `Align ${manifest.name}'s manifest providers ids with its descriptor providers ids.`,
+              }),
+            );
+          }
+
+          const pluginStateRoot = yield* Schema.decodeUnknown(AbsolutePath)(
+            paths.pluginStateDir(module.name),
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ProviderUnavailableError({
+                  providerId: providerIdText,
+                  operation: "select",
+                  message: `Unable to initialize runtime provider plugin ${module.name}.`,
+                  remediation: `Verify the plugin state directory for ${module.name} is a valid absolute path.`,
+                  cause,
                 }),
-              ),
+            ),
+          );
+          const publishRender =
+            eventService._tag === "Some" && redaction._tag === "Some"
+              ? makePublishRender(eventService.value, redaction.value)
+              : undefined;
+          const context = makeLandoPluginContext({
+            id: module.name,
+            managedFileService,
+            stateStore,
+            pluginStateRoot,
+            ...(publishRender === undefined ? {} : { publishRender }),
+          });
+          const provider = contribution
+            .make(context)
+            .pipe(
+              Effect.provideService(PathsService, paths),
+              Effect.provideService(Downloader, downloader),
+              Effect.provideService(LogFileHelperAssets, logFileHelperAssets),
+              Effect.provideService(AppPlanSanitizer, appPlanSanitizer),
               Effect.mapError(toProviderUnavailableFromCapability),
-            )
-          : providerIdText === "docker"
-            ? yield* getLogFileHelperPayloads.pipe(
-                Effect.flatMap((logFileHelperPayloads) =>
-                  makeDockerRuntimeProvider({ logFileHelperPayloads }),
-                ),
-                Effect.mapError(toProviderUnavailableFromCapability),
-              )
-            : providerIdText === "podman"
-              ? yield* getLogFileHelperPayloads.pipe(
-                  Effect.flatMap((logFileHelperPayloads) =>
-                    makePodmanRuntimeProvider({
-                      stateDir: `${userDataRoot}/providers`,
-                      ...(eventService === undefined ? {} : { eventService }),
-                      logFileHelperPayloads,
-                    }),
-                  ),
-                  Effect.mapError(toProviderUnavailableFromCapability),
-                )
-              : providers[providerIdText];
+            );
+          const providerWithEvents =
+            eventService._tag === "Some"
+              ? provider.pipe(Effect.provideService(EventService, eventService.value))
+              : provider;
+          return yield* providerWithEvents;
+        });
 
-      if (provider === undefined) {
-        return yield* Effect.fail(
-          new NoProviderInstalledError({
-            message: `Runtime provider ${providerIdText} is not installed.`,
-          }),
-        );
-      }
+      const activeProvider = Effect.flatMap(configuredProviderId, providerFor);
 
-      return provider;
-    });
-
-  const activeProvider = Effect.flatMap(configuredProviderId, providerFor);
-
-  return {
-    list: providerIds,
-    capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
-    select: (plan) => (plan === undefined ? activeProvider : providerFor(plan.provider)),
-  };
+      return {
+        list: providerIds,
+        capabilities: Effect.map(activeProvider, (provider) => provider.capabilities),
+        select: (plan) => (plan === undefined ? activeProvider : providerFor(plan.provider)),
+      };
+    }),
+  );
 };
 
 export { RuntimeProviderRegistry };
 
-export const RuntimeProviderRegistryLive = Layer.effect(
-  RuntimeProviderRegistry,
-  Effect.gen(function* () {
-    const configService = yield* ConfigService;
-    const pluginRegistry = yield* PluginRegistry;
-    const eventService = yield* Effect.serviceOption(EventService);
-    const downloader = yield* Downloader;
-    const landoPaths = yield* PathsService;
-    const stateStore = yield* StateStore;
-    return makeRuntimeProviderRegistry(
-      configService,
-      pluginRegistry,
-      eventService._tag === "Some" ? eventService.value : undefined,
-      downloader,
-      landoPaths,
-      stateStore,
-    );
-  }),
-);
-
-export const LandoRuntimeProviderLive = Layer.effect(
-  RuntimeProvider,
-  loadLogFileHelperPayloads().pipe(
-    Effect.flatMap((logFileHelperPayloads) => makeLandoRuntimeProvider({ logFileHelperPayloads })),
-    Effect.mapError(toProviderUnavailableFromCapability),
-  ),
-);
-export const DockerRuntimeProviderLive = Layer.effect(
-  RuntimeProvider,
-  loadLogFileHelperPayloads().pipe(
-    Effect.flatMap((logFileHelperPayloads) => makeDockerRuntimeProvider({ logFileHelperPayloads })),
-    Effect.mapError(toProviderUnavailableFromCapability),
-  ),
-);
+export const RuntimeProviderRegistryLive = makeRuntimeProviderRegistry();

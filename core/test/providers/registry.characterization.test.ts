@@ -1,23 +1,3 @@
-/**
- * Characterization test — pins CURRENT `core/src/providers/registry.ts`
- * behavior (the "package-name registry" that Wave 2+ rewrites into a
- * descriptor-based lookup) WITHOUT constructing any live provider (no
- * docker/podman socket, no runtime bundle download).
- *
- * Strategy: `RuntimeProviderRegistryLive.select()` checks whether the
- * requested provider id is present in `PluginRegistry.list()`'s
- * `contributes.providers` BEFORE branching into the "lando"/"docker"/"podman"
- * live-construction special cases. Every scenario below deliberately requests
- * (or resolves to, via precedence) a provider id that is either absent from
- * the fake `PluginRegistry.list()`, or present but not one of the three
- * special-cased ids — so the assertions observe `NoProviderInstalledError`
- * without ever reaching live provider construction. This mirrors the faking
- * pattern in `core/test/providers/lando-runtime-registry-wiring.test.ts` and
- * `core/test/providers/precedence.test.ts`.
- *
- * These assertions describe the OBSERVABLE `list`/`select` contract that
- * must survive the Wave 2+ descriptor-lookup rewrite unchanged.
- */
 import { describe, expect, test } from "bun:test";
 
 import { type Context, Effect, Layer, Schema } from "effect";
@@ -25,8 +5,11 @@ import { type Context, Effect, Layer, Schema } from "effect";
 import { PluginLoadError } from "@lando/sdk/errors";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 import {
+  AppPlanSanitizer,
   ConfigService,
   Downloader,
+  LogFileHelperAssets,
+  ManagedFileService,
   PathsService,
   PluginRegistry,
   RuntimeProviderRegistry,
@@ -36,6 +19,7 @@ import {
 import { makeLandoPaths } from "../../src/config/paths.ts";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
+import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const manifestWithProviders = (providers: ReadonlyArray<unknown>) =>
@@ -57,7 +41,16 @@ interface FakeRegistryOptions {
 /** Builds the exact dependency set `RuntimeProviderRegistryLive` requires, fully faked. */
 const buildDependencyLayer = (
   options: FakeRegistryOptions,
-): Layer.Layer<ConfigService | PluginRegistry | Downloader | PathsService | StateStore> => {
+): Layer.Layer<
+  | AppPlanSanitizer
+  | ConfigService
+  | PluginRegistry
+  | Downloader
+  | LogFileHelperAssets
+  | ManagedFileService
+  | PathsService
+  | StateStore
+> => {
   const config: GlobalConfig = {
     telemetry: { enabled: false },
     ...(options.defaultProviderId === undefined
@@ -82,13 +75,17 @@ const buildDependencyLayer = (
   };
 
   const downloaderHandle = Effect.runSync(makeTestDownloader());
+  const managedFileHandle = Effect.runSync(makeTestManagedFileStore());
   const stateStoreHandle = makeTestStateStore();
   const landoPaths = makeLandoPaths({ userDataRoot: "/tmp/registry-characterization" });
 
   return Layer.mergeAll(
+    Layer.succeed(AppPlanSanitizer, { sanitizeForPersistence: (plan) => plan }),
     Layer.succeed(ConfigService, configService),
     Layer.succeed(PluginRegistry, pluginRegistryService),
     Layer.succeed(Downloader, downloaderHandle.service),
+    Layer.succeed(LogFileHelperAssets, { payloads: Effect.succeed({}) }),
+    Layer.succeed(ManagedFileService, managedFileHandle.service),
     Layer.succeed(PathsService, landoPaths),
     Layer.succeed(StateStore, stateStoreHandle.service),
   );
@@ -181,11 +178,7 @@ describe("RuntimeProviderRegistry.select (contract: an uninstalled provider id f
 });
 
 describe("RuntimeProviderRegistry.select(undefined) (contract: env > config > capability-default precedence)", () => {
-  // Every case below resolves to a provider id NOT special-cased in registry.ts
-  // ("lando"/"docker"/"podman" trigger live provider construction), so the
-  // winning id is observable ONLY through the NoProviderInstalledError message
-  // — this proves precedence without ever constructing a live provider.
-  const manifests = [manifestWithProviders(["custom-env-provider", "custom-config-provider"])];
+  const manifests = [manifestWithProviders([])];
 
   test('falls back to the capability default ("lando") when neither LANDO_PROVIDER nor config defaultProviderId is set', async () => {
     await withEnvProvider(undefined, async () => {

@@ -6,6 +6,10 @@ import { describe, expect, test } from "bun:test";
 import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const registrySource = readFileSync(join(import.meta.dir, "../../src/providers/registry.ts"), "utf8");
+const providerSource = readFileSync(
+  join(import.meta.dir, "../../../plugins/provider-lando/src/index.ts"),
+  "utf8",
+);
 
 describe("lando runtime registry wiring", () => {
   test("makeLandoPaths exposes all private runtime paths under userDataRoot/runtime", () => {
@@ -18,21 +22,21 @@ describe("lando runtime registry wiring", () => {
     expect(paths.providerPidPath).toBe("/data/runtime/run/podman.pid");
   });
 
-  test("registry resolves private runtime paths from PathsService", () => {
-    expect(registrySource).toContain("const landoPaths = yield* PathsService");
-    expect(registrySource).not.toContain("makeLandoPaths({ userDataRoot })");
+  test("provider descriptor resolves private runtime paths from PathsService", () => {
+    expect(providerSource).toContain("const paths = yield* PathsService");
+    expect(registrySource).not.toContain("runtimeBinDir:");
 
     const requiredWiring = [
-      "runtimeBinDir: landoPaths.runtimeBinDir",
-      "runtimeRunDir: landoPaths.runtimeRunDir",
-      "runtimeStorageDir: landoPaths.runtimeStorageDir",
-      "runtimeConfigDir: landoPaths.runtimeConfigDir",
-      "providerSocketPath: landoPaths.providerSocketPath",
-      "providerPidPath: landoPaths.providerPidPath",
+      "runtimeBinDir: paths.runtimeBinDir",
+      "runtimeRunDir: paths.runtimeRunDir",
+      "runtimeStorageDir: paths.runtimeStorageDir",
+      "runtimeConfigDir: paths.runtimeConfigDir",
+      "providerSocketPath: paths.providerSocketPath",
+      "providerPidPath: paths.providerPidPath",
     ] as const;
 
     for (const fragment of requiredWiring) {
-      expect(registrySource).toContain(fragment);
+      expect(providerSource).toContain(fragment);
     }
   });
 });
