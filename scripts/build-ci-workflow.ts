@@ -89,6 +89,9 @@ ${setupBunSteps}
       - name: Import cycle lint
         run: bun run check:import-cycle
 
+      - name: Package DAG lint
+        run: bun run check:package-dag
+
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 

@@ -24,7 +24,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
 - Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
-- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:import-cycle`, `check:renderer-boundary`, `check:managed-file-boundary`, `check:state-store-boundary`, `check:probe-boundary`, `check:redaction-boundary`, `check:telemetry-inventory`, `lint:guides`, `check:guide-coverage`, `check:public-transcripts`, or `check:guide-drift`.
+- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:guide-coverage`, `check:guide-drift`, `check:import-cycle`, `check:managed-file-boundary`, `check:package-dag`, `check:probe-boundary`, `check:public-transcripts`, `check:redaction-boundary`, `check:renderer-boundary`, `check:state-store-boundary`, `check:telemetry-inventory`, or `lint:guides`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
@@ -41,6 +41,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - `@lando/sdk` is the public contract surface. Additive exports and schema changes must follow `sdk/AGENTS.md`, update `sdk/API_COMPATIBILITY.md` where required, and refresh the schema artifact set with `bun run codegen:schema-snapshot`.
 - Each §4.2 plugin-abstraction contract suite from `@lando/sdk/test` must stay listed in `core/test/contract/plugin-abstraction-coverage.test.ts` and exercised by its documented core built-in invocation unless §4.2 says no built-in ships.
 - `@lando/core` owns runtime, planner, CLI, library API, generated bootstrap layers, and bundled-plugin wiring. CLI/runtime quirks live in `core/AGENTS.md`.
+- Plugins may not depend on `@lando/core`; core imports plugin packages only via the generated composition root (`core/src/plugins/generated/**`), enforced by `check:package-dag`.
 - RemoteSource/Dataset contract freeze: keep the `Dataset` x `RemoteSource` split contract-only for Beta 1; it never syncs application code, and implementation belongs to the 4.1 feature wave.
 - Source CLI dispatch uses OCLIF; the compiled Bun `$bunfs` binary uses `runCompiledCli` in `core/src/cli/run.ts`. Keep behavior shared or updated in both paths and run parity tests when command routing changes.
 - The compiled binary target is `core/bin/lando.ts`, not `core/src/cli/index.ts`. Compiled-mode code must avoid top-level `await` and must not rely on `import.meta.url` for package/install metadata.
