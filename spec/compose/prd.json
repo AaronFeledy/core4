@@ -190,7 +190,7 @@
         "Lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 7.4 'Rejected project machinery' rule + spec 6.2 rejection bullet + 7.4 kind: compose fragment rule (all amended in this change)."
     },
     {

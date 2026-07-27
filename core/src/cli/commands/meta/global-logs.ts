@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 
 import type { LogsAppError } from "@lando/sdk/app";
+import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import type { StreamFrameSink } from "../../stream-frame-sink.ts";
@@ -18,7 +19,7 @@ export { renderLogsAppResult as renderGlobalLogsResult } from "../logs.ts";
 export type { LogsAppOptions as GlobalLogsOptions, FollowLogsAppOptions as FollowGlobalLogsOptions };
 
 export type GlobalLogsResult = LogsAppResult;
-export type GlobalLogsError = LogsAppError | LoadGlobalPlanError;
+export type GlobalLogsError = ComposeKeyRejectedError | LogsAppError | LoadGlobalPlanError;
 export type GlobalLogsServices = LoadGlobalPlanServices | RuntimeProviderRegistry;
 
 export const globalLogs = (

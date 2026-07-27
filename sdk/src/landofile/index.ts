@@ -3,4 +3,12 @@
 
 export { emitLandofileYaml, emitLandofileYamlEither } from "./emit.ts";
 export { LandofileEmitError } from "./errors.ts";
-export { type ImportRef, type LoadHint, parseLandofile, type ParseOptions } from "./parser.ts";
+export {
+  detectLandofileTags,
+  type ImportRef,
+  type LandofileTag,
+  type LandofileTagOccurrence,
+  type LoadHint,
+  parseLandofile,
+  type ParseOptions,
+} from "./parser.ts";

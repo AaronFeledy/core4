@@ -43,6 +43,14 @@ export interface ParseOptions {
   };
 }
 
+export type LandofileTag = "!reset" | "!override";
+
+export interface LandofileTagOccurrence {
+  readonly tag: LandofileTag;
+  readonly line: number; // 1-based
+  readonly column: number; // 1-based, column of the leading "!"
+}
+
 interface ParsedLine {
   readonly indent: number;
   readonly line: number;
@@ -54,6 +62,16 @@ const parseError = (filePath: string, message: string, line?: number, column?: n
 
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_DEPTH = 64;
+
+const assertContentSize = (content: string, filePath: string, maxContentBytes: number): void => {
+  const actualContentBytes = Buffer.byteLength(content, "utf8");
+  if (actualContentBytes > maxContentBytes) {
+    throw parseError(
+      filePath,
+      `Landofile exceeds the maximum input size: ${actualContentBytes} bytes > ${maxContentBytes} bytes`,
+    );
+  }
+};
 
 const assertDepth = (filePath: string, line: number, depth: number, maxDepth: number): void => {
   if (depth > maxDepth) {
@@ -237,6 +255,93 @@ const toLines = (content: string, filePath: string): ReadonlyArray<ParsedLine> =
     lines.push({ indent: withoutComment.match(/^ */)?.[0].length ?? 0, line: index + 1, text });
   }
   return lines;
+};
+
+interface ValuePosition {
+  readonly line: number;
+  readonly column: number;
+}
+
+const detectLeadingTag = (value: string, position: ValuePosition): LandofileTagOccurrence | undefined => {
+  const leadingWhitespace = value.search(/\S/);
+  if (leadingWhitespace < 0) return undefined;
+
+  const trimmed = value.slice(leadingWhitespace);
+  if (trimmed.startsWith('"') || trimmed.startsWith("'")) return undefined;
+  if (!/^!(?:reset|override)(?=$|\s)/.test(trimmed)) return undefined;
+
+  return {
+    tag: trimmed.startsWith("!reset") ? "!reset" : "!override",
+    line: position.line,
+    column: position.column + leadingWhitespace,
+  };
+};
+
+const detectTagsInValue = (value: string, position: ValuePosition): ReadonlyArray<LandofileTagOccurrence> => {
+  const leading = detectLeadingTag(value, position);
+  if (leading !== undefined) return [leading];
+
+  const leadingWhitespace = value.search(/\S/);
+  if (leadingWhitespace < 0) return [];
+  const trimmed = value.slice(leadingWhitespace);
+  if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
+
+  const inner = trimmed.slice(1, -1);
+  const occurrences: LandofileTagOccurrence[] = [];
+  let cursor = 0;
+  for (const item of splitInlineArray(inner)) {
+    const itemOffset = inner.indexOf(item, cursor);
+    const occurrence = detectLeadingTag(item, {
+      line: position.line,
+      column: position.column + leadingWhitespace + 1 + itemOffset,
+    });
+    if (occurrence !== undefined) occurrences.push(occurrence);
+    cursor = itemOffset + item.length + 1;
+  }
+  return occurrences;
+};
+
+/** Throws LandofileParseError on tabs/oversize, exactly like parseYaml does. */
+export const detectLandofileTags: (options: {
+  readonly content: string;
+  readonly file: string;
+}) => ReadonlyArray<LandofileTagOccurrence> = ({ content, file }) => {
+  assertContentSize(content, file, DEFAULT_MAX_CONTENT_BYTES);
+  const occurrences: LandofileTagOccurrence[] = [];
+
+  // YAML 1.2 reserves a leading unquoted `!` for tags. Match compose-go's
+  // exact value/sequence-item tags without treating mapping keys as tags.
+  for (const line of toLines(content, file)) {
+    if (line.text.startsWith("- ")) {
+      const sequenceValue = line.text.slice(2);
+      const sequenceColumn = line.indent + 3;
+      occurrences.push(...detectTagsInValue(sequenceValue, { line: line.line, column: sequenceColumn }));
+
+      const mapMatch = sequenceValue.match(/^[A-Za-z0-9_.-]+:/);
+      if (mapMatch !== null) {
+        const colon = sequenceValue.indexOf(":");
+        occurrences.push(
+          ...detectTagsInValue(sequenceValue.slice(colon + 1), {
+            line: line.line,
+            column: sequenceColumn + colon + 1,
+          }),
+        );
+      }
+      continue;
+    }
+
+    const mapMatch = line.text.match(/^[A-Za-z0-9_.-]+:/);
+    if (mapMatch === null) continue;
+    const colon = line.text.indexOf(":");
+    occurrences.push(
+      ...detectTagsInValue(line.text.slice(colon + 1), {
+        line: line.line,
+        column: line.indent + colon + 2,
+      }),
+    );
+  }
+
+  return occurrences;
 };
 
 const parseMap = (
@@ -428,13 +533,7 @@ const parseListItemMap = (
 
 const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
   const maxContentBytes = limits?.maxContentBytes ?? DEFAULT_MAX_CONTENT_BYTES;
-  const actualContentBytes = Buffer.byteLength(content, "utf8");
-  if (actualContentBytes > maxContentBytes) {
-    throw parseError(
-      file,
-      `Landofile exceeds the maximum input size: ${actualContentBytes} bytes > ${maxContentBytes} bytes`,
-    );
-  }
+  assertContentSize(content, file, maxContentBytes);
 
   const maxDepth = limits?.maxDepth ?? DEFAULT_MAX_DEPTH;
   const lines = toLines(content, file);

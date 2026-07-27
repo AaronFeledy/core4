@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { Cause, type Context, Effect, Layer, ParseResult } from "effect";
 
 import {
+  type ComposeKeyRejectedError,
   LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
@@ -23,6 +24,7 @@ import {
 } from "../config/version-constraint.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
+import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { resolveLandofileIncludes } from "./includes.ts";
@@ -235,6 +237,7 @@ const rejectBetaTopLevelKeys = (
 };
 
 type LandofileLoadError =
+  | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileParseError
   | LandofileValidationError
@@ -268,25 +271,32 @@ const readFileContent = (filePath: string): Effect.Effect<string, LandofileParse
 
 const loadYamlLandofile = (
   filePath: string,
-): Effect.Effect<unknown, LandofileParseError | NotImplementedError> =>
+): Effect.Effect<unknown, ComposeKeyRejectedError | LandofileParseError | NotImplementedError> =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) => renderLandofileTemplate({ filePath, content })),
     Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
+    Effect.flatMap((content) => rejectComposeTags(filePath, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
     Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
     Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
   );
 
 const loadTsLandofile = (
   filePath: string,
 ): Effect.Effect<
   unknown,
-  LandofileParseError | LandofileSandboxError | LandofileTimeoutError | NotImplementedError
+  | ComposeKeyRejectedError
+  | LandofileParseError
+  | LandofileSandboxError
+  | LandofileTimeoutError
+  | NotImplementedError
 > =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) => loadLandofileTs({ filePath, appRoot: dirname(filePath), content })),
     Effect.flatMap((parsed) => rejectBetaTopLevelKeys(filePath, parsed)),
     Effect.flatMap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
+    Effect.flatMap((parsed) => rejectComposeKeys(filePath, parsed)),
   );
 
 export const loadLandofileLayers = (
@@ -324,7 +334,8 @@ export const loadLandofileLayers = (
     ),
     Effect.flatMap((loaded) => {
       const merged = mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>));
-      return validateLandofile(canonicalPath, merged).pipe(
+      return rejectComposeKeys(canonicalPath, merged).pipe(
+        Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
         Effect.map((landofile) =>
           rememberLandofileAppRoot(
             rememberLocalIncludePaths(

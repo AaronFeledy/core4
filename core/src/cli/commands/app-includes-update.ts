@@ -11,7 +11,11 @@ import {
   type LandofileValidationError,
   type NotImplementedError,
 } from "@lando/sdk/errors";
-import type { LandofileIncludeError, LandofileLockMismatchError } from "@lando/sdk/errors";
+import type {
+  ComposeKeyRejectedError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
+} from "@lando/sdk/errors";
 
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import {
@@ -65,7 +69,8 @@ export type AppIncludesUpdateError =
   | LandofileTimeoutError
   | NotImplementedError
   | LandofileIncludeError
-  | LandofileLockMismatchError;
+  | LandofileLockMismatchError
+  | ComposeKeyRejectedError;
 
 /**
  * Refresh every `includes:` lockfile entry for the current app's Landofile.

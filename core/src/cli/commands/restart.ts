@@ -5,7 +5,12 @@
  */
 import { Effect, Schema } from "effect";
 
-import type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
+import type {
+  RestartAppOptions,
+  RestartAppResult,
+  RestartAppError as SdkRestartAppError,
+} from "@lando/sdk/app";
+import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import type {
   AppPlanner,
   BuildOrchestrator,
@@ -26,7 +31,8 @@ import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
-export type { RestartAppError, RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
+export type RestartAppError = SdkRestartAppError | ComposeKeyRejectedError;
+export type { RestartAppOptions, RestartAppResult } from "@lando/sdk/app";
 
 export const RestartAppResultSchema = Schema.Struct({
   app: Schema.String,

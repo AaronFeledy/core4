@@ -1,11 +1,12 @@
-import { mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
+import { getLocalIncludePaths } from "../../src/landofile/include-provenance.ts";
 import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
 import type {
   GitIncludeCloner,
@@ -326,5 +327,24 @@ describe("resolveLandofileIncludes", () => {
 
     expect(error._tag).toBe("LandofileIncludeError");
     expect(error.kind).toBe("forbidden-field");
+  });
+
+  test("records absolute local include paths for nested fragments", async () => {
+    // Given a fragment that itself includes another fragment. Nested include specs resolve
+    // against the app root, not the including fragment's directory, so both live at the root.
+    const innerPath = join(appRoot, "inner.yml");
+    await writeFile(join(appRoot, "outer.yml"), "includes:\n  - ./inner.yml\n", "utf8");
+    await writeFile(innerPath, "services:\n  cache:\n    type: redis\n", "utf8");
+
+    // When
+    const resolved = await runResolve({ includes: ["./outer.yml"] }, appRoot, cacheRoot);
+    const localIncludePaths = getLocalIncludePaths(resolved);
+
+    // Then every remembered path stays an absolute filesystem path, because the app-plan cache
+    // invalidator realpaths and root-checks them; an authored relative spec would resolve wrong.
+    expect(localIncludePaths.every(isAbsolute)).toBe(true);
+    expect(await Promise.all(localIncludePaths.map((path) => realpath(path)))).toContain(
+      await realpath(innerPath),
+    );
   });
 });

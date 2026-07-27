@@ -543,7 +543,10 @@ export const IncludeEntry = Schema.Union(
   Schema.String,
   Schema.Struct({
     source: Schema.String,
-    kind: Schema.optional(Schema.Literal("landofile")),
+    kind: Schema.optional(Schema.Literal("landofile", "compose")).annotations({
+      description:
+        'The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path. This is not source transport.',
+    }),
     path: Schema.optional(Schema.String),
     version: Schema.optional(Schema.String),
     checksum: Schema.optional(Schema.String),

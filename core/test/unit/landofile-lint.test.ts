@@ -7,6 +7,10 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileFormConflictError } from "@lando/core/errors";
 
+import {
+  composeServiceDispositions,
+  composeTagDispositions,
+} from "../../src/landofile/compose/dispositions.ts";
 import { lintLandofile } from "../../src/landofile/lint.ts";
 
 describe("lintLandofile", () => {
@@ -175,6 +179,62 @@ describe("lintLandofile", () => {
       );
       const parentViolation = exit.value.violations.find((entry) => entry.path === "services");
       expect(parentViolation?.suggestedFix).toBeUndefined();
+    }
+  });
+
+  test("a rejected Compose service key uses the matrix remediation", async () => {
+    await write("name: myapp\nservices:\n  web:\n    deploy:\n      replicas: 3\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      const violation = exit.value.violations.find((entry) => entry.path === "services.web.deploy.replicas");
+      expect(violation?.suggestedFix).toBe(composeServiceDispositions["deploy.replicas"]?.remediation);
+    }
+  });
+
+  test("a rejected Compose tag uses the matrix remediation", async () => {
+    await write("name: myapp\nservices:\n  web:\n    image: !reset node:20\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(
+        exit.value.violations.some(
+          (entry) => entry.suggestedFix === composeTagDispositions["!reset"].remediation,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  test("a rejected key suppresses its schema cascade without hiding ordinary violations", async () => {
+    const rejectedPath = "services.web.deploy.replicas";
+    await write("name: myapp\nservices:\n  web:\n    deploy:\n      replicas: 3\n    bogus_nested: true\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.violations.some((entry) => entry.path === rejectedPath)).toBe(true);
+      expect(exit.value.violations.some((entry) => entry.path === "services.web.bogus_nested")).toBe(true);
+      expect(exit.value.violations.filter((entry) => entry.path.startsWith(rejectedPath))).toHaveLength(1);
+    }
+  });
+
+  test("a preserved Compose deploy resources key is not rejected", async () => {
+    await write(
+      'name: myapp\nservices:\n  web:\n    deploy:\n      resources:\n        limits:\n          cpus: "0.5"\n',
+    );
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.violations.some((entry) => entry.message.includes("rejected Compose key"))).toBe(
+        false,
+      );
     }
   });
 

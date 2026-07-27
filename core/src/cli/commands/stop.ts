@@ -5,7 +5,8 @@
  */
 import { DateTime, Effect, Schema } from "effect";
 
-import type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
+import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
+import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import {
   PostAppStopEvent,
   PostServiceStopEvent,
@@ -26,7 +27,8 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts"
 import { cleanupHostProxyRunLandoState } from "../../subsystems/host-proxy/transport.ts";
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
-export type { StopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
+export type StopAppError = SdkStopAppError | ComposeKeyRejectedError;
+export type { StopAppOptions, StopAppResult } from "@lando/sdk/app";
 
 export const StopAppResultSchema = Schema.Struct({
   app: Schema.String,

@@ -4,6 +4,7 @@ import { type Context, Effect, Option } from "effect";
 
 import {
   AppIdReservedError,
+  type ComposeKeyRejectedError,
   type LandofileFormConflictError,
   type LandofileIncludeError,
   type LandofileLockMismatchError,
@@ -58,7 +59,8 @@ export type UserLandofileError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
-  | AppIdReservedError;
+  | AppIdReservedError
+  | ComposeKeyRejectedError;
 
 export const assertUserAppIdNotReserved = (
   landofile: LandofileShape,

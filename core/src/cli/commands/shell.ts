@@ -9,6 +9,7 @@ import { Chunk, DateTime, Effect, Stream } from "effect";
 import {
   type AppIdReservedError,
   type CapabilityError,
+  type ComposeKeyRejectedError,
   type ConfigError,
   type DeprecatedSurfaceError,
   type LandofileFormConflictError,
@@ -120,6 +121,7 @@ export interface ShellAppResult {
 export type ShellAppError =
   | AppIdReservedError
   | CapabilityError
+  | ComposeKeyRejectedError
   | PublicationUnsupportedError
   | ConfigError
   | DeprecatedSurfaceError

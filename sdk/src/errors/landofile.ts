@@ -71,6 +71,17 @@ export class LandofileValidationError extends Schema.TaggedError<LandofileValida
   },
 ) {}
 
+export class ComposeKeyRejectedError extends Schema.TaggedError<ComposeKeyRejectedError>()(
+  "ComposeKeyRejectedError",
+  {
+    message: Schema.String,
+    source: Schema.String,
+    service: Schema.optional(Schema.String),
+    keyPath: Schema.String,
+    remediation: Schema.String,
+  },
+) {}
+
 const versionConstraintProvenance = (
   layer: "base" | "dist" | "upstream" | "canonical" | "local" | "user",
   order: 0 | 1 | 2 | 3 | 4 | 5,

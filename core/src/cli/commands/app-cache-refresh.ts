@@ -10,6 +10,7 @@ import type {
   AppIdReservedError,
   CacheError,
   CapabilityError,
+  ComposeKeyRejectedError,
   LandoCommandError,
   LandofileFormConflictError,
   LandofileIncludeError,
@@ -66,6 +67,7 @@ export const AppCacheRefreshResultSchema = Schema.Struct({
 
 type AppCacheRefreshError =
   | AppIdReservedError
+  | ComposeKeyRejectedError
   | LandofileNotFoundError
   | LandofileFormConflictError
   | LandofileParseError

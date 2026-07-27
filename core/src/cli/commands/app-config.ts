@@ -19,6 +19,7 @@ import {
   LandofileWriteValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
+import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
 import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { LandofileShape } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
@@ -90,7 +91,8 @@ type AppConfigError =
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | ConfigError
-  | NotImplementedError;
+  | NotImplementedError
+  | ComposeKeyRejectedError;
 
 type AppConfigServices = LandofileService;
 

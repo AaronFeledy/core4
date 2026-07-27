@@ -147,6 +147,12 @@ const extractExtraTagFields = (
       if (value !== undefined) out.push([field, value]);
     }
   }
+  if (tag === "ComposeKeyRejectedError") {
+    for (const field of ["source", "service", "keyPath"] as const) {
+      const value = asString(record[field]);
+      if (value !== undefined) out.push([field, value]);
+    }
+  }
   if (tag === "RecipePostInitError") {
     const recipe = asString(record.recipe);
     if (recipe !== undefined) out.push(["recipe", recipe]);

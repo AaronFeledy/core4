@@ -1,7 +1,7 @@
 import { DateTime, Effect, Exit, Schema } from "effect";
 
 import type { InfoAppError } from "@lando/sdk/app";
-import type { EventError, ShellExecError } from "@lando/sdk/errors";
+import type { ComposeKeyRejectedError, EventError, ShellExecError } from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, PublishedEndpoint, RoutePlan, ServicePlan } from "@lando/sdk/schema";
@@ -163,6 +163,7 @@ export const openOptionsFromInput = (input: unknown): OpenAppOptions => {
 };
 
 export type OpenAppError =
+  | ComposeKeyRejectedError
   | OpenTargetUnresolvedError
   | HostProxyOpenUrlSchemeError
   | ShellExecError

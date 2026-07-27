@@ -3,7 +3,11 @@ import { dirname } from "node:path";
 import { Effect, Schema } from "effect";
 
 import { LandofileNotFoundError, LandofileParseError, type NotImplementedError } from "@lando/sdk/errors";
-import type { LandofileIncludeError, LandofileLockMismatchError } from "@lando/sdk/errors";
+import type {
+  ComposeKeyRejectedError,
+  LandofileIncludeError,
+  LandofileLockMismatchError,
+} from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 
 import { findLandofilePath } from "../../landofile/discovery.ts";
@@ -66,7 +70,8 @@ export type AppIncludesVerifyError =
   | LandofileParseError
   | NotImplementedError
   | LandofileIncludeError
-  | LandofileLockMismatchError;
+  | LandofileLockMismatchError
+  | ComposeKeyRejectedError;
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 

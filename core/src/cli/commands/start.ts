@@ -8,8 +8,8 @@
  */
 import { DateTime, Effect, Ref } from "effect";
 
-import type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
-import { GlobalAutoStartError } from "@lando/sdk/errors";
+import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
+import { type ComposeKeyRejectedError, GlobalAutoStartError } from "@lando/sdk/errors";
 import { PostAppStartEvent, PreAppStartEvent } from "@lando/sdk/events";
 import { type AppPlan, type AppRef, type PublishedEndpoint, ServiceName } from "@lando/sdk/schema";
 import {
@@ -45,7 +45,8 @@ import {
   publishTreeStart,
 } from "../progress.ts";
 
-export type { StartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
+export type StartAppError = SdkStartAppError | ComposeKeyRejectedError;
+export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
 export type { StartManagedScope } from "./start-file-sync.ts";
 export { renderStartAppResult, StartAppResultSchema, StartedServiceResultSchema } from "./start-result.ts";
 
