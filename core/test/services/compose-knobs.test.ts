@@ -71,7 +71,7 @@ describe("Compose runtime knobs", () => {
     });
   });
 
-  test("Given authored and injected tmpfs entries, when knobs are merged, then tmpfs is a deduplicated union", () => {
+  test("Given authored and injected tmpfs entries, when knobs are merged, then every entry is preserved", () => {
     // Given
     const plan = servicePlan("web", { tmpfs: ["/run", "/plugin-cache"] });
     const serviceConfig: ServiceConfig = { tmpfs: ["/authored-cache", "/run"] };
@@ -81,7 +81,7 @@ describe("Compose runtime knobs", () => {
 
     // Then
     expect(merged.extensions.compose).toEqual({
-      tmpfs: ["/run", "/plugin-cache", "/authored-cache"],
+      tmpfs: ["/run", "/plugin-cache", "/authored-cache", "/run"],
     });
   });
 

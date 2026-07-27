@@ -29,8 +29,7 @@ export const mergeComposeKnobs = (servicePlan: ServicePlan, serviceConfig: Servi
     if (key === "tmpfs") {
       if (serviceConfig.tmpfs === undefined) continue;
       const existing = isStringList(compose.tmpfs) ? compose.tmpfs : [];
-      // Keep injected entries first, append authored entries, and retain only each entry's first occurrence.
-      compose.tmpfs = [...new Set([...existing, ...serviceConfig.tmpfs])];
+      compose.tmpfs = [...existing, ...serviceConfig.tmpfs];
       changed = true;
       continue;
     }
