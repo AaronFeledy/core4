@@ -10,6 +10,7 @@ import type {
 } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 
+import { rejectComposeKeys, rejectComposeTags } from "../../landofile/compose/rejections.ts";
 import { findLandofilePath } from "../../landofile/discovery.ts";
 import {
   type IncludeVerifyReport,
@@ -107,9 +108,11 @@ export const appIncludesVerify = (
           cause,
         }),
     });
-    const parsed = yield* parseLandofile({ file: filePath, content, cwd: appRoot });
-    yield* rejectBetaToolingFeatures(filePath, parsed);
-    const decoded = decodeLandofile(parsed, { onExcessProperty: "error" });
+    const checkedContent = yield* rejectComposeTags(filePath, content);
+    const parsed = yield* parseLandofile({ file: filePath, content: checkedContent, cwd: appRoot });
+    const checkedParsed = yield* rejectComposeKeys(filePath, parsed);
+    yield* rejectBetaToolingFeatures(filePath, checkedParsed);
+    const decoded = decodeLandofile(checkedParsed, { onExcessProperty: "error" });
     if (decoded._tag === "Left") {
       return yield* Effect.fail(
         new LandofileParseError({
