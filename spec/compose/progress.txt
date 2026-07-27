@@ -510,3 +510,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: none; no absorbed feature, incomplete public contract, or gate conflict was found.
 - Verification: typecheck, scoped lint, deprecations, import-cycle, Compose coverage, and 171 focused checks passed; bare lint remains failed on pre-existing auxiliary-worktree diagnostics; live Podman effects were not rerun and remain unverified in this host-safe step.
 ---
+
+## 2026-07-27 02:40 CDT - US-474 Drift Audit
+- Trigger: 3 cycles, 1852 changed lines, 16 commits
+- Review scar tissue: removed a speculative per-knob platform-support axis whose entries were identical on every supported host.
+- Ceremony modules: consolidated overlapping declaration assertions into one exact invariant covering both bundled providers, all host platforms, and the independently proven mapping fixtures.
+- Fixed: deleted the unused extension seam and duplicate proofs without changing the declared knob set or request realization.
+- Split/excise decisions: none; no absorbed feature, collateral story flip, incomplete public contract, or gate conflict was found.
+- Verification: typecheck, tracked-source lint, deprecations, import-cycle, Compose coverage, targeted no-excuse checks, and focused US-474 spot checks passed; bare lint remains failed on the pre-existing ignored auxiliary checkout, the provider-podman barrel retains two pre-existing no-excuse findings outside the touched lines, and live Podman effects were not rerun.
+---
