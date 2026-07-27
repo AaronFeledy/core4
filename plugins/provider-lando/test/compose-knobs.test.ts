@@ -195,6 +195,11 @@ const FALSY_SPELLINGS = ["false", "0", "no", "off", "NO", "Off"];
 
 const EXCLUDED_KNOBS = ["pull_policy", "gpus", "deploy.resources"] as const;
 
+// Both bundled providers always speak to Podman over a REMOTE socket, where
+// these drivers are categorically rejected — unlike a merely unknown driver
+// name, which is an operand Podman itself validates.
+const REMOTE_INVALID_LOG_DRIVERS = ["passthrough", "passthrough-tty"] as const;
+
 // =============================================================================
 // Tests
 // =============================================================================
@@ -314,6 +319,22 @@ describe("podman Compose runtime knob value coercion", () => {
       LogConfig: { Type: "journald" },
     });
   });
+
+  for (const driver of REMOTE_INVALID_LOG_DRIVERS) {
+    test(`Given the remote-invalid ${driver} log driver, when realized, then onInvalid names the driver`, () => {
+      const calls = captureInvalid({ logging: { driver } });
+
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.message).toContain(driver);
+      expect(calls[0]?.details).toMatchObject({ knob: "logging", driver });
+    });
+  }
+
+  for (const driver of ["k8s-file", "json-file", "journald", "none"]) {
+    test(`Given the remote-compatible ${driver} log driver, when realized, then it is passed through`, () => {
+      expect(realize({ logging: { driver } }).hostConfig).toEqual({ LogConfig: { Type: driver } });
+    });
+  }
 
   for (const [knob, field] of BOOLEAN_KNOBS) {
     test(`Given ${knob} written with YAML truthiness spellings, when realized, then ${field} is a boolean`, () => {

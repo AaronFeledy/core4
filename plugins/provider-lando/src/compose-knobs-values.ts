@@ -129,8 +129,20 @@ export const extraHostEntries = (
   return entries;
 };
 
-export const logConfig = (logging: LoggingKnob | undefined) => {
+// Podman refuses these drivers over a remote connection, which is the only way
+// the bundled providers ever talk to it. Every other driver name is an operand
+// Podman validates itself, so this is a rejection list, not an allowlist.
+const REMOTE_INVALID_LOG_DRIVERS = new Set(["passthrough", "passthrough-tty"]);
+
+export const logConfig = (logging: LoggingKnob | undefined, fail: InvalidKnob) => {
   if (logging === undefined) return undefined;
+
+  if (logging.driver !== undefined && REMOTE_INVALID_LOG_DRIVERS.has(logging.driver)) {
+    return fail(
+      `Compose logging driver \`${logging.driver}\` cannot be used through Lando's remote Podman API. Choose a remote-compatible driver such as \`k8s-file\`, \`json-file\`, \`journald\`, or \`none\`, or remove \`logging.driver\`.`,
+      { knob: "logging", driver: logging.driver },
+    );
+  }
 
   const options = scalarTextMap(logging.options);
   return {

@@ -152,7 +152,7 @@ export const PODMAN_COMPOSE_KNOB_REGISTRY = {
     knobBoolean("read_only", read_only, fail),
   ),
   platform: queryKnob("platform", ({ platform }) => platform),
-  logging: hostConfigKnob("LogConfig", ({ logging }) => logConfig(logging)),
+  logging: hostConfigKnob("LogConfig", ({ logging }, fail) => logConfig(logging, fail)),
 } satisfies Partial<Record<ComposeServiceKnobKey, KnobRealizer>>;
 
 // Published knob order, so realization and capability declaration are both

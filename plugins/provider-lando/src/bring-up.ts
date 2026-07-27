@@ -118,7 +118,7 @@ const parseJson = (
   operation: string,
 ): Effect.Effect<unknown, ProviderInternalError> =>
   Effect.try({
-    try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
+    try: () => (response.body.length === 0 ? {} : (JSON.parse(response.body) as unknown)),
     catch: (cause) =>
       new ProviderInternalError({
         providerId: PROVIDER_ID,

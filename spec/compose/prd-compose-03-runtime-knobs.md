@@ -44,8 +44,8 @@ This is the tier users actually hit when a service needs a knob Lando didn't ant
 
 **Acceptance Criteria:**
 
-- [ ] The Podman provider maps to libpod create-container fields: `restart`, `cap_add`/`cap_drop`, `privileged`, `devices`, `ulimits`, `sysctls`, `tmpfs`, `shm_size`, `dns`/`dns_search`/`dns_opt`, `extra_hosts`, `init`, `stop_signal`, `stop_grace_period`, `security_opt`, `group_add`, `read_only`, `platform`, `pull_policy`, and `deploy.resources` (`cpus`, `memory`, `pids`).
-- [ ] `logging` and `gpus` are declared per actual Podman support on each host platform; anything undeclared is *excluded from the capability declaration* (so the US-473 capability check rejects it) rather than best-effort mapped.
+- [ ] The Podman provider maps to libpod create-container fields: `restart`, `cap_add`/`cap_drop`, `privileged`, `devices`, `ulimits`, `sysctls`, `tmpfs`, `shm_size`, `dns`/`dns_search`/`dns_opt`, `extra_hosts`, `init`, `stop_signal`, `stop_grace_period`, `security_opt`, `group_add`, `read_only`, `platform`, and `logging`.
+- [ ] `logging` is declared on Linux, macOS, and Windows because Podman consumes its complete `driver` plus `options` shape and rejects invalid values loudly; the provider additionally rejects the remote-incompatible `passthrough` and `passthrough-tty` drivers before container creation. `pull_policy`, `gpus`, and `deploy.resources` are *excluded from the capability declaration* on every host platform in this wave, because the frozen key-level capability contract cannot honestly represent their supported value or subfield subsets — `pull_policy` is artifact-acquisition orchestration whose only seam carries `{ ref }` and whose `build`/refresh values are planner semantics forbidden by FR-3, Podman silently discards the non-CDI parts of `gpus`, and Podman has no realization for the `deploy.resources` reservation subfields. The US-473 capability check therefore rejects all three before provider action, rather than best-effort or silently partial realization.
 - [ ] The provider's declared knob set exactly matches what the mapping implements — asserted by a test that diffs declaration against mapping table.
 - [ ] Unit tests cover request-body construction per knob; live verification (container actually privileged, ulimit applied, host entry present) lands in the env-gated integration suite (`LANDO_TEST_PODMAN_SOCKET`), serial per repo convention.
 - [ ] Windows named-pipe and Linux socket transports both exercised by the integration matrix where CI supports them.
@@ -57,7 +57,8 @@ This is the tier users actually hit when a service needs a knob Lando didn't ant
 
 - FR-1: Preserve is lossless and canonical: what reaches `extensions.compose` is the long form, byte-equal across plan/replan.
 - FR-2: Capability declaration, planner check, and provider mapping may never disagree; the declaration-vs-mapping diff test is the invariant.
-- FR-3: No provider-neutral plan fields are added for knobs in this wave (§6.2: no Lando abstraction, no planner semantics).
+- FR-3: No provider-neutral plan fields are added for knobs in this wave (§6.2: no Lando abstraction, no planner semantics). Forwarding a preserved Compose knob into another provider operation counts as provider-neutral semantics for this wave unless that operation and its planning behavior are explicitly specified.
+- FR-4: A knob is declared when the provider consumes its complete structural shape and neither the adapter nor the runtime silently discards any supplied part. Runtime rejection of an invalid, unavailable, or host-dependent operand is a loud value error, not a capability mismatch; a standardized field or semantic variant that would be silently discarded disqualifies the whole key.
 
 ## Non-Goals
 
