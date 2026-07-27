@@ -28,6 +28,7 @@ import {
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/core/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
 import type { GlobalConfig } from "@lando/sdk/schema";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -3955,13 +3956,29 @@ describe("Compose runtime knobs", () => {
     services: { web: { image: "node:lts", restart: "unless-stopped", shm_size: "64m" } },
   });
 
-  test("Given a provider that omits a used knob, when the app is planned, then planning fails naming the service and knob", async () => {
+  test("Given the partial test-provider declaration, when only supported knobs are planned, then planning succeeds", async () => {
     await withTempCwd(async () => {
       // When
-      const exit = await planExit(knobLandofile, {
-        ...providerLandoCapabilities,
-        composeKnobs: { supported: ["restart"] },
+      const appPlan = await plan(knobLandofile, TestRuntimeProvider.capabilities);
+
+      // Then
+      expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
+        restart: "unless-stopped",
+        shm_size: 67_108_864,
       });
+    });
+  });
+
+  test("Given a provider that omits a used knob, when the app is planned, then planning fails naming the service and knob", async () => {
+    const unsupportedKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "knobapp",
+      runtime: 4,
+      services: { web: { image: "node:lts", restart: "unless-stopped", read_only: true } },
+    });
+
+    await withTempCwd(async () => {
+      // When
+      const exit = await planExit(unsupportedKnobLandofile, TestRuntimeProvider.capabilities);
 
       // Then
       const failure = expectSomeFailure(exit);
@@ -3969,11 +3986,11 @@ describe("Compose runtime knobs", () => {
       expect(failure).toMatchObject({
         _tag: "CapabilityError",
         service: "web",
-        key: "shm_size",
+        key: "read_only",
         capability: "composeSpec",
         providerId: "lando",
       });
-      expect(failure instanceof CapabilityError ? failure.remediation : undefined).toContain("shm_size");
+      expect(failure instanceof CapabilityError ? failure.remediation : undefined).toContain("read_only");
     });
   });
 
