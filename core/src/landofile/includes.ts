@@ -76,6 +76,7 @@ interface LockEntry {
 
 interface ResolveContext {
   readonly appRoot: string;
+  readonly sourceRoot: string;
   readonly cacheRoot: string;
   readonly lockfilePath: string;
   readonly deps: LandofileIncludeDeps;
@@ -286,7 +287,7 @@ const parseNpmInclude = (
 };
 
 const fetchLocal = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
-  const candidate = isAbsolute(entry.source) ? entry.source : resolve(ctx.appRoot, entry.source);
+  const candidate = isAbsolute(entry.source) ? entry.source : resolve(ctx.sourceRoot, entry.source);
   const filePath = await assertUnderRoot(ctx.appRoot, candidate, entry.source);
   return {
     sourceId: filePath,
@@ -669,7 +670,7 @@ const resolveTree = (
       const parsed = yield* parseFragment(fragment);
       const nested = yield* resolveTree(
         parsed as LandofileShape,
-        ctx,
+        { ...ctx, sourceRoot: fragment.root },
         depth + 1,
         [...stack, fragment.sourceId],
         fragment.sourceId,
@@ -952,6 +953,7 @@ export const resolveLandofileIncludes = (
     const lockfilePath = options.lockfilePath ?? join(options.appRoot, ".lando.lock.yml");
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
+      sourceRoot: options.appRoot,
       cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
       lockfilePath,
       deps: options.deps ?? {},
@@ -1054,6 +1056,7 @@ export const updateLandofileIncludes = (
 
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
+      sourceRoot: options.appRoot,
       cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
       lockfilePath,
       deps: options.deps ?? {},
@@ -1173,6 +1176,7 @@ export const verifyLandofileIncludes = (
 
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
+      sourceRoot: options.appRoot,
       cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
       lockfilePath,
       deps: options.deps ?? {},

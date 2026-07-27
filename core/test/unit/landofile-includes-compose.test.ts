@@ -1,7 +1,8 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
@@ -44,7 +45,9 @@ describe("Compose include fragments", () => {
     expect(error._tag).toBe("ComposeKeyRejectedError");
     expect(error.keyPath).toBe("container_name");
     expect(error.source).toBe("./compose-frag.yml");
-    expect(error.remediation).toBe(composeServiceDispositions.container_name?.remediation);
+    const remediation = composeServiceDispositions.container_name?.remediation;
+    if (remediation === undefined) throw new Error("container_name must declare remediation");
+    expect(error.remediation).toBe(remediation);
   });
 
   test("merges a top-level Compose include when the fragment declares a service", async () => {
@@ -55,7 +58,7 @@ describe("Compose include fragments", () => {
     const result = await resolve({ include: ["./frag.yml"] }, appRoot);
 
     // Then
-    expect(result.services?.cache?.type).toBe("redis");
+    expect(result).toMatchObject({ services: { cache: { type: "redis" } } });
   });
 
   test("appends top-level Compose includes after authored includes", async () => {
@@ -67,7 +70,7 @@ describe("Compose include fragments", () => {
     const result = await resolve({ includes: ["./authored.yml"], include: ["./compose.yml"] }, appRoot);
 
     // Then
-    expect(result.services?.web?.type).toBe("nginx");
+    expect(result).toMatchObject({ services: { web: { type: "nginx" } } });
   });
 
   test("attributes a rejected key in a top-level Compose include to that fragment", async () => {
@@ -101,7 +104,9 @@ describe("Compose include fragments", () => {
     // Then
     expect(error._tag).toBe("ComposeKeyRejectedError");
     expect(error.keyPath).toBe("container_name");
-    expect(error.remediation).toBe(composeServiceDispositions.container_name?.remediation);
+    const remediation = composeServiceDispositions.container_name?.remediation;
+    if (remediation === undefined) throw new Error("container_name must declare remediation");
+    expect(error.remediation).toBe(remediation);
   });
 
   test("rejects a reset tag with the authored fragment source", async () => {
@@ -118,17 +123,17 @@ describe("Compose include fragments", () => {
   });
 
   test("attributes a nested Compose fragment rejection to its own authored source", async () => {
-    // Given an outer fragment that includes an inner one carrying the rejected key. Nested
-    // include specs resolve against the app root, not the including fragment's directory.
-    await writeFile(join(appRoot, "outer.yml"), "includes:\n  - ./inner.yml\n", "utf8");
+    // Given an outer fragment that includes a sibling carrying the rejected key.
+    await mkdir(join(appRoot, "nested"), { recursive: true });
+    await writeFile(join(appRoot, "nested", "outer.yml"), "includes:\n  - ./inner.yml\n", "utf8");
     await writeFile(
-      join(appRoot, "inner.yml"),
+      join(appRoot, "nested", "inner.yml"),
       "services:\n  web:\n    image: nginx\n    container_name: fixed-web\n",
       "utf8",
     );
 
     // When
-    const error = await reject({ includes: [{ source: "./outer.yml", kind: "compose" }] }, appRoot);
+    const error = await reject({ includes: [{ source: "./nested/outer.yml", kind: "compose" }] }, appRoot);
 
     // Then the inner fragment owns the rejection, not the outer one that pulled it in.
     expect(error._tag).toBe("ComposeKeyRejectedError");
