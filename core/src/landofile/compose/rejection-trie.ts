@@ -18,14 +18,6 @@ interface MutableDispositionTrieNode {
 
 const makeNode = (): MutableDispositionTrieNode => ({ exact: new Map() });
 
-const exactChild = (node: MutableDispositionTrieNode, segment: string): MutableDispositionTrieNode => {
-  const existing = node.exact.get(segment);
-  if (existing !== undefined) return existing;
-  const child = makeNode();
-  node.exact.set(segment, child);
-  return child;
-};
-
 const childForInsert = (node: MutableDispositionTrieNode, segment: string): MutableDispositionTrieNode => {
   if (segment === "x-*") {
     const child = node.extension ?? makeNode();
@@ -37,7 +29,11 @@ const childForInsert = (node: MutableDispositionTrieNode, segment: string): Muta
     node.wildcard = child;
     return child;
   }
-  return exactChild(node, segment);
+  const existing = node.exact.get(segment);
+  if (existing !== undefined) return existing;
+  const child = makeNode();
+  node.exact.set(segment, child);
+  return child;
 };
 
 export const compileDispositionTrie = (

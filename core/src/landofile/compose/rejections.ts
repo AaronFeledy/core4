@@ -106,7 +106,6 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
   if (!isRecord(value)) return;
 
   for (const key of Object.keys(value)) {
-    if (!Object.hasOwn(value, key)) continue;
     const child = matchDispositionChild(node, key);
     if (child === undefined) continue;
     const documentPath = `${context.documentPath}.${key}`;
@@ -122,7 +121,6 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
 const walkServices = (value: unknown, matches: ComposeRejectionMatch[]): void => {
   if (!isRecord(value) || serviceTrie === undefined) return;
   for (const service of Object.keys(value)) {
-    if (!Object.hasOwn(value, service)) continue;
     walkValue(value[service], serviceTrie, {
       documentPath: `services.${service}`,
       service,
@@ -135,7 +133,6 @@ export const analyzeComposeRejections = (parsed: unknown): ReadonlyArray<Compose
   if (!isRecord(parsed) || topLevelTrie === undefined) return [];
   const matches: ComposeRejectionMatch[] = [];
   for (const key of Object.keys(parsed)) {
-    if (!Object.hasOwn(parsed, key)) continue;
     const child = matchDispositionChild(topLevelTrie, key);
     if (child === undefined) continue;
     const match = matchForNode(child, key);
