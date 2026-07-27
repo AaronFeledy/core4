@@ -169,7 +169,7 @@ export const composeKeyRejectedError = (args: {
   readonly match: ComposeRejectionMatch;
 }): ComposeKeyRejectedError =>
   new ComposeKeyRejectedError({
-    message: `Compose key "${args.match.documentPath}" in ${args.source} is not supported by Lando.`,
+    message: `Compose key "${args.match.documentPath}" in ${args.source} is not supported by Lando: ${args.match.rationale}`,
     source: args.source,
     ...(args.match.service === undefined ? {} : { service: args.match.service }),
     keyPath: args.match.matrixPath,

@@ -198,6 +198,7 @@ describe("Compose rejection analysis", () => {
     expect(error.remediation).toBe(match.remediation);
     expect(error.message).toContain(match.documentPath);
     expect(error.message).toContain(source);
+    expect(error.message).toContain(match.rationale);
   });
 
   test("maps Compose tags to their separate matrix", () => {
@@ -214,7 +215,7 @@ describe("Compose rejection analysis", () => {
     expect(composeTagDispositions["!reset"].remediation).toBe(match.remediation);
   });
 
-  test("covers representative rejected keys with exact matrix remediation", () => {
+  test("covers every section 7.4 rejected service key with exact matrix remediation", () => {
     // Given
     const parsed = {
       services: {
@@ -223,7 +224,15 @@ describe("Compose rejection analysis", () => {
           container_name: "web",
           network_mode: "host",
           links: ["db"],
-          deploy: { replicas: 2 },
+          deploy: {
+            replicas: 2,
+            placement: { constraints: ["node.role == worker"] },
+            update_config: { parallelism: 1 },
+            rollback_config: { parallelism: 1 },
+            endpoint_mode: "vip",
+            mode: "replicated",
+            labels: { owner: "platform" },
+          },
         },
       },
     };
@@ -238,6 +247,12 @@ describe("Compose rejection analysis", () => {
       "network_mode",
       "links",
       "deploy.replicas",
+      "deploy.placement",
+      "deploy.update_config",
+      "deploy.rollback_config",
+      "deploy.endpoint_mode",
+      "deploy.mode",
+      "deploy.labels",
     ]);
     for (const match of matches) {
       expect(composeServiceDispositions[match.matrixPath]?.remediation).toBe(match.remediation);
