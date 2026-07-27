@@ -236,6 +236,29 @@ describe("Compose service runtime knobs", () => {
   );
 
   test.each([
+    ["sysctls", "KEY=value"],
+    ["extra_hosts", "HOST=IP or HOST:IP"],
+  ] as const)(
+    "Given a %s entry with terminal control bytes, when rejected, then remediation does not echo them",
+    (key, remediation) => {
+      // Given
+      const input = { [key]: ["\u001b]2;US-473-INJECTED\u0007"] };
+
+      // When
+      const result = Schema.decodeUnknownEither(ServiceConfig)(input);
+
+      // Then
+      expect(Either.isLeft(result)).toBe(true);
+      if (Either.isLeft(result)) {
+        const failure = String(result.left);
+        expect(failure).toContain(remediation);
+        expect(failure).not.toContain("\u001b");
+        expect(failure).not.toContain("\u0007");
+      }
+    },
+  );
+
+  test.each([
     "replicas",
     "placement",
     "update_config",

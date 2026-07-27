@@ -82,7 +82,7 @@ export const ComposeScalarMapField = Schema.transformOrFail(
         const pair = splitMappingEntry(entry, "equals");
         if (pair === undefined) {
           return ParseResult.fail(
-            new ParseResult.Type(ast, input, `Landofile service map entry "${entry}" must be KEY=value.`),
+            new ParseResult.Type(ast, input, "Landofile service map entries must use KEY=value."),
           );
         }
         entries.push(pair);
@@ -115,7 +115,7 @@ export const ComposeExtraHostsField = Schema.transformOrFail(
             new ParseResult.Type(
               ast,
               input,
-              `Landofile service extra_hosts entry "${entry}" must be HOST=IP or HOST:IP.`,
+              "Landofile service extra_hosts entries must use HOST=IP or HOST:IP.",
             ),
           );
         }
