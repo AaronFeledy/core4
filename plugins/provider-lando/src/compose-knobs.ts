@@ -1,6 +1,6 @@
 import { Either, ParseResult, Schema } from "effect";
 
-import { ComposeServiceKnobKey, type HostPlatform, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 
 import {
   type InvalidKnob,
@@ -152,9 +152,7 @@ const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.lit
   (key): key is PodmanKnobKey => Object.hasOwn(PodmanComposeKnobs.fields, key),
 );
 
-export const podmanComposeKnobsForPlatform = (_platform: HostPlatform): ReadonlyArray<ComposeServiceKnobKey> => [
-  ...PODMAN_KNOB_KEYS,
-];
+export const podmanComposeKnobs = (): ReadonlyArray<ComposeServiceKnobKey> => [...PODMAN_KNOB_KEYS];
 
 interface PodmanComposeKnobRealization {
   readonly hostConfig: Record<string, unknown>;

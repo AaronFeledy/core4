@@ -4,7 +4,7 @@ import { Effect, Schema, type Stream } from "effect";
 import { ProviderCapabilityError, ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 import { type HostPlatform, ProviderCapabilities } from "@lando/sdk/schema";
 
-import { podmanComposeKnobsForPlatform } from "./compose-knobs.ts";
+import { podmanComposeKnobs } from "./compose-knobs.ts";
 import {
   isNamedPipeEndpoint,
   makeNamedPipePodmanApiClient,
@@ -152,7 +152,7 @@ export const providerLandoCapabilitiesForPlatform = (
     tlsCertificates: "lando",
     rootless: true,
     composeSpec: "native",
-    composeKnobs: { supported: podmanComposeKnobsForPlatform(platform) },
+    composeKnobs: { supported: podmanComposeKnobs() },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });
