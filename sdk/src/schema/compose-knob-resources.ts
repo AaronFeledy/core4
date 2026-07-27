@@ -7,21 +7,7 @@ const ExtensionFields = Schema.Record({
   key: Schema.TemplateLiteral("x-", Schema.String),
   value: Schema.Unknown,
 });
-const RejectedExtensionFields = Schema.Record({
-  key: Schema.TemplateLiteral("x-", Schema.String),
-  value: Schema.Unknown,
-});
 const ScalarOption = Schema.Union(Schema.String, Schema.Number, Schema.Null);
-const REJECTED_DEPLOY_KEYS = [
-  "mode",
-  "endpoint_mode",
-  "replicas",
-  "labels",
-  "rollback_config",
-  "update_config",
-  "restart_policy",
-  "placement",
-] as const;
 
 export const ComposeLogging = Schema.extend(
   Schema.Struct({
@@ -158,46 +144,22 @@ export const ComposeDeploy = Schema.Struct({
 });
 export type ComposeDeploy = typeof ComposeDeploy.Type;
 
-const ComposeDeployAccepted = Schema.extend(
-  Schema.Struct({
-    resources: Schema.optional(ComposeDeployResourcesInput),
-    mode: Schema.optional(Schema.Unknown),
-    endpoint_mode: Schema.optional(Schema.Unknown),
-    replicas: Schema.optional(Schema.Unknown),
-    labels: Schema.optional(Schema.Unknown),
-    rollback_config: Schema.optional(Schema.Unknown),
-    update_config: Schema.optional(Schema.Unknown),
-    restart_policy: Schema.optional(Schema.Unknown),
-    placement: Schema.optional(Schema.Unknown),
-  }),
-  RejectedExtensionFields,
-);
+const ComposeDeployInput = Schema.Struct({
+  resources: Schema.optional(ComposeDeployResourcesInput),
+});
 
 const ComposeDeployObjectField = Schema.transformOrFail(
-  ComposeDeployAccepted,
+  ComposeDeployInput,
   Schema.UndefinedOr(ComposeDeploy),
   {
     strict: true,
-    decode: (input, options) => {
-      const rejectedKey =
-        REJECTED_DEPLOY_KEYS.find((key) => key in input) ??
-        Object.keys(input).find((key) => key.startsWith("x-"));
-      if (rejectedKey !== undefined) {
-        if (options.onExcessProperty !== "error") return ParseResult.succeed(undefined);
-        return ParseResult.fail(
-          new ParseResult.Unexpected(
-            input,
-            `Compose deploy.${rejectedKey} is unsupported; move it to a provider extension.`,
-          ),
-        );
-      }
-      return ParseResult.succeed(input.resources === undefined ? {} : { resources: input.resources });
-    },
+    decode: (input) =>
+      ParseResult.succeed(input.resources === undefined ? {} : { resources: input.resources }),
     encode: (input) => ParseResult.succeed(input ?? {}),
   },
 );
 
 export const ComposeDeployField = Schema.Union(ComposeDeployObjectField, Schema.Null).annotations({
   description:
-    "Deployment resources as null or a limits and reservations object; canonicalized to resources-only data with memory in bytes and device options as maps, while Swarm orchestration keys are rejected.",
+    "Deployment resources as null or a limits and reservations object; canonicalized to resources-only data with memory in bytes and device options as maps.",
 });

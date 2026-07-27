@@ -677,33 +677,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -927,23 +902,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -3108,33 +3067,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -3358,23 +3292,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -5581,33 +5499,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -5831,23 +5724,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -8182,33 +8059,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -8432,23 +8284,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -10613,33 +10449,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -10863,23 +10674,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -15506,33 +15301,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -15756,23 +15526,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -17960,33 +17714,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -18210,23 +17939,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -20414,33 +20127,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -20664,23 +20352,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -22868,33 +22540,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -23118,23 +22765,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -25322,33 +24953,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -25572,23 +25178,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -47649,33 +47239,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -47899,23 +47464,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -71654,33 +71203,8 @@
         "deploy": {
           "anyOf": [
             {
-              "patternProperties": {
-                "": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                }
-              },
+              "additionalProperties": false,
               "properties": {
-                "endpoint_mode": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "labels": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "mode": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "placement": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "replicas": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
                 "resources": {
                   "patternProperties": {
                     "": {
@@ -71904,23 +71428,7 @@
                   },
                   "required": [],
                   "type": "object"
-                },
-                "restart_policy": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "rollback_config": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
-                },
-                "update_config": {
-                  "$id": "/schemas/unknown",
-                  "title": "unknown"
                 }
-              },
-              "propertyNames": {
-                "pattern": "^x-[\\s\\S]*?$",
-                "type": "string"
               },
               "required": [],
               "type": "object"
@@ -73511,33 +73019,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -73761,23 +73244,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -77428,33 +76895,8 @@
             "deploy": {
               "anyOf": [
                 {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
+                  "additionalProperties": false,
                   "properties": {
-                    "endpoint_mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "labels": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "mode": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "placement": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "replicas": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
                     "resources": {
                       "patternProperties": {
                         "": {
@@ -77678,23 +77120,7 @@
                       },
                       "required": [],
                       "type": "object"
-                    },
-                    "restart_policy": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "rollback_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    },
-                    "update_config": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"

@@ -267,9 +267,14 @@ describe("Compose service runtime knobs", () => {
     "mode",
     "labels",
     "restart_policy",
-  ])("Given deploy.%s, when decoded, then Swarm orchestration is rejected", (key) => {
+  ])("Given deploy.resources with deploy.%s, when decoded, then resources are not silently erased", (key) => {
     // Given
-    const input = { deploy: { [key]: key === "replicas" ? 2 : {} } };
+    const input = {
+      deploy: {
+        resources: { limits: { memory: "1m" } },
+        [key]: key === "replicas" ? 2 : {},
+      },
+    };
 
     // When
     const defaultResult = Schema.decodeUnknownEither(ServiceConfig)(input);
@@ -277,7 +282,11 @@ describe("Compose service runtime knobs", () => {
 
     // Then
     expect(Either.isRight(defaultResult)).toBe(true);
-    if (Either.isRight(defaultResult)) expect(defaultResult.right.deploy).toBeUndefined();
+    if (Either.isRight(defaultResult)) {
+      expect(defaultResult.right.deploy).toEqual({
+        resources: { limits: { memory: 1_048_576 } },
+      });
+    }
     expect(Either.isLeft(strictResult)).toBe(true);
   });
 });
