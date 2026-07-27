@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { definePlugin } from "@lando/sdk/plugins";
 import type { InteractivePromptDriver, RendererContribution } from "@lando/sdk/renderer";
 import { PluginManifest } from "@lando/sdk/schema";
 
@@ -30,4 +31,10 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   enabled: true,
   contributes: { renderers: ["lando"] },
   entry: "./src/index.ts",
+});
+
+export const plugin = definePlugin({
+  name: manifest.name,
+  manifest,
+  renderers: new Map([["lando", { ...renderer, loadInteractivePromptDriver }]]),
 });
