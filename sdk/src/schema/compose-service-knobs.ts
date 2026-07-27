@@ -19,11 +19,6 @@ import {
   ComposeTmpfsField,
 } from "./compose-knob-scalars.ts";
 
-export * from "./compose-knob-devices.ts";
-export * from "./compose-knob-maps.ts";
-export * from "./compose-knob-resources.ts";
-export * from "./compose-knob-scalars.ts";
-
 const describeEncodedField = <A, I>(schema: Schema.Schema<A, I, never>, description: string) =>
   Schema.compose(Schema.encodedBoundSchema(schema).annotations({ description }), schema).annotations({
     description,
@@ -200,6 +195,3 @@ export const ComposeServiceKnobFields = {
     description: "Container resource limits and reservations; Swarm orchestration fields are rejected.",
   }),
 } as const;
-
-export const ComposeServiceKnobs = Schema.Struct(ComposeServiceKnobFields);
-export type ComposeServiceKnobs = typeof ComposeServiceKnobs.Type;

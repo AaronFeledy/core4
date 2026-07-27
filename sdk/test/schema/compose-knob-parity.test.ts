@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
-import { ComposeServiceKnobFields, ComposeServiceKnobKey, ServiceConfig } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey, ServiceConfig } from "@lando/sdk/schema";
+
+import { ComposeServiceKnobFields } from "../../src/schema/compose-service-knobs.ts";
 
 /**
  * Published order of ComposeServiceKnobKey. Contract lock for deterministic
