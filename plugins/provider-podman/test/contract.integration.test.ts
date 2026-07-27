@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DateTime, Effect, Exit, Stream } from "effect";
+import { Cause, DateTime, Effect, Exit, Stream } from "effect";
 
 import { resolveLiveProviderSocket } from "@lando/core/testing";
 import type { PodmanHttpRequest, PodmanHttpResponse } from "@lando/provider-lando";
@@ -572,6 +572,35 @@ describe("provider-podman RuntimeProvider contract", () => {
       expect(exit.cause.error._tag).toBe("ServiceCopyError");
       expect(exit.cause.error.providerId).toBe("podman");
     }
+  });
+
+  test("reports the Podman provider when an invalid compose knob fails apply", async () => {
+    // Given
+    const fake = makeFakeApiWithHooks({});
+    const provider = await Effect.runPromise(
+      RuntimeProvider.pipe(
+        Effect.provide(makeProviderLayer({ podmanApi: fake.api, platform: "linux", env: {} })),
+      ),
+    );
+    const invalidKnobPlan: AppPlan = {
+      ...plan,
+      services: {
+        [serviceName]: { ...servicePlan, extensions: { compose: { cap_add: 42 } } },
+      },
+    };
+
+    // When
+    const exit = await Effect.runPromiseExit(provider.apply(invalidKnobPlan, { reconcile: true }));
+
+    // Then
+    const failures = Exit.isFailure(exit) ? Array.from(Cause.failures(exit.cause)) : [];
+    expect(failures).toContainEqual(
+      expect.objectContaining({
+        _tag: "ServiceStartError",
+        operation: "bringUp.knobs",
+        providerId,
+      }),
+    );
   });
 
   test("persists applied plans for follow-up CLI invocations", async () => {

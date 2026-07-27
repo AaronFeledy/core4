@@ -98,7 +98,7 @@ const podmanFailure = (
   cause?: unknown,
 ) =>
   new ServiceStartError({
-    providerId: PROVIDER_ID,
+    providerId: service.provider,
     operation,
     service: service.name,
     message: withApiReason(message, details),
