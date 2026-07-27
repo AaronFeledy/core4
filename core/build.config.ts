@@ -2,7 +2,7 @@
  * Lando v4 build configuration — the bundled-artifact "ship list".
  *
  * Read by:
- *   - `scripts/build-bundled-plugins.ts` (regenerates `src/plugins/bundled.ts`)
+ *   - `scripts/build-bundled-plugins.ts` (regenerates `src/plugins/generated/*`)
  *   - `scripts/build-bundled-recipes.ts` (regenerates `src/recipes/bundled.ts`)
  *   - `scripts/build-bundled-plugin-templates.ts`
  *   - `scripts/codegen.ts` (the orchestrator)

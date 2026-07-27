@@ -74,7 +74,7 @@ describe("bundled-first global service loader", () => {
     expect(failure.message).toContain("traefik");
     expect(failure.remediation).toContain("globalServices");
     expect(failure.remediation).toMatch(/BUNDLED_PLUGIN_MODULES|descriptor/);
-    expect(failure.remediation).not.toContain("core/src/plugins/bundled.ts");
+    expect(failure.remediation).not.toContain("core/src/plugins/generated/bundled.ts");
   });
 
   test("falls back to dynamic import for a non-bundled plugin", async () => {
@@ -124,7 +124,7 @@ describe("bundled-first global service loader", () => {
     expect(failure.message).toContain("missing-svc");
     expect(failure.remediation).toContain("globalServices");
     expect(failure.remediation).toMatch(/BUNDLED_PLUGIN_MODULES|descriptor/);
-    expect(failure.remediation).not.toContain("core/src/plugins/bundled.ts");
+    expect(failure.remediation).not.toContain("core/src/plugins/generated/bundled.ts");
   });
 
   test("uses injected fallback when plugin is absent from descriptor modules", async () => {

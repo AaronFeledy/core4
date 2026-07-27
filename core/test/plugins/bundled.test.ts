@@ -19,85 +19,70 @@ import * as templateMustache from "@lando/template-mustache";
 
 import { ConfigService, Logger } from "@lando/sdk/services";
 
-import { BUNDLED_PLUGINS } from "../../src/plugins/bundled.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
 import { PluginRegistry, PluginRegistryLive } from "../../src/plugins/registry.ts";
 
-const EXPECTED_BUNDLED_PLUGINS = [
-  { name: "@lando/provider-lando", layer: providerLando.provider, manifest: providerLando.manifest },
-  { name: "@lando/provider-docker", layer: providerDocker.provider, manifest: providerDocker.manifest },
-  { name: "@lando/provider-podman", layer: providerPodman.provider, manifest: providerPodman.manifest },
-  { name: "@lando/service-lando", layer: serviceLando.services, manifest: serviceLando.manifest },
-  { name: "@lando/logger-pretty", layer: loggerPretty.logger, manifest: loggerPretty.manifest },
-  { name: "@lando/renderer-lando", layer: Layer.empty, manifest: rendererLando.manifest },
-  { name: "@lando/notify-lando", layer: Layer.empty, manifest: notifyLando.manifest },
-  {
-    name: "@lando/file-sync-mutagen",
-    layer: fileSyncMutagen.engine,
-    manifest: fileSyncMutagen.manifest,
-  },
-  { name: "@lando/proxy-traefik", layer: proxyTraefik.proxy, manifest: proxyTraefik.manifest },
-  {
-    name: "@lando/template-handlebars",
-    layer: templateHandlebars.templateEngine,
-    manifest: templateHandlebars.manifest,
-  },
-  {
-    name: "@lando/template-mustache",
-    layer: templateMustache.templateEngine,
-    manifest: templateMustache.manifest,
-  },
+const EXPECTED_BUNDLED_PLUGIN_MODULES = [
+  providerLando.plugin,
+  providerDocker.plugin,
+  providerPodman.plugin,
+  serviceLando.plugin,
+  loggerPretty.plugin,
+  rendererLando.plugin,
+  notifyLando.plugin,
+  fileSyncMutagen.plugin,
+  proxyTraefik.plugin,
+  templateHandlebars.plugin,
+  templateMustache.plugin,
 ];
 
-const bundledModulePath = resolve(import.meta.dirname, "../../src/plugins/bundled.ts");
+const generatedDir = resolve(import.meta.dirname, "../../src/plugins/generated");
 const generatorPath = resolve(import.meta.dirname, "../../../scripts/build-bundled-plugins.ts");
 const notifyIndexPath = resolve(import.meta.dirname, "../../../plugins/notify-lando/src/index.ts");
+const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/renderer-lando/src/index.ts");
 
-describe("BUNDLED_PLUGINS", () => {
-  test("exports all bundled plugins with real layer and manifest references", async () => {
-    expect(BUNDLED_PLUGINS).toHaveLength(11);
-    expect(BUNDLED_PLUGINS.map((plugin) => plugin.name)).toEqual(
-      EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name),
+describe("bundled plugin descriptor tables", () => {
+  test("exports every bundled plugin descriptor in ship-list order", () => {
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(11);
+    expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
+      EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );
+    expect(BUNDLED_PLUGIN_MODULES).toEqual(EXPECTED_BUNDLED_PLUGIN_MODULES);
+    expect(BUNDLED_RENDERER_MODULES).toEqual([rendererLando.plugin]);
 
-    for (const [index, expected] of EXPECTED_BUNDLED_PLUGINS.entries()) {
-      const plugin = BUNDLED_PLUGINS[index];
-
-      if (plugin === undefined) {
-        throw new Error(`Missing bundled plugin at index ${index}.`);
-      }
-
-      expect(Layer.isLayer(plugin.layer)).toBe(true);
-      expect(plugin.layer).toBe(expected.layer);
-      expect(plugin.manifest).toBe(expected.manifest);
-    }
-
-    const serviceLandoEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/service-lando");
+    const serviceLandoEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/service-lando");
     expect(serviceLandoEntry?.globalServices?.get("mailpit")).toBe(
       serviceLando.globalServices.get("mailpit"),
     );
 
-    const handlebarsEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/template-handlebars");
+    const handlebarsEntry = BUNDLED_PLUGIN_MODULES.find(
+      (plugin) => plugin.name === "@lando/template-handlebars",
+    );
     expect(handlebarsEntry?.templateEngines?.get("handlebars")).toBe(
       templateHandlebars.templateEngines.get("handlebars"),
     );
-    const mustacheEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/template-mustache");
+    const mustacheEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/template-mustache");
     expect(mustacheEntry?.templateEngines?.get("mustache")).toBe(
       templateMustache.templateEngines.get("mustache"),
     );
-    const notifyEntry = BUNDLED_PLUGINS.find((plugin) => plugin.name === "@lando/notify-lando");
+  });
+
+  test("loads the bundled subscriber factory from its descriptor", async () => {
+    const notifyEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/notify-lando");
     const notifyFactory = await notifyEntry?.subscriberFactoryLoaders?.get("notify-command-terminal")?.();
     expect(typeof notifyFactory).toBe("function");
   });
 
   test("every bundled plugin manifest declares the @lando/core compatibility range", () => {
-    for (const expected of EXPECTED_BUNDLED_PLUGINS) {
+    for (const expected of EXPECTED_BUNDLED_PLUGIN_MODULES) {
       expect(expected.manifest.requires?.["@lando/core"]).toBe("^4.0.0");
     }
   });
 
   test("every bundled plugin manifest receives the omitted app bootstrap default", () => {
     // Given: bundled manifests remain unchanged and omit bootstrap declarations.
-    const manifests = EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.manifest);
+    const manifests = EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.manifest);
 
     // When: their decoded bootstrap levels are inspected.
     const bootstrapLevels = manifests.map(
@@ -108,33 +93,48 @@ describe("BUNDLED_PLUGINS", () => {
     expect(bootstrapLevels).toEqual(manifests.map(() => "app"));
   });
 
-  test("generated bundled plugin module is idempotent", async () => {
-    const before = await readFile(bundledModulePath, "utf8");
+  test("generated bundled plugin descriptor tables are idempotent", async () => {
+    const paths = [resolve(generatedDir, "bundled.ts"), resolve(generatedDir, "renderers.ts")];
+    const before = await Promise.all(paths.map((path) => readFile(path, "utf8")));
     const proc = Bun.spawnSync([process.execPath, generatorPath], {
       cwd: resolve(import.meta.dirname, "../../.."),
       stdout: "pipe",
       stderr: "pipe",
     });
     expect(proc.exitCode).toBe(0);
-    const after = await readFile(bundledModulePath, "utf8");
+    const after = await Promise.all(paths.map((path) => readFile(path, "utf8")));
 
-    expect(after).toBe(before);
+    expect(after).toEqual(before);
   });
 
   test("bundled subscriber module remains lazy behind a Bun-traceable literal importer", async () => {
-    // Given: the package index and generated compiled-bundle table.
-    const [indexSource, bundledSource] = await Promise.all([
-      readFile(notifyIndexPath, "utf8"),
-      readFile(bundledModulePath, "utf8"),
-    ]);
+    // Given: the package index and generated compiled-bundle descriptor table.
+    const indexSource = await readFile(notifyIndexPath, "utf8");
 
     // When: their subscriber loading edges are inspected.
     const importsPolicyAtIndex = indexSource.includes('from "./notify.ts"');
-    const hasLiteralLazyImport = bundledSource.includes('import("@lando/notify-lando/notify")');
+    const hasLiteralLazyImport = indexSource.includes('import("./notify.ts")');
 
     // Then: manifest loading is side-effect free and Bun can trace the lazy policy module.
     expect(importsPolicyAtIndex).toBe(false);
     expect(hasLiteralLazyImport).toBe(true);
+  });
+
+  test("bundled renderer keeps OpenTUI prompt code behind a literal lazy import", async () => {
+    // Given: the renderer package index and renderer-only descriptor table.
+    const [indexSource, rendererTableSource] = await Promise.all([
+      readFile(rendererIndexPath, "utf8"),
+      readFile(resolve(generatedDir, "renderers.ts"), "utf8"),
+    ]);
+
+    // When: the renderer loading edges are inspected.
+    const hasStaticPromptDriverImport = indexSource.includes('from "./opentui/prompt-driver.ts"');
+    const hasLiteralPromptDriverImport = indexSource.includes('import("./opentui/prompt-driver.ts")');
+
+    // Then: descriptor discovery stays OpenTUI-free until the prompt driver is requested.
+    expect(rendererTableSource).not.toContain("@opentui/core");
+    expect(hasStaticPromptDriverImport).toBe(false);
+    expect(hasLiteralPromptDriverImport).toBe(true);
   });
 
   test("PluginRegistryLive lists and loads bundled manifests when external registries are empty", async () => {
@@ -161,7 +161,7 @@ describe("BUNDLED_PLUGINS", () => {
       const registry = Context.get(context, PluginRegistry);
       const manifests = await Effect.runPromise(registry.list);
       const manifestNames: ReadonlyArray<string> = manifests.map((manifest) => String(manifest.name));
-      expect(manifestNames).toEqual(EXPECTED_BUNDLED_PLUGINS.map((plugin) => plugin.name));
+      expect(manifestNames).toEqual(EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name));
 
       const manifest = await Effect.runPromise(registry.load("@lando/provider-docker"));
       const loadedName: string = String(manifest.name);
