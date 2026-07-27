@@ -35,6 +35,7 @@ import {
   inspect,
   logs,
   makePodmanApiClient as makeUnixPodmanApiClient,
+  podmanComposeKnobsForPlatform,
   podmanVersionMeetsFloor,
   providerStatePath as providerLandoStatePath,
   pullImage,
@@ -320,7 +321,8 @@ export const podmanCapabilitiesForPlatform = (
     ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: true,
-    composeSpec: "portable",
+    composeSpec: "native",
+    composeKnobs: { supported: podmanComposeKnobsForPlatform(platform) },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

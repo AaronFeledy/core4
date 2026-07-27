@@ -22,6 +22,7 @@ import {
 import type { ApplyResult, EventService } from "@lando/sdk/services";
 
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "./capabilities.ts";
+import { realizePodmanComposeKnobs } from "./compose-knobs.ts";
 import { exec } from "./exec.ts";
 import { waitForExit } from "./inspect.ts";
 import { redactDetails, withApiReason } from "./redact.ts";
@@ -117,7 +118,7 @@ const parseJson = (
   operation: string,
 ): Effect.Effect<unknown, ProviderInternalError> =>
   Effect.try({
-    try: () => (response.body.length === 0 ? {} : (JSON.parse(response.body) as unknown)),
+    try: () => (response.body.length === 0 ? {} : JSON.parse(response.body)),
     catch: (cause) =>
       new ProviderInternalError({
         providerId: PROVIDER_ID,
@@ -173,28 +174,83 @@ const hostConfig = (plan: AppPlan, service: ServicePlan) => {
   });
 };
 
-const createContainerBody = (plan: AppPlan, service: ServicePlan, name: string) =>
-  containerCreateBodyFragment(plan, service, {
-    name,
-    labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
-    hostConfig: hostConfig(plan, service),
-    networkingConfig: {
-      EndpointsConfig: Object.fromEntries(
-        networkNames(plan).map((name) => [
-          name,
-          name === sharedNetworkName(plan) ? { Aliases: serviceNetworkAliases(plan, service) } : {},
-        ]),
-      ),
-    },
-    onMissingArtifact: (artifact) => {
-      throw podmanFailure(
-        service,
-        "bringUp.artifact",
-        "provider-lando bringUp requires pre-built artifact references.",
-        { artifact },
-      );
+const createContainerRequest = (plan: AppPlan, service: ServicePlan, name: string) => {
+  const knobs = realizePodmanComposeKnobs(service, {
+    onInvalid: (message, details) => {
+      throw podmanFailure(service, "bringUp.knobs", message, details);
     },
   });
+  const baseHostConfig = hostConfig(plan, service);
+  const mountTargets = new Set<string>();
+  const binds = baseHostConfig.Binds;
+  if (Array.isArray(binds)) {
+    for (const bind of binds) {
+      if (typeof bind !== "string") continue;
+      const withoutOptions = bind.endsWith(":ro") ? bind.slice(0, -3) : bind;
+      const separator = withoutOptions.lastIndexOf(":");
+      if (separator >= 0) mountTargets.add(withoutOptions.slice(separator + 1));
+    }
+  }
+  const mounts = baseHostConfig.Mounts;
+  if (Array.isArray(mounts)) {
+    for (const mount of mounts) {
+      if (typeof mount !== "object" || mount === null) continue;
+      const target = Reflect.get(mount, "Target");
+      if (typeof target === "string") mountTargets.add(target);
+    }
+  }
+  const tmpfs = knobs.hostConfig.Tmpfs;
+  if (typeof tmpfs === "object" && tmpfs !== null && !Array.isArray(tmpfs)) {
+    const collision = Object.keys(tmpfs).find((target) => mountTargets.has(target));
+    if (collision !== undefined) {
+      throw podmanFailure(
+        service,
+        "bringUp.knobs",
+        "Compose tmpfs destination conflicts with a planned container mount.",
+        { knob: "tmpfs", target: collision },
+      );
+    }
+  }
+  const baseExtraHosts = baseHostConfig.ExtraHosts;
+  const knobExtraHosts = knobs.hostConfig.ExtraHosts;
+  const mergedExtraHosts =
+    Array.isArray(baseExtraHosts) && Array.isArray(knobExtraHosts)
+      ? { ExtraHosts: [...baseExtraHosts, ...knobExtraHosts] }
+      : {};
+  const body = {
+    ...containerCreateBodyFragment(plan, service, {
+      name,
+      labels: commonContainerLabels(plan, service, scratchLabelsForPlan(plan)),
+      hostConfig: {
+        ...baseHostConfig,
+        ...knobs.hostConfig,
+        ...mergedExtraHosts,
+      },
+      networkingConfig: {
+        EndpointsConfig: Object.fromEntries(
+          networkNames(plan).map((name) => [
+            name,
+            name === sharedNetworkName(plan) ? { Aliases: serviceNetworkAliases(plan, service) } : {},
+          ]),
+        ),
+      },
+      onMissingArtifact: (artifact) => {
+        throw podmanFailure(
+          service,
+          "bringUp.artifact",
+          "provider-lando bringUp requires pre-built artifact references.",
+          { artifact },
+        );
+      },
+    }),
+    ...knobs.topLevel,
+  };
+  const searchParams = new URLSearchParams();
+  searchParams.set("name", name);
+  for (const [key, value] of Object.entries(knobs.query)) searchParams.set(key, value);
+  const path: PodmanHttpRequest["path"] = `/containers/create?${searchParams.toString()}`;
+  return { body, path };
+};
 
 const ensureNetwork = (
   api: PodmanApiClient,
@@ -284,7 +340,7 @@ const createContainer = (
   name: string,
 ): Effect.Effect<void, BringUpError> =>
   Effect.try({
-    try: () => createContainerBody(plan, service, name),
+    try: () => createContainerRequest(plan, service, name),
     catch: (cause) =>
       cause instanceof ServiceStartError
         ? cause
@@ -296,9 +352,7 @@ const createContainer = (
             cause,
           ),
   }).pipe(
-    Effect.flatMap((body) =>
-      request(api, { method: "POST", path: `/containers/create?name=${encodeURIComponent(name)}`, body }),
-    ),
+    Effect.flatMap(({ body, path }) => request(api, { method: "POST", path, body })),
     Effect.flatMap((response) =>
       response.status === 201 || response.status === 409
         ? Effect.void
