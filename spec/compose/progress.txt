@@ -27,6 +27,7 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - The app-plan cache key deliberately omits provider capabilities, so any capability gate must also run on the cached-plan path; and any change to planner OUTPUT semantics needs an `APP_PLAN_CACHE_SCHEMA_VERSION` bump, because the key is derived from the authored Landofile and will not roll on its own.
 - Biome scans untracked sibling checkouts. A stale `.worktrees/` directory is git-excluded and invisible to `git status`, yet makes `bun run lint` fail on files outside the change; scope Biome to tracked package dirs before believing a repo-wide lint failure.
 - The machine-output envelope narrows every error to `{_tag, message, remediation}` by design. Structured error context belongs in the message and in the bug-report formatter's extra fields, not in a per-error widening of the shared envelope.
+- Schema parse-error messages can reach the plain terminal renderer unchanged. Never interpolate raw Landofile values into those messages; use constant grammar/remediation text so control bytes cannot alter terminal output.
 
 ## Log
 
@@ -439,4 +440,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - The test-registry helper that registers a fake service TYPE does not register that fake's service FEATURE. A plan using a new fake type fails with "Service feature <id>.test-plan is not registered" — which looks like a planner bug and is really a missing `loadServiceFeature` override.
   - Biome scans untracked sibling checkouts. A stale `.worktrees/` directory (git-excluded, invisible to `git status`) makes `bun run lint` fail on files that are not part of the change at all; scope Biome to the tracked package dirs before believing a repo-wide lint failure.
   - The machine-output envelope narrows every error to `{_tag, message, remediation}` on purpose. Structured error context belongs in the message and in the bug-report formatter's extra fields, not in a per-error widening of the shared envelope.
+---
+
+## 2026-07-26 21:43 CDT - US-473 Review
+- Fixed terminal control-sequence injection in the new `sysctls` and `extra_hosts` list-form validation failures: malformed entries no longer echo untrusted bytes, while the errors retain actionable `KEY=value` and `HOST=IP or HOST:IP` remediation. A regression covers both ESC and BEL and was confirmed red before the fix and green after it.
+- Guide-Coverage-Skip: US-473 adds Compose runtime-knob schemas and planning capability checks; the executable Compose guide and published key matrix are explicitly owned by US-477.
+- Review notes (deferred/rejected): The nonblocking suggestion for another direct provider-contract negative test was deferred because the invariant is already enforced by the contract helper and the story's partial accept/reject planner paths are covered; no assertion or feature path was weakened.
+- Review notes (deferred/rejected): Cursor Bugbot produced no findings because both the required invocation and its Auto-mode retry were blocked by the configured account's usage limit.
+- Verification: typecheck passed; tracked-file Biome and deprecation checks passed; focused QA passed 286 tests with 1,236 assertions, and the repaired schema suite passed 76 tests with 239 assertions. Guide drift passed with explicit base and the skip above. Bare `bun run lint` remains blocked only by pre-existing errors in the ignored `.worktrees/plugin-dag` checkout.
 ---
