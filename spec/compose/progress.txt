@@ -374,3 +374,17 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: excised only dead exports and aliases; no adjacent feature or incomplete public contract required a follow-up story, and US-472 remains passing.
 - Verification: typecheck, lint, 17 focused test files, import-cycle, probe-boundary, Compose coverage, SDK compatibility, and changed-file diagnostics passed; two post-edit LSP refreshes timed out but root typecheck remained green.
 ---
+
+## 2026-07-26 17:20 CDT - US-472 Verify
+- Compiled `core/dist/lando`; sandbox `setup --yes --no-interactive` completed after installing noble-era `libgpgme11t64` + `libassuan0` (Ubuntu 26.04 only ships `libgpgme.so.45`; bundled Podman 6 needs `.so.11`). Doctor shows runtime socket reachable.
+- Real compiled-binary planning/config scenarios green: `service_healthy` without healthcheck exits 1 with remediation; missing required dep exits 1; optional missing dep plans; multi-condition `service_healthy` + optional `service_completed_successfully` plans and `app config get services.web.dependsOn` round-trips both conditions; optional-edge cycle fails; disabled-healthcheck + optional healthy fails; list-form depends_on plans. Adjacent smoke: `--version`/`--help`, `list`, `doctor`, simple-app `info`/`config`, `start`/`stop`/`destroy` help.
+- Live `lando start` still fails in this sandbox on netavark/aardvark (`user scope bus` / broken `user@1000.service` "Device or resource busy" since distro bootstrap) — pre-existing environment gap, not a US-472 orchestration defect. Condition ordering remains covered by the test-provider orchestrator suites from Build/Review.
+- **Learnings for future iterations:** Sandbox container networking needs a working systemd user session for aardvark-dns; installing matching SONAME host libs for the managed Podman bundle is required on Ubuntu 26.04 before full provider setup; YAML `command: true` becomes boolean — quote healthcheck/service commands as strings for Landofile fixtures.
+---
+
+## 2026-07-26 19:10 CDT - Babysit
+- PR: #635 https://github.com/AaronFeledy/core4/pull/635
+- CI outcome: fail (provider-integration-* waitForExit fake Podman HTTP 500), then pass after fix
+- Review feedback: fixed (serve native Podman `/libpod/containers/{name}/wait` numeric fixture)
+- Merge: merged (squash)
+---
