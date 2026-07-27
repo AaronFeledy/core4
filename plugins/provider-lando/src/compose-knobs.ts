@@ -32,7 +32,7 @@ import {
  * (`sdk/AGENTS.md`), so re-decoding a canonical value is idempotent and still
  * rejects anything core could not have produced.
  */
-export const PodmanComposeKnobs = ServiceConfig.pick(
+const PodmanComposeKnobs = ServiceConfig.pick(
   "restart",
   "cap_add",
   "cap_drop",
@@ -55,20 +55,20 @@ export const PodmanComposeKnobs = ServiceConfig.pick(
   "platform",
   "logging",
 );
-export type PodmanComposeKnobValues = typeof PodmanComposeKnobs.Type;
+type PodmanComposeKnobValues = typeof PodmanComposeKnobs.Type;
 type PodmanKnobKey = keyof PodmanComposeKnobValues;
 
 /**
  * Where one knob lands in the create request. Absent slots mean the knob was
  * not present on the service.
  */
-export interface KnobFragment {
+interface KnobFragment {
   readonly hostConfig?: Record<string, unknown>;
   readonly topLevel?: Record<string, unknown>;
   readonly query?: Record<string, string>;
 }
 
-export interface KnobRealizer {
+interface KnobRealizer {
   /**
    * Host platforms whose Podman honors the knob. Every knob currently supports
    * all three: Podman always runs the container in a Linux runtime (native on
@@ -127,7 +127,7 @@ const queryKnob = (
  *   equivalent. The capability surface is per-key, so declaring the coarse key
  *   would claim support for subfields that would then be silently dropped.
  */
-export const PODMAN_COMPOSE_KNOB_REGISTRY = {
+const PODMAN_COMPOSE_KNOB_REGISTRY = {
   restart: hostConfigKnob("RestartPolicy", ({ restart }) =>
     restart === undefined ? undefined : { Name: restart },
   ),
@@ -168,13 +168,13 @@ const PODMAN_KNOB_KEYS: ReadonlyArray<PodmanKnobKey> = ComposeServiceKnobKey.lit
 export const podmanComposeKnobsForPlatform = (platform: HostPlatform): ReadonlyArray<ComposeServiceKnobKey> =>
   PODMAN_KNOB_KEYS.filter((key) => PODMAN_COMPOSE_KNOB_REGISTRY[key].supportedOn.includes(platform));
 
-export interface PodmanComposeKnobRealization {
+interface PodmanComposeKnobRealization {
   readonly hostConfig: Record<string, unknown>;
   readonly topLevel: Record<string, unknown>;
   readonly query: Record<string, string>;
 }
 
-export interface RealizePodmanComposeKnobsOptions {
+interface RealizePodmanComposeKnobsOptions {
   readonly onInvalid: InvalidKnob;
 }
 

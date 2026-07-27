@@ -121,19 +121,7 @@ export type {
 export type { EmitComposeOptions, EmitComposeResult } from "./compose.ts";
 export { bringUp } from "./bring-up.ts";
 export type { BringUpOptions } from "./bring-up.ts";
-export {
-  PODMAN_COMPOSE_KNOB_REGISTRY,
-  PodmanComposeKnobs,
-  podmanComposeKnobsForPlatform,
-  realizePodmanComposeKnobs,
-} from "./compose-knobs.ts";
-export type {
-  KnobFragment,
-  KnobRealizer,
-  PodmanComposeKnobRealization,
-  PodmanComposeKnobValues,
-  RealizePodmanComposeKnobsOptions,
-} from "./compose-knobs.ts";
+export { podmanComposeKnobsForPlatform } from "./compose-knobs.ts";
 export { bringDown } from "./bring-down.ts";
 export type { BringDownOptions } from "./bring-down.ts";
 export { ensureRuntime } from "./ensure-runtime.ts";

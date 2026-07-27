@@ -51,8 +51,7 @@ export const knobBoolean = (
   return fail(`Compose runtime knob \`${knob}\` is not a boolean.`, { knob, value });
 };
 
-export const scalarText = (value: string | number | boolean | null): string =>
-  value === null ? "" : String(value);
+const scalarText = (value: string | number | boolean | null): string => (value === null ? "" : String(value));
 
 export const scalarTextMap = (
   values: Readonly<Record<string, string | number | boolean | null>> | undefined,
