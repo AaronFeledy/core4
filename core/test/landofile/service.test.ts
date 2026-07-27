@@ -43,9 +43,9 @@ const validationErrorFrom = (exit: Exit.Exit<unknown, unknown>): LandofileValida
 };
 
 describe("LandofileServiceLive — build shape discrimination boundary", () => {
-  test("an accepted Compose build key reaches mixed-family remediation at the loader boundary", async () => {
+  test("a rejected Compose build key still reaches mixed-family remediation at the loader boundary", async () => {
     await withTempCwd(async (dir) => {
-      // Given: a service build block that mixes a Compose key with the Lando family
+      // Given: a service build block that mixes a rejected Compose key with the Lando family
       await writeFile(
         join(dir, ".lando.yml"),
         [
@@ -55,7 +55,7 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
           "    image: node:lts",
           "    build:",
           "      artifact: echo hi",
-          '      context: "."',
+          "      no_cache: true",
           "",
         ].join("\n"),
       );
@@ -72,7 +72,7 @@ describe("LandofileServiceLive — build shape discrimination boundary", () => {
       expect(mixedIssue).toContain("Compose");
       expect(mixedIssue).toContain("Lando build-script");
       expect(mixedIssue).toContain("artifact");
-      expect(mixedIssue).toContain("context");
+      expect(mixedIssue).toContain("no_cache");
       expect(mixedIssue).toContain("remove");
       expect(mixedIssue).toContain("image:");
       expect(mixedIssue).not.toContain("build.dockerfile");

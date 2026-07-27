@@ -80,6 +80,7 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
     return;
   }
   if (!isRecord(value)) return;
+  if (node.matrixPath === "build" && ("artifact" in value || "app" in value)) return;
 
   for (const key of Object.keys(value)) {
     const child = matchDispositionChild(node, key);
