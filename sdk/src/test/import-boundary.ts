@@ -1,6 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
-import ts from "typescript";
+import type ts from "typescript";
 
 export type ImportBoundaryViolation = {
   readonly file: string;
@@ -39,8 +39,11 @@ const sourceFiles = async (directory: string): Promise<string[]> => {
   return files.flat().sort();
 };
 
-const moduleSpecifierText = (node: ts.ImportDeclaration | ts.ExportDeclaration): string | undefined => {
-  if (node.moduleSpecifier !== undefined && ts.isStringLiteral(node.moduleSpecifier)) {
+const moduleSpecifierText = (
+  tsModule: typeof ts,
+  node: ts.ImportDeclaration | ts.ExportDeclaration,
+): string | undefined => {
+  if (node.moduleSpecifier !== undefined && tsModule.isStringLiteral(node.moduleSpecifier)) {
     return node.moduleSpecifier.text;
   }
   return undefined;
@@ -103,6 +106,7 @@ export const collectImportBoundaryViolations = async (
   const pluginsDir = path.join(repoRoot, "plugins");
   const coreRoot = path.join(repoRoot, "core");
   const violations: ImportBoundaryViolation[] = [];
+  const tsModule = (await import("typescript")).default;
 
   const isAllowedLandoPackage = (name: string): boolean => {
     if (name === "@lando/core") return false;
@@ -151,11 +155,17 @@ export const collectImportBoundaryViolations = async (
 
   for (const file of await sourceFiles(sourceRoot)) {
     const content = await readFile(file, "utf8");
-    const sourceFile = ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const sourceFile = tsModule.createSourceFile(
+      file,
+      content,
+      tsModule.ScriptTarget.Latest,
+      true,
+      tsModule.ScriptKind.TS,
+    );
     const pending: Array<Promise<void>> = [];
     const visit = (node: ts.Node) => {
-      if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
-        const specifier = moduleSpecifierText(node);
+      if (tsModule.isImportDeclaration(node) || tsModule.isExportDeclaration(node)) {
+        const specifier = moduleSpecifierText(tsModule, node);
         if (specifier !== undefined) {
           pending.push(
             reasonForSpecifier(specifier, file).then((reason) => {
@@ -172,9 +182,9 @@ export const collectImportBoundaryViolations = async (
           );
         }
       }
-      ts.forEachChild(node, visit);
+      tsModule.forEachChild(node, visit);
     };
-    ts.forEachChild(sourceFile, visit);
+    tsModule.forEachChild(sourceFile, visit);
     await Promise.all(pending);
   }
 
