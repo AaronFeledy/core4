@@ -1,19 +1,14 @@
 import { Effect } from "effect";
 
 import { StateStoreError } from "@lando/sdk/errors";
+import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { AbsolutePath } from "@lando/sdk/schema";
-import type { StateBucket, StateBucketSpec, StateStoreShape } from "@lando/sdk/services";
+import type { StateStoreShape } from "@lando/sdk/services";
 
 import { withAdvisoryLock } from "../state/lock.ts";
 import { resolveStatePath } from "../state/paths.ts";
 
-export type PluginStateBucketSpec<A, I> = Omit<StateBucketSpec<A, I>, "root">;
-
-export interface PluginStateStore {
-  readonly open: <A, I>(spec: PluginStateBucketSpec<A, I>) => Effect.Effect<StateBucket<A>, StateStoreError>;
-  /** Run an asynchronous critical section under a plugin-confined cross-process advisory lock. */
-  readonly withLock: <A, E>(key: string, body: Effect.Effect<A, E>) => Effect.Effect<A, E | StateStoreError>;
-}
+export type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 
 const stateRootPathOf = (root: unknown): string | undefined => {
   if (typeof root !== "object" || root === null || !("path" in root)) return undefined;
