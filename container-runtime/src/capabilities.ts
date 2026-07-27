@@ -51,6 +51,7 @@ export const buildProviderCapabilities = (
     rootless: constants.rootless,
     privilegedServices: false,
     composeSpec: constants.composeSpec,
+    composeKnobs: { supported: [] },
     providerExtensions: constants.providerExtensions,
     ...(constants.hostProxy === undefined ? {} : { hostProxy: constants.hostProxy }),
   });

@@ -68,6 +68,7 @@ export class CapabilityError extends Schema.TaggedError<CapabilityError>()("Capa
   message: Schema.String,
   service: Schema.optional(Schema.String),
   feature: Schema.optional(Schema.String),
+  key: Schema.optional(Schema.String),
   capability: Schema.String,
   providerId: Schema.String,
   remediation: Schema.optional(Schema.String),

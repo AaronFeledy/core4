@@ -35,7 +35,7 @@ This PRD set picks up at **US-466** (Beta 1 ended at US-465) and runs through **
 
 - No Compose project-file compatibility: no `extends`, no multi-file override semantics, no `!reset`/`!override` tags, no compose-go loader port.
 - No Swarm orchestration (`deploy` beyond `resources`), no `container_name`, `network_mode`, or `links`.
-- No new provider capabilities beyond the existing `composeSpec` axis; no provider-neutral planner semantics for preserved knobs.
+- No new coarse provider-capability axis beyond `composeSpec`; the existing axis gains only a fail-closed knob-level refinement (`composeKnobs`). No provider-neutral planner semantics for preserved knobs.
 - No changes to Lando's own composition primitives (`includes:`, recipes, §7.2 merge).
 
 ## PRDs in this set
@@ -55,4 +55,4 @@ Every story carries TDD acceptance criteria plus `Tests pass`, `Typecheck passes
 
 - Whether `deploy.resources` should eventually normalize into a provider-neutral `resources:` plan field instead of riding `extensions.compose`; deferred until a second provider needs it.
 - Whether `profiles:` should gain active semantics (service subset activation) or remain shape-accepted and inert; current disposition is `preserved`-inert pending user signal.
-- Granularity of the `composeSpec` capability: if providers need per-knob capability reporting (e.g. `gpus` vs `ulimits`), the capability axis may grow a knob-level detail map; out of scope here.
+- Resolved: the `composeSpec` tier is retained and gains the optional, fail-closed `composeKnobs` detail declaration for per-knob support.

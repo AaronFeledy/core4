@@ -1,5 +1,55 @@
 {
   "$defs": {
+    "ComposeKnobCapabilities": {
+      "additionalProperties": false,
+      "description": "Fail-closed provider declaration of supported preserved Compose runtime knobs.",
+      "properties": {
+        "supported": {
+          "description": "Exact preserved Compose runtime knob paths supported by the provider.",
+          "items": {
+            "$ref": "#/$defs/ComposeServiceKnobKey"
+          },
+          "title": "Supported Compose Knobs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "title": "Compose Knob Capabilities",
+      "type": "object"
+    },
+    "ComposeServiceKnobKey": {
+      "description": "Preserved Compose service runtime knob path eligible for provider capability declaration.",
+      "enum": [
+        "restart",
+        "cap_add",
+        "cap_drop",
+        "privileged",
+        "devices",
+        "ulimits",
+        "sysctls",
+        "tmpfs",
+        "shm_size",
+        "dns",
+        "dns_search",
+        "dns_opt",
+        "extra_hosts",
+        "init",
+        "stop_signal",
+        "stop_grace_period",
+        "security_opt",
+        "group_add",
+        "read_only",
+        "platform",
+        "pull_policy",
+        "logging",
+        "gpus",
+        "deploy.resources"
+      ],
+      "title": "Compose Service Knob Key",
+      "type": "string"
+    },
     "HostProxyContainerTarget": {
       "anyOf": [
         {
@@ -120,6 +170,15 @@
     },
     "buildSsh": {
       "type": "boolean"
+    },
+    "composeKnobs": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ComposeKnobCapabilities"
+        }
+      ],
+      "description": "Fail-closed support declaration for preserved Compose runtime knobs.",
+      "title": "Compose Knobs"
     },
     "composeSpec": {
       "enum": [

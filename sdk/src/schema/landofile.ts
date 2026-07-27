@@ -5,6 +5,7 @@ import validRange from "semver/ranges/valid.js";
 import { BuildBlock } from "./build-block.ts";
 import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
+import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
@@ -315,6 +316,8 @@ export const ServiceConfig = Schema.Struct({
     description:
       "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
   }),
+
+  ...ComposeServiceKnobFields,
 
   ports: Schema.optional(ComposePortsField).annotations({
     description:

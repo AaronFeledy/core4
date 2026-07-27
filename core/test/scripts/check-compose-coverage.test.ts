@@ -4,6 +4,8 @@ import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { ComposeServiceKnobKey } from "@lando/sdk/schema";
+
 import {
   checkComposeCoverage,
   formatComposeCoverageFailure,
@@ -125,6 +127,12 @@ describe("compose coverage gate", () => {
       links: "rejected",
       "deploy.replicas": "rejected",
     });
+  });
+
+  test("classifies every runtime knob capability path as preserved", () => {
+    for (const path of ComposeServiceKnobKey.literals) {
+      expect(composeServiceDispositions[path]?.disposition).toBe("preserved");
+    }
   });
 
   test("classifies top-level normalized and preserved contract paths", () => {

@@ -154,7 +154,7 @@
         "Lint passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 6.2 'Per-container runtime knobs' bullet (added) + spec 5.5.1 steps 3-4 (preserve then capability-check; MUST NOT silently drop). No provider-neutral planner semantics for knobs in this wave. Merged from former US-475 + US-476."
     },
     {

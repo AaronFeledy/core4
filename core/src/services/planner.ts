@@ -77,6 +77,7 @@ import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
+import { collectComposeKnobs, findUnsupportedComposeKnob, mergeComposeKnobs } from "./compose-knobs.ts";
 import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
@@ -234,6 +235,26 @@ const missingCapability = (
     providerId: String(providerId),
     remediation,
   });
+
+const assertComposeKnobsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: AppPlan["services"],
+): Effect.Effect<void, CapabilityError> => {
+  const unsupported = findUnsupportedComposeKnob(collectComposeKnobs(services), capabilities);
+  if (unsupported === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `Service ${unsupported.service} uses Compose runtime knob ${unsupported.key}, which provider ${String(providerId)} does not support.`,
+      service: unsupported.service,
+      key: unsupported.key,
+      feature: `compose knob ${unsupported.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove ${unsupported.key} from service ${unsupported.service}, choose a provider that declares composeKnobs support for ${unsupported.key}, or move the intent under providers.<id>.`,
+    }),
+  );
+};
 
 const serviceBindRemediation = (serviceName: string) =>
   `Choose a provider with bind mount support or remove bind mounts from service ${serviceName}.`;
@@ -1207,6 +1228,7 @@ const planApp = (
       );
       if (cached !== null) {
         yield* validateServiceDependencies(appRoot, cached.services);
+        yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
         return cached;
       }
     }
@@ -1270,7 +1292,10 @@ const planApp = (
         ),
         service,
       );
-      const authoredServicePlan = mergeComposeExtension(authoredServicePlanWithoutLabels, service);
+      const authoredServicePlan = mergeComposeKnobs(
+        mergeComposeExtension(authoredServicePlanWithoutLabels, service),
+        service,
+      );
       const build = service.build;
       const authoredArtifact =
         build !== undefined && isComposeBuild(build) ? composeBuildToArtifact(build, appRoot) : undefined;
@@ -1597,6 +1622,7 @@ const planApp = (
           : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
       })(),
     });
+    yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     if (
       cacheService !== undefined &&
       !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)

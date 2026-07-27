@@ -113,7 +113,8 @@ export const testCapabilities: ProviderCapabilities = {
   tlsCertificates: "lando",
   rootless: true,
   privilegedServices: false,
-  composeSpec: "portable",
+  composeSpec: "native",
+  composeKnobs: { supported: ["restart", "cap_add", "shm_size", "extra_hosts"] },
   providerExtensions: [],
 };
 

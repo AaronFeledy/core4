@@ -47,6 +47,19 @@ describe("RuntimeProvider contract", () => {
     await expect(Effect.runPromise(contract)).resolves.toBeUndefined();
   });
 
+  test("rejects compose knob support when composeSpec is not native", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        composeSpec: "portable" as const,
+        composeKnobs: { supported: ["restart"] as const },
+      },
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "compose knob support requires native composeSpec");
+  });
+
   test("documents the Phase 1 provider assertions", async () => {
     expect(TestRuntimeProvider.capabilities.serviceExec).toBe(true);
     expect(TestRuntimeProvider.capabilities.serviceLogs).toBe(true);

@@ -310,8 +310,7 @@ describe("LandofileServiceLive", () => {
           "  web:",
           "    type: compose",
           "    image: node:lts",
-          "    deploy:",
-          "      replicas: 3",
+          "    unsupported: true",
           "",
         ].join("\n"),
       );
@@ -327,7 +326,7 @@ describe("LandofileServiceLive", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.deploy");
+            expect(error.issues).toContain("services.web.unsupported");
             expect(error.message).toContain("unsupported Compose-subset keys");
             expect(error.message).toContain("providers.<provider-id>");
           }
@@ -346,8 +345,7 @@ describe("LandofileServiceLive", () => {
           "  web:",
           "    type: node",
           "    image: node:lts",
-          "    deploy:",
-          "      replicas: 3",
+          "    unsupported: true",
           "",
         ].join("\n"),
       );
@@ -363,7 +361,7 @@ describe("LandofileServiceLive", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.deploy");
+            expect(error.issues).toContain("services.web.unsupported");
             expect(error.message).toContain("unsupported MVP keys");
             expect(error.message).not.toContain("unsupported Compose-subset keys");
             expect(error.message).not.toContain("Compose compatibility");
@@ -383,13 +381,11 @@ describe("LandofileServiceLive", () => {
           "  web:",
           "    type: compose",
           "    image: node:lts",
-          "    deploy:",
-          "      replicas: 3",
+          "    unsupported: true",
           "  appserver:",
           "    type: node",
           "    image: node:lts",
-          "    deploy:",
-          "      replicas: 1",
+          "    unsupported: true",
           "",
         ].join("\n"),
       );
@@ -405,7 +401,7 @@ describe("LandofileServiceLive", () => {
           const error = failure.value;
           expect(error).toBeInstanceOf(LandofileValidationError);
           if (error._tag === "LandofileValidationError") {
-            expect(error.issues).toContain("services.web.deploy");
+            expect(error.issues).toContain("services.web.unsupported");
             expect(error.issues).toContain("services");
             expect(error.message).toContain("unsupported service keys");
             expect(error.message).toContain("For type: compose services");

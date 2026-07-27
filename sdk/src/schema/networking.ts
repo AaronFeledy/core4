@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
@@ -16,6 +17,7 @@ export {
   InternalEndpoint,
   PublishedEndpoint,
 } from "./endpoint.ts";
+export { ComposeKnobCapabilities, ComposeServiceKnobKey } from "./compose-knob-capabilities.ts";
 
 /**
  * Route reference attached to a service — points at AppPlan.routes by index.
@@ -252,6 +254,10 @@ export const ProviderCapabilities = Schema.Struct({
   rootless: Schema.Boolean,
   privilegedServices: Schema.Boolean,
   composeSpec: Schema.Literal("none", "portable", "native"),
+  composeKnobs: Schema.optional(ComposeKnobCapabilities).annotations({
+    title: "Compose Knobs",
+    description: "Fail-closed support declaration for preserved Compose runtime knobs.",
+  }),
   providerExtensions: Schema.Array(Schema.String),
   /** Structured host-proxy transport support declared by the provider. */
   hostProxy: Schema.optional(HostProxyProviderCapabilities).annotations({

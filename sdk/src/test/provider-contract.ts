@@ -50,6 +50,12 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     );
 
     yield* requireContract(Either.isRight(capabilities), "capability matrix decodes", capabilities);
+    const declaredComposeKnobs = provider.capabilities.composeKnobs?.supported ?? [];
+    yield* requireContract(
+      declaredComposeKnobs.length === 0 || provider.capabilities.composeSpec === "native",
+      "compose knob support requires native composeSpec",
+      provider.capabilities,
+    );
     for (const key of REQUIRED_CAPABILITY_KEYS) {
       yield* requireContract(
         (provider.capabilities as Readonly<Record<string, unknown>>)[key] !== undefined,

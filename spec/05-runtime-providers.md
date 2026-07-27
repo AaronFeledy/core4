@@ -162,6 +162,37 @@ When `sources` contains any `strategy: "follow"` entry, the provider merges the 
 Capabilities are a typed manifest of what the provider can do. Planning consults capabilities before assembling an `AppPlan`, and emits actionable errors when a feature is requested that the provider can't honor.
 
 ```ts
+export const ComposeServiceKnobKey = Schema.Literal(
+  "restart",
+  "cap_add",
+  "cap_drop",
+  "privileged",
+  "devices",
+  "ulimits",
+  "sysctls",
+  "tmpfs",
+  "shm_size",
+  "dns",
+  "dns_search",
+  "dns_opt",
+  "extra_hosts",
+  "init",
+  "stop_signal",
+  "stop_grace_period",
+  "security_opt",
+  "group_add",
+  "read_only",
+  "platform",
+  "pull_policy",
+  "logging",
+  "gpus",
+  "deploy.resources",
+);
+
+export const ComposeKnobCapabilities = Schema.Struct({
+  supported: Schema.Array(ComposeServiceKnobKey),
+});
+
 export const ProviderCapabilities = Schema.Struct({
   artifactBuild: Schema.Boolean,
   artifactPull: Schema.Boolean,
@@ -184,6 +215,7 @@ export const ProviderCapabilities = Schema.Struct({
   rootless: Schema.Boolean,
   privilegedServices: Schema.Boolean,
   composeSpec: Schema.Literal("none", "portable", "native"),
+  composeKnobs: Schema.optional(ComposeKnobCapabilities),
   // Data plane (§10.11). Drive `DataMover` dispatch: native method vs generic helper-container fallback.
   volumeSnapshot: Schema.Literal("native", "copy", "none"),  // native=CoW/commit; copy=tar export+import; none
   serviceFileCopy: Schema.Literal("native", "exec", "none"), // native=cp API; exec=tar-over-exec; none
@@ -203,7 +235,9 @@ Endpoint publication is explicit desired state (§6.6). Before returning an `App
 
 - `none` — the provider can only realize fields that core normalized into provider-neutral `AppPlan` fields.
 - `portable` — the provider can realize the Compose keys that have direct provider-neutral equivalents, such as standard service environment, command, mounts, stores, networks, endpoints, and dependencies.
-- `native` — the provider can also consume Compose-native fields preserved in plan extensions, such as provider labels, deploy hints, build variants, profiles, configs, and secrets.
+- `native` — the provider can also consume Compose-native semantics preserved in plan extensions, such as provider labels, deploy hints, build variants, profiles, configs, and secrets. For the per-container runtime knobs listed by `ComposeServiceKnobKey`, `native` is necessary but not sufficient: the exact knob path MUST also appear in `composeKnobs.supported`.
+
+`composeSpec` and `composeKnobs` form one capability surface. `composeKnobs` is a fail-closed refinement for the preserved per-container runtime knobs of §6.2. Omitting it is equivalent to `{ supported: [] }`. A runtime knob is supported only when `composeSpec` is `native` and its exact `ComposeServiceKnobKey` appears in `supported`; the planner never infers knob support from the tier alone. A provider declaring a non-empty `supported` set at a tier other than `native` is an inconsistent declaration and is rejected by the §13.1 provider contract suite. The contract suite validates both the declaration shape and partial declarations.
 
 `bindMountPerformance` describes the provider's host↔guest filesystem-IO characteristics for `bind`-type mounts:
 
@@ -281,7 +315,7 @@ Planning handles supported Compose input in this order:
 1. Parse, merge, and validate the Landofile against the Lando schema plus the documented Compose subset.
 2. Normalize Compose keys with provider-neutral meaning into `AppPlan` fields. Examples: top-level `volumes:` → `stores`, top-level `networks:` → `networks`, service `volumes:` → `mounts`/`storage`, service `ports:`/`expose:` → `endpoints`, service `depends_on:` → `dependsOn`.
 3. Preserve supported Compose keys that are valid but not provider-neutral under `AppPlan.extensions.compose` or `ServicePlan.extensions.compose` with secrets redacted where needed.
-4. Check provider capabilities. If preserved Compose semantics require `composeSpec: native` and the selected provider does not declare it, planning fails with an actionable `CapabilityError` instead of silently dropping config.
+4. Check provider capabilities before any provider action. For each service, collect the preserved per-container runtime-knob paths present in `ServicePlan.extensions.compose`. A knob is supported only when the selected provider declares `composeSpec: native` and includes the exact path in `composeKnobs.supported`; omitting `composeKnobs` means no knob support. An unsupported knob fails planning with `CapabilityError` carrying `service`, `key`, `providerId`, `capability: "composeSpec"`, and actionable remediation to remove the key, choose a supporting provider, or move provider-specific intent under `providers.<id>`.
 5. Reject Compose keys carrying the `rejected` disposition with remediation pointing to either a supported Lando key, a provider extension, or a config translator when one is available.
 
 The normalize/preserve/reject classification for every Compose service key is committed as the §7.4 disposition matrix (backed by the vendored, pinned upstream Compose JSON Schema) and enforced by the `check:compose-coverage` gate; planning consults that matrix rather than re-deciding per key. This preserves the user-facing Compose subset while keeping the provider-neutral `AppPlan` as the runtime contract.

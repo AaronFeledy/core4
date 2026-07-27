@@ -28,6 +28,7 @@ import {
 import { AppPlanner, ConfigService, LandofileService, PluginRegistry } from "@lando/core/services";
 import type { AppFeatureDefinition, ServiceFeatureDefinition, ServiceType } from "@lando/core/services";
 import type { GlobalConfig } from "@lando/sdk/schema";
+import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
@@ -3829,6 +3830,315 @@ describe("AppPlannerLive", () => {
           );
           expect(failure.message).toContain("Add service db to services or set required: false");
         }
+      } finally {
+        if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
+        else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
+        await rm(cacheRoot, { recursive: true, force: true });
+      }
+    });
+  });
+});
+
+const allKnobEncodedService = {
+  image: "node:lts",
+  restart: "unless-stopped",
+  cap_add: "NET_ADMIN",
+  cap_drop: ["MKNOD"],
+  privileged: true,
+  devices: ["/dev/fuse:/dev/fuse:rwm"],
+  ulimits: { nofile: 4096 },
+  sysctls: ["net.core.somaxconn=1024"],
+  tmpfs: "/run",
+  shm_size: "64m",
+  dns: "1.1.1.1",
+  dns_search: ["example.test"],
+  dns_opt: ["ndots:2"],
+  extra_hosts: ["host.docker.internal:host-gateway"],
+  init: true,
+  stop_signal: "SIGTERM",
+  stop_grace_period: "30s",
+  security_opt: ["no-new-privileges:true"],
+  group_add: ["docker"],
+  read_only: true,
+  platform: "linux/amd64",
+  pull_policy: "always",
+  logging: { driver: "json-file", options: { "max-size": "10m" } },
+  gpus: "all",
+  deploy: { resources: { limits: { cpus: "0.5", memory: "512m", pids: 100 } } },
+} as const;
+
+const allKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
+  name: "allknobs",
+  runtime: 4,
+  services: { web: allKnobEncodedService },
+});
+
+const allKnobServiceConfig = allKnobLandofile.services[ServiceName.make("web")] as Record<string, unknown>;
+
+const allKnobExtensionKeys = Object.keys(allKnobEncodedService).filter((key) => key !== "image");
+
+const allKnobCapabilities: ProviderCapabilities = {
+  ...providerLandoCapabilities,
+  composeKnobs: {
+    supported: [
+      "restart",
+      "cap_add",
+      "cap_drop",
+      "privileged",
+      "devices",
+      "ulimits",
+      "sysctls",
+      "tmpfs",
+      "shm_size",
+      "dns",
+      "dns_search",
+      "dns_opt",
+      "extra_hosts",
+      "init",
+      "stop_signal",
+      "stop_grace_period",
+      "security_opt",
+      "group_add",
+      "read_only",
+      "platform",
+      "pull_policy",
+      "logging",
+      "gpus",
+      "deploy.resources",
+    ],
+  },
+};
+
+describe("Compose runtime knobs", () => {
+  test("Given authored Compose runtime knobs, when the app is planned, then they reach the service plan compose extension", async () => {
+    // Given
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "knobapp",
+      runtime: 4,
+      services: { web: { image: "node:lts", restart: "unless-stopped", shm_size: "64m" } },
+    });
+
+    await withTempCwd(async () => {
+      // When
+      const appPlan = await plan(landofile, allKnobCapabilities);
+
+      // Then
+      expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
+        restart: "unless-stopped",
+        shm_size: 67_108_864,
+      });
+    });
+  });
+
+  test("Given every preserved knob key, when the app is planned twice, then each canonicalized value survives byte-identically", async () => {
+    await withTempCwd(async () => {
+      // When
+      const first = await plan(allKnobLandofile, allKnobCapabilities);
+      const second = await plan(allKnobLandofile, allKnobCapabilities);
+      const compose = first.services[ServiceName.make("web")]?.extensions.compose as
+        | Record<string, unknown>
+        | undefined;
+
+      // Then
+      expect(Object.keys(compose ?? {}).sort()).toEqual([...allKnobExtensionKeys].sort());
+      for (const key of allKnobExtensionKeys) {
+        expect(JSON.stringify(compose?.[key])).toBe(JSON.stringify(allKnobServiceConfig[key]));
+      }
+      expect(JSON.stringify(second.services[ServiceName.make("web")]?.extensions.compose)).toBe(
+        JSON.stringify(compose),
+      );
+    });
+  });
+
+  const knobLandofile = Schema.decodeUnknownSync(LandofileShape)({
+    name: "knobapp",
+    runtime: 4,
+    services: { web: { image: "node:lts", restart: "unless-stopped", shm_size: "64m" } },
+  });
+
+  test("Given the partial test-provider declaration, when only supported knobs are planned, then planning succeeds", async () => {
+    await withTempCwd(async () => {
+      // When
+      const appPlan = await plan(knobLandofile, TestRuntimeProvider.capabilities);
+
+      // Then
+      expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
+        restart: "unless-stopped",
+        shm_size: 67_108_864,
+      });
+    });
+  });
+
+  test("Given a provider that omits a used knob, when the app is planned, then planning fails naming the service and knob", async () => {
+    const unsupportedKnobLandofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "knobapp",
+      runtime: 4,
+      services: { web: { image: "node:lts", restart: "unless-stopped", read_only: true } },
+    });
+
+    await withTempCwd(async () => {
+      // When
+      const exit = await planExit(unsupportedKnobLandofile, TestRuntimeProvider.capabilities);
+
+      // Then
+      const failure = expectSomeFailure(exit);
+      expect(failure).toBeInstanceOf(CapabilityError);
+      expect(failure).toMatchObject({
+        _tag: "CapabilityError",
+        service: "web",
+        key: "read_only",
+        capability: "composeSpec",
+        providerId: "lando",
+      });
+      expect(failure instanceof CapabilityError ? failure.remediation : undefined).toContain("read_only");
+    });
+  });
+
+  test("Given a native provider with no knob declaration, when a knob is used, then planning fails closed", async () => {
+    await withTempCwd(async () => {
+      // When
+      const exit = await planExit(knobLandofile, providerLandoCapabilities);
+
+      // Then
+      expect(expectSomeFailure(exit)).toMatchObject({
+        _tag: "CapabilityError",
+        service: "web",
+        key: "restart",
+        capability: "composeSpec",
+      });
+    });
+  });
+
+  test("Given a portable provider that declares knobs, when a knob is used, then the tier gate still rejects it", async () => {
+    await withTempCwd(async () => {
+      // When
+      const exit = await planExit(knobLandofile, {
+        ...providerLandoCapabilities,
+        composeSpec: "portable",
+        composeKnobs: { supported: ["restart", "shm_size"] },
+      });
+
+      // Then
+      expect(expectSomeFailure(exit)).toMatchObject({
+        _tag: "CapabilityError",
+        service: "web",
+        key: "restart",
+        capability: "composeSpec",
+      });
+    });
+  });
+
+  const tmpfsInjectingServiceType = makeLegacyServiceTypeFake({
+    id: "tmpfs-injecting",
+    toServicePlan: ({ name, provider = ProviderId.make("lando"), primary = false, metadata }) =>
+      Schema.decodeUnknownSync(ServicePlan)({
+        name: ServiceName.make(name),
+        type: "tmpfs-injecting",
+        provider,
+        primary,
+        environment: {},
+        mounts: [],
+        storage: [],
+        endpoints: [],
+        routes: [],
+        dependsOn: [],
+        hostAliases: [],
+        metadata,
+        extensions: { compose: { tmpfs: ["/run"] } },
+      }),
+  });
+
+  const injectedLandofile: LandofileShape = {
+    name: "injected-knobs",
+    runtime: 4,
+    services: { [ServiceName.make("web")]: { type: "tmpfs-injecting" } },
+  };
+
+  const tmpfsInjectingRegistry = {
+    ...registryWithServiceType(tmpfsInjectingServiceType),
+    loadServiceFeature: (id: string) =>
+      id === tmpfsInjectingServiceType.testFeature.id
+        ? Effect.succeed(tmpfsInjectingServiceType.testFeature)
+        : customPluginRegistry.loadServiceFeature(id),
+  };
+
+  const planInjectedExit = (providerCapabilities: ProviderCapabilities) =>
+    Effect.runPromiseExit(
+      Effect.flatMap(AppPlanner, (appPlanner) =>
+        appPlanner.plan(injectedLandofile, providerCapabilities),
+      ).pipe(
+        Effect.provide(AppPlannerLive),
+        Effect.provide(Layer.succeed(PluginRegistry, tmpfsInjectingRegistry)),
+      ),
+    );
+
+  test("Given a knob injected by a plugin rather than authored, when the app is planned, then it is still capability-gated", async () => {
+    await withTempCwd(async () => {
+      // When
+      const exit = await planInjectedExit(providerLandoCapabilities);
+
+      // Then
+      expect(expectSomeFailure(exit)).toMatchObject({
+        _tag: "CapabilityError",
+        service: "web",
+        key: "tmpfs",
+        capability: "composeSpec",
+      });
+    });
+  });
+
+  test("Given a provider declaring the injected knob, when the app is planned, then planning succeeds", async () => {
+    await withTempCwd(async () => {
+      // When
+      const exit = await planInjectedExit(allKnobCapabilities);
+
+      // Then
+      expect(Exit.isSuccess(exit)).toBe(true);
+    });
+  });
+
+  test("Given a plan cached under a permissive provider, when a restrictive provider replans, then the cached plan does not bypass the gate", async () => {
+    await withTempCwd(async () => {
+      // Given
+      const previousCacheRoot = process.env.LANDO_USER_CACHE_ROOT;
+      const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-knob-cache-root-")));
+      process.env.LANDO_USER_CACHE_ROOT = cacheRoot;
+      const cachedLayer = AppPlannerLive.pipe(
+        Layer.provide(Layer.mergeAll(CacheServiceLive, FileSystemLive, PluginRegistryLive)),
+      );
+      const runPlan = (providerCapabilities: ProviderCapabilities) =>
+        Effect.runPromiseExit(
+          Effect.flatMap(AppPlanner, (appPlanner) =>
+            appPlanner.plan(knobLandofile, providerCapabilities),
+          ).pipe(Effect.provide(cachedLayer)),
+        );
+
+      try {
+        const first = await runPlan(allKnobCapabilities);
+        const second = await runPlan(allKnobCapabilities);
+
+        // The second permissive run must be served from the cache, otherwise the
+        // restrictive run below would never exercise the cached-plan path.
+        expect(Exit.isSuccess(first) && Exit.isSuccess(second)).toBe(true);
+        if (Exit.isSuccess(first) && Exit.isSuccess(second)) {
+          expect(second.value.metadata.resolvedAt).toEqual(first.value.metadata.resolvedAt);
+        }
+        await readFile(appPlanCachePath(cacheRoot, "knobapp", process.cwd()));
+
+        // When
+        const restrictive = await runPlan({
+          ...providerLandoCapabilities,
+          composeKnobs: { supported: ["restart"] },
+        });
+
+        // Then
+        expect(expectSomeFailure(restrictive)).toMatchObject({
+          _tag: "CapabilityError",
+          service: "web",
+          key: "shm_size",
+          capability: "composeSpec",
+          providerId: "lando",
+        });
       } finally {
         if (previousCacheRoot === undefined) Reflect.deleteProperty(process.env, "LANDO_USER_CACHE_ROOT");
         else process.env.LANDO_USER_CACHE_ROOT = previousCacheRoot;
