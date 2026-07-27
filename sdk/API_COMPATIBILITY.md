@@ -402,6 +402,8 @@
 - `RendererKeyChordPattern`
 - `decodeKeymapConfig`
 - `validateKeymapConfigConflicts`
+- `ComposeServiceKnobKey`
+- `ComposeKnobCapabilities`
 
 ## Additive Beta service fields
 
@@ -447,6 +449,16 @@
 - `DataStorePlan.key` is a new additive optional field.
 - `StorageInput.kind` is a new additive optional field.
 - `StorageInput.key` is a new additive optional field.
+- `ProviderCapabilities.composeKnobs` is a new additive optional field. Omitting it is equivalent to
+  `{ supported: [] }`; a preserved Compose runtime knob is supported only when `composeSpec` is
+  `native` and the exact knob path is declared. `composeSpec` itself is unchanged.
+- `CapabilityError.key` is a new additive optional field carrying the exact capability key that failed.
+- `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
+  `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
+  `.stop_grace_period`, `.security_opt`, `.group_add`, `.read_only`, `.platform`, `.pull_policy`,
+  `.logging`, `.gpus`, and `.deploy` are new additive optional fields carrying the preserved Compose
+  per-container runtime knobs under their Compose spellings. Values canonicalize to one long form;
+  keys are never renamed.
 
 ## Additive Beta event exports
 

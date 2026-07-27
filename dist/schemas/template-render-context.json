@@ -42,6 +42,11 @@
       "title": "Deprecation Notice",
       "type": "object"
     },
+    "Int": {
+      "description": "an integer",
+      "title": "int",
+      "type": "integer"
+    },
     "ServiceConfigInput": {
       "additionalProperties": false,
       "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
@@ -240,6 +245,34 @@
             }
           ]
         },
+        "cap_add": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Linux capabilities to add as a single Compose capability or capability list; canonicalized to a string list."
+        },
+        "cap_drop": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Linux capabilities to drop as a single Compose capability or capability list; canonicalized to a string list."
+        },
         "command": {
           "anyOf": [
             {
@@ -350,6 +383,368 @@
               "type": "array"
             }
           ]
+        },
+        "deploy": {
+          "anyOf": [
+            {
+              "patternProperties": {
+                "": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                }
+              },
+              "properties": {
+                "endpoint_mode": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "labels": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "mode": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "placement": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "replicas": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "resources": {
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
+                  "properties": {
+                    "limits": {
+                      "patternProperties": {
+                        "": {
+                          "$id": "/schemas/unknown",
+                          "title": "unknown"
+                        }
+                      },
+                      "properties": {
+                        "cpus": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "memory": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "$ref": "#/$defs/Int"
+                            }
+                          ]
+                        },
+                        "pids": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/$defs/Int"
+                            },
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "propertyNames": {
+                        "pattern": "^x-[\\s\\S]*?$",
+                        "type": "string"
+                      },
+                      "required": [],
+                      "type": "object"
+                    },
+                    "reservations": {
+                      "patternProperties": {
+                        "": {
+                          "$id": "/schemas/unknown",
+                          "title": "unknown"
+                        }
+                      },
+                      "properties": {
+                        "cpus": {
+                          "anyOf": [
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "devices": {
+                          "items": {
+                            "patternProperties": {
+                              "": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              }
+                            },
+                            "properties": {
+                              "capabilities": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "count": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "$ref": "#/$defs/Int"
+                                  }
+                                ]
+                              },
+                              "device_ids": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "driver": {
+                                "type": "string"
+                              },
+                              "options": {
+                                "anyOf": [
+                                  {
+                                    "additionalProperties": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "number"
+                                        },
+                                        {
+                                          "type": "boolean"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "propertyNames": {
+                                      "not": {
+                                        "const": "__proto__"
+                                      }
+                                    },
+                                    "type": "object"
+                                  },
+                                  {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                ]
+                              }
+                            },
+                            "propertyNames": {
+                              "pattern": "^x-[\\s\\S]*?$",
+                              "type": "string"
+                            },
+                            "required": [
+                              "capabilities"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "generic_resources": {
+                          "items": {
+                            "patternProperties": {
+                              "": {
+                                "$id": "/schemas/unknown",
+                                "title": "unknown"
+                              }
+                            },
+                            "properties": {
+                              "discrete_resource_spec": {
+                                "patternProperties": {
+                                  "": {
+                                    "$id": "/schemas/unknown",
+                                    "title": "unknown"
+                                  }
+                                },
+                                "properties": {
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "value": {
+                                    "anyOf": [
+                                      {
+                                        "type": "number"
+                                      },
+                                      {
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "propertyNames": {
+                                  "pattern": "^x-[\\s\\S]*?$",
+                                  "type": "string"
+                                },
+                                "required": [],
+                                "type": "object"
+                              }
+                            },
+                            "propertyNames": {
+                              "pattern": "^x-[\\s\\S]*?$",
+                              "type": "string"
+                            },
+                            "required": [],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "memory": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "$ref": "#/$defs/Int"
+                            }
+                          ]
+                        }
+                      },
+                      "propertyNames": {
+                        "pattern": "^x-[\\s\\S]*?$",
+                        "type": "string"
+                      },
+                      "required": [],
+                      "type": "object"
+                    }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
+                  },
+                  "required": [],
+                  "type": "object"
+                },
+                "restart_policy": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "rollback_config": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                },
+                "update_config": {
+                  "$id": "/schemas/unknown",
+                  "title": "unknown"
+                }
+              },
+              "propertyNames": {
+                "pattern": "^x-[\\s\\S]*?$",
+                "type": "string"
+              },
+              "required": [],
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Deployment resources as null or a limits and reservations object; canonicalized to resources-only data with memory in bytes and device options as maps, while Swarm orchestration keys are rejected."
+        },
+        "devices": {
+          "description": "Device mappings as source:target[:permissions] strings or long source, target, and permissions objects; canonicalized to a list of long objects.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "patternProperties": {
+                  "": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  }
+                },
+                "properties": {
+                  "permissions": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  }
+                },
+                "propertyNames": {
+                  "pattern": "^x-[\\s\\S]*?$",
+                  "type": "string"
+                },
+                "required": [
+                  "source"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        "dns": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Custom DNS servers as a single address or address list; canonicalized to a string list."
+        },
+        "dns_opt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Resolver options as a single Compose option or option list; canonicalized to a string list."
+        },
+        "dns_search": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "DNS search domains as a single domain or domain list; canonicalized to a string list."
         },
         "endpoints": {
           "items": {
@@ -583,8 +978,157 @@
           },
           "type": "array"
         },
+        "extra_hosts": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                ]
+              },
+              "propertyNames": {
+                "not": {
+                  "const": "__proto__"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Additional host mappings as a hostname-to-address map or HOST=IP and HOST:IP list; canonicalized to a hostname map."
+        },
         "framework": {
           "type": "string"
+        },
+        "gpus": {
+          "anyOf": [
+            {
+              "enum": [
+                "all"
+              ],
+              "type": "string"
+            },
+            {
+              "items": {
+                "patternProperties": {
+                  "": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  }
+                },
+                "properties": {
+                  "capabilities": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "count": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/Int"
+                      }
+                    ]
+                  },
+                  "device_ids": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "driver": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "boolean"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "propertyNames": {
+                          "not": {
+                            "const": "__proto__"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    ]
+                  }
+                },
+                "propertyNames": {
+                  "pattern": "^x-[\\s\\S]*?$",
+                  "type": "string"
+                },
+                "required": [],
+                "type": "object"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "GPU access as the Compose literal \"all\" or a device-request list; canonical output preserves \"all\" or uses device objects with options canonicalized to maps."
+        },
+        "group_add": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                }
+              ]
+            },
+            {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ]
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Supplementary groups as one string or number, or as a list of either; canonicalized to a group list while preserving each value."
         },
         "healthcheck": {
           "additionalProperties": false,
@@ -687,6 +1231,17 @@
         "image": {
           "type": "string"
         },
+        "init": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Whether an init process forwards signals and reaps child processes in the container."
+        },
         "labels": {
           "anyOf": [
             {
@@ -720,6 +1275,44 @@
               "type": "array"
             }
           ]
+        },
+        "logging": {
+          "description": "Container logging driver and driver-specific scalar options.",
+          "patternProperties": {
+            "": {
+              "$id": "/schemas/unknown",
+              "title": "unknown"
+            }
+          },
+          "properties": {
+            "driver": {
+              "type": "string"
+            },
+            "options": {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          },
+          "propertyNames": {
+            "pattern": "^x-[\\s\\S]*?$",
+            "type": "string"
+          },
+          "required": [],
+          "type": "object"
         },
         "logs": {
           "items": {
@@ -797,6 +1390,10 @@
             ]
           },
           "type": "array"
+        },
+        "platform": {
+          "description": "Target runtime platform in operating-system and architecture form.",
+          "type": "string"
         },
         "port": {
           "type": "number"
@@ -933,6 +1530,17 @@
         "primary": {
           "type": "boolean"
         },
+        "privileged": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Whether the container runs with extended host privileges."
+        },
         "providers": {
           "additionalProperties": {
             "$id": "/schemas/unknown",
@@ -941,6 +1549,50 @@
           "properties": {},
           "required": [],
           "type": "object"
+        },
+        "pull_policy": {
+          "anyOf": [
+            {
+              "enum": [
+                "always",
+                "never",
+                "build",
+                "if_not_present",
+                "missing",
+                "refresh",
+                "daily",
+                "weekly"
+              ],
+              "type": "string"
+            },
+            {
+              "description": "a string matching the pattern ^every_(?:[0-9]+[wdhms])+$",
+              "pattern": "^every_(?:[0-9]+[wdhms])+$",
+              "type": "string"
+            }
+          ],
+          "description": "Upstream Compose policy controlling when the service image is pulled."
+        },
+        "read_only": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "description": "Whether the container root filesystem is mounted read-only."
+        },
+        "restart": {
+          "description": "Container restart policy: no, always, on-failure, or unless-stopped.",
+          "enum": [
+            "no",
+            "always",
+            "on-failure",
+            "unless-stopped"
+          ],
+          "type": "string"
         },
         "root": {
           "type": "string"
@@ -980,6 +1632,46 @@
             "type": "object"
           },
           "type": "array"
+        },
+        "security_opt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Container security options as a single Compose option or option list; canonicalized to a string list."
+        },
+        "shm_size": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/Int"
+            }
+          ],
+          "description": "Shared-memory size as integer bytes or a Compose byte-size string; canonicalized to integer bytes."
+        },
+        "stop_grace_period": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "description": "Graceful-stop period as a Compose duration string or canonical numeric seconds; canonicalized to seconds."
+        },
+        "stop_signal": {
+          "description": "Signal used to request graceful container shutdown, such as SIGTERM.",
+          "type": "string"
         },
         "storage": {
           "items": {
@@ -1028,8 +1720,123 @@
           },
           "type": "array"
         },
+        "sysctls": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "propertyNames": {
+                "not": {
+                  "const": "__proto__"
+                }
+              },
+              "type": "object"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Kernel parameters as a Compose scalar map or KEY=value list; canonicalized to a scalar map."
+        },
+        "tmpfs": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "description": "Temporary filesystem mounts as a single Compose mount string or string list; canonicalized to a string list."
+        },
         "type": {
           "type": "string"
+        },
+        "ulimits": {
+          "description": "Process limits as integer or string scalars, or explicit soft and hard objects; canonicalized to a map of soft and hard limit objects.",
+          "patternProperties": {
+            "": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "$ref": "#/$defs/Int"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                {
+                  "patternProperties": {
+                    "": {
+                      "$id": "/schemas/unknown",
+                      "title": "unknown"
+                    }
+                  },
+                  "properties": {
+                    "hard": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/Int"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "soft": {
+                      "anyOf": [
+                        {
+                          "$ref": "#/$defs/Int"
+                        },
+                        {
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  },
+                  "propertyNames": {
+                    "pattern": "^x-[\\s\\S]*?$",
+                    "type": "string"
+                  },
+                  "required": [
+                    "soft",
+                    "hard"
+                  ],
+                  "type": "object"
+                }
+              ]
+            }
+          },
+          "properties": {},
+          "propertyNames": {
+            "description": "a string matching the pattern ^[a-z]+$",
+            "pattern": "^[a-z]+$",
+            "type": "string"
+          },
+          "required": [],
+          "type": "object"
         },
         "user": {
           "type": "string"

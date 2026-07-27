@@ -39,7 +39,34 @@ const LITERAL_FIELDS = {
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
 
-const OPTIONAL_FIELDS = ["hostProxy"] as const;
+const OPTIONAL_FIELDS = ["composeKnobs", "hostProxy"] as const;
+
+const COMPOSE_SERVICE_KNOB_KEYS = [
+  "restart",
+  "cap_add",
+  "cap_drop",
+  "privileged",
+  "devices",
+  "ulimits",
+  "sysctls",
+  "tmpfs",
+  "shm_size",
+  "dns",
+  "dns_search",
+  "dns_opt",
+  "extra_hosts",
+  "init",
+  "stop_signal",
+  "stop_grace_period",
+  "security_opt",
+  "group_add",
+  "read_only",
+  "platform",
+  "pull_policy",
+  "logging",
+  "gpus",
+  "deploy.resources",
+] as const;
 
 const REQUIRED_FIELD_SET = [...BOOLEAN_FIELDS, ...Object.keys(LITERAL_FIELDS), ...ARRAY_FIELDS].sort();
 const EXPECTED_FIELD_SET = [...REQUIRED_FIELD_SET, ...OPTIONAL_FIELDS].sort();
@@ -124,7 +151,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(29);
+    expect(actual).toHaveLength(30);
   });
 
   test("every boolean capability accepts only booleans", () => {
@@ -215,6 +242,37 @@ describe("ProviderCapabilities — field set lock", () => {
       expect(Either.isLeft(rejectedGateway)).toBe(true);
     }
   });
+
+  test("composeKnobs may be absent", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
+    expect(decoded.composeKnobs).toBeUndefined();
+  });
+
+  test("composeKnobs accepts an empty supported set", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeKnobs: { supported: [] },
+    });
+    expect(decoded.composeKnobs?.supported).toEqual([]);
+  });
+
+  test("composeKnobs accepts every published knob key in contract order", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeKnobs: { supported: COMPOSE_SERVICE_KNOB_KEYS },
+    });
+    expect(decoded.composeKnobs?.supported).toEqual(COMPOSE_SERVICE_KNOB_KEYS);
+  });
+
+  test("absent composeKnobs is semantically equivalent to an empty supported set", () => {
+    const absent = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
+    const empty = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeKnobs: { supported: [] },
+    });
+
+    expect(absent.composeKnobs?.supported ?? []).toEqual(empty.composeKnobs?.supported ?? []);
+  });
 });
 
 describe("ProviderCapabilities — provider-lando fixture (bindMountPerformance: native)", () => {
@@ -281,6 +339,19 @@ describe("ProviderCapabilities — rejection paths", () => {
       expect(ParseResult.isParseError(result.left)).toBe(true);
       const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
       expect(issues.some((issue) => issue.path.includes("composeSpec"))).toBe(true);
+    }
+  });
+
+  test("rejects an unknown compose knob key with a structured ParseError", () => {
+    const result = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeKnobs: { supported: ["deploy"] },
+    });
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(ParseResult.isParseError(result.left)).toBe(true);
+      const issues = ParseResult.ArrayFormatter.formatErrorSync(result.left);
+      expect(issues.some((issue) => issue.path.includes("composeKnobs"))).toBe(true);
     }
   });
 
