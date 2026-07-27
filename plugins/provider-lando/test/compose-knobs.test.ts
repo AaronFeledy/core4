@@ -6,10 +6,6 @@ import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import { realizePodmanComposeKnobs } from "../src/compose-knobs.ts";
 import { EMPTY_REALIZATION, KNOB_FIXTURES, type KnobRealization } from "./compose-knobs-fixtures.ts";
 
-// =============================================================================
-// Fixtures
-// =============================================================================
-
 interface InvalidCall {
   readonly message: string;
   readonly details: Record<string, unknown>;
@@ -62,10 +58,6 @@ const FALSY_SPELLINGS = ["false", "0", "no", "off", "NO", "Off"];
 // these drivers are categorically rejected — unlike a merely unknown driver
 // name, which is an operand Podman itself validates.
 const REMOTE_INVALID_LOG_DRIVERS = ["passthrough", "passthrough-tty"] as const;
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 describe("podman Compose runtime knob realization", () => {
   for (const [knob, fixture] of Object.entries(KNOB_FIXTURES)) {
