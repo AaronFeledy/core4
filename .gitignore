@@ -4,6 +4,8 @@
 !/dist/
 !/dist/schemas/
 !/dist/schemas/*.json
+!/dist/command-schemas/
+!/dist/command-schemas/*.json
 *.tsbuildinfo
 **/*.tsbuildinfo
 

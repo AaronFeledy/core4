@@ -39,7 +39,7 @@ Covered here: the test layers (unit, Effect service, CLI, library API, provider 
 | Desktop notification bounds contract | `bun test` | `NotifyDesktopEvent.title` (1..256 chars) and optional `body` (max 4096 chars) enforce their bounds at schema decode before publication; the renderer's fixed sanitizer (CR/LF/TAB→space, strip C0/C1/`ESC`/`BEL`/`DEL`, strip bidi-override characters, NFC-normalize) runs before `triggerNotification`, and an empty post-sanitize title suppresses the call entirely regardless of `body` |
 | HostProxy exact-union contract | Shared contract suite (in `@lando/sdk/test`) | `HostProxyRequest`'s tagged union has exactly four members — `openUrl`, `openPath`, `runLando`, `runBun` — asserted by a schema-surface test; no `notify`/`clipboardCopy` variant, dispatcher branch, allowlist entry, or contract-suite test exists anywhere in the codebase |
 | OpenTUI native one-of-eight pruning contract | Per-target compiled-binary smoke test (§13.5, §17.9) | `scripts/build-compiled-binary.ts`'s `onResolve` plugin, for each of the five release targets, lets exactly one of the eight catalog `@opentui/core-*` roots resolve normally and redirects the other seven to their generated stub; the relocated binary's PTY smoke proves the one real native asset initializes and the other seven are unreachable (each would throw its stub's fixed error); `@opentui/core/testing` and any relative import are never redirected |
-| SDK compatibility/snapshot contract | `bun test` (`sdk/test/library/sdk-backward-compatibility.test.ts` + schema-snapshot diff) | The authoritative additive inventory in §16.2 is recorded in `sdk/API_COMPATIBILITY.md`, exported from its documented SDK subpaths, and represented in the schema snapshot for every schema-backed surface, including `CommandInvocationCorrelation` and `KeymapConflictError`. The interactive log viewer (§8.9.8) remains absent because it is prose-only; the `RemoteSource`/`Dataset` Beta-1 contract-only freeze remains intact. |
+| SDK compatibility/schema-snapshot artifact-set contract | `bun test` (`sdk/test/library/sdk-backward-compatibility.test.ts` + schema-snapshot artifact-set drift) | The authoritative additive inventory in §16.2 is recorded in `sdk/API_COMPATIBILITY.md`, exported from its documented SDK subpaths, and represented in the schema snapshot artifact set for every schema-backed surface, including `CommandInvocationCorrelation` and `KeymapConflictError`. The interactive log viewer (§8.9.8) remains absent because it is prose-only; the `RemoteSource`/`Dataset` Beta-1 contract-only freeze remains intact. |
 | Tooling engine contract | Shared contract suite (in `@lando/sdk/test`) | Any `ToolingEngine` plugin (and the built-in `providerExec` / `host` engines) must pass: declared `capabilities` match observed behavior; a compiled `ToolingProgram` graph runs its steps in dependency order with the documented concurrency; `Effect.interrupt` cancels in-flight steps and finalizes child processes; `tooling-step-start` / `-complete` / `-skip` / `-fail` events publish with redacted command shapes; up-to-date `sources`/`generates` checks short-circuit to `-skip`; a non-zero step exit maps to a tagged `ToolingExecError` carrying the failing step id; secret-resolved values never reach event/transcript output |
 | Route filter contract | Shared contract suite (in `@lando/sdk/test`) | Any `RouteFilter` plugin (and the built-ins `requestHeader` / `responseHeader` / `redirect` / `rewritePath` / `stripPrefix` / `addPrefix`) must pass: the filter is provider-neutral (emits a declarative transform of the route intent, never proxy-native middleware); `apply` is a pure, deterministic, idempotent transform; declared `capabilities` match behavior; invalid filter options fail schema decode with a tagged error before the plan is built; filter ordering is stable across replays |
 | Secret store contract | Shared contract suite (in `@lando/sdk/test`) | Any `SecretStore` plugin (and the built-in env store) must pass: `resolve(ref)` returns the value for a known `${secret:…}` reference and fails with `SecretNotFoundError` for an unknown one; resolved values are registered with the canonical redactor (§3.7) so they never appear in logs, events, transcripts, lockfiles, or cache metadata; `resolve` is read-only and side-effect-free; missing-backend/auth failures surface tagged errors with remediation; already-cached secrets resolve deterministically offline (§12.6) |
@@ -184,6 +184,16 @@ Covered here: the test layers (unit, Effect service, CLI, library API, provider 
 
 ### 13.2 Schema gates
 
+In §13.2 and every cross-reference to the **schema snapshot**, that term means the complete generated artifact set, not one combined file:
+
+- `dist/schemas/*.json` — one self-contained JSON Schema document for every public SDK registry entry.
+- `dist/schemas/index.json` — the public SDK schema metadata index.
+- `dist/command-schemas/*.json` — one self-contained result-schema document for every canonical command id.
+- `dist/command-schemas/index.json` — the exact, unmodified canonical command id mapped to its generated artifact path; filenames are slugs and are never decoded back into ids.
+- `sdk/test/fixtures/bundled-plugin-manifests.json` — the decoded manifests for in-binary bundled plugins.
+
+The artifact-set gate requires complete public-registry and canonical-command coverage, deterministic JSON Schema output, generated reference docs that are never hand-edited, and drift detection across every listed artifact plus `docs/reference/schemas/`. Drift detection MUST include newly generated untracked files, not only modifications to tracked files.
+
 Core ships and validates schemas for:
 
 - Global config
@@ -291,6 +301,9 @@ The library package's `package.json#bin` retains the `lando` binary entry, so in
 **Schemas and types.** The release includes:
 
 - `dist/schemas/*.json` — JSON Schema files for every public schema.
+- `dist/schemas/index.json` — metadata for every public schema artifact and generated reference page.
+- `dist/command-schemas/*.json` — result JSON Schema files for every canonical command.
+- `dist/command-schemas/index.json` — exact canonical command ids mapped to command-schema artifact paths.
 - `dist/types/*.d.ts` — TypeScript declaration bundles, one per entry point in §2.7.
 - The `@lando/sdk` package published independently for plugin authors (runtime contract objects plus inferred types; see §2.6).
 

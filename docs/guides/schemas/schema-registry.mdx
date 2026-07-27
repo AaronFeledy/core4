@@ -15,9 +15,10 @@ tags: [beta, docs, schemas]
     </Step>
   </Scenario>
 
-  <Scenario id="schema-metadata-index" render={false} reason="The generated metadata index is covered by the schema snapshot generator drift test">
+  <Scenario id="schema-metadata-index" render={false} reason="The generated metadata index is covered by the schema artifact-set generator drift test">
     <Step name="metadata">
       <Variable name="artifact" value="dist/schemas/index.json" display="The build-time metadata index maps schema id to title, description, package export, JSON Schema artifact, docs path, and deprecation state" />
+      <Variable name="commandArtifact" value="dist/command-schemas/index.json" display="A separate index maps each exact canonical command id to its filename-safe standalone result-schema artifact" />
       <Variable name="source" value="Effect Schema annotations" display="Titles, descriptions, and deprecation state are derived from schema annotations rather than a hand-maintained docs table" />
       <Variable name="referencePages" value="renderPublicSchemaReferencePages" display="Generated schema reference pages consume the same registry and metadata docs paths, not a hand-maintained schema list" />
     </Step>

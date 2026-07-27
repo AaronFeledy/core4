@@ -32,13 +32,13 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 ## Generated Files
 
 - Do not hand-edit generated CI workflows, generated runtime/plugin tables, or `spec/compose/vendor/compose-spec.json`. Edit the generator, run the matching `bun run codegen:*`, and verify drift with `git diff --exit-code` on the generated paths. The Compose vendor generator writes checksum-pinned upstream bytes verbatim and must not format that file.
-- `bun run codegen` runs generators in dependency order: guide scenarios, recipe READMEs, bundled plugins, bundled recipes, bootstrap layers, schema snapshot, OCLIF manifest, and CI/nightly/release/provider workflows.
+- `bun run codegen` runs generators in dependency order: guide scenarios, recipe READMEs, bundled plugins, bundled recipes, bootstrap layers, schema artifact set, OCLIF manifest, and CI/nightly/release/provider workflows.
 - Bootstrap layers under `core/src/runtime/generated/layers/`, bundled plugin/recipe tables, `.github/workflows/*.yml`, `core/src/cli/oclif/compiled-manifest.ts`, and schema artifacts are generator outputs.
 - Codegen scripts are expected to finish with `biome check --write` on emitted files; do not replace that with formatting-only steps.
 
 ## Architecture Boundaries
 
-- `@lando/sdk` is the public contract surface. Additive exports and schema changes must follow `sdk/AGENTS.md`, update `sdk/API_COMPATIBILITY.md` where required, and refresh schema snapshots with `bun run codegen:schema-snapshot`.
+- `@lando/sdk` is the public contract surface. Additive exports and schema changes must follow `sdk/AGENTS.md`, update `sdk/API_COMPATIBILITY.md` where required, and refresh the schema artifact set with `bun run codegen:schema-snapshot`.
 - Each §4.2 plugin-abstraction contract suite from `@lando/sdk/test` must stay listed in `core/test/contract/plugin-abstraction-coverage.test.ts` and exercised by its documented core built-in invocation unless §4.2 says no built-in ships.
 - `@lando/core` owns runtime, planner, CLI, library API, generated bootstrap layers, and bundled-plugin wiring. CLI/runtime quirks live in `core/AGENTS.md`.
 - RemoteSource/Dataset contract freeze: keep the `Dataset` x `RemoteSource` split contract-only for Beta 1; it never syncs application code, and implementation belongs to the 4.1 feature wave.

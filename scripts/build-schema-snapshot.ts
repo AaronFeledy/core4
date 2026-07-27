@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 /**
- * Regenerate the public schema snapshot used by the CI drift gate.
+ * Regenerate the public schema artifact set used by the CI drift gate.
  *
  * Scope:
  *   - JSON Schema output for the public `@lando/sdk/schema` registry
  *   - committed standalone schema artifacts generated from that registry
+ *   - standalone result schemas for every canonical command
  *   - decoded manifests for the in-binary bundled plugins only
  *
  * Out-of-tree plugin manifests are intentionally not discovered here.
@@ -30,8 +31,9 @@ import {
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/schema-snapshot.json");
+const BUNDLED_PLUGIN_MANIFESTS_OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/bundled-plugin-manifests.json");
 const SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/schemas");
+const COMMAND_SCHEMA_ARTIFACT_DIR = resolve(REPO_ROOT, "dist/command-schemas");
 const SCHEMA_REFERENCE_DIR = resolve(REPO_ROOT, "docs/reference/schemas");
 
 const stable = (value: unknown): unknown => {
@@ -56,10 +58,26 @@ const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unk
 const commandSpecFor = (commandClass: unknown): LandoCommandSpec | undefined =>
   (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec;
 
-// Freezes each canonical command's resultSchema as JSON Schema keyed by command id.
-const generateCommandResultSchemas = (): Record<string, unknown> => {
+const commandSchemaArtifactFilename = (commandId: string): string => {
+  const slug = commandId
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (slug.length === 0) {
+    throw new Error(`Command id ${JSON.stringify(commandId)} does not produce a filename-safe slug.`);
+  }
+  return `${slug}.json`;
+};
+
+type CommandResultSchemaArtifact = {
+  readonly commandId: string;
+  readonly artifactPath: string;
+  readonly schema: unknown;
+};
+
+const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifact> => {
   const commands = compiledCommands as Record<string, unknown>;
-  const entries = Object.keys(commands)
+  const artifacts = Object.keys(commands)
     .sort((left, right) => left.localeCompare(right))
     .map((commandId) => {
       const spec = commandSpecFor(commands[commandId]);
@@ -67,62 +85,62 @@ const generateCommandResultSchemas = (): Record<string, unknown> => {
         throw new Error(`Command ${commandId} does not declare a resultSchema.`);
       }
       try {
-        return [commandId, stable(JSONSchema.make(spec.resultSchema))] as const;
+        const filename = commandSchemaArtifactFilename(commandId);
+        return {
+          commandId,
+          artifactPath: `dist/command-schemas/${filename}`,
+          schema: stable(JSONSchema.make(spec.resultSchema)),
+        };
       } catch (cause) {
         throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });
       }
     });
-  return Object.fromEntries(entries);
+  const commandIdByPath = new Map<string, string>();
+  for (const artifact of artifacts) {
+    const existingCommandId = commandIdByPath.get(artifact.artifactPath);
+    if (existingCommandId !== undefined) {
+      throw new Error(
+        `Command ids ${existingCommandId} and ${artifact.commandId} collide at ${artifact.artifactPath}.`,
+      );
+    }
+    commandIdByPath.set(artifact.artifactPath, artifact.commandId);
+  }
+  return artifacts;
 };
 
-const renderSnapshot = (): string => {
+const renderJson = (value: unknown): string => `${JSON.stringify(stable(value), null, 2)}\n`;
+
+const main = async (): Promise<void> => {
   assertPublicSchemaAnnotations();
   assertPublicSchemaContractCoverage(REPO_ROOT);
-  const sdkSchemas = Object.fromEntries(
-    JSON_SCHEMA_NAMES.map((schemaName) => [schemaName, stable(generateJsonSchema(schemaName))]),
-  );
-  for (const [schemaName, jsonSchema] of Object.entries(sdkSchemas)) {
+
+  const sdkSchemas = JSON_SCHEMA_NAMES.map((schemaName) => ({
+    schemaName,
+    jsonSchema: stable(generateJsonSchema(schemaName)),
+  }));
+  for (const { schemaName, jsonSchema } of sdkSchemas) {
     const invalidPaths = assertJsonSchemaDeprecationsValid(jsonSchema);
     if (invalidPaths.length > 0) {
       throw new Error(`${schemaName} emits invalid x-deprecation payloads at ${invalidPaths.join(", ")}`);
     }
   }
+  const commandResultSchemas = generateCommandResultSchemas();
   const bundledPluginManifests = BUNDLED_PLUGINS.map((plugin) => ({
     name: plugin.name,
     manifest: stable(Schema.encodeSync(PluginManifest)(plugin.manifest)),
   })).sort((left, right) => left.name.localeCompare(right.name));
-  const commandResultSchemas = generateCommandResultSchemas();
 
-  return `${JSON.stringify(
-    stable({
-      generatedBy: "scripts/build-schema-snapshot.ts",
-      scope: {
-        sdkSchemas: JSON_SCHEMA_NAMES,
-        schemaMetadata: "dist/schemas/index.json",
-        bundledPluginManifests: bundledPluginManifests.map((plugin) => plugin.name),
-        commandResultSchemas: Object.keys(commandResultSchemas),
-      },
-      schemaMetadata: publicSchemaMetadataIndex,
-      sdkSchemas,
-      commandResultSchemas,
-      bundledPluginManifests,
-    }),
-    null,
-    2,
-  )}\n`;
-};
-
-const main = async (): Promise<void> => {
-  await Bun.write(OUTPUT, renderSnapshot());
+  await Bun.write(BUNDLED_PLUGIN_MANIFESTS_OUTPUT, renderJson(bundledPluginManifests));
   await mkdir(SCHEMA_ARTIFACT_DIR, { recursive: true });
+  await mkdir(COMMAND_SCHEMA_ARTIFACT_DIR, { recursive: true });
   await mkdir(SCHEMA_REFERENCE_DIR, { recursive: true });
   const metadataIndexPath = resolve(SCHEMA_ARTIFACT_DIR, "index.json");
-  await Bun.write(metadataIndexPath, `${JSON.stringify(stable(publicSchemaMetadataIndex), null, 2)}\n`);
+  await Bun.write(metadataIndexPath, renderJson(publicSchemaMetadataIndex));
   const artifactPaths: string[] = [metadataIndexPath];
-  for (const schemaName of JSON_SCHEMA_NAMES) {
+  for (const { schemaName, jsonSchema } of sdkSchemas) {
     const artifactPath = resolve(SCHEMA_ARTIFACT_DIR, schemaArtifactFilename(schemaName));
     artifactPaths.push(artifactPath);
-    await Bun.write(artifactPath, `${JSON.stringify(stable(generateJsonSchema(schemaName)), null, 2)}\n`);
+    await Bun.write(artifactPath, renderJson(jsonSchema));
   }
   const schemaArtifactPaths = new Set(artifactPaths);
   for (const entry of await readdir(SCHEMA_ARTIFACT_DIR, { withFileTypes: true })) {
@@ -130,6 +148,24 @@ const main = async (): Promise<void> => {
     const path = resolve(SCHEMA_ARTIFACT_DIR, entry.name);
     if (!schemaArtifactPaths.has(path)) await rm(path);
   }
+
+  const commandSchemaIndex = Object.fromEntries(
+    commandResultSchemas.map(({ commandId, artifactPath }) => [commandId, artifactPath]),
+  );
+  const commandSchemaIndexPath = resolve(COMMAND_SCHEMA_ARTIFACT_DIR, "index.json");
+  await Bun.write(commandSchemaIndexPath, renderJson(commandSchemaIndex));
+  const commandSchemaArtifactPaths = new Set([commandSchemaIndexPath]);
+  for (const artifact of commandResultSchemas) {
+    const artifactPath = resolve(REPO_ROOT, artifact.artifactPath);
+    commandSchemaArtifactPaths.add(artifactPath);
+    await Bun.write(artifactPath, renderJson(artifact.schema));
+  }
+  for (const entry of await readdir(COMMAND_SCHEMA_ARTIFACT_DIR, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+    const path = resolve(COMMAND_SCHEMA_ARTIFACT_DIR, entry.name);
+    if (!commandSchemaArtifactPaths.has(path)) await rm(path);
+  }
+
   const referencePages = renderPublicSchemaReferencePages();
   const referencePaths = new Set(referencePages.map((page) => resolve(REPO_ROOT, page.docsPath)));
   for (const entry of await readdir(SCHEMA_REFERENCE_DIR, { withFileTypes: true })) {
@@ -152,8 +188,9 @@ const main = async (): Promise<void> => {
       "biome",
       "check",
       "--write",
-      OUTPUT,
+      BUNDLED_PLUGIN_MANIFESTS_OUTPUT,
       SCHEMA_ARTIFACT_DIR,
+      COMMAND_SCHEMA_ARTIFACT_DIR,
       SCHEMA_REFERENCE_DIR,
     ],
     cwd: REPO_ROOT,
@@ -165,7 +202,9 @@ const main = async (): Promise<void> => {
     throw new Error(`biome check exited with code ${exitCode} for generated schema artifacts`);
   }
 
-  console.log(`[build-schema-snapshot] wrote ${OUTPUT}`);
+  console.log(
+    `[build-schema-snapshot] wrote ${sdkSchemas.length} SDK schemas and ${commandResultSchemas.length} command schemas`,
+  );
 };
 
 await main();

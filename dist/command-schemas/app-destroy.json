@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "properties": {
+    "app": {
+      "type": "string"
+    },
+    "servicesDestroyed": {
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "volumesRemoved": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "app",
+    "servicesDestroyed",
+    "volumesRemoved"
+  ],
+  "type": "object"
+}

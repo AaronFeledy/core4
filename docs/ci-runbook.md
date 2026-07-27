@@ -45,13 +45,15 @@ Heavy meta-suites that re-run generators or other test files (`core/test/scripts
 
 ## Generated schema and bundled-codegen gates
 
-CI fails if generated schema snapshots or bundled plugin/recipe tables drift. Update all generated outputs with `bun run codegen`:
+CI fails if the generated schema artifact set or bundled plugin/recipe tables drift. Update all generated outputs with `bun run codegen`:
 
 ```bash
 bun run codegen
 ```
 
-For focused local checks, CI runs `bun run codegen:schema-snapshot`, `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`, then verifies the outputs with `git diff --exit-code`. The `schema-snapshot` job also regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` is current.
+For focused local checks, CI runs `bun run codegen:schema-snapshot` and verifies path-scoped artifact status.
+
+The same job checks path-scoped `git status --porcelain` output for the SDK schemas, command result schemas, both indexes, bundled manifest fixture, and generated reference docs, so modified, deleted, and newly generated untracked files all fail the gate. It also regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` is current. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
 
 ## Library API and recipe test layers
 

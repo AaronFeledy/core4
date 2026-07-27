@@ -1,0 +1,318 @@
+[
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "fileSyncEngines": ["mutagen"]
+      },
+      "description": "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/file-sync-mutagen",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/file-sync-mutagen"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "loggers": ["pretty"]
+      },
+      "description": "Pretty-printed Logger plugin.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/logger-pretty",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/logger-pretty"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "description": "Bundled Lando desktop-notification policy plugin.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/notify-lando",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "subscribers": [
+        {
+          "abortOnError": false,
+          "configKey": "notify",
+          "id": "notify-command-terminal",
+          "module": "./src/notify.ts",
+          "priority": 900,
+          "selectors": [
+            {
+              "family": "cli-command-terminal"
+            }
+          ]
+        }
+      ],
+      "version": "0.0.0"
+    },
+    "name": "@lando/notify-lando"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "providers": ["docker"]
+      },
+      "description": "Reference Docker RuntimeProvider implementation.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/provider-docker",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/provider-docker"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "providers": ["lando"],
+        "setup": {
+          "flags": [
+            {
+              "description": "Override the Lando-managed runtime bundle URL for setup.",
+              "name": "runtime-bundle-url",
+              "type": "option"
+            },
+            {
+              "description": "Pinned SHA-256 paired with --runtime-bundle-url for verifying a local bundle.",
+              "name": "runtime-bundle-sha256",
+              "type": "option"
+            }
+          ]
+        }
+      },
+      "description": "Reference Lando-managed RuntimeProvider implementation.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/provider-lando",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/provider-lando"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "providers": ["podman"]
+      },
+      "description": "Opt-in user-installed Podman RuntimeProvider implementation.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/provider-podman",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/provider-podman"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "globalServices": [
+          {
+            "enabledByDefault": true,
+            "id": "traefik",
+            "module": "./src/global-services/traefik.ts",
+            "requires": {
+              "providerCapabilities": ["sharedCrossAppNetwork"]
+            },
+            "summary": "Global Traefik reverse proxy"
+          }
+        ],
+        "proxyServices": [
+          {
+            "defaultFor": {
+              "platform": ["darwin", "linux", "win32"]
+            },
+            "id": "traefik",
+            "module": "./src/proxy.ts"
+          }
+        ]
+      },
+      "description": "Traefik-backed `ProxyService` and bundled global reverse proxy.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/proxy-traefik",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/proxy-traefik"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "renderers": ["lando"]
+      },
+      "description": "Bundled default Lando Renderer plugin.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/renderer-lando",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/renderer-lando"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "globalServices": [
+          {
+            "enabledByDefault": true,
+            "id": "mailpit",
+            "module": "./src/global-services/mailpit.ts",
+            "requires": {
+              "providerCapabilities": ["sharedCrossAppNetwork"]
+            },
+            "summary": "Global Mailpit SMTP capture server with web UI"
+          }
+        ],
+        "serviceFeatures": [
+          "lando.user-id",
+          "lando.storage",
+          "lando.env",
+          "lando.app-mount",
+          "lando.healthcheck",
+          "lando.host-proxy",
+          "lando.user",
+          "service-lando.apache",
+          "service-lando.compose",
+          "service-lando.elasticsearch",
+          "service-lando.go",
+          "service-lando.lando",
+          "service-lando.mariadb",
+          "service-lando.meilisearch",
+          "service-lando.memcached",
+          "service-lando.mongodb",
+          "service-lando.mysql",
+          "service-lando.nginx",
+          "service-lando.node",
+          "service-lando.opensearch",
+          "service-lando.php",
+          "service-lando.postgres",
+          "service-lando.python",
+          "service-lando.redis",
+          "service-lando.ruby",
+          "service-lando.solr",
+          "service-lando.static",
+          "service-lando.valkey"
+        ],
+        "serviceTypes": [
+          "apache",
+          "compose",
+          "elasticsearch",
+          "elasticsearch:8",
+          "go:1.22",
+          "go:1.23",
+          "lando",
+          "mariadb",
+          "meilisearch",
+          "meilisearch:1",
+          "memcached",
+          "mongodb",
+          "mysql",
+          "nginx",
+          "node:lts",
+          "node:22",
+          "opensearch",
+          "opensearch:2",
+          "postgres",
+          "php:8.1",
+          "php:8.2",
+          "php:8.3",
+          "php:8.4",
+          "python:3.12",
+          "redis",
+          "ruby:3.3",
+          "solr",
+          "solr:9",
+          "static",
+          "static:nginx",
+          "static:caddy",
+          "valkey"
+        ]
+      },
+      "description": "The opinionated `lando` service base.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/service-lando",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/service-lando"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "templateEngines": ["handlebars"]
+      },
+      "description": "Handlebars whole-file template engine for Lando v4.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/template-handlebars",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/template-handlebars"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
+        "templateEngines": ["mustache"]
+      },
+      "description": "Mustache whole-file template engine for Lando v4.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/template-mustache",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/template-mustache"
+  }
+]

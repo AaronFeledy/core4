@@ -17,7 +17,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 - A local recipe directory may contain `recipe.ts` or `recipe.yml`, never both (`resolveLocal` rejects both). `recipe.ts` default-exports a `Recipe` object or async factory, loads through `loadRecipeTs`, reuses Landofile sandbox scanning, imports via Bun's TS loader, and times out via `LANDO_RECIPE_TS_TIMEOUT_MS`.
 - `validateRecipeManifestObject` applies the same Beta rejection, strict decode, and semantic checks as YAML. `ResolvedRecipe.manifest` short-circuits `parseResolvedRecipe`, so the manifest must not be parsed twice.
-- `defineRecipe` is a value export and must be listed under `sdk/API_COMPATIBILITY.md`'s asserted schema-export heading; `Recipe`/`RecipeContext`/`RecipeFactory` are erased types and must not be listed. No schema snapshot is needed unless `JSON_SCHEMA_REGISTRY` changes.
+- `defineRecipe` is a value export and must be listed under `sdk/API_COMPATIBILITY.md`'s asserted schema-export heading; `Recipe`/`RecipeContext`/`RecipeFactory` are erased types and must not be listed. No schema artifact-set refresh is needed unless `JSON_SCHEMA_REGISTRY` changes.
 - Tests outside this repo should use plain `export default { ... }`; a `recipe.ts` importing `@lando/sdk` only resolves where that package is on the module path.
 
 ## Dynamic Prompt Choices
