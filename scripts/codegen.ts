@@ -84,6 +84,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "compose-key-matrix",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-compose-key-matrix.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "opentui-native-stubs",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-opentui-native-stubs.ts`],
     cwd: REPO_ROOT,

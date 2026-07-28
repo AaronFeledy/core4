@@ -64,6 +64,7 @@
     "codegen:host-proxy-allowlist": "bun run scripts/build-host-proxy-allowlist.ts",
     "codegen:oclif-manifest": "bun run scripts/build-oclif-manifest.ts",
     "codegen:command-reference": "bun run scripts/build-command-reference.ts",
+    "codegen:compose-key-matrix": "bun run scripts/build-compose-key-matrix.ts",
     "codegen:recipe-readmes": "bun run scripts/build-recipe-readmes.ts",
     "codegen:bundled-recipes": "bun run scripts/build-bundled-recipes.ts",
     "codegen:schema-snapshot": "bun run scripts/build-schema-snapshot.ts",

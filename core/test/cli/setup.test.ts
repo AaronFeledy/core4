@@ -1303,6 +1303,7 @@ describe("meta:setup command", () => {
                   http: "http://env-http-proxy.example:8080",
                   https: "http://env-https-proxy.example:8080",
                   noProxy: ["localhost", "internal.example"],
+                  injectIntoServices: false,
                 });
               }),
           })

@@ -96,6 +96,7 @@
       ]
     },
     "build": {
+      "description": "Build configuration using either Lando build-script keys (artifact, app) or Compose image-build keys (context, dockerfile, dockerfile_inline, args, target); mixing the families is rejected. Compose accepts a bare context string and defaults an omitted object context to \".\". The canonical decoded form keeps dockerfileInline and encodes it back to dockerfile_inline.",
       "oneOf": [
         {
           "type": "string"

@@ -153,17 +153,20 @@ describe("lintLandofile", () => {
     }
   });
 
-  test("unsupported top-level Compose keys get class-specific remediation", async () => {
-    await write("name: myapp\nprofiles: [dev]\n");
+  test("misplaced top-level keys get factual remediation", async () => {
+    await write("name: myapp\nprofiles: [dev]\nextensions: {}\n");
     const exit = await lint(dir);
     expect(Exit.isSuccess(exit)).toBe(true);
     if (Exit.isSuccess(exit)) {
       expect(exit.value.valid).toBe(false);
-      const violation = exit.value.violations.find((entry) => entry.path === "profiles");
-      expect(violation?.suggestedFix).toContain("Unsupported Compose top-level key");
-      expect(violation?.suggestedFix).toContain(
-        "services, volumes, networks, configs, secrets, include, x-*",
-      );
+      const profilesViolation = exit.value.violations.find((entry) => entry.path === "profiles");
+      expect(profilesViolation?.suggestedFix).not.toContain("Unsupported Compose top-level key");
+      expect(profilesViolation?.suggestedFix).toContain("service-level key");
+      const extensionsViolation = exit.value.violations.find((entry) => entry.path === "extensions");
+      expect(extensionsViolation?.suggestedFix).not.toContain("Unsupported Compose top-level key");
+      expect(extensionsViolation?.suggestedFix).toContain("not a Compose key");
+      expect(extensionsViolation?.suggestedFix).toContain("x-*");
+      expect(extensionsViolation?.suggestedFix).toContain("providers.<provider-id>");
     }
   });
 

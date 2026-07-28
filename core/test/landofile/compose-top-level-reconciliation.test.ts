@@ -1,0 +1,79 @@
+import { describe, expect, test } from "bun:test";
+import { Either, Schema } from "effect";
+
+import {
+  COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
+  COMPOSE_EXTENSION_TOP_LEVEL_PATTERN,
+  COMPOSE_REJECTED_TOP_LEVEL_KEYS,
+  COMPOSE_TOP_LEVEL_KEYS,
+  LandofileShape,
+} from "@lando/sdk/schema";
+
+import { composeTopLevelDispositions } from "../../src/landofile/compose/dispositions.ts";
+
+describe("Compose top-level classification reconciliation", () => {
+  test("COMPOSE_TOP_LEVEL_KEYS equals the accepted top-level disposition classification", () => {
+    // Given
+    const expected = new Set(
+      Object.entries(composeTopLevelDispositions)
+        .filter(([, entry]) => entry.disposition === "normalized" || entry.disposition === "preserved")
+        .map(([key]) => key)
+        .filter((key) => key !== COMPOSE_EXTENSION_TOP_LEVEL_PATTERN)
+        .filter((key) => COMPOSE_DEPRECATED_TOP_LEVEL_KEYS.every((deprecatedKey) => deprecatedKey !== key)),
+    );
+
+    // When
+    const actual = new Set(COMPOSE_TOP_LEVEL_KEYS);
+
+    // Then
+    expect(actual).toEqual(expected);
+  });
+
+  test("COMPOSE_REJECTED_TOP_LEVEL_KEYS equals the rejected top-level classification", () => {
+    // Given
+    const expected = new Set(
+      Object.entries(composeTopLevelDispositions)
+        .filter(([, entry]) => entry.disposition === "rejected")
+        .map(([key]) => key),
+    );
+    // When
+    const actual = new Set(COMPOSE_REJECTED_TOP_LEVEL_KEYS);
+
+    // Then
+    expect(actual).toEqual(expected);
+  });
+
+  test("the extension pattern matches the matrix wildcard key", () => {
+    // Given
+    const matrixKeys = new Set(Object.keys(composeTopLevelDispositions));
+
+    // When
+    const extensionPattern = COMPOSE_EXTENSION_TOP_LEVEL_PATTERN;
+
+    // Then
+    expect(extensionPattern).toBe("x-*");
+    expect(matrixKeys.has(extensionPattern)).toBe(true);
+  });
+
+  test("every accepted top-level key decodes through LandofileShape", () => {
+    // Given
+    const minimalValues: Readonly<Record<string, unknown>> = {
+      name: "compose-reconciliation",
+      services: {},
+      volumes: {},
+      networks: {},
+      configs: {},
+      secrets: {},
+      include: [],
+    };
+    const decode = Schema.decodeUnknownEither(LandofileShape);
+
+    for (const key of COMPOSE_TOP_LEVEL_KEYS) {
+      // When
+      const decoded = decode({ [key]: minimalValues[key] });
+
+      // Then
+      expect(Either.isRight(decoded)).toBe(true);
+    }
+  });
+});

@@ -369,6 +369,12 @@ describe("ci workflow codegen", () => {
       expect(workflow.indexOf("Verify schema artifact set is current")).toBeLessThan(
         workflow.indexOf("Check schema compatibility"),
       );
+      expect(workflow).toContain("- name: Regenerate Compose key matrix");
+      expect(workflow).toContain("run: bun run codegen:compose-key-matrix");
+      expect(workflow).toContain("run: git diff --exit-code -- docs/reference/compose-key-matrix.mdx");
+      expect(workflow.indexOf("Regenerate Compose key matrix")).toBeGreaterThan(
+        workflow.indexOf("Verify command reference is current"),
+      );
 
       expect(workflow).toContain("bundled-codegen:");
       expect(workflow).toContain("- name: Regenerate bundled plugins");

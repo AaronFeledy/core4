@@ -255,6 +255,55 @@ describe("withScenarioContext", () => {
     expect(result.exists).toBe(true);
   });
 
+  test("reports success after an earlier in-process CLI failure", async () => {
+    const previousExitCode = process.exitCode;
+
+    try {
+      const result = await Effect.runPromise(
+        withScenarioContext({ guideId: "compose", scenarioId: "failure-then-success" }, (context) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() =>
+              writeFile(
+                join(context.testDir, ".lando.yml"),
+                [
+                  "name: rejected-compose-key",
+                  "services:",
+                  "  web:",
+                  "    type: compose",
+                  "    image: traefik/whoami:v1.10",
+                  "    container_name: rejected",
+                  "",
+                ].join("\n"),
+              ),
+            );
+            const rejected = yield* context.runCli(["app:config", "--format=json"]);
+
+            yield* Effect.promise(() =>
+              writeFile(
+                join(context.testDir, ".lando.yml"),
+                [
+                  "name: accepted-compose-key",
+                  "services:",
+                  "  web:",
+                  "    type: compose",
+                  "    image: traefik/whoami:v1.10",
+                  "",
+                ].join("\n"),
+              ),
+            );
+            const accepted = yield* context.runCli(["app:config", "--format=json"]);
+            return { rejected, accepted };
+          }),
+        ),
+      );
+
+      expect(result.rejected.exitCode).toBe(1);
+      expect(result.accepted.exitCode).toBe(0);
+    } finally {
+      process.exitCode = previousExitCode ?? 0;
+    }
+  });
+
   test("serves static guide fixture files through the scenario curl shim", async () => {
     const result = await Effect.runPromise(
       withScenarioContext({ guideId: "static", scenarioId: "fetch-known-file" }, (context) =>

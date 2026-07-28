@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { Data, Effect } from "effect";
 
-import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
+import type { GlobalConfig, NetworkCaConfig, NetworkConfig, NetworkProxyConfig } from "@lando/sdk/schema";
 import { HttpClient } from "@lando/sdk/services";
 
 import {
@@ -31,14 +31,8 @@ export interface LoadedNetworkCaCert {
 }
 
 export interface ResolvedSetupNetworkTrust extends NetworkConfig {
-  readonly proxy: {
-    readonly http?: string;
-    readonly https?: string;
-    readonly noProxy: ReadonlyArray<string>;
-  };
-  readonly ca: {
-    readonly trustHost: boolean;
-    readonly certs: ReadonlyArray<string>;
+  readonly proxy: NetworkProxyConfig;
+  readonly ca: NetworkCaConfig & {
     readonly loadedCerts: ReadonlyArray<LoadedNetworkCaCert>;
   };
 }
@@ -73,11 +67,19 @@ const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNet
   });
 
 /** Adapt setup's resolved trust onto the core-private `ResolvedNetworkTrust` consumed by `HttpClient`. */
-export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => ({
-  proxy: network.proxy,
-  caPems: network.ca.loadedCerts.map((cert) => cert.pem),
-  trustHost: network.ca.trustHost,
-});
+export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => {
+  const http = typeof network.proxy.http === "string" ? network.proxy.http : undefined;
+  const https = typeof network.proxy.https === "string" ? network.proxy.https : undefined;
+  return {
+    proxy: {
+      ...(http === undefined ? {} : { http }),
+      ...(https === undefined ? {} : { https }),
+      noProxy: network.proxy.noProxy,
+    },
+    caPems: network.ca.loadedCerts.map((cert) => cert.pem),
+    trustHost: network.ca.trustHost,
+  };
+};
 
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const text = cause instanceof Error ? `${cause.name} ${cause.message}` : String(cause);
@@ -133,10 +135,14 @@ export const resolveSetupNetworkTrust = (
     const loadedCerts = yield* Effect.all(plan.caCertPaths.map(loadCustomCa), { concurrency: "unbounded" });
 
     return {
-      proxy: plan.proxy,
+      proxy: {
+        ...plan.proxy,
+        injectIntoServices: config.network?.proxy?.injectIntoServices ?? false,
+      },
       ca: {
         trustHost: plan.trustHost,
         certs: plan.caCertPaths,
+        injectIntoServices: config.network?.ca?.injectIntoServices ?? true,
         loadedCerts,
       },
     };

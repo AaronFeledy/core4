@@ -6,29 +6,38 @@ timeout: 60000
 tags: [beta, docs, config, compose]
 ---
 
+Lando treats Compose compatibility as a service-key vocabulary, not as a promise that every Compose
+project file is a valid Landofile. The committed disposition maps classify the supported vocabulary,
+and the generated [Compose key matrix](../../reference/compose-key-matrix.mdx) publishes the complete
+per-key result from that source of truth. Use `docs/reference/compose-key-matrix.mdx` instead of copying
+key lists into guides or migration notes.
+
+Each disposition describes what happens during planning:
+
+- **normalized** resolves the input into a provider-neutral plan field.
+- **preserved** accepts the input and carries it in the Compose plan extension for provider capability
+  checks.
+- **rejected** fails closed with a tagged error and remediation rather than silently dropping intent.
+
+For a runnable example of pasting a Compose service definition into a Landofile, continue with
+[Compose service blocks](./compose-service-block.mdx).
+
 <Guide>
-  <Scenario id="compose-key-matrix" render={false} reason="The schema-backed matrix is locked by build tests; this guide publishes the user-facing contract without running provider-backed Compose workloads">
-    <Step name="accepted-top-level-keys">
-      <Variable name="accepted" value="services, volumes, networks, configs, secrets, include, x-*" display="These Compose top-level keys are accepted directly in a Landofile when their values match Lando's supported schema subset" />
-      <Variable name="deprecated" value="version" display="Compose version is accepted for compatibility, ignored by Lando, and should be removed from new Landofiles" />
-      <Variable name="rejected" value="profiles, extensions, arbitrary Compose project keys" display="Unsupported Compose top-level keys fail closed with remediation instead of being silently dropped" />
+  <Scenario id="compose-key-matrix" render={false} reason="The generated matrix is verified by build tests, so this documentation-only scenario must not create a duplicate runnable test">
+    <Step name="consult-generated-matrix">
+      Consult the generated matrix for every current classification and its planning or remediation detail.
     </Step>
   </Scenario>
 
-  <Scenario id="accepted-compose-keys" render={false} reason="Focused schema and lint tests exercise accepted key decoding and lint output">
-    <Step name="portable-subset">
-      <Variable name="services" value="services" display="Declare service definitions using the supported ServiceConfig fields" />
-      <Variable name="resources" value="volumes, networks, configs, secrets" display="Declare named Compose resources with the supported portable fields" />
-      <Variable name="include" value="include" display="Reference Compose fragments through the supported compatibility surface" />
-      <Variable name="extensions" value="x-*" display="Preserve top-level Compose extension metadata under x-prefixed keys" />
+  <Scenario id="accepted-compose-keys" render={false} reason="Focused schema and lint suites already exercise accepted input decoding, normalization, and preservation behavior">
+    <Step name="interpret-accepted-dispositions">
+      Treat normalized and preserved entries as accepted only for the shapes documented by the generated matrix.
     </Step>
   </Scenario>
 
-  <Scenario id="rejected-key-remediation" render={false} reason="app:config:lint tests assert the exact structured remediation text">
-    <Step name="fail-closed">
-      <Variable name="profiles" value="profiles" display="Rejected; split profile-specific config into separate Landofile fragments and select them with includes:" />
-      <Variable name="extensions" value="extensions" display="Rejected; Compose extensions must use x-* keys or provider-specific providers.&lt;id&gt; data" />
-      <Variable name="unknown" value="unknown top-level key" display="Rejected by the canonical schema with a remove-or-translate remediation" />
+  <Scenario id="rejected-key-remediation" render={false} reason="Configuration lint tests already assert the tagged rejection and structured remediation contract without provider workloads">
+    <Step name="follow-rejected-remediation">
+      Use the generated matrix remediation for rejected input instead of assuming unsupported intent was ignored.
     </Step>
   </Scenario>
 </Guide>

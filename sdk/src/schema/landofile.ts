@@ -671,6 +671,7 @@ export const SshAgentConfig = Schema.Struct({
 export type SshAgentConfig = typeof SshAgentConfig.Type;
 
 export const COMPOSE_TOP_LEVEL_KEYS = [
+  "name",
   "services",
   "volumes",
   "networks",
@@ -678,6 +679,7 @@ export const COMPOSE_TOP_LEVEL_KEYS = [
   "secrets",
   "include",
 ] as const;
+export const COMPOSE_REJECTED_TOP_LEVEL_KEYS = ["models"] as const;
 export const COMPOSE_DEPRECATED_TOP_LEVEL_KEYS = ["version"] as const;
 export const COMPOSE_EXTENSION_TOP_LEVEL_PATTERN = "x-*" as const;
 export const COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY = `${COMPOSE_TOP_LEVEL_KEYS.join(", ")}, ${COMPOSE_EXTENSION_TOP_LEVEL_PATTERN}`;

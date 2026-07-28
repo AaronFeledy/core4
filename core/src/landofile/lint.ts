@@ -18,6 +18,7 @@ import { Effect, Either, ParseResult, Schema } from "effect";
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
+  COMPOSE_REJECTED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY,
   COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintResult,
@@ -46,12 +47,19 @@ const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 
-const REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION: Readonly<Record<string, string>> = {
-  profiles:
-    "Profiles are not part of Lando's portable Compose subset. Split profile-specific config into separate Landofile fragments and select them with includes: instead.",
-  extensions:
-    "Compose extensions are accepted only as x-* top-level keys. Rename this key to an x-* extension or move provider-specific data under providers.<provider-id>.",
+const REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION: Readonly<
+  Record<(typeof COMPOSE_REJECTED_TOP_LEVEL_KEYS)[number], string>
+> = {
+  models:
+    "Compose models are not supported by Lando. Translate models with a Compose-to-Lando config translator.",
 };
+
+const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
+  profiles:
+    'The top-level key "profiles" is not a Compose top-level key; profiles is a service-level key. Split profile-specific config into separate Landofile fragments and select them with includes: instead.',
+  extensions:
+    'The top-level key "extensions" is not a Compose key. Use an x-* top-level extension or move provider-specific data under providers.<provider-id>.',
+} as const;
 
 const isAcceptedComposeTopLevelKey = (key: string): boolean =>
   (COMPOSE_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key) || key.startsWith("x-");
@@ -59,8 +67,13 @@ const isAcceptedComposeTopLevelKey = (key: string): boolean =>
 const isDeprecatedComposeTopLevelKey = (key: string): boolean =>
   (COMPOSE_DEPRECATED_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key);
 
-const isRejectedComposeTopLevelKey = (key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION, key);
+const isRejectedComposeTopLevelKey = (key: string): key is (typeof COMPOSE_REJECTED_TOP_LEVEL_KEYS)[number] =>
+  COMPOSE_REJECTED_TOP_LEVEL_KEYS.some((rejectedKey) => rejectedKey === key);
+
+const isMisplacedComposeSurfaceKey = (
+  key: string,
+): key is keyof typeof MISPLACED_COMPOSE_SURFACE_REMEDIATION =>
+  Object.prototype.hasOwnProperty.call(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
 const composeSuggestedFix = (issue: {
   readonly _tag: string;
@@ -72,6 +85,9 @@ const composeSuggestedFix = (issue: {
   const key = String(issue.path[0]);
   if (issue._tag === "Unexpected" && isRejectedComposeTopLevelKey(key)) {
     return `Unsupported Compose top-level key "${key}". Supported top-level Compose keys are ${COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY}; version is deprecated. ${REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION[key]}`;
+  }
+  if (issue._tag === "Unexpected" && isMisplacedComposeSurfaceKey(key)) {
+    return MISPLACED_COMPOSE_SURFACE_REMEDIATION[key];
   }
   if (issue._tag !== "Type" || issue.message.startsWith("Expected undefined")) return undefined;
   if (isAcceptedComposeTopLevelKey(key)) {

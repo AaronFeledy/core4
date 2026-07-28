@@ -633,7 +633,8 @@ const invokeRealCli = async (
 
   try {
     process.chdir(cwd);
-    process.exitCode = undefined;
+    // Bun ignores `undefined` after an exit code is set, so reset explicitly to success.
+    process.exitCode = 0;
     const cli = await import("../cli/index.ts");
     const runDispatch = () =>
       cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
@@ -654,7 +655,7 @@ const invokeRealCli = async (
     return errorTag === undefined ? result : { ...result, _tag: errorTag };
   } finally {
     process.chdir(previousCwd);
-    process.exitCode = previousExitCode;
+    process.exitCode = previousExitCode ?? 0;
     stdout.restore();
     stderr.restore();
   }

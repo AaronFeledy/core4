@@ -798,6 +798,12 @@ ${setupBunSteps}
       - name: Verify command reference is current
         run: git diff --exit-code -- docs/reference/commands.mdx
 
+      - name: Regenerate Compose key matrix
+        run: bun run codegen:compose-key-matrix
+
+      - name: Verify Compose key matrix is current
+        run: git diff --exit-code -- docs/reference/compose-key-matrix.mdx
+
 ${timingNoticeStep("schema-snapshot", 15)}
 
   bundled-codegen:
