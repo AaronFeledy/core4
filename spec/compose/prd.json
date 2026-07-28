@@ -207,8 +207,8 @@
         "Lint passes"
       ],
       "priority": 11,
-      "passes": true,
-      "notes": "Origin: the 'most compose parses' goal made measurable. Scope narrowed after Drift Audit: US-476 proves only production behavior implemented before the fixture story. Service networks/configs/secrets/profiles/x-* moved to binding prerequisite US-482. Fresh Build verification of the narrowed contract passed; the story does not absorb or depend on US-482 implementation."
+      "passes": false,
+      "notes": "Origin: the 'most compose parses' goal made measurable. Scope narrowed after Drift Audit: US-476 proves only production behavior implemented before the fixture story. Service networks/configs/secrets/profiles/x-* moved to binding prerequisite US-482. US-476 remains blocked on US-482 because spec section 7.4 defines every preserved disposition as accepted, carried into ServicePlan.extensions.compose, and capability-checked; the conformance suite cannot honestly close while those preserved paths still fail at the authoring boundary."
     },
     {
       "id": "US-482",

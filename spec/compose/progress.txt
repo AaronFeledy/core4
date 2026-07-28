@@ -652,3 +652,13 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Review notes (deferred/rejected): Regrowing service networks/configs/secrets/profiles/x-* was rejected because the prior Drift Audit assigned that production contract to binding prerequisite US-482; all review lanes confirmed the excision remains intact.
 - Verification: typecheck, lint, explicit-base guide drift with the skip above, Compose coverage, focused fixture outcome/conformance/generated-CI tests, strict TypeScript checks, and the provider suite's no-socket skip path passed. A live provider rerun was attempted only in `lando4-dev` but remained blocked by its dependency-free baseline having neither Bun nor a managed Podman socket; it was not moved to the host or deferred as a CI substitute.
 ---
+
+## 2026-07-28 00:04 CDT - US-476 Drift Audit
+- Trigger: 5 cycles, 3191 changed lines, 23 commits
+- Weakened proofs: the successful upstream fixtures relied only on expectations derived from decoded output; independent authored literals now pin their artifact, endpoint, and mount outcomes through the production loader and planner.
+- Contract drift: US-476 was marked passing while five paths classified `preserved` still fail at the authoring boundary, contradicting the normative disposition contract and the recorded US-482 prerequisite; US-476 is false again until that prerequisite lands.
+- Deferred-work laundering: removed the claim that the passing fixture story did not depend on US-482 while retaining the existing split rather than regrowing its public contract here.
+- Fixed: strengthened the two remaining successful upstream fixture proofs and restored the binding prerequisite status without adding production behavior.
+- Split/excise decisions: US-482 remains the binding follow-up for service `networks`, `configs`, `secrets`, `profiles`, and `x-*`; no new split or excision was needed, and US-476 stays false until those preserved dispositions are truthful end to end.
+- Verification: typecheck, lint, focused conformance/fixture-maintenance/disposition/generated-CI tests, the provider no-socket safety path, Compose coverage, import-cycle, package-DAG, and machine-output gates passed. Live Podman execution remained unverified because the isolated dependency-free sandbox has neither Bun nor a managed socket.
+---
