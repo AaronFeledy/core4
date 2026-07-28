@@ -8,8 +8,8 @@ import { Effect, Layer, type Scope } from "effect";
 import { makeLandoRuntime, resolveApp } from "@lando/core";
 import { RuntimeProvider, RuntimeProviderRegistry, TunnelService } from "@lando/core/services";
 import { TestRuntimeProvider, TestTunnelService } from "@lando/core/testing";
+import { makeLandoPaths } from "@lando/paths";
 import { AppId, ProviderId, ServiceName, type TunnelSession, type TunnelTarget } from "@lando/sdk/schema";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const serviceTarget: TunnelTarget = {
   _tag: "service",

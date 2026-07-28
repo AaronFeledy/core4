@@ -47,7 +47,7 @@ import { TestProxyService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
-import { makeLandoPaths } from "../../src/config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";

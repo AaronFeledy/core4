@@ -5,9 +5,9 @@ import { join, resolve } from "node:path";
 
 import { type Context, Effect, Option, Schema } from "effect";
 
+import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { resolveUserCacheRoot } from "../../cache/paths.ts";
-import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../../runtime/host-maintenance.ts";
 import {

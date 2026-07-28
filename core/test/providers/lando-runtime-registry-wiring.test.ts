@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { makeLandoPaths } from "../../src/config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 
 const registrySource = readFileSync(join(import.meta.dir, "../../src/providers/registry.ts"), "utf8");
 const providerSource = readFileSync(

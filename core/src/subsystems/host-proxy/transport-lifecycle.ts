@@ -5,7 +5,7 @@ import { Effect, Fiber } from "effect";
 
 import type { AppRef } from "@lando/sdk/schema";
 
-import type { RootOverrides } from "../../config/paths.ts";
+import type { RootOverrides } from "@lando/paths";
 import type { HostProxyInFlightRequest } from "./transport-handler.ts";
 import type { HostProxySessionPaths } from "./transport-session.ts";
 

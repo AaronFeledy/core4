@@ -14,10 +14,10 @@ import {
   RuntimeProviderRegistry,
   type RuntimeProviderShape,
 } from "@lando/core/services";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";

@@ -11,6 +11,7 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { ServiceExecError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 
+import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import {
   buildHostProxyAllowlistDoctorCheck,
   hostProxyAllowlistFreshness,
@@ -21,7 +22,6 @@ import {
 } from "../../src/cli/commands/doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "../../src/cli/commands/doctor-host-proxy.ts";
 import { doctor, renderDoctorResult, renderDoctorResultAsNdjson } from "../../src/cli/commands/doctor.ts";
-import { makeLandoPaths, sanitizeAppName } from "../../src/config/paths.ts";
 import {
   HOST_PROXY_WORKER_PROTOCOL_VERSION,
   writeWorkerRecord,

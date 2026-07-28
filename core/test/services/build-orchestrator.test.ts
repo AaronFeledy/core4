@@ -15,6 +15,7 @@ import {
   type RuntimeProviderShape,
   StateStore,
 } from "@lando/core/services";
+import { makeLandoPaths } from "@lando/paths";
 import {
   AbsolutePath,
   AppId,
@@ -25,7 +26,6 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";

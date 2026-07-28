@@ -4,12 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import {
-  type RootOverrides,
-  makeLandoPaths,
-  normalizeHostPlatform,
-  resolveLandoRoots,
-} from "../../src/config/paths.ts";
+import { type RootOverrides, makeLandoPaths, normalizeHostPlatform, resolveLandoRoots } from "@lando/paths";
 
 // Every test injects env/home/platform through RootOverrides so the suite is
 // fully deterministic regardless of the host the suite runs on. We never read

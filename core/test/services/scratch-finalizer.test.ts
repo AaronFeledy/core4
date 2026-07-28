@@ -13,11 +13,11 @@ import {
   ScratchAppService,
 } from "@lando/core/services";
 
+import { makeLandoPaths } from "@lando/paths";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makePlainRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";

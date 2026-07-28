@@ -15,8 +15,8 @@ import {
 import { PluginManifest } from "@lando/sdk/schema";
 import { ConfigService, PluginTrustStore as PersistentPluginTrustStore } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "@lando/paths";
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
-import { makeLandoPaths } from "../../config/paths.ts";
 import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
 import { makeInteractionService } from "../../interaction/service.ts";
 import { recordInstalledPlugin } from "../../plugins/installed-registry.ts";

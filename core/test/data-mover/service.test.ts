@@ -6,6 +6,7 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -37,7 +38,6 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 import {
   DataMoverLive,

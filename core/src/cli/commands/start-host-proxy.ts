@@ -4,7 +4,7 @@ import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
 import { type EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import type { RedactionService } from "../../redaction/service.ts";
 import {
   type HostProxyShimTarget,

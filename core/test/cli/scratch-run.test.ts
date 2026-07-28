@@ -22,6 +22,7 @@ import {
 } from "@lando/core/services";
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import {
   type ScratchRunResult,
@@ -39,7 +40,6 @@ import { resolveResultFormat } from "../../src/cli/format-flags.ts";
 import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/run.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
 import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";

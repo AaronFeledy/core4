@@ -29,6 +29,7 @@ import {
   Renderer,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
+import { makeLandoPaths } from "@lando/paths";
 import type {
   AppSelector,
   DestroyOptions,
@@ -36,7 +37,6 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

@@ -3,7 +3,7 @@ import { join } from "node:path";
 
 import type { HostPlatform } from "@lando/sdk/schema";
 
-import { normalizeHostPlatform } from "../config/paths.ts";
+import { normalizeHostPlatform } from "@lando/paths";
 
 // Ownership of the managed provider machine (the macOS/Windows Podman VM), derived
 // solely from the provider's recorded setup-state. This module deliberately does NOT

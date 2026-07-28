@@ -13,7 +13,7 @@ import { Effect } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import type { StateRoot } from "@lando/sdk/services";
 
-import { resolveLandoRoots } from "../config/paths.ts";
+import { resolveLandoRoots } from "@lando/paths";
 
 /** Resolve a {@link StateRoot} to its base directory through the Paths primitive. */
 const baseDirForRoot = (root: StateRoot): string => {

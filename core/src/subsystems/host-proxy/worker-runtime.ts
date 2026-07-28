@@ -4,7 +4,7 @@ import { Effect, Schema } from "effect";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 import type { EventService, ShellRunner } from "@lando/sdk/services";
 
-import type { RootOverrides } from "../../config/paths.ts";
+import type { RootOverrides } from "@lando/paths";
 import type { RedactionService } from "../../redaction/service.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";

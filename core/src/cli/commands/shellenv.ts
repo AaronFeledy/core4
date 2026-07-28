@@ -4,7 +4,7 @@ import type { Context, Effect } from "effect";
 
 import type { PrivilegeService, ProcessResult } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 
 export type ShellenvShell = "posix" | "powershell";

@@ -18,7 +18,7 @@ import { Effect, Layer } from "effect";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { PathsService } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../../core/src/config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import * as boundary from "../src/transcript-path-boundary.ts";
 import { TranscriptTailReader, TranscriptTailReaderLive } from "../src/transcript-tail-reader.ts";
 

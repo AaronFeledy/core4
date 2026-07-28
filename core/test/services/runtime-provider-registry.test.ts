@@ -10,8 +10,8 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
+import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
-import { makeLandoPaths } from "../../src/config/paths.ts";
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClientLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";

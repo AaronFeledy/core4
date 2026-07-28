@@ -42,7 +42,7 @@ import {
   ManagedFileService,
 } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { resolveUserDataRoot } from "../config/roots.ts";
 import { RedactionService, createStandaloneRedactor } from "../redaction/service.ts";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";

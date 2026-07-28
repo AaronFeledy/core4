@@ -7,9 +7,9 @@ import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { resolveLandoRoots } from "@lando/paths";
 import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "@lando/paths/overlay";
 import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
-import { resolveLandoRoots } from "../config/paths.ts";
 import { resolveUserConfRoot } from "../config/roots.ts";
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>

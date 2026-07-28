@@ -6,7 +6,7 @@ import { Data, Effect, Schema } from "effect";
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { resolveUserDataRoot } from "../../config/roots.ts";
 import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner.ts";
 import { validatePluginManifest } from "./plugin-add.ts";
