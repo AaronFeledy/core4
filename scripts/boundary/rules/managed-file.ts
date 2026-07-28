@@ -2,6 +2,7 @@ import ts from "typescript";
 
 import { resolveConstString, scanLiteralsAndComments } from "../literals.ts";
 import type { BoundaryRule } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const SENTINELS = ["lando-generated", ">>> lando:", "<<< lando:"] as const;
 
@@ -51,7 +52,7 @@ const onProgram: NonNullable<BoundaryRule["onProgram"]> = async (context) => {
 export const managedFileRule = {
   id: "managed-file",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

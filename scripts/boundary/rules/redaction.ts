@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import type { BoundaryRule } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const SENTINEL_TEXTS = new Set(["[redacted]", "[REDACTED]"]);
 
@@ -48,7 +49,7 @@ const isAdHocSecretRegex = (src: string): boolean => {
 export const redactionRule = {
   id: "redaction",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

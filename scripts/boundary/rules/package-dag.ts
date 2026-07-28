@@ -2,6 +2,7 @@ import { relative } from "node:path";
 
 import { type RuntimeEdge, collectManifests, stronglyConnectedComponents } from "../graph.ts";
 import type { BoundaryRule, ProgramContext, Violation } from "../types.ts";
+import { NON_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 interface PackageDagBoundaryRule extends BoundaryRule {
   readonly alwaysAllowedPackages: readonly string[];
@@ -113,7 +114,7 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
   }
 
   for (const file of context.files) {
-    if (!file.relativePath.startsWith("core/src/")) continue;
+    if (!NON_PLUGIN_SOURCE_ROOTS.some((root) => file.relativePath.startsWith(`${root}/`))) continue;
     for (const edge of await context.edges(file)) {
       if (!packages.some((candidate) => packageMatches(edge.specifier, candidate.name))) continue;
       report({ file: file.relativePath, line: edge.line, detail: edge.specifier });

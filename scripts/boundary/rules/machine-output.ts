@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import type { BoundaryRule } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const COMMAND_SPEC_SHAPE_KEYS = ["id", "summary", "namespace", "bootstrap", "run"] as const;
 
@@ -153,7 +154,7 @@ const missingResultSchema = (props: Map<string, ts.Expression>): boolean => {
 export const machineOutputRule = {
   id: "machine-output",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

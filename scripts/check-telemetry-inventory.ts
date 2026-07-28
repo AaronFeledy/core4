@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import ts from "typescript";
 
 import { TELEMETRY_EVENT_NAMES } from "../core/src/telemetry/inventory.ts";
+import { ALL_PACKAGE_WALK_ROOTS } from "./boundary/workspace-roots.ts";
 
 export interface TelemetryInventoryOffender {
   readonly file: string;
@@ -22,7 +23,7 @@ interface CheckTelemetryInventoryOptions {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 
-const SCANNED_ROOTS = ["core/src", "sdk/src", "plugins"] as const;
+export const SCANNED_ROOTS = ALL_PACKAGE_WALK_ROOTS;
 
 const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   try {

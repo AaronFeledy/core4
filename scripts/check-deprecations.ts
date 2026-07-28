@@ -3,6 +3,8 @@ import { join, relative, resolve } from "node:path";
 
 import ts from "typescript";
 
+import { ALL_PACKAGE_WALK_ROOTS } from "./boundary/workspace-roots.ts";
+
 export interface DeprecationTsdocOffender {
   readonly file: string;
   readonly line: number;
@@ -42,7 +44,7 @@ interface CheckDeprecationReleaseGateOptions {
 }
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const SCANNED_ROOTS = ["sdk/src", "core/src", "plugins"] as const;
+export const SCANNED_ROOTS = ALL_PACKAGE_WALK_ROOTS;
 const MISSING_MARK_DEPRECATED_REASON = "missing markDeprecated(notice, impl) wrapper";
 const MISMATCHED_MARK_DEPRECATED_ID_REASON = "markDeprecated export id must match exported name";
 const MISSING_DEPRECATION_METADATA_REASON = "missing static readonly deprecation metadata";

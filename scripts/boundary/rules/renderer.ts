@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import type { BoundaryRule } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const propertyName = (node: ts.PropertyName): string | undefined => {
   if (ts.isIdentifier(node) || ts.isPrivateIdentifier(node)) return node.text;
@@ -32,7 +33,7 @@ const directWriteMatch = (node: ts.CallExpression): string | undefined => {
 export const rendererRule = {
   id: "renderer",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

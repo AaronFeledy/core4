@@ -1,5 +1,6 @@
 import { scanComments } from "../literals.ts";
 import type { BoundaryRule } from "../types.ts";
+import { ALL_PACKAGE_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const BANNER_MARKER = "**GENERATED FILE** — do not edit by hand.";
 const BANNERED_OUTSIDE_GENERATED_ALLOWLIST = [
@@ -39,7 +40,7 @@ const onProgram: NonNullable<BoundaryRule["onProgram"]> = async (context) => {
 export const generatedOutputRule = {
   id: "generated-output",
   scope: {
-    roots: ["core/src", "sdk/src", "plugins/*/src"],
+    roots: ALL_PACKAGE_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import type { BoundaryRule, FileContext } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 // Global objects whose `.fetch(...)` is a direct global-fetch call.
 const GLOBAL_OBJECTS = new Set<string>(["globalThis", "Bun", "self", "window"]);
@@ -61,7 +62,7 @@ const onNode = (node: ts.Node, context: FileContext): void => {
 export const networkRule = {
   id: "network",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

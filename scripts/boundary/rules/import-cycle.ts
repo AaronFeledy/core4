@@ -8,6 +8,7 @@ import {
   stronglyConnectedComponents,
 } from "../graph.ts";
 import type { BoundaryRule, ProgramContext } from "../types.ts";
+import { ALL_PACKAGE_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 export interface ImportCycleEdge {
   readonly from: string;
@@ -93,7 +94,7 @@ const analyzeImportCycles = async (context: ProgramContext): Promise<ImportCycle
 export const createImportCycleRule = (observe?: ImportCycleObserver): BoundaryRule => ({
   id: "import-cycle",
   scope: {
-    roots: ["core/src", "sdk/src", "container-runtime/src", "plugins/*/src"],
+    roots: ALL_PACKAGE_SOURCE_ROOTS,
     extensions: [".ts", ".tsx", ".mts", ".cts"],
     excludeTestFiles: true,
   },
