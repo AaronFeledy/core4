@@ -848,3 +848,16 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: no follow-up story or passes flip; the internal field-map excision conflicts with the prior Review demand to export every promised knob schema, so the required adjudication marker is emitted after this audit commit.
 - Verification: typecheck, lint, all boundary gates, Compose coverage, schema compatibility, plugin-abstraction coverage, focused tests, matrix/schema codegen idempotence, the executable guide, and guide lint/coverage/public-transcript/drift gates passed; the full host test suite was not run per Drift Audit safety policy.
 ---
+
+## 2026-07-28 18:43 CDT - US-477 Adjudication
+- Contradiction: Review read US-477's criterion, "sdk/API_COMPATIBILITY.md documents the wave's additive surface," together with the compatibility note's then-promised export list as requiring `ComposeServiceKnobFields` through `@lando/sdk/schema`; Drift Audit applied US-482's criterion, "Internal field maps or base structs are not exported unless an SDK consumer contract requires them," and excised that assembly map while retaining the concrete runtime schemas. Normative spec §6.2 requires every per-container knob to be accepted and preserved, §5.5.1 steps 3-4 require lossless plan preservation and capability checking, and §7.4 requires the generated disposition matrix; none requires an internal field map to become public API.
+- Decision: narrowed US-477's JSON Schema and SDK-reconciliation criteria in `spec/compose/prd.json`. Proof now means the final assembled `ServiceConfig`/`LandofileShape` artifacts contain the fields, every runtime schema intentionally named in `sdk/API_COMPATIBILITY.md` resolves through `@lando/sdk/schema`, and internal field maps/base structs remain private absent an explicit SDK consumer contract. No follow-up story is needed; the Drift Audit boundary is authoritative and US-477 remains passing.
+- Follow-up story (if created): none.
+---
+
+## 2026-07-28 18:52 CDT - US-477
+- Verified the story remains complete after adjudication with no new code: the generated matrix and final assembled schema artifacts stay authoritative, intentionally public runtime schemas resolve through the SDK barrel, and the internal knob field map remains private as required by the clarified contract.
+- Verification: typecheck and lint passed; all boundary, Compose coverage, generated-output, SDK/plugin coverage, guide lint/coverage/public-transcript/drift, generator idempotence, and relevant focused test spot checks passed. The isolated compiled CLI accepted the realistic Compose fixture and returned the tagged matrix remediation for the rejected fixture; the executable guide was already green at this unchanged code head before adjudication.
+- **Learnings for future iterations:**
+  - When adjudication changes only acceptance wording and leaves a passing code head untouched, rerun the decisive static and real CLI proofs, then confirm completion without inventing implementation work.
+---
