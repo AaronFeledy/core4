@@ -12,6 +12,8 @@
       "**/dist",
       "node_modules",
       "**/node_modules",
+      ".local",
+      "**/.local",
       "*.tsbuildinfo",
       "**/*.tsbuildinfo",
       "oclif.manifest.json",
