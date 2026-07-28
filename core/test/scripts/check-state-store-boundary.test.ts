@@ -147,4 +147,98 @@ describe("state-store boundary lint gate", () => {
       await checkFixture([{ path: "core/src/example/durable-state.test.ts", content: ALL_SIGNALS }]),
     ).toEqual({ ok: true, offenders: [] });
   });
+
+  test("reports a temp write path that is statically folded through a const", async () => {
+    // Given a temp marker assembled from constant string fragments.
+    const content = `
+const stagedPath = "state." + "tmp-1";
+await writeFile(stagedPath, "{}");
+await rename(stagedPath, "state.json");
+${LOCKFILE}
+${VERSION_ENVELOPE}
+`;
+
+    // When the boundary gate scans the source, then all three signals are reported.
+    expect(await checkFixture([{ path: "core/src/example/const-temp.ts", content }])).toEqual({
+      ok: false,
+      offenders: [
+        {
+          file: "core/src/example/const-temp.ts",
+          signals: ["atomic-write-rename", "lockfile", "version-envelope"],
+        },
+      ],
+    });
+  });
+
+  test("reports rename through an aliased destructured fs import", async () => {
+    // Given rename imported under a different local name.
+    const content = `
+import { rename as move, writeFile } from "node:fs/promises";
+await writeFile("state.tmp-1", "{}");
+await move("state.tmp-1", "state.json");
+${LOCKFILE}
+${VERSION_ENVELOPE}
+`;
+
+    // When the boundary gate scans the source, then the aliased rename completes signal A.
+    expect(await checkFixture([{ path: "plugins/example/src/aliased-rename.ts", content }])).toEqual({
+      ok: false,
+      offenders: [
+        {
+          file: "plugins/example/src/aliased-rename.ts",
+          signals: ["atomic-write-rename", "lockfile", "version-envelope"],
+        },
+      ],
+    });
+  });
+
+  test("reports a version envelope unwrapped from a local const", async () => {
+    // Given JSON.stringify receives an aliased object envelope.
+    const content = `
+const version = 1;
+const data = {};
+const envelope = { version: version, data: data };
+JSON.stringify(envelope);
+${ATOMIC_WRITE_RENAME}
+${LOCKFILE}
+`;
+
+    // When the boundary gate scans the source, then the aliased envelope completes signal C.
+    expect(await checkFixture([{ path: "core/src/example/aliased-envelope.ts", content }])).toEqual({
+      ok: false,
+      offenders: [
+        {
+          file: "core/src/example/aliased-envelope.ts",
+          signals: ["atomic-write-rename", "lockfile", "version-envelope"],
+        },
+      ],
+    });
+  });
+
+  test("passes when aliased forms provide only two of the three signals", async () => {
+    // Given each file contains a different pair of alias-aware signals.
+    const aliasedAtomic = `
+import { rename as move, writeFile as persist } from "node:fs/promises";
+const stagedPath = "state." + "tmp-1";
+await persist(stagedPath, "{}");
+await move(stagedPath, "state.json");
+`;
+    const aliasedEnvelope = `
+const envelope = { version: 1, data: {} };
+JSON.stringify(envelope);
+`;
+    const aliasedLock = `
+import { open as acquire } from "node:fs/promises";
+await acquire("state.lock", "wx");
+`;
+
+    // When the boundary gate scans all pairs, then none crosses the three-signal threshold.
+    expect(
+      await checkFixture([
+        { path: "core/src/example/atomic-lock.ts", content: aliasedAtomic + aliasedLock },
+        { path: "core/src/example/atomic-envelope.ts", content: aliasedAtomic + aliasedEnvelope },
+        { path: "core/src/example/lock-envelope.ts", content: aliasedLock + aliasedEnvelope },
+      ]),
+    ).toEqual({ ok: true, offenders: [] });
+  });
 });
