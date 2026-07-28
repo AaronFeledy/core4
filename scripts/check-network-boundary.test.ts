@@ -115,4 +115,35 @@ describe("check-network-boundary", () => {
     expect(result.ok).toBe(false);
     expect(result.offenders.map((o) => o.file)).toContain("plugins/x/src/p.ts");
   });
+
+  test("flags single-quoted element-access global fetch", async () => {
+    await writeCore("sq.ts", `export const a = () => globalThis['fetch']("https://a");\n`);
+    const result = await checkNetworkBoundary({ root });
+    expect(result.ok).toBe(false);
+    expect(result.offenders.map((o) => o.match)).toContain("globalThis['fetch']");
+  });
+
+  test("ignores nested member fetch and non-literal element access", async () => {
+    await writeCore(
+      "nested.ts",
+      [
+        "declare const env: { Bun: { fetch: (u: string) => Promise<unknown> }; globalThis: { fetch: (u: string) => Promise<unknown> } };",
+        "const key = 'fetch';",
+        `export const a = () => env.Bun.fetch("https://a");`,
+        `export const b = () => env.globalThis.fetch("https://b");`,
+        `export const c = () => globalThis[key]("https://c");`,
+        "",
+      ].join("\n"),
+    );
+    const result = await checkNetworkBoundary({ root });
+    expect(result.ok).toBe(true);
+    expect(result.offenders).toEqual([]);
+  });
+
+  test("reports line numbers for offenders", async () => {
+    await writeCore("lines.ts", ["// header", `export const a = () => fetch("https://a");`, ""].join("\n"));
+    const result = await checkNetworkBoundary({ root });
+    expect(result.ok).toBe(false);
+    expect(result.offenders).toEqual([{ file: "core/src/lines.ts", line: 2, match: "fetch" }]);
+  });
 });
