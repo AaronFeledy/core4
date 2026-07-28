@@ -189,7 +189,7 @@ const renderComposeKeyMatrixPage = (): string => {
     "",
     "# Compose Key Matrix",
     "",
-    "A `normalized` key resolves into a provider-neutral plan field. A `preserved` key is accepted and carried in the Compose plan extension for capability checks. A `rejected` key fails closed with a tagged error and remediation.",
+    "A `normalized` key resolves into a provider-neutral plan field. A `preserved` key is accepted and carried in the Compose plan extension; row details determine capability behavior. A `rejected` key fails closed with a tagged error and remediation.",
     "",
     "See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Compose compatibility](../guides/config/compose-compatibility.mdx) for usage guidance.",
     "",

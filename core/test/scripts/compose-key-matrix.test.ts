@@ -67,6 +67,17 @@ test("renders exactly one row for every committed disposition entry", () => {
   }
 });
 
+test("describes preserved data without blanket capability gating", () => {
+  // Given / When
+  const page = renderComposeKeyMatrixPage();
+
+  // Then
+  expect(page).toContain(
+    "A `preserved` key is accepted and carried in the Compose plan extension; row details determine capability behavior.",
+  );
+  expect(page).not.toContain("carried in the Compose plan extension for capability checks");
+});
+
 test("rejects a disposition entry that violates the matrix invariants", () => {
   // Given
   const invalidServiceEntries = {
