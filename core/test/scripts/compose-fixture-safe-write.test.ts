@@ -294,3 +294,66 @@ test("manifest generation rejects a symlinked destination without changing exter
     await rm(sandbox, { recursive: true, force: true });
   }
 });
+
+test("refresh rejects a non-regular vendored destination without changing external bytes", async () => {
+  // Given
+  expect(isBuildModule(buildModule)).toBe(true);
+  if (!isBuildModule(buildModule)) return;
+  const sandbox = await mkdtemp(join(tmpdir(), "lando-compose-safe-nonfile-"));
+  try {
+    const fixturesRoot = join(sandbox, "fixtures");
+    await mkdir(join(fixturesRoot, "upstream"), { recursive: true });
+    const source = await sourceFor("upstream/minimal.compose.yaml");
+    const destination = join(fixturesRoot, source.vendored);
+    await mkdir(destination);
+    const sentinelPath = join(destination, "sentinel.compose.yaml");
+    await writeFile(sentinelPath, originalSentinel, "utf8");
+    const pinPath = join(fixturesRoot, "pin.json");
+    await writePin(pinPath, source);
+
+    // When
+    const refresh = buildModule.refreshComposeFixtures(maintenanceFor(fixturesRoot, pinPath, source));
+
+    // Then
+    await expect(refresh).rejects.toMatchObject({
+      name: "FixtureMaintenanceWriteError",
+      failure: "not-file",
+    });
+    expect(await Bun.file(sentinelPath).text()).toBe(originalSentinel);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("manifest generation rejects a non-regular destination without changing external bytes", async () => {
+  // Given
+  expect(isManifestModule(manifestModule)).toBe(true);
+  if (!isManifestModule(manifestModule)) return;
+  const sandbox = await mkdtemp(join(tmpdir(), "lando-compose-safe-nonfile-manifest-"));
+  try {
+    const fixturesRoot = join(sandbox, "fixtures");
+    await mkdir(join(fixturesRoot, "corpus"), { recursive: true });
+    await mkdir(join(fixturesRoot, "upstream"), { recursive: true });
+    await writeFile(join(fixturesRoot, "corpus", "minimal.compose.yaml"), fixtureContent, "utf8");
+    const manifestPath = join(fixturesRoot, "manifest.json");
+    await mkdir(manifestPath);
+    const sentinelPath = join(manifestPath, "sentinel.json");
+    await writeFile(sentinelPath, originalSentinel, "utf8");
+
+    // When
+    const generate = manifestModule.generateComposeFixtureManifest({
+      trustedRoot: sandbox,
+      fixturesRoot,
+      manifestPath,
+    });
+
+    // Then
+    await expect(generate).rejects.toMatchObject({
+      name: "FixtureMaintenanceWriteError",
+      failure: "not-file",
+    });
+    expect(await Bun.file(sentinelPath).text()).toBe(originalSentinel);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
+});
