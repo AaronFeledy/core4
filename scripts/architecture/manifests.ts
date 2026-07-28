@@ -22,15 +22,17 @@ const readManifest = async (root: string, file: string): Promise<WorkspaceManife
     throw new TypeError(`Invalid workspace package manifest: ${file}`);
   }
   const packageRoot = dirname(file);
-  const common = {
+  return {
     packageName: parsed.name,
     packageRoot,
     relativeRoot: toPosix(relative(root, packageRoot)),
     dependencies: dependencyNames(parsed.dependencies),
     devDependencies: dependencyNames(parsed.devDependencies),
     peerDependencies: dependencyNames(parsed.peerDependencies),
+    ...("exports" in parsed ? { exports: parsed.exports } : {}),
+    ...(typeof parsed.main === "string" ? { main: parsed.main } : {}),
+    ...(typeof parsed.types === "string" ? { types: parsed.types } : {}),
   };
-  return "exports" in parsed ? { ...common, exports: parsed.exports } : common;
 };
 
 export const createWorkspaceManifestReader = (

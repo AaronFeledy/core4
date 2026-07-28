@@ -54,7 +54,15 @@ const toWorkspacePackage = (manifest: WorkspaceManifest): readonly [string, Work
       if (target !== undefined) targets.set(subpath, target);
     }
   }
-  if (!targets.has(".")) targets.set(".", "./src/index");
+  if (!targets.has(".")) {
+    const fallbackTarget = manifest.main ?? manifest.types;
+    if (fallbackTarget === undefined) {
+      throw new TypeError(
+        `Workspace package ${manifest.packageName} (${manifest.relativeRoot}) declares no resolvable root entrypoint; add an "exports" ["."] target, "main", or "types" so import-cycle can resolve "${manifest.packageName}" specifiers.`,
+      );
+    }
+    targets.set(".", fallbackTarget);
+  }
   return [manifest.packageName, { directory: manifest.packageRoot, exports: targets }];
 };
 

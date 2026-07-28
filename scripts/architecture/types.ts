@@ -49,6 +49,8 @@ export interface WorkspaceManifest {
   readonly devDependencies: ReadonlyArray<string>;
   readonly peerDependencies: ReadonlyArray<string>;
   readonly exports?: unknown;
+  readonly main?: string;
+  readonly types?: string;
 }
 
 export interface Rule {
