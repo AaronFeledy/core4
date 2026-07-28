@@ -91,6 +91,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
   const liveRequest = api.request;
   if (liveRequest === undefined) throw new Error("live Podman client exposes no request transport");
   let plan: AppPlan | undefined;
+  const initializerContainers = new Set<string>();
 
   try {
     await mkdir(join(appRoot, "src"));
@@ -106,6 +107,75 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
         Effect.provide(plannerLayer),
       ),
     );
+
+    for (const service of Object.values(plan.services)) {
+      for (const storage of service.storage) {
+        if (storage.subpath === undefined) continue;
+        const store = plan.stores.find((candidate) => candidate.name === storage.store);
+        expect(store, `planned store ${storage.store} is missing`).toBeDefined();
+        if (store === undefined) continue;
+
+        const volumeCreate = await Effect.runPromise(
+          liveRequest({
+            method: "POST",
+            path: "/volumes/create",
+            body: {
+              Name: store.name,
+              Labels: {
+                "dev.lando.app": plan.id,
+                "dev.lando.provider": plan.provider,
+                "dev.lando.store": store.name,
+                "dev.lando.scope": store.scope,
+                "dev.lando.volume-selector": `${plan.provider}:${plan.id}:${store.kind === "cache" ? "cache" : "data"}`,
+                ...(store.kind === "cache" ? { "dev.lando.storage-kind": "cache" } : {}),
+              },
+            },
+          }),
+        );
+        expect([200, 201, 409]).toContain(volumeCreate.status);
+
+        const initializerName = `lando-${plan.slug}-${service.name}-subpath-init`;
+        initializerContainers.add(initializerName);
+        const create = await Effect.runPromise(
+          liveRequest({
+            method: "POST",
+            path: `/containers/create?name=${encodeURIComponent(initializerName)}`,
+            body: {
+              Image: "node:22-alpine",
+              Cmd: ["mkdir", "-p", `/volume/${storage.subpath}`],
+              HostConfig: { Binds: [`${store.name}:/volume`] },
+            },
+          }),
+        );
+        expect(create.status).toBe(201);
+
+        const start = await Effect.runPromise(
+          liveRequest({
+            method: "POST",
+            path: `/containers/${encodeURIComponent(initializerName)}/start`,
+          }),
+        );
+        expect(start.status).toBe(204);
+
+        const wait = await Effect.runPromise(
+          liveRequest({
+            method: "POST",
+            path: `/containers/${encodeURIComponent(initializerName)}/wait`,
+          }),
+        );
+        expect(wait.status).toBe(200);
+        expect(field(JSON.parse(wait.body), "StatusCode")).toBe(0);
+
+        const remove = await Effect.runPromise(
+          liveRequest({
+            method: "DELETE",
+            path: `/containers/${encodeURIComponent(initializerName)}?force=true`,
+          }),
+        );
+        expect(remove.status).toBe(204);
+        initializerContainers.delete(initializerName);
+      }
+    }
     await Effect.runPromise(bringUp(plan, { podmanApi: api }));
 
     const containerName = `lando-${plan.slug}-${fixture.service}`;
@@ -117,11 +187,24 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     fixture.assertInspect(inspect, appRoot);
   } finally {
     try {
-      if (plan !== undefined) {
-        await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api, volumes: true })));
+      for (const initializerName of initializerContainers) {
+        await Effect.runPromise(
+          Effect.either(
+            liveRequest({
+              method: "DELETE",
+              path: `/containers/${encodeURIComponent(initializerName)}?force=true`,
+            }),
+          ),
+        );
       }
     } finally {
-      await rm(appRoot, { recursive: true, force: true });
+      try {
+        if (plan !== undefined) {
+          await Effect.runPromise(Effect.either(bringDown(plan, { podmanApi: api, volumes: true })));
+        }
+      } finally {
+        await rm(appRoot, { recursive: true, force: true });
+      }
     }
   }
 };
