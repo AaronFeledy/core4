@@ -27,6 +27,14 @@ import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transpor
 
 const FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.ndjson");
 const WINDOWS_FIXTURE_PATH = join(import.meta.dir, "fixtures", "meta-doctor.provider-status.windows.ndjson");
+const providerWithComposeServiceFields = {
+  ...TestRuntimeProvider,
+  id: "lando",
+  capabilities: {
+    ...TestRuntimeProvider.capabilities,
+    composeServiceFields: { supported: ["networks", "configs", "secrets", "profiles", "labels"] },
+  },
+} satisfies typeof TestRuntimeProvider;
 
 const decodeFrames = (ndjson: string) =>
   ndjson
@@ -85,7 +93,7 @@ const doctorWithoutPluginChecks = (options: DoctorOptions = {}) => doctor(option
 
 describe("meta:doctor command", () => {
   test("renders the selected provider and every declared ProviderCapabilities field", async () => {
-    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const provider = providerWithComposeServiceFields;
     const result = await Effect.runPromise(
       doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
     );
@@ -191,7 +199,7 @@ describe("meta:doctor command", () => {
   });
 
   test("ndjson stream carries every ProviderCapabilities field, provider identity, runtime info, severity, context, and a solution list", async () => {
-    const provider = { ...TestRuntimeProvider, id: "lando" };
+    const provider = providerWithComposeServiceFields;
     const result = await Effect.runPromise(
       doctorWithoutPluginChecks().pipe(Effect.provide(buildLayers(provider))),
     );
