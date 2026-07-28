@@ -38,7 +38,7 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - A derived/computed invariant (skip-list, drift manifest, anti-hiding guard) is unproven until it has been observed failing. Mutate an input to manufacture the stale or hidden state, confirm red, then restore; a guard that has only ever been green is indistinguishable from one that cannot fail.
 - An `*.integration.test.ts` gated on an env var is dead unless something sets it. Pair the skip guard with a generator-emitted export in the CI workflow and assert the ordering between the export and the test invocation, otherwise the lane silently never runs.
 - Checksum pinning authenticates vendored fixture bytes but does not make fixture-derived paths safe. Keep materialized files inside a canonical temporary root, reject symlink escapes, and create files without following or overwriting existing destinations.
-- An adjudication amends only the machine-readable index; the narrative PRD it was derived from does not follow. Reconcile both in the same pass, or the prose contract drifts from the one the loop actually reads and the next cycle re-litigates a settled boundary.
+- When an adjudication amends only the machine-readable index, the narrative PRD it was derived from does not follow automatically. Reconcile both in the same pass, or the prose contract drifts from the one the loop actually reads and the next cycle re-litigates a settled boundary.
 - A named-volume `subpath` must exist before Podman mounts it. Live fixtures that exercise subpaths need an initializer container before application bring-up; do not remove the subpath merely to make the fixture runnable.
 
 ## Log
@@ -799,7 +799,7 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Follow-up story (if created): none; this is gate-ownership clarification, not an unowned production surface.
 ---
 
-## 2026-07-28 07:15 CDT - US-476 (completion)
+## 2026-07-28 06:52 CDT - US-476 (completion)
 - Confirmed the conformance fixture suite against the gate-ownership adjudication with no production change. The only gap this pass found was documentary: the adjudication amended the machine-readable index alone, so the narrative PRD still described the old contract on both amended criteria. Both documents now state the same thing — the exclusive-checkout assumption is authoritative for Build, Review, and Drift Audit and a residual concurrent same-user validation-to-write race cannot block or reverse the story, and no gate before Push/Babysit may require or attempt a fresh live Podman run, with only a failed live CI result reopening it.
 - Re-ran the whole proof at the current head rather than trusting the previous pass. Every changed test file on the branch executed individually and green across conformance, fixture maintenance, generated CI, disposition, loader, planner, cache, container-runtime, provider-plugin, and SDK schema/contract surfaces. The env-gated provider suite skipped cleanly with no socket exported and made no runtime contact.
 - Proved the suite is not vacuous at this head instead of reporting that it is green. Deleting the rejected key from the rejecting fixture fired two independent guards with exact diffs: the computed rejection manifest disagreed with the committed one, and the fixture fell out of the rejected set without an authored-value expectation to replace it. Restoring the file returned the same checksum and the suite to green, so the anti-hiding and exhaustiveness guards both still bite.
@@ -810,4 +810,11 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Check the narrative PRD after every adjudication. New criterion text lands already marked complete because the surrounding story passes, so a prose/index divergence is invisible to every gate and surfaces later as a re-litigated boundary.
   - A confirmation pass earns the right to skip re-running an expensive proof only by showing the proof's inputs did not move. Here the argument is a one-line log query — the last commit touching any `src/` predates the recorded CLI proof — which is cheaper and more honest than either re-compiling a binary or silently assuming nothing changed.
   - Mutating one fixture can fire more than one guard, and that is worth reading rather than stopping at the first red. The stale-manifest failure and the missing authored-expectation failure cover different hiding modes, and seeing both proves the exhaustiveness guard is coupled to the rejected set rather than to a hand-listed corpus.
+---
+
+## 2026-07-28 07:02 CDT - US-476 Review
+- Corrected the durable completion chronology to match the commit that recorded it and narrowed the adjudication learning so it applies only when the machine index changes without a matching narrative PRD update.
+- Review notes (deferred/rejected): Cursor Bugbot produced no findings because the configured account is out of usage; the five review-work lanes and a direct security retry otherwise reached terminal verdicts, with no production, scope, or acceptance-criterion blocker after the evidence corrections.
+- Guide-Coverage-Skip: US-476 and US-482 change internal Compose fixture, schema, planner, and provider conformance; the executable Compose guide and published key matrix are explicitly owned by US-477.
+- Verification: typecheck and lint passed; explicit-base guide drift passed with the substantive skip above; focused conformance, fixture-safety, generated-CI, and no-socket spot checks passed without runtime contact.
 ---
