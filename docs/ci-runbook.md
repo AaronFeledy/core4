@@ -108,12 +108,13 @@ bun run bench:tooling-hot-path -- --binary core/dist/lando
 
 ## npm alpha package publishing
 
-The release workflow publishes `@lando/core@4.0.0-alpha.N` and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+The release workflow publishes `@lando/core@4.0.0-alpha.N`, `@lando/paths`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
 
 The package job builds workspace artifacts first:
 
 ```bash
 bun run --filter='@lando/sdk' build
+bun run --filter='@lando/paths' build
 bun run --filter='@lando/container-runtime' build
 bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest
