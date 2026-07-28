@@ -46,4 +46,58 @@ describe("managed-file boundary lint gate", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("reports ownership sentinels composed from const string parts", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/recipes/composed.ts",
+        [
+          'const markerPrefix = "lando-";',
+          'const markerSuffix = "generated";',
+          "const marker = markerPrefix + markerSuffix;",
+          'const fencePrefix = ">>> lan";',
+          'const fence = `${fencePrefix}do:${"demo"}`;',
+        ].join("\n"),
+      );
+
+      const result = await checkManagedFileBoundary({ root });
+
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file)}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/recipes/composed.ts:3:lando-generated",
+        "core/src/recipes/composed.ts:5:>>> lando:",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports ownership sentinels in line and block comments", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "plugins/example/src/comments.ts",
+        ["// lando-generated belongs to ManagedFileService", "/* <<< lando:demo <<< */"].join("\n"),
+      );
+
+      const result = await checkManagedFileBoundary({ root });
+
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file)}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "plugins/example/src/comments.ts:1:lando-generated",
+        "plugins/example/src/comments.ts:2:<<< lando:",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
