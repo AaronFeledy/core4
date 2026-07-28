@@ -34,6 +34,8 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Manual CLI verification must invoke `core/bin/lando.ts`; running `core/src/cli/index.ts` directly emits nothing and exits 0, which is indistinguishable from a passing command.
 - A derived/computed invariant (skip-list, drift manifest, anti-hiding guard) is unproven until it has been observed failing. Mutate an input to manufacture the stale or hidden state, confirm red, then restore; a guard that has only ever been green is indistinguishable from one that cannot fail.
 - An `*.integration.test.ts` gated on an env var is dead unless something sets it. Pair the skip guard with a generator-emitted export in the CI workflow and assert the ordering between the export and the test invocation, otherwise the lane silently never runs.
+- Checksum pinning authenticates vendored fixture bytes but does not make fixture-derived paths safe. Keep materialized files inside a canonical temporary root, reject symlink escapes, and create files without following or overwriting existing destinations.
+- A named-volume `subpath` must exist before Podman mounts it. Live fixtures that exercise subpaths need an initializer container before application bring-up; do not remove the subpath merely to make the fixture runnable.
 
 ## Log
 
@@ -641,4 +643,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Scope anti-hiding to paths that actually appear in the corpus, not to every matrix path. Matrix-wide coverage sounds stricter but is a different contract, and here it would have dragged the excised prerequisite fields back in through the test suite after they were deliberately removed from production.
   - When a Drift Audit leaves a story false purely for re-verification, the honest Build move is to verify and confirm, not to find new work. Check that the excised surface is still absent at the production boundary first; if it is, the remaining job is evidence, and any code change is a regression risk with no acceptance criterion behind it.
   - An env-gated integration suite can be simultaneously correct and dead. Gating on a variable nothing ever sets means the lane never runs; pairing the skip guard with a generator-emitted export, and asserting the ordering between them, is what makes the gate a switch instead of an off button.
+---
+
+## 2026-07-27 23:45 CDT - US-476 Review
+- Closed two confirmed review blockers: fixture-derived env files can no longer traverse or follow symlinks outside the canonical temporary app root, and the live Podman fixture now initializes its declared named-volume subpath before application bring-up while retaining the original fixture and inspect assertions.
+- Guide-Coverage-Skip: US-476 adds internal fixture conformance and provider test setup; the executable Compose guide and published matrix are owned by US-477.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable after both standard and Auto-mode attempts because the configured account is out of usage; no Bugbot findings were available to triage.
+- Review notes (deferred/rejected): Regrowing service networks/configs/secrets/profiles/x-* was rejected because the prior Drift Audit assigned that production contract to binding prerequisite US-482; all review lanes confirmed the excision remains intact.
+- Verification: typecheck, lint, explicit-base guide drift with the skip above, Compose coverage, focused fixture outcome/conformance/generated-CI tests, strict TypeScript checks, and the provider suite's no-socket skip path passed. A live provider rerun was attempted only in `lando4-dev` but remained blocked by its dependency-free baseline having neither Bun nor a managed Podman socket; it was not moved to the host or deferred as a CI substitute.
 ---
