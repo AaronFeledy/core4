@@ -362,10 +362,9 @@ export const ServiceConfigBase = Schema.Struct({
 
   providers: Schema.optional(ProviderExtensionConfig),
 });
-export const ServiceConfig = Schema.asSchema(
-  ServiceConfigBase.pipe(
-    Schema.extend(Schema.Record({ key: Schema.TemplateLiteral("x-", Schema.String), value: Schema.Unknown })),
-  ),
+export const ServiceConfig = Schema.Struct(
+  ServiceConfigBase.fields,
+  Schema.Record({ key: Schema.TemplateLiteral("x-", Schema.String), value: Schema.Unknown }),
 );
 export type ServiceConfig = typeof ServiceConfig.Type;
 
