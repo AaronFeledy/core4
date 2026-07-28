@@ -73,4 +73,57 @@ describe("paths boundary lint gate", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  test("reports snippet text and line for path.join and path.resolve property access", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/cli/prop-join.ts",
+        'import path from "node:path";\nexport const p = (userDataRoot: string) => path.join(userDataRoot, "plugins");\n',
+      );
+      await write(
+        root,
+        "plugins/x/src/nested.ts",
+        'import * as path from "node:path";\nexport const run = (userCacheRoot: string) => {\n  return path.resolve(userCacheRoot, "scratch");\n};\n',
+      );
+
+      const result = await checkPathsBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.snippet}`,
+        ),
+      ).toEqual([
+        'core/src/cli/prop-join.ts:2:path.join(userDataRoot, "plugins")',
+        'plugins/x/src/nested.ts:3:path.resolve(userCacheRoot, "scratch")',
+      ]);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("matches root identifiers by suffix (e.g. paths.userDataRoot)", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/cli/suffix.ts",
+        'import { join } from "node:path";\nexport const p = (paths: { userDataRoot: string }) => join(paths.userDataRoot, "bin");\n',
+      );
+
+      const result = await checkPathsBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.snippet}`,
+        ),
+      ).toEqual(['core/src/cli/suffix.ts:join(paths.userDataRoot, "bin")']);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });
