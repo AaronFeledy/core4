@@ -53,8 +53,13 @@ const fixtures = [
       const bind = mounts.find(
         (mount) => (field(mount, "Destination") ?? field(mount, "Target")) === "/workspace/src",
       );
-      expect(field(bind, "Type")).toBe("bind");
-      expect(field(bind, "Source")).toBe(join(appRoot, "src"));
+      const bindSource = join(appRoot, "src");
+      const bindSpec = arrayField(hostConfig, "Binds").find(
+        (candidate) => typeof candidate === "string" && candidate.startsWith(`${bindSource}:/workspace/src:`),
+      );
+      expect(bindSpec).toBeDefined();
+      expect(bindSpec).toContain(":ro");
+      expect(field(bind, "Source")).toBe(bindSource);
       expect(field(bind, "RW")).toBe(false);
 
       const volume = mounts.find((mount) => field(mount, "Destination") === "/var/cache/app");
