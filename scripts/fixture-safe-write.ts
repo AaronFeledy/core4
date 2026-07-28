@@ -4,6 +4,13 @@ import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "nod
 
 type FixtureWriteFailure = "outside-root" | "symbolic-link" | "not-directory" | "not-file";
 
+export interface FixtureWriteRequest {
+  readonly trustedRoot: string;
+  readonly fixturesRoot: string;
+  readonly destination: string;
+  readonly data: string | Uint8Array;
+}
+
 export class FixtureMaintenanceWriteError extends Error {
   override readonly name = "FixtureMaintenanceWriteError";
 
@@ -28,15 +35,21 @@ const lstatIfPresent = async (path: string): Promise<Awaited<ReturnType<typeof l
   }
 };
 
-export const writeFixtureFileSafely = async (
-  fixturesRoot: string,
-  destination: string,
-  data: string | Uint8Array,
-): Promise<void> => {
+export const writeFixtureFileSafely = async ({
+  trustedRoot,
+  fixturesRoot,
+  destination,
+  data,
+}: FixtureWriteRequest): Promise<void> => {
+  const trusted = resolve(trustedRoot);
   const root = resolve(fixturesRoot);
   const target = resolve(destination);
+  const rootRelative = relative(trusted, root);
   const targetRelative = relative(root, target);
   if (
+    rootRelative === ".." ||
+    isAbsolute(rootRelative) ||
+    rootRelative.startsWith(`..${sep}`) ||
     targetRelative === "" ||
     targetRelative === ".." ||
     isAbsolute(targetRelative) ||
@@ -45,7 +58,18 @@ export const writeFixtureFileSafely = async (
     throw new FixtureMaintenanceWriteError(root, target, "outside-root");
   }
 
-  const rootStat = await lstatIfPresent(root);
+  let component = trusted;
+  for (const segment of rootRelative === "" ? [] : rootRelative.split(sep)) {
+    const componentStat = await lstatIfPresent(component);
+    if (componentStat?.isSymbolicLink() === true) {
+      throw new FixtureMaintenanceWriteError(root, target, "symbolic-link");
+    }
+    if (componentStat?.isDirectory() !== true) {
+      throw new FixtureMaintenanceWriteError(root, target, "not-directory");
+    }
+    component = join(component, segment);
+  }
+  const rootStat = await lstatIfPresent(component);
   if (rootStat?.isSymbolicLink() === true) {
     throw new FixtureMaintenanceWriteError(root, target, "symbolic-link");
   }
@@ -53,7 +77,7 @@ export const writeFixtureFileSafely = async (
     throw new FixtureMaintenanceWriteError(root, target, "not-directory");
   }
 
-  let component = root;
+  component = root;
   const parentRelative = relative(root, dirname(target));
   for (const segment of parentRelative === "" ? [] : parentRelative.split(sep)) {
     component = join(component, segment);

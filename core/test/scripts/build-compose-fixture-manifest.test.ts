@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 
 type ComposeFixtureManifestModule = {
   readonly generateComposeFixtureManifest: (paths: {
+    readonly trustedRoot: string;
     readonly fixturesRoot: string;
     readonly manifestPath: string;
   }) => Promise<number>;
@@ -55,6 +56,7 @@ test("regenerates a Compose fixture manifest offline in an isolated fixture root
 
     // When
     const fixtureCount = await manifestModule.generateComposeFixtureManifest({
+      trustedRoot: root,
       fixturesRoot: root,
       manifestPath,
     });

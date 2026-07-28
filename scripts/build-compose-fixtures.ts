@@ -17,6 +17,7 @@ const PIN_PATH = resolve(FIXTURES_ROOT, "pin.json");
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
 
 export interface ComposeFixtureMaintenance {
+  readonly trustedRoot: string;
   readonly fixturesRoot: string;
   readonly pinPath: string;
   readonly fetchFixtures: (
@@ -96,16 +97,23 @@ const fetchComposeFixtures = async (
   );
 
 const writeComposeFixtures = async (
+  trustedRoot: string,
   fixturesRoot: string,
   files: ReadonlyArray<ComposeFixtureSource>,
 ): Promise<void> => {
   for (const file of files) {
     const destination = resolve(fixturesRoot, file.vendored);
-    await writeFixtureFileSafely(fixturesRoot, destination, new Uint8Array(file.bytes));
+    await writeFixtureFileSafely({
+      trustedRoot,
+      fixturesRoot,
+      destination,
+      data: new Uint8Array(file.bytes),
+    });
   }
 };
 
 const DEFAULT_MAINTENANCE = {
+  trustedRoot: REPO_ROOT,
   fixturesRoot: FIXTURES_ROOT,
   pinPath: PIN_PATH,
   fetchFixtures: fetchComposeFixtures,
@@ -122,7 +130,7 @@ export const refreshComposeFixtures = async (maintenance: ComposeFixtureMaintena
     }
   }
 
-  await writeComposeFixtures(maintenance.fixturesRoot, files);
+  await writeComposeFixtures(maintenance.trustedRoot, maintenance.fixturesRoot, files);
   await maintenance.regenerateManifest();
   process.stdout.write(`[build-compose-fixtures] wrote ${files.length} pinned files (${pin.ref})\n`);
 };
@@ -135,12 +143,13 @@ export const bumpComposeFixtures = async (
   const files = await maintenance.fetchFixtures(ref, currentPin.files);
   const pin = buildComposeFixturePin(ref, files);
 
-  await writeComposeFixtures(maintenance.fixturesRoot, files);
-  await writeFixtureFileSafely(
-    maintenance.fixturesRoot,
-    maintenance.pinPath,
-    `${JSON.stringify(pin, null, 2)}\n`,
-  );
+  await writeComposeFixtures(maintenance.trustedRoot, maintenance.fixturesRoot, files);
+  await writeFixtureFileSafely({
+    trustedRoot: maintenance.trustedRoot,
+    fixturesRoot: maintenance.fixturesRoot,
+    destination: maintenance.pinPath,
+    data: `${JSON.stringify(pin, null, 2)}\n`,
+  });
   await maintenance.regenerateManifest();
   process.stdout.write(`[build-compose-fixtures] bumped ${files.length} pinned files to ${ref}\n`);
 };

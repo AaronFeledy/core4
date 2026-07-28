@@ -11,6 +11,7 @@ const FIXTURES_ROOT = resolve(REPO_ROOT, "core/test/fixtures/compose");
 const MANIFEST_PATH = resolve(FIXTURES_ROOT, "manifest.json");
 
 export interface ComposeFixtureManifestPaths {
+  readonly trustedRoot: string;
   readonly fixturesRoot: string;
   readonly manifestPath: string;
 }
@@ -24,6 +25,7 @@ class ComposeFixtureManifestFormatError extends Error {
 }
 
 export const generateComposeFixtureManifest = async ({
+  trustedRoot,
   fixturesRoot,
   manifestPath,
 }: ComposeFixtureManifestPaths): Promise<number> => {
@@ -45,12 +47,18 @@ export const generateComposeFixtureManifest = async ({
     ),
   );
 
-  await writeFixtureFileSafely(fixturesRoot, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFixtureFileSafely({
+    trustedRoot,
+    fixturesRoot,
+    destination: manifestPath,
+    data: `${JSON.stringify(manifest, null, 2)}\n`,
+  });
   return fixturePaths.length;
 };
 
 export const buildComposeFixtureManifest = async (): Promise<void> => {
   const fixtureCount = await generateComposeFixtureManifest({
+    trustedRoot: REPO_ROOT,
     fixturesRoot: FIXTURES_ROOT,
     manifestPath: MANIFEST_PATH,
   });

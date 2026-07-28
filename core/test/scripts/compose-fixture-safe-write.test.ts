@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 interface ComposeFixtureEntry {
@@ -17,6 +17,7 @@ interface ComposeFixtureSource {
 }
 
 interface ComposeFixtureMaintenance {
+  readonly trustedRoot: string;
   readonly fixturesRoot: string;
   readonly pinPath: string;
   readonly fetchFixtures: (
@@ -33,6 +34,7 @@ interface ComposeFixtureBuildModule {
 
 interface ComposeFixtureManifestModule {
   readonly generateComposeFixtureManifest: (paths: {
+    readonly trustedRoot: string;
     readonly fixturesRoot: string;
     readonly manifestPath: string;
   }) => Promise<number>;
@@ -95,7 +97,9 @@ const maintenanceFor = (
   fixturesRoot: string,
   pinPath: string,
   source: ComposeFixtureSource,
+  trustedRoot = dirname(fixturesRoot),
 ): ComposeFixtureMaintenance => ({
+  trustedRoot,
   fixturesRoot,
   pinPath,
   fetchFixtures: async () => [source],
@@ -124,6 +128,40 @@ test("refresh rejects a symlinked fixture root without changing external bytes",
 
     // When
     const refresh = buildModule.refreshComposeFixtures(maintenanceFor(fixturesRoot, pinPath, source));
+
+    // Then
+    await expect(refresh).rejects.toMatchObject({
+      name: "FixtureMaintenanceWriteError",
+      failure: "symbolic-link",
+    });
+    expect(await Bun.file(sentinelPath).text()).toBe(originalSentinel);
+  } finally {
+    await rm(sandbox, { recursive: true, force: true });
+  }
+});
+
+test("refresh rejects a symlinked fixture ancestor without changing external bytes", async () => {
+  // Given
+  expect(isBuildModule(buildModule)).toBe(true);
+  if (!isBuildModule(buildModule)) return;
+  const sandbox = await mkdtemp(join(tmpdir(), "lando-compose-safe-ancestor-"));
+  try {
+    const trustedRoot = join(sandbox, "workspace");
+    const externalRoot = join(sandbox, "external");
+    const fixturesRoot = join(trustedRoot, "core/test/fixtures/compose");
+    await mkdir(trustedRoot);
+    await mkdir(join(externalRoot, "test/fixtures/compose/upstream"), { recursive: true });
+    await linkDirectory(externalRoot, join(trustedRoot, "core"));
+    const source = await sourceFor("upstream/minimal.compose.yaml");
+    const sentinelPath = join(externalRoot, "test/fixtures/compose", source.vendored);
+    await writeFile(sentinelPath, originalSentinel, "utf8");
+    const pinPath = join(externalRoot, "test/fixtures/compose/pin.json");
+    await writePin(pinPath, source);
+
+    // When
+    const refresh = buildModule.refreshComposeFixtures(
+      maintenanceFor(fixturesRoot, pinPath, source, trustedRoot),
+    );
 
     // Then
     await expect(refresh).rejects.toMatchObject({
@@ -240,7 +278,11 @@ test("manifest generation rejects a symlinked destination without changing exter
     await symlink(sentinelPath, manifestPath, "file");
 
     // When
-    const generate = manifestModule.generateComposeFixtureManifest({ fixturesRoot, manifestPath });
+    const generate = manifestModule.generateComposeFixtureManifest({
+      trustedRoot: sandbox,
+      fixturesRoot,
+      manifestPath,
+    });
 
     // Then
     await expect(generate).rejects.toMatchObject({

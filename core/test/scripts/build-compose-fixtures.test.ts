@@ -17,6 +17,7 @@ interface ComposeFixtureSource {
 }
 
 type ComposeFixtureMaintenance = {
+  readonly trustedRoot: string;
   readonly fixturesRoot: string;
   readonly pinPath: string;
   readonly fetchFixtures: (
@@ -33,6 +34,7 @@ type ComposeFixtureBuildModule = {
 
 type ComposeFixtureManifestModule = {
   readonly generateComposeFixtureManifest: (paths: {
+    readonly trustedRoot: string;
     readonly fixturesRoot: string;
     readonly manifestPath: string;
   }) => Promise<number>;
@@ -88,11 +90,16 @@ const withMaintenance = async (
       `${JSON.stringify(fixtureModule.buildComposeFixturePin(oldRef, [source]), null, 2)}\n`,
     );
     const maintenance = {
+      trustedRoot: fixturesRoot,
       fixturesRoot,
       pinPath,
       fetchFixtures: async () => [source],
       regenerateManifest: async () => {
-        await manifestModule.generateComposeFixtureManifest({ fixturesRoot, manifestPath });
+        await manifestModule.generateComposeFixtureManifest({
+          trustedRoot: fixturesRoot,
+          fixturesRoot,
+          manifestPath,
+        });
       },
     } satisfies ComposeFixtureMaintenance;
 
