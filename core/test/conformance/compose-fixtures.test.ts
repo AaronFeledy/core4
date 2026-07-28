@@ -1,22 +1,16 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit, Layer } from "effect";
 
 import { ComposeKeyRejectedError } from "@lando/core/errors";
-import {
-  ComposeServiceKnobKey,
-  type LandofileShape,
-  type ProviderCapabilities,
-  ServiceName,
-} from "@lando/core/schema";
+import { ComposeServiceKnobKey, type LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
-import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
 import {
   type ComposeDispositionMatch,
   analyzeComposeDispositions,
@@ -26,6 +20,7 @@ import { loadLandofileFile } from "../../src/landofile/service.ts";
 import { makePluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
+import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 
 type ComposeFixtureModule = {
   readonly listComposeFixtures: (options: {
@@ -44,11 +39,11 @@ class ComposeFixtureInvariantError extends Error {
   override readonly name = "ComposeFixtureInvariantError";
 }
 
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
-
 const isComposeFixtureModule = (value: unknown): value is ComposeFixtureModule =>
-  isRecord(value) && "listComposeFixtures" in value && typeof value.listComposeFixtures === "function";
+  typeof value === "object" &&
+  value !== null &&
+  "listComposeFixtures" in value &&
+  typeof value.listComposeFixtures === "function";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const fixturesRoot = resolve(repoRoot, "core/test/fixtures/compose");
@@ -102,16 +97,6 @@ const loadYamlExit = async (dir: string, content: string) => {
   return { source, exit: await Effect.runPromiseExit(loadLandofileFile(source)) };
 };
 
-const materializeEnvFiles = async (dir: string, landofile: LandofileShape): Promise<void> => {
-  for (const service of Object.values(landofile.services ?? {})) {
-    for (const envFile of service.envFile ?? []) {
-      const destination = join(dir, envFile);
-      await mkdir(dirname(destination), { recursive: true });
-      await writeFile(destination, "");
-    }
-  }
-};
-
 const planLandofile = (landofile: LandofileShape) =>
   Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, nativeCapabilities)).pipe(
     Effect.provide(plannerLayer),
@@ -119,12 +104,11 @@ const planLandofile = (landofile: LandofileShape) =>
     Effect.runPromise,
   );
 
-const supportedRootPaths = (fixtures: ReadonlyArray<FixtureCase>): ReadonlySet<string> =>
+const supportedPaths = (fixtures: ReadonlyArray<FixtureCase>): ReadonlySet<string> =>
   new Set(
     fixtures.flatMap(({ matches }) =>
       matches.flatMap((match) =>
         match.service !== undefined &&
-        !match.matrixPath.includes(".") &&
         (match.disposition === "normalized" || match.disposition === "preserved")
           ? [match.matrixPath]
           : [],
@@ -149,6 +133,7 @@ describe("Compose conformance fixtures", () => {
           expect(error).toBeInstanceOf(ComposeKeyRejectedError);
           if (!(error instanceof ComposeKeyRejectedError)) return;
           expect(error.keyPath).toBe(firstRejection.matrixPath);
+          if (firstRejection.remediation === undefined) throw new ComposeFixtureInvariantError();
           expect(error.remediation).toBe(firstRejection.remediation);
           executedAssertionCount += 2;
           expect(executedAssertionCount).toBeGreaterThan(0);
@@ -157,7 +142,7 @@ describe("Compose conformance fixtures", () => {
 
         expect(Exit.isSuccess(loaded.exit)).toBe(true);
         if (!Exit.isSuccess(loaded.exit)) return;
-        await materializeEnvFiles(dir, loaded.exit.value);
+        await materializeFixtureEnvFiles(dir, loaded.exit.value);
         const composeLandofile = rememberLandofileAppRoot<LandofileShape>(
           {
             ...loaded.exit.value,
@@ -175,46 +160,15 @@ describe("Compose conformance fixtures", () => {
         const plan = await planLandofile(composeLandofile);
 
         // Then
-        for (const match of fixture.matches) {
-          if (match.service === undefined) continue;
-          switch (match.disposition) {
-            case "normalized": {
-              if (match.matrixPath.includes(".")) continue;
-              const planTarget = composeServiceDispositions[match.matrixPath]?.planTarget;
-              expect(planTarget).toBeDefined();
-              if (planTarget === undefined) continue;
-              const decodedService: unknown = loaded.exit.value.services?.[match.service];
-              expect(isRecord(decodedService) && decodedService[planTarget] !== undefined).toBe(true);
-              executedAssertionCount += 1;
-              break;
-            }
-            case "preserved": {
-              const documentPrefix = `services.${match.service}.`;
-              const rootDocumentKey = match.documentPath.startsWith(documentPrefix)
-                ? match.documentPath.slice(documentPrefix.length)
-                : undefined;
-              const composeKey = !match.matrixPath.includes(".")
-                ? rootDocumentKey
-                : match.matrixPath === "deploy.resources"
-                  ? "deploy"
-                  : match.matrixPath === "volumes.tmpfs"
-                    ? "tmpfs"
-                    : undefined;
-              if (composeKey === undefined) continue;
-              const compose = plan.services[ServiceName.make(match.service)]?.extensions.compose;
-              expect(isRecord(compose) && compose[composeKey] !== undefined).toBe(true);
-              executedAssertionCount += 1;
-              break;
-            }
-            case "rejected":
-              break;
-            default: {
-              const unhandled: never = match.disposition;
-              throw new ComposeFixtureInvariantError(`Unhandled disposition: ${unhandled}`);
-            }
-          }
-        }
-        expect(executedAssertionCount).toBeGreaterThan(0);
+        executedAssertionCount = assertFixtureServiceOutcomes(fixture.matches, {
+          appRoot: dir,
+          landofile: loaded.exit.value,
+          plan,
+        });
+        const expectedAssertionCount = fixture.matches.filter(
+          (match) => match.service !== undefined && match.disposition !== "rejected",
+        ).length;
+        expect(executedAssertionCount).toBe(expectedAssertionCount);
       });
     });
   }
@@ -236,21 +190,21 @@ describe("Compose conformance fixtures", () => {
     );
 
     // Then
-    expect(runtimeManifest).toEqual(committedManifest);
+    expect(committedManifest).toEqual(runtimeManifest);
   });
 
-  test("keeps every supported root visible in a non-rejected fixture", () => {
+  test("keeps every supported path visible in a non-rejected fixture", () => {
     // Given
-    const supportedRoots = supportedRootPaths(fixtureCases);
+    const supported = supportedPaths(fixtureCases);
 
     // When
-    const assertedRoots = supportedRootPaths(
+    const asserted = supportedPaths(
       fixtureCases.filter(({ matches }) => !matches.some((match) => match.disposition === "rejected")),
     );
-    const hiddenRoots = [...supportedRoots].filter((path) => !assertedRoots.has(path)).sort();
+    const hidden = [...supported].filter((path) => !asserted.has(path)).sort();
 
     // Then
-    expect(supportedRoots.size).toBeGreaterThan(0);
-    expect(hiddenRoots).toEqual([]);
+    expect(supported.size).toBeGreaterThan(0);
+    expect(hidden).toEqual([]);
   });
 });
