@@ -70,10 +70,10 @@ describe("container runtime capability helpers", () => {
       tlsCertificates: "none",
       rootless: false,
       composeSpec: "portable",
-      composeServiceFields: { supported: ["x-*"] },
+      composeServiceFields: { supported: ["labels"] },
       providerExtensions: [],
     });
 
-    expect(capabilities.composeServiceFields).toEqual({ supported: ["x-*"] });
+    expect(capabilities.composeServiceFields).toEqual({ supported: ["labels"] });
   });
 });

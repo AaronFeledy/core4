@@ -9,23 +9,24 @@ export const ComposeServiceFieldKey = Schema.Literal(
   "configs",
   "secrets",
   "profiles",
-  "x-*",
+  "labels",
 ).annotations({
   identifier: "ComposeServiceFieldKey",
   title: "Compose Service Field Key",
-  description: "Compose service-level field eligible for provider capability declaration.",
+  description:
+    "Preserved Compose service-level field requiring native composeSpec and an exact provider declaration.",
 });
 export type ComposeServiceFieldKey = typeof ComposeServiceFieldKey.Type;
 
 export const ComposeServiceFieldCapabilities = Schema.Struct({
   supported: Schema.Array(ComposeServiceFieldKey).annotations({
     title: "Supported Compose Service Fields",
-    description: "Exact Compose service-level fields supported by the provider.",
+    description: "Exact preserved Compose service-level fields realized by a native-tier provider.",
   }),
 }).annotations({
   identifier: "ComposeServiceFieldCapabilities",
   title: "Compose Service Field Capabilities",
   description:
-    "Fail-closed provider declaration of supported Compose service-level fields; omitting it means no support.",
+    "Native-tier fail-closed provider declaration of realized Compose service-level fields; omitting it means no support.",
 });
 export type ComposeServiceFieldCapabilities = typeof ComposeServiceFieldCapabilities.Type;

@@ -40,6 +40,7 @@ const service = {
   ],
   storage: [{ store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false }],
   hostAliases: [],
+  extensions: {},
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
@@ -50,7 +51,22 @@ describe("container plan helpers", () => {
   });
 
   test("builds common labels and host config fragments", () => {
-    expect(commonContainerLabels(plan, service, { "dev.lando.scratch": "TRUE" })).toEqual({
+    const serviceWithLabels: ServicePlan = {
+      ...service,
+      extensions: {
+        compose: {
+          labels: {
+            "example.com/role": "web",
+            "dev.lando.app": "user-value",
+            "skip-number": 42,
+            "skip-null": null,
+          },
+        },
+      },
+    };
+
+    expect(commonContainerLabels(plan, serviceWithLabels, { "dev.lando.scratch": "TRUE" })).toEqual({
+      "example.com/role": "web",
       "dev.lando.app": "app-id",
       "dev.lando.service": "web",
       "dev.lando.scratch": "TRUE",
@@ -168,6 +184,23 @@ describe("container plan helpers", () => {
         Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
+    });
+  });
+
+  test("uses preserved user labels in the default create body with Lando labels winning", () => {
+    const serviceWithLabels: ServicePlan = {
+      ...service,
+      extensions: {
+        compose: { labels: { "example.com/role": "web", "dev.lando.service": "user-value" } },
+      },
+    };
+
+    expect(containerCreateBodyFragment(plan, serviceWithLabels)).toMatchObject({
+      Labels: {
+        "example.com/role": "web",
+        "dev.lando.app": "app-id",
+        "dev.lando.service": "web",
+      },
     });
   });
 

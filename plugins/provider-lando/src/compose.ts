@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 
+import { commonContainerLabels } from "@lando/container-runtime/plan";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -61,6 +62,7 @@ interface ComposeService {
   readonly tmpfs?: ReadonlyArray<string>;
   readonly depends_on?: Readonly<Record<string, DependsOnEntry>>;
   readonly networks?: Readonly<Record<string, { readonly aliases?: ReadonlyArray<string> }>>;
+  readonly labels?: Readonly<Record<string, string>>;
 }
 
 interface ComposeDocument {
@@ -212,6 +214,9 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
   ...(service.networks === undefined || Object.keys(service.networks).length === 0
     ? {}
     : { networks: service.networks }),
+  ...(service.labels === undefined || Object.keys(service.labels).length === 0
+    ? {}
+    : { labels: service.labels }),
 });
 
 const toComposeDocument = (plan: AppPlan): ComposeDocument => {
@@ -228,6 +233,7 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         volumes: serviceVolumes(plan, service),
         tmpfs: serviceTmpfs(service),
         depends_on: serviceDependsOn(service),
+        labels: commonContainerLabels(plan, service),
         networks: Object.fromEntries(
           networkNames.map((networkName) => [
             networkName,
@@ -376,6 +382,11 @@ export const renderCompose = (plan: AppPlan): string => {
           writeScalarList(lines, "          ", network.aliases);
         }
       }
+    }
+
+    if (service.labels !== undefined) {
+      lines.push("    labels:");
+      writeScalarMap(lines, "      ", service.labels);
     }
   }
 

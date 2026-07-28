@@ -314,6 +314,9 @@ const ComposeNetworkAttachmentRecord = Schema.Record({
   value: ComposeNetworkAttachment,
 });
 
+const COMPOSE_NETWORKS_DESCRIPTION =
+  "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+
 const ComposeNetworksInput = Schema.transform(
   Schema.Union(
     Schema.Array(Schema.String),
@@ -321,7 +324,7 @@ const ComposeNetworksInput = Schema.transform(
       key: Schema.String,
       value: Schema.Union(ComposeNetworkAttachment, Schema.Null),
     }),
-  ),
+  ).annotations({ description: COMPOSE_NETWORKS_DESCRIPTION }),
   ComposeNetworkAttachmentRecord,
   {
     strict: true,
@@ -331,10 +334,7 @@ const ComposeNetworksInput = Schema.transform(
         : Object.fromEntries(Object.entries(input).map(([name, attachment]) => [name, attachment ?? {}])),
     encode: (attachments) => attachments,
   },
-).annotations({
-  description:
-    "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
-});
+).annotations({ description: COMPOSE_NETWORKS_DESCRIPTION });
 
 const ComposeConfigOrSecretEntry = Schema.Struct(
   {
@@ -347,15 +347,22 @@ const ComposeConfigOrSecretEntry = Schema.Struct(
   ExtensionRecord,
 );
 
-const ComposeConfigOrSecretInput = Schema.transform(
-  Schema.Array(Schema.Union(Schema.String, ComposeConfigOrSecretEntry)),
-  Schema.Array(ComposeConfigOrSecretEntry),
-  {
-    strict: true,
-    decode: (entries) => entries.map((entry) => (typeof entry === "string" ? { source: entry } : entry)),
-    encode: (entries) => entries,
-  },
-);
+const composeConfigOrSecretInput = (description: string) =>
+  Schema.transform(
+    Schema.Array(Schema.Union(Schema.String, ComposeConfigOrSecretEntry)).annotations({ description }),
+    Schema.Array(ComposeConfigOrSecretEntry),
+    {
+      strict: true,
+      decode: (entries) => entries.map((entry) => (typeof entry === "string" ? { source: entry } : entry)),
+      encode: (entries) => entries,
+    },
+  ).annotations({ description });
+
+const COMPOSE_CONFIGS_DESCRIPTION =
+  "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
+
+const COMPOSE_SECRETS_DESCRIPTION =
+  "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
 
 /**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
@@ -409,16 +416,13 @@ const ServiceConfigWithExtensions = Schema.Struct(
         'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',
     }),
     networks: Schema.optional(ComposeNetworksInput).annotations({
-      description:
-        "Service network attachments canonicalized to a long mapping; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+      description: COMPOSE_NETWORKS_DESCRIPTION,
     }),
-    configs: Schema.optional(ComposeConfigOrSecretInput).annotations({
-      description:
-        "Service config grants canonicalized to long entries; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+    configs: Schema.optional(composeConfigOrSecretInput(COMPOSE_CONFIGS_DESCRIPTION)).annotations({
+      description: COMPOSE_CONFIGS_DESCRIPTION,
     }),
-    secrets: Schema.optional(ComposeConfigOrSecretInput).annotations({
-      description:
-        "Service secret grants canonicalized to long entries; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+    secrets: Schema.optional(composeConfigOrSecretInput(COMPOSE_SECRETS_DESCRIPTION)).annotations({
+      description: COMPOSE_SECRETS_DESCRIPTION,
     }),
     profiles: Schema.optional(Schema.Array(Schema.String)).annotations({
       description:

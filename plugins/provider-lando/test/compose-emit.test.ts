@@ -155,6 +155,21 @@ describe("provider-lando Compose emission", () => {
     );
   });
 
+  test("renders preserved user labels on services", () => {
+    const labeledWeb: ServicePlan = {
+      ...web,
+      extensions: { compose: { labels: { "example.com/role": "web", "dev.lando.app": "user-value" } } },
+    };
+    const content = renderCompose({
+      ...plan,
+      services: { [labeledWeb.name]: labeledWeb, [database.name]: database },
+    });
+
+    expect(content).toContain(
+      '    labels:\n      dev.lando.app: "myapp"\n      dev.lando.service: "web"\n      example.com/role: "web"\n',
+    );
+  });
+
   test("keeps Compose output inside the MVP key allowlist", () => {
     const content = renderCompose(plan);
 
@@ -164,6 +179,7 @@ describe("provider-lando Compose emission", () => {
       "environment",
       "expose",
       "image",
+      "labels",
       "networks",
       "ports",
       "volumes",
@@ -172,6 +188,7 @@ describe("provider-lando Compose emission", () => {
       "environment",
       "expose",
       "image",
+      "labels",
       "networks",
       "volumes",
     ]);

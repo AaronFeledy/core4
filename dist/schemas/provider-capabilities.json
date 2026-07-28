@@ -19,6 +19,37 @@
       "title": "Compose Knob Capabilities",
       "type": "object"
     },
+    "ComposeServiceFieldCapabilities": {
+      "additionalProperties": false,
+      "description": "Native-tier fail-closed provider declaration of realized Compose service-level fields; omitting it means no support.",
+      "properties": {
+        "supported": {
+          "description": "Exact preserved Compose service-level fields realized by a native-tier provider.",
+          "items": {
+            "$ref": "#/$defs/ComposeServiceFieldKey"
+          },
+          "title": "Supported Compose Service Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "title": "Compose Service Field Capabilities",
+      "type": "object"
+    },
+    "ComposeServiceFieldKey": {
+      "description": "Preserved Compose service-level field requiring native composeSpec and an exact provider declaration.",
+      "enum": [
+        "networks",
+        "configs",
+        "secrets",
+        "profiles",
+        "labels"
+      ],
+      "title": "Compose Service Field Key",
+      "type": "string"
+    },
     "ComposeServiceKnobKey": {
       "description": "Preserved Compose service runtime knob path eligible for provider capability declaration.",
       "enum": [
@@ -179,6 +210,15 @@
       ],
       "description": "Fail-closed support declaration for preserved Compose runtime knobs.",
       "title": "Compose Knobs"
+    },
+    "composeServiceFields": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ComposeServiceFieldCapabilities"
+        }
+      ],
+      "description": "Native-tier fail-closed support declaration for preserved Compose service-level fields.",
+      "title": "Compose Service Fields"
     },
     "composeSpec": {
       "enum": [

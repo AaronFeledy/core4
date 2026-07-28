@@ -76,5 +76,395 @@
     "changeKind": "unsupported-construct",
     "path": "$.landofile.includes.items.anyOf",
     "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:ProviderCapabilities",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Additive optional composeServiceFields capability struct per amended spec §5.4 native-tier fail-closed refinement (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.deploy.anyOf",
+    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.devices.items.anyOf",
+    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.gpus.anyOf",
+    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.logging.additionalProperties",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.logging.patternProperties",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.logging.propertyNames",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.ulimits.patternProperties",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-keyword",
+    "path": "$.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.deploy.anyOf",
+    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.devices.items.anyOf",
+    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-construct",
+    "path": "$.$defs.ServiceConfigInput.gpus.anyOf",
+    "justification": "Vendored Compose alternate forms added additively; every previously accepted form remains accepted (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.logging.additionalProperties",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.logging.patternProperties",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.logging.propertyNames",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.ulimits.patternProperties",
+    "justification": "Preserved Compose runtime-knob shape accepts its vendored map form; acceptance widening on the documented knob subset (US-482)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.landofile.networks.additionalProperties",
+    "justification": "Top-level networks: accepts the vendored null-value form required by upstream Compose fixtures; acceptance widening on an input surface (US-482)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.additionalProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.patternProperties",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-keyword",
+    "path": "$.$defs.ServiceConfigInput.propertyNames",
+    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
   }
 ]

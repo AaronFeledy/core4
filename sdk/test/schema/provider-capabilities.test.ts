@@ -41,7 +41,7 @@ const ARRAY_FIELDS = ["providerExtensions"] as const;
 
 const OPTIONAL_FIELDS = ["composeKnobs", "composeServiceFields", "hostProxy"] as const;
 
-const COMPOSE_SERVICE_FIELD_KEYS = ["networks", "configs", "secrets", "profiles", "x-*"] as const;
+const COMPOSE_SERVICE_FIELD_KEYS = ["networks", "configs", "secrets", "profiles", "labels"] as const;
 
 const COMPOSE_SERVICE_KNOB_KEYS = [
   "restart",
@@ -289,13 +289,12 @@ describe("ProviderCapabilities — field set lock", () => {
     expect(decoded.composeServiceFields?.supported).toEqual(COMPOSE_SERVICE_FIELD_KEYS);
   });
 
-  test("portable composeSpec accepts inert extension field support", () => {
-    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+  test("rejects x-* as a composeServiceFields capability key", () => {
+    const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
       ...providerLandoFixture,
-      composeSpec: "portable",
       composeServiceFields: { supported: ["x-*"] },
     });
-    expect(decoded.composeServiceFields?.supported).toEqual(["x-*"]);
+    expect(Either.isLeft(decoded)).toBe(true);
   });
 });
 

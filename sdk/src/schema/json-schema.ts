@@ -2307,6 +2307,14 @@ const hasOwnUsefulDescription = (annotations: AST.Annotations): boolean => {
   return typeof value === "string" && value.trim().length > 0 && !BUILT_IN_DESCRIPTIONS.has(value);
 };
 
+/**
+ * Encoding a transform drops the property-signature description onto the declared member of the
+ * optional `Union(T, undefined)`, which is where emitted JSON Schema already reads it from.
+ */
+const hasOptionalMemberUsefulDescription = (type: AST.AST): boolean =>
+  AST.isUnion(type) &&
+  type.types.some((member) => !AST.isUndefinedKeyword(member) && hasOwnUsefulDescription(member.annotations));
+
 const hasSchemaStringAnnotation = (ast: AST.AST, key: symbol): boolean => {
   const annotation = AST.getAnnotation<string>(key)(ast);
   return annotation._tag === "Some" && annotation.value.trim().length > 0;
@@ -2382,6 +2390,7 @@ export const validatePublicSchemaAnnotations = (
       if (
         !hasOwnUsefulDescription(property.annotations) &&
         !hasOwnUsefulDescription(property.type.annotations) &&
+        !hasOptionalMemberUsefulDescription(property.type) &&
         !(exemptions.fields?.has(fieldPath) ?? false) &&
         !isSelfExplanatoryPublicField(schemaName, name)
       ) {

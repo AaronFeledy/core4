@@ -62,7 +62,11 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
       provider.capabilities,
     );
     const declaredComposeServiceFields = provider.capabilities.composeServiceFields?.supported ?? [];
-    // Spec 5.5.1 scopes the native prerequisite to per-container runtime knobs; portable providers may support inert fields.
+    yield* requireContract(
+      declaredComposeServiceFields.length === 0 || provider.capabilities.composeSpec === "native",
+      "compose service field support requires native composeSpec",
+      provider.capabilities,
+    );
     yield* requireContract(
       declaredComposeServiceFields.every((key) => ComposeServiceFieldKey.literals.includes(key)),
       "compose service field support uses published keys",

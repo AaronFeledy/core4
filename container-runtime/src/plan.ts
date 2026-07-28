@@ -45,11 +45,25 @@ export const commonContainerLabels = (
   plan: AppPlan,
   service: ServicePlan,
   extra: Readonly<Record<string, string>> = {},
-): Record<string, string> => ({
-  "dev.lando.app": plan.id,
-  "dev.lando.service": service.name,
-  ...extra,
-});
+): Record<string, string> => {
+  const compose = service.extensions.compose;
+  const labels =
+    typeof compose === "object" && compose !== null && !Array.isArray(compose) && "labels" in compose
+      ? compose.labels
+      : undefined;
+  const userLabels =
+    typeof labels === "object" && labels !== null && !Array.isArray(labels)
+      ? Object.fromEntries(
+          Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : {};
+  return {
+    ...userLabels,
+    "dev.lando.app": plan.id,
+    "dev.lando.service": service.name,
+    ...extra,
+  };
+};
 
 export interface ContainerHostConfigOptions {
   readonly onMissingBindMountSource?: (mount: ServicePlan["mounts"][number]) => never;

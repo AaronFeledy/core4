@@ -18,7 +18,7 @@ const composeServiceFieldCapabilities: ProviderCapabilities = {
     supported: [...(TestRuntimeProvider.capabilities.composeKnobs?.supported ?? []), "shm_size"],
   },
   composeServiceFields: {
-    supported: ["networks", "configs", "secrets", "profiles", "x-*"],
+    supported: ["networks", "configs", "secrets", "profiles", "labels"],
   },
 };
 

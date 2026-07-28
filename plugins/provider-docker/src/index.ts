@@ -496,8 +496,8 @@ export const dockerCapabilitiesForHost = (
     ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: false,
-    composeSpec: "portable",
-    // composeServiceFields is omitted: absence is the fail-closed declaration.
+    composeSpec: "native",
+    composeServiceFields: { supported: ["labels"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

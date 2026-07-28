@@ -80,7 +80,7 @@ const listenTcp = (server: Server): Promise<number> =>
 describe("provider-docker capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "hostProxy" && field !== "composeServiceFields")
+      .filter((field) => field !== "hostProxy")
       .sort();
     const linux = dockerCapabilitiesForPlatform("linux");
     const macos = dockerCapabilitiesForPlatform("darwin");
@@ -340,9 +340,7 @@ describe("provider-docker capabilities", () => {
   });
 
   test("declares the Windows capability matrix with slow bind mount performance", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composeServiceFields")
-      .sort();
+    const expectedFields = Object.keys(ProviderCapabilities.fields).sort();
     const windows = dockerCapabilitiesForPlatform("win32");
 
     expect(Object.keys(windows).sort()).toEqual(expectedFields);

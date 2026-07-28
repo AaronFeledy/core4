@@ -228,7 +228,7 @@
         "Lint passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "Binding prerequisite split from US-476 after real fixtures exposed a pre-existing spec 6.2 preservation gap. Must land before US-476 can pass and before US-477 closes the wave; provider realization or explicit fail-closed rejection is mandatory."
     },
     {

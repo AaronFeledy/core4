@@ -87,7 +87,7 @@ const nativeCapabilities: ProviderCapabilities = {
 };
 const restrictedCapabilities: ProviderCapabilities = {
   ...nativeCapabilities,
-  composeServiceFields: { supported: ["x-*"] },
+  composeServiceFields: { supported: [] },
 };
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -142,7 +142,7 @@ const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<
   );
 };
 
-const capabilityGatedRoots = new Set<ComposeServiceFieldKey>(["networks", "configs", "secrets", "profiles"]);
+const capabilityGatedRoots = new Set<ComposeServiceFieldKey>(ComposeServiceFieldKey.literals);
 
 const serviceFieldFamily = (matrixPath: string): ComposeServiceFieldKey | undefined => {
   const root = matrixPath.split(".")[0];
@@ -317,6 +317,7 @@ describe("Compose service-field capability gate", () => {
       await withTempDir(async (dir) => {
         // Given
         const landofile = await loadPlannableFixture(dir, fixture);
+        await materializeFixtureEnvFiles(dir, landofile);
 
         // When
         const error = failureOf(await planLandofileExit(landofile, restrictedCapabilities));
@@ -336,6 +337,7 @@ describe("Compose service-field capability gate", () => {
       await withTempDir(async (dir) => {
         // Given
         const landofile = await loadPlannableFixture(dir, fixture);
+        await materializeFixtureEnvFiles(dir, landofile);
 
         // When
         const plan = await planLandofile(landofile, nativeCapabilities);

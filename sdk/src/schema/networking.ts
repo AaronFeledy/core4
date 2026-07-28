@@ -261,7 +261,7 @@ export const ProviderCapabilities = Schema.Struct({
   }),
   composeServiceFields: Schema.optional(ComposeServiceFieldCapabilities).annotations({
     title: "Compose Service Fields",
-    description: "Fail-closed support declaration for Compose service-level fields.",
+    description: "Native-tier fail-closed support declaration for preserved Compose service-level fields.",
   }),
   providerExtensions: Schema.Array(Schema.String),
   /** Structured host-proxy transport support declared by the provider. */

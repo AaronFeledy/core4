@@ -8,6 +8,12 @@
     "ServiceConfigInput": {
       "additionalProperties": false,
       "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+      "patternProperties": {
+        "^x-": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        }
+      },
       "properties": {
         "allowOverride": {
           "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
@@ -244,6 +250,52 @@
             }
           ]
         },
+        "configs": {
+          "description": "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "patternProperties": {
+                  "^x-": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  }
+                },
+                "properties": {
+                  "gid": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "uid": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
+        },
         "cores": {
           "items": {
             "type": "string"
@@ -348,16 +400,18 @@
               "additionalProperties": false,
               "properties": {
                 "resources": {
+                  "additionalProperties": false,
                   "patternProperties": {
-                    "": {
+                    "^x-": {
                       "$id": "/schemas/unknown",
                       "title": "unknown"
                     }
                   },
                   "properties": {
                     "limits": {
+                      "additionalProperties": false,
                       "patternProperties": {
-                        "": {
+                        "^x-": {
                           "$id": "/schemas/unknown",
                           "title": "unknown"
                         }
@@ -394,16 +448,13 @@
                           ]
                         }
                       },
-                      "propertyNames": {
-                        "pattern": "^x-[\\s\\S]*?$",
-                        "type": "string"
-                      },
                       "required": [],
                       "type": "object"
                     },
                     "reservations": {
+                      "additionalProperties": false,
                       "patternProperties": {
-                        "": {
+                        "^x-": {
                           "$id": "/schemas/unknown",
                           "title": "unknown"
                         }
@@ -421,8 +472,9 @@
                         },
                         "devices": {
                           "items": {
+                            "additionalProperties": false,
                             "patternProperties": {
-                              "": {
+                              "^x-": {
                                 "$id": "/schemas/unknown",
                                 "title": "unknown"
                               }
@@ -488,10 +540,6 @@
                                 ]
                               }
                             },
-                            "propertyNames": {
-                              "pattern": "^x-[\\s\\S]*?$",
-                              "type": "string"
-                            },
                             "required": [
                               "capabilities"
                             ],
@@ -501,16 +549,18 @@
                         },
                         "generic_resources": {
                           "items": {
+                            "additionalProperties": false,
                             "patternProperties": {
-                              "": {
+                              "^x-": {
                                 "$id": "/schemas/unknown",
                                 "title": "unknown"
                               }
                             },
                             "properties": {
                               "discrete_resource_spec": {
+                                "additionalProperties": false,
                                 "patternProperties": {
-                                  "": {
+                                  "^x-": {
                                     "$id": "/schemas/unknown",
                                     "title": "unknown"
                                   }
@@ -530,17 +580,9 @@
                                     ]
                                   }
                                 },
-                                "propertyNames": {
-                                  "pattern": "^x-[\\s\\S]*?$",
-                                  "type": "string"
-                                },
                                 "required": [],
                                 "type": "object"
                               }
-                            },
-                            "propertyNames": {
-                              "pattern": "^x-[\\s\\S]*?$",
-                              "type": "string"
                             },
                             "required": [],
                             "type": "object"
@@ -558,17 +600,9 @@
                           ]
                         }
                       },
-                      "propertyNames": {
-                        "pattern": "^x-[\\s\\S]*?$",
-                        "type": "string"
-                      },
                       "required": [],
                       "type": "object"
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [],
                   "type": "object"
@@ -591,8 +625,9 @@
                 "type": "string"
               },
               {
+                "additionalProperties": false,
                 "patternProperties": {
-                  "": {
+                  "^x-": {
                     "$id": "/schemas/unknown",
                     "title": "unknown"
                   }
@@ -607,10 +642,6 @@
                   "target": {
                     "type": "string"
                   }
-                },
-                "propertyNames": {
-                  "pattern": "^x-[\\s\\S]*?$",
-                  "type": "string"
                 },
                 "required": [
                   "source"
@@ -940,8 +971,9 @@
             },
             {
               "items": {
+                "additionalProperties": false,
                 "patternProperties": {
-                  "": {
+                  "^x-": {
                     "$id": "/schemas/unknown",
                     "title": "unknown"
                   }
@@ -1006,10 +1038,6 @@
                       }
                     ]
                   }
-                },
-                "propertyNames": {
-                  "pattern": "^x-[\\s\\S]*?$",
-                  "type": "string"
                 },
                 "required": [],
                 "type": "object"
@@ -1194,9 +1222,10 @@
           ]
         },
         "logging": {
+          "additionalProperties": false,
           "description": "Container logging driver and driver-specific scalar options.",
           "patternProperties": {
-            "": {
+            "^x-": {
               "$id": "/schemas/unknown",
               "title": "unknown"
             }
@@ -1223,10 +1252,6 @@
               "required": [],
               "type": "object"
             }
-          },
-          "propertyNames": {
-            "pattern": "^x-[\\s\\S]*?$",
-            "type": "string"
           },
           "required": [],
           "type": "object"
@@ -1307,6 +1332,87 @@
             ]
           },
           "type": "array"
+        },
+        "networks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "patternProperties": {
+                      "^x-": {
+                        "$id": "/schemas/unknown",
+                        "title": "unknown"
+                      }
+                    },
+                    "properties": {
+                      "aliases": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "driver_opts": {
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "gw_priority": {
+                        "type": "number"
+                      },
+                      "interface_name": {
+                        "type": "string"
+                      },
+                      "ipv4_address": {
+                        "type": "string"
+                      },
+                      "ipv6_address": {
+                        "type": "string"
+                      },
+                      "link_local_ips": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "mac_address": {
+                        "type": "string"
+                      },
+                      "priority": {
+                        "type": "number"
+                      }
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "description": "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation."
         },
         "platform": {
           "description": "Target runtime platform in operating-system and architecture form.",
@@ -1458,6 +1564,13 @@
           ],
           "description": "Whether the container runs with extended host privileges."
         },
+        "profiles": {
+          "description": "Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "providers": {
           "additionalProperties": {
             "$id": "/schemas/unknown",
@@ -1547,6 +1660,52 @@
               "hostname"
             ],
             "type": "object"
+          },
+          "type": "array"
+        },
+        "secrets": {
+          "description": "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "additionalProperties": false,
+                "patternProperties": {
+                  "^x-": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  }
+                },
+                "properties": {
+                  "gid": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "uid": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "type": "array"
         },
@@ -1705,8 +1864,9 @@
                   ]
                 },
                 {
+                  "additionalProperties": false,
                   "patternProperties": {
-                    "": {
+                    "^x-": {
                       "$id": "/schemas/unknown",
                       "title": "unknown"
                     }
@@ -1732,10 +1892,6 @@
                         }
                       ]
                     }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
                   },
                   "required": [
                     "soft",

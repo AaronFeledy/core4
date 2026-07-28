@@ -60,6 +60,20 @@ describe("RuntimeProvider contract", () => {
     await expectContractFailure(provider, "compose knob support requires native composeSpec");
   });
 
+  test("rejects compose service field support when composeSpec is not native", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        composeSpec: "portable" as const,
+        composeKnobs: { supported: [] },
+        composeServiceFields: { supported: ["labels"] as const },
+      },
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "compose service field support requires native composeSpec");
+  });
+
   test("documents the Phase 1 provider assertions", async () => {
     expect(TestRuntimeProvider.capabilities.serviceExec).toBe(true);
     expect(TestRuntimeProvider.capabilities.serviceLogs).toBe(true);
@@ -264,7 +278,10 @@ describe("RuntimeProvider contract", () => {
   test("fails with ContractFailure when setup does not return an Effect", async () => {
     const provider = {
       ...TestRuntimeProvider,
-      setup: (_options: { force: boolean }) => "not-an-effect" as unknown as Effect.Effect<void>,
+      setup: (
+        _plan: Parameters<typeof TestRuntimeProvider.setup>[0],
+        _options: Parameters<typeof TestRuntimeProvider.setup>[1],
+      ) => "not-an-effect" as unknown as Effect.Effect<void>,
     } as typeof TestRuntimeProvider;
 
     await expectContractFailure(provider, "setup returns an Effect");

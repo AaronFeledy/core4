@@ -156,8 +156,9 @@ export const decodeProviderCapabilities = (input: unknown) =>
  *   activated. Lando has no profile-activation surface, so declaring support
  *   would promise activation that does not exist.
  *
- * `x-*` remains safe to declare because Compose defines extension fields as
- * inert preservation and ignores them during runtime realization.
+ * Service-level `x-*` fields are outside the capability surface and remain
+ * inert metadata preserved by core per spec §5.4. `labels` is declared because
+ * both direct container creation and Compose emission realize preserved labels.
  */
 export const providerLandoCapabilitiesForPlatform = (
   platform: HostPlatform,
@@ -177,7 +178,7 @@ export const providerLandoCapabilitiesForPlatform = (
     rootless: true,
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
-    composeServiceFields: { supported: ["x-*"] },
+    composeServiceFields: { supported: ["labels"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

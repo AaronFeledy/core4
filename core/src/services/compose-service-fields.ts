@@ -7,7 +7,7 @@ export type ComposeServiceFieldUse = {
   readonly family: ComposeServiceFieldKey;
 };
 
-type ComposeServiceFieldCapabilityView = Pick<ProviderCapabilities, "composeServiceFields">;
+type ComposeServiceFieldCapabilityView = Pick<ProviderCapabilities, "composeSpec" | "composeServiceFields">;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -31,13 +31,6 @@ export const collectComposeServiceFields = (
     if (!isRecord(compose)) continue;
 
     for (const family of ComposeServiceFieldKey.literals) {
-      if (family === "x-*") {
-        for (const key of Object.keys(compose).filter((key) => key.startsWith("x-"))) {
-          uses.push({ service: servicePlan.name, key, family });
-        }
-        continue;
-      }
-
       if (compose[family] !== undefined) {
         uses.push({ service: servicePlan.name, key: family, family });
       }
@@ -53,7 +46,7 @@ export const findUnsupportedComposeServiceField = (
 ): ComposeServiceFieldUse | undefined => {
   const supported = capabilities.composeServiceFields?.supported ?? [];
   for (const use of [...uses].sort(compareServiceFieldUses)) {
-    if (!supported.includes(use.family)) return use;
+    if (capabilities.composeSpec !== "native" || !supported.includes(use.family)) return use;
   }
   return undefined;
 };

@@ -57,6 +57,10 @@ Accepted Landofile service authoring surface with canonical keys and the working
 | `ports` | No | `array` | — | — | — | — | — |
 | `expose` | No | `array` | — | — | — | — | — |
 | `volumes` | No | `array` | — | — | — | — | — |
+| `networks` | No | `array`, `object` | — | — | — | — | — |
+| `configs` | No | `array` | — | — | — | — | — |
+| `secrets` | No | `array` | — | — | — | — | — |
+| `profiles` | No | `array` | Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation. | — | — | — | — |
 | `appMount` | No | `boolean`, `object` | — | — | `false` | — | — |
 | `mounts` | No | `array` | — | — | — | — | — |
 | `storage` | No | `array` | — | — | — | — | — |
@@ -70,3 +74,9 @@ Accepted Landofile service authoring surface with canonical keys and the working
 | `working_dir` | No | `string` | Compose alias for the canonical workingDirectory service field. | — | — | — | — |
 | `env_file` | No | `string`, `array` | Compose alias for the canonical envFile service field; accepts one path or a path list. | — | — | — | — |
 | `depends_on` | No | `array`, `object` | Compose alias for the canonical dependsOn service field; accepts a service-name list or condition map. | — | — | — | — |
+
+## Schema details
+
+| Keys | Values |
+| --- | --- |
+| patterned `string` | `unknown` |

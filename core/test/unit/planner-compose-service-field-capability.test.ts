@@ -70,12 +70,12 @@ describe("Compose service field capabilities", () => {
     });
   });
 
-  test("Given an authored x-prefixed key, when support is omitted, then the actual key is reported", async () => {
+  test("Given labels and an undeclaring provider, when planning, then planning fails closed", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "extension-field",
+      name: "labels-field",
       runtime: 4,
-      services: { web: { image: "node:lts", "x-foo": { enabled: true } } },
+      services: { web: { image: "node:lts", labels: { "example.com/role": "web" } } },
     });
 
     await withTempCwd(async () => {
@@ -86,25 +86,25 @@ describe("Compose service field capabilities", () => {
       expect(expectFailure(exit)).toMatchObject({
         _tag: "CapabilityError",
         service: "web",
-        key: "x-foo",
-        feature: "compose service field x-foo",
+        key: "labels",
+        feature: "compose service field labels",
         capability: "composeSpec",
         providerId: "lando",
       });
     });
   });
 
-  test("Given a portable provider declaring x-prefixed support, when x-foo is planned, then planning succeeds", async () => {
+  test("Given labels declared below native tier, when planning, then planning fails closed", async () => {
     // Given
     const landofile = Schema.decodeUnknownSync(LandofileShape)({
-      name: "portable-extension-field",
+      name: "portable-label-field",
       runtime: 4,
-      services: { web: { image: "node:lts", "x-foo": { enabled: true } } },
+      services: { web: { image: "node:lts", labels: { "example.com/role": "web" } } },
     });
     const capabilities: ProviderCapabilities = {
       ...TestRuntimeProvider.capabilities,
       composeSpec: "portable",
-      composeServiceFields: { supported: ["x-*"] },
+      composeServiceFields: { supported: ["labels"] },
     };
 
     await withTempCwd(async () => {
@@ -112,7 +112,31 @@ describe("Compose service field capabilities", () => {
       const exit = await planExit(landofile, capabilities);
 
       // Then
+      expect(expectFailure(exit)).toMatchObject({
+        _tag: "CapabilityError",
+        service: "web",
+        key: "labels",
+        capability: "composeSpec",
+        providerId: "lando",
+      });
+    });
+  });
+
+  test("Given an authored x-prefixed key, when capability support is omitted, then planning preserves it", async () => {
+    const extension = { nested: [1, "two", { enabled: true }] } as const;
+    const landofile = Schema.decodeUnknownSync(LandofileShape)({
+      name: "inert-extension-field",
+      runtime: 4,
+      services: { web: { image: "node:lts", "x-foo": extension } },
+    });
+
+    await withTempCwd(async () => {
+      const exit = await planExit(landofile, TestRuntimeProvider.capabilities);
+
       expect(Exit.isSuccess(exit)).toBe(true);
+      if (Exit.isSuccess(exit)) {
+        expect(exit.value.services.web?.extensions.compose).toEqual({ "x-foo": extension });
+      }
     });
   });
 });
