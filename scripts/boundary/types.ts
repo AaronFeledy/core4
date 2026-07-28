@@ -15,6 +15,8 @@ export interface RuleScope {
 export interface CarveOuts {
   readonly files: readonly string[];
   readonly prefixes: readonly string[];
+  /** Keep carve-outs in `onProgram` analysis while the engine suppresses reports against them. */
+  readonly reportOnly?: boolean;
 }
 
 export interface Violation {

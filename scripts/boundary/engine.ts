@@ -25,6 +25,9 @@ const isCarvedOut = (file: FileRecord, rule: BoundaryRule): boolean =>
 const selectedFiles = (files: readonly FileRecord[], rule: BoundaryRule): readonly FileRecord[] =>
   files.filter((file) => fileMatchesScope(file.relativePath, rule.scope) && !isCarvedOut(file, rule));
 
+const scopedFiles = (files: readonly FileRecord[], rule: BoundaryRule): readonly FileRecord[] =>
+  files.filter((file) => fileMatchesScope(file.relativePath, rule.scope));
+
 const sortViolations = (violations: readonly Violation[]): readonly Violation[] =>
   violations.slice().sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
 
@@ -52,20 +55,25 @@ const fileContext = (
   report: ({ line, detail }) => report({ file: file.relativePath, line, detail }),
 });
 
-const programContext = (
-  root: string,
-  files: readonly FileRecord[],
-  cache: SourceCache,
-  report: (violation: Violation) => void,
-): ProgramContext => ({
-  root,
-  files,
-  sourceFile: (file) => cache.sourceFile(resolveContextFile(root, files, file)),
-  text: (file) => cache.text(resolveContextFile(root, files, file)),
-  edges: (file) => cache.moduleEdges(resolveContextFile(root, files, file)),
+interface ProgramContextInput {
+  readonly root: string;
+  readonly files: readonly FileRecord[];
+  readonly reportableFiles: readonly FileRecord[];
+  readonly rule: BoundaryRule;
+  readonly cache: SourceCache;
+  readonly report: (violation: Violation) => void;
+}
+
+const programContext = (input: ProgramContextInput): ProgramContext => ({
+  root: input.root,
+  files: input.files,
+  sourceFile: (file) => input.cache.sourceFile(resolveContextFile(input.root, input.files, file)),
+  text: (file) => input.cache.text(resolveContextFile(input.root, input.files, file)),
+  edges: (file) => input.cache.moduleEdges(resolveContextFile(input.root, input.files, file)),
   report: (file, line, detail) => {
-    const relativePath = normalizePath(isAbsolute(file) ? relative(root, file) : file);
-    report({ file: relativePath, line, detail });
+    const reportFile = resolveContextFile(input.root, input.reportableFiles, file);
+    if (isCarvedOut(reportFile, input.rule)) return;
+    input.report({ file: reportFile.relativePath, line, detail });
   },
 });
 
@@ -83,7 +91,10 @@ export const runRuleSet = async (
     rules.map((rule) => rule.scope),
   );
   const violations = new Map(rules.map((rule) => [rule.id, [] as Violation[]]));
-  const filesByRule = new Map(rules.map((rule) => [rule.id, selectedFiles(files, rule)]));
+  const scopedFilesByRule = new Map(rules.map((rule) => [rule.id, scopedFiles(files, rule)]));
+  const filesByRule = new Map(
+    rules.map((rule) => [rule.id, selectedFiles(scopedFilesByRule.get(rule.id) ?? [], rule)]),
+  );
   const reportFor =
     (rule: BoundaryRule) =>
     (violation: Violation): void => {
@@ -117,8 +128,13 @@ export const runRuleSet = async (
 
   for (const rule of rules) {
     if (rule.onProgram === undefined) continue;
-    const ruleFiles = filesByRule.get(rule.id) ?? [];
-    await Promise.resolve(rule.onProgram(programContext(root, ruleFiles, cache, reportFor(rule))));
+    const reportableFiles = scopedFilesByRule.get(rule.id) ?? [];
+    const ruleFiles = rule.carveOuts.reportOnly ? reportableFiles : (filesByRule.get(rule.id) ?? []);
+    await Promise.resolve(
+      rule.onProgram(
+        programContext({ root, files: ruleFiles, reportableFiles, rule, cache, report: reportFor(rule) }),
+      ),
+    );
   }
 
   lastRunCacheStats = cache.counters();

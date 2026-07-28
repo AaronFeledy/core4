@@ -12,8 +12,6 @@ import {
 } from "./probe-bindings.ts";
 import { scanProbeSource } from "./probe-scan.ts";
 
-const CARVE_OUTS = new Set(["core/src/state/lock.ts"]);
-
 const resolveTypeScriptModulePath = (
   fromFile: string,
   moduleSpecifier: string,
@@ -58,7 +56,6 @@ const onProgram = async (context: ProgramContext): Promise<void> => {
   const sources = new Map(sourceEntries);
   const moduleBindings = computeModuleBindings(context.files, sources);
   for (const file of context.files) {
-    if (CARVE_OUTS.has(file.relativePath)) continue;
     const source = sources.get(file.absolutePath);
     if (source === undefined) continue;
     const bindings = moduleBindings.get(file.absolutePath) ?? emptyModuleProbeBindings();
@@ -75,8 +72,7 @@ export const probeRule = {
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  // Kept in the program for relative re-export analysis, then skipped by onProgram.
-  carveOuts: { files: [], prefixes: [] },
+  carveOuts: { files: ["core/src/state/lock.ts"], prefixes: [], reportOnly: true },
   passMessage: "Probe boundary check passed.",
   failureHeadline:
     "Probe boundary check failed. Host/provider-shaped retry/backoff/timeout-to-verdict probing must build on @lando/sdk/probe (runProbe), not hand-rolled Effect.retry/repeat/schedule or Schedule loops.",

@@ -1,6 +1,6 @@
 import ts from "typescript";
 
-import { type ModuleEdge, scanModuleEdges } from "../module-edge-scan.ts";
+import { type ModuleEdge, scanModuleEdgesFromSource } from "../module-edge-scan.ts";
 import type { FileRecord } from "./types.ts";
 
 export interface SourceCacheCounters {
@@ -34,7 +34,13 @@ export class SourceCache {
     }
     const pending = this.text(file).then((text) => {
       this.#parseCount += 1;
-      return ts.createSourceFile(file.absolutePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+      return ts.createSourceFile(
+        file.absolutePath,
+        text,
+        ts.ScriptTarget.Latest,
+        true,
+        file.absolutePath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+      );
     });
     this.#sources.set(file.absolutePath, pending);
     return pending;
@@ -46,7 +52,7 @@ export class SourceCache {
       this.#cacheHitCount += 1;
       return cached;
     }
-    const pending = this.text(file).then((text) => scanModuleEdges(file.absolutePath, text));
+    const pending = this.sourceFile(file).then(scanModuleEdgesFromSource);
     this.#edges.set(file.absolutePath, pending);
     return pending;
   }

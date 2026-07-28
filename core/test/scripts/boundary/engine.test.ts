@@ -113,6 +113,45 @@ describe("boundary engine", () => {
     expect(getLastRunCacheStats()).toMatchObject({ parseCount: 1 });
   });
 
+  test("parses a shared file exactly once when node and edge rules consume it", async () => {
+    // Given
+    await write("core/src/shared.ts", 'import "@lando/sdk";\nexport const shared = true;\n');
+    const consumers: string[] = [];
+    const nodeRule = makeRule({
+      id: "node",
+      scope: sourceScope(),
+      onNode: (node) => {
+        if (ts.isSourceFile(node)) consumers.push("node");
+      },
+    });
+    const edgeRule = makeRule({
+      id: "edge",
+      scope: sourceScope(),
+      onEdges: (edges) => consumers.push(`edges:${edges.length}`),
+    });
+
+    // When
+    await runRuleSet([nodeRule, edgeRule], root);
+
+    // Then
+    expect({ consumers, parseCount: getLastRunCacheStats().parseCount }).toEqual({
+      consumers: ["node", "edges:1"],
+      parseCount: 1,
+    });
+  });
+
+  test("counts the parse performed for an edges-only run", async () => {
+    // Given
+    await write("core/src/edges-only.ts", 'import "@lando/sdk";\n');
+    const rule = makeRule({ id: "edge", scope: sourceScope(), onEdges: () => {} });
+
+    // When
+    await runRuleSet([rule], root);
+
+    // Then
+    expect(getLastRunCacheStats()).toMatchObject({ parseCount: 1 });
+  });
+
   test("passes shared module-edge scan output to edge rules", async () => {
     // Given
     await write(
@@ -166,6 +205,50 @@ describe("boundary engine", () => {
     // Then
     expect(exportedName).toBe("programValue");
     expect(getLastRunCacheStats().parseCount).toBe(1);
+  });
+
+  test("keeps report-only carve-outs visible to program analysis while suppressing their reports", async () => {
+    // Given
+    await Promise.all([write("core/src/carved.ts"), write("core/src/kept.ts")]);
+    const analyzed: string[] = [];
+    const rule = makeRule({
+      id: "program-carve-fixture",
+      scope: sourceScope(),
+      carveOuts: {
+        files: ["core/src/carved.ts"],
+        prefixes: [],
+        reportOnly: true,
+      },
+      onProgram: (context) => {
+        analyzed.push(...context.files.map((file) => file.relativePath));
+        context.report("core/src/carved.ts", 1, "suppressed");
+      },
+    });
+
+    // When
+    const results = await runRuleSet([rule], root);
+
+    // Then
+    expect({ analyzed, violations: results.get(rule.id)?.violations }).toEqual({
+      analyzed: ["core/src/carved.ts", "core/src/kept.ts"],
+      violations: [],
+    });
+  });
+
+  test("rejects a program rule report outside its scope", async () => {
+    // Given
+    await Promise.all([write("core/src/scoped.ts"), write("sdk/src/outside.ts")]);
+    const rule = makeRule({
+      id: "program-scope-fixture",
+      scope: sourceScope(),
+      onProgram: (context) => context.report("sdk/src/outside.ts", 1, "invalid report"),
+    });
+
+    // When
+    const run = runRuleSet([rule], root);
+
+    // Then
+    await expect(run).rejects.toThrow("File is outside this rule's program scope: sdk/src/outside.ts");
   });
 });
 
