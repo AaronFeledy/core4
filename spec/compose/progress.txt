@@ -800,3 +800,11 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - A loop gate keyed to monotonic absolute counters (cycle mentions in this log, commits since merge-base) can never un-fire once crossed, and if the escalation path appends to the same log it counts, the gate feeds itself. Gate on deltas since the last audit, and never count adjudication/record-keeping entries as build/review cycles.
   - An adjudication that rules a marker non-blocking must leave a machine-checkable suppression record; a verdict recorded only as prose invites the next mechanical escalation to re-litigate it.
 ---
+
+## [2026-07-28 14:36 CDT] - Babysit
+- PR: #644 https://github.com/AaronFeledy/core4/pull/644
+- CI outcome: pass
+- Review feedback: fixed (realize long-form tmpfs; route live fixtures through Compose planning; restore HostConfig.Binds/:ro proof)
+- Drift check: fixes pushed (restored live bind realization assertions dropped in triage)
+- Merge: merged (squash)
+---
