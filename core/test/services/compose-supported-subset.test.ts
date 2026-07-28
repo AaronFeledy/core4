@@ -68,7 +68,8 @@ const probeYaml = [
   "      - source: test_secret",
   "        target: /volumes/test_secret.txt",
   "    profiles: [dev]",
-  "    x-custom: { any: value }",
+  "    x-custom:",
+  "      any: value",
   "",
 ].join("\n");
 
@@ -101,7 +102,8 @@ describe("Compose supported service subset", () => {
     { key: "configs", yaml: ["    configs: [test_config]"] },
     { key: "secrets", yaml: ["    secrets: [test_secret]"] },
     { key: "profiles", yaml: ["    profiles: [dev]"] },
-    { key: "x-custom", yaml: ["    x-custom: { any: value }"] },
+    { key: "labels", yaml: ["    labels: [io.lando.role=appserver]"] },
+    { key: "x-custom", yaml: ["    x-custom:", "      any: value"] },
   ] as const)("requires native composeSpec for $key", async ({ key, yaml }) => {
     await withTempDir(async (dir) => {
       // Given

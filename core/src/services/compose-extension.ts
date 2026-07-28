@@ -1,6 +1,6 @@
 import type { ProviderCapabilities, ServiceConfig, ServicePlan } from "@lando/sdk/schema";
 
-const COMPOSE_NATIVE_SERVICE_FIELDS = ["networks", "configs", "secrets", "profiles"] as const;
+const COMPOSE_NATIVE_SERVICE_FIELDS = ["networks", "configs", "secrets", "profiles", "labels"] as const;
 
 export interface ComposeNativeFieldUse {
   readonly service: string;
