@@ -26,6 +26,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
 - Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:guide-coverage`, `check:guide-drift`, `check:import-cycle`, `check:managed-file-boundary`, `check:package-dag`, `check:probe-boundary`, `check:public-transcripts`, `check:redaction-boundary`, `check:renderer-boundary`, `check:state-store-boundary`, `check:telemetry-inventory`, or `lint:guides`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
+- That path is a filter, not a path: a stale or misspelled one prints `did not match any test files` and still exits 0, so scripted spot-check loops must fail on that message or they will report missing tests as passing.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
 
