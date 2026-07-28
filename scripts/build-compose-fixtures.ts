@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
+import { buildComposeFixtureManifest } from "./build-compose-fixture-manifest.ts";
 import {
   type ComposeFixtureEntry,
   type ComposeFixtureSource,
@@ -14,6 +15,16 @@ const REPO_ROOT = resolve(import.meta.dirname, "..");
 const FIXTURES_ROOT = resolve(REPO_ROOT, "core/test/fixtures/compose");
 const PIN_PATH = resolve(FIXTURES_ROOT, "pin.json");
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/u;
+
+export interface ComposeFixtureMaintenance {
+  readonly fixturesRoot: string;
+  readonly pinPath: string;
+  readonly fetchFixtures: (
+    ref: string,
+    entries: ReadonlyArray<ComposeFixtureEntry>,
+  ) => Promise<ReadonlyArray<ComposeFixtureSource>>;
+  readonly regenerateManifest: () => Promise<void>;
+}
 
 export class ComposeFixtureFetchError extends Error {
   readonly sourceUrl: string;
@@ -84,17 +95,27 @@ const fetchComposeFixtures = async (
     }),
   );
 
-const writeComposeFixtures = async (files: ReadonlyArray<ComposeFixtureSource>): Promise<void> => {
+const writeComposeFixtures = async (
+  fixturesRoot: string,
+  files: ReadonlyArray<ComposeFixtureSource>,
+): Promise<void> => {
   for (const file of files) {
-    const destination = resolve(FIXTURES_ROOT, file.vendored);
+    const destination = resolve(fixturesRoot, file.vendored);
     await mkdir(dirname(destination), { recursive: true });
     await Bun.write(destination, file.bytes);
   }
 };
 
-export const refreshComposeFixtures = async (): Promise<void> => {
-  const pin = await readComposeFixturePin(PIN_PATH);
-  const files = await fetchComposeFixtures(pin.ref, pin.files);
+const DEFAULT_MAINTENANCE = {
+  fixturesRoot: FIXTURES_ROOT,
+  pinPath: PIN_PATH,
+  fetchFixtures: fetchComposeFixtures,
+  regenerateManifest: buildComposeFixtureManifest,
+} satisfies ComposeFixtureMaintenance;
+
+export const refreshComposeFixtures = async (maintenance: ComposeFixtureMaintenance): Promise<void> => {
+  const pin = await readComposeFixturePin(maintenance.pinPath);
+  const files = await maintenance.fetchFixtures(pin.ref, pin.files);
   for (const [index, file] of files.entries()) {
     const pinned = pin.files[index];
     if (pinned === undefined || sha256Hex(file.bytes) !== pinned.sha256) {
@@ -102,17 +123,22 @@ export const refreshComposeFixtures = async (): Promise<void> => {
     }
   }
 
-  await writeComposeFixtures(files);
+  await writeComposeFixtures(maintenance.fixturesRoot, files);
+  await maintenance.regenerateManifest();
   process.stdout.write(`[build-compose-fixtures] wrote ${files.length} pinned files (${pin.ref})\n`);
 };
 
-export const bumpComposeFixtures = async (ref: string): Promise<void> => {
-  const currentPin = await readComposeFixturePin(PIN_PATH);
-  const files = await fetchComposeFixtures(ref, currentPin.files);
+export const bumpComposeFixtures = async (
+  ref: string,
+  maintenance: ComposeFixtureMaintenance,
+): Promise<void> => {
+  const currentPin = await readComposeFixturePin(maintenance.pinPath);
+  const files = await maintenance.fetchFixtures(ref, currentPin.files);
   const pin = buildComposeFixturePin(ref, files);
 
-  await writeComposeFixtures(files);
-  await Bun.write(PIN_PATH, `${JSON.stringify(pin, null, 2)}\n`);
+  await writeComposeFixtures(maintenance.fixturesRoot, files);
+  await Bun.write(maintenance.pinPath, `${JSON.stringify(pin, null, 2)}\n`);
+  await maintenance.regenerateManifest();
   process.stdout.write(`[build-compose-fixtures] bumped ${files.length} pinned files to ${ref}\n`);
 };
 
@@ -121,10 +147,10 @@ if (import.meta.main) {
   const args = parseComposeFixtureArgs(Bun.argv.slice(2));
   switch (args.mode) {
     case "bump":
-      await bumpComposeFixtures(args.ref);
+      await bumpComposeFixtures(args.ref, DEFAULT_MAINTENANCE);
       break;
     case "verify":
-      await refreshComposeFixtures();
+      await refreshComposeFixtures(DEFAULT_MAINTENANCE);
       break;
     default: {
       const unhandled: never = args;
