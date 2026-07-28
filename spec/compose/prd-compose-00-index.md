@@ -14,7 +14,7 @@ The current shipped surface falls short of the vocabulary in three ways:
 
 This set fixes all three with four PRDs: an **alignment substrate** (vendored pinned schema + disposition matrix + `check:compose-coverage` + automated bump), the **vocabulary normalizations** (Compose spellings, short/long forms, `build:` shape discrimination, `depends_on` conditions into orchestration), the **runtime-knob tier** (schema shapes → `extensions.compose` → capability check → Podman realization), and the **rejection + conformance surface** (tagged rejections with remediation, fixture-driven conformance, published docs matrix, guide coverage).
 
-This PRD set picks up at **US-466** (Beta 1 ended at US-465) and runs through **US-477**.
+This PRD set picks up at **US-466** (Beta 1 ended at US-465) and runs through **US-482**.
 
 ## Source References
 
@@ -45,7 +45,7 @@ This PRD set picks up at **US-466** (Beta 1 ended at US-465) and runs through **
 | 01 | [Spec-alignment substrate](./prd-compose-01-alignment-substrate.md) | vendored pinned compose-go schema + committed disposition matrix + `check:compose-coverage` gate, automated upstream-bump workflow | US-466..US-467 | — |
 | 02 | [Service-key vocabulary normalization](./prd-compose-02-service-vocabulary.md) | Compose spellings + alternate forms, `ports`/`expose`/`volumes` long syntax, Compose `healthcheck` shape, `build:` shape discrimination, `depends_on` conditions in orchestration | US-468..US-472 | PRD-01 (matrix classifies the keys) |
 | 03 | [Per-container runtime knobs](./prd-compose-03-runtime-knobs.md) | knob-tier schema shapes + preserve + capability planning path, Podman realization | US-473..US-474 | PRD-01; PRD-02 (US-469 tmpfs routing) |
-| 04 | [Rejection surface & conformance](./prd-compose-04-rejection-and-conformance.md) | tagged rejections + remediation (incl. `kind: compose` fragments and YAML override tags), conformance fixtures, closeout: published docs matrix + executable guide + SDK snapshot reconciliation | US-475..US-477 | PRD-01..03 |
+| 04 | [Rejection surface & conformance](./prd-compose-04-rejection-and-conformance.md) | tagged rejections + remediation (incl. `kind: compose` fragments and YAML override tags), conformance fixtures, native-field prerequisite, closeout: published docs matrix + executable guide + SDK snapshot reconciliation | US-475..US-482 | PRD-01..03 |
 
 ## Verification contract
 

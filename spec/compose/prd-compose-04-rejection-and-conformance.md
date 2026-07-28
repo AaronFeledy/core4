@@ -42,11 +42,29 @@ The vocabulary promise is only honest if the boundary is sharp on both sides: ev
 
 **Acceptance Criteria:**
 
-- [ ] Service-level fixtures vendored from `compose-spec/conformance-tests` (plus a curated real-world corpus: the `depends_on`-condition, long-form-ports/volumes, list-env, Compose-healthcheck patterns from the PRD-02 success metric) live under `core/test/fixtures/compose/`.
+- [ ] Service-level fixtures vendored from `compose-spec/conformance-tests` (plus a curated real-world corpus: the `depends_on`-condition, long-form-ports/volumes, list-env, Compose-healthcheck patterns from the PRD-02 success metric) live under `core/test/fixtures/compose/`. Fixture selection is limited to normalized and preserved production behavior implemented before US-476; discovering a missing production contract creates a binding prerequisite story and MUST NOT add that behavior inside the fixture story.
 - [ ] A loader-level suite decodes each fixture's service blocks in a Landofile context and asserts per-key outcomes against the disposition matrix: `normalized` keys produce their plan fields, `preserved` keys round-trip through `extensions.compose`, `rejected` keys produce `ComposeKeyRejectedError`.
 - [ ] The skip-list is computed: a fixture may be skipped only if the walker finds a rejected-disposition key in it; a stale skip entry (fixture no longer uses rejected keys) fails the suite.
 - [ ] Fixture refresh is a codegen script with a pin (same pattern as US-466), offline at test time.
 - [ ] Provider-level spot checks for a small fixture subset run in the env-gated Podman integration suite.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-482: Native Compose service fields are honest end to end
+
+**Description:** As a user authoring supported Compose-native service fields, `networks`, `configs`, `secrets`, `profiles`, and service-level `x-*` values are accepted and preserved only when the selected provider can realize their documented semantics or rejects them before provider action.
+
+**Acceptance Criteria:**
+
+- [ ] The published `ServiceConfigInput` and canonical `ServiceConfig` schemas accept the vendored short and long forms of service-level `networks`, `configs`, `secrets`, `profiles`, and `x-*`; schema annotations state whether each field is active or preserved-inert, and no annotation promises profile activation before it exists.
+- [ ] Planning preserves every accepted value losslessly under `ServicePlan.extensions.compose`, including nested `x-*`, without overwriting labels or other extension data contributed earlier in service composition.
+- [ ] Capability validation is fail-closed before provider action. A provider may accept one of these fields only when it realizes that field's documented semantics; coarse `composeSpec: native` MUST NOT silently bless an ignored field. The capability/declaration contract is refined if the existing tier cannot express truthful partial support.
+- [ ] The bundled provider either realizes service network attachments, config mounts, secret mounts, profile behavior, and declared extension semantics, or explicitly rejects each unsupported field during planning with `CapabilityError` naming the service, field, and provider. No accepted field is silently dropped.
+- [ ] The upstream `different_networks`, `simple_network`, `simple_configfile`, and `simple_secretfile` fixtures move into this story with loader-level literal expectations and provider-level realization-or-rejection assertions; service `profiles` and `x-*` receive equivalent curated fixtures.
+- [ ] Planner cache semantics and binary fixtures are revised only after the final preserved plan shape is fixed; cache-hit capability checks cannot bypass the same fail-closed decision as cache misses.
+- [ ] `sdk/API_COMPATIBILITY.md`, compatibility exceptions, generated schema artifacts, and generated schema reference pages are updated together. Internal field maps or base structs are not exported unless an SDK consumer contract requires them.
+- [ ] Focused SDK schema, loader, planner, cache, provider contract, and env-gated provider integration tests cover accepted and rejected paths.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes

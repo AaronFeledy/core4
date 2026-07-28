@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Compose Service-Key Vocabulary (post-freeze feature wave, 4.1 target)",
   "branchName": "ralph/compose",
-  "description": "Makes the amended spec sections 6.2, 7.4, and 5.5.1 true: Compose compatibility as a service-key vocabulary, not a file-format promise. US-466..US-467 (PRD-01) build the alignment substrate: the Compose JSON Schema vendored from a tagged compose-spec/compose-go release and pinned by checksum, the committed key-disposition matrix (normalized | preserved | rejected) with the check:compose-coverage gate that fails CI on any unclassified upstream key path, and the automated upstream-bump workflow. US-468..US-472 (PRD-02) land the vocabulary normalizations: Compose spellings and alternate forms (depends_on incl. condition map, working_dir, env_file, list environment, labels), ports/expose and volumes long syntax with mounts/storage/tmpfs classification, the Compose healthcheck shape, build: shape discrimination replacing composeBuild (pre-release gut-and-replace), and depends_on conditions driving section 6.13 orchestration. US-473..US-474 (PRD-03) land the per-container runtime-knob tier: schema shapes for the section 6.2 knob list with lossless preservation into ServicePlan.extensions.compose and the section 5.5.1 capability check with tagged CapabilityError, then Podman realization of the common knobs. US-475..US-477 (PRD-04) land the rejection surface (one tagged error shape with matrix-sourced remediation, covering extends, container_name, network_mode, links, Swarm deploy orchestration keys, and !reset/!override YAML tags, in Landofiles and kind: compose fragments alike), the fixture-driven conformance suite with a matrix-derived skip-list, and the closeout story: generated docs key matrix, executable guide, and SDK snapshot/API-compatibility reconciliation. US-478..US-479 bind parser-capability and unified tooling-include work split out during the US-475 audit instead of leaving those deferred contracts only in progress prose. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
+  "description": "Makes the amended spec sections 6.2, 7.4, and 5.5.1 true: Compose compatibility as a service-key vocabulary, not a file-format promise. US-466..US-467 (PRD-01) build the alignment substrate: the Compose JSON Schema vendored from a tagged compose-spec/compose-go release and pinned by checksum, the committed key-disposition matrix (normalized | preserved | rejected) with the check:compose-coverage gate that fails CI on any unclassified upstream key path, and the automated upstream-bump workflow. US-468..US-472 (PRD-02) land the vocabulary normalizations: Compose spellings and alternate forms (depends_on incl. condition map, working_dir, env_file, list environment, labels), ports/expose and volumes long syntax with mounts/storage/tmpfs classification, the Compose healthcheck shape, build: shape discrimination replacing composeBuild (pre-release gut-and-replace), and depends_on conditions driving section 6.13 orchestration. US-473..US-474 (PRD-03) land the per-container runtime-knob tier: schema shapes for the section 6.2 knob list with lossless preservation into ServicePlan.extensions.compose and the section 5.5.1 capability check with tagged CapabilityError, then Podman realization of the common knobs. US-475..US-482 (PRD-04) land the rejection surface, fixture-driven conformance, the binding native-field prerequisite, parser/tooling follow-ups, and the closeout story: generated docs key matrix, executable guide, and SDK snapshot/API-compatibility reconciliation. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
   "userStories": [
     {
       "id": "US-466",
@@ -198,7 +198,7 @@
       "title": "Conformance fixture suite",
       "description": "As a core maintainer, the vocabulary is proven against upstream Compose fixture material on every CI run, and the skip-list cannot quietly hide unsupported-but-classified-supported behavior.",
       "acceptanceCriteria": [
-        "Service-level fixtures vendored from compose-spec/conformance-tests plus a curated real-world corpus (depends_on-condition, long-form ports/volumes, list-env, Compose-healthcheck patterns) live under core/test/fixtures/compose/ with a pinned refresh script (US-466 pattern), offline at test time.",
+        "Service-level fixtures vendored from compose-spec/conformance-tests plus a curated real-world corpus (depends_on-condition, long-form ports/volumes, list-env, Compose-healthcheck patterns) live under core/test/fixtures/compose/ with a pinned refresh script (US-466 pattern), offline at test time. Fixture selection is limited to normalized and preserved production behavior implemented before US-476; discovering a missing production contract creates a binding prerequisite story and MUST NOT add that behavior inside the fixture story.",
         "A loader-level suite decodes each fixture's service blocks in a Landofile context and asserts per-key outcomes against the disposition matrix: normalized keys produce plan fields, preserved keys round-trip through extensions.compose, rejected keys produce ComposeKeyRejectedError.",
         "The skip-list is computed: a fixture may be skipped only if it uses a rejected-disposition key; a stale skip entry fails the suite.",
         "Provider-level spot checks for a small fixture subset run in the env-gated Podman integration suite.",
@@ -207,8 +207,29 @@
         "Lint passes"
       ],
       "priority": 11,
-      "passes": true,
-      "notes": "Origin: the 'most compose parses' goal made measurable. Blocked by US-466 (matrix drives assertions and skip-list) and the PRD-02/03 normalization stories."
+      "passes": false,
+      "notes": "Origin: the 'most compose parses' goal made measurable. Scope narrowed after Drift Audit: US-476 proves only production behavior implemented before the fixture story. Service networks/configs/secrets/profiles/x-* moved to binding prerequisite US-482. US-476 remains false pending fresh Build verification of the narrowed contract; it does not absorb or depend on US-482 implementation."
+    },
+    {
+      "id": "US-482",
+      "title": "Native Compose service fields are honest end to end",
+      "description": "As a user authoring supported Compose-native service fields, networks, configs, secrets, profiles, and service-level x-* values are accepted and preserved only when the selected provider can realize their documented semantics or rejects them before provider action.",
+      "acceptanceCriteria": [
+        "The published ServiceConfigInput and canonical ServiceConfig schemas accept the vendored short and long forms of service-level networks, configs, secrets, profiles, and x-*; schema annotations state whether each field is active or preserved-inert, and no annotation promises profile activation before it exists.",
+        "Planning preserves every accepted value losslessly under ServicePlan.extensions.compose, including nested x-*, without overwriting labels or other extension data contributed earlier in service composition.",
+        "Capability validation is fail-closed before provider action. A provider may accept one of these fields only when it realizes that field's documented semantics; coarse composeSpec: native MUST NOT silently bless an ignored field. The capability/declaration contract is refined if the existing tier cannot express truthful partial support.",
+        "The bundled provider either realizes service network attachments, config mounts, secret mounts, profile behavior, and declared extension semantics, or explicitly rejects each unsupported field during planning with CapabilityError naming the service, field, and provider. No accepted field is silently dropped.",
+        "The upstream different_networks, simple_network, simple_configfile, and simple_secretfile fixtures move into this story with loader-level literal expectations and provider-level realization-or-rejection assertions; service profiles and x-* receive equivalent curated fixtures.",
+        "Planner cache semantics and binary fixtures are revised only after the final preserved plan shape is fixed; cache-hit capability checks cannot bypass the same fail-closed decision as cache misses.",
+        "sdk/API_COMPATIBILITY.md, compatibility exceptions, generated schema artifacts, and generated schema reference pages are updated together. Internal field maps or base structs are not exported unless an SDK consumer contract requires them.",
+        "Focused SDK schema, loader, planner, cache, provider contract, and env-gated provider integration tests cover accepted and rejected paths.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Binding prerequisite split from US-476 after real fixtures exposed a pre-existing spec 6.2 preservation gap. Must land before US-476 can pass and before US-477 closes the wave; provider realization or explicit fail-closed rejection is mandatory."
     },
     {
       "id": "US-477",
@@ -228,9 +249,9 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
-      "notes": "Origin: spec 7.4 docs-matrix mandate (generated from the disposition matrix) + sdk/AGENTS.md additive-surface rules; closes the wave. Blocked by every prior story in the set. Merged from former US-480 + US-481."
+      "notes": "Origin: spec 7.4 docs-matrix mandate (generated from the disposition matrix) + sdk/AGENTS.md additive-surface rules; closes the wave. Blocked by every prior story in the set. Consolidates the former docs-matrix and SDK-reconciliation closeout stories."
     },
     {
       "id": "US-478",
@@ -246,7 +267,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": "Split from US-475's original bundled YAML-support criterion during its Drift Audit; this is parser capability, not a Compose disposition."
     },
@@ -263,7 +284,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": "Materializes the unified tooling include-kind follow-up identified during US-475 spec reconciliation; blocked by the existing spec 8.5.8 toolingIncludes contract."
     }
