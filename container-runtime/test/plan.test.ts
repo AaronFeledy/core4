@@ -24,6 +24,14 @@ const service = {
   command: "echo hi",
   entrypoint: "docker-entrypoint.sh",
   workingDirectory: "/app",
+  healthcheck: {
+    kind: "command",
+    command: "curl --fail http://localhost:8080/health || exit 1",
+    intervalSeconds: 30,
+    timeoutSeconds: 5,
+    retries: 3,
+    startPeriodSeconds: 10,
+  },
   endpoints: [
     {
       _tag: "published",
@@ -178,6 +186,13 @@ describe("container plan helpers", () => {
       Cmd: ["sh", "-lc", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
       WorkingDir: "/app",
+      Healthcheck: {
+        Test: ["CMD-SHELL", "curl --fail http://localhost:8080/health || exit 1"],
+        Interval: 30_000_000_000,
+        Timeout: 5_000_000_000,
+        Retries: 3,
+        StartPeriod: 10_000_000_000,
+      },
       Labels: { "dev.lando.app": "app-id", "dev.lando.service": "web" },
       HostConfig: {
         PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },

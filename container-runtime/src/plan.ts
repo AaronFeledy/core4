@@ -41,6 +41,32 @@ export const normalizeEntrypoint = (
   return [...entrypoint];
 };
 
+const containerHealthcheck = (
+  healthcheck: ServicePlan["healthcheck"],
+): Record<string, unknown> | undefined => {
+  if (healthcheck === undefined) return undefined;
+  switch (healthcheck.kind) {
+    case "none":
+      return { Test: ["NONE"] };
+    case "command": {
+      const command = healthcheck.command;
+      if (command === undefined) return undefined;
+      return {
+        Test: typeof command === "string" ? ["CMD-SHELL", command] : ["CMD", ...command],
+        Interval: healthcheck.intervalSeconds * 1_000_000_000,
+        Timeout: healthcheck.timeoutSeconds * 1_000_000_000,
+        Retries: healthcheck.retries,
+        ...(healthcheck.startPeriodSeconds === undefined
+          ? {}
+          : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
+      };
+    }
+    case "http":
+    case "tcp":
+      return undefined;
+  }
+};
+
 export const commonContainerLabels = (
   plan: AppPlan,
   service: ServicePlan,
@@ -219,6 +245,7 @@ export const containerCreateBodyFragment = (
   if (artifact?.kind !== "ref") {
     return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
+  const healthcheck = containerHealthcheck(service.healthcheck);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
@@ -227,6 +254,7 @@ export const containerCreateBodyFragment = (
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
+    ...(healthcheck === undefined ? {} : { Healthcheck: healthcheck }),
     Labels: options.labels ?? commonContainerLabels(plan, service),
     HostConfig: options.hostConfig ?? containerHostConfigFragment(plan, service),
     ...(options.networkingConfig === undefined ? {} : { NetworkingConfig: options.networkingConfig }),
