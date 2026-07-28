@@ -605,3 +605,13 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Landofile source dispatch for manual CLI checks must go through core/bin/lando.ts; running core/src/cli/index.ts directly produces no output and silently exits 0, which reads like a passing command.
   - Upstream compose-spec/conformance-tests publishes no tags, so its pin is a commit SHA with per-file checksums rather than the tag-plus-single-checksum shape used for the vendored schema.
 ---
+
+## 2026-07-27 22:27 CDT - US-476 Review
+- Closed the review blockers: conformance anti-hiding now covers every normalized or preserved matrix path rather than roots only; fixture pins reject non-canonical source and vendored path aliases before filesystem resolution; and the populated flow-object parser capability was excised because the prior US-475 Drift Audit explicitly assigned it to the parser-capability follow-up and no US-476 fixture needs it.
+- Guide-Coverage-Skip: US-476 adds internal fixture conformance and CI coverage; the executable Compose guide and published matrix are explicitly owned by US-477.
+- Review notes (deferred/rejected): restricting the offline manifest generator's trusted explicit output path to its fixture root was rejected as defensive hardening outside the script contract; its only production caller supplies the committed in-root manifest path.
+- Review notes (deferred/rejected): the vendored upstream LICENSE trailing blank line was preserved because fixture bytes are checksum-pinned upstream material, not locally formatted source.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable before and after fixes because the configured account was out of usage; two specialized security lanes were tool-blocked, while a direct fixture-integrity review produced the canonical-path defect fixed above and the rejected output-path suggestion.
+- Verification: typecheck and lint passed; 100 focused conformance, fixture-maintenance, supported-subset, parser, disposition, and generated-CI tests passed with 1,011 assertions; Compose coverage, import-cycle, package-DAG, manifest idempotence, changed-file diagnostics, and explicit-base guide drift with the skip above passed. Env-gated provider execution remained structurally reviewed rather than run on the host.
+- **Learnings for future iterations:** Anti-hiding checks must compare every classified path, not only roots; pin uniqueness must be enforced on canonical portable paths because distinct raw spellings can resolve to one filesystem destination.
+---
