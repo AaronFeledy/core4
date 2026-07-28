@@ -31,6 +31,8 @@ const deprecationNoticeReferencePath = resolve(repoRoot, "docs/reference/schemas
 const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
   resolve(repoRoot, "dist/schemas", schemaArtifactFilename(schemaName));
 
+const DESCRIBED = "A described field used to prove annotation resolution.";
+
 // The generator is deterministic, and the CI `schema-snapshot` job already
 // proves the committed outputs are current (regenerate + `git diff
 // --exit-code`). Running it once per test file is enough for the artifact
@@ -468,6 +470,70 @@ describe("schema snapshot artifact-set gate", () => {
 
     expect(() => assertPublicSchemaAnnotations({ MissingFieldDescription })).toThrow(
       /MissingFieldDescription\.id: Missing field description annotation/,
+    );
+  });
+
+  test("schema annotation gate accepts a description carried on an encoded transform", () => {
+    const EncodedTransformDescription = Schema.Struct({
+      names: Schema.optional(
+        Schema.transform(
+          Schema.Array(Schema.String).annotations({ description: DESCRIBED }),
+          Schema.Array(Schema.String),
+          {
+            strict: true,
+            decode: (entries) => entries,
+            encode: (entries) => entries,
+          },
+        ),
+      ),
+    });
+
+    const encoded = Schema.encodedBoundSchema(EncodedTransformDescription).annotations({
+      identifier: "EncodedTransformDescription",
+      title: "Encoded Transform Description",
+      description: "A schema used to prove encoded transform descriptions are recognized.",
+    });
+
+    expect(
+      validatePublicSchemaAnnotations({ EncodedTransformDescription: encoded }, { fields: new Set() }),
+    ).toEqual([]);
+  });
+
+  test("schema annotation gate names an encoded transform field whose description was removed", () => {
+    const UndescribedTransform = Schema.Struct({
+      names: Schema.optional(
+        Schema.transform(Schema.Array(Schema.String), Schema.Array(Schema.String), {
+          strict: true,
+          decode: (entries) => entries,
+          encode: (entries) => entries,
+        }),
+      ),
+    });
+
+    const encoded = Schema.encodedBoundSchema(UndescribedTransform).annotations({
+      identifier: "UndescribedTransform",
+      title: "Undescribed Transform",
+      description: "A schema used to prove removed transform descriptions still fail.",
+    });
+
+    expect(() =>
+      assertPublicSchemaAnnotations({ UndescribedTransform: encoded }, { fields: new Set() }),
+    ).toThrow(/UndescribedTransform\.names: Missing field description annotation/);
+  });
+
+  test("schema annotation gate rejects a partially described multi-variant union", () => {
+    const PartiallyDescribedUnion = Schema.Struct({
+      value: Schema.optional(
+        Schema.Union(Schema.String.annotations({ description: DESCRIBED }), Schema.Number),
+      ),
+    }).annotations({
+      identifier: "PartiallyDescribedUnion",
+      title: "Partially Described Union",
+      description: "A schema used to prove one documented variant does not document the field.",
+    });
+
+    expect(() => assertPublicSchemaAnnotations({ PartiallyDescribedUnion }, { fields: new Set() })).toThrow(
+      /PartiallyDescribedUnion\.value: Missing field description annotation/,
     );
   });
 

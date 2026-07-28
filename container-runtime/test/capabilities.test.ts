@@ -49,4 +49,31 @@ describe("container runtime capability helpers", () => {
     expect(capabilities.composeKnobs).toEqual(composeKnobs);
     expect(Schema.decodeSync(ProviderCapabilities)(capabilities)).toEqual(capabilities);
   });
+
+  test("leaves composeServiceFields absent when the constant is omitted", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "portable",
+      providerExtensions: [],
+    });
+
+    expect(Object.hasOwn(capabilities, "composeServiceFields")).toBe(false);
+  });
+
+  test("passes an explicit composeServiceFields declaration through unchanged", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "portable",
+      composeServiceFields: { supported: ["labels"] },
+      providerExtensions: [],
+    });
+
+    expect(capabilities.composeServiceFields).toEqual({ supported: ["labels"] });
+  });
 });

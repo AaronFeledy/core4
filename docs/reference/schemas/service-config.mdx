@@ -57,6 +57,10 @@ Public Lando schema contract for Service Config.
 | `ports` | No | `array` | Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints. | — | — | — | — |
 | `expose` | No | `array` | Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints. | — | — | — | — |
 | `volumes` | No | `array` | Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob. | — | — | — | — |
+| `networks` | No | `array`, `object` | Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation. | — | — | — | — |
+| `configs` | No | `array` | Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation. | — | — | — | — |
+| `secrets` | No | `array` | Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation. | — | — | — | — |
+| `profiles` | No | `array` | Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation. | — | — | — | — |
 | `appMount` | No | `boolean`, `object` | — | — | `false` | — | — |
 | `mounts` | No | `array` | — | — | — | — | — |
 | `storage` | No | `array` | — | — | — | — | — |
@@ -67,3 +71,9 @@ Public Lando schema contract for Service Config.
 | `hostnames` | No | `array` | — | — | — | — | — |
 | `dependsOn` | No | `array`, `object` | — | — | — | — | — |
 | `providers` | No | `object` | — | — | — | — | — |
+
+## Schema details
+
+| Keys | Values |
+| --- | --- |
+| patterned `string` | `unknown` |

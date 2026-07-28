@@ -78,6 +78,7 @@ import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
 import { collectComposeKnobs, findUnsupportedComposeKnob, mergeComposeKnobs } from "./compose-knobs.ts";
+import { collectComposeServiceFields, findUnsupportedComposeServiceField } from "./compose-service-fields.ts";
 import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
@@ -252,6 +253,26 @@ const assertComposeKnobsSupported = (
       capability: "composeSpec",
       providerId: String(providerId),
       remediation: `Remove ${unsupported.key} from service ${unsupported.service}, choose a provider that declares composeKnobs support for ${unsupported.key}, or move the intent under providers.<id>.`,
+    }),
+  );
+};
+
+const assertComposeServiceFieldsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: AppPlan["services"],
+): Effect.Effect<void, CapabilityError> => {
+  const use = findUnsupportedComposeServiceField(collectComposeServiceFields(services), capabilities);
+  if (use === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `Service ${use.service} uses Compose service field ${use.key}, which provider ${String(providerId)} does not support.`,
+      service: use.service,
+      key: use.key,
+      feature: `compose service field ${use.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composeServiceFields support for ${use.family}, or move provider-specific intent under providers.<id>.`,
     }),
   );
 };
@@ -794,7 +815,17 @@ const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig)
   const startInterval = service.healthcheck?.startInterval;
   const hasDependencyRestart =
     service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
-  if (service.labels === undefined && startInterval === undefined && !hasDependencyRestart)
+  const authoredExtensions = Object.entries(service).filter(([key]) => key.startsWith("x-"));
+  if (
+    service.labels === undefined &&
+    startInterval === undefined &&
+    !hasDependencyRestart &&
+    service.networks === undefined &&
+    service.configs === undefined &&
+    service.secrets === undefined &&
+    service.profiles === undefined &&
+    authoredExtensions.length === 0
+  )
     return servicePlan;
 
   const composeExtension = servicePlan.extensions.compose;
@@ -823,6 +854,11 @@ const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig)
     }
     compose.depends_on = dependsOn;
   }
+  if (service.networks !== undefined) compose.networks = service.networks;
+  if (service.configs !== undefined) compose.configs = service.configs;
+  if (service.secrets !== undefined) compose.secrets = service.secrets;
+  if (service.profiles !== undefined) compose.profiles = service.profiles;
+  for (const [key, value] of authoredExtensions) compose[key] = value;
 
   return {
     ...servicePlan,
@@ -1229,6 +1265,7 @@ const planApp = (
       if (cached !== null) {
         yield* validateServiceDependencies(appRoot, cached.services);
         yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
+        yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
         return cached;
       }
     }
@@ -1623,6 +1660,7 @@ const planApp = (
       })(),
     });
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
+    yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
     if (
       cacheService !== undefined &&
       !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)

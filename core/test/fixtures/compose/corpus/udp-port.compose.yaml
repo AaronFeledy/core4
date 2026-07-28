@@ -1,0 +1,5 @@
+services:
+  dns:
+    image: example/dns:1.0
+    ports:
+      - 5353:5353/udp

@@ -135,6 +135,31 @@ export const decodeProviderCapabilities = (input: unknown) =>
     ),
   );
 
+/**
+ * Four service-level Compose fields are deliberately absent, and stay absent
+ * so the planner's fail-closed capability gate rejects them before provider
+ * execution:
+ *
+ * - `networks` — Compose attaches a service only to its listed networks, with
+ *   an implicit `default` when absent. provider-lando instead attaches every
+ *   service to every planned network: `bring-up.ts`'s `createContainerRequest`
+ *   builds `NetworkingConfig.EndpointsConfig` from `networkNames(plan)`, and
+ *   `compose.ts` does the same. The planner hardcodes `AppPlan.networks` to one
+ *   app bridge, while aliases, static IPv4/IPv6, `link_local_ips`,
+ *   `mac_address`, `priority`, `gw_priority`, and `interface_name` are
+ *   unrealized.
+ * - `configs` / `secrets` — content comes from top-level entries (`file`,
+ *   `content`, `environment`, or `external`). Those entries survive only in
+ *   `AppPlan.extensions.compose`; they are never normalized into provider
+ *   input, so there is no source content to mount.
+ * - `profiles` — Compose starts a profiled service only when its profile is
+ *   activated. Lando has no profile-activation surface, so declaring support
+ *   would promise activation that does not exist.
+ *
+ * Service-level `x-*` fields are outside the capability surface and remain
+ * inert metadata preserved by core. `labels` is declared because both direct
+ * container creation and Compose emission realize preserved labels.
+ */
 export const providerLandoCapabilitiesForPlatform = (
   platform: HostPlatform,
   containerTargets: ReadonlyArray<HostProxyContainerTarget> = [],
@@ -153,6 +178,7 @@ export const providerLandoCapabilitiesForPlatform = (
     rootless: true,
     composeSpec: "native",
     composeKnobs: { supported: podmanComposeKnobs() },
+    composeServiceFields: { supported: ["labels"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

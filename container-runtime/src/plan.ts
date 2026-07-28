@@ -41,15 +41,55 @@ export const normalizeEntrypoint = (
   return [...entrypoint];
 };
 
+const containerHealthcheck = (
+  healthcheck: ServicePlan["healthcheck"],
+): Record<string, unknown> | undefined => {
+  if (healthcheck === undefined) return undefined;
+  switch (healthcheck.kind) {
+    case "none":
+      return { Test: ["NONE"] };
+    case "command": {
+      const command = healthcheck.command;
+      if (command === undefined) return undefined;
+      return {
+        Test: typeof command === "string" ? ["CMD-SHELL", command] : ["CMD", ...command],
+        Interval: healthcheck.intervalSeconds * 1_000_000_000,
+        Timeout: healthcheck.timeoutSeconds * 1_000_000_000,
+        Retries: healthcheck.retries,
+        ...(healthcheck.startPeriodSeconds === undefined
+          ? {}
+          : { StartPeriod: healthcheck.startPeriodSeconds * 1_000_000_000 }),
+      };
+    }
+    case "http":
+    case "tcp":
+      return undefined;
+  }
+};
+
 export const commonContainerLabels = (
   plan: AppPlan,
   service: ServicePlan,
   extra: Readonly<Record<string, string>> = {},
-): Record<string, string> => ({
-  "dev.lando.app": plan.id,
-  "dev.lando.service": service.name,
-  ...extra,
-});
+): Record<string, string> => {
+  const compose = service.extensions.compose;
+  const labels =
+    typeof compose === "object" && compose !== null && !Array.isArray(compose) && "labels" in compose
+      ? compose.labels
+      : undefined;
+  const userLabels =
+    typeof labels === "object" && labels !== null && !Array.isArray(labels)
+      ? Object.fromEntries(
+          Object.entries(labels).filter((entry): entry is [string, string] => typeof entry[1] === "string"),
+        )
+      : {};
+  return {
+    ...userLabels,
+    "dev.lando.app": plan.id,
+    "dev.lando.service": service.name,
+    ...extra,
+  };
+};
 
 export interface ContainerHostConfigOptions {
   readonly onMissingBindMountSource?: (mount: ServicePlan["mounts"][number]) => never;
@@ -203,17 +243,18 @@ export const containerCreateBodyFragment = (
 ): Record<string, unknown> => {
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") {
-    (options.onMissingArtifact ?? missingArtifact)(artifact);
+    return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const refArtifact = artifact as Extract<NonNullable<ServicePlan["artifact"]>, { readonly kind: "ref" }>;
+  const healthcheck = containerHealthcheck(service.healthcheck);
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
-    Image: refArtifact.ref,
+    Image: artifact.ref,
     Env: serviceEnv(service),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),
     WorkingDir: service.workingDirectory,
+    ...(healthcheck === undefined ? {} : { Healthcheck: healthcheck }),
     Labels: options.labels ?? commonContainerLabels(plan, service),
     HostConfig: options.hostConfig ?? containerHostConfigFragment(plan, service),
     ...(options.networkingConfig === undefined ? {} : { NetworkingConfig: options.networkingConfig }),

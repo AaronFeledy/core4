@@ -139,6 +139,14 @@ describe("podman Compose runtime knob value coercion", () => {
     });
   });
 
+  test("Given a normalized long-form tmpfs volume, when realized, then its options reach Podman", () => {
+    expect(
+      realize({ tmpfs: [{ target: "/run/app", read_only: true, size: 67_108_864, mode: 1770 }] }).hostConfig,
+    ).toEqual({
+      Tmpfs: { "/run/app": "ro,size=67108864,mode=1770" },
+    });
+  });
+
   test("Given duplicate tmpfs destinations, when realized, then onInvalid rejects the lossy mapping", () => {
     const calls = captureInvalid({ tmpfs: ["/tmp:size=64m", "/tmp:mode=1777"] });
 

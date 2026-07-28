@@ -1,0 +1,11 @@
+version: '3.7'
+
+services:
+  server:
+    image: composespec/conformance-tests-server
+    ports:
+      - 8080:8080
+  client:
+    image: composespec/conformance-tests-client
+    deploy:
+      replicas: 3

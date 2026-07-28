@@ -496,7 +496,8 @@ export const dockerCapabilitiesForHost = (
     ephemeralMounts: true,
     tlsCertificates: "none",
     rootless: false,
-    composeSpec: "portable",
+    composeSpec: "native",
+    composeServiceFields: { supported: ["labels"] },
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

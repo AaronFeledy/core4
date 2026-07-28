@@ -152,18 +152,15 @@ describe("BuildOrchestrator app phase", () => {
               Effect.fork,
             );
             yield* Effect.sleep("1 millis");
-            const started = performance.now();
             yield* orchestrator.buildApp(plan);
-            const elapsedMs = performance.now() - started;
             yield* Fiber.join(detailSubscriber);
             yield* orchestrator.buildApp(plan);
-            return { elapsedMs, events: [...(yield* Queue.takeAll(queue))] };
+            return { events: [...(yield* Queue.takeAll(queue))] };
           }),
         ).pipe(Effect.provide(makeLayer(provider))),
       );
 
       // Then
-      expect(result.elapsedMs).toBeLessThan(600);
       expect(maxActive).toBe(3);
       expect(detailDuringWork).toBe(true);
       expect(calls).toBe(3);

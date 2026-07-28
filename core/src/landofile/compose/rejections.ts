@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { ComposeKeyRejectedError, LandofileParseError } from "../../errors/tagged.ts";
 import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import {
+  type ComposeDisposition,
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTagDispositions,
@@ -16,6 +17,15 @@ export interface ComposeRejectionMatch {
   readonly service?: string;
   readonly rationale: string;
   readonly remediation: string;
+}
+
+export interface ComposeDispositionMatch {
+  readonly matrixPath: string;
+  readonly documentPath: string;
+  readonly service?: string;
+  readonly disposition: ComposeDisposition;
+  readonly rationale: string;
+  readonly remediation?: string;
 }
 
 class ComposeRejectionMatrixInvariantError extends Error {
@@ -49,27 +59,52 @@ const rejectedEntry = (
   }
 };
 
+interface MatchLocation {
+  readonly matrixPath: string;
+  readonly documentPath: string;
+  readonly service?: string;
+}
+
+const dispositionMatch = (
+  entry: ComposeDispositionEntry,
+  location: MatchLocation,
+): ComposeDispositionMatch => {
+  const match = {
+    matrixPath: location.matrixPath,
+    documentPath: location.documentPath,
+    disposition: entry.disposition,
+    rationale: entry.rationale,
+  };
+  switch (entry.disposition) {
+    case "normalized":
+    case "preserved":
+      return location.service === undefined ? match : { ...match, service: location.service };
+    case "rejected": {
+      if (entry.remediation === undefined) {
+        throw new ComposeRejectionMatrixInvariantError(location.matrixPath);
+      }
+      const rejectedMatch = { ...match, remediation: entry.remediation };
+      return location.service === undefined ? rejectedMatch : { ...rejectedMatch, service: location.service };
+    }
+    default: {
+      const exhaustive: never = entry.disposition;
+      throw new ComposeRejectionMatrixInvariantError(String(exhaustive));
+    }
+  }
+};
+
 const matchForNode = (
   node: DispositionTrieNode,
-  documentPath: string,
-  service?: string,
-): ComposeRejectionMatch | undefined => {
+  location: Omit<MatchLocation, "matrixPath">,
+): ComposeDispositionMatch | undefined => {
   if (node.entry === undefined || node.matrixPath === undefined) return undefined;
-  const entry = rejectedEntry(node.entry, node.matrixPath);
-  if (entry === undefined) return undefined;
-  const match = {
-    matrixPath: node.matrixPath,
-    documentPath,
-    rationale: entry.rationale,
-    remediation: entry.remediation,
-  };
-  return service === undefined ? match : { ...match, service };
+  return dispositionMatch(node.entry, { ...location, matrixPath: node.matrixPath });
 };
 
 interface WalkContext {
   readonly documentPath: string;
   readonly service?: string;
-  readonly matches: ComposeRejectionMatch[];
+  readonly matches: ComposeDispositionMatch[];
 }
 
 const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkContext): void => {
@@ -86,16 +121,29 @@ const walkValue = (value: unknown, node: DispositionTrieNode, context: WalkConte
     const child = matchDispositionChild(node, key);
     if (child === undefined) continue;
     const documentPath = `${context.documentPath}.${key}`;
-    const match = matchForNode(child, documentPath, context.service);
+    const match = matchForNode(child, {
+      documentPath,
+      ...(context.service === undefined ? {} : { service: context.service }),
+    });
     if (match !== undefined) {
       context.matches.push(match);
-      continue;
+      switch (match.disposition) {
+        case "normalized":
+        case "preserved":
+          break;
+        case "rejected":
+          continue;
+        default: {
+          const exhaustive: never = match.disposition;
+          throw new ComposeRejectionMatrixInvariantError(String(exhaustive));
+        }
+      }
     }
     walkValue(value[key], child, { ...context, documentPath });
   }
 };
 
-const walkServices = (value: unknown, matches: ComposeRejectionMatch[]): void => {
+const walkServices = (value: unknown, matches: ComposeDispositionMatch[]): void => {
   if (!isRecord(value)) return;
   serviceDispositionTrie ??= compileDispositionTrie(composeServiceDispositions);
   for (const service of Object.keys(value)) {
@@ -107,26 +155,61 @@ const walkServices = (value: unknown, matches: ComposeRejectionMatch[]): void =>
   }
 };
 
-export const analyzeComposeRejections = (parsed: unknown): ReadonlyArray<ComposeRejectionMatch> => {
+export const analyzeComposeDispositions = (parsed: unknown): ReadonlyArray<ComposeDispositionMatch> => {
   if (!isRecord(parsed)) return [];
-  const matches: ComposeRejectionMatch[] = [];
+  const matches: ComposeDispositionMatch[] = [];
   for (const key of Object.keys(parsed)) {
     const matrixPath = key.startsWith("x-") ? "x-*" : key;
     const entry = composeTopLevelDispositions[matrixPath];
     if (entry === undefined) continue;
-    const rejection = rejectedEntry(entry, matrixPath);
-    if (rejection !== undefined) {
-      matches.push({
-        matrixPath,
-        documentPath: key,
-        rationale: rejection.rationale,
-        remediation: rejection.remediation,
-      });
-      continue;
+    const match = dispositionMatch(entry, {
+      matrixPath,
+      documentPath: key,
+    });
+    matches.push(match);
+    switch (match.disposition) {
+      case "normalized":
+      case "preserved":
+        break;
+      case "rejected":
+        continue;
+      default: {
+        const exhaustive: never = match.disposition;
+        throw new ComposeRejectionMatrixInvariantError(String(exhaustive));
+      }
     }
     if (key === "services") walkServices(parsed[key], matches);
   }
   return matches;
+};
+
+export const analyzeComposeRejections = (parsed: unknown): ReadonlyArray<ComposeRejectionMatch> => {
+  const rejections: ComposeRejectionMatch[] = [];
+  for (const match of analyzeComposeDispositions(parsed)) {
+    switch (match.disposition) {
+      case "normalized":
+      case "preserved":
+        continue;
+      case "rejected": {
+        if (match.remediation === undefined) {
+          throw new ComposeRejectionMatrixInvariantError(match.matrixPath);
+        }
+        const rejection = {
+          matrixPath: match.matrixPath,
+          documentPath: match.documentPath,
+          rationale: match.rationale,
+          remediation: match.remediation,
+        };
+        rejections.push(match.service === undefined ? rejection : { ...rejection, service: match.service });
+        break;
+      }
+      default: {
+        const exhaustive: never = match.disposition;
+        throw new ComposeRejectionMatrixInvariantError(String(exhaustive));
+      }
+    }
+  }
+  return rejections;
 };
 
 export const firstComposeRejection = (parsed: unknown): ComposeRejectionMatch | undefined =>

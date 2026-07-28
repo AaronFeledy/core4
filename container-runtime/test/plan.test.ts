@@ -24,6 +24,14 @@ const service = {
   command: "echo hi",
   entrypoint: "docker-entrypoint.sh",
   workingDirectory: "/app",
+  healthcheck: {
+    kind: "command",
+    command: "curl --fail http://localhost:8080/health || exit 1",
+    intervalSeconds: 30,
+    timeoutSeconds: 5,
+    retries: 3,
+    startPeriodSeconds: 10,
+  },
   endpoints: [
     {
       _tag: "published",
@@ -40,6 +48,7 @@ const service = {
   ],
   storage: [{ store: "lando-cache-npm", target: "/home/node/.npm", readOnly: false }],
   hostAliases: [],
+  extensions: {},
 } as unknown as ServicePlan;
 
 describe("container plan helpers", () => {
@@ -50,7 +59,22 @@ describe("container plan helpers", () => {
   });
 
   test("builds common labels and host config fragments", () => {
-    expect(commonContainerLabels(plan, service, { "dev.lando.scratch": "TRUE" })).toEqual({
+    const serviceWithLabels: ServicePlan = {
+      ...service,
+      extensions: {
+        compose: {
+          labels: {
+            "example.com/role": "web",
+            "dev.lando.app": "user-value",
+            "skip-number": 42,
+            "skip-null": null,
+          },
+        },
+      },
+    };
+
+    expect(commonContainerLabels(plan, serviceWithLabels, { "dev.lando.scratch": "TRUE" })).toEqual({
+      "example.com/role": "web",
       "dev.lando.app": "app-id",
       "dev.lando.service": "web",
       "dev.lando.scratch": "TRUE",
@@ -162,12 +186,36 @@ describe("container plan helpers", () => {
       Cmd: ["sh", "-lc", "echo hi"],
       Entrypoint: ["docker-entrypoint.sh"],
       WorkingDir: "/app",
+      Healthcheck: {
+        Test: ["CMD-SHELL", "curl --fail http://localhost:8080/health || exit 1"],
+        Interval: 30_000_000_000,
+        Timeout: 5_000_000_000,
+        Retries: 3,
+        StartPeriod: 10_000_000_000,
+      },
       Labels: { "dev.lando.app": "app-id", "dev.lando.service": "web" },
       HostConfig: {
         PortBindings: { "8080/tcp": [{ HostIp: "127.0.0.1", HostPort: "38080" }] },
         Binds: ["/host/app:/app:ro", "/host/cache:/cache", "lando-cache-npm:/home/node/.npm"],
       },
       NetworkingConfig: { EndpointsConfig: { "lando-myapp": {} } },
+    });
+  });
+
+  test("uses preserved user labels in the default create body with Lando labels winning", () => {
+    const serviceWithLabels: ServicePlan = {
+      ...service,
+      extensions: {
+        compose: { labels: { "example.com/role": "web", "dev.lando.service": "user-value" } },
+      },
+    };
+
+    expect(containerCreateBodyFragment(plan, serviceWithLabels)).toMatchObject({
+      Labels: {
+        "example.com/role": "web",
+        "dev.lando.app": "app-id",
+        "dev.lando.service": "web",
+      },
     });
   });
 

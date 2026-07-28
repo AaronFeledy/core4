@@ -48,8 +48,13 @@
       "type": "integer"
     },
     "ServiceConfigInput": {
-      "additionalProperties": false,
       "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+      "patternProperties": {
+        "": {
+          "$id": "/schemas/unknown",
+          "title": "unknown"
+        }
+      },
       "properties": {
         "allowOverride": {
           "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
@@ -285,6 +290,55 @@
               "type": "array"
             }
           ]
+        },
+        "configs": {
+          "description": "Service config grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "patternProperties": {
+                  "": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  }
+                },
+                "properties": {
+                  "gid": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "uid": {
+                    "type": "string"
+                  }
+                },
+                "propertyNames": {
+                  "pattern": "^x-[\\s\\S]*?$",
+                  "type": "string"
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
+          },
+          "type": "array"
         },
         "cores": {
           "items": {
@@ -1350,6 +1404,90 @@
           },
           "type": "array"
         },
+        "networks": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "anyOf": [
+                  {
+                    "patternProperties": {
+                      "": {
+                        "$id": "/schemas/unknown",
+                        "title": "unknown"
+                      }
+                    },
+                    "properties": {
+                      "aliases": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "driver_opts": {
+                        "additionalProperties": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "number"
+                            }
+                          ]
+                        },
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "gw_priority": {
+                        "type": "number"
+                      },
+                      "interface_name": {
+                        "type": "string"
+                      },
+                      "ipv4_address": {
+                        "type": "string"
+                      },
+                      "ipv6_address": {
+                        "type": "string"
+                      },
+                      "link_local_ips": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "mac_address": {
+                        "type": "string"
+                      },
+                      "priority": {
+                        "type": "number"
+                      }
+                    },
+                    "propertyNames": {
+                      "pattern": "^x-[\\s\\S]*?$",
+                      "type": "string"
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "properties": {},
+              "required": [],
+              "type": "object"
+            }
+          ],
+          "description": "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation."
+        },
         "platform": {
           "description": "Target runtime platform in operating-system and architecture form.",
           "type": "string"
@@ -1500,6 +1638,13 @@
           ],
           "description": "Whether the container runs with extended host privileges."
         },
+        "profiles": {
+          "description": "Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "providers": {
           "additionalProperties": {
             "$id": "/schemas/unknown",
@@ -1589,6 +1734,55 @@
               "hostname"
             ],
             "type": "object"
+          },
+          "type": "array"
+        },
+        "secrets": {
+          "description": "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+          "items": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "patternProperties": {
+                  "": {
+                    "$id": "/schemas/unknown",
+                    "title": "unknown"
+                  }
+                },
+                "properties": {
+                  "gid": {
+                    "type": "string"
+                  },
+                  "mode": {
+                    "anyOf": [
+                      {
+                        "type": "number"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "source": {
+                    "type": "string"
+                  },
+                  "target": {
+                    "type": "string"
+                  },
+                  "uid": {
+                    "type": "string"
+                  }
+                },
+                "propertyNames": {
+                  "pattern": "^x-[\\s\\S]*?$",
+                  "type": "string"
+                },
+                "required": [],
+                "type": "object"
+              }
+            ]
           },
           "type": "array"
         },
@@ -2017,6 +2211,10 @@
           "type": "string"
         }
       },
+      "propertyNames": {
+        "pattern": "^x-[\\s\\S]*?$",
+        "type": "string"
+      },
       "required": [],
       "title": "Service Config Input",
       "type": "object"
@@ -2168,20 +2366,27 @@
         },
         "networks": {
           "additionalProperties": {
-            "additionalProperties": false,
-            "properties": {
-              "driver": {
-                "type": "string"
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "driver": {
+                    "type": "string"
+                  },
+                  "external": {
+                    "type": "boolean"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
               },
-              "external": {
-                "type": "boolean"
-              },
-              "name": {
-                "type": "string"
+              {
+                "type": "null"
               }
-            },
-            "required": [],
-            "type": "object"
+            ]
           },
           "properties": {},
           "required": [],

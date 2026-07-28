@@ -69,6 +69,7 @@ const providerLandoCapabilities: ProviderCapabilities = {
   rootless: true,
   privilegedServices: false,
   composeSpec: "native",
+  composeServiceFields: { supported: ["labels"] },
   providerExtensions: ["compose", "labels", "registryCredentials"],
 };
 

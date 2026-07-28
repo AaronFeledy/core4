@@ -39,6 +39,11 @@ const generators: ReadonlyArray<Generator> = [
     cwd: REPO_ROOT,
   },
   {
+    id: "compose-fixture-manifest",
+    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-compose-fixture-manifest.ts`],
+    cwd: REPO_ROOT,
+  },
+  {
     id: "bundled-recipes",
     cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-recipes.ts`],
     cwd: REPO_ROOT,

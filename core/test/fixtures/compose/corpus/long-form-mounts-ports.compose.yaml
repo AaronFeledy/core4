@@ -1,0 +1,29 @@
+services:
+  web:
+    image: example/web:1.0
+    ports:
+      - target: 8080
+        published: "8443"
+        host_ip: 127.0.0.1
+        protocol: tcp
+        name: web-secure
+        app_protocol: https
+    volumes:
+      - type: bind
+        source: ./src
+        target: /workspace/src
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: volume
+        source: cache
+        target: /var/cache/app
+        volume:
+          subpath: web
+      - type: tmpfs
+        target: /run/app
+        tmpfs:
+          size: 67108864
+          mode: 1770
+volumes:
+  cache: {}

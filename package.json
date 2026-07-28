@@ -70,6 +70,8 @@
     "codegen:mutagen-versions": "bun run scripts/build-mutagen-versions.ts",
     "codegen:provider-images": "bun run scripts/build-provider-images.ts",
     "codegen:compose-vendor": "bun run scripts/build-compose-vendor.ts",
+    "codegen:compose-fixtures": "bun run scripts/build-compose-fixtures.ts",
+    "codegen:compose-fixture-manifest": "bun run scripts/build-compose-fixture-manifest.ts",
     "codegen:opentui-native-stubs": "bun run scripts/build-opentui-native-stubs.ts",
     "release": "bun run scripts/release.ts"
   },

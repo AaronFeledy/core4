@@ -153,11 +153,45 @@ interface RealizePodmanComposeKnobsOptions {
 
 const decodeComposeKnobs = Schema.decodeUnknownEither(PodmanComposeKnobs);
 
+const normalizedTmpfsEntry = (value: unknown): string | undefined => {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+  const keys = Object.keys(value);
+  if (keys.some((key) => !["target", "read_only", "size", "mode"].includes(key))) return undefined;
+
+  const target = Reflect.get(value, "target");
+  const readOnly = Reflect.get(value, "read_only");
+  const size = Reflect.get(value, "size");
+  const mode = Reflect.get(value, "mode");
+  if (
+    typeof target !== "string" ||
+    (readOnly !== undefined && readOnly !== true) ||
+    (size !== undefined && typeof size !== "string" && typeof size !== "number") ||
+    (mode !== undefined && (!Number.isSafeInteger(mode) || typeof mode !== "number"))
+  ) {
+    return undefined;
+  }
+
+  const options = [
+    ...(readOnly === true ? ["ro"] : []),
+    ...(size === undefined ? [] : [`size=${size}`]),
+    ...(mode === undefined ? [] : [`mode=${mode}`]),
+  ];
+  return options.length === 0 ? target : `${target}:${options.join(",")}`;
+};
+
+const normalizeComposeTmpfs = (compose: unknown): unknown => {
+  if (typeof compose !== "object" || compose === null || Array.isArray(compose)) return compose;
+  const tmpfs = Reflect.get(compose, "tmpfs");
+  if (!Array.isArray(tmpfs) || tmpfs.every((entry) => typeof entry === "string")) return compose;
+  const normalized = tmpfs.map((entry) => (typeof entry === "string" ? entry : normalizedTmpfsEntry(entry)));
+  return normalized.some((entry) => entry === undefined) ? compose : { ...compose, tmpfs: normalized };
+};
+
 const serviceKnobValues = (service: ServicePlan, fail: InvalidKnob): PodmanComposeKnobValues => {
   const compose = service.extensions.compose;
   if (compose === undefined) return {};
 
-  const decoded = decodeComposeKnobs(compose);
+  const decoded = decodeComposeKnobs(normalizeComposeTmpfs(compose));
   if (Either.isRight(decoded)) return decoded.right;
 
   const issues = ParseResult.ArrayFormatter.formatErrorSync(decoded.left);

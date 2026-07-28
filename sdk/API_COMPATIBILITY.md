@@ -4,6 +4,8 @@
 
 ## Compatibility notes
 
+- `ComposeServiceFieldKey` changes pre-ship from `networks | configs | secrets | profiles | x-*` to `networks | configs | secrets | profiles | labels`. `composeServiceFields` is now a native-tier fail-closed refinement matching `composeKnobs`: non-empty declarations require `composeSpec: "native"`. Service-level `x-*` values remain losslessly preserved inert metadata outside the capability surface.
+
 - `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
 - `@lando/sdk/schema` adds the minimal `ProviderSetupPlan` contract: mutation-free inspection produces a closed host-change union whose sole member is `install-uidmap` for exact Ubuntu 26.04. Core authorizes the plan through `InteractionService` before provider apply. `@lando/sdk/errors` adds consent-denied, unsupported-host, privilege-unavailable, and provisioning tagged errors for that flow.
@@ -410,6 +412,8 @@
 - `validateKeymapConfigConflicts`
 - `ComposeServiceKnobKey`
 - `ComposeKnobCapabilities`
+- `ComposeServiceFieldKey`
+- `ComposeServiceFieldCapabilities`
 
 ## Additive Beta service fields
 
@@ -458,6 +462,9 @@
 - `ProviderCapabilities.composeKnobs` is a new additive optional field. Omitting it is equivalent to
   `{ supported: [] }`; a preserved Compose runtime knob is supported only when `composeSpec` is
   `native` and the exact knob path is declared. `composeSpec` itself is unchanged.
+- `ProviderCapabilities.composeServiceFields` is a new additive optional field. Omitting it is
+  equivalent to `{ supported: [] }`; a preserved Compose service-level field is supported only when
+  `composeSpec` is `native` and the exact field family is declared.
 - `CapabilityError.key` is a new additive optional field carrying the exact capability key that failed.
 - `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
   `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
