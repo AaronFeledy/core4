@@ -33,6 +33,15 @@
     ]
   },
   {
+    "ruleId": "import-cycle",
+    "file": "plugins/delta/src/entry.ts",
+    "message": "plugins/delta/src/entry.ts -> plugins/epsilon/src/entry.ts",
+    "detail": [
+      "plugins/delta/src/entry.ts:1 imports plugins/epsilon/src/entry.ts via \"@lando/epsilon\"",
+      "plugins/epsilon/src/entry.ts:1 imports plugins/delta/src/entry.ts via \"@lando/delta\""
+    ]
+  },
+  {
     "ruleId": "managed-file-boundary",
     "file": "core/src/characterization/managed-file-offender.ts",
     "line": 1,
@@ -69,6 +78,18 @@
     "message": "@lando/alpha"
   },
   {
+    "ruleId": "package-dag",
+    "file": "plugins/delta/src/entry.ts",
+    "line": 1,
+    "message": "@lando/epsilon"
+  },
+  {
+    "ruleId": "package-dag",
+    "file": "plugins/epsilon/src/entry.ts",
+    "line": 1,
+    "message": "@lando/delta"
+  },
+  {
     "ruleId": "paths-boundary",
     "file": "core/src/characterization/paths-offender.ts",
     "line": 3,
@@ -76,9 +97,51 @@
   },
   {
     "ruleId": "probe-boundary",
+    "file": "core/src/characterization/probe-aliased-namespace.ts",
+    "line": 3,
+    "message": "Effect.retry"
+  },
+  {
+    "ruleId": "probe-boundary",
+    "file": "core/src/characterization/probe-destructured-namespace.ts",
+    "line": 4,
+    "message": "Effect.retry"
+  },
+  {
+    "ruleId": "probe-boundary",
+    "file": "core/src/characterization/probe-member-import.ts",
+    "line": 3,
+    "message": "Effect.repeat"
+  },
+  {
+    "ruleId": "probe-boundary",
     "file": "core/src/characterization/probe-offender.ts",
     "line": 3,
     "message": "Effect.retry"
+  },
+  {
+    "ruleId": "probe-boundary",
+    "file": "core/src/characterization/probe-reexport-consumer.ts",
+    "line": 3,
+    "message": "Effect.retry"
+  },
+  {
+    "ruleId": "probe-boundary",
+    "file": "core/src/characterization/probe-schedule-namespace.ts",
+    "line": 2,
+    "message": "Schedule.exponential"
+  },
+  {
+    "ruleId": "redaction-boundary",
+    "file": "core/src/characterization/redaction-authorization-regex.ts",
+    "line": 1,
+    "message": "/authorization:\\s*(.+)/i"
+  },
+  {
+    "ruleId": "redaction-boundary",
+    "file": "core/src/characterization/redaction-keyword-regex.ts",
+    "line": 1,
+    "message": "/(password|token)=([^&]+)/"
   },
   {
     "ruleId": "redaction-boundary",
@@ -89,6 +152,12 @@
   {
     "ruleId": "renderer-boundary",
     "file": "core/src/characterization/renderer-offender.ts",
+    "line": 1,
+    "message": "console.error"
+  },
+  {
+    "ruleId": "renderer-boundary",
+    "file": "core/src/characterization/renderer.test.helpers.ts",
     "line": 1,
     "message": "console.error"
   },

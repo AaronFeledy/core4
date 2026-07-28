@@ -206,6 +206,87 @@ export const ARCHITECTURE_CORPUS: ReadonlyArray<{
   },
 
   {
+    path: "plugins/delta/package.json",
+    contents:
+      '{"name":"@lando/delta","main":"./src/entry.ts","dependencies":{"@lando/epsilon":"workspace:*"}}\n',
+  },
+  {
+    path: "plugins/epsilon/package.json",
+    contents:
+      '{"name":"@lando/epsilon","main":"./src/entry.ts","dependencies":{"@lando/delta":"workspace:*"}}\n',
+  },
+  {
+    path: "plugins/delta/src/entry.ts",
+    contents: 'import { epsilon } from "@lando/epsilon";\nexport const delta = epsilon;\n',
+  },
+  {
+    path: "plugins/epsilon/src/entry.ts",
+    contents: 'import { delta } from "@lando/delta";\nexport const epsilon = delta;\n',
+  },
+
+  {
+    path: "core/src/characterization/renderer.test.helpers.ts",
+    contents: 'export const helper = () => console.error("mid-name .test. is production code");\n',
+  },
+
+  {
+    path: "core/src/characterization/redaction-authorization-regex.ts",
+    contents: "export const pattern = /authorization:\\s*(.+)/i;\n",
+  },
+  {
+    path: "core/src/characterization/redaction-keyword-regex.ts",
+    contents: "export const pattern = /(password|token)=([^&]+)/;\n",
+  },
+  {
+    path: "core/src/characterization/redaction-regex-near-miss.ts",
+    contents: "export const pattern = /\\/api\\/v1\\/tokens\\/(\\d+)/;\n",
+  },
+
+  {
+    path: "core/src/characterization/probe-aliased-namespace.ts",
+    contents:
+      'import { Effect as Fx } from "effect";\ndeclare const operation: unknown;\nexport const retried = Fx.retry(operation);\n',
+  },
+  {
+    path: "core/src/characterization/probe-destructured-namespace.ts",
+    contents:
+      'import { Effect } from "effect";\ndeclare const operation: unknown;\nconst { retry } = Effect;\nexport const retried = retry(operation);\n',
+  },
+  {
+    path: "core/src/characterization/probe-member-import.ts",
+    contents:
+      'import { repeat } from "effect/Effect";\ndeclare const operation: unknown;\nexport const repeated = repeat(operation);\n',
+  },
+  {
+    path: "core/src/characterization/probe-schedule-namespace.ts",
+    contents: 'import { Schedule } from "effect";\nexport const backoff = Schedule.exponential(1000);\n',
+  },
+  {
+    path: "core/src/characterization/probe-reexport-source.ts",
+    contents: 'export { Effect } from "effect";\n',
+  },
+  {
+    path: "core/src/characterization/probe-reexport-consumer.ts",
+    contents:
+      'import { Effect } from "./probe-reexport-source";\ndeclare const operation: unknown;\nexport const retried = Effect.retry(operation);\n',
+  },
+  {
+    path: "core/src/characterization/probe-member-near-miss.ts",
+    contents:
+      'import { Effect } from "effect";\ndeclare const operation: never;\nexport const generated = Effect.gen(function* () {\n  return operation;\n});\n',
+  },
+
+  {
+    path: "core/src/characterization/network-alias-near-miss.ts",
+    contents:
+      'declare const fetchImpl: (url: string) => unknown;\nexport const request = () => fetchImpl("https://example.invalid");\n',
+  },
+  {
+    path: "core/src/characterization/network-reference-near-miss.ts",
+    contents: "export const impl = globalThis.fetch;\n",
+  },
+
+  {
     path: "core/src/characterization/excluded.test.ts",
     contents:
       'import { Effect } from "effect";\nconsole.error("excluded");\nvoid fetch("https://example.invalid");\nvoid Effect.retry(undefined);\nexport const marker = "[REDACTED] lando-generated";\n',
