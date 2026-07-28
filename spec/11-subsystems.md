@@ -127,23 +127,30 @@ export class CertificateAuthority extends Context.Service<CertificateAuthority, 
 - A dev CA can be generated and trusted via `lando setup`.
 - Service certs include SANs for the service id, the canonical internal alias, configured `hostnames:`, proxied hostnames, `localhost`, and `127.0.0.1`.
 - Cert/key paths are exposed as `LANDO_SERVICE_CERT` and `LANDO_SERVICE_KEY` in service env.
-- Corporate/custom CA injection via `security.ca:` is supported; the install-to-trust-store path is plugin-implemented.
+- Corporate/custom CA injection via Landofile `security.ca:` and host-global `network.ca` inject (§6.8 / §10.3.1) is supported; the install-to-trust-store path is plugin-implemented through the `lando.security` feature.
 - Trust-store install is `PrivilegeService`-aware on platforms that require elevation.
+- Host-global CA inject does **not** require host trust-store elevation for the *container* path; container trust-store updates run inside the service image/boot context. Host `CertificateAuthority.installToTrustStore` remains the separate path for trusting Lando's *dev* CA on the workstation.
 
 ### 10.3.1 Corporate proxies and outbound trust
 
 Lando-owned network access MUST work behind corporate HTTP(S) proxies and custom CA chains. This applies to runtime bundle downloads, plugin resolution/install, include and recipe resolution, update checks, telemetry delivery, provider-helper downloads, and any provider artifact pull that Lando initiates directly.
 
-This policy is implemented in exactly one place: the canonical network-trust resolver, exported as a pure `@lando/sdk` module and consumed at runtime by the `HttpClient` service (§10.3.2). Every Lando-owned fetch flows through `HttpClient`, so `Downloader` (§10.3.3), the tool-provisioning helper (§10.3.4), and every request/response caller (hosting push/pull, telemetry delivery, update-manifest fetch, plugin-registry queries, tunnel/share control planes, the in-process MCP surface, the `UrlScanner`) inherit the same proxy/CA resolution without re-implementing it. `lando setup` preflight consumes the same resolver to classify proxy/CA failures before issuing real requests. Package-manager operations delegated to `BunSelfRunner` are the one exception: they honor the same `network.proxy` / `network.ca` policy through their own runner contract rather than through `HttpClient`.
+The same host-local CA material MUST also reach **in-container** package managers and HTTPS clients (`curl`, Composer, npm, etc.) without per-project Dockerfile copies or Landofile edits. That in-service path is specified in §6.8 (host-global CA / proxy inheritance) and is deliberately **not** an open-ended host Dockerfile directory.
+
+**Lando-owned egress** is implemented in exactly one place: the canonical network-trust resolver, exported as a pure `@lando/sdk` module and consumed at runtime by the `HttpClient` service (§10.3.2). Every Lando-owned fetch flows through `HttpClient`, so `Downloader` (§10.3.3), the tool-provisioning helper (§10.3.4), and every request/response caller (hosting push/pull, telemetry delivery, update-manifest fetch, plugin-registry queries, tunnel/share control planes, the in-process MCP surface, the `UrlScanner`) inherit the same proxy/CA resolution without re-implementing it. `lando setup` preflight consumes the same resolver to classify proxy/CA failures before issuing real requests. Package-manager operations delegated to `BunSelfRunner` are the one exception: they honor the same `network.proxy` / `network.ca` policy through their own runner contract rather than through `HttpClient`.
 
 Required behaviors:
 
 - Lando-owned network clients honor explicit global `network.proxy` config (§7.5), then standard `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment variables when config is unset.
 - Lando-owned network clients honor additional CA certificates from global `network.ca.certs` (§7.5) and `LANDO_NETWORK_CA_CERTS`, and use the host trust store when `network.ca.trustHost: true` and the platform supports it.
-- `lando setup` validates proxy/CA configuration before long downloads and surfaces actionable remediation for TLS interception, proxy authentication, missing CA, and blocked registry errors.
-- Provider plugins receive the resolved proxy and CA configuration during setup/apply so they can configure private runtimes, helper binaries, provider-native artifact pulls, and Lando-initiated artifact builds consistently.
-- App build/dependency commands can opt into inheriting the resolved proxy and CA configuration from service config (§6.8). Lando does not force those settings into arbitrary app processes by default because proxy credentials may be sensitive.
-- Service-level `security.ca:` remains separate from Lando-owned outbound trust: it injects CAs into app services, while `network.ca` controls Lando's own fetches.
+- `network.ca.injectIntoServices` defaults to `true`; `network.proxy.injectIntoServices` defaults to `false`. CA inject and proxy inject are independent. Per-service overrides and the install mechanism are normative in §6.8.
+- `lando setup` validates proxy/CA configuration before long downloads and surfaces actionable remediation for TLS interception, proxy authentication, missing CA, and blocked registry errors. When `network.ca.certs` is non-empty, setup SHOULD report that those CAs will be injected into `type: lando` services (unless inject is disabled).
+- Provider plugins receive the resolved proxy and CA configuration during setup/apply so they can configure private runtimes, helper binaries, provider-native artifact pulls, and Lando-initiated artifact builds consistently — independent of service inject flags.
+- **Two planes, one source of CA paths:**
+  - **Lando-owned plane:** `network.ca` / `network.proxy` → network-trust resolver → `HttpClient` / providers / `BunSelfRunner`.
+  - **Service plane:** the same resolved CA PEMs (when CA inject is on) plus Landofile `security.ca:` → `lando.security` feature → container trust store + runtime env (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `LANDO_CA_*`) per §6.8 / §6.9.
+- Landofile `security.ca:` remains the additive, repo-shareable project-CA surface. It does not replace global `network.ca`; global certs are for machine/network configuration that must not pollute shared Landofiles.
+- **Non-goal:** host-global arbitrary Dockerfile / build-context directories that splice into every app image. Host-local trust is expressed as CA/proxy config and feature install intent, not as user-authored Dockerfile fragments under the user conf root.
 - Proxy credentials are secrets. They are redacted from logs, telemetry, support diagnostics, lockfiles, and cache metadata.
 - Offline-capable commands do not fail because proxy/CA endpoints are unreachable when their required local state is already present (§12.6).
 

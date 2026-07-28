@@ -780,9 +780,11 @@ network:
     http: null                         # explicit HTTP proxy URL; env vars still honored when null
     https: null                        # explicit HTTPS proxy URL
     noProxy: []                        # host/domain/IP patterns that bypass proxy
+    injectIntoServices: false          # opt-in: write resolved proxy env into type: lando services (§6.8)
   ca:
     trustHost: true                    # use host trust store when platform support exists
-    certs: []                          # additional CA certificate files for Lando-owned network clients
+    certs: []                          # additional CA certificate files (Lando-owned clients + default service inject)
+    injectIntoServices: true           # install network.ca.certs into type: lando trust stores (§6.8 / §10.3.1)
 
 logger: pretty                         # which Logger plugin to use
 renderer: lando                        # which Renderer plugin to use
@@ -888,7 +890,9 @@ Rules:
 - `LANDO_PLUGIN_CONFIG_<NAME>` injects plugin config (JSON).
 - `LANDO_PROVIDER_<PROVIDER>_*` adjusts a single provider's extension config.
 - Standard proxy env vars (`HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, lowercase variants) are honored for Lando-owned network clients unless explicit `network.proxy` config overrides them.
-- `LANDO_NETWORK_CA_CERTS` accepts a JSON array of additional CA certificate paths for Lando-owned network clients.
+- `LANDO_NETWORK_CA_CERTS` accepts a JSON array of additional CA certificate paths for Lando-owned network clients (and, by default, for in-service inject per `network.ca.injectIntoServices`).
+- `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=true|false` overrides `network.ca.injectIntoServices` (default `true`).
+- `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES=true|false` overrides `network.proxy.injectIntoServices` (default `false`).
 - `commandAliases:` (§7.4 Landofile, §7.5 global) is overridable through the standard prefix rules but the nested map keys are JSON-encoded. The master switch is `LANDO_COMMAND_ALIASES_ENABLED=true|false`; the `disabled:` array is set with `LANDO_COMMAND_ALIASES_DISABLED='["start","poweroff"]'`; the `custom:` map is set with `LANDO_COMMAND_ALIASES_CUSTOM='{"halt":"app:stop"}'`. Per-alias scalar setters (`LANDO_COMMAND_ALIASES_CUSTOM_HALT=app:stop`) are NOT supported because alias names may contain characters incompatible with `UPPER_SNAKE_CASE` round-tripping; the JSON-document setter is the canonical mechanism.
 
 Examples:
@@ -902,6 +906,8 @@ LANDO_PLUGIN_CONFIG_AT_LANDO_PROXY_TRAEFIK='{"httpPort":8080}'
 HTTPS_PROXY=http://proxy.corp.example:8080
 NO_PROXY=localhost,127.0.0.1,.lndo.site
 LANDO_NETWORK_CA_CERTS='["/etc/ssl/certs/CorpRootCA.pem"]'
+LANDO_NETWORK_CA_INJECT_INTO_SERVICES=true
+LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES=false
 ```
 
 

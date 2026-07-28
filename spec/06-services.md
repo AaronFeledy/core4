@@ -75,6 +75,8 @@ export const ServiceConfigInput = Schema.extend(ComposeServiceConfig, Schema.Str
   hostnames: Schema.optional(Schema.Array(Schema.String)),
   security: Schema.optional(Schema.Struct({
     ca: Schema.optional(Schema.Array(CaInput)),
+    inheritNetworkCa: Schema.optional(Schema.Boolean),       // override network.ca.injectIntoServices
+    inheritNetworkProxy: Schema.optional(Schema.Boolean),    // override network.proxy.injectIntoServices
   })),
 
   build: Schema.optional(Schema.Struct({
@@ -508,11 +510,23 @@ security:
     - ./CorpCA.crt
     - "{{ load('other-ca.pem') }}"
     - "{{ import('inline-ca.crt') }}"
+  # Optional per-service overrides of the global inject defaults (§7.5 / §10.3.1):
+  inheritNetworkCa: true               # default: network.ca.injectIntoServices
+  inheritNetworkProxy: false           # default: network.proxy.injectIntoServices
 ```
 
-Each entry is mounted into the service at a CA-distro-appropriate path and registered with the system trust store via the boot scaffolding (`type: lando` only). Plugins handle distro-specific install logic; core defines only the intent.
+Each `security.ca:` entry is mounted into the service at a CA-distro-appropriate path and registered with the system trust store via the boot scaffolding (`type: lando` only). Plugins handle distro-specific install logic; core defines only the intent.
 
-**Outbound proxy/CA for app builds.** Lando's global `network.proxy` and `network.ca` settings (§7.5/§10.3.1) are available to provider plugins during artifact pull/build and to `type: lando` service boot scaffolding when the user opts into inheriting them for app dependency downloads. Providers MUST use the resolved proxy/CA settings for Lando-initiated artifact pulls and builds. App services SHOULD NOT receive proxy credentials by default; when a service or build step opts in, credentials are treated as secrets and redacted from logs, telemetry, caches, `LANDO_INFO`, and rendered config output.
+**Host-global CA / proxy inheritance into services (normative).** Corporate TLS interception and outbound proxies are host-local concerns. They MUST NOT require per-project Dockerfile snippets or Landofile edits. Resolution:
+
+1. **CA PEMs and proxy settings are separate knobs.** Global `network.ca` and `network.proxy` (§7.5) each carry `injectIntoServices` (boolean). Defaults: `network.ca.injectIntoServices: true`, `network.proxy.injectIntoServices: false`. CA material is not a secret; proxy URLs may embed credentials and MUST stay opt-in.
+2. **Effective inject flags** for a service are: per-service `security.inheritNetworkCa` / `security.inheritNetworkProxy` when set, else the matching global `injectIntoServices` default. Only `base: "lando"` / `type: lando` services (and types that compose the `lando.security` feature) participate; `l337` and raw Compose-passthrough services do not auto-inject.
+3. **Resolved CA set** for an injecting service is the ordered union of (a) PEMs loaded from global `network.ca.certs` / `LANDO_NETWORK_CA_CERTS` when CA inject is on, then (b) Landofile `security.ca:` entries. Duplicates by content digest are collapsed. Landofile entries remain the team-shared path for *project* CAs; global certs are the machine-local path for *network* CAs (Zscaler / GlobalProtect / similar) and MUST NOT need to live in the app repo.
+4. **Install mechanism** is the same intent path as `security.ca:`: the `lando.security` feature materializes mounts + trust-store registration through boot scaffolding. Core does not splice host-global Dockerfile fragments into the image; open-ended host Dockerfile directories (DDEV-style `~/.ddev/*-build/`) are a non-goal.
+5. **Phase.** Trust-store install runs in boot scaffolding before any `build.app:` / tooling / exec that needs outbound HTTPS inside the container. Lando-initiated artifact pulls and image builds already honor `network.ca` / `network.proxy` on the host side via providers and `HttpClient` (§10.3.1); they do not require in-image CA install. When only global CA inject material changes, the affected services' artifact `buildKey` inputs (§6.13.5) MUST include a stable digest of the resolved injected CA set so rebuilds are not skipped stale.
+6. **Runtime-specific trust.** After system trust-store install, `type: lando` services MUST also export a concatenated PEM bundle path for runtimes that ignore the OS store. At minimum set `SSL_CERT_FILE` / `SSL_CERT_DIR` (OpenSSL family) and `NODE_EXTRA_CA_CERTS` (Node) to that bundle when any injected CA is present; language service types MAY add further equivalents. The bundle path is also published as `LANDO_CA_BUNDLE` / `LANDO_CA_DIR` (§6.9).
+7. **Proxy inject.** When proxy inject is on for a service, the resolved `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` (from global config then standard env, §10.3.1) are written into the service env layer. Proxy credentials are secrets: redacted from logs, telemetry, caches, `LANDO_INFO`, and rendered config; never written into build transcripts in cleartext.
+8. **Providers** MUST use the resolved proxy/CA settings for every Lando-initiated artifact pull and build regardless of service inject flags.
 
 ### 6.9 Service environment variables
 
