@@ -7,11 +7,13 @@
     "composite": true,
     "noEmit": false,
     "paths": {
+      "@lando/paths": ["../paths/src/paths.ts"],
+      "@lando/paths/*": ["../paths/src/*.ts"],
       "@lando/sdk": ["../sdk/src/index.ts"],
       "@lando/sdk/*": ["../sdk/src/*/index.ts"]
     }
   },
   "include": ["./src/**/*.ts", "./bin/**/*.ts", "./package.json"],
   "exclude": ["./dist", "./node_modules", "./test"],
-  "references": [{ "path": "../sdk" }]
+  "references": [{ "path": "../sdk" }, { "path": "../paths" }]
 }

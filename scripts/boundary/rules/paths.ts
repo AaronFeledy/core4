@@ -55,7 +55,7 @@ export const pathsRule = {
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: { files: ["core/src/config/paths.ts"], prefixes: [] },
+  carveOuts: { files: ["core/src/config/paths.ts"], prefixes: ["paths/src/"] },
   passMessage: "Paths boundary check passed.",
   failureHeadline:
     "Paths boundary check failed. Hand-rolled root joins must use @lando/core/paths (makeLandoPaths) or PathsService.",

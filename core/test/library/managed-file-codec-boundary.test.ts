@@ -8,6 +8,7 @@ import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
+const pathsSrc = resolve(repoRoot, "paths/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 
@@ -18,7 +19,7 @@ const runtimeCodePathDir = `${resolve(coreSrc, "runtime")}/`;
 const coreDefaultEntry = resolve(coreSrc, "index.ts");
 const oclifCodePathDir = `${resolve(coreSrc, "cli/oclif")}/`;
 
-const firstPartySourceRoots = [`${coreSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
+const firstPartySourceRoots = [`${coreSrc}/`, `${pathsSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
 const isFirstPartySource = (absPath: string): boolean =>
   firstPartySourceRoots.some((root) => absPath.startsWith(root));
 

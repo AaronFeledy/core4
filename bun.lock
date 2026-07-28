@@ -34,6 +34,7 @@
       },
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@oclif/core": "^4.11.2",
         "@oclif/plugin-help": "^6.2.48",
@@ -44,6 +45,13 @@
         "@oclif/test": "^4.1.18",
         "@types/semver": "^7.7.1",
         "oclif": "^4.23.0",
+      },
+    },
+    "paths": {
+      "name": "@lando/paths",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/sdk": "workspace:*",
       },
     },
     "plugins/ca-mkcert": {
@@ -128,6 +136,9 @@
         "@lando/sdk": "workspace:*",
         "@opentui/core": "^0.4.3",
         "effect": "^3.21.2",
+      },
+      "devDependencies": {
+        "@lando/paths": "workspace:*",
       },
     },
     "plugins/service-lando": {
@@ -320,6 +331,8 @@
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 
     "@lando/notify-lando": ["@lando/notify-lando@workspace:plugins/notify-lando"],
+
+    "@lando/paths": ["@lando/paths@workspace:paths"],
 
     "@lando/provider-docker": ["@lando/provider-docker@workspace:plugins/provider-docker"],
 

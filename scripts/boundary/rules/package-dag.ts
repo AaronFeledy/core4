@@ -20,13 +20,13 @@ interface PluginEdge extends RuntimeEdge {
 
 const PACKAGE_DAG_DATA = {
   scope: {
-    roots: ["plugins/*/src", "core/src"],
+    roots: ["plugins/*/src", "core/src", "paths/src"],
     extensions: [".ts"],
     excludePathSegments: ["test"],
     excludeTestFiles: true,
   },
   carveOuts: { files: [], prefixes: ["core/src/plugins/generated/"] },
-  alwaysAllowedPackages: ["@lando/sdk", "@lando/container-runtime"],
+  alwaysAllowedPackages: ["@lando/sdk", "@lando/container-runtime", "@lando/paths"],
 } as const;
 
 const normalizePath = (path: string): string => path.replaceAll("\\", "/");

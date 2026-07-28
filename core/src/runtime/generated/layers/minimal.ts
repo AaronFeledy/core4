@@ -13,9 +13,9 @@
 
 import { Context, Layer } from "effect";
 
+import { makeLandoPaths } from "@lando/paths";
 import { EventService, PathsService, Renderer } from "@lando/sdk/services";
 import { CacheServiceLive } from "../../../cache/service.ts";
-import { makeLandoPaths } from "../../../config/paths.ts";
 import { DeprecationServiceLive } from "../../../deprecation/service.ts";
 import { DeprecationTelemetryLive } from "../../../deprecation/telemetry.ts";
 import { DownloaderLive } from "../../../downloader/service.ts";

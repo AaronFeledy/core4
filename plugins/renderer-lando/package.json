@@ -34,6 +34,9 @@
     "@opentui/core": "^0.4.3",
     "effect": "^3.21.2"
   },
+  "devDependencies": {
+    "@lando/paths": "workspace:*"
+  },
   "scripts": {
     "build": "tsc -b",
     "clean": "rm -rf dist .tsbuildinfo",

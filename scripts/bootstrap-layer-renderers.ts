@@ -22,7 +22,7 @@ export const renderMinimal = (): string =>
     'import { SecretStoreLive } from "../../../services/secret-store.ts";',
     'import { StateStoreLive } from "../../../state/service.ts";',
     'import { makeTelemetryLayer } from "../../../telemetry/service.ts";',
-    'import { makeLandoPaths } from "../../../config/paths.ts";',
+    'import { makeLandoPaths } from "@lando/paths";',
     'import { EventService, PathsService, Renderer } from "@lando/sdk/services";',
     'import { makeLibraryRenderer, type BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',
     "",

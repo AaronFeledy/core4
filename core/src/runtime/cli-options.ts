@@ -1,9 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { deepMerge, envOverlay, resolveConfigFileRoot } from "../config/overlay.ts";
+import { deepMerge, envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
+import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { resolveUserConfRoot } from "../config/roots.ts";
-import { parseMinimalYaml } from "../config/yaml-min.ts";
 import type { BootstrapLevel } from "./bootstrap.ts";
 import type { LandoRuntimeOptions } from "./layer.ts";
 

@@ -54,6 +54,16 @@ describe("paths boundary lint gate", () => {
       );
       await write(
         root,
+        "paths/src/paths.ts",
+        'import { join } from "node:path";\nexport const make = (userDataRoot: string) => join(userDataRoot, "plugins");\n',
+      );
+      await write(
+        root,
+        "paths/src/paths-platform.ts",
+        'import { join } from "node:path";\nexport const bin = (userDataRoot: string) => join(userDataRoot, "bin");\n',
+      );
+      await write(
+        root,
         "core/src/cli/clean.ts",
         'import { makeLandoPaths } from "../config/paths.ts";\nexport const p = (userDataRoot: string) => makeLandoPaths({ userDataRoot }).pluginsDir;\n',
       );
