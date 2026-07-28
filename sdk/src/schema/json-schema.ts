@@ -2311,9 +2311,11 @@ const hasOwnUsefulDescription = (annotations: AST.Annotations): boolean => {
  * Encoding a transform drops the property-signature description onto the declared member of the
  * optional `Union(T, undefined)`, which is where emitted JSON Schema already reads it from.
  */
-const hasOptionalMemberUsefulDescription = (type: AST.AST): boolean =>
-  AST.isUnion(type) &&
-  type.types.some((member) => !AST.isUndefinedKeyword(member) && hasOwnUsefulDescription(member.annotations));
+const hasOptionalMemberUsefulDescription = (type: AST.AST): boolean => {
+  if (!AST.isUnion(type)) return false;
+  const declared = type.types.filter((member) => !AST.isUndefinedKeyword(member));
+  return declared.length === 1 && hasOwnUsefulDescription((declared[0] as AST.AST).annotations);
+};
 
 const hasSchemaStringAnnotation = (ast: AST.AST, key: symbol): boolean => {
   const annotation = AST.getAnnotation<string>(key)(ast);
