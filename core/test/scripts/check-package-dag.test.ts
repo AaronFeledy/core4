@@ -183,4 +183,27 @@ describe("check-package-dag", () => {
     expect(result.exitCode).toBe(1);
     expect(result.stderr).toContain("plugins/alpha/src/index.ts:1: @lando/core");
   });
+
+  test("accepts the equals form of the root argument", async () => {
+    // Given
+    const repositoryRoot = join(import.meta.dirname, "../../..");
+    const child = Bun.spawn(
+      [process.execPath, "run", "scripts/check-package-dag.ts", "--report", `--root=${root}`],
+      { cwd: repositoryRoot, stdout: "pipe", stderr: "pipe" },
+    );
+
+    // When
+    const [exitCode, stdout, stderr] = await Promise.all([
+      child.exited,
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+    ]);
+
+    // Then
+    expect({ exitCode, stdout, stderr }).toEqual({
+      exitCode: 0,
+      stdout: "Package DAG violations: 0\n",
+      stderr: "",
+    });
+  });
 });
