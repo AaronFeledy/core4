@@ -17,6 +17,7 @@ import type { AppPlan } from "@lando/sdk/schema";
 import { loadLandofileFile } from "../../../core/src/landofile/service.ts";
 import { makePluginRegistryLive } from "../../../core/src/plugins/registry.ts";
 import { AppPlanner, AppPlannerLive } from "../../../core/src/services/planner.ts";
+import { assertServiceContainerRunning } from "./compose-fixture-container-state.ts";
 
 const liveSocketPath = process.env.LANDO_TEST_PODMAN_SOCKET ?? "";
 const fixturesRoot = resolve(import.meta.dir, "../../../core/test/fixtures/compose");
@@ -238,6 +239,7 @@ const runFixture = async (fixture: FixtureCase): Promise<void> => {
     );
     expect(response.status).toBe(200);
     const inspect: unknown = JSON.parse(response.body);
+    assertServiceContainerRunning(inspect, containerName);
     fixture.assertInspect(inspect, appRoot);
   } finally {
     try {
