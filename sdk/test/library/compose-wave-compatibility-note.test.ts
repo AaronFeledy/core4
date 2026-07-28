@@ -30,7 +30,7 @@ describe("Compose service-key vocabulary wave compatibility note", () => {
     );
 
     expect(matchingBullets).toHaveLength(1);
-    expect(matchingBullets[0]).toContain("COMPOSE_REJECTED_TOP_LEVEL_KEYS");
+    expect(matchingBullets[0]).not.toContain("COMPOSE_REJECTED_TOP_LEVEL_KEYS");
   });
 
   test("publishes every promised Compose runtime-knob schema through the public barrel", () => {
@@ -54,6 +54,9 @@ describe("Compose service-key vocabulary wave compatibility note", () => {
     }
     expect(Schema.decodeUnknownSync(SchemaExports.ComposeRestartField)("always")).toBe("always");
     expect(() => Schema.decodeUnknownSync(SchemaExports.ComposeRestartField)("sometimes")).toThrow();
-    expect(Object.keys(SchemaExports.ComposeServiceKnobFields)).toContain("deploy");
+    expect(Schema.decodeUnknownSync(SchemaExports.ComposeDeployField)({ resources: {} })).toEqual({
+      resources: {},
+    });
+    expect(Object.hasOwn(SchemaExports, "ComposeServiceKnobFields")).toBe(false);
   });
 });

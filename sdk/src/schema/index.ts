@@ -5,11 +5,49 @@ export {
   ComposeServiceFieldCapabilities,
   ComposeServiceFieldKey,
 } from "./compose-service-field-capabilities.ts";
-export * from "./compose-knob-devices.ts";
-export * from "./compose-knob-maps.ts";
-export * from "./compose-knob-resources.ts";
-export * from "./compose-knob-scalars.ts";
-export * from "./compose-service-knobs.ts";
+export {
+  ComposeDevice,
+  ComposeDevicesField,
+  ComposeUlimit,
+  ComposeUlimitsField,
+} from "./compose-knob-devices.ts";
+export {
+  ComposeExtraHostsField,
+  ComposeScalarMap,
+  ComposeScalarMapField,
+  ComposeSysctlsField,
+} from "./compose-knob-maps.ts";
+export {
+  ComposeDeploy,
+  ComposeDeployField,
+  ComposeDeployResources,
+  ComposeDeploymentDevice,
+  ComposeDiscreteResourceSpec,
+  ComposeGenericResource,
+  ComposeGpuRequest,
+  ComposeGpusField,
+  ComposeLogging,
+  ComposeResourceLimits,
+  ComposeResourceReservations,
+} from "./compose-knob-resources.ts";
+export {
+  ComposeBooleanOrStringField,
+  ComposeByteSizeField,
+  ComposeCapAddField,
+  ComposeCapDropField,
+  ComposeDnsField,
+  ComposeDnsOptField,
+  ComposeDnsSearchField,
+  ComposeDurationSecondsField,
+  ComposeGroupAddField,
+  ComposePullPolicyField,
+  ComposeRestartField,
+  ComposeSecurityOptField,
+  ComposeShmSizeField,
+  ComposeStopGracePeriodField,
+  ComposeStringListField,
+  ComposeTmpfsField,
+} from "./compose-knob-scalars.ts";
 export type { ComposePortEntry } from "./compose-ports.ts";
 export { parseShortVolume } from "./compose-volumes.ts";
 export type { ComposeVolumeEntry } from "./compose-volumes.ts";
