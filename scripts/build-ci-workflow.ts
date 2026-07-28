@@ -83,11 +83,11 @@ ${setupBunSteps}
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Lint
-        run: bun run lint
-
       - name: Architecture boundary kernel
         run: bun run check:architecture
+
+      - name: Lint
+        run: bun run lint
 
       - name: Telemetry inventory lint
         run: bun run check:telemetry-inventory

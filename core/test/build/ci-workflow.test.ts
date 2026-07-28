@@ -316,6 +316,11 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run lint");
     expect(staticChecksPlatform).toContain("      - name: Architecture boundary kernel");
     expect(staticChecksPlatform).toContain("        run: bun run check:architecture");
+    // `bun run lint` shells out to the same kernel, so the dedicated step must
+    // run first or it never reports the failure it exists to surface.
+    expect(staticChecksPlatform.indexOf("      - name: Architecture boundary kernel")).toBeLessThan(
+      staticChecksPlatform.indexOf("      - name: Lint"),
+    );
     expect(staticChecksPlatform).toContain("      - name: Telemetry inventory lint");
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
     expect(staticChecksPlatform).toContain("      - name: Compose schema coverage");
