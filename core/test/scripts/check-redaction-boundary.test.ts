@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { redactionRule } from "../../../scripts/boundary/rules/redaction.ts";
 import { checkRedactionBoundary } from "../../../scripts/check-redaction-boundary.ts";
 
 const makeFixtureRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-redaction-boundary-"));
@@ -14,6 +15,13 @@ const write = async (root: string, path: string, content: string): Promise<void>
 };
 
 describe("redaction boundary lint gate", () => {
+  test("substrate rule keeps pass/fail headlines byte-identical", () => {
+    expect(redactionRule.passMessage).toBe("Redaction boundary check passed.");
+    expect(redactionRule.failureHeadline).toBe(
+      "Redaction boundary check failed. Redaction sentinels and ad-hoc secret-matching regexes must route through @lando/sdk/secrets.",
+    );
+  });
+
   test("passes for delegated redaction, keyword mentions, and test fixtures", async () => {
     const root = await makeFixtureRoot();
     try {
