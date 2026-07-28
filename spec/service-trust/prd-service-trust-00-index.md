@@ -1,60 +1,54 @@
-# PRD Index — Service network trust inject (host-global CA/proxy → containers)
+# PRD Index — Service trust (corporate CA/proxy, leaf certs, boot, doctor)
 
-> **Phase position:** Post–feature-freeze feature work (same class as the Compose vocabulary wave). The normative contract was amended **first** in §6.8, §7.5, and §10.3.1 (commits introducing `network.ca.injectIntoServices` / `network.proxy.injectIntoServices` and the host-global inheritance rules). This set makes that contract true in the planner, `lando.security` feature, and derived image builds. When these PRDs and a spec part disagree, **the spec part wins** and both must be reconciled together.
+> **Phase position:** Post–feature-freeze feature work. Normative contracts live in §6.8–§6.9, §7.5–§7.6, §10.3, and the service feature priority table. Spec wins over PRDs when they disagree.
 
 ## Introduction
 
-Corporate TLS interception (Zscaler, GlobalProtect, custom MITM proxies) breaks HTTPS inside app containers: Composer, npm, curl, and language runtimes fail unless the corporate CA is trusted **in the service image/env**. That trust is **machine- and network-local**, not project-local — it must not live in the shared Landofile.
+Developers behind corporate TLS interception need containers to trust machine-local CAs without polluting shared Landofiles. Separately, local HTTPS for routes needs leaf certificates from a dev CA, and `type: lando` services need `/etc/lando/*` boot scaffolding so env and certs are available on every exec. Doctor and setup must explain failures. All of that is **user-facing** and therefore requires **executable guide coverage** as acceptance criteria (not a docs afterthought).
 
-DDEV’s answer is host-global Dockerfile snippets (`~/.ddev/web-build/`). Lando’s answer is already specified and deliberately different:
+This set is two PRDs:
 
-1. **Lando-owned egress** uses global `network.ca` / `network.proxy` via the pure network-trust resolver and `HttpClient` (§10.3.1–§10.3.2) — largely implemented.
-2. **In-service trust** installs the same CA material into `type: lando` services when `network.ca.injectIntoServices` is true (default), with per-service overrides and additive Landofile `security.ca:` (§6.8) — **not implemented**.
-
-This wave closes the second plane so a user can set CA paths once in global config and every lando-base service works behind interception without per-project Dockerfiles or gitignored Landofile fragments.
+1. **Host-global CA/proxy inject** — close the service plane of §10.3.1 / §6.8 inject rules.
+2. **Leaf certs, boot, language trust, doctor** — `certs:` + mkcert Live, `lando.boot`, language CA env, doctor checks, guide pack completion.
 
 ## Source References
 
-- [`spec/06-services.md`](../06-services.md) §6.8 — host-global CA/proxy inheritance, `security.*`, `lando.security` priority 1100, build-key digests, runtime env (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `LANDO_CA_*`)
-- [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.5–§7.6 — `network.ca` / `network.proxy` inject flags and env overrides
-- [`spec/11-subsystems.md`](../11-subsystems.md) §10.3.1 — two-plane model; non-goal: host-global Dockerfile directories
-- [`sdk/src/schema/config.ts`](../../sdk/src/schema/config.ts) — `NetworkCaConfig.injectIntoServices` (default `true`), `NetworkProxyConfig.injectIntoServices` (default `false`)
-- [`sdk/src/network-trust/index.ts`](../../sdk/src/network-trust/index.ts) — pure path-level trust plan (no file IO)
-- Work plan: `.omo/plans/host-global-ca-proxy-inject.md` (implementation sequencing)
+- [`spec/06-services.md`](../06-services.md) §6.8 certificates/security, §6.9 env, feature priorities (`lando.boot` 100, `lando.certs` 1000, `lando.security` 1100)
+- [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.3 load/import, §7.5–§7.6 network + env
+- [`spec/11-subsystems.md`](../11-subsystems.md) §10.3 CertificateAuthority + corporate proxies
+- Work plan: `.omo/plans/host-global-ca-proxy-inject.md`
+- Existing guide seed: [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
 
 ## Goals
 
-- Setting `network.ca.certs` (or `LANDO_NETWORK_CA_CERTS`) once injects those CAs into every `base: "lando"` service on the machine by default.
-- Landofile `security.ca:` remains the additive, repo-shareable project-CA path; global certs never require Landofile edits.
-- CA vs proxy inject are independent (CA default on; proxy default off).
-- Artifact rebuilds when injected CA material changes (digest in build-key inputs).
-- No open-ended host Dockerfile injection surface.
+- Set-and-forget corporate CA/proxy on the host for lando-base services.
+- Landofile `security.ca` / `certs:` remain clear, documented, and guided.
+- mkcert-backed leaf certs work after `lando setup`.
+- `lando.boot` scaffolds `/etc/lando` for env and cert materialization.
+- Doctor/setup remediate CA and network-trust problems.
+- **Every user-facing story includes guide MDX + `lint:guides` / `check:guide-coverage` / `check:guide-drift` (and public transcripts when applicable).**
 
 ## Non-Goals
 
-- DDEV-style `~/.lando/*-build/` or global Dockerfile fragment directories.
-- `CertificateAuthority` leaf cert issuance / mkcert host trust / `certs: true` route leaves (existing subsystem; separate wave).
-- Full `lando.boot` `/etc/lando/*` scaffolding framework (deferred; inject uses derived-build + plan env + mounts).
-- Language-specific trust beyond Node/OpenSSL defaults (e.g. Java trust stores) — optional later on language types.
-- Inject into `base: "l337"` or Compose-passthrough services that do not run `lando.security`.
-- Teaching pure `@lando/sdk/network-trust` to read PEM files from disk.
-- `packages:` feature or unrelated service customization.
+- DDEV-style host-global Dockerfile directories.
+- Unrelated proxy-traefik, SSH, or Mutagen feature work beyond honoring `network.ca` on downloads.
+- New trust models not in the spec.
 
 ## PRDs in this set
 
 | #  | PRD | Subsystem | US range | Depends on |
 | -- | --- | --------- | -------- | ---------- |
-| 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | `ServiceConfig.security` + aliases, env-overlay inject flags, shared PEM load, `lando.security`, planner + load/import CA material, derived-build CA pack, setup note, gates | US-483..US-489 | Spec §6.8/§7.5/§10.3.1 already landed |
+| 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | security schema, env overlays, PEM load, `lando.security`, planner, derived-build, setup note, corporate guide | US-483..US-489 | Spec inject contract landed |
+| 02 | [Leaf certs, boot, language trust, doctor](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + `lando.boot` + language CA env + doctor + guide pack | US-490..US-496 | PRD-01 for shared CA bundle paths/env conventions where overlapping |
 
 ## Verification contract
 
-Every story carries TDD (or tests-with-implementation) acceptance criteria plus:
-
-1. `bun test` on the story’s path filters with a **positive** test count
-2. `bun run typecheck` and `bun run lint`
-3. When `@lando/sdk` schemas change: `sdk/API_COMPATIBILITY.md` + `bun run codegen:schema-snapshot` with clean `git diff --exit-code` on generated paths
-4. No hand-edit of generated schema MDX/JSON or CI workflows
+1. TDD or tests-with-implementation; positive `bun test` counts on story path filters.
+2. `bun run typecheck`, `bun run lint`.
+3. SDK schema changes: `API_COMPATIBILITY.md` + `codegen:schema-snapshot`.
+4. **User-facing stories:** guide updated/created; `bun run lint:guides`; `bun run check:guide-coverage`; `bun run check:guide-drift`; `check:public-transcripts` if transcripts change.
+5. `render={false}` guide scenarios are acceptable when live CA/mkcert/network is unsafe in CI (match certificates-mkcert pattern) **if** unit/contract tests back the same claims.
 
 ## Open questions
 
-None for this wave. Defaults are locked in the normative spec (CA inject on, proxy inject off, no global Dockerfiles).
+None — defaults locked by spec and the approved expanded plan.

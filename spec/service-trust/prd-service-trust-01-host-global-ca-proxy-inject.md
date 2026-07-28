@@ -13,15 +13,11 @@ Implementation shape (locked):
 5. **Derived build** — pack CA PEMs into image context and run multi-distro trust-store install; digests participate in the artifact build key.
 6. **Setup** — informational note when certs will inject.
 
-Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 1–7).
+Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 1–7, 14 guide pack).
 
-Adjacent gaps folded into this PRD after audit:
+Leaf certs, `lando.boot`, language CA env, and doctor expansions live in [PRD-02](./prd-service-trust-02-certs-boot-doctor.md) (US-490..US-496).
 
-- §7.6 friendly env vars for inject flags were documented but not wired in `envOverlay` (only generic `LANDO_CONFIG__*`).
-- §6.8 authoring aliases (`cas`, `certificate-authority`, `certificate-authorities`) and `load`/`import` CA material were underspecified in the first story cut.
-- `SSL_CERT_DIR` was missing from the env checklist.
-
-Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Java-style trust env.
+**Guide rule:** every user-facing story below includes executable-guide acceptance criteria. Prefer `docs/guides/config/corporate-network-trust.mdx` (new) plus links from setup/doctor guides. `render={false}` is OK when backed by unit tests.
 
 ## Source References
 
@@ -64,6 +60,8 @@ Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Jav
 - [ ] Public JSON Schema inventory and `bun run codegen:schema-snapshot` refreshed; generated docs list the new fields.
 - [ ] `sdk/API_COMPATIBILITY.md` records the additive fields.
 - [ ] Unit decode tests cover present/absent/override booleans and aliases.
+- [ ] **Guide:** `docs/guides/config/corporate-network-trust.mdx` documents Landofile `security.ca` / aliases / inherit flags (scenario may be `render={false}`).
+- [ ] `bun run lint:guides` and `bun run check:guide-coverage` pass for touched guides (final green may land with US-488/US-496 guide pack if draft is stubbed here).
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -81,6 +79,7 @@ Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Jav
 - [ ] Unreadable path fails with a tagged error naming the path and remediation pointing at `network.ca.certs` / `LANDO_NETWORK_CA_CERTS` / Landofile `security.ca`.
 - [ ] Pure `@lando/sdk/network-trust` remains file-IO-free.
 - [ ] Unit tests cover defaults, overrides, empty cert lists, and missing files.
+- [ ] **Guide:** corporate-network-trust documents global cert path resolution and failure remediation (unit-backed).
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -101,6 +100,7 @@ Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Jav
 - [ ] Feature does not import or yield `ConfigService` / `FileSystem`.
 - [ ] Composition unit tests mirror `env-feature.test.ts` / php prerequisite patterns.
 - [ ] Base-composition tests that enumerate default feature ids are updated.
+- [ ] **Guide:** corporate-network-trust documents runtime env vars (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `SSL_CERT_DIR`, `LANDO_CA_*`) and rebuild expectation.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -123,6 +123,7 @@ Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Jav
 - [ ] Changing CA PEM bytes changes the artifact build key via `buildKeyInputs.caDigests`; proxy env changes do not.
 - [ ] Unreadable global CA fails the plan with actionable remediation.
 - [ ] Planner/unit tests cover inject on, opt-out via `inheritNetworkCa: false`, inline PEM, and l337 skip.
+- [ ] **Guide:** corporate-network-trust documents set-and-forget global config + per-service opt-out + setup note.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -137,6 +138,7 @@ Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Jav
 - [ ] Packed context includes CA files and a Dockerfile that `COPY`s them and runs a multi-distro trust-store update (Debian/Ubuntu `update-ca-certificates`, RHEL-family `update-ca-trust` when present, Alpine `update-ca-certificates`), and writes `/etc/lando/certs/ca-bundle.pem`.
 - [ ] Host file missing or digest mismatch fails with `ProviderInternalError` before `/build` succeeds.
 - [ ] Existing image-build tests remain green; new tests assert tar entries and failure modes (fake HTTP API pattern already used in `image-build.test.ts`).
+- [ ] **Guide:** corporate-network-trust notes that CA changes require service image rebuild / `lando rebuild` when trust-store layers change.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -167,6 +169,7 @@ Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Jav
 - [ ] `loadGlobalConfigSync` / `ConfigService` decode reflects these overlays.
 - [ ] Garbage non-boolean values fail closed or are rejected at GlobalConfig decode with remediation (chosen behavior tested).
 - [ ] Unit tests under paths (or existing overlay test file) cover true/false/absent.
+- [ ] **Guide:** corporate-network-trust documents `LANDO_NETWORK_CA_INJECT_INTO_SERVICES` and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES`.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
