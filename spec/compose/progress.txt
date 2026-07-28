@@ -972,11 +972,19 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Follow-up story (if created): none; no permitted reopening condition or qualifying new evidence was identified.
 ---
 
-## 2026-07-28 10:10 CDT - US-476 Build Verification
+## 2026-07-28 10:05 CDT - US-476 Build Verification
 - No production changes: the shared conformance harness, matrix-computed rejection classification, fixture-refresh path confinement, env-gated provider spot checks, and generated-workflow socket wiring were already complete on the branch. This pass re-verified every acceptance criterion against committed artifacts and carried the pending adjudication amendment of the gate-finality criterion into the committed index and log.
 - Verification: typecheck and lint passed; conformance, fixture-tooling, generated-workflow, schema-snapshot, planner/rejection/spelling/knob, container-runtime, and app-plan cache spot checks passed. The env-gated provider lane skipped cleanly with no container-runtime contact, and injecting a stale rejection-manifest entry turned the parity guard red before restoring it returned green.
-- Out-of-scope observations only, per the gate-finality criterion: no unowned production change, no failed in-scope proof, and no managed-runtime result were identified, so `passes: true` is retained and no follow-up story was created.
+- Out-of-scope observations only, per the gate-finality criterion: no unowned production change or failed in-scope proof was identified, and no failed Push/Babysit managed-runtime result was present, so `passes: true` is retained and no follow-up story was created.
 - **Learnings for future iterations:**
   - There is no skip-list file to find in this suite; searching for one produces a false MISSING report. Rejection is computed per fixture at runtime and the committed manifest is only its drift record, so the honest check is to inject a stale entry and watch the parity guard fail.
   - A verification-only Build pass still owes the no-socket integration run: executing the env-gated file with the socket variable unset is the only host-safe proof that the lane skips rather than reaching for a runtime, and it costs nothing.
+---
+
+## 2026-07-28 10:15 CDT - US-476 Review
+- Reconciled the gate-finality amendment into the narrative source PRD and corrected the Build verification timestamp so the two PRD representations and durable chronology agree; no production behavior or acceptance boundary changed.
+- Guide-Coverage-Skip: this branch changes internal Compose fixture, schema, planner, and provider conformance; the executable Compose guide and published key matrix are owned by US-477.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account had exhausted its usage limit, so no Bugbot findings were available to triage.
+- Review notes (deferred/rejected): Fresh managed-runtime evidence, concurrent same-user checkout mutation, branch size, cycle count, and US-482-owned co-resident production work remain conclusively out of scope under the source acceptance criteria; no reviewer supplied a permitted reopening condition.
+- Verification: typecheck and lint passed; source/index parity and diff checks passed; focused loader, fixture-outcome, enumeration, refresh/confinement, generated-workflow, Compose-coverage, and safe no-socket spot checks passed with positive test counts.
 ---
