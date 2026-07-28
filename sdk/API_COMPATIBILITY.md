@@ -70,6 +70,7 @@
 - `@lando/sdk/plugins` additively exports the `LandoPluginModule` descriptor types and `definePlugin` helper for packaging a plugin module (manifest, optional contribution maps, optional host-service factories). `PluginStateStore` additively gains `withLock(key, body)` so plugin durable state can take an exclusive lock around a critical section; existing `open` callers are unchanged.
 - `RendererContribution` additively gains optional `loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>` and the type-only `InteractivePromptDriver` (`readRaw`) so a renderer plugin can supply a lazy interactive prompt driver without widening the required contribution shape. `@lando/sdk/renderer` re-exports the shared plain/json/verbose formatters (`formatDurationSuffix`, `formatPlainEvent`, `renderPlainLine`, `renderJsonLine`, `renderVerboseLine`, and the `isRenderable*` guards) from `format.ts`; prior import paths on `@lando/sdk/renderer` continue to resolve.
 - `@lando/sdk/errors` additively exports `PluginDescriptorMismatchError` for load-time rejection when a plugin module descriptor disagrees with its declared manifest identity.
+- `LandofileService.discover`'s error channel additively gains `ComposeKeyRejectedError`; the frozen surface fixture is updated to match. `@lando/sdk/errors` additively exports `ComposeKeyRejectedError`, carrying `{ source, service?, keyPath, remediation }`; it registers no JSON Schema and widens no frozen schema list. `@lando/sdk/landofile` additively exports the pure helper `detectLandofileTags` plus the type-only `LandofileTag` / `LandofileTagOccurrence`. `IncludeEntry.kind` additively accepts `"compose"`, and the top-level Compose `include:` key normalizes to `kind: compose` entries appended after authored `includes:` entries.
 
 ## Additive Alpha schema exports
 
@@ -515,6 +516,7 @@
 - `ConfigTranslatorConflictError`
 - `DeprecationContradictionError`
 - `DeprecatedSurfaceError`
+- `ComposeKeyRejectedError`
 - `LandofileEmitError`
 - `LandofileExpressionEvalError`
 - `LandofileExpressionForbiddenError`
@@ -618,6 +620,7 @@
 
 - `VerifiedStreamError`
 - `collectVerifiedStream`
+- `detectLandofileTags`
 - `emitLandofileYaml`
 - `emitLandofileYamlEither`
 - `markDeprecated`

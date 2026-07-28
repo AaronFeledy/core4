@@ -68,6 +68,7 @@ import type {
   BuildPhaseFailedError,
   CacheError,
   CapabilityError,
+  ComposeKeyRejectedError,
   ConfigError,
   EventError,
   GlobalAppError,
@@ -314,6 +315,7 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileIncludeError
       | LandofileLockMismatchError
       | NotImplementedError
+      | ComposeKeyRejectedError
     >;
   }
 >() {}

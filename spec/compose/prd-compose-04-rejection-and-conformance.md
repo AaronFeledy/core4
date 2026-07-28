@@ -28,9 +28,9 @@ The vocabulary promise is only honest if the boundary is sharp on both sides: ev
 
 - [ ] A `Schema.TaggedError` (e.g. `ComposeKeyRejectedError`) carries `{ service?, keyPath, remediation }`; remediation text comes from the matrix entry (US-466), not hand-written per call site.
 - [ ] All §7.4 rejected keys produce it: `extends` (→ `type:` inheritance §6.11.1 / recipes / `includes:`), `container_name` (→ Lando naming), `network_mode`, `links`, Swarm `deploy` orchestration keys (keyPath-precise, e.g. `deploy.replicas` rejects while `deploy.resources` preserves).
-- [ ] `!reset` and `!override` YAML tags are rejected at YAML load with the same error shape and a §7.2-merge remediation; YAML anchors/aliases/merge-keys (`<<:`) continue to work, tested.
+- [ ] `!reset` and `!override` YAML tags are rejected at YAML load with the same tagged error shape and a §7.2-merge remediation; a quoted occurrence (e.g. `"!reset"`) is an ordinary string literal and is not rejected. YAML anchor, alias, and merge-key (`<<:`) *support* is outside this story's scope — the tested criterion here is a regression guard proving these forms are not misclassified as a Compose key rejection, not a claim that they are supported.
 - [ ] `kind: compose` include fragments route through the same decode path and produce identical errors with the fragment source attributed.
-- [ ] Errors surface through the standard CLI failure formatter and `--format json` envelope; `lando config` on a rejecting file shows the tagged failure, not a stack.
+- [ ] Errors surface through the standard CLI failure formatter and `--format json` envelope; `lando app config` / `lando info` / `lando app config lint` on a rejecting file shows the tagged failure, not a stack. (Bare top-level `lando config` reads global config, not the app Landofile, and cannot prove this.)
 - [ ] Landofile lint reports rejected keys as errors with the same remediation.
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -66,6 +66,35 @@ The vocabulary promise is only honest if the boundary is sharp on both sides: ev
 - [ ] `sdk/API_COMPATIBILITY.md` documents the wave's additive surface and the `composeBuild` gut-and-replace in one entry.
 - [ ] The §4.2 plugin-abstraction coverage suite and all boundary gates (`check:renderer-boundary`, `check:probe-boundary`, `check:paths-boundary`, `check:state-store-boundary`, `check:redaction-boundary`, `check:compose-coverage`) pass on the completed wave.
 - [ ] Full gate: `bun run typecheck`, `bun test`, `bun run lint` green at the wave's head.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-478: Native YAML anchors, aliases, and merge keys
+
+**Description:** As a Landofile author, I can use native YAML anchors, aliases, and merge keys through the documented parser boundary without those forms being misclassified as rejected Compose vocabulary.
+
+**Acceptance Criteria:**
+
+- [ ] The canonical YAML parser resolves anchors and aliases before Landofile schema decoding for root files and included `landofile`/`compose` fragments.
+- [ ] YAML merge keys (`<<:`) merge mapping aliases with deterministic YAML precedence before the existing Landofile layer merge runs.
+- [ ] Unknown aliases, recursive alias graphs, invalid merge targets, and duplicate anchor definitions fail with `LandofileParseError` carrying source location and remediation; they never produce `ComposeKeyRejectedError`.
+- [ ] `!reset` and `!override` remain rejected through `ComposeKeyRejectedError`, while quoted occurrences remain ordinary strings.
+- [ ] Loader-, include-, and lint-level tests prove the production parser path and guard against tag-rejection misclassification.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-479: Unify tooling fragments under includes kind tooling
+
+**Description:** As a Landofile author, tooling-only fragments can use the canonical `includes:` surface with `kind: tooling` without publishing a schema literal ahead of its resolution and namespacing behavior.
+
+**Acceptance Criteria:**
+
+- [ ] `IncludeEntry.kind` additively accepts `tooling` only when the same change implements app-plan compile-time tooling-fragment resolution.
+- [ ] `kind: tooling` preserves the `toolingIncludes:` namespace, flatten, internal, aliases, excludes, and vars contract from spec §8.5.8.
+- [ ] `toolingIncludes:` and `includes:` entries with `kind: tooling` route through one implementation and produce equivalent plans; no compatibility shim or dual resolver is introduced.
+- [ ] Schema artifacts, API compatibility notes, generated references, and executable tooling guide coverage are updated together.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes

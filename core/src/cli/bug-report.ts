@@ -20,6 +20,7 @@
  */
 
 import { resolveUserCacheRoot } from "../cache/paths.ts";
+import { escapeDiagnosticText } from "./diagnostic-text.ts";
 import { redactDetails, redactString } from "./redact.ts";
 
 export type RendererMode = "lando" | "plain" | "json" | "verbose";
@@ -147,6 +148,12 @@ const extractExtraTagFields = (
       if (value !== undefined) out.push([field, value]);
     }
   }
+  if (tag === "ComposeKeyRejectedError") {
+    for (const field of ["source", "service", "keyPath"] as const) {
+      const value = asString(record[field]);
+      if (value !== undefined) out.push([field, value]);
+    }
+  }
   if (tag === "RecipePostInitError") {
     const recipe = asString(record.recipe);
     if (recipe !== undefined) out.push(["recipe", recipe]);
@@ -220,16 +227,18 @@ export const buildBugReport = (input: {
 };
 
 export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
-  const lines: Array<string> = [envelope.body];
+  const renderText =
+    envelope.code === "ComposeKeyRejectedError" ? escapeDiagnosticText : (text: string) => text;
+  const lines: Array<string> = [renderText(envelope.body)];
   if (envelope.remediation !== undefined) {
-    lines.push(`  ↳ ${envelope.remediation}`);
+    lines.push(`  ↳ ${renderText(envelope.remediation)}`);
   }
   lines.push(`code: ${envelope.code}`);
   lines.push(`commandId: ${envelope.commandId}`);
   if (envelope.appId !== undefined) lines.push(`appId: ${envelope.appId}`);
   if (envelope.providerId !== undefined) lines.push(`providerId: ${envelope.providerId}`);
   for (const [key, value] of envelope.extra) {
-    lines.push(`${key}: ${value}`);
+    lines.push(`${key}: ${renderText(value)}`);
   }
   lines.push(`logsDir: ${envelope.logsDir}`);
   lines.push(`cacheDir: ${envelope.cacheDir}`);

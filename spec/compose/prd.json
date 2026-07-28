@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Compose Service-Key Vocabulary (post-freeze feature wave, 4.1 target)",
   "branchName": "ralph/compose",
-  "description": "Makes the amended spec sections 6.2, 7.4, and 5.5.1 true: Compose compatibility as a service-key vocabulary, not a file-format promise. US-466..US-467 (PRD-01) build the alignment substrate: the Compose JSON Schema vendored from a tagged compose-spec/compose-go release and pinned by checksum, the committed key-disposition matrix (normalized | preserved | rejected) with the check:compose-coverage gate that fails CI on any unclassified upstream key path, and the automated upstream-bump workflow. US-468..US-472 (PRD-02) land the vocabulary normalizations: Compose spellings and alternate forms (depends_on incl. condition map, working_dir, env_file, list environment, labels), ports/expose and volumes long syntax with mounts/storage/tmpfs classification, the Compose healthcheck shape, build: shape discrimination replacing composeBuild (pre-release gut-and-replace), and depends_on conditions driving section 6.13 orchestration. US-473..US-474 (PRD-03) land the per-container runtime-knob tier: schema shapes for the section 6.2 knob list with lossless preservation into ServicePlan.extensions.compose and the section 5.5.1 capability check with tagged CapabilityError, then Podman realization of the common knobs. US-475..US-477 (PRD-04) land the rejection surface (one tagged error shape with matrix-sourced remediation, covering extends, container_name, network_mode, links, Swarm deploy orchestration keys, and !reset/!override YAML tags, in Landofiles and kind: compose fragments alike), the fixture-driven conformance suite with a matrix-derived skip-list, and the closeout story: generated docs key matrix, executable guide, and SDK snapshot/API-compatibility reconciliation. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
+  "description": "Makes the amended spec sections 6.2, 7.4, and 5.5.1 true: Compose compatibility as a service-key vocabulary, not a file-format promise. US-466..US-467 (PRD-01) build the alignment substrate: the Compose JSON Schema vendored from a tagged compose-spec/compose-go release and pinned by checksum, the committed key-disposition matrix (normalized | preserved | rejected) with the check:compose-coverage gate that fails CI on any unclassified upstream key path, and the automated upstream-bump workflow. US-468..US-472 (PRD-02) land the vocabulary normalizations: Compose spellings and alternate forms (depends_on incl. condition map, working_dir, env_file, list environment, labels), ports/expose and volumes long syntax with mounts/storage/tmpfs classification, the Compose healthcheck shape, build: shape discrimination replacing composeBuild (pre-release gut-and-replace), and depends_on conditions driving section 6.13 orchestration. US-473..US-474 (PRD-03) land the per-container runtime-knob tier: schema shapes for the section 6.2 knob list with lossless preservation into ServicePlan.extensions.compose and the section 5.5.1 capability check with tagged CapabilityError, then Podman realization of the common knobs. US-475..US-477 (PRD-04) land the rejection surface (one tagged error shape with matrix-sourced remediation, covering extends, container_name, network_mode, links, Swarm deploy orchestration keys, and !reset/!override YAML tags, in Landofiles and kind: compose fragments alike), the fixture-driven conformance suite with a matrix-derived skip-list, and the closeout story: generated docs key matrix, executable guide, and SDK snapshot/API-compatibility reconciliation. US-478..US-479 bind parser-capability and unified tooling-include work split out during the US-475 audit instead of leaving those deferred contracts only in progress prose. Source of truth remains spec/{01..19}-*.md; when PRDs and normative spec disagree, the spec wins and both must be reconciled together. All stories carry full TDD acceptance criteria, plus Tests pass, Typecheck passes, and Lint passes criteria.",
   "userStories": [
     {
       "id": "US-466",
@@ -182,7 +182,7 @@
       "acceptanceCriteria": [
         "A Schema.TaggedError (e.g. ComposeKeyRejectedError) carries { service?, keyPath, remediation }; remediation text is sourced from the US-466 matrix entries, not hand-written per call site.",
         "All spec 7.4 rejected keys produce it: extends (-> type: inheritance 6.11.1 / recipes / includes:), container_name (-> Lando naming), network_mode, links, and Swarm deploy orchestration keys with keyPath precision (deploy.replicas rejects while deploy.resources preserves).",
-        "!reset and !override YAML tags are rejected at YAML load with the same error shape and a spec 7.2-merge remediation; YAML anchors/aliases/merge keys (<<:) continue to work, tested.",
+        "!reset and !override YAML tags are rejected at YAML load with the same error shape and a spec 7.2-merge remediation; a quoted occurrence is an ordinary string, while anchors/aliases/merge keys are only guarded against misclassification and are not claimed as supported.",
         "kind: compose include fragments route through the same decode path and produce identical errors with the fragment source attributed.",
         "Errors surface through the standard CLI failure formatter and --format json envelope; Landofile lint reports rejected keys with the same remediation.",
         "Tests pass",
@@ -190,7 +190,7 @@
         "Lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 7.4 'Rejected project machinery' rule + spec 6.2 rejection bullet + 7.4 kind: compose fragment rule (all amended in this change)."
     },
     {
@@ -231,6 +231,41 @@
       "priority": 12,
       "passes": false,
       "notes": "Origin: spec 7.4 docs-matrix mandate (generated from the disposition matrix) + sdk/AGENTS.md additive-surface rules; closes the wave. Blocked by every prior story in the set. Merged from former US-480 + US-481."
+    },
+    {
+      "id": "US-478",
+      "title": "Native YAML anchors, aliases, and merge keys",
+      "description": "As a Landofile author, I can use native YAML anchors, aliases, and merge keys through the documented parser boundary without those forms being misclassified as rejected Compose vocabulary.",
+      "acceptanceCriteria": [
+        "The canonical YAML parser resolves anchors and aliases before Landofile schema decoding for root files and included landofile/compose fragments.",
+        "YAML merge keys (<<:) merge mapping aliases with deterministic YAML precedence before the existing Landofile layer merge runs.",
+        "Unknown aliases, recursive alias graphs, invalid merge targets, and duplicate anchor definitions fail with LandofileParseError carrying source location and remediation; they never produce ComposeKeyRejectedError.",
+        "The !reset and !override tokens remain rejected through ComposeKeyRejectedError, while quoted occurrences remain ordinary strings.",
+        "Loader-, include-, and lint-level tests prove the production parser path and guard against tag-rejection misclassification.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Split from US-475's original bundled YAML-support criterion during its Drift Audit; this is parser capability, not a Compose disposition."
+    },
+    {
+      "id": "US-479",
+      "title": "Unify tooling fragments under includes kind tooling",
+      "description": "As a Landofile author, tooling-only fragments can use the canonical includes surface with kind: tooling without publishing a schema literal ahead of its resolution and namespacing behavior.",
+      "acceptanceCriteria": [
+        "IncludeEntry.kind additively accepts tooling only when the same change implements app-plan compile-time tooling-fragment resolution.",
+        "kind: tooling preserves the toolingIncludes namespace, flatten, internal, aliases, excludes, and vars contract from spec 8.5.8.",
+        "toolingIncludes and includes entries with kind: tooling route through one implementation and produce equivalent plans; no compatibility shim or dual resolver is introduced.",
+        "Schema artifacts, API compatibility notes, generated references, and executable tooling guide coverage are updated together.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Materializes the unified tooling include-kind follow-up identified during US-475 spec reconciliation; blocked by the existing spec 8.5.8 toolingIncludes contract."
     }
   ]
 }

@@ -12,7 +12,7 @@ Public Lando schema contract for Include Entry.
 | Field | Required | Type | Description | Default | Accepted values | Examples | Deprecation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | `source` | Yes | `string` | a string | — | — | — | — |
-| `kind` | No | `string` | — | — | `landofile` | — | — |
+| `kind` | No | `string` | The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path. This is not source transport. | — | `landofile`, `compose` | — | — |
 | `path` | No | `string` | — | — | — | — | — |
 | `version` | No | `string` | — | — | — | — | — |
 | `checksum` | No | `string` | — | — | — | — | — |

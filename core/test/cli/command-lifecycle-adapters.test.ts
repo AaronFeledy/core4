@@ -3,7 +3,6 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
-import { runDynamicTooling } from "../../src/cli/cli-adapters/app-lifecycle.ts";
 import { resolveCanonicalCommandId, runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
@@ -15,6 +14,7 @@ import {
   resetActiveCommandInvocation,
   setActiveCommandId,
 } from "../../src/cli/compiled-runtime.ts";
+import { runDynamicTooling } from "../../src/cli/dynamic-tooling.ts";
 import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";

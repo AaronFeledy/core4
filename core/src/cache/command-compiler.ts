@@ -28,6 +28,7 @@ export const compileBunShellScriptCommands = (
     summary: script.summary,
     hidden: false,
     service: script.service,
+    source: "bun-script" as const,
   }));
 
 export const compileAppCommands = (

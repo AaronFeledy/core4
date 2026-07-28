@@ -7,7 +7,6 @@ import { Effect, Layer } from "effect";
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
-import { routeDynamicTooling } from "./cli-adapters/app-lifecycle.ts";
 import { resolveCanonicalCommandId, runMetaVersion } from "./cli-adapters/meta-plugin.ts";
 import { scratchRunHasCommandTail } from "./commands/scratch-run.ts";
 import { normalizeScratchStartArgv } from "./commands/scratch.ts";
@@ -32,6 +31,7 @@ import {
 import { dispatchAppCommand } from "./dispatch-app.ts";
 import { dispatchAppsCommand } from "./dispatch-apps.ts";
 import { dispatchMetaCommand } from "./dispatch-meta.ts";
+import { routeDynamicTooling } from "./dynamic-tooling.ts";
 import { validateCommandCliFlags } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
 import { notImplementedErrorForCommand } from "./oclif/command-base.ts";

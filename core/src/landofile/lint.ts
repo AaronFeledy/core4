@@ -24,11 +24,15 @@ import {
   type ConfigLintViolation,
   LandofileShape,
 } from "@lando/sdk/schema";
-
+import {
+  type ComposeRejectionMatch,
+  analyzeComposeRejections,
+  composeTagRejection,
+} from "./compose/rejections.ts";
 import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discovery.ts";
 import { presentLandofileLayers } from "./layers.ts";
 import { mergeValues } from "./merge.ts";
-import { parseLandofile } from "./parser.ts";
+import { detectLandofileTags, parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
@@ -109,11 +113,28 @@ const violationFromIssue = (issue: {
     : { path, message: issue.message, suggestedFix };
 };
 
-const violationsFor = (parsed: unknown): ReadonlyArray<ConfigLintViolation> => {
+const rejectionViolation = (match: ComposeRejectionMatch): ConfigLintViolation => ({
+  path: match.documentPath,
+  message: `Compose key "${match.matrixPath}" is rejected: ${match.rationale}`,
+  suggestedFix: match.remediation,
+});
+
+const fallsWithinRejectedPath = (path: string, rejectedPath: string): boolean =>
+  path === rejectedPath || path.startsWith(`${rejectedPath}.`) || path.startsWith(`${rejectedPath}[`);
+
+const violationsFor = (
+  parsed: unknown,
+  rejections: ReadonlyArray<ComposeRejectionMatch> = [],
+): ReadonlyArray<ConfigLintViolation> => {
   const decoded = decodeLandofile(parsed, { onExcessProperty: "error", errors: "all" });
   return Either.isRight(decoded)
     ? []
-    : ParseResult.ArrayFormatter.formatErrorSync(decoded.left).map(violationFromIssue);
+    : ParseResult.ArrayFormatter.formatErrorSync(decoded.left)
+        .map(violationFromIssue)
+        .filter(
+          (violation) =>
+            !rejections.some((rejection) => fallsWithinRejectedPath(violation.path, rejection.documentPath)),
+        );
 };
 
 const appNameOf = (parsed: unknown): string => {
@@ -189,6 +210,7 @@ export const lintLandofile = (
     }
 
     const parsedLayers: unknown[] = [];
+    const layerRejections: Array<ReadonlyArray<ComposeRejectionMatch>> = [];
     for (const layer of layersDiscovery.right) {
       const contentEither = yield* Effect.tryPromise(() => Bun.file(layer.filePath).text()).pipe(
         Effect.either,
@@ -209,6 +231,7 @@ export const lintLandofile = (
           return singleViolationResult(layer.filePath, loadedEither.left.message);
         }
         parsedLayers.push(loadedEither.right);
+        layerRejections.push(analyzeComposeRejections(loadedEither.right));
         continue;
       }
 
@@ -237,14 +260,22 @@ export const lintLandofile = (
         });
       }
       parsedLayers.push(parsedEither.right);
+      layerRejections.push([
+        ...analyzeComposeRejections(parsedEither.right),
+        ...detectLandofileTags({ content: renderedEither.right, file: layer.filePath }).map(
+          composeTagRejection,
+        ),
+      ]);
     }
 
     const parsed = parsedLayers.reduce<unknown>((merged, layer) => mergeValues(merged, layer), {});
-    const mergedViolations = violationsFor(parsed);
-    const violations = [...mergedViolations];
-    const violationKeys = new Set(mergedViolations.map((violation) => JSON.stringify(violation)));
-    for (const layer of parsedLayers) {
-      for (const violation of violationsFor(layer)) {
+    const rejections = layerRejections.flat();
+    const rejectionViolations = rejections.map(rejectionViolation);
+    const mergedViolations = violationsFor(parsed, rejections);
+    const violations = [...rejectionViolations, ...mergedViolations];
+    const violationKeys = new Set(violations.map((violation) => JSON.stringify(violation)));
+    for (const [index, layer] of parsedLayers.entries()) {
+      for (const violation of violationsFor(layer, layerRejections[index] ?? [])) {
         const key = JSON.stringify(violation);
         if (violationKeys.has(key)) continue;
         violationKeys.add(key);

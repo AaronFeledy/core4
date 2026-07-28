@@ -4,6 +4,7 @@ import { Effect, Either, Schema } from "effect";
 
 import type {
   AppIdReservedError,
+  ComposeKeyRejectedError,
   LandofileFormConflictError,
   LandofileIncludeError,
   LandofileLockMismatchError,
@@ -90,7 +91,8 @@ type AppConfigError =
   | LandofileLockMismatchError
   | LandofileVersionConstraintError
   | ConfigError
-  | NotImplementedError;
+  | NotImplementedError
+  | ComposeKeyRejectedError;
 
 type AppConfigServices = LandofileService;
 

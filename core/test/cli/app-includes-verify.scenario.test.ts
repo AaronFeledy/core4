@@ -177,6 +177,28 @@ describe("lando app:includes:verify (source dispatch)", () => {
     });
   });
 
+  test("rejects a Compose key in the root Landofile before verifying includes", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: demo\nservices:\n  web:\n    image: nginx\n    container_name: fixed-web\n",
+      );
+
+      const exit = await Effect.runPromiseExit(appIncludesVerify({ cwd: dir }));
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          const value = failure.value;
+          if (value === null || typeof value !== "object" || !("_tag" in value)) throw value;
+          expect(value._tag).toBe("ComposeKeyRejectedError");
+        }
+      }
+    });
+  });
+
   test("a missing Landofile exits 1 with .lando.yml remediation", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["app:includes:verify"], dir);

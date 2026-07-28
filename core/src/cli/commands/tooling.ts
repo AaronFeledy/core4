@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
-import { ToolingCompileError } from "@lando/sdk/errors";
+import { type ComposeKeyRejectedError, ToolingCompileError } from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import {
@@ -18,10 +18,9 @@ import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.t
 import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserved-aliases.ts";
 
-import { discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { findAppRoot } from "../../landofile/discovery.ts";
 
-import { findBunShellScriptForName, runBunShellScript } from "./tooling-bun-script.ts";
+import { runBunShellTooling } from "./tooling-bun-script.ts";
 import { emitToolingOutputProgress } from "./tooling-progress.ts";
 
 export interface RunToolingOptions {
@@ -37,7 +36,7 @@ export interface RunToolingOptions {
 export type RunToolingResult = ToolingResult;
 export type { ToolingResult };
 
-type RunToolingError = ToolingError;
+type RunToolingError = ToolingError | ComposeKeyRejectedError;
 
 type RunToolingServices =
   | AppPlanner
@@ -172,33 +171,8 @@ export const runTooling = (
     if (task === undefined) {
       const appRoot = yield* Effect.promise(() => findAppRoot(options.cwd ?? target?.root ?? process.cwd()));
       if (appRoot !== undefined) {
-        const scripts = yield* discoverBunShellScripts({ appRoot });
-        const script = findBunShellScriptForName(scripts, options.name);
-        if (script !== undefined && reservedOwner !== undefined) {
-          return yield* Effect.fail(
-            commandAliasConflictError(toolingLookupKey, `script-backed tooling task ${script.id}`),
-          );
-        }
-        if (script !== undefined) {
-          const events =
-            options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
-          const progressEvents = events?._tag === "Some" ? events.value : undefined;
-          const startedAt = Date.now();
-          const result = yield* runBunShellScript(script, appRoot, options);
-          yield* emitToolingOutputProgress({
-            events: progressEvents,
-            tool: result.tool,
-            service: result.service,
-            exitCode: result.exitCode,
-            stdout: result.stdout,
-            stderr: result.stderr,
-            durationMs: Date.now() - startedAt,
-          });
-          return {
-            ...result,
-            ...(progressEvents === undefined ? {} : { rendered: true }),
-          };
-        }
+        const scriptResult = yield* runBunShellTooling(options, appRoot);
+        if (scriptResult !== undefined) return scriptResult;
       }
       return yield* Effect.fail(
         new ToolingCompileError({

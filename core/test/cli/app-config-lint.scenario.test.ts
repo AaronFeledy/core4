@@ -7,9 +7,14 @@ import { Schema } from "effect";
 
 import { renderConfigLintResult } from "@lando/core/cli/operations";
 import { ConfigLintResult } from "@lando/sdk/schema";
+import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
+const deployReplicasRemediation = composeServiceDispositions["deploy.replicas"]?.remediation;
+if (deployReplicasRemediation === undefined) {
+  throw new Error("deploy.replicas must declare Compose rejection remediation");
+}
 
 interface RunResult {
   readonly exitCode: number;
@@ -168,6 +173,23 @@ describe("lando app:config:lint (source dispatch)", () => {
       const violation = parsed.violations.find((entry) => entry.path === "profiles");
       expect(violation?.suggestedFix).toContain("Unsupported Compose top-level key");
       expect(violation?.suggestedFix).toContain("includes:");
+    });
+  });
+
+  test("--format=json reports a rejected Compose service key with matrix remediation", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: bad-app\nservices:\n  web:\n    deploy:\n      replicas: 3\n",
+      );
+
+      const result = await runCli(["app:config:lint", "--format=json"], dir);
+      const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
+      const violation = parsed.violations.find((entry) => entry.path === "services.web.deploy.replicas");
+
+      expect(result.exitCode).toBe(0);
+      expect(parsed.valid).toBe(false);
+      expect(violation?.suggestedFix).toBe(deployReplicasRemediation);
     });
   });
 

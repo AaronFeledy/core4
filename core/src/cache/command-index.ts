@@ -22,6 +22,7 @@ export interface CommandIndexEntry {
   readonly summary: string;
   readonly hidden: boolean;
   readonly service?: string;
+  readonly source?: "bun-script";
 }
 
 export interface AppCommandIndexPayload {

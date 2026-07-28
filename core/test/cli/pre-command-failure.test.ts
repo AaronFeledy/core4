@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { Effect, Layer, Schema } from "effect";
 
-import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import { ComposeKeyRejectedError, LandoRuntimeBootstrapError } from "@lando/sdk/errors";
 import type { EventService } from "@lando/sdk/services";
+import { buildBugReport, renderJsonBugReport, renderPlainBugReport } from "../../src/cli/bug-report.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "../../src/cli/oclif/command-boundary.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
@@ -24,6 +25,60 @@ afterEach(() => {
 });
 
 describe("pre-command failure surface", () => {
+  test("Compose rejection bug reports preserve structured context outside the machine envelope", () => {
+    const remediation = "Move deploy.replicas to a provider extension.";
+    const report = buildBugReport({
+      error: new ComposeKeyRejectedError({
+        message: "Compose key deploy.replicas is rejected.",
+        source: "/workspace/.lando.yml",
+        service: "web",
+        keyPath: "deploy.replicas",
+        remediation,
+      }),
+      context: { commandId: "app:start", cacheRoot: "/tmp/lando-cache" },
+    });
+
+    const plain = renderPlainBugReport(report);
+    const json = JSON.parse(renderJsonBugReport(report)) as Record<string, unknown>;
+
+    expect(plain).toContain("source: /workspace/.lando.yml");
+    expect(plain).toContain("service: web");
+    expect(plain).toContain("keyPath: deploy.replicas");
+    expect(plain).toContain(remediation);
+    expect(json).toMatchObject({
+      source: "/workspace/.lando.yml",
+      service: "web",
+      keyPath: "deploy.replicas",
+    });
+  });
+
+  test("Compose rejection bug reports visibly escape terminal controls only in plain output", () => {
+    const source = "/workspace/\u001b[31m.lando.yml";
+    const service = "web\u0007";
+    const keyPath = "deploy.\u009breplicas";
+    const report = buildBugReport({
+      error: new ComposeKeyRejectedError({
+        message: `Compose key ${keyPath} in ${source} is rejected.`,
+        source,
+        service,
+        keyPath,
+        remediation: "Use the matrix remediation.",
+      }),
+      context: { commandId: "app:start", cacheRoot: "/tmp/lando-cache" },
+    });
+
+    const plain = renderPlainBugReport(report);
+    const json = JSON.parse(renderJsonBugReport(report)) as Record<string, unknown>;
+
+    expect(plain).not.toContain("\u001b");
+    expect(plain).not.toContain("\u0007");
+    expect(plain).not.toContain("\u009b");
+    expect(plain).toContain("\\u001b");
+    expect(plain).toContain("\\u0007");
+    expect(plain).toContain("\\u009b");
+    expect(json).toMatchObject({ source, service, keyPath });
+  });
+
   test("machine output intent includes flags before an absent argument terminator", () => {
     expect(
       preCommandOutputMode({

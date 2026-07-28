@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { LandofileVersionConstraintError } from "@lando/sdk/errors";
+import { ComposeKeyRejectedError, LandofileVersionConstraintError } from "@lando/sdk/errors";
 import { CommandResultEnvelope, StreamFrame } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
@@ -112,6 +112,34 @@ describe("encodeCommandResult", () => {
     expect(frame).toMatchObject({
       _tag: "result",
       envelope: { error: envelope.error },
+    });
+  });
+
+  test("narrows Compose rejection failures to the uniform tagged-error envelope", () => {
+    const line = Effect.runSync(
+      encodeCommandResult({
+        command: "app:start",
+        resultSchema: EmptyResultSchema,
+        outcome: {
+          _tag: "failure",
+          error: new ComposeKeyRejectedError({
+            message: "Compose key deploy.replicas is rejected.",
+            source: "/workspace/.lando.yml",
+            service: "web",
+            keyPath: "deploy.replicas",
+            remediation: "Use the matrix remediation.",
+          }),
+        },
+        redactor: plainRedactor,
+      }),
+    );
+
+    const encoded = decodeEnvelope(line).error;
+    expect(Object.keys(encoded ?? {}).sort()).toEqual(["_tag", "message", "remediation"]);
+    expect(encoded).toEqual({
+      _tag: "ComposeKeyRejectedError",
+      message: "Compose key deploy.replicas is rejected.",
+      remediation: "Use the matrix remediation.",
     });
   });
 

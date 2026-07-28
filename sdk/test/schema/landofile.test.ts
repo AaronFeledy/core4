@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 import { Either, ParseResult, Schema } from "effect";
+import * as AST from "effect/SchemaAST";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import {
   AbsolutePath,
   DatasetBinding,
   GlobalConfig,
+  IncludeEntry,
   LandofileShape,
   ProviderId,
   RemoteConfig,
@@ -36,6 +38,65 @@ const minimalLandofileFixture: typeof LandofileShape.Encoded = {
 };
 
 describe("LandofileShape — schema gate", () => {
+  test('IncludeEntry decodes kind: "compose"', () => {
+    // Given
+    const input = { source: "./f.yml", kind: "compose" };
+
+    // When
+    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+
+    // Then
+    expect(Either.isRight(result)).toBe(true);
+  });
+
+  test('IncludeEntry still decodes kind: "landofile"', () => {
+    // Given
+    const input = { source: "./f.yml", kind: "landofile" };
+
+    // When
+    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+
+    // Then
+    expect(Either.isRight(result)).toBe(true);
+  });
+
+  test('IncludeEntry rejects kind: "tooling"', () => {
+    // Given
+    const input = { source: "./f.yml", kind: "tooling" };
+
+    // When
+    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+
+    // Then
+    expect(Either.isLeft(result)).toBe(true);
+  });
+
+  test("IncludeEntry still decodes the bare string form", () => {
+    // Given
+    const input = "./f.yml";
+
+    // When
+    const result = Schema.decodeUnknownEither(IncludeEntry)(input);
+
+    // Then
+    expect(Either.isRight(result)).toBe(true);
+  });
+
+  test("IncludeEntry kind carries a property-level description", () => {
+    // Given
+    const struct = AST.isUnion(IncludeEntry.ast)
+      ? IncludeEntry.ast.types.find((member) => AST.isTypeLiteral(member))
+      : undefined;
+    const kind = struct?.propertySignatures.find(({ name }) => name === "kind");
+
+    // When
+    const description = kind?.annotations[AST.DescriptionAnnotationId];
+
+    // Then
+    expect(typeof description).toBe("string");
+    expect(typeof description === "string" ? description.trim().length : 0).toBeGreaterThan(0);
+  });
+
   test("JSON Schema exposes every shipped top-level Landofile key", () => {
     const schema = getJsonSchema("LandofileShape") as { readonly properties?: Record<string, unknown> };
     const properties = schema.properties ?? {};

@@ -1,1 +1,80 @@
-[]
+[
+  {
+    "surface": "command:app:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "schema:IncludeEntry",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "unsupported-construct",
+    "path": "$.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "unsupported-construct",
+    "path": "$.landofile.includes.items.anyOf",
+    "justification": "Include entries intentionally add the Compose form while preserving every previously accepted form."
+  }
+]

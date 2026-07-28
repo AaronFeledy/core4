@@ -2133,8 +2133,10 @@
                     "type": "string"
                   },
                   "kind": {
+                    "description": "The fragment content semantics: \"landofile\" is a Landofile fragment; \"compose\" is a Compose fragment routed through the same parser, rejection, and decode path. This is not source transport.",
                     "enum": [
-                      "landofile"
+                      "landofile",
+                      "compose"
                     ],
                     "type": "string"
                   },

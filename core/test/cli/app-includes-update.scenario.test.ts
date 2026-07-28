@@ -234,6 +234,31 @@ describe("lando app:includes:update (source dispatch)", () => {
     });
   });
 
+  test("gathers a remote top-level Compose include for lock refresh", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        "name: compose-app\ninclude:\n  - github:acme/compose/fragment.yml\n",
+      );
+      const cloneUrls: string[] = [];
+      const gitCloner: GitIncludeCloner = {
+        clone: async ({ url, stagingDir }) => {
+          cloneUrls.push(url);
+          await mkdir(stagingDir, { recursive: true });
+          await writeFile(join(stagingDir, "fragment.yml"), "services: {}\n", "utf8");
+          return { commitSha: "compose123" };
+        },
+      };
+
+      await withUserCacheRoot(join(dir, ".cache"), async () => {
+        const report = await Effect.runPromise(appIncludesUpdate({ cwd: dir, deps: { gitCloner } }));
+
+        expect(report.entries.map((entry) => entry.source)).toEqual(["github:acme/compose/fragment.yml"]);
+        expect(cloneUrls).toEqual(["https://github.com/acme/compose.git"]);
+      });
+    });
+  });
+
   test("a missing Landofile exits 1 with .lando.yml remediation", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["app:includes:update"], dir);

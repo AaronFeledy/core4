@@ -90,6 +90,21 @@ describe("loadUserLandofile includes", () => {
     }
   });
 
+  test("loads a top-level Compose include from an explicit Landofile file path", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-compose-include-"));
+    try {
+      await writeFile(join(dir, "custom.lando.yml"), "name: custom\ninclude:\n  - ./fragment.yml\n", "utf8");
+      await writeFile(join(dir, "fragment.yml"), "services:\n  web:\n    type: node\n", "utf8");
+
+      const result = await Effect.runPromise(loadUserLandofileFile(join(dir, "custom.lando.yml")));
+      const actual: unknown = result;
+
+      expect(actual).toEqual({ name: "custom", services: { web: { type: "node" } } });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   test("enforces sibling layer constraints for an explicit normative Landofile path", async () => {
     const dir = await mkdtemp(join(tmpdir(), "lando-app-resolution-layers-"));
     try {
