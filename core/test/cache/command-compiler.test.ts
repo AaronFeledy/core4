@@ -90,7 +90,6 @@ const manifest = (name: string, commands?: ReadonlyArray<string>): PluginManifes
   name: name as PluginManifest["name"],
   version: "0.0.0",
   api: 4,
-  bootstrap: "app",
   contributes: commands === undefined ? undefined : { commands },
 });
 
