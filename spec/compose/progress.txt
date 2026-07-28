@@ -29,6 +29,9 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - The machine-output envelope narrows every error to `{_tag, message, remediation}` by design. Structured error context belongs in the message and in the bug-report formatter's extra fields, not in a per-error widening of the shared envelope.
 - Schema parse-error messages can reach the plain terminal renderer unchanged. Never interpolate raw Landofile values into those messages; use constant grammar/remediation text so control bytes cannot alter terminal output.
 - Include resolution has two distinct roots: the app root is the containment boundary, while the including fragment's directory is the base for relative sources. Never reuse one as the other; preserve absolute source identity separately from authored provenance.
+- A key classified `preserved` is not implemented until the authoring schema accepts it: Landofile decode uses `onExcessProperty: "error"`, so an unaccepted-but-preserved key fails as an unsupported MVP key rather than round-tripping. Compose rejection runs before schema decode, so only `rejected` matrix paths yield `ComposeKeyRejectedError`.
+- Two distinct Compose capability tiers exist and must not be merged: the exact 24-key `ComposeServiceKnobKey` runtime-knob list gated by `composeKnobs.supported`, and the broader supported subset (`networks`, `configs`, `secrets`, `profiles`, `labels`, service `x-*`) gated only by coarse `composeSpec: "native"`.
+- Manual CLI verification must invoke `core/bin/lando.ts`; running `core/src/cli/index.ts` directly emits nothing and exits 0, which is indistinguishable from a passing command.
 
 ## Log
 
@@ -580,4 +583,25 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Fixed: removed duplicate/redundant assertions, restored production-path proofs, and retained the three new production modules because each has a substantive responsibility and real production consumers.
 - Split/excise decisions: added US-478 for native YAML anchors/aliases/merge keys and US-479 for the complete kind: tooling include contract in the PRD index and source PRD; US-475 remains passing, with no gate conflict or incomplete public contract.
 - Verification: typecheck, lint, 13 focused test files, targeted no-excuse checks, PRD JSON parsing, Compose coverage, import-cycle, renderer-boundary, and paths-boundary passed.
+---
+
+## [2026-07-27 19:50 CDT] - Babysit
+- PR: #640 https://github.com/AaronFeledy/core4/pull/640
+- CI outcome: pass (after triage; initially fail perf-budget-linux-x64)
+- Review feedback: fixed (minimal-bootstrap for cached Bun-script tooling hot path; drift audit restored production-path scenario and dropped unrelated fixture churn)
+- Drift check: fixes pushed (restored Bun script hot-path scenario; removed unrelated plugin fixture edit)
+- Merge: merged (squash)
+---
+
+## 2026-07-27 21:05 CDT - US-476
+- Landed the fixture-driven conformance suite that proves the Compose service-key vocabulary against real upstream material every CI run. Eight byte-pinned fixtures from compose-spec/conformance-tests (commit-pinned, Apache-2.0, per-file checksums) plus a six-fixture curated corpus (depends_on conditions, long-form ports/volumes, list environment with env_file and labels, Compose healthcheck, runtime knobs, and a rejected key) now live under core/test/fixtures/compose with an offline checksum test and a networked, pin-driven refresh script kept out of the offline codegen catalog.
+- The suite is matrix-driven end to end: fixtures are enumerated from the pin module, every key occurrence is classified by a new production walker that reports all three dispositions, normalized keys assert against a new machine-readable plan target carried on the matrix entry itself, preserved keys assert their round trip through ServicePlan.extensions.compose, and rejected keys must fail the production loader with the tagged rejection carrying the matrix remediation. A generated rejection manifest is recompared at test time so reclassifying a path away from rejected fails the suite instead of silently hiding a fixture, and an anti-hiding guard forbids a supported key from appearing only inside a rejecting fixture. No hand-maintained key list exists in the suite.
+- Closing the vocabulary honestly required making spec 6.2's supported-subset sentence true: service-level networks, configs, secrets, profiles, and x-* were classified preserved in the matrix but were still rejected by the authoring schema as unsupported keys. They are now typed acceptance surfaces preserved losslessly into extensions.compose and gated on the coarse native Compose capability, deliberately without widening the exact runtime-knob capability list, which stays the 24-key spec 6.2 knob tier. Planner output semantics changed, so the app-plan cache schema version rolled.
+- Provider spot checks for a fixture subset run in the env-gated Podman integration lane and skip cleanly without a live socket.
+- Verification: typecheck, lint passed; 157 focused tests across 17 compose, cache, parser, and schema files passed; compose-coverage, import-cycle, package-dag, renderer, paths, state-store, probe, and machine-output gates passed; full codegen is idempotent; vendored fixture bytes reverified byte-identical against upstream. CLI verified directly: the upstream configs and networks fixtures, which previously failed as unsupported keys, now render through app config view with ports normalized to canonical long form, and the scaling and udp_port fixtures surface ComposeKeyRejectedError with matrix remediation in the JSON envelope.
+- **Learnings for future iterations:**
+  - A classification matrix is only honest when something executes it. Vendoring real upstream fixtures immediately exposed five keys the matrix promised were preserved but the schema rejected; any future disposition change should be assumed unproven until a fixture exercises it.
+  - The skip decision must be derived, never authored. Deriving it from the walker and diffing against a generated manifest is what converts "we skipped that one" into a failing test.
+  - Landofile source dispatch for manual CLI checks must go through core/bin/lando.ts; running core/src/cli/index.ts directly produces no output and silently exits 0, which reads like a passing command.
+  - Upstream compose-spec/conformance-tests publishes no tags, so its pin is a commit SHA with per-file checksums rather than the tag-plus-single-checksum shape used for the vendored schema.
 ---

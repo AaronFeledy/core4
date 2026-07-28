@@ -207,7 +207,7 @@
         "Lint passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: the 'most compose parses' goal made measurable. Blocked by US-466 (matrix drives assertions and skip-list) and the PRD-02/03 normalization stories."
     },
     {
