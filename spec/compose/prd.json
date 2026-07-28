@@ -198,7 +198,7 @@
       "title": "Conformance fixture suite",
       "description": "As a core maintainer, the vocabulary is proven against upstream Compose fixture material on every CI run, and the skip-list cannot quietly hide unsupported-but-classified-supported behavior.",
       "acceptanceCriteria": [
-        "Service-level fixtures vendored from compose-spec/conformance-tests plus a curated real-world corpus (depends_on-condition, long-form ports/volumes, list-env, Compose-healthcheck patterns) live under core/test/fixtures/compose/ with a pinned refresh script (US-466 pattern), offline at test time. Fixture selection is limited to normalized and preserved production behavior implemented before US-476; discovering a missing production contract creates a binding prerequisite story and MUST NOT add that behavior inside the fixture story.",
+        "US-482 is a binding prerequisite for story completion: US-476 MUST remain passes: false until US-482 passes. This sequencing rule does not authorize US-476 to implement or reintroduce US-482's production surface. Service-level fixtures vendored from compose-spec/conformance-tests plus a curated real-world corpus (depends_on-condition, long-form ports/volumes, list-env, Compose-healthcheck patterns) live under core/test/fixtures/compose/ with a pinned refresh script (US-466 pattern), offline at test time. Fixture selection is limited to normalized and preserved production behavior implemented before US-476; discovering a missing production contract creates a binding prerequisite story and MUST NOT add that behavior inside the fixture story.",
         "A loader-level suite decodes each fixture's service blocks in a Landofile context and asserts per-key outcomes against the disposition matrix: normalized keys produce plan fields, preserved keys round-trip through extensions.compose, rejected keys produce ComposeKeyRejectedError.",
         "The skip-list is computed: a fixture may be skipped only if it uses a rejected-disposition key; a stale skip entry fails the suite.",
         "Provider-level spot checks for a small fixture subset run in the env-gated Podman integration suite.",
@@ -206,7 +206,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 11,
+      "priority": 12,
       "passes": false,
       "notes": "Origin: the 'most compose parses' goal made measurable. Scope narrowed after Drift Audit: US-476 proves only production behavior implemented before the fixture story. Service networks/configs/secrets/profiles/x-* moved to binding prerequisite US-482. US-476 remains blocked on US-482 because spec section 7.4 defines every preserved disposition as accepted, carried into ServicePlan.extensions.compose, and capability-checked; the conformance suite cannot honestly close while those preserved paths still fail at the authoring boundary."
     },
@@ -227,7 +227,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 12,
+      "priority": 11,
       "passes": false,
       "notes": "Binding prerequisite split from US-476 after real fixtures exposed a pre-existing spec 6.2 preservation gap. Must land before US-476 can pass and before US-477 closes the wave; provider realization or explicit fail-closed rejection is mandatory."
     },
