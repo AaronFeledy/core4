@@ -33,17 +33,18 @@ This wave closes the second plane so a user can set CA paths once in global conf
 ## Non-Goals
 
 - DDEV-style `~/.lando/*-build/` or global Dockerfile fragment directories.
-- `CertificateAuthority` leaf cert issuance / mkcert host trust (existing subsystem; separate).
+- `CertificateAuthority` leaf cert issuance / mkcert host trust / `certs: true` route leaves (existing subsystem; separate wave).
+- Full `lando.boot` `/etc/lando/*` scaffolding framework (deferred; inject uses derived-build + plan env + mounts).
+- Language-specific trust beyond Node/OpenSSL defaults (e.g. Java trust stores) — optional later on language types.
 - Inject into `base: "l337"` or Compose-passthrough services that do not run `lando.security`.
 - Teaching pure `@lando/sdk/network-trust` to read PEM files from disk.
-- Full `/etc/lando` boot scaffolding framework beyond what security install needs.
 - `packages:` feature or unrelated service customization.
 
 ## PRDs in this set
 
 | #  | PRD | Subsystem | US range | Depends on |
 | -- | --- | --------- | -------- | ---------- |
-| 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | `ServiceConfig.security`, shared PEM load, `lando.security` feature, planner wiring, derived-build CA pack, setup note, gates | US-483..US-488 | Spec §6.8/§7.5/§10.3.1 already landed |
+| 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | `ServiceConfig.security` + aliases, env-overlay inject flags, shared PEM load, `lando.security`, planner + load/import CA material, derived-build CA pack, setup note, gates | US-483..US-489 | Spec §6.8/§7.5/§10.3.1 already landed |
 
 ## Verification contract
 

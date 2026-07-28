@@ -13,7 +13,15 @@ Implementation shape (locked):
 5. **Derived build** — pack CA PEMs into image context and run multi-distro trust-store install; digests participate in the artifact build key.
 6. **Setup** — informational note when certs will inject.
 
-Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md`.
+Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 1–7).
+
+Adjacent gaps folded into this PRD after audit:
+
+- §7.6 friendly env vars for inject flags were documented but not wired in `envOverlay` (only generic `LANDO_CONFIG__*`).
+- §6.8 authoring aliases (`cas`, `certificate-authority`, `certificate-authorities`) and `load`/`import` CA material were underspecified in the first story cut.
+- `SSL_CERT_DIR` was missing from the env checklist.
+
+Still deferred (not in US range): `certs: true` leaf TLS, full `lando.boot`, Java-style trust env.
 
 ## Source References
 
@@ -44,16 +52,18 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md`.
 
 ### US-483: ServiceConfig.security authoring surface
 
-**Description:** As a Landofile author, I can declare `security.ca`, `security.inheritNetworkCa`, and `security.inheritNetworkProxy` on a service so project CAs and per-service inject overrides decode into the canonical service config.
+**Description:** As a Landofile author, I can declare `security.ca`, `security.inheritNetworkCa`, and `security.inheritNetworkProxy` on a service so project CAs and per-service inject overrides decode into the canonical service config. Authoring aliases from §6.8 canonicalize to `ca`.
 
 **Acceptance Criteria:**
 
 - [ ] `ServiceConfig` / `ServiceConfigInput` accept optional `security: { ca?: string[], inheritNetworkCa?: boolean, inheritNetworkProxy?: boolean }`.
+- [ ] Authoring aliases `cas`, `certificate-authority`, and `certificate-authorities` (scalar or array) canonicalize to `ca: string[]`.
 - [ ] Omitted `security` decodes unchanged (backward compatible).
 - [ ] Excess properties under `security` fail closed under the Landofile decode options used in production.
+- [ ] `certs:` (leaf TLS) is not treated as an alias of `security.ca`.
 - [ ] Public JSON Schema inventory and `bun run codegen:schema-snapshot` refreshed; generated docs list the new fields.
 - [ ] `sdk/API_COMPATIBILITY.md` records the additive fields.
-- [ ] Unit decode tests cover present/absent/override booleans.
+- [ ] Unit decode tests cover present/absent/override booleans and aliases.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -85,7 +95,7 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md`.
 - [ ] `"lando.security"` is listed in `LANDO_BASE_DEFAULT_FEATURE_IDS` (`core/src/services/base/lando.ts`).
 - [ ] Feature config schema carries pre-resolved `{ injectCa, injectProxy, cas: [{ path, digest }], proxy? }` (planner-supplied).
 - [ ] Empty cas and `injectProxy: false` → apply is a no-op.
-- [ ] Non-empty cas → bind-mount each host PEM; set `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `LANDO_CA_BUNDLE`, `LANDO_CA_DIR`, `LANDO_CA_CERT` per §6.8/§6.9 (bundle path convention documented in feature module).
+- [ ] Non-empty cas → bind-mount each host PEM; set `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `SSL_CERT_DIR` when applicable, `LANDO_CA_BUNDLE`, `LANDO_CA_DIR`, `LANDO_CA_CERT` per §6.8/§6.9 (bundle path convention documented in feature module).
 - [ ] `injectProxy: true` → set `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` from payload when defined.
 - [ ] Artifact `phase: "build"` step `lando.security:trust-store` with `buildKeyInputs.caDigests` (sorted digests).
 - [ ] Feature does not import or yield `ConfigService` / `FileSystem`.
@@ -97,20 +107,22 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md`.
 
 ### US-486: AppPlanner wires global inject into lando-base services
 
-**Description:** As `AppPlanner`, each plan resolves global network trust once, loads PEMs, applies per-service security overrides, resolves Landofile CA paths against the app root, seeds `lando.security` feature config, and keeps proxy URLs out of the artifact build-key environment hash.
+**Description:** As `AppPlanner`, each plan resolves global network trust once, loads PEMs, applies per-service security overrides, materializes Landofile `security.ca` paths and inline/`load`/`import` PEM bodies, seeds `lando.security` feature config, and keeps proxy URLs out of the artifact build-key environment hash.
 
 **Acceptance Criteria:**
 
-- [ ] `planApp` loads `ConfigService` global config when available; resolves inject via US-484 helpers.
+- [ ] `planApp` loads `ConfigService` global config when available; resolves inject via US-484 helpers (including US-489 env overlays).
 - [ ] Only `resolution.base === "lando"` services receive security inject seeding; `l337` does not.
-- [ ] Landofile `security.ca` entries resolve relative to app root; paths escaping the app root fail with remediation (same containment spirit as includes/load unless an existing allow-outside flag applies).
+- [ ] Landofile `security.ca` path entries resolve relative to app root; paths escaping the app root fail with remediation (same containment spirit as includes/load unless an existing allow-outside flag applies).
+- [ ] Inline PEM text and `load`/`import`-produced PEM bodies are accepted (digest from content; synthetic path labels for packing); non-PEM garbage fails with remediation.
+- [ ] `inheritNetworkCa: false` suppresses global PEMs but still applies Landofile `security.ca`.
 - [ ] Global + landofile PEMs are unioned with content-digest de-duplication (global first).
 - [ ] When cas non-empty, planner may write a stable app-cache CA bundle file used for first-start mounts (path under app cache; content digest in name or sidecar).
 - [ ] Feature config for `lando.security` is merged into the composed feature list for each lando-base service.
 - [ ] `build-key.ts` excludes `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` from the environment portion of the artifact key.
 - [ ] Changing CA PEM bytes changes the artifact build key via `buildKeyInputs.caDigests`; proxy env changes do not.
 - [ ] Unreadable global CA fails the plan with actionable remediation.
-- [ ] Planner/unit tests cover inject on, opt-out via `inheritNetworkCa: false`, and l337 skip.
+- [ ] Planner/unit tests cover inject on, opt-out via `inheritNetworkCa: false`, inline PEM, and l337 skip.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -137,9 +149,24 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md`.
 
 - [ ] When setup resolves non-empty `network.ca` certs and CA inject is not disabled, setup output/report includes an informational note that those CAs inject into `type: lando` services (does not fail setup).
 - [ ] Focused tests updated under `core/test/cli/setup*.test.ts` (or adjacent) for the note.
-- [ ] Story-level path filters green: sdk network-trust + backward-compat; core build-key, app-planner inject cases, setup; service-lando security feature; container-runtime image-build.
+- [ ] Story-level path filters green: sdk network-trust + backward-compat; paths overlay (US-489); core build-key, app-planner inject cases, setup; service-lando security feature; container-runtime image-build.
 - [ ] `bun run typecheck` and `bun run lint` pass for the change set.
-- [ ] No global-Dockerfile feature, no mkcert scope creep in the diff.
+- [ ] No global-Dockerfile feature, no mkcert / `lando.boot` / leaf-`certs:` scope creep in the diff.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-489: Friendly env overrides for inject flags
+
+**Description:** As an operator, I can set `LANDO_NETWORK_CA_INJECT_INTO_SERVICES` and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES` per §7.6 without hand-writing `LANDO_CONFIG__network__…` paths, matching the notify env overlay pattern.
+
+**Acceptance Criteria:**
+
+- [ ] `paths/src/overlay.ts` maps `LANDO_NETWORK_CA_INJECT_INTO_SERVICES` → `network.ca.injectIntoServices` and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES` → `network.proxy.injectIntoServices` (boolean parse consistent with other boolean overlays).
+- [ ] `LANDO_NETWORK_CA_CERTS` remains owned by `resolveNetworkTrustPlan` (not duplicated in overlay).
+- [ ] `loadGlobalConfigSync` / `ConfigService` decode reflects these overlays.
+- [ ] Garbage non-boolean values fail closed or are rejected at GlobalConfig decode with remediation (chosen behavior tested).
+- [ ] Unit tests under paths (or existing overlay test file) cover true/false/absent.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -148,12 +175,14 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md`.
 
 - **FR-1** Effective CA inject defaults to on for lando-base services; proxy inject defaults to off.
 - **FR-2** Per-service `security.inheritNetworkCa` / `security.inheritNetworkProxy` override global inject flags when set.
-- **FR-3** Resolved CA set = ordered union of global PEMs (if CA inject) then Landofile `security.ca`, de-duplicated by content digest.
+- **FR-3** Resolved CA set = ordered union of global PEMs (if CA inject) then Landofile `security.ca` (paths + inline/`load`/`import` PEM bodies), de-duplicated by content digest.
 - **FR-4** Install mechanism is feature intent (mounts + env + artifact build step), not host Dockerfile directories.
 - **FR-5** Artifact build keys include sorted CA content digests; exclude proxy environment variables from the environment hash.
 - **FR-6** Proxy credentials remain secrets: redacted from logs/telemetry; not written cleartext into build transcripts.
 - **FR-7** `l337` and non-security stacks never auto-inject.
 - **FR-8** Setup classifies TLS interception as today and additionally notes service inject when certs are configured.
+- **FR-9** §7.6 `LANDO_NETWORK_CA_INJECT_INTO_SERVICES` / `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES` are honored via config overlay.
+- **FR-10** Authoring aliases for `security.ca` decode to the canonical field.
 
 ## Non-Goals
 
