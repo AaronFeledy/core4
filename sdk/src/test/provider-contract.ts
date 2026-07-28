@@ -1,6 +1,11 @@
 import { Duration, Effect, Either, Schema, Stream } from "effect";
 
-import { type HostPlatform, ProviderCapabilities, ProviderId } from "../schema/index.ts";
+import {
+  ComposeServiceFieldKey,
+  type HostPlatform,
+  ProviderCapabilities,
+  ProviderId,
+} from "../schema/index.ts";
 import type { RuntimeProviderShape } from "../services/index.ts";
 import {
   type ContractFailure,
@@ -54,6 +59,13 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* requireContract(
       declaredComposeKnobs.length === 0 || provider.capabilities.composeSpec === "native",
       "compose knob support requires native composeSpec",
+      provider.capabilities,
+    );
+    const declaredComposeServiceFields = provider.capabilities.composeServiceFields?.supported ?? [];
+    // Spec 5.5.1 scopes the native prerequisite to per-container runtime knobs; portable providers may support inert fields.
+    yield* requireContract(
+      declaredComposeServiceFields.every((key) => ComposeServiceFieldKey.literals.includes(key)),
+      "compose service field support uses published keys",
       provider.capabilities,
     );
     for (const key of REQUIRED_CAPABILITY_KEYS) {

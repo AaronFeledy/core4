@@ -1,0 +1,4 @@
+services:
+  debugger:
+    image: example/debugger:1.0
+    profiles: ["debug", "tools"]

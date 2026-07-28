@@ -497,6 +497,7 @@ export const dockerCapabilitiesForHost = (
     tlsCertificates: "none",
     rootless: false,
     composeSpec: "portable",
+    // composeServiceFields is omitted: absence is the fail-closed declaration.
     providerExtensions: [],
     hostProxy: hostProxyCapabilities(platform, containerTargets),
   });

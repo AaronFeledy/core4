@@ -155,7 +155,9 @@ const unsupportedAuthoredServiceKeyTypes = (
   for (const service of Object.values(services as Record<string, unknown>)) {
     if (service === null || typeof service !== "object") continue;
     const serviceRecord = service as Record<string, unknown>;
-    const hasUnsupportedKey = Object.keys(serviceRecord).some((key) => !SERVICE_CONFIG_KEYS.has(key));
+    const hasUnsupportedKey = Object.keys(serviceRecord).some(
+      (key) => !SERVICE_CONFIG_KEYS.has(key) && !key.startsWith("x-"),
+    );
     if (!hasUnsupportedKey) continue;
     if (serviceRecord.type === "compose") compose++;
     else nonCompose++;

@@ -190,7 +190,10 @@ export const isStream = (value: unknown): boolean => Stream.StreamTypeId in Obje
 export const CAPABILITY_KEYS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
   keyof typeof ProviderCapabilities.fields
 >;
-export const OPTIONAL_CAPABILITY_KEYS = new Set<keyof typeof ProviderCapabilities.fields>(["hostProxy"]);
+export const OPTIONAL_CAPABILITY_KEYS = new Set<keyof typeof ProviderCapabilities.fields>([
+  "composeServiceFields",
+  "hostProxy",
+]);
 export const REQUIRED_CAPABILITY_KEYS = CAPABILITY_KEYS.filter((key) => !OPTIONAL_CAPABILITY_KEYS.has(key));
 
 export const isNonEmptyString = (value: unknown): value is string =>

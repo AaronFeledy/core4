@@ -10,14 +10,34 @@
       "sha256": "8c6db340475136df3c1201d458fa5755698eace76e510471ecc9d857d6083dac"
     },
     {
+      "path": "tests/different_networks/compose.yaml",
+      "vendored": "upstream/different_networks.compose.yaml",
+      "sha256": "9ff73b69c615a68b28be16e307e50c068b3aeae8cc0137654e1d97c2914dd3bb"
+    },
+    {
       "path": "tests/scaling/compose.yaml",
       "vendored": "upstream/scaling.compose.yaml",
       "sha256": "4eb4ed26504447b22f3a6503e253252b85111018edfaa34be12c0623cd58c101"
     },
     {
+      "path": "tests/simple_configfile/compose.yaml",
+      "vendored": "upstream/simple_configfile.compose.yaml",
+      "sha256": "9a81a7e24380534e11bb18934e491b347aaee7239251fe6174322c100d7f5efe"
+    },
+    {
       "path": "tests/simple_lifecycle/compose.yaml",
       "vendored": "upstream/simple_lifecycle.compose.yaml",
       "sha256": "1ed645c4893fcdca0b5931b7b06d0f10db72160e3b277abc98d3de6e5ddaca51"
+    },
+    {
+      "path": "tests/simple_network/compose.yaml",
+      "vendored": "upstream/simple_network.compose.yaml",
+      "sha256": "7669404d238a55fffcbe82f7ccd67590f7d83abb3ecce203b9a98de9870d623b"
+    },
+    {
+      "path": "tests/simple_secretfile/compose.yaml",
+      "vendored": "upstream/simple_secretfile.compose.yaml",
+      "sha256": "c89dd7a52c408c76d595625ee086ae872ebb53852a97cd2c2bc4271cd213fc99"
     },
     {
       "path": "tests/simple_volume/compose.yaml",

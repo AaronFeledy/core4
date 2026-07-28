@@ -2432,6 +2432,35 @@ const landofileJsonSchema = (): JsonObject => {
   return schema;
 };
 
+const isJsonObject = (value: unknown): value is JsonObject =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const repairTemplateLiteralExtensionRecords = (value: unknown): void => {
+  if (Array.isArray(value)) {
+    for (const entry of value) repairTemplateLiteralExtensionRecords(entry);
+    return;
+  }
+  if (!isJsonObject(value)) return;
+
+  const properties = value.properties;
+  const propertyNames = value.propertyNames;
+  const patternProperties = value.patternProperties;
+  if (
+    isJsonObject(properties) &&
+    Object.keys(properties).length > 0 &&
+    isJsonObject(propertyNames) &&
+    propertyNames.pattern === "^x-[\\s\\S]*?$" &&
+    isJsonObject(patternProperties) &&
+    Object.hasOwn(patternProperties, "")
+  ) {
+    value.additionalProperties = false;
+    value.patternProperties = { "^x-": patternProperties[""] };
+    value.propertyNames = undefined;
+  }
+
+  for (const nested of Object.values(value)) repairTemplateLiteralExtensionRecords(nested);
+};
+
 const expressionNodeDefinitions = () => {
   const placeholder = { ExpressionNode: { anyOf: [] } };
   const options = { definitions: placeholder } satisfies Parameters<typeof JSONSchema.fromAST>[1];
@@ -2463,6 +2492,11 @@ const expressionJsonSchema = (schemaName: "ExpressionNode" | "ExpressionTemplate
 export const getJsonSchema = (schemaName: JsonSchemaName) => {
   if (schemaName === "DeprecationNotice") return getJsonSchemaWithDeprecations(DeprecationNoticeJsonShape);
   if (schemaName === "LandofileShape") return landofileJsonSchema();
+  if (schemaName === "ServiceConfig" || schemaName === "ServiceConfigInput") {
+    const schema = getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);
+    repairTemplateLiteralExtensionRecords(schema);
+    return schema;
+  }
   if (schemaName === "ExpressionNode" || schemaName === "ExpressionTemplate")
     return expressionJsonSchema(schemaName);
   return getJsonSchemaWithDeprecations(rawPublicSchemaRegistry[schemaName]);

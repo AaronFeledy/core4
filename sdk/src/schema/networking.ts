@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 
 import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
+import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
 import { ServiceDependencyCondition } from "./service-dependency.ts";
@@ -257,6 +258,10 @@ export const ProviderCapabilities = Schema.Struct({
   composeKnobs: Schema.optional(ComposeKnobCapabilities).annotations({
     title: "Compose Knobs",
     description: "Fail-closed support declaration for preserved Compose runtime knobs.",
+  }),
+  composeServiceFields: Schema.optional(ComposeServiceFieldCapabilities).annotations({
+    title: "Compose Service Fields",
+    description: "Fail-closed support declaration for Compose service-level fields.",
   }),
   providerExtensions: Schema.Array(Schema.String),
   /** Structured host-proxy transport support declared by the provider. */

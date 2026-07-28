@@ -5,8 +5,14 @@ import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Cause, Effect, Exit, Layer } from "effect";
 
-import { ComposeKeyRejectedError } from "@lando/core/errors";
-import { ComposeServiceKnobKey, type LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
+import { CapabilityError, ComposeKeyRejectedError } from "@lando/core/errors";
+import {
+  ComposeServiceFieldKey,
+  ComposeServiceKnobKey,
+  type LandofileShape,
+  type ProviderCapabilities,
+  ServiceName,
+} from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
@@ -77,6 +83,11 @@ const nativeCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
   composeSpec: "native",
   composeKnobs: { supported: [...ComposeServiceKnobKey.literals] },
+  composeServiceFields: { supported: [...ComposeServiceFieldKey.literals] },
+};
+const restrictedCapabilities: ProviderCapabilities = {
+  ...nativeCapabilities,
+  composeServiceFields: { supported: ["x-*"] },
 };
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
@@ -100,12 +111,59 @@ const loadYamlExit = async (dir: string, content: string) => {
   return { source, exit: await Effect.runPromiseExit(loadLandofileFile(source)) };
 };
 
-const planLandofile = (landofile: LandofileShape) =>
-  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, nativeCapabilities)).pipe(
+const planLandofile = (landofile: LandofileShape, capabilities: ProviderCapabilities = nativeCapabilities) =>
+  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
     Effect.provide(plannerLayer),
     Effect.provide(registryLayer),
     Effect.runPromise,
   );
+
+const planLandofileExit = (landofile: LandofileShape, capabilities: ProviderCapabilities) =>
+  Effect.flatMap(AppPlanner, (planner) => planner.plan(landofile, capabilities)).pipe(
+    Effect.provide(plannerLayer),
+    Effect.provide(registryLayer),
+    Effect.runPromiseExit,
+  );
+
+const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<LandofileShape> => {
+  const loaded = await loadYamlExit(dir, `name: ${fixture.id}\n${fixture.content}`);
+  if (!Exit.isSuccess(loaded.exit)) throw new ComposeFixtureInvariantError();
+  return rememberLandofileAppRoot<LandofileShape>(
+    {
+      ...loaded.exit.value,
+      services: Object.fromEntries(
+        Object.entries(loaded.exit.value.services ?? {}).map(([name, service]) => [
+          name,
+          { ...service, type: "compose" },
+        ]),
+      ),
+    },
+    dir,
+  );
+};
+
+const capabilityGatedRoots = new Set<ComposeServiceFieldKey>(["networks", "configs", "secrets", "profiles"]);
+
+const serviceFieldFamily = (matrixPath: string): ComposeServiceFieldKey | undefined => {
+  const root = matrixPath.split(".")[0];
+  return ComposeServiceFieldKey.literals.find((candidate) => candidate === root);
+};
+
+const capabilityGateCases = fixtureCases.flatMap((fixture) => {
+  const servicesByFamily = new Map<ComposeServiceFieldKey, string>();
+  for (const match of fixture.matches) {
+    const family = serviceFieldFamily(match.matrixPath);
+    if (
+      family !== undefined &&
+      capabilityGatedRoots.has(family) &&
+      match.service !== undefined &&
+      !servicesByFamily.has(family)
+    ) {
+      servicesByFamily.set(family, match.service);
+    }
+  }
+  return [...servicesByFamily].map(([family, service]) => ({ fixture, family, service }));
+});
 
 const supportedPaths = (fixtures: ReadonlyArray<FixtureCase>): ReadonlySet<string> =>
   new Set(
@@ -239,5 +297,73 @@ describe("Compose conformance fixtures", () => {
 
     // Then
     expect(metadataRoots).toEqual(normalizedRoots);
+  });
+});
+
+describe("Compose service-field capability gate", () => {
+  test("exercises at least one restricted service-field fixture", () => {
+    // Given
+    const cases = capabilityGateCases;
+
+    // When
+    const caseCount = cases.length;
+
+    // Then
+    expect(caseCount).toBeGreaterThan(0);
+  });
+
+  for (const { fixture, family, service } of capabilityGateCases) {
+    test(`rejects ${fixture.relativePath} ${family} before provider execution`, async () => {
+      await withTempDir(async (dir) => {
+        // Given
+        const landofile = await loadPlannableFixture(dir, fixture);
+
+        // When
+        const error = failureOf(await planLandofileExit(landofile, restrictedCapabilities));
+
+        // Then
+        expect(error).toBeInstanceOf(CapabilityError);
+        if (!(error instanceof CapabilityError)) return;
+        expect(error.service).toBe(service);
+        expect(error.key).toBe(family);
+        expect(error.capability).toBe("composeSpec");
+        expect(error.providerId).toBe("lando");
+        expect(error.remediation).toBeDefined();
+      });
+    });
+
+    test(`plans ${fixture.relativePath} ${family} with native capabilities`, async () => {
+      await withTempDir(async (dir) => {
+        // Given
+        const landofile = await loadPlannableFixture(dir, fixture);
+
+        // When
+        const plan = await planLandofile(landofile, nativeCapabilities);
+
+        // Then
+        expect(plan.services[ServiceName.make(service)]).toBeDefined();
+      });
+    });
+  }
+
+  test("exercises every Compose service-field family in non-rejected fixtures", () => {
+    // Given
+    const nonRejectedFixtures = fixtureCases.filter(
+      ({ matches }) => !matches.some((match) => match.disposition === "rejected"),
+    );
+
+    // When
+    const observedFamilies = new Set(
+      nonRejectedFixtures.flatMap(({ matches }) =>
+        matches.flatMap((match) => {
+          if (match.service === undefined) return [];
+          const family = serviceFieldFamily(match.matrixPath);
+          return family === undefined ? [] : [family];
+        }),
+      ),
+    );
+
+    // Then
+    expect(observedFamilies).toEqual(new Set(ComposeServiceFieldKey.literals));
   });
 });

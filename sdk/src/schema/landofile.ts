@@ -281,83 +281,182 @@ const ComposeDependsOnInput = Schema.transformOrFail(
     "Inter-service dependencies as a service-name list or a Compose condition-map; canonicalized to structured entries.",
 });
 
+const ExtensionRecord = Schema.Record({
+  key: Schema.TemplateLiteral("x-", Schema.String),
+  value: Schema.Unknown,
+}).annotations({
+  description:
+    "preserved losslessly; never interpreted by Lando or the provider; implies no vendor-specific behavior.",
+});
+
+const ComposeNetworkAttachment = Schema.Struct(
+  {
+    aliases: Schema.optional(Schema.Array(Schema.String)),
+    interface_name: Schema.optional(Schema.String),
+    ipv4_address: Schema.optional(Schema.String),
+    ipv6_address: Schema.optional(Schema.String),
+    link_local_ips: Schema.optional(Schema.Array(Schema.String)),
+    mac_address: Schema.optional(Schema.String),
+    driver_opts: Schema.optional(
+      Schema.Record({
+        key: Schema.String,
+        value: Schema.Union(Schema.String, Schema.Number),
+      }),
+    ),
+    priority: Schema.optional(Schema.Number),
+    gw_priority: Schema.optional(Schema.Number),
+  },
+  ExtensionRecord,
+);
+
+const ComposeNetworkAttachmentRecord = Schema.Record({
+  key: Schema.String,
+  value: ComposeNetworkAttachment,
+});
+
+const ComposeNetworksInput = Schema.transform(
+  Schema.Union(
+    Schema.Array(Schema.String),
+    Schema.Record({
+      key: Schema.String,
+      value: Schema.Union(ComposeNetworkAttachment, Schema.Null),
+    }),
+  ),
+  ComposeNetworkAttachmentRecord,
+  {
+    strict: true,
+    decode: (input) =>
+      Array.isArray(input)
+        ? Object.fromEntries(input.map((name) => [name, {}]))
+        : Object.fromEntries(Object.entries(input).map(([name, attachment]) => [name, attachment ?? {}])),
+    encode: (attachments) => attachments,
+  },
+).annotations({
+  description:
+    "Service network attachments as a name list or long mapping; canonicalized to a long mapping and carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+});
+
+const ComposeConfigOrSecretEntry = Schema.Struct(
+  {
+    source: Schema.optional(Schema.String),
+    target: Schema.optional(Schema.String),
+    uid: Schema.optional(Schema.String),
+    gid: Schema.optional(Schema.String),
+    mode: Schema.optional(Schema.Union(Schema.Number, Schema.String)),
+  },
+  ExtensionRecord,
+);
+
+const ComposeConfigOrSecretInput = Schema.transform(
+  Schema.Array(Schema.Union(Schema.String, ComposeConfigOrSecretEntry)),
+  Schema.Array(ComposeConfigOrSecretEntry),
+  {
+    strict: true,
+    decode: (entries) => entries.map((entry) => (typeof entry === "string" ? { source: entry } : entry)),
+    encode: (entries) => entries,
+  },
+);
+
 /**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
-export const ServiceConfig = Schema.Struct({
-  api: Schema.optional(Schema.Literal(4)),
-  type: Schema.optional(Schema.String), // defaults to "lando"
-  primary: Schema.optional(Schema.Boolean),
+const ServiceConfigWithExtensions = Schema.Struct(
+  {
+    api: Schema.optional(Schema.Literal(4)),
+    type: Schema.optional(Schema.String), // defaults to "lando"
+    primary: Schema.optional(Schema.Boolean),
 
-  image: Schema.optional(Schema.String),
-  build: Schema.optional(BuildBlock),
-  command: Schema.optional(CommandSpec),
-  entrypoint: Schema.optional(CommandSpec),
-  user: Schema.optional(Schema.String),
-  workingDirectory: Schema.optional(PortablePath),
-  database: Schema.optional(Schema.String),
-  cores: Schema.optional(Schema.Array(Schema.String)),
-  port: Schema.optional(Schema.Number),
-  framework: Schema.optional(Schema.String),
-  webroot: Schema.optional(PortablePath).annotations({
-    description: "Container path served as this service's HTTP document root.",
-  }),
-  allowOverride: Schema.optional(Schema.Boolean).annotations({
-    description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
-  }),
-  root: Schema.optional(Schema.String),
-  environment: Schema.optional(ComposeEnvironmentInput),
-  envFile: Schema.optional(ComposeEnvFileInput).annotations({
-    description:
-      "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
-  }),
-  labels: Schema.optional(ComposeLabelsInput).annotations({
-    description:
-      "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
-  }),
+    image: Schema.optional(Schema.String),
+    build: Schema.optional(BuildBlock),
+    command: Schema.optional(CommandSpec),
+    entrypoint: Schema.optional(CommandSpec),
+    user: Schema.optional(Schema.String),
+    workingDirectory: Schema.optional(PortablePath),
+    database: Schema.optional(Schema.String),
+    cores: Schema.optional(Schema.Array(Schema.String)),
+    port: Schema.optional(Schema.Number),
+    framework: Schema.optional(Schema.String),
+    webroot: Schema.optional(PortablePath).annotations({
+      description: "Container path served as this service's HTTP document root.",
+    }),
+    allowOverride: Schema.optional(Schema.Boolean).annotations({
+      description: "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
+    }),
+    root: Schema.optional(Schema.String),
+    environment: Schema.optional(ComposeEnvironmentInput),
+    envFile: Schema.optional(ComposeEnvFileInput).annotations({
+      description:
+        "One or more env-file paths (string or list) whose KEY=value lines seed the service environment.",
+    }),
+    labels: Schema.optional(ComposeLabelsInput).annotations({
+      description:
+        "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
+    }),
 
-  ...ComposeServiceKnobFields,
+    ...ComposeServiceKnobFields,
 
-  ports: Schema.optional(ComposePortsField).annotations({
-    description:
-      'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.',
-  }),
-  expose: Schema.optional(ComposeExposeField).annotations({
-    description:
-      "Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints.",
-  }),
-  volumes: Schema.optional(ComposeVolumesField).annotations({
-    description:
-      'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',
-  }),
+    ports: Schema.optional(ComposePortsField).annotations({
+      description:
+        'Published container ports as Compose short strings ("8080:80", "127.0.0.1:8080:80/udp", "80", ranges) or long objects; canonicalized to target/published/hostIp/protocol entries that normalize into endpoints.',
+    }),
+    expose: Schema.optional(ComposeExposeField).annotations({
+      description:
+        "Container-only ports exposed to other services as strings, numbers, or ranges; never host-published, and normalized into internal endpoints.",
+    }),
+    volumes: Schema.optional(ComposeVolumesField).annotations({
+      description:
+        'Compose volumes as short strings ("./src:/app", "named:/data:ro", "/data") or long objects; host paths normalize into mounts, named and anonymous volumes into storage, and tmpfs into the preserved tmpfs runtime knob.',
+    }),
+    networks: Schema.optional(ComposeNetworksInput).annotations({
+      description:
+        "Service network attachments canonicalized to a long mapping; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+    }),
+    configs: Schema.optional(ComposeConfigOrSecretInput).annotations({
+      description:
+        "Service config grants canonicalized to long entries; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+    }),
+    secrets: Schema.optional(ComposeConfigOrSecretInput).annotations({
+      description:
+        "Service secret grants canonicalized to long entries; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+    }),
+    profiles: Schema.optional(Schema.Array(Schema.String)).annotations({
+      description:
+        "Compose profile names; carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.",
+    }),
 
-  appMount: Schema.optional(
-    Schema.Union(
-      Schema.Literal(false),
-      Schema.Struct({
-        target: Schema.String,
-        readOnly: Schema.optional(Schema.Boolean),
-        excludes: Schema.optional(Schema.Array(Schema.String)),
-        includes: Schema.optional(Schema.Array(Schema.String)),
-      }),
+    appMount: Schema.optional(
+      Schema.Union(
+        Schema.Literal(false),
+        Schema.Struct({
+          target: Schema.String,
+          readOnly: Schema.optional(Schema.Boolean),
+          excludes: Schema.optional(Schema.Array(Schema.String)),
+          includes: Schema.optional(Schema.Array(Schema.String)),
+        }),
+      ),
     ),
-  ),
-  mounts: Schema.optional(Schema.Array(MountInput)),
-  storage: Schema.optional(Schema.Array(StorageInput)),
+    mounts: Schema.optional(Schema.Array(MountInput)),
+    storage: Schema.optional(Schema.Array(StorageInput)),
 
-  endpoints: Schema.optional(Schema.Array(EndpointInput)),
-  routes: Schema.optional(Schema.Array(RouteInput)),
+    endpoints: Schema.optional(Schema.Array(EndpointInput)),
+    routes: Schema.optional(Schema.Array(RouteInput)),
 
-  healthcheck: Schema.optional(HealthcheckField).annotations({
-    description:
-      "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.",
-  }),
-  logs: Schema.optional(Schema.Array(LogSourceInput)),
-  hostnames: Schema.optional(Schema.Array(Schema.String)),
-  dependsOn: Schema.optional(ComposeDependsOnInput),
+    healthcheck: Schema.optional(HealthcheckField).annotations({
+      description:
+        "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.",
+    }),
+    logs: Schema.optional(Schema.Array(LogSourceInput)),
+    hostnames: Schema.optional(Schema.Array(Schema.String)),
+    dependsOn: Schema.optional(ComposeDependsOnInput),
 
-  providers: Schema.optional(ProviderExtensionConfig),
+    providers: Schema.optional(ProviderExtensionConfig),
+  },
+  ExtensionRecord,
+);
+
+export const ServiceConfig = Object.assign(ServiceConfigWithExtensions, {
+  pick: Schema.Struct(ServiceConfigWithExtensions.fields).pick,
 });
 export type ServiceConfig = typeof ServiceConfig.Type;
 
@@ -585,6 +684,16 @@ const ComposeNamedResourceConfig = Schema.Struct({
   driver: Schema.optional(Schema.String),
 });
 
+const ComposeNamedNetworkConfig = Schema.transform(
+  Schema.Union(ComposeNamedResourceConfig, Schema.Null),
+  ComposeNamedResourceConfig,
+  {
+    strict: true,
+    decode: (config) => config ?? {},
+    encode: (config) => config,
+  },
+);
+
 const ComposeConfigConfig = Schema.Struct({
   file: Schema.optional(Schema.String),
   external: Schema.optional(Schema.Boolean),
@@ -619,7 +728,7 @@ const LandofileShapeBase = Schema.Struct({
   remotes: Schema.optional(Schema.Record({ key: Schema.String, value: RemoteConfig })),
   sync: Schema.optional(Schema.Record({ key: Schema.String, value: DatasetBinding })),
   volumes: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
-  networks: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedResourceConfig })),
+  networks: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeNamedNetworkConfig })),
   configs: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeConfigConfig })),
   secrets: Schema.optional(Schema.Record({ key: Schema.String, value: ComposeSecretConfig })),
   sshAgent: Schema.optional(SshAgentConfig),

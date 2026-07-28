@@ -1,0 +1,8 @@
+services:
+  worker:
+    image: example/worker:1.0
+    x-lando-note: "inert"
+    x-vendor:
+      x-nested:
+        list: [1, 2]
+        flag: true

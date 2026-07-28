@@ -1,6 +1,10 @@
 export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
+export {
+  ComposeServiceFieldCapabilities,
+  ComposeServiceFieldKey,
+} from "./compose-service-field-capabilities.ts";
 export type { ComposePortEntry } from "./compose-ports.ts";
 export { parseShortVolume } from "./compose-volumes.ts";
 export type { ComposeVolumeEntry } from "./compose-volumes.ts";

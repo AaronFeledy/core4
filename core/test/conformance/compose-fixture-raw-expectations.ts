@@ -3,7 +3,11 @@ import { resolve } from "node:path";
 
 import { PortablePath, ServiceName, type ServicePlan } from "@lando/core/schema";
 
-import { ComposeFixtureOutcomeError, type OutcomeContext } from "./compose-fixture-outcome-values.ts";
+import {
+  ComposeFixtureOutcomeError,
+  type OutcomeContext,
+  valueAt,
+} from "./compose-fixture-outcome-values.ts";
 
 type RawFixtureExpectation = (context: OutcomeContext) => void;
 
@@ -13,8 +17,14 @@ export const REQUIRED_RAW_FIXTURE_PATHS = [
   "corpus/healthcheck.compose.yaml",
   "corpus/long-form-mounts-ports.compose.yaml",
   "corpus/runtime-knobs.compose.yaml",
+  "corpus/service-extensions.compose.yaml",
+  "corpus/service-profiles.compose.yaml",
   "corpus/udp-port.compose.yaml",
+  "upstream/different_networks.compose.yaml",
+  "upstream/simple_configfile.compose.yaml",
   "upstream/simple_lifecycle.compose.yaml",
+  "upstream/simple_network.compose.yaml",
+  "upstream/simple_secretfile.compose.yaml",
   "upstream/simple_volume.compose.yaml",
 ] as const;
 
@@ -118,6 +128,17 @@ const expectations = {
       },
     });
   },
+  "corpus/service-extensions.compose.yaml": (context) => {
+    expect(valueAt(servicePlan(context, "worker").extensions.compose, "x-vendor")).toEqual({
+      "x-nested": { list: [1, 2], flag: true },
+    });
+  },
+  "corpus/service-profiles.compose.yaml": (context) => {
+    expect(valueAt(servicePlan(context, "debugger").extensions.compose, "profiles")).toEqual([
+      "debug",
+      "tools",
+    ]);
+  },
   "corpus/udp-port.compose.yaml": (context) => {
     expect(servicePlan(context, "dns").endpoints).toEqual([
       {
@@ -128,11 +149,37 @@ const expectations = {
       },
     ]);
   },
+  "upstream/different_networks.compose.yaml": (context) => {
+    expect(valueAt(servicePlan(context, "entry").extensions.compose, "networks")).toEqual({
+      entrynetwork: {},
+    });
+    expect(valueAt(servicePlan(context, "target").extensions.compose, "networks")).toEqual({
+      targetnetwork: {},
+    });
+  },
+  "upstream/simple_configfile.compose.yaml": (context) => {
+    expect(valueAt(servicePlan(context, "entry").extensions.compose, "configs")).toEqual([
+      { source: "test_config", target: "/volumes/test_config.txt" },
+    ]);
+  },
   "upstream/simple_lifecycle.compose.yaml": (context) => {
     expect(servicePlan(context, "test1").artifact).toEqual({
       kind: "ref",
       ref: "composespec/conformance-tests-server",
     });
+  },
+  "upstream/simple_network.compose.yaml": (context) => {
+    expect(valueAt(servicePlan(context, "entry").extensions.compose, "networks")).toEqual({
+      mynetwork: {},
+    });
+    expect(valueAt(servicePlan(context, "target").extensions.compose, "networks")).toEqual({
+      mynetwork: {},
+    });
+  },
+  "upstream/simple_secretfile.compose.yaml": (context) => {
+    expect(valueAt(servicePlan(context, "entry").extensions.compose, "secrets")).toEqual([
+      { source: "test_secret", target: "/volumes/test_secret.txt" },
+    ]);
   },
   "upstream/simple_volume.compose.yaml": (context) => {
     const entry = servicePlan(context, "entry");

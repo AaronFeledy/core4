@@ -26,10 +26,10 @@ import { appPlanCachePath } from "./paths.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
-// Bump for serialized-shape or planner-output semantic changes, including generated build intents
-// and service plan compose extensions that carry preserved runtime knobs, independently of the
-// package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 11n;
+// Bump for serialized-shape or planner-output semantic changes, including generated build intents,
+// service plan compose extensions that carry preserved runtime knobs, and preserved Compose service
+// fields, independently of the package version.
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 12n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;

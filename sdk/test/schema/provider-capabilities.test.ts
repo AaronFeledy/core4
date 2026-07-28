@@ -39,7 +39,9 @@ const LITERAL_FIELDS = {
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
 
-const OPTIONAL_FIELDS = ["composeKnobs", "hostProxy"] as const;
+const OPTIONAL_FIELDS = ["composeKnobs", "composeServiceFields", "hostProxy"] as const;
+
+const COMPOSE_SERVICE_FIELD_KEYS = ["networks", "configs", "secrets", "profiles", "x-*"] as const;
 
 const COMPOSE_SERVICE_KNOB_KEYS = [
   "restart",
@@ -151,7 +153,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(30);
+    expect(actual).toHaveLength(31);
   });
 
   test("every boolean capability accepts only booleans", () => {
@@ -272,6 +274,28 @@ describe("ProviderCapabilities — field set lock", () => {
     });
 
     expect(absent.composeKnobs?.supported ?? []).toEqual(empty.composeKnobs?.supported ?? []);
+  });
+
+  test("composeServiceFields may be absent", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
+    expect(decoded.composeServiceFields).toBeUndefined();
+  });
+
+  test("composeServiceFields accepts every published service field key in contract order", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeServiceFields: { supported: COMPOSE_SERVICE_FIELD_KEYS },
+    });
+    expect(decoded.composeServiceFields?.supported).toEqual(COMPOSE_SERVICE_FIELD_KEYS);
+  });
+
+  test("portable composeSpec accepts inert extension field support", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeSpec: "portable",
+      composeServiceFields: { supported: ["x-*"] },
+    });
+    expect(decoded.composeServiceFields?.supported).toEqual(["x-*"]);
   });
 });
 
