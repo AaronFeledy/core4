@@ -11,6 +11,7 @@ import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
+import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
 import {
   type ComposeDispositionMatch,
   analyzeComposeDispositions,
@@ -20,7 +21,9 @@ import { loadLandofileFile } from "../../src/landofile/service.ts";
 import { makePluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
+import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
+import { REQUIRED_RAW_FIXTURE_PATHS, assertRawFixtureOutcome } from "./compose-fixture-raw-expectations.ts";
 
 type ComposeFixtureModule = {
   readonly listComposeFixtures: (options: {
@@ -165,6 +168,11 @@ describe("Compose conformance fixtures", () => {
           landofile: loaded.exit.value,
           plan,
         });
+        assertRawFixtureOutcome(fixture.relativePath, {
+          appRoot: dir,
+          landofile: loaded.exit.value,
+          plan,
+        });
         const expectedAssertionCount = fixture.matches.filter(
           (match) => match.service !== undefined && match.disposition !== "rejected",
         ).length;
@@ -206,5 +214,30 @@ describe("Compose conformance fixtures", () => {
     // Then
     expect(supported.size).toBeGreaterThan(0);
     expect(hidden).toEqual([]);
+  });
+
+  test("keeps an authored-value expectation for every required curated fixture", () => {
+    // Given
+    const committedFixtures = new Set(fixtureCases.map(({ relativePath }) => relativePath));
+
+    // When
+    const missing = REQUIRED_RAW_FIXTURE_PATHS.filter((path) => !committedFixtures.has(path));
+
+    // Then
+    expect(missing).toEqual([]);
+  });
+
+  test("keeps test assertion metadata exhaustive for normalized service roots", () => {
+    // Given
+    const normalizedRoots = Object.entries(composeServiceDispositions)
+      .filter(([path, entry]) => !path.includes(".") && entry.disposition === "normalized")
+      .map(([path]) => path)
+      .sort();
+
+    // When
+    const metadataRoots = Object.keys(COMPOSE_FIXTURE_ASSERTIONS).sort();
+
+    // Then
+    expect(metadataRoots).toEqual(normalizedRoots);
   });
 });
