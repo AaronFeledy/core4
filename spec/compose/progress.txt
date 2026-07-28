@@ -1009,3 +1009,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Never launch a delegated comparison and then edit the files it is reading. A parity check fired before the fix returned a substantive-divergence verdict on the criterion that had already been fixed mid-run, which is indistinguishable from a real finding. Either pin the delegate to a committed revision or finish the edit first; a verdict spanning an edit cannot be trusted in either direction.
   - The index-only adjudication divergence is now nine for nine. It is structural, not incidental: only the JSON index is machine-read, so nothing gates the narrative. Diffing the two representations remains the correct first action of any post-adjudication Build pass.
 ---
+
+## 2026-07-28 10:34 CDT - US-476 Review
+- Clarified the gate-finality contract so evidence-free cycle-threshold markers remain valid non-blocking enforcement, while only a marker that claims substantive reopening without one of the three permitted conditions and new evidence is contract-invalid. The narrative and machine index remain synchronized.
+- Corrected the prior progress proof: the four new clauses appear in both representations and the full gate-finality criteria normalize to exact equality under the documented narrative synonyms and Markdown folding; they are not literally byte-identical before normalization.
+- Review notes (deferred/rejected): Rejected the claim that the recorded index-only intermediate state is unsupported because it describes the separate Adjudication-to-Build worktree chronology captured by the prior sessions, not the final `HEAD^..HEAD` commit shape.
+- Review notes (deferred/rejected): Cursor Bugbot produced no findings because the configured account was out of usage on both attempts; this is an unavailable review lane, not a clean Bugbot verdict.
+- Guide-Coverage-Skip: US-476 review changes only internal conformance gate-finality wording; user-facing Compose guide and key-matrix coverage remains owned by US-477.
+- Verification: typecheck and lint passed; source/index finality invariants and normalized exact equality passed; JSON/Biome and diff checks passed. The base-aware guide-drift diagnostic is covered by the substantive skip reason above; no test files or runtime behavior changed in review, and the Build step's fresh focused conformance evidence remains current.
+---
