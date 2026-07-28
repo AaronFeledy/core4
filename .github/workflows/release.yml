@@ -94,6 +94,7 @@ jobs:
       - name: Build package artifacts
         run: |
           bun run --filter='@lando/sdk' build
+          bun run --filter='@lando/paths' build
           bun run --filter='@lando/container-runtime' build
           bun run --filter='@lando/provider-lando' build
           bun run --filter='@lando/provider-docker' build
@@ -118,6 +119,7 @@ jobs:
       - name: Dry-run npm dev publishes
         run: |
           npm publish --workspace @lando/sdk --dry-run --access public --tag dev
+          npm publish --workspace @lando/paths --dry-run --access public --tag dev
           npm publish --workspace @lando/container-runtime --dry-run --access public --tag dev
           npm publish --workspace @lando/core --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
@@ -136,6 +138,7 @@ jobs:
         run: |
           before_latest="$(npm view @lando/core dist-tags.latest --json 2>/dev/null || true)"
           npm publish --workspace @lando/sdk --access public --tag dev --provenance
+          npm publish --workspace @lando/paths --access public --tag dev --provenance
           npm publish --workspace @lando/container-runtime --access public --tag dev --provenance
           npm publish --workspace @lando/core --access public --tag dev --provenance
           npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
