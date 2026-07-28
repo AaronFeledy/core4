@@ -14,6 +14,8 @@ export const REQUIRED_RAW_FIXTURE_PATHS = [
   "corpus/long-form-mounts-ports.compose.yaml",
   "corpus/runtime-knobs.compose.yaml",
   "corpus/udp-port.compose.yaml",
+  "upstream/simple_lifecycle.compose.yaml",
+  "upstream/simple_volume.compose.yaml",
 ] as const;
 
 type RequiredRawFixturePath = (typeof REQUIRED_RAW_FIXTURE_PATHS)[number];
@@ -125,6 +127,34 @@ const expectations = {
         publication: { hostPort: 5353 },
       },
     ]);
+  },
+  "upstream/simple_lifecycle.compose.yaml": (context) => {
+    expect(servicePlan(context, "test1").artifact).toEqual({
+      kind: "ref",
+      ref: "composespec/conformance-tests-server",
+    });
+  },
+  "upstream/simple_volume.compose.yaml": (context) => {
+    const entry = servicePlan(context, "entry");
+    expect(entry.artifact).toEqual({
+      kind: "ref",
+      ref: "composespec/conformance-tests-server",
+    });
+    expect(entry.endpoints).toEqual([
+      {
+        _tag: "published",
+        port: 8080,
+        protocol: "tcp",
+        publication: { hostPort: 8080 },
+      },
+    ]);
+    expect(entry.mounts).toContainEqual({
+      type: "bind",
+      source: resolve(context.appRoot, "test_volume.txt"),
+      target: PortablePath.make("/volumes/test_volume.txt"),
+      readOnly: false,
+      realization: "passthrough",
+    });
   },
 } satisfies Readonly<Record<RequiredRawFixturePath, RawFixtureExpectation>>;
 
