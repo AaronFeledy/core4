@@ -51,6 +51,7 @@ test("regenerates a Compose fixture manifest offline in an isolated fixture root
     await mkdir(join(root, "upstream"), { recursive: true });
     await writeFile(join(root, "corpus", "minimal.compose.yaml"), "services: {}\n", "utf8");
     const manifestPath = join(root, "manifest.json");
+    await writeFile(manifestPath, "{}\n", "utf8");
 
     // When
     const fixtureCount = await manifestModule.generateComposeFixtureManifest({

@@ -1,5 +1,4 @@
-import { mkdir } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import { buildComposeFixtureManifest } from "./build-compose-fixture-manifest.ts";
 import {
@@ -10,6 +9,7 @@ import {
   readComposeFixturePin,
 } from "./compose-fixtures.ts";
 import { sha256Hex } from "./compose-vendor.ts";
+import { writeFixtureFileSafely } from "./fixture-safe-write.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const FIXTURES_ROOT = resolve(REPO_ROOT, "core/test/fixtures/compose");
@@ -101,8 +101,7 @@ const writeComposeFixtures = async (
 ): Promise<void> => {
   for (const file of files) {
     const destination = resolve(fixturesRoot, file.vendored);
-    await mkdir(dirname(destination), { recursive: true });
-    await Bun.write(destination, file.bytes);
+    await writeFixtureFileSafely(fixturesRoot, destination, new Uint8Array(file.bytes));
   }
 };
 
@@ -137,7 +136,11 @@ export const bumpComposeFixtures = async (
   const pin = buildComposeFixturePin(ref, files);
 
   await writeComposeFixtures(maintenance.fixturesRoot, files);
-  await Bun.write(maintenance.pinPath, `${JSON.stringify(pin, null, 2)}\n`);
+  await writeFixtureFileSafely(
+    maintenance.fixturesRoot,
+    maintenance.pinPath,
+    `${JSON.stringify(pin, null, 2)}\n`,
+  );
   await maintenance.regenerateManifest();
   process.stdout.write(`[build-compose-fixtures] bumped ${files.length} pinned files to ${ref}\n`);
 };

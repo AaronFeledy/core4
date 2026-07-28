@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -82,6 +82,7 @@ const withMaintenance = async (
       vendored: "upstream/minimal.compose.yaml",
       bytes: await new Blob([fixtureContent]).arrayBuffer(),
     } satisfies ComposeFixtureSource;
+    await writeFile(join(fixturesRoot, source.vendored), "services:\n  stale: {}\n", "utf8");
     await Bun.write(
       pinPath,
       `${JSON.stringify(fixtureModule.buildComposeFixturePin(oldRef, [source]), null, 2)}\n`,

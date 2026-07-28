@@ -4,6 +4,7 @@ import { Effect } from "effect";
 import { analyzeComposeDispositions } from "../core/src/landofile/compose/rejections.ts";
 import { parseLandofile } from "../core/src/landofile/parser.ts";
 import { listComposeFixtures } from "./compose-fixtures.ts";
+import { writeFixtureFileSafely } from "./fixture-safe-write.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const FIXTURES_ROOT = resolve(REPO_ROOT, "core/test/fixtures/compose");
@@ -44,7 +45,7 @@ export const generateComposeFixtureManifest = async ({
     ),
   );
 
-  await Bun.write(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFixtureFileSafely(fixturesRoot, manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   return fixturePaths.length;
 };
 
