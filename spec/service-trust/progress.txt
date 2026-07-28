@@ -1,0 +1,29 @@
+# Ralph Progress Log — Service Network Trust Inject
+
+Branch: docs/service-trust-prd
+Source PRDs: spec/service-trust/prd-service-trust-{00,01}-*.md (US-483..US-488)
+Spec source of truth: spec/06-services.md §6.8, spec/07-landofile-and-config.md §7.5–§7.6, spec/11-subsystems.md §10.3.1
+Work plan: .omo/plans/host-global-ca-proxy-inject.md
+Origin: DDEV PR #8405 / issue #8406 corporate packet-inspection need; Lando chooses global network.ca inject + lando.security rather than host Dockerfile dirs
+
+## Conventions
+
+- Durable progress narrative, not a changed-file ledger. Git records diffs; this file records outcomes, decisive verification, blockers, and durable learnings.
+- Truth hierarchy is spec > PRD > progress > plan.
+- Mark prd.json `passes: true` only when the story’s acceptance criteria are green under bun test/typecheck/lint (and schema snapshot when SDK changes).
+
+## Codebase Patterns
+
+- ConfigService Live is `core/src/services/config.ts` (`loadGlobalConfigSync`). Ignore the stale “Status: stub” comment on `core/src/config/service.ts`.
+- Pure `@lando/sdk/network-trust` resolves CA **paths** only; PEM bytes are a core IO concern (HttpClient, setup, planner).
+- Service features must not take ConfigService; AppPlanner seeds `lando.security` feature config after one global resolve per plan.
+- `setCerts` / `CertificatePlan` are leaf TLS for routes — do not overload for corporate CA PEMs.
+- Artifact build steps use `buildKeyInputs` (see php-prerequisites) for digest material; exclude HTTP(S)_PROXY from environment build-key hashing.
+- Derived image builds currently pack only a generated Dockerfile; CA packing is new work in container-runtime.
+- `LANDO_BASE_DEFAULT_FEATURE_IDS` must gain `lando.security`; priority 1100 orders apply regardless of list position.
+
+## Status
+
+- Spec contract + SDK inject flags: landed (prior commits on main).
+- PRD set + US-483..US-488: authored (this branch).
+- Implementation: not started (see work plan waves 1–5).

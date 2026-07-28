@@ -1,0 +1,121 @@
+{
+  "project": "Lando v4 Service Network Trust Inject (host-global CA/proxy → containers)",
+  "branchName": "docs/service-trust-prd",
+  "description": "Implements spec sections 6.8, 7.5, and 10.3.1 service-plane inject: global network.ca/certs reach type:lando containers without per-project Dockerfiles. US-483 ServiceConfig.security schema; US-484 shared PEM load + inject resolve; US-485 lando.security feature on the lando base stack; US-486 AppPlanner wiring and build-key proxy exclusion; US-487 derived image build CA packing; US-488 setup messaging and gates. Spec is source of truth; SDK inject flags already shipped. Non-goals: DDEV-style global Dockerfile dirs, CertificateAuthority leaf certs, l337 auto-inject.",
+  "userStories": [
+    {
+      "id": "US-483",
+      "title": "ServiceConfig.security authoring surface",
+      "description": "As a Landofile author, I can declare security.ca, security.inheritNetworkCa, and security.inheritNetworkProxy on a service so project CAs and per-service inject overrides decode into the canonical service config.",
+      "acceptanceCriteria": [
+        "ServiceConfig / ServiceConfigInput accept optional security: { ca?: string[], inheritNetworkCa?: boolean, inheritNetworkProxy?: boolean }.",
+        "Omitted security decodes unchanged (backward compatible).",
+        "Excess properties under security fail closed under the Landofile decode options used in production.",
+        "Public JSON Schema inventory and bun run codegen:schema-snapshot refreshed; generated docs list the new fields.",
+        "sdk/API_COMPATIBILITY.md records the additive fields.",
+        "Unit decode tests cover present/absent/override booleans.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Origin: spec 6.8 security block; plan todo 1. Blocked by nothing."
+    },
+    {
+      "id": "US-484",
+      "title": "Shared CA PEM load and service inject resolution",
+      "description": "As core, one helper loads CA PEMs from paths and one resolver computes effective inject flags and path lists so setup, HttpClient, and the planner do not fork PEM-read logic.",
+      "acceptanceCriteria": [
+        "A shared core helper loads PEM files and returns { path, pem, digest } with stable sha256 digests of UTF-8 bytes.",
+        "HttpClientLive and setup network trust consume the shared loader.",
+        "resolveServiceNetworkInject returns injectCa, injectProxy, global caPaths, landofileCaPaths, and resolved proxy with schema defaults (CA inject on, proxy inject off).",
+        "Unreadable path fails with a tagged error naming the path and remediation.",
+        "Pure @lando/sdk/network-trust remains file-IO-free.",
+        "Unit tests cover defaults, overrides, empty cert lists, and missing files.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Origin: spec 6.8/10.3.1; plan todo 2. Parallel with US-483."
+    },
+    {
+      "id": "US-485",
+      "title": "lando.security feature on the lando base stack",
+      "description": "As a user of type:lando / lando-base services, the lando.security feature materializes mounts, trust env, optional proxy env, and an artifact build step from planner-seeded config without reading ConfigService itself.",
+      "acceptanceCriteria": [
+        "Feature id lando.security, priority 1100, registered in @lando/service-lando.",
+        "lando.security is listed in LANDO_BASE_DEFAULT_FEATURE_IDS.",
+        "Feature config carries pre-resolved inject payload; empty cas and injectProxy false is a no-op.",
+        "Non-empty cas adds mounts, NODE_EXTRA_CA_CERTS/SSL_CERT_FILE/LANDO_CA_* env, and phase build step with buildKeyInputs.caDigests.",
+        "injectProxy true sets HTTP_PROXY/HTTPS_PROXY/NO_PROXY when defined.",
+        "Feature does not import ConfigService or FileSystem.",
+        "Composition unit tests and base-composition id list updates land together.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Origin: spec 6.8 lando.security priority 1100; plan todo 3. Blocked by US-483 and US-484."
+    },
+    {
+      "id": "US-486",
+      "title": "AppPlanner wires global inject into lando-base services",
+      "description": "As AppPlanner, each plan resolves global network trust once, loads PEMs, applies per-service security overrides, resolves Landofile CA paths against the app root, seeds lando.security feature config, and keeps proxy URLs out of the artifact build-key environment hash.",
+      "acceptanceCriteria": [
+        "planApp resolves inject via US-484 helpers when ConfigService is available.",
+        "Only resolution.base === lando services receive security inject; l337 does not.",
+        "Landofile security.ca paths resolve relative to app root with containment failure remediation.",
+        "Global + landofile PEMs are unioned with content-digest de-duplication.",
+        "build-key.ts excludes HTTP_PROXY, HTTPS_PROXY, ALL_PROXY, and NO_PROXY from the environment portion of the artifact key.",
+        "Changing CA PEM bytes changes the artifact build key; proxy env changes do not.",
+        "Unreadable global CA fails the plan with actionable remediation.",
+        "Planner tests cover inject on, inheritNetworkCa false opt-out, and l337 skip.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Origin: spec 6.8/6.13.5; plan todo 4. Blocked by US-484 and US-485."
+    },
+    {
+      "id": "US-487",
+      "title": "Derived image build packs injected CAs",
+      "description": "As the container image builder, derived builds pack injected CA files into the build context and install them into the image trust store so tools that only consult the OS store succeed after rebuild.",
+      "acceptanceCriteria": [
+        "Derived-build path accepts CA file descriptors from the service-features extension set by lando.security.",
+        "Packed context includes CA files and a Dockerfile that COPY installs them, runs multi-distro trust-store update, and writes /etc/lando/certs/ca-bundle.pem.",
+        "Host file missing or digest mismatch fails with ProviderInternalError before successful /build.",
+        "Existing image-build tests remain green; new tests assert tar entries and failure modes.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Origin: spec 6.8 phase/build-key rules; plan todo 5. Blocked by US-485."
+    },
+    {
+      "id": "US-488",
+      "title": "Setup messaging and verification gates",
+      "description": "As a user running lando setup, I am told when configured CAs will inject into services; as a maintainer, the cross-package gates for this wave stay green.",
+      "acceptanceCriteria": [
+        "When setup resolves non-empty network.ca certs and CA inject is not disabled, setup includes an informational note about type:lando inject.",
+        "Focused setup tests cover the note.",
+        "Story path filters green across sdk, core, service-lando, and container-runtime seams listed in the PRD.",
+        "bun run typecheck and bun run lint pass for the change set.",
+        "Diff contains no global-Dockerfile feature and no mkcert scope creep.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Origin: spec 10.3.1 setup note; plan todo 6. Blocked by US-486 and US-487."
+    }
+  ]
+}
