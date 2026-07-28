@@ -1,6 +1,5 @@
 import { relative, resolve } from "node:path";
 
-import { pathsBoundaryRule } from "./architecture/rules/paths-boundary.ts";
 import { runArchitectureChecks } from "./architecture/runner.ts";
 
 export interface PathsBoundaryOffender {
@@ -28,7 +27,7 @@ export const checkPathsBoundary = async (
   const root = resolve(options.root ?? repoRoot);
   const result = await runArchitectureChecks({
     root,
-    rules: [pathsBoundaryRule],
+    ruleIds: ["paths-boundary"],
     auditExceptions: false,
   });
   const offenders = result.diagnostics.map(({ file, line, message }) => ({

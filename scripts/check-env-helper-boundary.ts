@@ -1,6 +1,5 @@
 import { relative, resolve } from "node:path";
 
-import { envHelperBoundaryRule } from "./architecture/rules/env-helper-boundary.ts";
 import { runArchitectureChecks } from "./architecture/runner.ts";
 
 export interface EnvHelperBoundaryOffender {
@@ -28,7 +27,7 @@ export const checkEnvHelperBoundary = async (
   const root = resolve(options.root ?? repoRoot);
   const result = await runArchitectureChecks({
     root,
-    rules: [envHelperBoundaryRule],
+    ruleIds: ["env-helper-boundary"],
     auditExceptions: false,
   });
   const offenders = result.diagnostics.map(({ file, line, message }) => ({

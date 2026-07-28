@@ -1,6 +1,5 @@
 import { resolve } from "node:path";
 
-import { networkBoundaryRule } from "./architecture/rules/network-boundary.ts";
 import { runArchitectureChecks } from "./architecture/runner.ts";
 
 export interface NetworkBoundaryOffender {
@@ -26,7 +25,7 @@ export const checkNetworkBoundary = async (
   const root = resolve(options.root ?? repoRoot);
   const result = await runArchitectureChecks({
     root,
-    rules: [networkBoundaryRule],
+    ruleIds: ["network-boundary"],
     auditExceptions: false,
   });
   const offenders = result.diagnostics.map(({ file, line, message }) => ({
