@@ -107,6 +107,9 @@ ${setupBunSteps}
       - name: Env helper boundary lint
         run: bun run check:env-helper-boundary
 
+      - name: Generated output boundary lint
+        run: bun run check:generated-output
+
       - name: Paths boundary lint
         run: bun run check:paths-boundary
 

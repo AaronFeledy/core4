@@ -323,11 +323,14 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
     expect(staticChecksPlatform).toContain("        run: bun run check:redaction-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:env-helper-boundary");
+    expect(staticChecksPlatform).toContain("        run: bun run check:generated-output");
     expect(staticChecksPlatform).toContain("        run: bun run check:paths-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:state-store-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:probe-boundary");
     expect(staticChecksPlatform).toContain("        run: bun run check:network-boundary");
+    expect(staticChecksPlatform).toContain("        run: bun run check:libpod-prefix");
     expect(staticChecksPlatform).toContain("        run: bun run check:machine-output");
+    expect(staticChecksPlatform).toContain("        run: bun run check:runtime-bundle-manifest");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(
       "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04",
