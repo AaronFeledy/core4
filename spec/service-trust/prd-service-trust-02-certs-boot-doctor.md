@@ -5,7 +5,7 @@
 PRD-01 closes corporate CA/proxy **inject** into services. This PRD completes the rest of the §6.8–§6.9 / §10.3 trust surface users hit day-to-day:
 
 1. **Leaf TLS** — `certs: true|false|custom` + `@lando/ca-mkcert` Live + `lando.certs` feature.
-2. **Boot scaffolding** — `lando.boot` materializes `/etc/lando/*` so env and certs are available on exec.
+2. **Boot scaffolding** — `lando.boot` creates the `/etc/lando/*` directory layout that `lando.env`, `lando.certs`, and `lando.security` write into.
 3. **Language CA env** — Python/Ruby/etc. beyond Node/OpenSSL defaults when corporate CAs inject.
 4. **Doctor** — certs + network-trust diagnostics with remediation.
 5. **Traefik edge TLS** — global proxy presents CA-issued certs for HTTPS routes (today: bare `tls: {}`).
@@ -13,7 +13,7 @@ PRD-01 closes corporate CA/proxy **inject** into services. This PRD completes th
 
 **SSH note:** `SshService` / `lando.ssh-agent` forward SSH agent sockets. They do **not** consume `CertificateAuthority` leaf TLS certs. Out of scope for this PRD.
 
-Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
+Execution order is defined by `priority` in [`prd.json`](./prd.json); US-496 closes the guide pack and therefore runs last.
 
 ## Source References
 
@@ -22,14 +22,16 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 - [`plugins/ca-mkcert/`](../../plugins/ca-mkcert/) — currently stub Live
 - [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
 - [`docs/guides/subsystems/doctor-walkthrough.mdx`](../../docs/guides/subsystems/doctor-walkthrough.mdx)
-- [`docs/guides/subsystems/proxy-traefik.mdx`](../../docs/guides/subsystems/proxy-traefik.mdx) (or create)
+- [`docs/guides/subsystems/proxy-traefik.mdx`](../../docs/guides/subsystems/proxy-traefik.mdx)
 - `plugins/proxy-traefik/src/proxy.ts` — current `tls: {}` gap
-- PRD-01 corporate inject conventions for shared bundle paths
+- `plugins/service-lando/src/features/env.ts` — existing `lando.env` feature (US-493 scope boundary)
+- `sdk/src/services/platform.ts` — `CertificateAuthority` shape (`setup`, `issueCert`)
+- PRD-01 corporate inject conventions for shared bundle paths (`/etc/lando/certs/ca-bundle.pem`)
 
 ## Goals
 
 - After `lando setup`, `certs: true` yields working leaf certs and `LANDO_SERVICE_CERT`/`KEY` in lando-base services.
-- `lando.boot` provides `/etc/lando` scaffold used by env, certs, and security features.
+- `lando.boot` provides the `/etc/lando` directory scaffold used by the `lando.env`, `lando.certs`, and `lando.security` features.
 - Language runtimes get appropriate CA env when corporate CAs inject.
 - Doctor surfaces CA plugin and network-trust config problems.
 - Guides cover leaf certs, boot contract, language env table, and doctor checks; gates green.
@@ -86,15 +88,28 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 
 ### US-493: lando.boot scaffolding feature
 
-**Description:** As a user of `type: lando` services, `lando.boot` (priority 100) materializes `/etc/lando/environment`, `env.d/`, and `certs/` so later features and exec surfaces share a stable layout (spec §6.9).
+**Description:** As a user of `type: lando` services, `lando.boot` (priority 100) creates the `/etc/lando/*` directory scaffold so the higher-priority features that write into it share a stable layout.
+
+**Scope boundary (normative).** The §6.11 built-in feature table splits these responsibilities and this story must not merge them:
+
+| Feature | Priority | Owns |
+|---|---|---|
+| `lando.boot` | 100 | `/etc/lando/*` **scaffolding** (the directory layout) |
+| `lando.env` | 700 | `/etc/lando/environment` **content** + `env.d/`, the §6.9 per-exec sourcing, and the `LANDO_LINUX_*` distro exports |
+
+`lando.env` already ships (`plugins/service-lando/src/features/env.ts`). US-493 creates directories only; it must not author `/etc/lando/environment`, add `env.d/*.sh` sourcing, or emit distro-detection exports — those are `lando.env`'s and are out of scope for this story.
 
 **Acceptance Criteria:**
 
 - [ ] `lando.boot` on `LANDO_BASE_DEFAULT_FEATURE_IDS`; priority 100.
-- [ ] Plan includes mounts and/or build steps that create the scaffold paths.
-- [ ] Compatible with `lando.env`, `lando.certs`, and `lando.security` dropping files into those paths (integration composition test).
+- [ ] Realized as **artifact-phase build steps**, not mounts: §6.13.1 states "the `lando.boot` scaffolding lives inside the built artifact". A mount-based scaffold would also shadow files that higher-priority features baked into the same directories, so mounts are rejected for this feature.
+- [ ] Creates `/etc/lando`, `/etc/lando/env.d`, and `/etc/lando/certs` idempotently (`mkdir -p`), so replanning and rebuilds are no-ops.
+- [ ] Does **not** write `/etc/lando/environment`, does not add `env.d/*.sh` sourcing, and does not export `LANDO_LINUX_DISTRO` / `_LIKE` / `_NAME` / `_PACKAGE_MANAGER`; a test asserts `lando.env` remains the only producer of those.
+- [ ] Compatible with `lando.env` (700), `lando.certs` (1000), and `lando.security` (1100) writing into those paths (integration composition test asserting priority order boot → env → certs → security).
+- [ ] Composition test asserts the PRD-01 bundle survives: after `lando.boot` + `lando.security` compose, `/etc/lando/certs/ca-bundle.pem` is still the value of `LANDO_CA_BUNDLE` and is readable — i.e. boot does not shadow or clobber it.
 - [ ] l337 does not include boot.
-- [ ] **Guide:** document boot contract in `docs/guides/services/lando-boot-scaffold.mdx` **or** a dedicated section of corporate-network-trust + certificates-mkcert (choose one primary guide; link from the other). Scenario `render={false}` OK if unit-backed.
+- [ ] **Guide:** document the boot contract in `docs/guides/services/lando-boot-scaffold.mdx` (the primary guide, per this PRD's Guide Coverage table), covering which directories exist, that they are baked into the artifact, and the `lando.boot` / `lando.env` ownership split; link to it from corporate-network-trust and certificates-mkcert. Scenario `render={false}` OK if unit-backed.
+- [ ] `docs/guides/INDEX.md` row for `docs/guides/services/lando-boot-scaffold.mdx` flips from `Planned` to `Shipped` in this story.
 - [ ] Guide gates green.
 - [ ] Tests pass
 - [ ] Typecheck passes
@@ -138,9 +153,9 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 - [ ] `docs/guides/config/corporate-network-trust.mdx` exists and covers: global `network.ca`/`proxy`, inject flags + env vars, Landofile `security.*`, rebuild, runtime env table, links to setup/doctor/certs guides.
 - [ ] `certificates-mkcert.mdx` covers leaf certs user path end-to-end at contract level.
 - [ ] Boot + doctor + language + **proxy HTTPS** links as required by US-493..495 and US-497..498.
-- [ ] `docs/guides/INDEX.md` (or repo index convention) lists new guides if required.
+- [ ] `docs/guides/INDEX.md` carries a row for **every** guide path declared in the `## Guide Coverage` table of PRD-01 and PRD-02, and no service-trust row is left at `Status: Planned` — every one reads `Shipped` and resolves to a file on disk. This is the criterion that gives the per-story `check:guide-coverage` ACs teeth: `Planned` rows are deliberately exempt from the on-disk existence check, so the gate only proves the guides exist once the rows are flipped.
 - [ ] `bun run lint:guides` passes.
-- [ ] `bun run check:guide-coverage` passes.
+- [ ] `bun run check:guide-coverage` passes **with `spec/service-trust/` in its scanned spec directories**, so a declared-but-unindexed guide fails the gate (`coverage.missing-index-row`) and a user-facing service-trust PRD with an empty `## Guide Coverage` section fails it (`coverage.empty-user-facing-section`).
 - [ ] `bun run check:guide-drift` passes.
 - [ ] `bun run check:public-transcripts` passes if transcripts changed.
 - [ ] Tests pass
@@ -154,7 +169,7 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 
 **Acceptance Criteria:**
 
-- [ ] Proxy setup and/or first HTTPS `applyRoutes` ensures a default proxy cert exists via CA `issueCert`/`issueLeaf` covering default domain wildcards (e.g. `*.lndo.site`, apex, `traefik.lndo.site`) and is refreshed when new HTTPS route hostnames need SANs (re-issue or additional certs — choose one approach, document, test).
+- [ ] Proxy setup and/or first HTTPS `applyRoutes` ensures a default proxy cert exists via `CertificateAuthority.issueCert` (the only issuance method on the shape in `sdk/src/services/platform.ts`; no new SDK surface is added by this story) covering default domain wildcards (e.g. `*.lndo.site`, apex, `traefik.lndo.site`) and is refreshed when new HTTPS route hostnames need SANs (re-issue or additional certs — choose one approach, document, test).
 - [ ] Cert/key files live under a Lando-managed path and are bind-mounted into the Traefik global service.
 - [ ] Dynamic and/or static Traefik config references those files (`tls.certificates` and/or default certificate); rendered config tests **fail** if they only contain bare `tls: {}` with no cert paths.
 - [ ] Unit tests with fake CA + filesystem; existing Traefik proxy contract tests updated.
@@ -184,7 +199,7 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 
 - **FR-1** `certs: true` issues leaf certs via active CertificateAuthority with §6.8 SANs.
 - **FR-2** mkcert Live downloads and installs with network-trust-aware egress and privilege-aware trust-store install.
-- **FR-3** `lando.boot` creates `/etc/lando` scaffold for lando-base services only.
+- **FR-3** `lando.boot` creates the `/etc/lando` directory scaffold for lando-base services only, as artifact build steps; `/etc/lando/environment` and `env.d/` content remain owned by `lando.env` (§6.11 feature table).
 - **FR-4** Language features export additional CA env when corporate inject is active.
 - **FR-5** Doctor reports CA and network-trust problems with remediation.
 - **FR-6** Every user-facing FR has guide coverage and guide gates pass.
@@ -207,14 +222,22 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 
 ## Guide Coverage
 
-| Surface | Guide |
-|---------|--------|
-| Corporate inject | `docs/guides/config/corporate-network-trust.mdx` |
-| Leaf certs / mkcert | `docs/guides/subsystems/certificates-mkcert.mdx` |
-| Boot scaffold | services guide or section linked from corporate + certs |
-| Doctor | subsystems + global doctor-walkthrough |
-| Language env | table in corporate guide + deep links |
-| Traefik HTTPS | `docs/guides/subsystems/proxy-traefik.mdx` |
+Every path below is a concrete guide file so `bun run check:guide-coverage` can resolve it against `docs/guides/INDEX.md`. `docs/guides/services/lando-boot-scaffold.mdx` is new in this wave and is registered as `Planned` until US-493 lands it; `docs/guides/config/corporate-network-trust.mdx` is created by PRD-01 US-488. The rest already exist.
+
+**Guides owned by this PRD:**
+
+| User Story | Feature | Guide Path | Acceptance |
+|---|---|---|---|
+| US-490 | `certs:` authoring shapes | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
+| US-491 | mkcert Live setup / opt-out | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
+| US-492 | `lando.certs` service env and SAN coverage | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
+| US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Required at story acceptance |
+| US-494 | language-runtime CA env table | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
+| US-495 | doctor certs + network-trust checks | `docs/guides/subsystems/doctor-walkthrough.mdx` | Required at story acceptance |
+| US-495 | global-app doctor certs surface | `docs/guides/global/doctor-walkthrough.mdx` | Required at story acceptance |
+| US-497 | Traefik HTTPS certs from the CA | `docs/guides/subsystems/proxy-traefik.mdx` | Required at story acceptance |
+| US-498 | doctor proxy TLS readiness | `docs/guides/subsystems/doctor-walkthrough.mdx` | Required at story acceptance |
+| US-496 | guide pack closure across every path above | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 
 ## Success Metrics
 

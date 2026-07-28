@@ -13,9 +13,16 @@ const PRD_NUMBER_PATTERN = /prd-alpha-3-(\d{2})-/;
 const USER_FACING_PRD_NUMBERS = new Set(["01", "02", "03", "04", "05", "06", "07", "08", "10", "11"]);
 const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
 
+const SERVICE_TRUST_PRD_NUMBER_PATTERN = /prd-service-trust-(\d{2})-/;
+const SERVICE_TRUST_USER_FACING_PRD_NUMBERS = new Set(["01", "02"]);
+
 export type PrdClassification = "user-facing" | "internal" | "exempt";
 
 export const classifyPrd = (name: string): PrdClassification => {
+  const serviceTrustNumber = name.match(SERVICE_TRUST_PRD_NUMBER_PATTERN)?.[1];
+  if (serviceTrustNumber !== undefined) {
+    return SERVICE_TRUST_USER_FACING_PRD_NUMBERS.has(serviceTrustNumber) ? "user-facing" : "exempt";
+  }
   const number = name.match(PRD_NUMBER_PATTERN)?.[1];
   if (number === undefined) return "exempt";
   if (USER_FACING_PRD_NUMBERS.has(number)) return "user-facing";
@@ -201,10 +208,16 @@ export const checkGuideCoverageOnDisk = async (
   root = REPO_ROOT,
   options: CheckGuideCoverageOptions = {},
 ): Promise<CoverageResult> => {
-  const defaultSpecDir = "prd/alpha-3";
-  const internalSpecDir = [["s", "pec"].join(""), "alpha-3"].join("/");
-  const specDir =
-    options.specDir ?? (existsSync(resolve(root, defaultSpecDir)) ? defaultSpecDir : internalSpecDir);
+  const internalSpecRoot = ["s", "pec"].join("");
+  const defaultSpecDirs = [
+    "prd/alpha-3",
+    [internalSpecRoot, "alpha-3"].join("/"),
+    [internalSpecRoot, "service-trust"].join("/"),
+  ];
+  const specDirs =
+    options.specDir !== undefined
+      ? [options.specDir]
+      : defaultSpecDirs.filter((specDir) => existsSync(resolve(root, specDir)));
   const indexPath = options.indexPath ?? "docs/guides/INDEX.md";
 
   const indexAbsolute = resolve(root, indexPath);
@@ -222,24 +235,26 @@ export const checkGuideCoverageOnDisk = async (
 
   const declarations: Array<GuideCoverageDeclaration> = [];
   const prdCoverage: Array<PrdGuideCoverage> = [];
-  let specEntries: ReadonlyArray<string> = [];
-  try {
-    specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
-  } catch {
-    specEntries = [];
-  }
-  for (const name of specEntries) {
-    const content = await Bun.file(resolve(root, specDir, name)).text();
-    const section = parseGuideCoverageSection(content);
-    prdCoverage.push({
-      source: `${specDir}/${name}`,
-      classification: classifyPrd(name),
-      present: section.present,
-      none: section.none,
-      pathCount: section.paths.length,
-    });
-    for (const guidePath of section.paths) {
-      declarations.push({ source: `${specDir}/${name}`, guidePath });
+  for (const specDir of specDirs) {
+    let specEntries: ReadonlyArray<string> = [];
+    try {
+      specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
+    } catch {
+      specEntries = [];
+    }
+    for (const name of specEntries) {
+      const content = await Bun.file(resolve(root, specDir, name)).text();
+      const section = parseGuideCoverageSection(content);
+      prdCoverage.push({
+        source: `${specDir}/${name}`,
+        classification: classifyPrd(name),
+        present: section.present,
+        none: section.none,
+        pathCount: section.paths.length,
+      });
+      for (const guidePath of section.paths) {
+        declarations.push({ source: `${specDir}/${name}`, guidePath });
+      }
     }
   }
 

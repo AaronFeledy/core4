@@ -15,10 +15,11 @@ This set is two PRDs:
 
 ## Source References
 
-- [`spec/06-services.md`](../06-services.md) §6.8 certificates/security, §6.9 env, feature priorities (`lando.boot` 100, `lando.certs` 1000, `lando.security` 1100)
+- [`spec/06-services.md`](../06-services.md) §6.8 certificates/security, §6.9 env, §6.11 feature priority table (`lando.boot` 100, `lando.env` 700, `lando.certs` 1000, `lando.security` 1100), §6.13.1 artifact/app phases
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.3 load/import, §7.5–§7.6 network + env
-- [`spec/11-subsystems.md`](../11-subsystems.md) §10.3 CertificateAuthority + corporate proxies
-- Work plan: `.omo/plans/host-global-ca-proxy-inject.md`
+- [`spec/11-subsystems.md`](../11-subsystems.md) §10.2 proxy and routing, §10.3 CertificateAuthority + corporate proxies
+- [`spec/18-global-app.md`](../18-global-app.md) §20.10 proxy and CA realization through the global app (cite this file by name plus §20.10; "§18" is `spec/16-deprecation-and-surface-evolution.md` and is unrelated)
+- Execution order: [`prd.json`](./prd.json) `priority` (1..16, strict)
 - Existing guide seed: [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
 
 ## Goals
@@ -51,7 +52,7 @@ This set is two PRDs:
 1. TDD or tests-with-implementation; positive `bun test` counts on story path filters.
 2. `bun run typecheck`, `bun run lint`.
 3. SDK schema changes: `API_COMPATIBILITY.md` + `codegen:schema-snapshot`.
-4. **User-facing stories:** guide updated/created; `bun run lint:guides`; `bun run check:guide-coverage`; `bun run check:guide-drift`; `check:public-transcripts` if transcripts change.
+4. **User-facing stories:** guide updated/created; `bun run lint:guides`; `bun run check:guide-coverage`; `bun run check:guide-drift`; `check:public-transcripts` if transcripts change. `check:guide-coverage` scans `spec/service-trust/`, so each PRD's `## Guide Coverage` table must name real guide paths and every one of them must have a `docs/guides/INDEX.md` row.
 5. `render={false}` guide scenarios are acceptable when live CA/mkcert/network is unsafe in CI (match certificates-mkcert pattern) **if** unit/contract tests back the same claims.
 
 ## Open questions

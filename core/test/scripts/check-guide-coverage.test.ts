@@ -8,6 +8,7 @@ import {
   type GuideCoverageRow,
   checkGuideCoverage,
   checkGuideCoverageOnDisk,
+  classifyPrd,
   formatCoverageDiagnostic,
   parseGuideCoveragePaths,
   parseGuideCoverageSection,
@@ -140,6 +141,20 @@ describe("check:guide-coverage parsers", () => {
       none: false,
       paths: ["docs/guides/setup/foo.mdx"],
     });
+  });
+
+  test("classifyPrd recognizes the service-trust PRD set", () => {
+    expect(classifyPrd("prd-service-trust-00-index.md")).toBe("exempt");
+    expect(classifyPrd("prd-service-trust-01-host-global-ca-proxy-inject.md")).toBe("user-facing");
+    expect(classifyPrd("prd-service-trust-02-certs-boot-doctor.md")).toBe("user-facing");
+  });
+
+  test("classifyPrd still recognizes the alpha-3 PRD set", () => {
+    expect(classifyPrd("prd-alpha-3-00-index.md")).toBe("exempt");
+    expect(classifyPrd("prd-alpha-3-01-provider-matrix.md")).toBe("user-facing");
+    expect(classifyPrd("prd-alpha-3-09-renderer.md")).toBe("internal");
+    expect(classifyPrd("prd-alpha-3-13-build.md")).toBe("internal");
+    expect(classifyPrd("prd-alpha-3-12-executable-guides.md")).toBe("exempt");
   });
 
   test("parseGuideCoverageSection does not treat a None marker as a declaration when paths are listed", () => {
@@ -389,6 +404,94 @@ describe("check:guide-coverage", () => {
       const result = await checkGuideCoverageOnDisk(root);
       expect(result.diagnostics.length).toBeGreaterThan(0);
       expect(result.diagnostics.some((d) => d.message.includes("docs/guides/setup/ghost.mdx"))).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("a service-trust PRD declaring a guide that is absent from INDEX fails", async () => {
+    const root = await scaffold({
+      "spec/service-trust/prd-service-trust-01-inject.md": prdSection([
+        { story: "US-483", feature: "Corporate CA inject", path: "docs/guides/config/corp.mdx" },
+      ]),
+      "docs/guides/config/corp.mdx": "---\nid: corp\n---\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.missing-index-row");
+      expect(result.diagnostics.some((d) => d.message.includes("docs/guides/config/corp.mdx"))).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("a user-facing service-trust PRD without a Guide Coverage section fails", async () => {
+    const root = await scaffold({
+      "spec/service-trust/prd-service-trust-02-certs.md":
+        "# Certs\n\n## User Stories\n\nNo coverage section.\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.missing-section");
+      expect(result.diagnostics.some((d) => d.message.includes("prd-service-trust-02-certs.md"))).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("a service-trust PRD-declared guide with a Planned INDEX row is allowed", async () => {
+    const root = await scaffold({
+      "spec/service-trust/prd-service-trust-01-inject.md": prdSection([
+        { story: "US-483", feature: "Corporate CA inject", path: "docs/guides/config/corp.mdx" },
+      ]),
+      "docs/guides/INDEX.md": indexDoc([
+        {
+          prd: "ST-PRD-01",
+          userStory: "US-483",
+          feature: "Corporate CA inject",
+          guidePath: "docs/guides/config/corp.mdx",
+          status: "Planned",
+        },
+      ]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("the service-trust index PRD (00) is exempt from the section convention", async () => {
+    const root = await scaffold({
+      "spec/service-trust/prd-service-trust-00-index.md": "# Index\n\nNo coverage section.\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).not.toContain("coverage.missing-section");
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("alpha-3 and service-trust PRD sets are scanned together", async () => {
+    const root = await scaffold({
+      "spec/alpha-3/prd-alpha-3-01-providers.md": prdSection([
+        { story: "US-074", feature: "Foo", path: "docs/guides/setup/foo.mdx" },
+      ]),
+      "spec/service-trust/prd-service-trust-01-inject.md": prdSection([
+        { story: "US-483", feature: "Corporate CA inject", path: "docs/guides/config/corp.mdx" },
+      ]),
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      const messages = result.diagnostics.map(formatCoverageDiagnostic).join("\n");
+      expect(messages).toContain("docs/guides/setup/foo.mdx");
+      expect(messages).toContain("docs/guides/config/corp.mdx");
     } finally {
       await rm(root, { force: true, recursive: true });
     }
