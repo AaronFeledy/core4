@@ -3,9 +3,12 @@ import { Effect } from "effect";
 import type { ToolingResult } from "@lando/sdk/app";
 import type { ShellExecError, ShellScriptOutsideRootError } from "@lando/sdk/errors";
 import { NotImplementedError, ToolingExecError } from "@lando/sdk/errors";
+import { EventService } from "@lando/sdk/services";
 
-import type { DiscoveredBunShellScript } from "../../landofile/bun-sh-discovery.ts";
+import { type DiscoveredBunShellScript, discoverBunShellScripts } from "../../landofile/bun-sh-discovery.ts";
 import { runHostScript } from "../../services/host-tooling-engine.ts";
+import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserved-aliases.ts";
+import { emitToolingOutputProgress } from "./tooling-progress.ts";
 
 const HOST_SERVICE = ":host";
 
@@ -63,5 +66,46 @@ export const runBunShellScript = (
       exitCode: result.exitCode,
       stdout: result.stdout,
       stderr: result.stderr,
+    } satisfies ToolingResult;
+  });
+
+export const runBunShellTooling = (
+  options: {
+    readonly name: string;
+    readonly cwd?: string;
+    readonly env?: Readonly<Record<string, string>>;
+    readonly renderProgress?: boolean;
+  },
+  appRoot: string,
+) =>
+  Effect.gen(function* () {
+    const scripts = yield* discoverBunShellScripts({ appRoot });
+    const script = findBunShellScriptForName(scripts, options.name);
+    if (script === undefined) return undefined;
+
+    const toolingLookupKey = options.name.startsWith("app:") ? options.name.slice(4) : options.name;
+    const reservedOwner = reservedTopLevelAliasOwner(toolingLookupKey);
+    if (reservedOwner !== undefined) {
+      return yield* Effect.fail(
+        commandAliasConflictError(toolingLookupKey, `script-backed tooling task ${script.id}`),
+      );
+    }
+
+    const events = options.renderProgress === true ? yield* Effect.serviceOption(EventService) : undefined;
+    const progressEvents = events?._tag === "Some" ? events.value : undefined;
+    const startedAt = Date.now();
+    const result = yield* runBunShellScript(script, appRoot, options);
+    yield* emitToolingOutputProgress({
+      events: progressEvents,
+      tool: result.tool,
+      service: result.service,
+      exitCode: result.exitCode,
+      stdout: result.stdout,
+      stderr: result.stderr,
+      durationMs: Date.now() - startedAt,
+    });
+    return {
+      ...result,
+      ...(progressEvents === undefined ? {} : { rendered: true }),
     } satisfies ToolingResult;
   });
