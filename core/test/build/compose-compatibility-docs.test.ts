@@ -55,6 +55,50 @@ describe("Compose compatibility matrix", () => {
     }
   });
 
+  test("preserved-key guidance leaves capability behavior to row details and exempts service extensions", async () => {
+    // Given / When
+    const guide = await readText("docs/guides/config/compose-compatibility.mdx");
+
+    // Then
+    expect(guide).toContain("row detail determines whether provider capability checks apply");
+    expect(guide).toContain("Service-level `x-*` extensions are inert and are not capability-gated");
+    expect(guide).not.toContain("Compose plan extension for provider capability\n  checks");
+  });
+
+  test("the service-block guide proves canonical Compose fields through app config", async () => {
+    // Given / When
+    const guide = await readText("docs/guides/config/compose-service-block.mdx");
+    const primary = sectionBetween(
+      guide,
+      '<Scenario id="paste-compose-service"',
+      '<Scenario id="rejected-key-remediation"',
+    );
+    const applyRemediation = sectionBetween(
+      guide,
+      '<Step name="apply-remediation">',
+      '<Step name="cleanup-remediation">',
+    );
+    const fixtureIndex = primary.indexOf('<UseFixture name="compose-service-block-demo" />');
+    const configVerifyIndex = primary.indexOf('<Verify command="lando app:config --format=json"');
+    const startIndex = primary.indexOf('<Run command="lando start" />');
+
+    // Then
+    expect(configVerifyIndex).toBeGreaterThan(fixtureIndex);
+    expect(configVerifyIndex).toBeLessThan(startIndex);
+    expect(primary).toContain("extra_hosts");
+    expect(primary).toContain("published");
+    expect(primary).toContain("8080");
+    expect(primary).toContain("dependsOn");
+    expect(primary).toContain("service_started");
+    expect(applyRemediation).not.toContain('<Run command="lando app:config --format=json"');
+    expect(applyRemediation).toContain(
+      '<Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\\"ok\\":\\\\s*true" } }} />',
+    );
+    expect(guide).toContain(
+      '<Verify errorTag="ComposeKeyRejectedError" expect={{ regex: "Remove container_name and use the Lando service key as the container identity\\\\." }} />',
+    );
+  });
+
   test("section 14.2 records the Compose subset as resolved by pointing at the generated matrix", async () => {
     const tenets = await readText("spec/01-mission-and-tenets.md");
 

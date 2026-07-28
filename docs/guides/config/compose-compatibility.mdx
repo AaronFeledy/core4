@@ -15,8 +15,8 @@ key lists into guides or migration notes.
 Each disposition describes what happens during planning:
 
 - **normalized** resolves the input into a provider-neutral plan field.
-- **preserved** accepts the input and carries it in the Compose plan extension for provider capability
-  checks.
+- **preserved** accepts the input and carries it in the Compose plan extension; the matrix row detail determines whether provider capability checks apply.
+  Service-level `x-*` extensions are inert and are not capability-gated.
 - **rejected** fails closed with a tagged error and remediation rather than silently dropping intent.
 
 For a runnable example of pasting a Compose service definition into a Landofile, continue with
