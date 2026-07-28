@@ -103,7 +103,7 @@ code and spec disagree, the spec wins.
 - **Runtime:** Bun (>=1.3.14, see `engines` and `.bun-version`). Node is not supported.
 - **Package manager:** `bun install`. `package-lock.json` and `yarn.lock` are forbidden.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
-- **Lint + format:** Biome, plus the architecture boundary kernel (`check:architecture`) and deprecation checks, run together by `bun run lint`.
+- **Lint + format:** Biome.
 - **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
 - **CLI framework:** OCLIF — consumed only inside `core/src/cli/oclif/`.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
@@ -143,7 +143,7 @@ bun test
 | `bun run codegen` | Run all code generators |
 | `bun run dev:guides` | TDD driver for executable guides (regenerate + typecheck + re-run affected scenarios on change) |
 | `bun run lint:guides` | Lint executable-guide MDX |
-| `bun run check:architecture` | Architecture boundary kernel — runs all Class-A boundary rules (renderer, managed-file, redaction, env-helper, package DAG, paths, state-store, probe, network, import-cycle) in one process; narrow with `--rule=<id>` (e.g. `check:architecture --rule=renderer-boundary`); individual `check:<id>` wrappers still work |
+| `bun run check:renderer-boundary` | Renderer-boundary gate — no direct `console.*` / `process.std*.write` under `core/src/**`, `plugins/**` |
 | `bun run check:guide-coverage` / `check:guide-drift` | Guide coverage matrix + drift gates |
 | `bun run release` | 13-stage release orchestrator (compile, sign, SBOM, provenance, publish) |
 
