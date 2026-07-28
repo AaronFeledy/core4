@@ -70,7 +70,7 @@ describe("Compose compatibility matrix", () => {
     const guide = await readText("docs/guides/config/compose-service-block.mdx");
     const matrix = await readText("docs/reference/compose-key-matrix.mdx");
 
-    expect(guide).toContain("docs/reference/compose-key-matrix.mdx");
+    expect(guide).toMatch(/\[[^\]]+\]\(\.\.\/\.\.\/reference\/compose-key-matrix\.mdx\)/);
     // The matrix side is emitted by scripts/build-compose-key-matrix.ts, so this link
     // can only be restored by regenerating the page, never by hand-editing it.
     expect(matrix).toContain("../guides/config/compose-service-block.mdx");
