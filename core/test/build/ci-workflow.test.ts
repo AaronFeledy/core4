@@ -314,20 +314,23 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
     expect(staticChecksPlatform).toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
-    expect(staticChecksPlatform).toContain("      - name: Import cycle lint");
-    expect(staticChecksPlatform).toContain("        run: bun run check:import-cycle");
-    expect(staticChecksPlatform).toContain("      - name: Package DAG lint");
-    expect(staticChecksPlatform).toContain("        run: bun run check:package-dag");
-    expect(staticChecksPlatform).toContain("        run: bun run check:renderer-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:managed-file-boundary");
+    expect(staticChecksPlatform).toContain("      - name: Architecture boundary kernel");
+    expect(staticChecksPlatform).toContain("        run: bun run check:architecture");
+    // `bun run lint` shells out to the same kernel, so the dedicated step must
+    // run first or it never reports the failure it exists to surface.
+    expect(staticChecksPlatform.indexOf("      - name: Architecture boundary kernel")).toBeLessThan(
+      staticChecksPlatform.indexOf("      - name: Lint"),
+    );
+    expect(staticChecksPlatform).toContain("      - name: Telemetry inventory lint");
     expect(staticChecksPlatform).toContain("        run: bun run check:telemetry-inventory");
-    expect(staticChecksPlatform).toContain("        run: bun run check:redaction-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:env-helper-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:paths-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:state-store-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:probe-boundary");
-    expect(staticChecksPlatform).toContain("        run: bun run check:network-boundary");
+    expect(staticChecksPlatform).toContain("      - name: Compose schema coverage");
+    expect(staticChecksPlatform).toContain("        run: bun run check:compose-coverage");
+    expect(staticChecksPlatform).toContain("      - name: Libpod API prefix lint");
+    expect(staticChecksPlatform).toContain("        run: bun run check:libpod-prefix");
+    expect(staticChecksPlatform).toContain("      - name: Machine output boundary lint");
     expect(staticChecksPlatform).toContain("        run: bun run check:machine-output");
+    expect(staticChecksPlatform).toContain("      - name: Runtime-bundle manifest invariant");
+    expect(staticChecksPlatform).toContain("        run: bun run check:runtime-bundle-manifest");
     expect(staticChecksPlatform).toContain("      - name: Static scope notice for portable static matrix");
     expect(staticChecksPlatform).toContain(
       "runs fork-safe portable static gates only; linux-x64 unit tests run as unit-tests-linux-x64 on ubuntu-24.04, ubuntu-26.04",
