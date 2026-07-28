@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { Schema } from "effect";
 
 import {
@@ -14,10 +17,16 @@ import type { ComposeDispositionMatch } from "../../src/landofile/compose/reject
 import { analyzeComposeDispositions } from "../../src/landofile/compose/rejections.ts";
 import { deterministicMetadata } from "../../src/services/draft.ts";
 import { ComposeFixtureOutcomeError } from "./compose-fixture-outcome-values.ts";
-import { assertFixtureServiceOutcomes } from "./compose-fixture-outcomes.ts";
+import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
 
 const serviceName = ServiceName.make("web");
 const provider = ProviderId.make("test");
+
+const landofileWithEnvFile = (envFile: string) =>
+  Schema.decodeUnknownSync(LandofileShape)({
+    name: "env-file-security",
+    services: { web: { type: "compose", image: "alpine:3", env_file: [envFile] } },
+  });
 
 const missingOutcomeContext = (serviceConfig: Readonly<Record<string, unknown>> = {}) => {
   const landofile = Schema.decodeUnknownSync(LandofileShape)({
@@ -101,5 +110,88 @@ describe("Compose fixture outcome assertions", () => {
     expect(() =>
       assertFixtureServiceOutcomes([match], missingOutcomeContext({ volumes: ["./src:/workspace"] })),
     ).toThrow(ComposeFixtureOutcomeError);
+  });
+});
+
+describe("Compose fixture env file materialization", () => {
+  test("rejects relative traversal without changing an outside file", async () => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-compose-env-"));
+    const appRoot = join(root, "app");
+    const sentinel = join(root, "outside.env");
+    await mkdir(appRoot);
+    await writeFile(sentinel, "sentinel\n");
+
+    try {
+      // When / Then
+      await expect(
+        materializeFixtureEnvFiles(appRoot, landofileWithEnvFile("../outside.env")),
+      ).rejects.toBeInstanceOf(ComposeFixtureOutcomeError);
+      expect(await readFile(sentinel, "utf8")).toBe("sentinel\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects an absolute path without changing an outside file", async () => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-compose-env-"));
+    const appRoot = join(root, "app");
+    const sentinel = join(root, "outside.env");
+    await mkdir(appRoot);
+    await writeFile(sentinel, "sentinel\n");
+
+    try {
+      // When / Then
+      await expect(
+        materializeFixtureEnvFiles(appRoot, landofileWithEnvFile(sentinel)),
+      ).rejects.toBeInstanceOf(ComposeFixtureOutcomeError);
+      expect(await readFile(sentinel, "utf8")).toBe("sentinel\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("rejects a symlinked parent without changing an outside file", async () => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-compose-env-"));
+    const appRoot = join(root, "app");
+    const outsideRoot = join(root, "outside");
+    const sentinel = join(outsideRoot, "sentinel.env");
+    await mkdir(appRoot);
+    await mkdir(outsideRoot);
+    await writeFile(sentinel, "sentinel\n");
+    await symlink(outsideRoot, join(appRoot, "linked"), "dir");
+
+    try {
+      // When / Then
+      await expect(
+        materializeFixtureEnvFiles(appRoot, landofileWithEnvFile("linked/nested/sentinel.env")),
+      ).rejects.toBeInstanceOf(ComposeFixtureOutcomeError);
+      expect(await readFile(sentinel, "utf8")).toBe("sentinel\n");
+      expect(await readdir(outsideRoot)).toEqual(["sentinel.env"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("does not follow an existing destination symlink", async () => {
+    // Given
+    const root = await mkdtemp(join(tmpdir(), "lando-compose-env-"));
+    const appRoot = join(root, "app");
+    const sentinel = join(root, "outside.env");
+    await mkdir(appRoot);
+    await writeFile(sentinel, "sentinel\n");
+    await symlink(sentinel, join(appRoot, "fixture.env"));
+
+    try {
+      // When / Then
+      await expect(
+        materializeFixtureEnvFiles(appRoot, landofileWithEnvFile("fixture.env")),
+      ).rejects.toBeInstanceOf(ComposeFixtureOutcomeError);
+      expect(await readFile(sentinel, "utf8")).toBe("sentinel\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

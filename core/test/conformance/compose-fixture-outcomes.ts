@@ -1,6 +1,6 @@
 import { expect } from "bun:test";
-import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { mkdir, realpath, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 import type { LandofileShape } from "@lando/core/schema";
 import { ServiceName } from "@lando/core/schema";
@@ -23,16 +23,43 @@ import {
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+const isContainedPath = (root: string, candidate: string): boolean => {
+  const pathFromRoot = relative(root, candidate);
+  return pathFromRoot !== ".." && !pathFromRoot.startsWith(`..${sep}`) && !isAbsolute(pathFromRoot);
+};
+
 export const materializeFixtureEnvFiles = async (
   appRoot: string,
   landofile: LandofileShape,
 ): Promise<void> => {
+  const canonicalRoot = await realpath(appRoot);
   for (const [serviceName, service] of Object.entries(landofile.services ?? {})) {
     for (const [index, envFile] of (service.envFile ?? []).entries()) {
-      const destination = join(appRoot, envFile);
+      const destination = resolve(canonicalRoot, envFile);
+      if (!isContainedPath(canonicalRoot, destination)) {
+        throw new ComposeFixtureOutcomeError(`Fixture env file escapes app root: ${envFile}`);
+      }
       const [key, value] = fixtureEnvEntry(serviceName, index);
-      await mkdir(dirname(destination), { recursive: true });
-      await writeFile(destination, `${key}=${value}\n`);
+      let canonicalParent = canonicalRoot;
+      for (const segment of relative(canonicalRoot, dirname(destination)).split(sep)) {
+        if (segment.length === 0) continue;
+        const next = resolve(canonicalParent, segment);
+        await mkdir(next, { recursive: true });
+        canonicalParent = await realpath(next);
+        if (!isContainedPath(canonicalRoot, canonicalParent)) {
+          throw new ComposeFixtureOutcomeError(`Fixture env file parent escapes app root: ${envFile}`);
+        }
+      }
+      try {
+        await writeFile(resolve(canonicalParent, basename(destination)), `${key}=${value}\n`, { flag: "wx" });
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new ComposeFixtureOutcomeError(`Could not create fixture env file: ${envFile}`, {
+            cause: error,
+          });
+        }
+        throw error;
+      }
     }
   }
 };
