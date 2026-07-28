@@ -10,6 +10,7 @@ import { LandofileFormConflictError } from "@lando/core/errors";
 import {
   composeServiceDispositions,
   composeTagDispositions,
+  composeTopLevelDispositions,
 } from "../../src/landofile/compose/dispositions.ts";
 import { lintLandofile } from "../../src/landofile/lint.ts";
 
@@ -167,6 +168,21 @@ describe("lintLandofile", () => {
       expect(extensionsViolation?.suggestedFix).toContain("not a Compose key");
       expect(extensionsViolation?.suggestedFix).toContain("x-*");
       expect(extensionsViolation?.suggestedFix).toContain("providers.<provider-id>");
+    }
+  });
+
+  test("a rejected Compose top-level key uses the matrix remediation", async () => {
+    // Given
+    await write("name: myapp\nmodels:\n  assistant: {}\n");
+
+    // When
+    const exit = await lint(dir);
+
+    // Then
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      const violation = exit.value.violations.find((entry) => entry.path === "models");
+      expect(violation?.suggestedFix).toBe(composeTopLevelDispositions.models?.remediation);
     }
   });
 

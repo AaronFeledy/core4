@@ -4,7 +4,6 @@ import { Either, Schema } from "effect";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
   COMPOSE_EXTENSION_TOP_LEVEL_PATTERN,
-  COMPOSE_REJECTED_TOP_LEVEL_KEYS,
   COMPOSE_TOP_LEVEL_KEYS,
   LandofileShape,
 } from "@lando/sdk/schema";
@@ -23,24 +22,28 @@ describe("Compose top-level classification reconciliation", () => {
     );
 
     // When
-    const actual = new Set(COMPOSE_TOP_LEVEL_KEYS);
+    const actual = new Set<string>(COMPOSE_TOP_LEVEL_KEYS);
 
     // Then
     expect(actual).toEqual(expected);
   });
 
-  test("COMPOSE_REJECTED_TOP_LEVEL_KEYS equals the rejected top-level classification", () => {
+  test("every rejected top-level disposition is rejected by production schema decode", () => {
     // Given
-    const expected = new Set(
-      Object.entries(composeTopLevelDispositions)
-        .filter(([, entry]) => entry.disposition === "rejected")
-        .map(([key]) => key),
-    );
-    // When
-    const actual = new Set(COMPOSE_REJECTED_TOP_LEVEL_KEYS);
+    const rejectedKeys = Object.entries(composeTopLevelDispositions)
+      .filter(([, entry]) => entry.disposition === "rejected")
+      .map(([key]) => key);
+    const decode = Schema.decodeUnknownEither(LandofileShape);
 
     // Then
-    expect(actual).toEqual(expected);
+    expect(rejectedKeys.length).toBeGreaterThan(0);
+    for (const key of rejectedKeys) {
+      // When
+      const decoded = decode({ [key]: {} }, { onExcessProperty: "error" });
+
+      // Then
+      expect(Either.isLeft(decoded), key).toBe(true);
+    }
   });
 
   test("the extension pattern matches the matrix wildcard key", () => {

@@ -18,13 +18,12 @@ import { Effect, Either, ParseResult, Schema } from "effect";
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
-  COMPOSE_REJECTED_TOP_LEVEL_KEYS,
-  COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY,
   COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintResult,
   type ConfigLintViolation,
   LandofileShape,
 } from "@lando/sdk/schema";
+import { composeTopLevelDispositions } from "./compose/dispositions.ts";
 import {
   type ComposeRejectionMatch,
   analyzeComposeRejections,
@@ -47,13 +46,6 @@ const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 
-const REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION: Readonly<
-  Record<(typeof COMPOSE_REJECTED_TOP_LEVEL_KEYS)[number], string>
-> = {
-  models:
-    "Compose models are not supported by Lando. Translate models with a Compose-to-Lando config translator.",
-};
-
 const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
   profiles:
     'The top-level key "profiles" is not a Compose top-level key; profiles is a service-level key. Split profile-specific config into separate Landofile fragments and select them with includes: instead.',
@@ -66,9 +58,6 @@ const isAcceptedComposeTopLevelKey = (key: string): boolean =>
 
 const isDeprecatedComposeTopLevelKey = (key: string): boolean =>
   (COMPOSE_DEPRECATED_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key);
-
-const isRejectedComposeTopLevelKey = (key: string): key is (typeof COMPOSE_REJECTED_TOP_LEVEL_KEYS)[number] =>
-  COMPOSE_REJECTED_TOP_LEVEL_KEYS.some((rejectedKey) => rejectedKey === key);
 
 const isMisplacedComposeSurfaceKey = (
   key: string,
@@ -83,8 +72,9 @@ const composeSuggestedFix = (issue: {
   // Compose matrix governs top-level keys only; nested issues keep their precise remediation.
   if (issue.path.length !== 1) return undefined;
   const key = String(issue.path[0]);
-  if (issue._tag === "Unexpected" && isRejectedComposeTopLevelKey(key)) {
-    return `Unsupported Compose top-level key "${key}". Supported top-level Compose keys are ${COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY}; version is deprecated. ${REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION[key]}`;
+  const disposition = composeTopLevelDispositions[key];
+  if (issue._tag === "Unexpected" && disposition?.disposition === "rejected") {
+    return disposition.remediation;
   }
   if (issue._tag === "Unexpected" && isMisplacedComposeSurfaceKey(key)) {
     return MISPLACED_COMPOSE_SURFACE_REMEDIATION[key];
