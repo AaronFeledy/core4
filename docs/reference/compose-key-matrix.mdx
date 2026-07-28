@@ -140,7 +140,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | [`volumes`](#volumes) | normalized | 25 | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
 | `volumes_from` | rejected | — | Translate volumes_from with a Compose-to-Lando config translator. |
 | `working_dir` | normalized | — | Normalizes into `ServicePlan.workingDirectory` |
-| `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose, inert and not capability-gated per spec 5.4. |
 
 ### `annotations`
 
@@ -178,13 +178,13 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `build` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.additional_contexts` | rejected | Translate build.additional_contexts with a Compose-to-Lando config translator. |
 | `build.additional_contexts.*` | rejected | Translate build.additional_contexts.* with a Compose-to-Lando config translator. |
-| `build.args` | normalized | Normalizes into provider-neutral service plan fields. |
-| `build.args.*` | normalized | Normalizes into provider-neutral service plan fields. |
+| `build.args` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.args.*` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.cache_from` | rejected | Translate build.cache_from with a Compose-to-Lando config translator. |
 | `build.cache_to` | rejected | Translate build.cache_to with a Compose-to-Lando config translator. |
-| `build.context` | normalized | Normalizes into provider-neutral service plan fields. |
-| `build.dockerfile` | normalized | Normalizes into provider-neutral service plan fields. |
-| `build.dockerfile_inline` | normalized | Normalizes into provider-neutral service plan fields. |
+| `build.context` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.dockerfile` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.dockerfile_inline` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.entitlements` | rejected | Translate build.entitlements with a Compose-to-Lando config translator. |
 | `build.extra_hosts` | rejected | Translate build.extra_hosts with a Compose-to-Lando config translator. |
 | `build.extra_hosts.*` | rejected | Translate build.extra_hosts.* with a Compose-to-Lando config translator. |
@@ -210,7 +210,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `build.ssh` | rejected | Translate build.ssh with a Compose-to-Lando config translator. |
 | `build.ssh.*` | rejected | Translate build.ssh.* with a Compose-to-Lando config translator. |
 | `build.tags` | rejected | Translate build.tags with a Compose-to-Lando config translator. |
-| `build.target` | normalized | Normalizes into provider-neutral service plan fields. |
+| `build.target` | normalized | Normalizes into `ServicePlan.artifact` |
 | `build.ulimits` | rejected | Translate build.ulimits with a Compose-to-Lando config translator. |
 | `build.ulimits.*` | rejected | Translate build.ulimits.* with a Compose-to-Lando config translator. |
 | `build.ulimits.*.hard` | rejected | Translate build.ulimits.*.hard with a Compose-to-Lando config translator. |
@@ -245,9 +245,9 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Key path | Disposition | Detail |
 | --- | --- | --- |
 | `depends_on` | normalized | Normalizes into `ServicePlan.dependsOn` |
-| `depends_on.*` | normalized | Normalizes into provider-neutral service plan fields. |
-| `depends_on.*.condition` | normalized | Normalizes into provider-neutral service plan fields. |
-| `depends_on.*.required` | normalized | Normalizes into provider-neutral service plan fields. |
+| `depends_on.*` | normalized | Normalizes into `ServicePlan.dependsOn` |
+| `depends_on.*.condition` | normalized | Normalizes into `ServicePlan.dependsOn` |
+| `depends_on.*.required` | normalized | Normalizes into `ServicePlan.dependsOn` |
 | `depends_on.*.restart` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `depends_on.*.x-*` | rejected | Translate depends_on.*.x-* with a Compose-to-Lando config translator. |
 
@@ -364,7 +364,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Key path | Disposition | Detail |
 | --- | --- | --- |
 | `environment` | normalized | Normalizes into `ServicePlan.environment` |
-| `environment.*` | normalized | Normalizes into provider-neutral service plan fields. |
+| `environment.*` | normalized | Normalizes into `ServicePlan.environment` |
 
 ### `extends`
 
@@ -399,13 +399,13 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Key path | Disposition | Detail |
 | --- | --- | --- |
 | `healthcheck` | normalized | Normalizes into `ServicePlan.healthcheck` |
-| `healthcheck.disable` | normalized | Normalizes into provider-neutral service plan fields. |
-| `healthcheck.interval` | normalized | Normalizes into provider-neutral service plan fields. |
-| `healthcheck.retries` | normalized | Normalizes into provider-neutral service plan fields. |
+| `healthcheck.disable` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.interval` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.retries` | normalized | Normalizes into `ServicePlan.healthcheck` |
 | `healthcheck.start_interval` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `healthcheck.start_period` | normalized | Normalizes into provider-neutral service plan fields. |
-| `healthcheck.test` | normalized | Normalizes into provider-neutral service plan fields. |
-| `healthcheck.timeout` | normalized | Normalizes into provider-neutral service plan fields. |
+| `healthcheck.start_period` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.test` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.timeout` | normalized | Normalizes into `ServicePlan.healthcheck` |
 | `healthcheck.x-*` | rejected | Translate healthcheck.x-* with a Compose-to-Lando config translator. |
 
 ### `labels`
@@ -458,13 +458,13 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Key path | Disposition | Detail |
 | --- | --- | --- |
 | `ports` | normalized | Normalizes into `ServicePlan.endpoints` |
-| `ports.app_protocol` | normalized | Normalizes into provider-neutral service plan fields. |
-| `ports.host_ip` | normalized | Normalizes into provider-neutral service plan fields. |
+| `ports.app_protocol` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.host_ip` | normalized | Normalizes into `ServicePlan.endpoints` |
 | `ports.mode` | rejected | Translate ports.mode with a Compose-to-Lando config translator. |
-| `ports.name` | normalized | Normalizes into provider-neutral service plan fields. |
-| `ports.protocol` | normalized | Normalizes into provider-neutral service plan fields. |
-| `ports.published` | normalized | Normalizes into provider-neutral service plan fields. |
-| `ports.target` | normalized | Normalizes into provider-neutral service plan fields. |
+| `ports.name` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.protocol` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.published` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.target` | normalized | Normalizes into `ServicePlan.endpoints` |
 | `ports.x-*` | rejected | Translate ports.x-* with a Compose-to-Lando config translator. |
 
 ### `post_start`
@@ -552,8 +552,8 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | Key path | Disposition | Detail |
 | --- | --- | --- |
 | `volumes` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
-| `volumes.bind` | normalized | Normalizes into provider-neutral service plan fields. |
-| `volumes.bind.create_host_path` | normalized | Normalizes into provider-neutral service plan fields. |
+| `volumes.bind` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.bind.create_host_path` | normalized | Normalizes into `ServicePlan.mounts` |
 | `volumes.bind.propagation` | rejected | Translate volumes.bind.propagation with a Compose-to-Lando config translator. |
 | `volumes.bind.recursive` | rejected | Translate volumes.bind.recursive with a Compose-to-Lando config translator. |
 | `volumes.bind.selinux` | rejected | Translate volumes.bind.selinux with a Compose-to-Lando config translator. |
@@ -562,18 +562,18 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `volumes.image` | rejected | Translate volumes.image with a Compose-to-Lando config translator. |
 | `volumes.image.subpath` | rejected | Translate volumes.image.subpath with a Compose-to-Lando config translator. |
 | `volumes.image.x-*` | rejected | Translate volumes.image.x-* with a Compose-to-Lando config translator. |
-| `volumes.read_only` | normalized | Normalizes into provider-neutral service plan fields. |
-| `volumes.source` | normalized | Normalizes into provider-neutral service plan fields. |
-| `volumes.target` | normalized | Normalizes into provider-neutral service plan fields. |
+| `volumes.read_only` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.source` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.target` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
 | `volumes.tmpfs` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `volumes.tmpfs.mode` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `volumes.tmpfs.size` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
 | `volumes.tmpfs.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
-| `volumes.type` | normalized | Normalizes into provider-neutral service plan fields. |
-| `volumes.volume` | normalized | Normalizes into provider-neutral service plan fields. |
+| `volumes.type` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.volume` | normalized | Normalizes into `ServicePlan.storage` |
 | `volumes.volume.labels` | rejected | Translate volumes.volume.labels with a Compose-to-Lando config translator. |
 | `volumes.volume.labels.*` | rejected | Translate volumes.volume.labels.* with a Compose-to-Lando config translator. |
 | `volumes.volume.nocopy` | rejected | Translate volumes.volume.nocopy with a Compose-to-Lando config translator. |
-| `volumes.volume.subpath` | normalized | Normalizes into provider-neutral service plan fields. |
+| `volumes.volume.subpath` | normalized | Normalizes into `ServicePlan.storage` |
 | `volumes.volume.x-*` | rejected | Translate volumes.volume.x-* with a Compose-to-Lando config translator. |
 | `volumes.x-*` | rejected | Translate volumes.x-* with a Compose-to-Lando config translator. |

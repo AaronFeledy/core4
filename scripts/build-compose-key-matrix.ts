@@ -159,7 +159,6 @@ const assertMatrixInvariants = (sources: MatrixSources = DEFAULT_SOURCES): void 
 
   for (const [path, entry] of Object.entries(sources.service)) {
     if (
-      !path.includes(".") &&
       entry.disposition === "normalized" &&
       (entry.planTarget === undefined || entry.planTarget.length === 0)
     ) {

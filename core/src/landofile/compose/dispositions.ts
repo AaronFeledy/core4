@@ -24,6 +24,16 @@ const PRESERVED_ENTRY = {
   rationale: "Preserved losslessly in ServicePlan.extensions.compose and capability-checked.",
 } as const satisfies ComposeDispositionEntry;
 
+// Spec 7.4/5.4 carve service-level x-* out of capability gating; it is preserved inert.
+const PRESERVED_INERT_EXTENSION_ENTRY = {
+  disposition: "preserved",
+  rationale:
+    "Preserved losslessly in ServicePlan.extensions.compose, inert and not capability-gated per spec 5.4.",
+} as const satisfies ComposeDispositionEntry;
+
+const preservedEntry = (path: string): ComposeDispositionEntry =>
+  path === "x-*" ? PRESERVED_INERT_EXTENSION_ENTRY : PRESERVED_ENTRY;
+
 const rejectedEntry = (path: string): ComposeDispositionEntry => {
   if (path === "extends" || path.startsWith("extends.")) {
     return {
@@ -97,14 +107,15 @@ const normalizedServicePaths = [
   ["ports.target"],
   ["user", ["user"]],
   ["volumes", ["mounts", "storage", "extensions.compose.tmpfs"]],
-  ["volumes.bind"],
-  ["volumes.bind.create_host_path"],
+  // Type-specific volume options reach only their own destination, never the root's full set.
+  ["volumes.bind", ["mounts"]],
+  ["volumes.bind.create_host_path", ["mounts"]],
   ["volumes.read_only"],
   ["volumes.source"],
   ["volumes.target"],
   ["volumes.type"],
-  ["volumes.volume"],
-  ["volumes.volume.subpath"],
+  ["volumes.volume", ["storage"]],
+  ["volumes.volume.subpath", ["storage"]],
   ["working_dir", ["workingDirectory"]],
 ] as const satisfies ReadonlyArray<NormalizedServicePath>;
 
@@ -433,20 +444,29 @@ const rejectedServicePaths = [
   "volumes_from",
 ] as const;
 
-const serviceEntries = [
-  ...normalizedServicePaths.map(
-    ([path, planTarget]) =>
-      [
-        path,
-        planTarget === undefined
-          ? NORMALIZED_ENTRY
-          : {
-              ...NORMALIZED_ENTRY,
-              planTarget,
-            },
-      ] as const,
+const normalizedPlanTargets = new Map<string, ReadonlyArray<string>>(
+  normalizedServicePaths.flatMap(([path, planTarget]) =>
+    path.includes(".") || planTarget === undefined ? [] : [[path, planTarget] as const],
   ),
-  ...preservedServicePaths.map((path) => [path, PRESERVED_ENTRY] as const),
+);
+
+const normalizedEntry = (
+  path: string,
+  planTarget: ReadonlyArray<string> | undefined,
+): ComposeDispositionEntry => {
+  const [root = path] = path.split(".", 1);
+  const resolvedPlanTarget = planTarget ?? normalizedPlanTargets.get(root);
+  if (resolvedPlanTarget === undefined) {
+    throw new ComposeDispositionMatrixError(
+      `Normalized Compose service disposition ${path} must include a planTarget`,
+    );
+  }
+  return { ...NORMALIZED_ENTRY, planTarget: resolvedPlanTarget };
+};
+
+const serviceEntries = [
+  ...normalizedServicePaths.map(([path, planTarget]) => [path, normalizedEntry(path, planTarget)] as const),
+  ...preservedServicePaths.map((path) => [path, preservedEntry(path)] as const),
   ...rejectedServicePaths.map((path) => [path, rejectedEntry(path)] as const),
 ];
 
@@ -458,10 +478,8 @@ if (Object.keys(composeServiceDispositions).length !== serviceEntries.length) {
 }
 
 const missingPlanTarget = Object.entries(composeServiceDispositions).find(
-  ([path, entry]) =>
-    !path.includes(".") &&
-    entry.disposition === "normalized" &&
-    (entry.planTarget === undefined || entry.planTarget.length === 0),
+  ([, entry]) =>
+    entry.disposition === "normalized" && (entry.planTarget === undefined || entry.planTarget.length === 0),
 );
 if (missingPlanTarget !== undefined) {
   throw new ComposeDispositionMatrixError(

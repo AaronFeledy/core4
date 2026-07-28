@@ -81,3 +81,23 @@ test("rejects a disposition entry that violates the matrix invariants", () => {
     ComposeKeyMatrixError,
   );
 });
+
+test("rejects a normalized descendant without a plan target", () => {
+  // Given
+  const invalidServiceEntries = {
+    build: {
+      disposition: "normalized",
+      rationale: "Fixture rationale.",
+      planTarget: ["artifact"],
+    },
+    "build.args": {
+      disposition: "normalized",
+      rationale: "Fixture rationale.",
+    },
+  } satisfies DispositionMap;
+
+  // When / Then
+  expect(() => assertMatrixInvariants({ service: invalidServiceEntries, topLevel: {}, tags: {} })).toThrow(
+    ComposeKeyMatrixError,
+  );
+});
