@@ -1,6 +1,8 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { writeGateResult } from "./boundary/format.ts";
+import { rendererRule } from "./boundary/rules/renderer.ts";
 
 export interface RendererBoundaryOffender {
   readonly file: string;
@@ -23,40 +25,22 @@ export const checkRendererBoundary = async (
   options: CheckRendererBoundaryOptions = {},
 ): Promise<RendererBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["renderer-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics
-    .map((diagnostic): RendererBoundaryOffender => {
-      if (diagnostic.line === undefined) {
-        throw new TypeError("Renderer boundary diagnostic is missing a line number");
-      }
-      return {
-        file: resolve(root, diagnostic.file),
-        line: diagnostic.line,
-        match: diagnostic.message,
-      };
-    })
-    .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+  const results = await runRules([rendererRule.id], root);
+  const result = results.get(rendererRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${rendererRule.id}`);
 
-  return { ok: offenders.length === 0, offenders };
+  const offenders = result.violations.map((violation) => ({
+    file: resolve(root, violation.file),
+    line: violation.line,
+    match: violation.detail,
+  }));
+
+  return { ok: result.ok, offenders };
 };
 
-const formatOffender = (root: string, offender: RendererBoundaryOffender): string =>
-  `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}: ${offender.match}`;
-
 if (import.meta.main) {
-  const result = await checkRendererBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Renderer boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Renderer boundary check failed. Direct console/process writes must route through the Renderer boundary.\n${result.offenders
-        .map((offender) => formatOffender(repoRoot, offender))
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  const results = await runRules([rendererRule.id], repoRoot);
+  const result = results.get(rendererRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${rendererRule.id}`);
+  writeGateResult(rendererRule.passMessage, rendererRule.failureHeadline, result);
 }

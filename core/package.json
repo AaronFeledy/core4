@@ -47,6 +47,7 @@
   "keywords": ["lando", "lando-core", "oclif", "effect", "bun"],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@oclif/core": "^4.11.2",
     "@oclif/plugin-help": "^6.2.48",

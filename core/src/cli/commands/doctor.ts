@@ -19,7 +19,7 @@ import {
 } from "@lando/sdk/schema";
 import { ConfigService, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import {

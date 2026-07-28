@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 
 import type { AppRef } from "@lando/sdk/schema";
 
-import type { RootOverrides } from "../../config/paths.ts";
-import { makeLandoPaths } from "../../config/paths.ts";
+import type { RootOverrides } from "@lando/paths";
+import { makeLandoPaths } from "@lando/paths";
 import type { HostProxyMountInfo } from "./cwd-remap.ts";
 import type { HostProxyRunLandoExecutor } from "./dispatch.ts";
 import { type HostProxyShimTarget, defaultHostProxyShimArtifactPath } from "./transport-shim.ts";

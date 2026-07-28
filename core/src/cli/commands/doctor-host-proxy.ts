@@ -2,7 +2,7 @@ import { resolve } from "node:path";
 
 import { Clock, Duration, Effect, Option } from "effect";
 
-import { makeLandoPaths, sanitizeAppName } from "../../config/paths.ts";
+import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
 import { readWorkerRecordStateAt } from "../../subsystems/host-proxy/worker-state-file.ts";
 import {

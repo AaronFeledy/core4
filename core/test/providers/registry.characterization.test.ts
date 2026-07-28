@@ -16,7 +16,7 @@ import {
   StateStore,
 } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../../src/config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";

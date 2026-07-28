@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { runRules } from "../../../scripts/boundary/engine.ts";
 import { checkMachineOutput } from "../../../scripts/check-machine-output.ts";
 
 const makeFixtureRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-machine-output-"));
@@ -19,6 +20,35 @@ const offenderStrings = (root: string, result: Awaited<ReturnType<typeof checkMa
   );
 
 describe("machine-output boundary lint gate", () => {
+  test("reports machine-output violations through the shared boundary engine", async () => {
+    // Given
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/cli/commands/engine-envelope.ts",
+        'export const encode = () => JSON.stringify({ apiVersion: "v4", command: "app:info", ok: true, result: {} });\n',
+      );
+
+      // When
+      const results = await runRules(["machine-output"], root);
+
+      // Then
+      expect(results.get("machine-output")).toEqual({
+        ok: false,
+        violations: [
+          {
+            file: "core/src/cli/commands/engine-envelope.ts",
+            line: 1,
+            detail: "JSON.stringify(<command-result-envelope>)",
+          },
+        ],
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("passes for event frames, renderer json lines, file writes, and specs with resultSchema", async () => {
     const root = await makeFixtureRoot();
     try {

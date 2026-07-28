@@ -3,6 +3,8 @@ import { join, relative, resolve } from "node:path";
 
 import ts from "typescript";
 
+import { ALL_PACKAGE_WALK_ROOTS } from "./boundary/workspace-roots.ts";
+
 export interface DeprecationTsdocOffender {
   readonly file: string;
   readonly line: number;
@@ -42,7 +44,7 @@ interface CheckDeprecationReleaseGateOptions {
 }
 
 const repoRoot = resolve(import.meta.dirname, "..");
-const SCANNED_ROOTS = ["sdk/src", "core/src", "plugins"] as const;
+export const SCANNED_ROOTS = ALL_PACKAGE_WALK_ROOTS;
 const MISSING_MARK_DEPRECATED_REASON = "missing markDeprecated(notice, impl) wrapper";
 const MISMATCHED_MARK_DEPRECATED_ID_REASON = "markDeprecated export id must match exported name";
 const MISSING_DEPRECATION_METADATA_REASON = "missing static readonly deprecation metadata";
@@ -295,26 +297,34 @@ const stringLiteralValue = (expression: ts.Expression | undefined): string | und
 
 const noticeTextFromObjectLiteral = (expression: ts.Expression | undefined): NoticeText | undefined => {
   if (expression === undefined || !ts.isObjectLiteralExpression(expression)) return undefined;
-  const notice: { since?: string; removeIn?: string; note?: string; replacement?: string } = {};
+  let since: string | undefined;
+  let removeIn: string | undefined;
+  let note: string | undefined;
+  let replacement: string | undefined;
   for (const property of expression.properties) {
     if (!ts.isPropertyAssignment(property)) continue;
     const name = propertyNameText(property.name);
-    if (name === "since") notice.since = stringLiteralValue(property.initializer);
-    if (name === "removeIn") notice.removeIn = stringLiteralValue(property.initializer);
-    if (name === "note") notice.note = stringLiteralValue(property.initializer);
-    if (name === "replacement") notice.replacement = stringLiteralValue(property.initializer);
+    if (name === "since") since = stringLiteralValue(property.initializer);
+    if (name === "removeIn") removeIn = stringLiteralValue(property.initializer);
+    if (name === "note") note = stringLiteralValue(property.initializer);
+    if (name === "replacement") replacement = stringLiteralValue(property.initializer);
   }
-  return notice.since === undefined &&
-    notice.removeIn === undefined &&
-    notice.note === undefined &&
-    notice.replacement === undefined
-    ? undefined
-    : notice;
+  if (since === undefined && removeIn === undefined && note === undefined && replacement === undefined) {
+    return undefined;
+  }
+  return {
+    ...(since === undefined ? {} : { since }),
+    ...(removeIn === undefined ? {} : { removeIn }),
+    ...(note === undefined ? {} : { note }),
+    ...(replacement === undefined ? {} : { replacement }),
+  };
 };
 
 const releaseNoticeFromNoticeText = (notice: NoticeText | undefined): ReleaseNotice | undefined => {
   if (notice?.since === undefined) return undefined;
-  return { since: notice.since, removeIn: notice.removeIn };
+  return notice.removeIn === undefined
+    ? { since: notice.since }
+    : { since: notice.since, removeIn: notice.removeIn };
 };
 
 const localNoticeBindings = (source: ts.SourceFile): ReadonlyMap<string, NoticeText> => {
@@ -716,7 +726,7 @@ export const checkDeprecationReleaseGate = async (
   const root = resolve(options.root ?? repoRoot);
   const releasedOrPending = new Set(options.releasedOrPending ?? DEFAULT_RELEASED_OR_PENDING);
   const targetRelease = await resolveTargetRelease(root, {
-    targetRelease: options.targetRelease,
+    ...(options.targetRelease === undefined ? {} : { targetRelease: options.targetRelease }),
     env: options.env ?? process.env,
   });
   const today = options.today ?? new Date();

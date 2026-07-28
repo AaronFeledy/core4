@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
+import type { LandoPaths } from "@lando/paths";
 import {
   ArchiveFormatError,
   DataChecksumMismatchError,
@@ -52,7 +53,6 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
-import type { LandoPaths } from "../config/paths.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { providerImages } from "./generated/provider-images.ts";

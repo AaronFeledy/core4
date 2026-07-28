@@ -9,6 +9,9 @@
       "path": "./sdk"
     },
     {
+      "path": "./paths"
+    },
+    {
       "path": "./container-runtime"
     },
     {

@@ -14,11 +14,11 @@ import { emitLandofileYaml } from "@lando/sdk/landofile";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { envOverlay, resolveConfigFileRoot } from "@lando/paths/overlay";
+import { parseMinimalYaml } from "@lando/paths/yaml-min";
 import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import { findAgentEnvPatternNames } from "../../config/agent-env.ts";
-import { envOverlay, resolveConfigFileRoot } from "../../config/overlay.ts";
 import { resolveUserConfRoot } from "../../config/roots.ts";
-import { parseMinimalYaml } from "../../config/yaml-min.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../recipes/prompts/editor-command.ts";
 import { type CliTelemetrySource, resolveCliTelemetryState } from "../../runtime/cli-options.ts";
 import { TELEMETRY_RETENTION_POLICY_DOC } from "../../telemetry/policy.ts";

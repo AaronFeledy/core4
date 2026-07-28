@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { runRuleSet } from "../../../scripts/boundary/engine.ts";
+import { importCycleRule } from "../../../scripts/boundary/rules/import-cycle.ts";
 import { checkImportCycle } from "../../../scripts/check-import-cycle.ts";
 import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 
@@ -70,6 +72,23 @@ describe("module edge type-only classification", () => {
 });
 
 describe("check-import-cycle", () => {
+  test("runs cycle detection through the shared boundary program context", async () => {
+    // Given
+    await Promise.all([
+      write("core/src/a.ts", 'import "./b.ts";\n'),
+      write("core/src/b.ts", 'import "./a.ts";\n'),
+    ]);
+
+    // When
+    const results = await runRuleSet([importCycleRule], root);
+
+    // Then
+    expect(results.get("import-cycle")?.violations).toEqual([
+      { file: "core/src/a.ts", line: 1, detail: 'imports core/src/b.ts via "./b.ts"' },
+      { file: "core/src/b.ts", line: 1, detail: 'imports core/src/a.ts via "./a.ts"' },
+    ]);
+  });
+
   test("reports deterministic cycles for every runtime edge form", async () => {
     // Given
     await Promise.all([

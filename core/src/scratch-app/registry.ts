@@ -15,7 +15,7 @@ import { ScratchAppError } from "@lando/sdk/errors";
 import type { StateStoreError } from "@lando/sdk/errors";
 import type { StateBucket } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { writeFileAtomicScoped } from "../state-store/atomic.ts";
 import { encodeFrame } from "../state/codec.ts";
 import { acquireAdvisoryLockAt, withAdvisoryLock } from "../state/lock.ts";

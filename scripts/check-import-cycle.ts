@@ -1,27 +1,13 @@
 import { resolve } from "node:path";
 
-import { createModuleEdgeCache } from "./architecture/edges.ts";
-import { createInventory } from "./architecture/inventory.ts";
-import { createWorkspaceManifestReader } from "./architecture/manifests.ts";
-import { type ImportCycleContext, analyzeImportCycles } from "./architecture/rules/import-cycle.ts";
+import { runRuleSet } from "./boundary/engine.ts";
+import { type ImportCycleResult, createImportCycleRule } from "./boundary/rules/import-cycle.ts";
 
-export interface ImportCycleEdge {
-  readonly from: string;
-  readonly to: string;
-  readonly line: number;
-  readonly specifier: string;
-}
-
-export interface ImportCycle {
-  readonly modules: ReadonlyArray<string>;
-  readonly edges: ReadonlyArray<ImportCycleEdge>;
-}
-
-export interface ImportCycleResult {
-  readonly ok: boolean;
-  readonly filesScanned: number;
-  readonly cycles: ReadonlyArray<ImportCycle>;
-}
+export type {
+  ImportCycle,
+  ImportCycleEdge,
+  ImportCycleResult,
+} from "./boundary/rules/import-cycle.ts";
 
 interface CheckImportCycleOptions {
   readonly root: string;
@@ -30,24 +16,13 @@ interface CheckImportCycleOptions {
 export const checkImportCycle = async ({
   root: rootInput,
 }: CheckImportCycleOptions): Promise<ImportCycleResult> => {
-  const root = resolve(rootInput);
-  const inventory = createInventory(root);
-  const edges = createModuleEdgeCache();
-  const manifests = createWorkspaceManifestReader(root, () => inventory.manifestFiles());
-  const context: ImportCycleContext = {
-    root,
-    files: (selector) => inventory.files(selector),
-    async moduleEdges(file) {
-      return edges.moduleEdges(file.absolutePath, await Bun.file(file.absolutePath).text());
-    },
-    manifests: () => manifests.manifests(),
-  };
-  const analysis = await analyzeImportCycles(context);
-  return {
-    ok: analysis.cycles.length === 0,
-    filesScanned: analysis.filesScanned,
-    cycles: analysis.cycles,
-  };
+  let result: ImportCycleResult | undefined;
+  const rule = createImportCycleRule((observed) => {
+    result = observed;
+  });
+  await runRuleSet([rule], resolve(rootInput));
+  if (result === undefined) throw new TypeError("Import cycle rule produced no analysis result");
+  return result;
 };
 
 if (import.meta.main) {

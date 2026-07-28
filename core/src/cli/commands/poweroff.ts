@@ -3,7 +3,7 @@ import { type Context, Effect, Option, Schema } from "effect";
 import type { ConfigError, LandoCommandError } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
-import { makeLandoPaths, normalizeHostPlatform } from "../../config/paths.ts";
+import { makeLandoPaths, normalizeHostPlatform } from "@lando/paths";
 import { HostMaintenanceRegistry, teardownHostMaintainers } from "../../runtime/host-maintenance.ts";
 import { type AppsListEntry, listServices } from "./list.ts";
 

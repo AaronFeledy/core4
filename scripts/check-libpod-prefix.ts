@@ -1,5 +1,7 @@
-import { readdir } from "node:fs/promises";
-import { join, relative, resolve } from "node:path";
+import { resolve } from "node:path";
+
+import { runRules } from "./boundary/engine.ts";
+import { runGate } from "./boundary/format.ts";
 
 export interface LibpodPrefixOffender {
   readonly file: string;
@@ -18,87 +20,23 @@ interface CheckLibpodPrefixOptions {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 
-const SCANNED_ROOTS = ["plugins"] as const;
-
-// The Podman 6 libpod API prefix is `/v6.0.0`; any `/v5.<minor>.<patch>` prefix
-// constructed in production provider code is a stale Podman 5 API target.
-const PODMAN_5_PREFIX = /\/v5\.\d+\.\d+/g;
-
-const collectTsFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
-  try {
-    const entries = await readdir(dir, { withFileTypes: true });
-    const files: string[] = [];
-
-    for (const entry of entries) {
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "test") continue;
-        files.push(...(await collectTsFiles(full)));
-        continue;
-      }
-      if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) files.push(full);
-    }
-
-    return files;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw error;
-  }
-};
-
-const scanFile = async (file: string): Promise<ReadonlyArray<LibpodPrefixOffender>> => {
-  const sourceText = await Bun.file(file).text();
-  const offenders: LibpodPrefixOffender[] = [];
-
-  const lines = sourceText.split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    const lineText = lines[index] ?? "";
-    for (const match of lineText.matchAll(PODMAN_5_PREFIX)) {
-      offenders.push({ file, line: index + 1, match: match[0] });
-    }
-  }
-
-  return offenders;
-};
-
 export const checkLibpodPrefix = async (
   options: CheckLibpodPrefixOptions = {},
 ): Promise<LibpodPrefixResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const files = (
-    await Promise.all(SCANNED_ROOTS.map((scannedRoot) => collectTsFiles(resolve(root, scannedRoot))))
-  )
-    .flat()
-    .sort();
-
-  const offenders = (
-    await Promise.all(
-      files.map(async (file) => {
-        const relativeFile = relative(root, file).replaceAll("\\", "/");
-        const found = await scanFile(file);
-        return found.map((offender) => ({ ...offender, file: relativeFile }));
-      }),
-    )
-  )
-    .flat()
-    .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
-
-  return { ok: offenders.length === 0, offenders };
+  const results = await runRules(["libpod-prefix"], root);
+  const result = results.get("libpod-prefix");
+  if (result === undefined) throw new TypeError("Boundary rule produced no result: libpod-prefix");
+  return {
+    ok: result.ok,
+    offenders: result.violations.map((violation) => ({
+      file: violation.file,
+      line: violation.line,
+      match: violation.detail,
+    })),
+  };
 };
 
-const formatOffender = (offender: LibpodPrefixOffender): string =>
-  `${offender.file}:${offender.line}: ${offender.match}`;
-
 if (import.meta.main) {
-  const result = await checkLibpodPrefix({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("libpod API prefix check passed.\n");
-  } else {
-    process.stderr.write(
-      `libpod API prefix check failed. Production provider code must target the Podman 6 libpod API prefix (/v6.0.0), not a Podman 5 prefix (/v5.x.x). Migrate the offending prefixes:\n${result.offenders
-        .map(formatOffender)
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  await runGate("libpod-prefix", repoRoot);
 }

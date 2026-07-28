@@ -5,8 +5,8 @@ import { Effect } from "effect";
 
 import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 
-import type { RootOverrides } from "../../config/paths.ts";
-import { makeLandoPaths, sanitizeAppName } from "../../config/paths.ts";
+import type { RootOverrides } from "@lando/paths";
+import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { withAdvisoryLock } from "../../state/lock.ts";
 import { terminateControlRecord } from "./worker-control.ts";
 import {

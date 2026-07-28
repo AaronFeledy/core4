@@ -1,6 +1,8 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { formatViolation, writeGateResult } from "./boundary/format.ts";
+import { pathsRule } from "./boundary/rules/paths.ts";
 
 export interface PathsBoundaryOffender {
   readonly file: string;
@@ -19,39 +21,29 @@ interface CheckPathsBoundaryOptions {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 
-const toRepoRelative = (root: string, file: string): string => relative(root, file).replaceAll("\\", "/");
-
 export const checkPathsBoundary = async (
   options: CheckPathsBoundaryOptions = {},
 ): Promise<PathsBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["paths-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics.map(({ file, line, message }) => ({
-    file: resolve(root, file),
-    line: line ?? 1,
-    snippet: message,
+  const results = await runRules([pathsRule.id], root);
+  const result = results.get(pathsRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${pathsRule.id}`);
+
+  const offenders = result.violations.map((violation) => ({
+    file: resolve(root, violation.file),
+    line: violation.line,
+    snippet: violation.detail,
   }));
 
-  return { ok: offenders.length === 0, offenders };
+  return { ok: result.ok, offenders };
 };
 
-const formatOffender = (root: string, offender: PathsBoundaryOffender): string =>
-  `${toRepoRelative(root, offender.file)}:${offender.line}: ${offender.snippet}`;
-
 if (import.meta.main) {
-  const result = await checkPathsBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Paths boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Paths boundary check failed. Hand-rolled root joins must use @lando/core/paths (makeLandoPaths) or PathsService.\n${result.offenders
-        .map((offender) => formatOffender(repoRoot, offender))
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  const root = repoRoot;
+  const results = await runRules([pathsRule.id], root);
+  const result = results.get(pathsRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${pathsRule.id}`);
+  // Keep CLI strings byte-identical to the pre-substrate gate.
+  void formatViolation;
+  writeGateResult(pathsRule.passMessage, pathsRule.failureHeadline, result);
 }

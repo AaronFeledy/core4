@@ -12,6 +12,7 @@ type NpmDistTag = "dev" | "next";
 
 export const releasePackageWorkspaces: ReadonlyArray<string> = [
   "sdk",
+  "paths",
   "container-runtime",
   "core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.path),
@@ -19,6 +20,7 @@ export const releasePackageWorkspaces: ReadonlyArray<string> = [
 
 export const releasePackageNames: ReadonlyArray<string> = [
   "@lando/sdk",
+  "@lando/paths",
   "@lando/container-runtime",
   "@lando/core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.name),

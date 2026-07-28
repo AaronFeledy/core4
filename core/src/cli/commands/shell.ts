@@ -44,9 +44,9 @@ import {
   ShellRunner,
 } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "@lando/paths";
 import { resolveAgentEnvForwardAllowlist } from "../../config/agent-env-policy.ts";
 import { withAgentContextEnv } from "../../config/agent-env.ts";
-import { makeLandoPaths } from "../../config/paths.ts";
 import { loadUserLandofile } from "../app-resolution.ts";
 import { emitOptionalStderr, emitOptionalStdout } from "../renderer-boundary.ts";
 

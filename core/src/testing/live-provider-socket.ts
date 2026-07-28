@@ -1,6 +1,6 @@
 import { statSync } from "node:fs";
 
-import { makeLandoPaths } from "../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 
 export const LANDO_TEST_PODMAN_SOCKET_ENV = "LANDO_TEST_PODMAN_SOCKET";
 

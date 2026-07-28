@@ -7,10 +7,10 @@ import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
-import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "../config/overlay.ts";
-import { resolveLandoRoots } from "../config/paths.ts";
+import { resolveLandoRoots } from "@lando/paths";
+import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "@lando/paths/overlay";
+import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
 import { resolveUserConfRoot } from "../config/roots.ts";
-import { MinimalYamlError, parseMinimalYaml } from "../config/yaml-min.ts";
 
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });

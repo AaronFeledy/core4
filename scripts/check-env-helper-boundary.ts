@@ -1,6 +1,8 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { formatViolation, writeGateResult } from "./boundary/format.ts";
+import { envHelperRule } from "./boundary/rules/env-helper.ts";
 
 export interface EnvHelperBoundaryOffender {
   readonly file: string;
@@ -19,39 +21,37 @@ interface CheckEnvHelperBoundaryOptions {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 
-const toRepoRelative = (root: string, file: string): string => relative(root, file).replaceAll("\\", "/");
-
 export const checkEnvHelperBoundary = async (
   options: CheckEnvHelperBoundaryOptions = {},
 ): Promise<EnvHelperBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["env-helper-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics.map(({ file, line, message }) => ({
-    file: resolve(root, file),
-    line: line ?? 1,
-    specifier: message,
-  }));
+  const results = await runRules([envHelperRule.id], root);
+  const result = results.get(envHelperRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${envHelperRule.id}`);
 
-  return { ok: offenders.length === 0, offenders };
+  const offenders = result.violations
+    .map((violation) => ({
+      file: resolve(root, violation.file),
+      line: violation.line,
+      specifier: violation.detail,
+    }))
+    .slice()
+    .sort(
+      (left, right) =>
+        left.file.localeCompare(right.file) ||
+        left.line - right.line ||
+        left.specifier.localeCompare(right.specifier),
+    );
+
+  return { ok: result.ok, offenders };
 };
 
-const formatOffender = (root: string, offender: EnvHelperBoundaryOffender): string =>
-  `${toRepoRelative(root, offender.file)}:${offender.line}: ${offender.specifier}`;
-
 if (import.meta.main) {
-  const result = await checkEnvHelperBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Env helper boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Env helper boundary check failed. Service files must not import lando.env helpers directly.\n${result.offenders
-        .map((offender) => formatOffender(repoRoot, offender))
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  const root = repoRoot;
+  const results = await runRules([envHelperRule.id], root);
+  const result = results.get(envHelperRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${envHelperRule.id}`);
+  // Keep CLI strings byte-identical to the pre-substrate gate.
+  void formatViolation;
+  writeGateResult(envHelperRule.passMessage, envHelperRule.failureHeadline, result);
 }

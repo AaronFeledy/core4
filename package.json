@@ -8,7 +8,7 @@
   "homepage": "https://github.com/lando-community/core4",
   "repository": "lando-community/core4",
   "bugs": "https://github.com/lando-community/core4/issues",
-  "workspaces": ["core", "sdk", "container-runtime", "plugins/*"],
+  "workspaces": ["core", "sdk", "container-runtime", "paths", "plugins/*"],
   "engines": {
     "bun": ">=1.3.14"
   },
@@ -27,8 +27,8 @@
     "bench:tooling-hot-path": "bun run scripts/bench-tooling-hot-path.ts",
     "bench:opentui-startup": "bun run scripts/bench-opentui-startup.ts",
     "typecheck": "tsc -b",
-    "lint": "biome check . && bun run check:architecture && bun run check:deprecations",
-    "check:architecture": "bun run scripts/check-architecture.ts",
+    "typecheck:scripts": "tsc -p scripts/tsconfig.json",
+    "lint": "biome check . && bun run check:deprecations",
     "format": "biome format --write .",
     "clean": "bun run --filter='*' clean && rm -rf dist .tsbuildinfo",
     "codegen": "bun run scripts/codegen.ts",
@@ -40,6 +40,7 @@
     "check:managed-file-boundary": "bun run scripts/check-managed-file-boundary.ts",
     "check:redaction-boundary": "bun run scripts/check-redaction-boundary.ts",
     "check:env-helper-boundary": "bun run scripts/check-env-helper-boundary.ts",
+    "check:generated-output": "bun run scripts/check-generated-output.ts",
     "check:package-dag": "bun run scripts/check-package-dag.ts",
     "check:paths-boundary": "bun run scripts/check-paths-boundary.ts",
     "check:state-store-boundary": "bun run scripts/check-state-store-boundary.ts",

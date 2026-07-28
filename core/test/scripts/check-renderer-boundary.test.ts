@@ -50,4 +50,64 @@ describe("renderer boundary lint gate", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("carves out interaction service live-layer prompt IO", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/interaction/service.ts",
+        "console.warn('fallback');\nprocess.stdout.write('prompt');\n",
+      );
+      await write(root, "core/src/cli/commands/ok.ts", "export const ok = true;\n");
+
+      expect(await checkRendererBoundary({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores test files and non-call property access", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "core/src/recipes/allowed.test.ts", "console.log('test only');\n");
+      await write(
+        root,
+        "core/src/recipes/reference.ts",
+        "export const stream = process.stdout;\nexport const log = console.log;\n",
+      );
+      await write(root, "core/src/recipes/ok.ts", "export const ok = true;\n");
+
+      expect(await checkRendererBoundary({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports process.stdout.write and nested console calls by line", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "core/src/cli/commands/out.ts", "process.stdout.write('x');\n");
+      await write(
+        root,
+        "plugins/example/src/nested.ts",
+        "export const run = () => {\n  console.info('a');\n  console.debug('b');\n};\n",
+      );
+
+      const result = await checkRendererBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file)}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/cli/commands/out.ts:1:process.stdout.write",
+        "plugins/example/src/nested.ts:2:console.info",
+        "plugins/example/src/nested.ts:3:console.debug",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

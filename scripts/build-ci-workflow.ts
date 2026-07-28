@@ -83,14 +83,44 @@ ${setupBunSteps}
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Architecture boundary kernel
-        run: bun run check:architecture
-
       - name: Lint
         run: bun run lint
 
+      - name: Import cycle lint
+        run: bun run check:import-cycle
+
+      - name: Package DAG lint
+        run: bun run check:package-dag
+
+      - name: Renderer boundary lint
+        run: bun run check:renderer-boundary
+
+      - name: Managed-file boundary lint
+        run: bun run check:managed-file-boundary
+
       - name: Telemetry inventory lint
         run: bun run check:telemetry-inventory
+
+      - name: Redaction boundary lint
+        run: bun run check:redaction-boundary
+
+      - name: Env helper boundary lint
+        run: bun run check:env-helper-boundary
+
+      - name: Generated output boundary lint
+        run: bun run check:generated-output
+
+      - name: Paths boundary lint
+        run: bun run check:paths-boundary
+
+      - name: State-store boundary lint
+        run: bun run check:state-store-boundary
+
+      - name: Probe boundary lint
+        run: bun run check:probe-boundary
+
+      - name: Network boundary lint
+        run: bun run check:network-boundary
 
       - name: Compose schema coverage
         run: bun run check:compose-coverage

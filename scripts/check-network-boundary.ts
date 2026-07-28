@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { runGate } from "./boundary/format.ts";
 
 export interface NetworkBoundaryOffender {
   readonly file: string;
@@ -23,33 +24,19 @@ export const checkNetworkBoundary = async (
   options: CheckNetworkBoundaryOptions = {},
 ): Promise<NetworkBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["network-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics.map(({ file, line, message }) => ({
-    file,
-    line: line ?? 1,
-    match: message,
-  }));
-
-  return { ok: offenders.length === 0, offenders };
+  const results = await runRules(["network"], root);
+  const result = results.get("network");
+  if (result === undefined) throw new TypeError("Boundary rule produced no result: network");
+  return {
+    ok: result.ok,
+    offenders: result.violations.map((violation) => ({
+      file: violation.file,
+      line: violation.line,
+      match: violation.detail,
+    })),
+  };
 };
 
-const formatOffender = (offender: NetworkBoundaryOffender): string =>
-  `${offender.file}:${offender.line}: ${offender.match}`;
-
 if (import.meta.main) {
-  const result = await checkNetworkBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Network boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Network boundary check failed. Lando-owned outbound HTTP must route through the HttpClient adapter (@lando/core HttpClient), not direct global fetch. Carve-outs are limited to BunSelfRunner package-manager ops and the standalone installer scripts.\n${result.offenders
-        .map(formatOffender)
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  await runGate("network", repoRoot);
 }

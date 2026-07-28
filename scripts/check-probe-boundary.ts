@@ -1,6 +1,8 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRuleSet } from "./boundary/engine.ts";
+import { writeGateResult } from "./boundary/format.ts";
+import { probeRule } from "./boundary/rules/probe.ts";
 
 export interface ProbeBoundaryOffender {
   readonly file: string;
@@ -19,42 +21,29 @@ interface CheckProbeBoundaryOptions {
 
 const repoRoot = resolve(import.meta.dirname, "..");
 
+const runProbeRule = async (root: string) => {
+  const results = await runRuleSet([probeRule], root);
+  const result = results.get(probeRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${probeRule.id}`);
+  return result;
+};
+
 export const checkProbeBoundary = async (
   options: CheckProbeBoundaryOptions = {},
 ): Promise<ProbeBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["probe-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics.map((diagnostic): ProbeBoundaryOffender => {
-    if (diagnostic.line === undefined) {
-      throw new TypeError("Probe boundary diagnostics require a source line");
-    }
-    return {
-      file: resolve(root, diagnostic.file),
-      line: diagnostic.line,
-      match: diagnostic.message,
-    };
-  });
-
-  return { ok: result.ok, offenders };
+  const result = await runProbeRule(root);
+  return {
+    ok: result.ok,
+    offenders: result.violations.map((violation) => ({
+      file: resolve(root, violation.file),
+      line: violation.line,
+      match: violation.detail,
+    })),
+  };
 };
 
-const formatOffender = (root: string, offender: ProbeBoundaryOffender): string =>
-  `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}: ${offender.match}`;
-
 if (import.meta.main) {
-  const result = await checkProbeBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Probe boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Probe boundary check failed. Host/provider-shaped retry/backoff/timeout-to-verdict probing must build on @lando/sdk/probe (runProbe), not hand-rolled Effect.retry/repeat/schedule or Schedule loops.\n${result.offenders
-        .map((offender) => formatOffender(repoRoot, offender))
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  const result = await runProbeRule(repoRoot);
+  writeGateResult(probeRule.passMessage, probeRule.failureHeadline, result);
 }

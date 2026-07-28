@@ -16,7 +16,7 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 
-import { makeLandoPaths, sanitizeAppName } from "../../../src/config/paths.ts";
+import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import { HOST_PROXY_RUN_LANDO_ENV_NAMES } from "../../../src/subsystems/host-proxy/session-env.ts";
 import { defaultSpawnWorker } from "../../../src/subsystems/host-proxy/worker-process.ts";
 import { readWorkerRecordStateAt } from "../../../src/subsystems/host-proxy/worker-state-file.ts";

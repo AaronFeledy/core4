@@ -1,6 +1,6 @@
 import { dirname } from "node:path";
 
-import { makeLandoPaths, resolveLandoRoots } from "./paths.ts";
+import { makeLandoPaths, resolveLandoRoots } from "@lando/paths";
 
 // Thin delegations over the single Paths primitive; names/signatures preserved
 // so the cold-start fast path and existing call sites keep resolving through one

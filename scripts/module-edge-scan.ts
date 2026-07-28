@@ -173,19 +173,8 @@ const isTypeOnlyReExport = (declaration: ts.ExportDeclaration): boolean => {
 const isRequireCall = (node: ts.CallExpression): boolean =>
   ts.isIdentifier(node.expression) && node.expression.text === "require";
 
-/**
- * Extract every module edge from a source file: static imports, statically
- * resolvable dynamic `import()` / `require()` calls, and re-export
- * declarations. Line numbers are 1-based.
- */
-export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyArray<ModuleEdge> => {
-  const source = ts.createSourceFile(
-    fileName,
-    sourceText,
-    ts.ScriptTarget.Latest,
-    true,
-    fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
-  );
+/** Extract module edges from an already-parsed TypeScript source file. */
+export const scanModuleEdgesFromSource = (source: ts.SourceFile): ReadonlyArray<ModuleEdge> => {
   const resolveConstBinding = collectConstBindings(source);
   const edges: ModuleEdge[] = [];
 
@@ -235,3 +224,19 @@ export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyA
   visit(source);
   return edges;
 };
+
+/**
+ * Extract every module edge from source text: static imports, statically
+ * resolvable dynamic `import()` / `require()` calls, and re-export
+ * declarations. Line numbers are 1-based.
+ */
+export const scanModuleEdges = (fileName: string, sourceText: string): ReadonlyArray<ModuleEdge> =>
+  scanModuleEdgesFromSource(
+    ts.createSourceFile(
+      fileName,
+      sourceText,
+      ts.ScriptTarget.Latest,
+      true,
+      fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    ),
+  );

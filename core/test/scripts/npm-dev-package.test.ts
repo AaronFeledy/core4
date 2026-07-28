@@ -6,11 +6,22 @@ import {
   deriveNpmAlphaVersion,
   deriveNpmBetaVersion,
   preparePackageJson,
+  releasePackageNames,
+  releasePackageWorkspaces,
 } from "../../../scripts/prepare-npm-dev-packages";
 
 const releaseScriptPath = resolve(import.meta.dirname, "../../../scripts/release.ts");
 
 describe("npm dev package preparation", () => {
+  test("includes @lando/paths so the published @lando/core/paths shim resolves", () => {
+    expect(releasePackageWorkspaces).toContain("paths");
+    expect(releasePackageNames).toContain("@lando/paths");
+    expect(releasePackageWorkspaces.indexOf("paths")).toBeLessThan(releasePackageWorkspaces.indexOf("core"));
+    expect(releasePackageNames.indexOf("@lando/paths")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/core"),
+    );
+  });
+
   test("derives alpha package versions for workflow runs", () => {
     expect(deriveNpmAlphaVersion({ GITHUB_RUN_NUMBER: "123" })).toBe("4.0.0-alpha.123");
     expect(deriveNpmAlphaVersion({ LANDO_NPM_VERSION: "4.0.0-alpha.local" })).toBe("4.0.0-alpha.local");

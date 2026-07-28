@@ -7,8 +7,8 @@ import { Effect, Layer } from "effect";
 import { ConfigError } from "@lando/sdk/errors";
 import { type PluginTrustState, PluginTrustStore } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "@lando/paths";
 import { writeFileAtomicViaRename } from "../cache/atomic.ts";
-import { makeLandoPaths } from "../config/paths.ts";
 
 const emptyState: PluginTrustState = { trustedPlugins: [], trustedAuthoringRoots: [] };
 

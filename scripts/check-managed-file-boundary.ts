@@ -1,6 +1,8 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { writeGateResult } from "./boundary/format.ts";
+import { managedFileRule } from "./boundary/rules/managed-file.ts";
 
 export interface ManagedFileBoundaryOffender {
   readonly file: string;
@@ -23,40 +25,22 @@ export const checkManagedFileBoundary = async (
   options: CheckManagedFileBoundaryOptions = {},
 ): Promise<ManagedFileBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["managed-file-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics
-    .map((diagnostic): ManagedFileBoundaryOffender => {
-      if (diagnostic.line === undefined) {
-        throw new TypeError("Managed-file boundary diagnostic is missing a line number");
-      }
-      return {
-        file: resolve(root, diagnostic.file),
-        line: diagnostic.line,
-        match: diagnostic.message,
-      };
-    })
-    .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+  const results = await runRules([managedFileRule.id], root);
+  const result = results.get(managedFileRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${managedFileRule.id}`);
 
-  return { ok: offenders.length === 0, offenders };
+  const offenders = result.violations.map((violation) => ({
+    file: resolve(root, violation.file),
+    line: violation.line,
+    match: violation.detail,
+  }));
+
+  return { ok: result.ok, offenders };
 };
 
-const formatOffender = (root: string, offender: ManagedFileBoundaryOffender): string =>
-  `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}: ${offender.match}`;
-
 if (import.meta.main) {
-  const result = await checkManagedFileBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Managed-file boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Managed-file boundary check failed. Host project-file ownership-marker/overwrite logic must route through ManagedFileService (core/src/managed-file/).\n${result.offenders
-        .map((offender) => formatOffender(repoRoot, offender))
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  const results = await runRules([managedFileRule.id], repoRoot);
+  const result = results.get(managedFileRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${managedFileRule.id}`);
+  writeGateResult(managedFileRule.passMessage, managedFileRule.failureHeadline, result);
 }

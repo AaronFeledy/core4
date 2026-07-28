@@ -193,4 +193,29 @@ describe("env helper boundary lint gate", () => {
       await fs.rm(root, { recursive: true, force: true });
     }
   });
+
+  test("exposes specifier on offenders (substrate detail field)", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "plugins/service-lando/src/features/env.ts",
+        'export const landoEnvFeature = { id: "lando.env" };\n',
+      );
+      await write(
+        root,
+        "plugins/service-lando/src/services/direct.ts",
+        'import { landoEnvFeature } from "../features/env"; export const direct = landoEnvFeature;\n',
+      );
+
+      const result = await checkEnvHelperBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(result.offenders).toHaveLength(1);
+      expect(result.offenders[0]?.specifier).toBe("../features/env");
+      expect(result.offenders[0]?.line).toBe(1);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 });

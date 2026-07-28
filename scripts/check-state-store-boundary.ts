@@ -1,6 +1,7 @@
 import { relative, resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { stateStoreRule } from "./boundary/rules/state-store.ts";
 
 export interface StateStoreBoundaryOffender {
   readonly file: string;
@@ -12,7 +13,7 @@ export interface StateStoreBoundaryResult {
   readonly offenders: ReadonlyArray<StateStoreBoundaryOffender>;
 }
 
-interface CheckStateStoreBoundaryOptions {
+export interface CheckStateStoreBoundaryOptions {
   readonly root?: string;
 }
 
@@ -22,21 +23,16 @@ export const checkStateStoreBoundary = async (
   options: CheckStateStoreBoundaryOptions = {},
 ): Promise<StateStoreBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["state-store-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics
-    .map(
-      (diagnostic): StateStoreBoundaryOffender => ({
-        file: resolve(root, diagnostic.file),
-        signals: diagnostic.message.split(", "),
-      }),
-    )
-    .sort((left, right) => left.file.localeCompare(right.file));
-
-  return { ok: offenders.length === 0, offenders };
+  const results = await runRules([stateStoreRule.id], root);
+  const result = results.get(stateStoreRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${stateStoreRule.id}`);
+  return {
+    ok: result.ok,
+    offenders: result.violations.map((violation) => ({
+      file: resolve(root, violation.file),
+      signals: violation.detail.split(", "),
+    })),
+  };
 };
 
 const formatOffender = (root: string, offender: StateStoreBoundaryOffender): string =>
@@ -45,10 +41,10 @@ const formatOffender = (root: string, offender: StateStoreBoundaryOffender): str
 if (import.meta.main) {
   const result = await checkStateStoreBoundary({ root: repoRoot });
   if (result.ok) {
-    process.stdout.write("State-store boundary check passed.\n");
+    process.stdout.write(`${stateStoreRule.passMessage}\n`);
   } else {
     process.stderr.write(
-      `State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through core/src/state/.\n${result.offenders
+      `${stateStoreRule.failureHeadline}\n${result.offenders
         .map((offender) => formatOffender(repoRoot, offender))
         .join("\n")}\n`,
     );

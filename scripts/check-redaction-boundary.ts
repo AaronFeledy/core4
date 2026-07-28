@@ -1,6 +1,8 @@
-import { relative, resolve } from "node:path";
+import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
+import { runRules } from "./boundary/engine.ts";
+import { formatViolation, writeGateResult } from "./boundary/format.ts";
+import { redactionRule } from "./boundary/rules/redaction.ts";
 
 export interface RedactionBoundaryOffender {
   readonly file: string;
@@ -23,40 +25,25 @@ export const checkRedactionBoundary = async (
   options: CheckRedactionBoundaryOptions = {},
 ): Promise<RedactionBoundaryResult> => {
   const root = resolve(options.root ?? repoRoot);
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["redaction-boundary"],
-    auditExceptions: false,
-  });
-  const offenders = result.diagnostics
-    .map((diagnostic): RedactionBoundaryOffender => {
-      if (diagnostic.line === undefined) {
-        throw new TypeError("Redaction boundary diagnostic is missing a line number");
-      }
-      return {
-        file: resolve(root, diagnostic.file),
-        line: diagnostic.line,
-        match: diagnostic.message,
-      };
-    })
-    .sort((left, right) => left.file.localeCompare(right.file) || left.line - right.line);
+  const results = await runRules([redactionRule.id], root);
+  const result = results.get(redactionRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${redactionRule.id}`);
 
-  return { ok: offenders.length === 0, offenders };
+  const offenders = result.violations.map((violation) => ({
+    file: resolve(root, violation.file),
+    line: violation.line,
+    match: violation.detail,
+  }));
+
+  return { ok: result.ok, offenders };
 };
 
-const formatOffender = (root: string, offender: RedactionBoundaryOffender): string =>
-  `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}: ${offender.match}`;
-
 if (import.meta.main) {
-  const result = await checkRedactionBoundary({ root: repoRoot });
-  if (result.ok) {
-    process.stdout.write("Redaction boundary check passed.\n");
-  } else {
-    process.stderr.write(
-      `Redaction boundary check failed. Redaction sentinels and ad-hoc secret-matching regexes must route through @lando/sdk/secrets.\n${result.offenders
-        .map((offender) => formatOffender(repoRoot, offender))
-        .join("\n")}\n`,
-    );
-    process.exitCode = 1;
-  }
+  const root = repoRoot;
+  const results = await runRules([redactionRule.id], root);
+  const result = results.get(redactionRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${redactionRule.id}`);
+  // Keep CLI strings byte-identical to the pre-substrate gate.
+  void formatViolation;
+  writeGateResult(redactionRule.passMessage, redactionRule.failureHeadline, result);
 }

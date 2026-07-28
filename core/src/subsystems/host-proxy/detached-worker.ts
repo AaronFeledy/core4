@@ -3,8 +3,8 @@ import { Effect, Ref, Schema } from "effect";
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import { AppPlan, type AppRef } from "@lando/sdk/schema";
 
-import type { RootOverrides } from "../../config/paths.ts";
-import { makeLandoPaths } from "../../config/paths.ts";
+import type { RootOverrides } from "@lando/paths";
+import { makeLandoPaths } from "@lando/paths";
 import type { HostProxyShimTarget } from "./transport-shim.ts";
 import type { HostProxyTransportKind } from "./transport.ts";
 import { type HostProxyWorkerSpawner, defaultSpawnWorker, hostProxyWorkerArgv } from "./worker-process.ts";

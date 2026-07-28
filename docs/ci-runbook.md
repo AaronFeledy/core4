@@ -10,14 +10,26 @@ Every platform cell runs the fork-safe portable static gates:
 
 ```bash
 bun run typecheck
-bun run check:architecture
 bun run lint
+bun run check:import-cycle
+bun run check:package-dag
+bun run check:renderer-boundary
+bun run check:managed-file-boundary
 bun run check:telemetry-inventory
+bun run check:redaction-boundary
+bun run check:env-helper-boundary
+bun run check:generated-output
+bun run check:paths-boundary
+bun run check:state-store-boundary
+bun run check:probe-boundary
+bun run check:network-boundary
 bun run check:compose-coverage
+bun run check:libpod-prefix
 bun run check:machine-output
+bun run check:runtime-bundle-manifest
 ```
 
-`check:architecture` runs the architecture boundary kernel, a single process that evaluates all ten Class-A rules (renderer boundary, managed-file boundary, redaction boundary, env-helper boundary, package DAG, paths boundary, state-store boundary, probe boundary, network boundary, and import cycles) against one shared file corpus instead of spawning ten separate scripts. Pass `--rule=<id>` to narrow a run to a single rule while debugging, for example `bun run check:architecture --rule=package-dag`. The individual `check:<id>` wrappers (`check:renderer-boundary`, `check:package-dag`, and so on) still work and delegate to the same kernel, so existing muscle memory and any tooling that shells out to a specific check name keep functioning. `bun run lint` also includes the architecture kernel so local `lint` stays a single command, but CI keeps `check:architecture` as its own named step **ahead of** `Lint` deliberately: a boundary failure then fails the dedicated step and produces a clear signal instead of getting buried inside a broader lint failure. Ordering matters here — behind `Lint`, the dedicated step would never run on the failure it exists to report, because `lint` shells out to the same kernel and would fail first.
+Local fast path: `bun run scripts/check-boundaries.ts --all` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Individual `bun run check:<gate>` commands remain the CI contract; each is a thin shim over the declarative rules in `scripts/boundary/rules/`.
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
 
@@ -96,12 +108,13 @@ bun run bench:tooling-hot-path -- --binary core/dist/lando
 
 ## npm alpha package publishing
 
-The release workflow publishes `@lando/core@4.0.0-alpha.N` and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+The release workflow publishes `@lando/core@4.0.0-alpha.N`, `@lando/paths`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
 
 The package job builds workspace artifacts first:
 
 ```bash
 bun run --filter='@lando/sdk' build
+bun run --filter='@lando/paths' build
 bun run --filter='@lando/container-runtime' build
 bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest

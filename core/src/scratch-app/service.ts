@@ -44,9 +44,9 @@ import {
   type ScratchSummary,
 } from "@lando/sdk/services";
 
+import { makeLandoPaths } from "@lando/paths";
 import { loadUserLandofile } from "../cli/app-resolution.ts";
 import { initApp } from "../cli/commands/init.ts";
-import { makeLandoPaths } from "../config/paths.ts";
 import { parseLandofile } from "../landofile/parser.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";

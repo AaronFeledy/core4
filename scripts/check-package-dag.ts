@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 
-import { runArchitectureChecks } from "./architecture/runner.ts";
-import type { Diagnostic } from "./architecture/types.ts";
+import { runRules } from "./boundary/engine.ts";
+import { packageDagRule } from "./boundary/rules/package-dag.ts";
 
 export interface PackageDagViolation {
   readonly file: string;
@@ -14,25 +14,25 @@ export interface PackageDagResult {
   readonly violations: ReadonlyArray<PackageDagViolation>;
 }
 
-interface CheckPackageDagOptions {
+export interface CheckPackageDagOptions {
   readonly root: string;
 }
 
-const toViolation = (diagnostic: Diagnostic): PackageDagViolation => {
-  if (diagnostic.line === undefined) {
-    throw new TypeError(`Package DAG diagnostic is missing a line: ${diagnostic.file}`);
-  }
-  return { file: diagnostic.file, line: diagnostic.line, specifier: diagnostic.message };
-};
-
-export const checkPackageDag = async ({ root }: CheckPackageDagOptions): Promise<PackageDagResult> => {
-  const result = await runArchitectureChecks({
-    root,
-    ruleIds: ["package-dag"],
-    auditExceptions: false,
-  });
-  const violations = (result.byRule.get("package-dag") ?? []).map(toViolation);
-  return { ok: violations.length === 0, violations };
+export const checkPackageDag = async ({
+  root: rootInput,
+}: CheckPackageDagOptions): Promise<PackageDagResult> => {
+  const root = resolve(rootInput);
+  const results = await runRules([packageDagRule.id], root);
+  const result = results.get(packageDagRule.id);
+  if (result === undefined) throw new TypeError(`Boundary rule produced no result: ${packageDagRule.id}`);
+  return {
+    ok: result.ok,
+    violations: result.violations.map((violation) => ({
+      file: violation.file,
+      line: violation.line,
+      specifier: violation.detail,
+    })),
+  };
 };
 
 const rootArgument = (args: ReadonlyArray<string>): string | undefined => {

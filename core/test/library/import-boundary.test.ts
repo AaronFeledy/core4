@@ -9,6 +9,7 @@ import { scanModuleEdges } from "../../../scripts/module-edge-scan.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
+const pathsSrc = resolve(repoRoot, "paths/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
@@ -39,7 +40,7 @@ const tuiCodePathFiles = [
 const isTuiCodePath = (absPath: string): boolean =>
   tuiCodePathDirs.some((dir) => absPath.startsWith(dir)) || tuiCodePathFiles.includes(absPath);
 
-const firstPartySourceRoots = [`${coreSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
+const firstPartySourceRoots = [`${coreSrc}/`, `${pathsSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
 
 const isFirstPartySource = (absPath: string): boolean =>
   firstPartySourceRoots.some((root) => absPath.startsWith(root));
@@ -677,6 +678,10 @@ describe("Effect-free @lando/core/paths", () => {
     const { visited, violations, effectViolations } = walkStaticImportGraph(entryAbs);
 
     expect(visited.size).toBeGreaterThan(1);
+    // The subpath is a re-export shim over `@lando/paths`. Unless the walker
+    // treats `paths/src/**` as first-party source it stops at the shim and every
+    // assertion below silently passes over an unvisited implementation.
+    expect(visited.has(resolve(pathsSrc, "paths.ts"))).toBe(true);
 
     if (effectViolations.length > 0) {
       const report = effectViolations

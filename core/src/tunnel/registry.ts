@@ -7,7 +7,7 @@ import { StateStoreError } from "@lando/sdk/errors";
 import { type TunnelSession, TunnelSession as TunnelSessionSchema } from "@lando/sdk/schema";
 import { StateStore } from "@lando/sdk/services";
 
-import { makeLandoPaths } from "../config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 
 const TunnelRegistryEntry = Schema.Struct({
   session: TunnelSessionSchema,

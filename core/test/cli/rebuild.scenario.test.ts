@@ -28,7 +28,7 @@ import {
 import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/sdk/services";
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
-import { makeLandoPaths } from "../../src/config/paths.ts";
+import { makeLandoPaths } from "@lando/paths";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { RedactionService, createStandaloneRedactor } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";

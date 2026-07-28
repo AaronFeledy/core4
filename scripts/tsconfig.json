@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "emitDeclarationOnly": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "composite": false,
+    "rootDir": ".."
+  },
+  "include": ["./check-*.ts", "./module-edge-scan.ts", "./boundary/**/*.ts"],
+  "exclude": ["./check-public-transcripts.ts", "./check-compose-coverage.ts"]
+}

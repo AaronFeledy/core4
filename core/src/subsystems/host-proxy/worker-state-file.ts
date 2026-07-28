@@ -6,7 +6,7 @@ import { Effect, Either, Schema } from "effect";
 import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
 
-import type { RootOverrides } from "../../config/paths.ts";
+import type { RootOverrides } from "@lando/paths";
 import { writeFileAtomicScoped } from "../../state-store/atomic.ts";
 import { withAdvisoryLock } from "../../state/lock.ts";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
