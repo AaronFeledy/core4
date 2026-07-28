@@ -6,7 +6,6 @@ import { BuildBlock } from "./build-block.ts";
 import { HealthcheckCanonicalBase, HealthcheckField } from "./compose-healthcheck.ts";
 import { ComposeExposeField, ComposePortsField } from "./compose-ports.ts";
 import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
-import { ComposeSupportedSubsetFields } from "./compose-supported-subset.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
@@ -286,7 +285,7 @@ const ComposeDependsOnInput = Schema.transformOrFail(
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
  */
-export const ServiceConfigBase = Schema.Struct({
+export const ServiceConfig = Schema.Struct({
   api: Schema.optional(Schema.Literal(4)),
   type: Schema.optional(Schema.String), // defaults to "lando"
   primary: Schema.optional(Schema.Boolean),
@@ -317,8 +316,6 @@ export const ServiceConfigBase = Schema.Struct({
     description:
       "Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings.",
   }),
-
-  ...ComposeSupportedSubsetFields,
 
   ...ComposeServiceKnobFields,
 
@@ -362,10 +359,6 @@ export const ServiceConfigBase = Schema.Struct({
 
   providers: Schema.optional(ProviderExtensionConfig),
 });
-export const ServiceConfig = Schema.Struct(
-  ServiceConfigBase.fields,
-  Schema.Record({ key: Schema.TemplateLiteral("x-", Schema.String), value: Schema.Unknown }),
-);
 export type ServiceConfig = typeof ServiceConfig.Type;
 
 /**

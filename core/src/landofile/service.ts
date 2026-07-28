@@ -14,7 +14,7 @@ import {
   LandofileValidationError,
   NotImplementedError,
 } from "@lando/sdk/errors";
-import { LandofileShape, ServiceConfigBase } from "@lando/sdk/schema";
+import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
 
 import {
@@ -42,7 +42,7 @@ const COMPOSE_ALLOWLIST_REMEDIATION =
   "Compose compatibility is limited to the supported subset; move provider-native keys under providers.<provider-id> or use config translation.";
 
 const SERVICE_CONFIG_KEYS = new Set([
-  ...Object.keys(ServiceConfigBase.fields),
+  ...Object.keys(ServiceConfig.fields),
   "working_dir",
   "env_file",
   "depends_on",
@@ -155,9 +155,7 @@ const unsupportedAuthoredServiceKeyTypes = (
   for (const service of Object.values(services as Record<string, unknown>)) {
     if (service === null || typeof service !== "object") continue;
     const serviceRecord = service as Record<string, unknown>;
-    const hasUnsupportedKey = Object.keys(serviceRecord).some(
-      (key) => !SERVICE_CONFIG_KEYS.has(key) && !key.startsWith("x-"),
-    );
+    const hasUnsupportedKey = Object.keys(serviceRecord).some((key) => !SERVICE_CONFIG_KEYS.has(key));
     if (!hasUnsupportedKey) continue;
     if (serviceRecord.type === "compose") compose++;
     else nonCompose++;

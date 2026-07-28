@@ -1,6 +1,6 @@
 import { Either, ParseResult, Schema } from "effect";
 
-import { ComposeServiceKnobFields, ComposeServiceKnobKey, type ServicePlan } from "@lando/sdk/schema";
+import { ComposeServiceKnobKey, ServiceConfig, type ServicePlan } from "@lando/sdk/schema";
 
 import {
   type InvalidKnob,
@@ -23,7 +23,7 @@ import {
  * duplicate the SDK schema. Its field transforms accept canonical output,
  * making re-decoding idempotent while rejecting values core could not produce.
  */
-const PodmanComposeKnobs = Schema.Struct(ComposeServiceKnobFields).pick(
+const PodmanComposeKnobs = ServiceConfig.pick(
   "restart",
   "cap_add",
   "cap_drop",

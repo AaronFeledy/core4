@@ -86,7 +86,7 @@ describe("compose fixture checksums", () => {
     const root = await mkdtemp(join(tmpdir(), "lando-compose-fixtures-tamper-"));
     try {
       await cp(fixturesRoot, root, { recursive: true });
-      const altered = "upstream/different_networks.compose.yaml";
+      const altered = "upstream/scaling.compose.yaml";
       await writeFile(join(root, altered), "services: {}\n", "utf8");
 
       // When
@@ -234,12 +234,9 @@ describe("compose fixture enumeration", () => {
       "corpus/long-form-mounts-ports.compose.yaml",
       "corpus/rejected-container-name.compose.yaml",
       "corpus/runtime-knobs.compose.yaml",
-      "upstream/different_networks.compose.yaml",
+      "corpus/udp-port.compose.yaml",
       "upstream/scaling.compose.yaml",
-      "upstream/simple_configfile.compose.yaml",
       "upstream/simple_lifecycle.compose.yaml",
-      "upstream/simple_network.compose.yaml",
-      "upstream/simple_secretfile.compose.yaml",
       "upstream/simple_volume.compose.yaml",
       "upstream/udp_port.compose.yaml",
     ];

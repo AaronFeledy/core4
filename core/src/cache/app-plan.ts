@@ -29,7 +29,7 @@ export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, including generated build intents
 // and service plan compose extensions that carry preserved runtime knobs, independently of the
 // package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 12n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 11n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;

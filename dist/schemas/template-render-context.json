@@ -1,156 +1,5 @@
 {
   "$defs": {
-    "ComposeServiceConfigOrSecret": {
-      "description": "Compose service configs or secrets as string names or long mount objects.",
-      "items": {
-        "anyOf": [
-          {
-            "type": "string"
-          },
-          {
-            "patternProperties": {
-              "": {
-                "$id": "/schemas/unknown",
-                "title": "unknown"
-              }
-            },
-            "properties": {
-              "gid": {
-                "type": "string"
-              },
-              "mode": {
-                "anyOf": [
-                  {
-                    "type": "number"
-                  },
-                  {
-                    "type": "string"
-                  }
-                ]
-              },
-              "source": {
-                "type": "string"
-              },
-              "target": {
-                "type": "string"
-              },
-              "uid": {
-                "type": "string"
-              }
-            },
-            "propertyNames": {
-              "pattern": "^x-[\\s\\S]*?$",
-              "type": "string"
-            },
-            "required": [],
-            "type": "object"
-          }
-        ]
-      },
-      "type": "array"
-    },
-    "ComposeServiceNetworks": {
-      "anyOf": [
-        {
-          "items": {
-            "type": "string"
-          },
-          "type": "array",
-          "uniqueItems": true
-        },
-        {
-          "patternProperties": {
-            "": {
-              "anyOf": [
-                {
-                  "patternProperties": {
-                    "": {
-                      "$id": "/schemas/unknown",
-                      "title": "unknown"
-                    }
-                  },
-                  "properties": {
-                    "aliases": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array",
-                      "uniqueItems": true
-                    },
-                    "driver_opts": {
-                      "additionalProperties": {
-                        "anyOf": [
-                          {
-                            "type": "string"
-                          },
-                          {
-                            "type": "number"
-                          }
-                        ]
-                      },
-                      "properties": {},
-                      "required": [],
-                      "type": "object"
-                    },
-                    "gw_priority": {
-                      "type": "number"
-                    },
-                    "interface_name": {
-                      "type": "string"
-                    },
-                    "ipv4_address": {
-                      "type": "string"
-                    },
-                    "ipv6_address": {
-                      "type": "string"
-                    },
-                    "link_local_ips": {
-                      "items": {
-                        "type": "string"
-                      },
-                      "type": "array",
-                      "uniqueItems": true
-                    },
-                    "mac_address": {
-                      "type": "string"
-                    },
-                    "priority": {
-                      "type": "number"
-                    }
-                  },
-                  "propertyNames": {
-                    "pattern": "^x-[\\s\\S]*?$",
-                    "type": "string"
-                  },
-                  "required": [],
-                  "type": "object"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            }
-          },
-          "properties": {},
-          "propertyNames": {
-            "description": "a string matching the pattern ^[a-zA-Z0-9._-]+$",
-            "pattern": "^[a-zA-Z0-9._-]+$",
-            "type": "string"
-          },
-          "required": [],
-          "type": "object"
-        }
-      ],
-      "description": "Compose service network attachments as a unique name list or a name-to-null-or-options map."
-    },
-    "ComposeServiceProfiles": {
-      "description": "Unique Compose profile names that activate a service.",
-      "items": {
-        "type": "string"
-      },
-      "type": "array",
-      "uniqueItems": true
-    },
     "DeprecationNotice": {
       "additionalProperties": false,
       "description": "A structured deprecation declaration attached to a public surface.",
@@ -199,13 +48,8 @@
       "type": "integer"
     },
     "ServiceConfigInput": {
+      "additionalProperties": false,
       "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
-      "patternProperties": {
-        "": {
-          "$id": "/schemas/unknown",
-          "title": "unknown"
-        }
-      },
       "properties": {
         "allowOverride": {
           "description": "Whether an Apache-backed service enables .htaccess overrides for its webroot.",
@@ -441,14 +285,6 @@
               "type": "array"
             }
           ]
-        },
-        "configs": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/ComposeServiceConfigOrSecret"
-            }
-          ],
-          "description": "Compose configs granted to this service as names or long mount objects."
         },
         "cores": {
           "items": {
@@ -1514,14 +1350,6 @@
           },
           "type": "array"
         },
-        "networks": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/ComposeServiceNetworks"
-            }
-          ],
-          "description": "Networks joined by this service, preserving Compose short-list or long-map syntax."
-        },
         "platform": {
           "description": "Target runtime platform in operating-system and architecture form.",
           "type": "string"
@@ -1672,14 +1500,6 @@
           ],
           "description": "Whether the container runs with extended host privileges."
         },
-        "profiles": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/ComposeServiceProfiles"
-            }
-          ],
-          "description": "Compose profiles that activate this service."
-        },
         "providers": {
           "additionalProperties": {
             "$id": "/schemas/unknown",
@@ -1771,14 +1591,6 @@
             "type": "object"
           },
           "type": "array"
-        },
-        "secrets": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/ComposeServiceConfigOrSecret"
-            }
-          ],
-          "description": "Compose secrets granted to this service as names or long mount objects."
         },
         "security_opt": {
           "anyOf": [
@@ -2204,10 +2016,6 @@
         "workingDirectory": {
           "type": "string"
         }
-      },
-      "propertyNames": {
-        "pattern": "^x-[\\s\\S]*?$",
-        "type": "string"
       },
       "required": [],
       "title": "Service Config Input",
