@@ -837,3 +837,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Inheriting a root's machine-readable metadata down a generated key tree is right for the common case but silently over-claims wherever the family fans out to several destinations. `volumes` normalizes into mounts, storage, and tmpfs, yet its bind/volume option blocks each reach exactly one of them, so blanket inheritance published destinations those keys never touch. Where a root has more than one target, the descendant's own target must be stated; the family-level invariant that survives is subset-of-root, not equal-to-root.
   - A `bun test <path>` spot check can execute a stale copy of a file written moments earlier: a run reporting fewer tests than the file defines (4 of 5 here) raced the write and its green result proves nothing. Assert the expected test count, not just the absence of failures, and re-run before trusting a guard that has never been observed red.
 ---
+
+## 2026-07-28 18:36 CDT - US-477 Drift Audit
+- Trigger: 2 cycles, 1754 changed lines, 7 commits
+- Scope absorption: excised an internal Compose knob field map and a redundant rejected-key helper from the public SDK surface while retaining the intended runtime schemas through explicit exports.
+- Weakened proofs: restored production-path guide coverage for the realistic Compose fields and required the tagged rejection proof to match the matrix-sourced remediation before the accepted retry.
+- Review scar tissue: removed the duplicate top-level rejection remediation so lint now reads the committed disposition matrix directly.
+- Contract drift: corrected the matrix and compatibility-guide summaries so preserved service-level `x-*` remains explicitly inert rather than blanket capability-gated.
+- Fixed: deleted accidental public and duplicate remediation surfaces, narrowed the schema barrel, and restored loader/remediation proof without adding provider or compatibility paths.
+- Split/excise decisions: no follow-up story or passes flip; the internal field-map excision conflicts with the prior Review demand to export every promised knob schema, so the required adjudication marker is emitted after this audit commit.
+- Verification: typecheck, lint, all boundary gates, Compose coverage, schema compatibility, plugin-abstraction coverage, focused tests, matrix/schema codegen idempotence, the executable guide, and guide lint/coverage/public-transcript/drift gates passed; the full host test suite was not run per Drift Audit safety policy.
+---
