@@ -1,9 +1,5 @@
 import { Schema } from "effect";
 
-// =============================================================================
-// Compose service field capabilities — provider-declared service field support.
-// =============================================================================
-
 export const ComposeServiceFieldKey = Schema.Literal(
   "networks",
   "configs",

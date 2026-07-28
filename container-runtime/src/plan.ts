@@ -217,13 +217,12 @@ export const containerCreateBodyFragment = (
 ): Record<string, unknown> => {
   const artifact = service.artifact;
   if (artifact?.kind !== "ref") {
-    (options.onMissingArtifact ?? missingArtifact)(artifact);
+    return (options.onMissingArtifact ?? missingArtifact)(artifact);
   }
-  const refArtifact = artifact as Extract<NonNullable<ServicePlan["artifact"]>, { readonly kind: "ref" }>;
 
   return {
     ...(options.name === undefined ? {} : { name: options.name }),
-    Image: refArtifact.ref,
+    Image: artifact.ref,
     Env: serviceEnv(service),
     Cmd: normalizeCommand(service.command),
     Entrypoint: normalizeEntrypoint(service.entrypoint),

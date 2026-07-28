@@ -91,7 +91,7 @@ const assertPreservedMatch = (match: ComposeDispositionMatch, context: OutcomeCo
     if (volume === undefined) throw new ComposeFixtureOutcomeError("Matched tmpfs volume missing");
     const entries = valueAt(compose, "tmpfs");
     const preserved = Array.isArray(entries)
-      ? entries.find((entry) => valueAt(entry, "target") === volume?.target)
+      ? entries.find((entry) => valueAt(entry, "target") === volume.target)
       : undefined;
     requirePresentValue(preserved, match, "ServicePlan.extensions.compose.tmpfs");
     const suffix = match.matrixPath.slice("volumes.tmpfs".length).replace(/^\./u, "");
@@ -100,9 +100,9 @@ const assertPreservedMatch = (match: ComposeDispositionMatch, context: OutcomeCo
     expect(produced).toEqual(
       suffix.length === 0
         ? {
-            target: volume?.target,
-            ...(volume?.readOnly ? { read_only: true } : {}),
-            ...(volume?.tmpfs ?? {}),
+            target: volume.target,
+            ...(volume.readOnly ? { read_only: true } : {}),
+            ...(volume.tmpfs ?? {}),
           }
         : source,
     );
@@ -125,10 +125,12 @@ export const assertFixtureServiceOutcomes = (
     if (match.service === undefined || match.disposition === "rejected") continue;
     switch (match.disposition) {
       case "normalized":
-        if (assertNormalizedMatch(match, context)) assertionCount += 1;
+        assertNormalizedMatch(match, context);
+        assertionCount += 1;
         break;
       case "preserved":
-        if (assertPreservedMatch(match, context)) assertionCount += 1;
+        assertPreservedMatch(match, context);
+        assertionCount += 1;
         break;
       default: {
         const exhaustive: never = match.disposition;

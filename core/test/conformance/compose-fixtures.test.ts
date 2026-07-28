@@ -146,8 +146,6 @@ const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<
   );
 };
 
-const capabilityGatedRoots = new Set<ComposeServiceFieldKey>(ComposeServiceFieldKey.literals);
-
 const serviceFieldFamily = (matrixPath: string): ComposeServiceFieldKey | undefined => {
   const root = matrixPath.split(".")[0];
   return ComposeServiceFieldKey.literals.find((candidate) => candidate === root);
@@ -157,12 +155,7 @@ const capabilityGateCases = fixtureCases.flatMap((fixture) => {
   const servicesByFamily = new Map<ComposeServiceFieldKey, string>();
   for (const match of fixture.matches) {
     const family = serviceFieldFamily(match.matrixPath);
-    if (
-      family !== undefined &&
-      capabilityGatedRoots.has(family) &&
-      match.service !== undefined &&
-      !servicesByFamily.has(family)
-    ) {
+    if (family !== undefined && match.service !== undefined && !servicesByFamily.has(family)) {
       servicesByFamily.set(family, match.service);
     }
   }

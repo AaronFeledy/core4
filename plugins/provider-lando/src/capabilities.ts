@@ -157,8 +157,8 @@ export const decodeProviderCapabilities = (input: unknown) =>
  *   would promise activation that does not exist.
  *
  * Service-level `x-*` fields are outside the capability surface and remain
- * inert metadata preserved by core per spec §5.4. `labels` is declared because
- * both direct container creation and Compose emission realize preserved labels.
+ * inert metadata preserved by core. `labels` is declared because both direct
+ * container creation and Compose emission realize preserved labels.
  */
 export const providerLandoCapabilitiesForPlatform = (
   platform: HostPlatform,

@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { commonContainerLabels } from "@lando/container-runtime/plan";
+import { commonContainerLabels, mountSuffix } from "@lando/container-runtime/plan";
 import { ProviderInternalError } from "@lando/sdk/errors";
 import {
   type AppPlan,
@@ -14,10 +14,6 @@ import {
 import { FileSystem } from "@lando/sdk/services";
 
 import { volumeSelectorValue } from "./volume-prune.ts";
-
-const networkNamesForPlan = landoNetworkNames;
-const serviceNetworkAliases = landoServiceNetworkAliases;
-const sharedNetworkName = landoSharedNetworkName;
 
 const PROVIDER_ID = "lando";
 
@@ -103,8 +99,6 @@ const serviceImage = (service: ServicePlan) => {
   });
 };
 
-const mountSuffix = (readOnly: boolean) => (readOnly ? ":ro" : "");
-
 const volumeSpec = (source: string, target: string, readOnly: boolean): string =>
   `${source}:${target}${mountSuffix(readOnly)}`;
 
@@ -174,7 +168,6 @@ const serviceVolumes = (plan: AppPlan, service: ServicePlan): ReadonlyArray<Comp
   return [...appMount, ...mounts, ...storage];
 };
 
-// Collects tmpfs mount targets for the service-level `tmpfs:` key in Compose.
 const serviceTmpfs = (service: ServicePlan): ReadonlyArray<string> =>
   service.mounts.flatMap((mount) => (mount.type === "tmpfs" ? [mount.target] : []));
 
@@ -220,8 +213,8 @@ const removeEmpty = (service: ComposeService): ComposeService => ({
 });
 
 const toComposeDocument = (plan: AppPlan): ComposeDocument => {
-  const networkNames = networkNamesForPlan(plan);
-  const sharedName = sharedNetworkName(plan);
+  const networkNames = landoNetworkNames(plan);
+  const sharedName = landoSharedNetworkName(plan);
   const services = Object.fromEntries(
     Object.entries(plan.services).map(([name, service]) => [
       name,
@@ -237,7 +230,7 @@ const toComposeDocument = (plan: AppPlan): ComposeDocument => {
         networks: Object.fromEntries(
           networkNames.map((networkName) => [
             networkName,
-            networkName === sharedName ? { aliases: serviceNetworkAliases(plan, service) } : {},
+            networkName === sharedName ? { aliases: landoServiceNetworkAliases(plan, service) } : {},
           ]),
         ),
       }),
@@ -431,7 +424,7 @@ export const emitCompose = (
   Effect.gen(function* () {
     const fileSystem = yield* FileSystem;
     const appRoot = pathJoin(options.userDataRoot, "apps", String(plan.id));
-    const outputPath = pathJoin(appRoot, "compose.yml");
+    const outputPath = composePath(plan, options);
     // Wrap synchronous renderCompose in Effect.try so that any throw from
     // serviceImage/serviceVolumes surfaces as a typed ProviderInternalError
     // failure (not an unhandled defect bypassing the mapError handler below).
