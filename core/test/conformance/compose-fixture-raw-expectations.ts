@@ -205,6 +205,8 @@ const expectations = {
   },
 } satisfies Readonly<Record<RequiredRawFixturePath, RawFixtureExpectation>>;
 
+export const RAW_FIXTURE_EXPECTATION_PATHS: readonly string[] = Object.keys(expectations);
+
 export const assertRawFixtureOutcome = (relativePath: string, context: OutcomeContext): void => {
   if (isRequiredRawFixturePath(relativePath)) expectations[relativePath](context);
 };

@@ -29,7 +29,11 @@ import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";
-import { REQUIRED_RAW_FIXTURE_PATHS, assertRawFixtureOutcome } from "./compose-fixture-raw-expectations.ts";
+import {
+  RAW_FIXTURE_EXPECTATION_PATHS,
+  REQUIRED_RAW_FIXTURE_PATHS,
+  assertRawFixtureOutcome,
+} from "./compose-fixture-raw-expectations.ts";
 
 type ComposeFixtureModule = {
   readonly listComposeFixtures: (options: {
@@ -283,6 +287,21 @@ describe("Compose conformance fixtures", () => {
 
     // Then
     expect(missing).toEqual([]);
+  });
+
+  test("keeps authored-value expectations exhaustive for non-rejected fixtures", () => {
+    // Given
+    const expectedFixturePaths = fixtureCases
+      .filter(({ matches }) => !matches.some((match) => match.disposition === "rejected"))
+      .map(({ relativePath }) => relativePath)
+      .sort();
+
+    // When
+    const actualExpectationPaths = [...RAW_FIXTURE_EXPECTATION_PATHS].sort();
+
+    // Then
+    expect(actualExpectationPaths.length).toBeGreaterThan(0);
+    expect(actualExpectationPaths).toEqual(expectedFixturePaths);
   });
 
   test("keeps test assertion metadata exhaustive for normalized service roots", () => {
