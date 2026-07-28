@@ -838,3 +838,11 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - A confirmation pass should re-run the mutation proof rather than cite the previous one whenever the cost is seconds. It converts "the guard exists and the suite is green" into a recorded observation that removing the input turns it red, and here it re-demonstrated that the anti-hiding and exhaustiveness guards fail independently rather than through one shared assertion.
   - Verify an env-gated skip path by reading where the client is constructed, not only where the guard is declared. `test.skipIf` prevents the test body from running but does not prevent module-scope construction; the safety claim is only true because the Podman client is built inside the fixture runner.
 ---
+
+## 2026-07-28 07:40 CDT - US-476 Review
+- Fixed the remaining PRD reconciliation blocker: the machine-readable index still fused the fixture-corpus and refresh-safety requirements into one item while the source PRD kept them separate. The two representations now have the same nine US-476 acceptance-criterion boundaries, preserving the source PRD as the authoritative contract.
+- Review notes (deferred/rejected): Four independent review lanes found no implementation, QA, code-quality, or security blocker; the fifth found and prompted the criterion-boundary fix above. Fresh managed-runtime evidence and a concurrent same-user refresh race remain explicitly out of scope for Review under the gate-finality criterion.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account was out of usage, so it produced no findings to triage after two attempts.
+- Guide-Coverage-Skip: US-476 and US-482 change internal Compose fixture, schema, planner, and provider conformance; the executable Compose guide and published key matrix are explicitly owned by US-477.
+- Verification: typecheck and lint passed; explicit-base guide drift passed with the substantive skip above; 88 focused conformance, fixture-safety, generated-CI, and production-path helper tests passed, and the no-socket provider suite skipped 8 with 0 failures or runtime contact.
+---
