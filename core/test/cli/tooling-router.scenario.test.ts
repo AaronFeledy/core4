@@ -64,7 +64,14 @@ const writeFreshCache = async (fixture: RouterFixture, taskName: string): Promis
   await Effect.runPromise(
     writeAppCommandCacheStrict({
       landofile: { name: `router-${taskName}` },
-      entries: [{ id: `app:${taskName}`, summary: `Router test ${taskName}`, hidden: false }],
+      entries: [
+        {
+          id: `app:${taskName}`,
+          summary: `Router test ${taskName}`,
+          hidden: false,
+          source: "bun-script",
+        },
+      ],
       cwd: fixture.root,
       cacheRoot: fixture.cacheRoot,
       now: () => 100,
@@ -118,13 +125,15 @@ const lastEnvelope = (output: string): Record<string, unknown> => {
   return Object.fromEntries(Object.entries(parsed));
 };
 
-test("Given separate fresh fixtures, when bare and canonical tasks run, then source and compiled return truthful JSON", async () => {
+test("Given cached scripts and unparseable Landofiles, when tasks run, then both dispatchers use the script hot path", async () => {
   const source = await makeFixture("source-success");
   const compiled = await makeFixture("compiled-success");
   try {
     // Given
     await writeTask(source, "greet", ["echo -n router-ok"]);
     await writeTask(compiled, "greet", ["echo -n router-ok"]);
+    await writeFile(join(source.root, ".lando.yml"), "name: [invalid\n");
+    await writeFile(join(compiled.root, ".lando.yml"), "name: [invalid\n");
     await writeFreshCache(source, "greet");
     await writeFreshCache(compiled, "greet");
 
