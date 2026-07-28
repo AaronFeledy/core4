@@ -75,7 +75,11 @@ const isSafeRelativePath = (path: string): boolean =>
   posix.normalize(path) === path &&
   !path.split(/[\\/]/u).includes("..");
 
-export const composeFixtureSourceUrl = (ref: string, path: string): string => `${RAW_PREFIX}/${ref}/${path}`;
+export const composeFixtureSourceUrl = (ref: string, path: string): string =>
+  `${RAW_PREFIX}/${ref}/${path
+    .split("/")
+    .map((segment) => encodeURIComponent(segment))
+    .join("/")}`;
 
 export const parseComposeFixturePin = (value: unknown, pinPath: string): ComposeFixturePin => {
   if (!isRecord(value)) throw new ComposeFixturePinError(pinPath);

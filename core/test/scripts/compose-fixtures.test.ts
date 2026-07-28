@@ -14,6 +14,7 @@ type ChecksumResult = {
 
 type ComposeFixtureModule = {
   readonly ComposeFixturePinError: ErrorConstructor;
+  readonly composeFixtureSourceUrl: (ref: string, path: string) => string;
   readonly listComposeFixtures: (options: {
     readonly fixturesRoot: string;
   }) => Promise<ReadonlyArray<string>>;
@@ -36,6 +37,8 @@ const isComposeFixtureModule = (value: unknown): value is ComposeFixtureModule =
   value !== null &&
   "ComposeFixturePinError" in value &&
   typeof value.ComposeFixturePinError === "function" &&
+  "composeFixtureSourceUrl" in value &&
+  typeof value.composeFixtureSourceUrl === "function" &&
   "listComposeFixtures" in value &&
   typeof value.listComposeFixtures === "function" &&
   "parseComposeFixturePin" in value &&
@@ -48,8 +51,13 @@ const importedModule: unknown = await import(
   pathToFileURL(resolve(repoRoot, "scripts/compose-fixtures.ts")).href
 );
 if (!isComposeFixtureModule(importedModule)) throw new ComposeFixtureModuleLoadError();
-const { ComposeFixturePinError, listComposeFixtures, parseComposeFixturePin, verifyComposeFixtureChecksums } =
-  importedModule;
+const {
+  ComposeFixturePinError,
+  composeFixtureSourceUrl,
+  listComposeFixtures,
+  parseComposeFixturePin,
+  verifyComposeFixtureChecksums,
+} = importedModule;
 const fixturesRoot = resolve(repoRoot, "core/test/fixtures/compose");
 const pinPath = resolve(fixturesRoot, "pin.json");
 const ref = "7cc9c7ce7fa630fc8e250482e1feae397459352b";
@@ -67,6 +75,19 @@ const validPin = () => ({
       sha256: "a".repeat(64),
     },
   ],
+});
+
+test("source URLs keep encoded dot segments inside the pinned repository path", () => {
+  // Given
+  const sourcePath = "%2e%2e/%2E%2E/attacker/repo/payload.compose.yaml";
+
+  // When
+  const sourceUrl = composeFixtureSourceUrl(ref, sourcePath);
+
+  // Then
+  expect(new URL(sourceUrl).pathname).toBe(
+    `/compose-spec/conformance-tests/${ref}/%252e%252e/%252E%252E/attacker/repo/payload.compose.yaml`,
+  );
 });
 
 describe("compose fixture checksums", () => {
