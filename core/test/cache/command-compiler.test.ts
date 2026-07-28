@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
-import { compilePluginCommands, compileToolingCommands } from "../../src/cache/command-compiler.ts";
+import {
+  compileBunShellScriptCommands,
+  compilePluginCommands,
+  compileToolingCommands,
+} from "../../src/cache/command-compiler.ts";
 
 const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
   name: "myapp",
@@ -51,10 +55,42 @@ describe("compileToolingCommands", () => {
   });
 });
 
+describe("compileBunShellScriptCommands", () => {
+  test("marks script-backed entries so cached routing can avoid app bootstrap", () => {
+    // Given
+    const scripts = [
+      {
+        id: "app:quality",
+        name: "quality",
+        path: "/workspace/.lando/scripts/quality.bun.sh",
+        relativePath: "quality.bun.sh",
+        service: ":host",
+        summary: "Run quality checks",
+        frontMatter: {},
+      },
+    ];
+
+    // When
+    const entries = compileBunShellScriptCommands(scripts);
+
+    // Then
+    expect(entries).toEqual([
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        hidden: false,
+        service: ":host",
+        source: "bun-script",
+      },
+    ]);
+  });
+});
+
 const manifest = (name: string, commands?: ReadonlyArray<string>): PluginManifest => ({
   name: name as PluginManifest["name"],
   version: "0.0.0",
   api: 4,
+  bootstrap: "app",
   contributes: commands === undefined ? undefined : { commands },
 });
 
