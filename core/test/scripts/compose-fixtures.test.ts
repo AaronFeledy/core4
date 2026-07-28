@@ -166,12 +166,58 @@ describe("compose fixture pin parsing", () => {
     expect(() => parseComposeFixturePin(value, "pin.json")).toThrow(ComposeFixturePinError);
   });
 
+  test("rejects duplicate upstream source paths", () => {
+    // Given
+    const entry = validPin().files[0];
+    const value = {
+      ...validPin(),
+      files: [entry, { ...entry, vendored: "upstream/scaling-copy.compose.yaml" }],
+    };
+
+    // When / Then
+    expect(() => parseComposeFixturePin(value, "pin.json")).toThrow(ComposeFixturePinError);
+  });
+
+  test("rejects filesystem aliases for source and vendored paths", () => {
+    // Given
+    const entry = validPin().files[0];
+    expect(entry).toBeDefined();
+    if (entry === undefined) return;
+    const sourceAlias = {
+      ...validPin(),
+      files: [entry, { ...entry, path: `./${entry.path}`, vendored: "upstream/source-alias.compose.yaml" }],
+    };
+    const vendoredAlias = {
+      ...validPin(),
+      files: [
+        entry,
+        {
+          ...entry,
+          path: "tests/vendored-alias/compose.yaml",
+          vendored: `upstream/./${entry.vendored.split("/").at(-1)}`,
+        },
+      ],
+    };
+
+    // When / Then
+    expect(() => parseComposeFixturePin(sourceAlias, "pin.json")).toThrow(ComposeFixturePinError);
+    expect(() => parseComposeFixturePin(vendoredAlias, "pin.json")).toThrow(ComposeFixturePinError);
+  });
+
   test("rejects a source URL prefix for another repository", () => {
     // Given
     const value = {
       ...validPin(),
       sourceUrlPrefix: `https://raw.githubusercontent.com/example/conformance-tests/${ref}/`,
     };
+
+    // When / Then
+    expect(() => parseComposeFixturePin(value, "pin.json")).toThrow(ComposeFixturePinError);
+  });
+
+  test("rejects a source URL prefix with a suffix after the pinned ref", () => {
+    // Given
+    const value = { ...validPin(), sourceUrlPrefix: `${sourceUrlPrefix}unexpected/` };
 
     // When / Then
     expect(() => parseComposeFixturePin(value, "pin.json")).toThrow(ComposeFixturePinError);

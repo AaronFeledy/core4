@@ -1,5 +1,5 @@
 import { readdir } from "node:fs/promises";
-import { isAbsolute, join, relative, sep } from "node:path";
+import { isAbsolute, join, posix, relative, sep } from "node:path";
 
 import { sha256Hex } from "./compose-vendor.ts";
 
@@ -71,6 +71,8 @@ const isSafeRelativePath = (path: string): boolean =>
   !path.startsWith("/") &&
   !path.startsWith("\\") &&
   !/^[a-z]:/iu.test(path) &&
+  !path.includes("\\") &&
+  posix.normalize(path) === path &&
   !path.split(/[\\/]/u).includes("..");
 
 export const composeFixtureSourceUrl = (ref: string, path: string): string => `${RAW_PREFIX}/${ref}/${path}`;
@@ -82,8 +84,7 @@ export const parseComposeFixturePin = (value: unknown, pinPath: string): Compose
     repo !== REPOSITORY ||
     typeof ref !== "string" ||
     !COMMIT_PATTERN.test(ref) ||
-    typeof sourceUrlPrefix !== "string" ||
-    !sourceUrlPrefix.startsWith(`${RAW_PREFIX}/${ref}/`) ||
+    sourceUrlPrefix !== `${RAW_PREFIX}/${ref}/` ||
     license !== LICENSE ||
     !Array.isArray(files)
   ) {
@@ -91,6 +92,7 @@ export const parseComposeFixturePin = (value: unknown, pinPath: string): Compose
   }
 
   const vendoredPaths = new Set<string>();
+  const sourcePaths = new Set<string>();
   const parsedFiles: ComposeFixtureEntry[] = [];
   for (const file of files) {
     if (!isRecord(file)) throw new ComposeFixturePinError(pinPath);
@@ -98,6 +100,7 @@ export const parseComposeFixturePin = (value: unknown, pinPath: string): Compose
     if (
       typeof path !== "string" ||
       !isSafeRelativePath(path) ||
+      sourcePaths.has(path) ||
       typeof vendored !== "string" ||
       !isSafeRelativePath(vendored) ||
       vendoredPaths.has(vendored) ||
@@ -106,6 +109,7 @@ export const parseComposeFixturePin = (value: unknown, pinPath: string): Compose
     ) {
       throw new ComposeFixturePinError(pinPath);
     }
+    sourcePaths.add(path);
     vendoredPaths.add(vendored);
     parsedFiles.push({ path, vendored, sha256 });
   }
