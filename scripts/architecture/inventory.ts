@@ -20,7 +20,10 @@ const WORKSPACE_MANIFESTS = [
   "container-runtime/package.json",
 ] as const;
 const RUNTIME_EXTENSION = /\.(?:ts|tsx|mts|cts)$/;
-const TEST_SOURCE = ".test.";
+// Suffix-anchored on purpose: a mid-name `.test.` (`foo.test.helpers.ts`) is
+// production code and must stay in the inventory.
+const TEST_SOURCE = /\.test\.(?:ts|tsx|mts|cts)$/;
+const IGNORED_DIRECTORIES = new Set(["node_modules", "dist", ".git"]);
 
 const isMissingPath = (error: unknown): boolean =>
   error instanceof Error && "code" in error && error.code === "ENOENT";
@@ -38,6 +41,7 @@ const walkRoot = async (root: string, directory: string): Promise<InventorySnaps
   for (const entry of entries) {
     const absolutePath = join(directory, entry.name);
     if (entry.isDirectory()) {
+      if (IGNORED_DIRECTORIES.has(entry.name)) continue;
       const nested = await walkRoot(root, absolutePath);
       files.push(...nested.files);
       pluginManifests.push(...nested.pluginManifests);
@@ -65,13 +69,13 @@ const matchesSelector = (file: InventoryFile, selector: InventorySelector): bool
       return (
         (path.startsWith("core/src/") || path.startsWith("plugins/")) &&
         path.endsWith(".ts") &&
-        !path.endsWith(".test.ts")
+        !TEST_SOURCE.test(path)
       );
     case "service-lando-services":
       return (
         path.startsWith("plugins/service-lando/src/services/") &&
         path.endsWith(".ts") &&
-        !path.endsWith(".test.ts")
+        !TEST_SOURCE.test(path)
       );
     case "workspace-runtime-sources":
       return (
@@ -80,7 +84,7 @@ const matchesSelector = (file: InventoryFile, selector: InventorySelector): bool
           path.startsWith("container-runtime/src/") ||
           /^plugins\/[^/]+\/src\//.test(path)) &&
         RUNTIME_EXTENSION.test(path) &&
-        !path.includes(TEST_SOURCE)
+        !TEST_SOURCE.test(path)
       );
   }
 };
