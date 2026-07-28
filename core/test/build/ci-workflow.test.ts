@@ -887,7 +887,9 @@ describe("ci workflow", () => {
     );
     expect(providerIntegration).toContain("          pull_image docker.io/library/node:22-alpine");
     expect(providerIntegration).not.toContain("podman system service");
-    expect(providerIntegration).not.toContain("LANDO_TEST_PODMAN_SOCKET");
+    expect(providerIntegration).toContain(
+      '          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"',
+    );
     expect(providerIntegration).not.toContain("/tmp/podman.sock");
     expect(providerIntegration).not.toContain("/tmp/podman-service.pid");
     expect(providerIntegration).toContain("      - name: Install Podman 6 toolchain");
@@ -953,6 +955,9 @@ describe("ci workflow", () => {
     );
     expect(providerIntegration.indexOf("Build local runtime bundle manifest")).toBeLessThan(
       providerIntegration.indexOf("Prepare provider via lando setup"),
+    );
+    expect(providerIntegration.indexOf("LANDO_TEST_PODMAN_SOCKET")).toBeLessThan(
+      providerIntegration.indexOf("bun test plugins/provider-lando/test"),
     );
     expect(providerIntegration.indexOf("Teardown Lando runtime")).toBeGreaterThan(
       providerIntegration.indexOf("bun test plugins/provider-docker/test"),

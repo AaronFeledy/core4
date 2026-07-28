@@ -724,6 +724,7 @@ jobs:
             sleep 1
           done
           test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
+          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Configure Docker socket
         run: |
@@ -1589,6 +1590,7 @@ jobs:
             sleep 1
           done
           test -S "$HOME/.local/share/lando/runtime/run/podman.sock"
+          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Configure Docker socket
         run: |

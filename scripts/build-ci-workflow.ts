@@ -383,6 +383,7 @@ ${renderAssertPodman6Step()}
             sleep 1
           done
           test -S ${landoRuntimeSocketPath}
+          echo "LANDO_TEST_PODMAN_SOCKET=$HOME/.local/share/lando/runtime/run/podman.sock" >> "$GITHUB_ENV"
 
       - name: Configure Docker socket
         run: |
