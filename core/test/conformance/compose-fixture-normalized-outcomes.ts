@@ -4,11 +4,12 @@ import { resolve } from "node:path";
 import type { ServiceConfig, ServicePlan } from "@lando/core/schema";
 import { ServiceName } from "@lando/core/schema";
 
-import {
-  type ComposePlanAssertion,
-  composeServiceDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
+import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
 import type { ComposeDispositionMatch } from "../../src/landofile/compose/rejections.ts";
+import {
+  COMPOSE_FIXTURE_ASSERTIONS,
+  type ComposePlanAssertion,
+} from "./compose-fixture-assertion-metadata.ts";
 import {
   ComposeFixtureOutcomeError,
   type OutcomeContext,
@@ -151,16 +152,17 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
     throw new ComposeFixtureOutcomeError(`Missing plan target for ${root}`);
   const service = context.landofile.services?.[ServiceName.make(match.service)];
   if (service === undefined) throw new ComposeFixtureOutcomeError(`Missing decoded service ${match.service}`);
-  const planAssertion: ComposePlanAssertion | undefined = entry.planAssertion;
-  if (planAssertion === undefined) {
+  const metadata = COMPOSE_FIXTURE_ASSERTIONS[root];
+  if (metadata === undefined) {
     throw new ComposeFixtureOutcomeError(`Missing plan assertion for ${root}`);
   }
+  const planAssertion: ComposePlanAssertion = metadata.assertion;
   requireDecodedSource(
     normalizedSourceValue({
       match,
       service,
       assertion: planAssertion,
-      configTarget: entry.configTarget ?? root,
+      configTarget: metadata.configTarget ?? root,
     }),
     match,
   );
@@ -211,7 +213,7 @@ export const assertNormalizedMatch = (match: ComposeDispositionMatch, context: O
       if (target === undefined) throw new ComposeFixtureOutcomeError(`Empty plan target for ${root}`);
       const produced = valueAt(planService, target);
       requireProducedValue(produced, match, `ServicePlan.${target}`);
-      expect(produced).toEqual(valueAt(service, entry.configTarget ?? root));
+      expect(produced).toEqual(valueAt(service, metadata.configTarget ?? root));
       return true;
     }
     default: {

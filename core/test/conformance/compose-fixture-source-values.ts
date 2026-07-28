@@ -1,7 +1,7 @@
 import type { ServiceConfig } from "@lando/core/schema";
 
-import type { ComposePlanAssertion } from "../../src/landofile/compose/dispositions.ts";
 import type { ComposeDispositionMatch } from "../../src/landofile/compose/rejections.ts";
+import type { ComposePlanAssertion } from "./compose-fixture-assertion-metadata.ts";
 import { ComposeFixtureOutcomeError, valueAt } from "./compose-fixture-outcome-values.ts";
 
 type CanonicalVolume = NonNullable<ServiceConfig["volumes"]>[number];
