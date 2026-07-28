@@ -53,8 +53,12 @@ const fixtures = [
       const bind = mounts.find(
         (mount) => (field(mount, "Destination") ?? field(mount, "Target")) === "/workspace/src",
       );
-      expect(field(bind, "Type")).toBe("bind");
       const bindSource = join(appRoot, "src");
+      const bindSpec = arrayField(hostConfig, "Binds").find(
+        (candidate) => typeof candidate === "string" && candidate.startsWith(`${bindSource}:/workspace/src:`),
+      );
+      expect(bindSpec).toBeDefined();
+      expect(bindSpec).toContain(":ro");
       expect(field(bind, "Source")).toBe(bindSource);
       expect(field(bind, "RW")).toBe(false);
 
