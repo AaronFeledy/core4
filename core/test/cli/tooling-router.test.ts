@@ -22,7 +22,12 @@ const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>):
 const writeFreshCache = async (
   root: string,
   cacheRoot: string,
-  entries: ReadonlyArray<{ readonly id: string; readonly summary: string; readonly hidden: boolean }>,
+  entries: ReadonlyArray<{
+    readonly id: string;
+    readonly summary: string;
+    readonly hidden: boolean;
+    readonly source?: "bun-script";
+  }>,
 ): Promise<void> => {
   const landofile = { name: "router-test" };
   await writeFile(join(root, ".lando.yml"), "name: router-test\n");
@@ -30,6 +35,34 @@ const writeFreshCache = async (
     writeAppCommandCacheStrict({ landofile, entries, cwd: root, cacheRoot, now: () => 100 }),
   );
 };
+
+test("Given a fresh cached Bun script, when resolving it, then it selects the script hot path", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [
+      {
+        id: "app:quality",
+        summary: "Run quality checks",
+        hidden: false,
+        source: "bun-script",
+      },
+    ]);
+
+    // When
+    const route = await Effect.runPromise(
+      resolveToolingRoute({ argv: ["quality", "--fix"], cwd: root, cacheRoot }),
+    );
+
+    // Then
+    expect(route).toEqual({
+      _tag: "bun-script",
+      commandId: "app:quality",
+      name: "quality",
+      argv: ["--fix"],
+      appRoot: root,
+    });
+  });
+});
 
 test("Given a fresh cached app task, when resolving its bare name, then it routes to the canonical task", async () => {
   await withApp(async (root, cacheRoot) => {

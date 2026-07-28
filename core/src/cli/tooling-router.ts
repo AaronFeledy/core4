@@ -30,6 +30,13 @@ export type ToolingRoute =
       readonly commandId: string;
       readonly name: string;
       readonly argv: ReadonlyArray<string>;
+    }
+  | {
+      readonly _tag: "bun-script";
+      readonly commandId: string;
+      readonly name: string;
+      readonly argv: ReadonlyArray<string>;
+      readonly appRoot: string;
     };
 
 export interface ResolveToolingRouteOptions {
@@ -69,7 +76,8 @@ export const resolveToolingRoute = (
         remediation: CACHE_REMEDIATION,
       } as const;
     }
-    if (!cache.entries.some((entry) => entry.id === commandId)) {
+    const entry = cache.entries.find((candidate) => candidate.id === commandId);
+    if (entry === undefined) {
       return {
         _tag: "unknown-tooling",
         commandId,
@@ -79,6 +87,15 @@ export const resolveToolingRoute = (
       } as const;
     }
 
+    if (entry.source === "bun-script") {
+      return {
+        _tag: "bun-script",
+        commandId,
+        name,
+        argv: options.argv.slice(1),
+        appRoot,
+      } as const;
+    }
     return { _tag: "tooling", commandId, name, argv: options.argv.slice(1) } as const;
   });
 
