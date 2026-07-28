@@ -24,7 +24,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
 - Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
-- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:guide-coverage`, `check:guide-drift`, `check:import-cycle`, `check:managed-file-boundary`, `check:package-dag`, `check:probe-boundary`, `check:public-transcripts`, `check:redaction-boundary`, `check:renderer-boundary`, `check:state-store-boundary`, `check:telemetry-inventory`, or `lint:guides`.
+- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:generated-output`, `check:guide-coverage`, `check:guide-drift`, `check:import-cycle`, `check:managed-file-boundary`, `check:package-dag`, `check:probe-boundary`, `check:public-transcripts`, `check:redaction-boundary`, `check:renderer-boundary`, `check:state-store-boundary`, `check:telemetry-inventory`, or `lint:guides`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
 - After adding a new `plugins/*` workspace package, run `bun install` so workspace imports resolve from the repo root.
@@ -52,6 +52,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - Durable atomic, versioned, lockable state belongs in `StateStore` (`core/src/state/**`); plugins use `LandoPluginContext.stateStore`; host/tests override `StateStore` or use `TestStateStore`. Do not hand-roll write-temp+rename+lockfile+version envelopes; `check:state-store-boundary` enforces this.
 - Host/provider-shaped retry/backoff/timeout-to-verdict probing (healthcheck, scanner, doctor, downloader, setup readiness) must build on `@lando/sdk/probe`'s `runProbe`; net-new hand-rolled `Effect.retry`/`Effect.repeat`/`Effect.schedule`/`Schedule.*` loops in `core/src/**` or `plugins/**` are blocked by `check:probe-boundary` (allowlist the advisory-lock loop in `core/src/state/lock.ts`). Consumers redact `ProbeResult.lastError` through `RedactionService` before it reaches an event, transcript, or readiness summary.
 - CLI commands resolving a user app should go through `loadUserLandofile(...)` from `core/src/cli/app-resolution.ts`, not raw `LandofileService.discover`.
+- All boundary gates (`check:*-boundary`, `check:generated-output`, etc.) are thin shims over the shared declarative substrate in `scripts/boundary/` (one walk/parse/traversal engine); to add or modify a boundary, edit or add a rule file (`scripts/boundary/rules/<id>.ts`) declaring scope, carve-outs, and a detection hook, never a new bespoke scanner. Gate names and script paths are the public contract and stay stable; `bun run scripts/check-boundaries.ts --all` runs every boundary rule in one pass for the fast local loop.
 
 ## Platform and Runtime Gotchas
 
