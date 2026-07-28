@@ -1,0 +1,17 @@
+version: '3.7'
+
+services:
+  entry:
+    image: composespec/conformance-tests-server
+    networks:
+      - entrynetwork
+    ports:
+      - 8080:8080
+  target:
+    image: composespec/conformance-tests-server
+    networks:
+      - targetnetwork
+
+networks:
+  entrynetwork:
+  targetnetwork:

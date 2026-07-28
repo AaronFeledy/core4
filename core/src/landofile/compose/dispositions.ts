@@ -4,11 +4,12 @@ export interface ComposeDispositionEntry {
   readonly disposition: ComposeDisposition;
   readonly rationale: string;
   readonly remediation?: string;
+  readonly planTarget?: string;
 }
 
 export class ComposeDispositionMatrixError extends Error {
-  constructor() {
-    super("Compose service disposition paths must be unique");
+  constructor(message = "Compose service disposition paths must be unique") {
+    super(message);
     this.name = "ComposeDispositionMatrixError";
   }
 }
@@ -59,51 +60,53 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
   };
 };
 
+type NormalizedServicePath = readonly [path: string, planTarget?: string];
+
 const normalizedServicePaths = [
-  "build",
-  "build.args",
-  "build.args.*",
-  "build.context",
-  "build.dockerfile",
-  "build.dockerfile_inline",
-  "build.target",
-  "command",
-  "depends_on",
-  "depends_on.*",
-  "depends_on.*.condition",
-  "depends_on.*.required",
-  "entrypoint",
-  "env_file",
-  "environment",
-  "environment.*",
-  "expose",
-  "healthcheck",
-  "healthcheck.disable",
-  "healthcheck.interval",
-  "healthcheck.retries",
-  "healthcheck.start_period",
-  "healthcheck.test",
-  "healthcheck.timeout",
-  "image",
-  "ports",
-  "ports.app_protocol",
-  "ports.host_ip",
-  "ports.name",
-  "ports.protocol",
-  "ports.published",
-  "ports.target",
-  "user",
-  "volumes",
-  "volumes.bind",
-  "volumes.bind.create_host_path",
-  "volumes.read_only",
-  "volumes.source",
-  "volumes.target",
-  "volumes.type",
-  "volumes.volume",
-  "volumes.volume.subpath",
-  "working_dir",
-] as const;
+  ["build", "build"],
+  ["build.args"],
+  ["build.args.*"],
+  ["build.context"],
+  ["build.dockerfile"],
+  ["build.dockerfile_inline"],
+  ["build.target"],
+  ["command", "command"],
+  ["depends_on", "dependsOn"],
+  ["depends_on.*"],
+  ["depends_on.*.condition"],
+  ["depends_on.*.required"],
+  ["entrypoint", "entrypoint"],
+  ["env_file", "envFile"],
+  ["environment", "environment"],
+  ["environment.*"],
+  ["expose", "expose"],
+  ["healthcheck", "healthcheck"],
+  ["healthcheck.disable"],
+  ["healthcheck.interval"],
+  ["healthcheck.retries"],
+  ["healthcheck.start_period"],
+  ["healthcheck.test"],
+  ["healthcheck.timeout"],
+  ["image", "image"],
+  ["ports", "ports"],
+  ["ports.app_protocol"],
+  ["ports.host_ip"],
+  ["ports.name"],
+  ["ports.protocol"],
+  ["ports.published"],
+  ["ports.target"],
+  ["user", "user"],
+  ["volumes", "volumes"],
+  ["volumes.bind"],
+  ["volumes.bind.create_host_path"],
+  ["volumes.read_only"],
+  ["volumes.source"],
+  ["volumes.target"],
+  ["volumes.type"],
+  ["volumes.volume"],
+  ["volumes.volume.subpath"],
+  ["working_dir", "workingDirectory"],
+] as const satisfies ReadonlyArray<NormalizedServicePath>;
 
 const preservedServicePaths = [
   "cap_add",
@@ -431,7 +434,10 @@ const rejectedServicePaths = [
 ] as const;
 
 const serviceEntries = [
-  ...normalizedServicePaths.map((path) => [path, NORMALIZED_ENTRY] as const),
+  ...normalizedServicePaths.map(
+    ([path, planTarget]) =>
+      [path, planTarget === undefined ? NORMALIZED_ENTRY : { ...NORMALIZED_ENTRY, planTarget }] as const,
+  ),
   ...preservedServicePaths.map((path) => [path, PRESERVED_ENTRY] as const),
   ...rejectedServicePaths.map((path) => [path, rejectedEntry(path)] as const),
 ];
@@ -441,6 +447,18 @@ export const composeServiceDispositions: Readonly<Record<string, ComposeDisposit
 
 if (Object.keys(composeServiceDispositions).length !== serviceEntries.length) {
   throw new ComposeDispositionMatrixError();
+}
+
+const missingPlanTarget = Object.entries(composeServiceDispositions).find(
+  ([path, entry]) =>
+    !path.includes(".") &&
+    entry.disposition === "normalized" &&
+    (entry.planTarget === undefined || entry.planTarget.length === 0),
+);
+if (missingPlanTarget !== undefined) {
+  throw new ComposeDispositionMatrixError(
+    `Normalized Compose service disposition ${missingPlanTarget[0]} must include a planTarget`,
+  );
 }
 
 export const composeTopLevelDispositions: Readonly<Record<string, ComposeDispositionEntry>> = {

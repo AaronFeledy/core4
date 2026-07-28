@@ -22,6 +22,7 @@ import { Effect } from "effect";
 
 import type { LandofileParseError } from "../errors/index.ts";
 import { LandofileParseError as LandofileParseErrorClass } from "../errors/index.ts";
+import { parseInlineObject } from "./inline-object.ts";
 
 export type LoadHint = "string" | "yaml" | "json" | "binary";
 
@@ -161,11 +162,11 @@ const splitInlineArray = (value: string): ReadonlyArray<string> => {
       quote = char;
       continue;
     }
-    if (char === "[") {
+    if (char === "[" || char === "{") {
       depth += 1;
       continue;
     }
-    if (char === "]") {
+    if (char === "]" || char === "}") {
       depth -= 1;
       continue;
     }
@@ -232,11 +233,14 @@ const parseScalar = (
     return parseInlineArray(trimmed, filePath, line, depth + 1, maxDepth);
   }
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-    // The flow-empty map `{}` is the only inline object the Landofile emitter
-    // produces (for empty records, which have no block sequence-item form).
-    // Round-trip it while populated inline objects stay rejected.
-    if (trimmed.slice(1, -1).trim() === "") return {};
-    throw parseError(filePath, `Inline objects are not supported in Landofiles at line ${line}`, line);
+    assertDepth(filePath, line, depth + 1, maxDepth);
+    return parseInlineObject(trimmed, {
+      split: splitInlineArray,
+      parse: (part) => parseScalar(part, filePath, line, depth + 1, maxDepth),
+      fail: (reason) => {
+        throw parseError(filePath, `${reason} at line ${line}`, line);
+      },
+    });
   }
   return trimmed;
 };

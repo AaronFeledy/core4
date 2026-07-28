@@ -1,0 +1,24 @@
+services:
+  database:
+    image: postgres:17
+    extra_hosts:
+      - host.internal=host-gateway
+    cap_add:
+      - IPC_LOCK
+    tmpfs:
+      - /run:size=64m,mode=1770
+    shm_size: 256m
+    restart: unless-stopped
+    ulimits:
+      nofile:
+        soft: 4096
+        hard: 8192
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1g
+          pids: 256
+        reservations:
+          cpus: "0.5"
+          memory: 256m

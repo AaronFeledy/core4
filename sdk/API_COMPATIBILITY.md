@@ -66,6 +66,7 @@
 - `@lando/sdk/schema` additively accepts the Compose `healthcheck` authoring shape on `ServiceConfig.healthcheck`: shell strings and `CMD`/`CMD-SHELL`/`NONE` test arrays canonicalize into the existing command/none model; `interval`, `timeout`, and `start_period` duration strings canonicalize to seconds; decimal-string `retries` and boolean-string `disable` values canonicalize to their typed forms. Existing Lando healthcheck fields retain family-level precedence when both shapes appear. Decoding preserves raw Compose `start_interval` as canonical `startInterval`; encoding that canonical field emits `start_interval`. Planning preserves it under `ServicePlan.extensions.compose.healthcheck.start_interval`; it does not widen `HealthcheckInput` or `HealthcheckPlan`, or alter `HealthcheckRunner`.
 - `ServiceConfig.composeBuild` is removed pre-release with no compatibility shim. `ServiceConfig.build` is now shape-discriminated between the Lando build-script family (`artifact`, `app`) and the Compose image-build family (`context`, `dockerfile`, `dockerfile_inline`, `args`, `target`); it accepts the Compose bare-string short form and the `args` `KEY=value` list form, defaults `context` to `"."`, and rejects blocks that mix the two families. The canonical decoded form retains `dockerfileInline`, which encodes back to `dockerfile_inline`. `ArtifactBuildSpec` additively gains optional `specInline`, carrying Compose `dockerfile_inline` into the provider-neutral artifact model; the bundled container providers realize it by injecting a Lando-owned Dockerfile into the packed build context, and it participates in the artifact build key. Compose builds normalize into `ServicePlan.artifact` in the planner for every service type, so the existing `artifactBuild` provider-capability check applies; `build.artifact` scripts now emit artifact-phase build steps.
 - `@lando/sdk/schema` additively exports the Compose per-container runtime knob field schemas used by `ServiceConfig` preservation (`ComposeBooleanOrStringField`, `ComposeByteSizeField`, `ComposeCapAddField`, `ComposeCapDropField`, `ComposeDeploy`, `ComposeDeployField`, `ComposeDeployResources`, `ComposeDeploymentDevice`, `ComposeDevice`, `ComposeDevicesField`, `ComposeDiscreteResourceSpec`, `ComposeDnsField`, `ComposeDnsOptField`, `ComposeDnsSearchField`, `ComposeDurationSecondsField`, `ComposeExtraHostsField`, `ComposeGenericResource`, `ComposeGpuRequest`, `ComposeGpusField`, `ComposeGroupAddField`, `ComposeLogging`, `ComposePullPolicyField`, `ComposeResourceLimits`, `ComposeResourceReservations`, `ComposeRestartField`, `ComposeScalarMap`, `ComposeScalarMapField`, `ComposeSecurityOptField`, `ComposeServiceKnobFields`, `ComposeServiceKnobs`, `ComposeShmSizeField`, `ComposeStopGracePeriodField`, `ComposeStringListField`, `ComposeSysctlsField`, `ComposeTmpfsField`, `ComposeUlimit`, `ComposeUlimitsField`). These are additive runtime schema exports alongside the existing `ComposeServiceKnobKey` / `ComposeKnobCapabilities` surface; they register no new JSON Schema name.
+- `@lando/sdk/schema` additively exports `ComposeServiceNetworks`, `ComposeServiceConfigOrSecret`, `ComposeServiceProfiles`, `ComposeSupportedSubsetFields`, and `ServiceConfigBase`; `ServiceConfig` additively accepts typed Compose `networks`, `configs`, `secrets`, and `profiles` service fields plus service-level `x-*` values. Short and long upstream forms remain lossless under their Compose spellings in `ServicePlan.extensions.compose`; these fields require only `composeSpec: native` and do not widen `ComposeServiceKnobKey` or require `composeKnobs.supported` entries.
 - `@lando/sdk/services` additively exports the `AppPlanSanitizer` service tag (`sanitizeForPersistence(plan)`) and the `LogFileHelperAssets` service tag (`payloads`) so plugin provider factories can depend on plan redaction and bundled log-helper asset bytes without reaching into core internals.
 - `@lando/sdk/plugins` additively exports the `LandoPluginModule` descriptor types and `definePlugin` helper for packaging a plugin module (manifest, optional contribution maps, optional host-service factories). `PluginStateStore` additively gains `withLock(key, body)` so plugin durable state can take an exclusive lock around a critical section; existing `open` callers are unchanged.
 - `RendererContribution` additively gains optional `loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>` and the type-only `InteractivePromptDriver` (`readRaw`) so a renderer plugin can supply a lazy interactive prompt driver without widening the required contribution shape. `@lando/sdk/renderer` re-exports the shared plain/json/verbose formatters (`formatDurationSuffix`, `formatPlainEvent`, `renderPlainLine`, `renderJsonLine`, `renderVerboseLine`, and the `isRenderable*` guards) from `format.ts`; prior import paths on `@lando/sdk/renderer` continue to resolve.
@@ -97,6 +98,11 @@
 - `COMPOSE_EXTENSION_TOP_LEVEL_PATTERN`
 - `COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY`
 - `COMPOSE_TOP_LEVEL_KEYS`
+- `ComposeServiceConfigOrSecret`
+- `ComposeServiceKnobFields`
+- `ComposeServiceNetworks`
+- `ComposeServiceProfiles`
+- `ComposeSupportedSubsetFields`
 - `ComposeSecretConfig`
 - `ConfigLintResult`
 - `ConfigLintViolation`
@@ -269,6 +275,7 @@
 - `RunProps`
 - `ScenarioProps`
 - `ServiceConfig`
+- `ServiceConfigBase`
 - `ServiceConfigInput`
 - `ServiceDependency`
 - `ServiceDependencyCondition`

@@ -30,6 +30,10 @@ Public Lando schema contract for Service Config.
 | `environment` | No | `object`, `array` | — | — | — | — | — |
 | `envFile` | No | `string`, `array` | One or more env-file paths (string or list) whose KEY=value lines seed the service environment. | — | — | — | — |
 | `labels` | No | `object`, `array` | Service labels as a map or a Compose-style KEY=value list; canonicalized to a map, with null and bare entries becoming empty strings. | — | — | — | — |
+| `networks` | No | — | Networks joined by this service, preserving Compose short-list or long-map syntax. | — | — | — | — |
+| `configs` | No | `array` | Compose configs granted to this service as names or long mount objects. | — | — | — | — |
+| `secrets` | No | `array` | Compose secrets granted to this service as names or long mount objects. | — | — | — | — |
+| `profiles` | No | `array` | Compose profiles that activate this service. | — | — | — | — |
 | `restart` | No | `string` | Container restart policy: no, always, on-failure, or unless-stopped. | — | `no`, `always`, `on-failure`, `unless-stopped` | — | — |
 | `cap_add` | No | `string`, `array` | Linux capabilities added to the container; a scalar canonicalizes to a list. | — | — | — | — |
 | `cap_drop` | No | `string`, `array` | Linux capabilities removed from the container; a scalar canonicalizes to a list. | — | — | — | — |
@@ -67,3 +71,9 @@ Public Lando schema contract for Service Config.
 | `hostnames` | No | `array` | — | — | — | — | — |
 | `dependsOn` | No | `array`, `object` | — | — | — | — | — |
 | `providers` | No | `object` | — | — | — | — | — |
+
+## Schema details
+
+| Keys | Values |
+| --- | --- |
+| patterned `string` | `unknown` |

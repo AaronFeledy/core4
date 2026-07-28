@@ -1,0 +1,4 @@
+services:
+  legacy:
+    image: example/legacy:1.0
+    container_name: fixed-legacy-name

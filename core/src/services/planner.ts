@@ -77,6 +77,11 @@ import { type AppFeatureServiceDraft, type ComposeAppFeature, composeAppFeatures
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
+import {
+  collectComposeNativeFields,
+  findUnsupportedComposeNativeField,
+  mergeComposeExtension,
+} from "./compose-extension.ts";
 import { collectComposeKnobs, findUnsupportedComposeKnob, mergeComposeKnobs } from "./compose-knobs.ts";
 import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
@@ -252,6 +257,26 @@ const assertComposeKnobsSupported = (
       capability: "composeSpec",
       providerId: String(providerId),
       remediation: `Remove ${unsupported.key} from service ${unsupported.service}, choose a provider that declares composeKnobs support for ${unsupported.key}, or move the intent under providers.<id>.`,
+    }),
+  );
+};
+
+const assertComposeNativeFieldsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: AppPlan["services"],
+): Effect.Effect<void, CapabilityError> => {
+  const unsupported = findUnsupportedComposeNativeField(collectComposeNativeFields(services), capabilities);
+  if (unsupported === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `Service ${unsupported.service} uses Compose field ${unsupported.key}, which provider ${String(providerId)} does not support.`,
+      service: unsupported.service,
+      key: unsupported.key,
+      feature: `compose field ${unsupported.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove ${unsupported.key} from service ${unsupported.service}, choose a provider that declares composeSpec: native, or move the intent under providers.<id>.`,
     }),
   );
 };
@@ -790,49 +815,6 @@ const normalizeBuildScripts = (value: string | ReadonlyArray<string> | undefined
   return typeof value === "string" ? [value] : value;
 };
 
-const mergeComposeExtension = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
-  const startInterval = service.healthcheck?.startInterval;
-  const hasDependencyRestart =
-    service.dependsOn?.some((dependency) => dependency.restart !== undefined) ?? false;
-  if (service.labels === undefined && startInterval === undefined && !hasDependencyRestart)
-    return servicePlan;
-
-  const composeExtension = servicePlan.extensions.compose;
-  const compose = isRecord(composeExtension) ? { ...composeExtension } : {};
-  if (service.labels !== undefined) {
-    compose.labels = {
-      ...(isRecord(compose.labels) ? compose.labels : {}),
-      ...service.labels,
-    };
-  }
-  if (startInterval !== undefined) {
-    compose.healthcheck = {
-      ...(isRecord(compose.healthcheck) ? compose.healthcheck : {}),
-      start_interval: startInterval,
-    };
-  }
-  if (hasDependencyRestart) {
-    const dependsOn = isRecord(compose.depends_on) ? { ...compose.depends_on } : {};
-    for (const dependency of service.dependsOn ?? []) {
-      if (dependency.restart === undefined) continue;
-      const existing = dependsOn[dependency.service];
-      dependsOn[dependency.service] = {
-        ...(isRecord(existing) ? existing : {}),
-        restart: dependency.restart,
-      };
-    }
-    compose.depends_on = dependsOn;
-  }
-
-  return {
-    ...servicePlan,
-    extensions: {
-      ...servicePlan.extensions,
-      compose,
-    },
-  };
-};
-
 const serviceFeatureExtension = (
   extensions: ServicePlan["extensions"],
 ): Record<string, unknown> | undefined => {
@@ -1228,6 +1210,7 @@ const planApp = (
       );
       if (cached !== null) {
         yield* validateServiceDependencies(appRoot, cached.services);
+        yield* assertComposeNativeFieldsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
         return cached;
       }
@@ -1622,6 +1605,7 @@ const planApp = (
           : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
       })(),
     });
+    yield* assertComposeNativeFieldsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     if (
       cacheService !== undefined &&

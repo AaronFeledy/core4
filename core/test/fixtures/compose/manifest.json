@@ -1,0 +1,16 @@
+{
+  "corpus/depends-on-conditions.compose.yaml": [],
+  "corpus/environment-files-labels.compose.yaml": [],
+  "corpus/healthcheck.compose.yaml": [],
+  "corpus/long-form-mounts-ports.compose.yaml": [],
+  "corpus/rejected-container-name.compose.yaml": ["container_name"],
+  "corpus/runtime-knobs.compose.yaml": [],
+  "upstream/different_networks.compose.yaml": [],
+  "upstream/scaling.compose.yaml": ["deploy.replicas"],
+  "upstream/simple_configfile.compose.yaml": [],
+  "upstream/simple_lifecycle.compose.yaml": [],
+  "upstream/simple_network.compose.yaml": [],
+  "upstream/simple_secretfile.compose.yaml": [],
+  "upstream/simple_volume.compose.yaml": [],
+  "upstream/udp_port.compose.yaml": ["ports.mode"]
+}
