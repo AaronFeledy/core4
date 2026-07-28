@@ -32,5 +32,20 @@ export const ALL_RULE_IDS: ReadonlyArray<ArchitectureRuleId> = RULES.map((rule) 
 export const isArchitectureRuleId = (value: string): value is ArchitectureRuleId =>
   ALL_RULE_IDS.some((ruleId) => ruleId === value);
 
-export const getRules = (ruleIds?: ReadonlyArray<ArchitectureRuleId>): ReadonlyArray<Rule> =>
-  ruleIds?.map((ruleId) => RULE_BY_ID.get(ruleId)).filter((rule) => rule !== undefined) ?? RULES;
+export const validRuleIdsMessage = (): string => `Valid rule ids: ${ALL_RULE_IDS.join(", ")}`;
+
+export const getRules = (ruleIds?: ReadonlyArray<ArchitectureRuleId>): ReadonlyArray<Rule> => {
+  if (ruleIds === undefined) return RULES;
+  if (ruleIds.length === 0) {
+    throw new TypeError(
+      `Architecture rule selection is empty; omit it to run every rule.\n${validRuleIdsMessage()}`,
+    );
+  }
+  return ruleIds.map((ruleId) => {
+    const rule = RULE_BY_ID.get(ruleId);
+    if (rule === undefined) {
+      throw new TypeError(`Unknown architecture rule: ${ruleId}\n${validRuleIdsMessage()}`);
+    }
+    return rule;
+  });
+};

@@ -30,6 +30,9 @@ export const runArchitectureChecks: RunArchitectureChecks = async (options) => {
   const sourceTexts = new Map<string, Promise<string>>();
   const scannedFiles = new Map<string, InventoryFile>();
   const rules = options.rules ?? getRules(options.ruleIds);
+  if (rules.length === 0) {
+    throw new TypeError("Architecture run selected no rules; a run with nothing to check cannot pass.");
+  }
 
   const sourceText = (file: InventoryFile): Promise<string> => {
     const cached = sourceTexts.get(file.absolutePath);

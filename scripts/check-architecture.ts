@@ -2,7 +2,7 @@
 import { resolve } from "node:path";
 
 import { formatHumanReport, formatJsonReport } from "./architecture/format.ts";
-import { ALL_RULE_IDS, getRules, isArchitectureRuleId } from "./architecture/registry.ts";
+import { getRules, isArchitectureRuleId, validRuleIdsMessage } from "./architecture/registry.ts";
 import { runArchitectureChecks } from "./architecture/runner.ts";
 import type { ArchitectureRuleId, RunOptions } from "./architecture/types.ts";
 
@@ -15,8 +15,6 @@ interface CliOptions {
 type ParseResult =
   | { readonly kind: "valid"; readonly options: CliOptions }
   | { readonly kind: "invalid"; readonly message: string };
-
-const validRuleMessage = (): string => `Valid rule ids: ${ALL_RULE_IDS.join(", ")}`;
 
 const parseArgs = (args: ReadonlyArray<string>): ParseResult => {
   const ruleIds: ArchitectureRuleId[] = [];
@@ -36,13 +34,13 @@ const parseArgs = (args: ReadonlyArray<string>): ParseResult => {
       if (!isArchitectureRuleId(ruleId)) {
         return {
           kind: "invalid",
-          message: `Unknown architecture rule: ${ruleId}\n${validRuleMessage()}\n`,
+          message: `Unknown architecture rule: ${ruleId}\n${validRuleIdsMessage()}\n`,
         };
       }
       ruleIds.push(ruleId);
       continue;
     }
-    return { kind: "invalid", message: `Unknown argument: ${argument}\n${validRuleMessage()}\n` };
+    return { kind: "invalid", message: `Unknown argument: ${argument}\n${validRuleIdsMessage()}\n` };
   }
   return { kind: "valid", options: { root, ruleIds, json } };
 };
