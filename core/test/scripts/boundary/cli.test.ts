@@ -53,7 +53,7 @@ describe("check-boundaries CLI", () => {
     expect(result).toEqual({ exitCode: 0, stdout: `${expected.join("\n")}\n`, stderr: "" });
   });
 
-  test("runs all stub rules successfully against a clean fixture", async () => {
+  test("runs all rules successfully against a clean fixture", async () => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "boundary-cli-"));
     await Promise.all([

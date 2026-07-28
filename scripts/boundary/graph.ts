@@ -61,7 +61,11 @@ export const readWorkspacePackage = async (
 };
 
 export const collectManifests = async (root: string): Promise<readonly string[]> => {
-  const manifests = ["core/package.json", "sdk/package.json", "container-runtime/package.json"];
+  const fixed = ["core/package.json", "sdk/package.json", "container-runtime/package.json"];
+  const manifests: string[] = [];
+  for (const path of fixed) {
+    if (await Bun.file(resolve(root, path)).exists()) manifests.push(path);
+  }
   for await (const path of PLUGIN_MANIFEST_GLOB.scan({ cwd: root, onlyFiles: true })) {
     manifests.push(path);
   }
