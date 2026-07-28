@@ -46,6 +46,45 @@ describe("check-libpod-prefix", () => {
     expect(result.ok).toBe(false);
   });
 
+  test("flags a prefix composed from const bindings and a template", async () => {
+    // Given
+    const rel = await writeSrc(
+      "composed.ts",
+      [
+        'const major = "/v5.";',
+        'const minor = "12";',
+        'const patch = "3";',
+        "export const apiPrefix = `${major}${minor}.${patch}`;",
+        "",
+      ].join("\n"),
+    );
+
+    // When
+    const result = await checkLibpodPrefix({ root });
+
+    // Then
+    expect(result.ok).toBe(false);
+    expect(result.offenders).toContainEqual({ file: rel, line: 4, match: "/v5.12.3" });
+  });
+
+  test("flags prefixes in line and block comments", async () => {
+    // Given
+    const rel = await writeSrc(
+      "comments.ts",
+      "// stale prefix: /v5.1.2\n/* stale prefix:\n * /v5.3.4\n */\nexport const current = '/v6.0.0';\n",
+    );
+
+    // When
+    const result = await checkLibpodPrefix({ root });
+
+    // Then
+    expect(result.ok).toBe(false);
+    expect(result.offenders).toEqual([
+      { file: rel, line: 1, match: "/v5.1.2" },
+      { file: rel, line: 3, match: "/v5.3.4" },
+    ]);
+  });
+
   test("passes when production source uses the /v6.0.0 prefix", async () => {
     await writeSrc(
       "ok.ts",
