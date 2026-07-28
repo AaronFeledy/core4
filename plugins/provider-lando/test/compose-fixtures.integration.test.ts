@@ -50,7 +50,9 @@ const fixtures = [
       ]);
 
       const mounts = arrayField(inspect, "Mounts");
-      const bind = mounts.find((mount) => field(mount, "Destination") === "/workspace/src");
+      const bind = mounts.find(
+        (mount) => (field(mount, "Destination") ?? field(mount, "Target")) === "/workspace/src",
+      );
       expect(field(bind, "Type")).toBe("bind");
       expect(field(bind, "Source")).toBe(join(appRoot, "src"));
       expect(field(bind, "RW")).toBe(false);
@@ -86,7 +88,7 @@ const fixtures = [
     service: "worker",
     assertInspect: (inspect: unknown) => {
       const config = field(inspect, "Config");
-      expect(field(config, "Image")).toBe("node:22-alpine");
+      expect(field(config, "Image")).toBe("docker.io/library/node:22-alpine");
       expect(field(config, "Cmd")).toEqual(["node", "-e", "setInterval(() => {}, 1000)"]);
       expect(JSON.stringify(inspect)).not.toContain("x-lando-note");
       expect(JSON.stringify(inspect)).not.toContain("x-vendor");
@@ -136,7 +138,7 @@ const rejectedFixtures = [
 
 const makeRunnableLandofile = (name: string, fixture: string): string =>
   `name: ${name}\nprovider: lando\n${fixture.replace(
-    /^(\s*)image:.*$/mu,
+    /^(\s*)image:.*$/gmu,
     '$1image: node:22-alpine\n$1command: ["node", "-e", "setInterval(() => {}, 1000)"]',
   )}`;
 
