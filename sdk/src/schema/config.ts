@@ -18,12 +18,33 @@ export const NetworkProxyConfig = Schema.Struct({
   http: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
   https: Schema.optional(Schema.Union(Schema.String, Schema.Null)),
   noProxy: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+  /**
+   * When true, write the resolved proxy env (`HTTP_PROXY` / `HTTPS_PROXY` /
+   * `NO_PROXY`) into `type: lando` service env layers. Default false — proxy
+   * URLs may embed credentials. Per-service override: `security.inheritNetworkProxy`.
+   * SPEC: §6.8, §7.5, §10.3.1.
+   */
+  injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+    description:
+      "When true, write resolved HTTP(S)_PROXY / NO_PROXY into type: lando services (default false).",
+  }),
 });
 export type NetworkProxyConfig = typeof NetworkProxyConfig.Type;
 
 export const NetworkCaConfig = Schema.Struct({
   trustHost: Schema.optionalWith(Schema.Boolean, { default: () => true }),
   certs: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
+  /**
+   * When true (default), install `network.ca.certs` into every `type: lando`
+   * service trust store and runtime CA env (`NODE_EXTRA_CA_CERTS`, etc.) so
+   * in-container tools work behind corporate TLS interception without
+   * per-project Dockerfiles or Landofile edits. Per-service override:
+   * `security.inheritNetworkCa`. SPEC: §6.8, §7.5, §10.3.1.
+   */
+  injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
+    description:
+      "When true (default), install network.ca.certs into type: lando service trust stores.",
+  }),
 });
 export type NetworkCaConfig = typeof NetworkCaConfig.Type;
 

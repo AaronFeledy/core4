@@ -11,6 +11,10 @@
           },
           "type": "array"
         },
+        "injectIntoServices": {
+          "description": "When true (default), install network.ca.certs into type: lando service trust stores.",
+          "type": "boolean"
+        },
         "trustHost": {
           "type": "boolean"
         }
@@ -40,6 +44,10 @@
               "type": "null"
             }
           ]
+        },
+        "injectIntoServices": {
+          "description": "When true, write resolved HTTP(S)_PROXY / NO_PROXY into type: lando services (default false).",
+          "type": "boolean"
         },
         "noProxy": {
           "items": {

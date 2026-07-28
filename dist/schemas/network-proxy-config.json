@@ -22,6 +22,10 @@
         }
       ]
     },
+    "injectIntoServices": {
+      "description": "When true, write resolved HTTP(S)_PROXY / NO_PROXY into type: lando services (default false).",
+      "type": "boolean"
+    },
     "noProxy": {
       "items": {
         "type": "string"
