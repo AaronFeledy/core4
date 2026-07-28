@@ -88,8 +88,6 @@ import {
 import { setupSpec } from "../oclif/commands/meta/setup.ts";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary.ts";
 
-export { routeDynamicTooling, runDynamicTooling } from "../dynamic-tooling.ts";
-
 export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
     runCompiledCommand(

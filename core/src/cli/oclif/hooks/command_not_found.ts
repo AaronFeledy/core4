@@ -1,11 +1,11 @@
 import type { Hook } from "@oclif/core";
 
-import { routeDynamicTooling } from "../../cli-adapters/app-lifecycle.ts";
 import {
   setActiveDeprecationWarnings,
   setActiveRendererMode,
   setActiveResultFormat,
 } from "../../compiled-runtime.ts";
+import { routeDynamicTooling } from "../../dynamic-tooling.ts";
 import { resolveResultFormat } from "../../format-flags.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../renderer-boundary.ts";
 
