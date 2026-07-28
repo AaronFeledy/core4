@@ -1,23 +1,17 @@
 # Ralph Progress Log — Service Trust
 
 Branch: docs/service-trust-prd
-Source PRDs: prd-service-trust-00-index.md, prd-service-trust-01-*.md (US-483..489), prd-service-trust-02-*.md (US-490..496)
-Work plan: .omo/plans/host-global-ca-proxy-inject.md (todos 1–14)
-Spec SoT: §6.8–§6.9, §7.3/§7.5–§7.6, §10.3
-
-## Conventions
-
-- Spec > PRD > progress > plan.
-- passes:true only with green tests + guide gates for user-facing stories.
+PRDs: 00 index, 01 inject (US-483..489), 02 certs/boot/doctor/Traefik (US-490..498)
+Plan: .omo/plans/host-global-ca-proxy-inject.md (todos 1–16)
+Spec SoT: §6.8–§6.9, §7.5–§7.6, §10.2–§10.3, §18/§20.10
 
 ## Status
 
-- Spec inject contract + SDK inject flags: landed on main earlier.
-- PRD/plan expanded to include leaf certs, lando.boot, language CA env, doctor, and mandatory guide coverage (this branch).
+- Expanded to include Traefik edge TLS (US-497..498). SSH agent explicitly out of scope (not CertificateAuthority TLS).
 - Implementation: not started.
 
-## Deferred outside this set
+## Out of scope
 
-- DDEV-style global Dockerfile dirs (non-goal).
-- Java service type if absent from tree.
-- Unrelated Traefik/SSH feature work.
+- DDEV global Dockerfiles
+- Full lando.ssh-agent / SshService Live
+- ACME/public CA for Traefik

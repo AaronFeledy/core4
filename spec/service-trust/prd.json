@@ -1,7 +1,7 @@
 {
-  "project": "Lando v4 Service Trust (corporate CA/proxy inject, leaf certs, boot, doctor, guides)",
+  "project": "Lando v4 Service Trust (corporate inject, leaf certs, boot, doctor, Traefik TLS, guides)",
   "branchName": "docs/service-trust-prd",
-  "description": "US-483..US-489 corporate inject (PRD-01). US-490..US-496 leaf certs/mkcert, lando.boot, language CA env, doctor, guide pack (PRD-02). Every user-facing story requires executable guide coverage and guide gates. Spec is source of truth. Non-goals: DDEV global Dockerfiles.",
+  "description": "US-483..US-489 corporate inject (PRD-01). US-490..US-496 leaf certs/mkcert, lando.boot, language CA env, doctor, guide pack (PRD-02). US-497..US-498 Traefik edge TLS from CertificateAuthority + proxy HTTPS guides/doctor. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates. Spec is source of truth.",
   "userStories": [
     {
       "id": "US-483",
@@ -267,7 +267,8 @@
       "acceptanceCriteria": [
         "docs/guides/config/corporate-network-trust.mdx complete for inject path.",
         "certificates-mkcert.mdx complete for leaf certs user path.",
-        "Boot, doctor, language links satisfied from US-493..495.",
+        "proxy-traefik.mdx complete for HTTPS/certs user path.",
+        "Boot, doctor, language, proxy HTTPS links satisfied from US-493..498.",
         "INDEX updated if required by repo convention.",
         "bun run lint:guides passes.",
         "bun run check:guide-coverage passes.",
@@ -279,7 +280,45 @@
       ],
       "priority": 13,
       "passes": false,
-      "notes": "PRD-02; plan todo 14"
+      "notes": "PRD-02; plan todo 14; includes Traefik guide"
+    },
+    {
+      "id": "US-497",
+      "title": "Traefik edge TLS certificates from CertificateAuthority",
+      "description": "As a user opening https://*.lndo.site routes, Traefik terminates TLS with CA-issued certificates, not empty tls: {}.",
+      "acceptanceCriteria": [
+        "Proxy setup/applyRoutes ensures default proxy cert via CA issueCert covering domain wildcards and traefik.lndo.site; SAN coverage for HTTPS route hostnames tested.",
+        "Cert/key mounted into Traefik global service; config references file paths (not bare tls: {}).",
+        "Unit tests with fake CA + filesystem; proxy contract tests updated.",
+        "Depends on US-491; service leaf certs (US-492) remain separate.",
+        "Guide: proxy-traefik.mdx documents HTTPS cert dependency on lando setup/mkcert.",
+        "Executable guide coverage updated (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496/US-498).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "PRD-02; plan todo 15. Origin: plugins/proxy-traefik tls: {} gap; spec 18/10.2-10.3."
+    },
+    {
+      "id": "US-498",
+      "title": "Doctor proxy TLS readiness + proxy HTTPS guide pack",
+      "description": "As a user running doctor or reading docs, missing proxy TLS material is visible with remediation; proxy HTTPS guide is complete.",
+      "acceptanceCriteria": [
+        "Doctor warns/degrades when HTTPS expected but proxy cert files missing; remediation cites lando setup/CA.",
+        "Unit/scenario test for degraded path; no secret leakage.",
+        "Guide pack: proxy-traefik HTTPS complete; cross-links from certificates-mkcert and corporate-network-trust.",
+        "Documents that SSH agent forwarding is unrelated to this TLS path.",
+        "Guide gates green for touched paths.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "PRD-02; plan todo 16."
     }
   ]
 }

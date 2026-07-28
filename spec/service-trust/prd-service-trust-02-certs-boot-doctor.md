@@ -1,4 +1,4 @@
-# PRD: SERVICE-TRUST-02 — Leaf certs, boot scaffolding, language trust, doctor
+# PRD: SERVICE-TRUST-02 — Leaf certs, boot, language trust, doctor, Traefik TLS
 
 ## Introduction
 
@@ -8,9 +8,12 @@ PRD-01 closes corporate CA/proxy **inject** into services. This PRD completes th
 2. **Boot scaffolding** — `lando.boot` materializes `/etc/lando/*` so env and certs are available on exec.
 3. **Language CA env** — Python/Ruby/etc. beyond Node/OpenSSL defaults when corporate CAs inject.
 4. **Doctor** — certs + network-trust diagnostics with remediation.
-5. **Guides** — every user-facing path has executable-guide coverage and guide gates pass.
+5. **Traefik edge TLS** — global proxy presents CA-issued certs for HTTPS routes (today: bare `tls: {}`).
+6. **Guides** — every user-facing path has executable-guide coverage and guide gates pass.
 
-Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–14).
+**SSH note:** `SshService` / `lando.ssh-agent` forward SSH agent sockets. They do **not** consume `CertificateAuthority` leaf TLS certs. Out of scope for this PRD.
+
+Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–16).
 
 ## Source References
 
@@ -19,6 +22,8 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–14).
 - [`plugins/ca-mkcert/`](../../plugins/ca-mkcert/) — currently stub Live
 - [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
 - [`docs/guides/subsystems/doctor-walkthrough.mdx`](../../docs/guides/subsystems/doctor-walkthrough.mdx)
+- [`docs/guides/subsystems/proxy-traefik.mdx`](../../docs/guides/subsystems/proxy-traefik.mdx) (or create)
+- `plugins/proxy-traefik/src/proxy.ts` — current `tls: {}` gap
 - PRD-01 corporate inject conventions for shared bundle paths
 
 ## Goals
@@ -132,12 +137,45 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–14).
 
 - [ ] `docs/guides/config/corporate-network-trust.mdx` exists and covers: global `network.ca`/`proxy`, inject flags + env vars, Landofile `security.*`, rebuild, runtime env table, links to setup/doctor/certs guides.
 - [ ] `certificates-mkcert.mdx` covers leaf certs user path end-to-end at contract level.
-- [ ] Boot + doctor + language links as required by US-493..495.
+- [ ] Boot + doctor + language + **proxy HTTPS** links as required by US-493..495 and US-497..498.
 - [ ] `docs/guides/INDEX.md` (or repo index convention) lists new guides if required.
 - [ ] `bun run lint:guides` passes.
 - [ ] `bun run check:guide-coverage` passes.
 - [ ] `bun run check:guide-drift` passes.
 - [ ] `bun run check:public-transcripts` passes if transcripts changed.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+
+### US-497: Traefik edge TLS certificates from CertificateAuthority
+
+**Description:** As a user opening `https://*.lndo.site` routes, Traefik terminates TLS with certificates issued by the active CertificateAuthority (mkcert), not an empty `tls: {}` block.
+
+**Acceptance Criteria:**
+
+- [ ] Proxy setup and/or first HTTPS `applyRoutes` ensures a default proxy cert exists via CA `issueCert`/`issueLeaf` covering default domain wildcards (e.g. `*.lndo.site`, apex, `traefik.lndo.site`) and is refreshed when new HTTPS route hostnames need SANs (re-issue or additional certs — choose one approach, document, test).
+- [ ] Cert/key files live under a Lando-managed path and are bind-mounted into the Traefik global service.
+- [ ] Dynamic and/or static Traefik config references those files (`tls.certificates` and/or default certificate); rendered config tests **fail** if they only contain bare `tls: {}` with no cert paths.
+- [ ] Unit tests with fake CA + filesystem; existing Traefik proxy contract tests updated.
+- [ ] Depends on US-491 (CA Live). Coordinates with US-492 (service leaf certs remain separate from proxy edge cert).
+- [ ] **Guide:** `docs/guides/subsystems/proxy-traefik.mdx` documents HTTPS cert dependency on `lando setup` / mkcert; links to certificates-mkcert.
+- [ ] `bun run lint:guides` and `bun run check:guide-coverage` for touched guides.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-498: Doctor proxy TLS readiness + proxy HTTPS guide pack
+
+**Description:** As a user running doctor or reading docs, missing proxy TLS material is visible with remediation, and the proxy HTTPS guide is complete.
+
+**Acceptance Criteria:**
+
+- [ ] Doctor proxy (or dedicated) check warns/degrades when HTTPS routing is expected but proxy cert files are missing; remediation cites `lando setup` / CA plugin.
+- [ ] Unit/scenario test for the degraded path; no secret leakage.
+- [ ] Guide pack: proxy-traefik HTTPS section complete; cross-links from certificates-mkcert and corporate-network-trust (browser trust = host CA install).
+- [ ] Guide gates green (`lint:guides`, `check:guide-coverage`, `check:guide-drift` as applicable).
+- [ ] Explicitly documents that SSH agent forwarding is unrelated to this TLS path.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -150,11 +188,14 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–14).
 - **FR-4** Language features export additional CA env when corporate inject is active.
 - **FR-5** Doctor reports CA and network-trust problems with remediation.
 - **FR-6** Every user-facing FR has guide coverage and guide gates pass.
+- **FR-7** Traefik HTTPS termination uses CA-issued cert files mounted into the global Traefik service.
+- **FR-8** SSH agent is out of scope (not a CertificateAuthority consumer).
 
 ## Non-Goals
 
 - Global Dockerfile directories.
-- Replacing Traefik TLS termination design.
+- ACME/Let's Encrypt public CA for local proxy (dev mkcert only).
+- Full `lando.ssh-agent` / SshService Live implementation (agent sockets ≠ TLS certs).
 - Full Java service type if none exists in tree.
 
 ## Technical Considerations
@@ -173,6 +214,7 @@ Tracking plan: `.omo/plans/host-global-ca-proxy-inject.md` (todos 8–14).
 | Boot scaffold | services guide or section linked from corporate + certs |
 | Doctor | subsystems + global doctor-walkthrough |
 | Language env | table in corporate guide + deep links |
+| Traefik HTTPS | `docs/guides/subsystems/proxy-traefik.mdx` |
 
 ## Success Metrics
 

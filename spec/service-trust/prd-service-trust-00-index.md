@@ -9,7 +9,9 @@ Developers behind corporate TLS interception need containers to trust machine-lo
 This set is two PRDs:
 
 1. **Host-global CA/proxy inject** — close the service plane of §10.3.1 / §6.8 inject rules.
-2. **Leaf certs, boot, language trust, doctor** — `certs:` + mkcert Live, `lando.boot`, language CA env, doctor checks, guide pack completion.
+2. **Leaf certs, boot, language trust, doctor, Traefik TLS** — `certs:` + mkcert Live, `lando.boot`, language CA env, doctor checks, **Traefik HTTPS certs**, guide pack completion.
+
+**SSH:** The `lando.ssh-agent` / `SshService` path is **agent-socket forwarding**, not CertificateAuthority TLS. It does **not** belong in this cert/trust set (track separately).
 
 ## Source References
 
@@ -24,6 +26,7 @@ This set is two PRDs:
 - Set-and-forget corporate CA/proxy on the host for lando-base services.
 - Landofile `security.ca` / `certs:` remain clear, documented, and guided.
 - mkcert-backed leaf certs work after `lando setup`.
+- Traefik terminates HTTPS with CA-issued certificates (not empty `tls: {}`).
 - `lando.boot` scaffolds `/etc/lando` for env and cert materialization.
 - Doctor/setup remediate CA and network-trust problems.
 - **Every user-facing story includes guide MDX + `lint:guides` / `check:guide-coverage` / `check:guide-drift` (and public transcripts when applicable).**
@@ -31,7 +34,9 @@ This set is two PRDs:
 ## Non-Goals
 
 - DDEV-style host-global Dockerfile directories.
-- Unrelated proxy-traefik, SSH, or Mutagen feature work beyond honoring `network.ca` on downloads.
+- Full SSH-agent Live / direct host agent mounts (not a TLS cert concern).
+- Mutagen beyond network.ca on downloads.
+- ACME/public CA for Traefik (dev mkcert only for v4.0 default).
 - New trust models not in the spec.
 
 ## PRDs in this set
@@ -39,7 +44,7 @@ This set is two PRDs:
 | #  | PRD | Subsystem | US range | Depends on |
 | -- | --- | --------- | -------- | ---------- |
 | 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | security schema, env overlays, PEM load, `lando.security`, planner, derived-build, setup note, corporate guide | US-483..US-489 | Spec inject contract landed |
-| 02 | [Leaf certs, boot, language trust, doctor](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + `lando.boot` + language CA env + doctor + guide pack | US-490..US-496 | PRD-01 for shared CA bundle paths/env conventions where overlapping |
+| 02 | [Leaf certs, boot, doctor, Traefik TLS](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + `lando.boot` + language CA env + doctor + **Traefik edge TLS** + guide pack | US-490..US-498 | PRD-01; US-491 before Traefik TLS |
 
 ## Verification contract
 
