@@ -5,6 +5,11 @@ export {
   ComposeServiceFieldCapabilities,
   ComposeServiceFieldKey,
 } from "./compose-service-field-capabilities.ts";
+export * from "./compose-knob-devices.ts";
+export * from "./compose-knob-maps.ts";
+export * from "./compose-knob-resources.ts";
+export * from "./compose-knob-scalars.ts";
+export * from "./compose-service-knobs.ts";
 export type { ComposePortEntry } from "./compose-ports.ts";
 export { parseShortVolume } from "./compose-volumes.ts";
 export type { ComposeVolumeEntry } from "./compose-volumes.ts";
