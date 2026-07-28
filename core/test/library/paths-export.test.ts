@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, realpath, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -151,8 +151,11 @@ describe("@lando/core/paths package export", () => {
       const consumerDir = join(tempDir, "consumer");
       const scopedDir = join(consumerDir, "node_modules/@lando");
       await mkdir(scopedDir, { recursive: true });
-      await symlink(join(packedCore.extractDir, "package"), join(scopedDir, "core"), "dir");
-      await symlink(join(packedPaths.extractDir, "package"), join(scopedDir, "paths"), "dir");
+      // Real installs extract packages into node_modules as plain directories.
+      // A symlink would make Bun resolve @lando/paths from the symlink target's
+      // realpath, which escapes the consumer's node_modules tree.
+      await rename(join(packedCore.extractDir, "package"), join(scopedDir, "core"));
+      await rename(join(packedPaths.extractDir, "package"), join(scopedDir, "paths"));
 
       const probe = [
         "const mod = await import('@lando/core/paths');",
@@ -177,11 +180,9 @@ describe("@lando/core/paths package export", () => {
       if (resolvedShim === undefined || resolvedImplementation === undefined) {
         throw new Error("packed @lando/core/paths import did not print both resolved paths");
       }
-      expect(await realpath(resolvedShim)).toBe(
-        await realpath(join(packedCore.extractDir, "package/src/config/paths.ts")),
-      );
+      expect(await realpath(resolvedShim)).toBe(await realpath(join(scopedDir, "core/src/config/paths.ts")));
       expect(await realpath(resolvedImplementation)).toBe(
-        await realpath(join(packedPaths.extractDir, "package/src/paths.ts")),
+        await realpath(join(scopedDir, "paths/src/paths.ts")),
       );
     } finally {
       await rm(tempDir, { recursive: true, force: true });
