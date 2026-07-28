@@ -1,10 +1,22 @@
 export type ComposeDisposition = "normalized" | "preserved" | "rejected";
+export type ComposePlanAssertion =
+  | "artifact-build"
+  | "artifact-ref"
+  | "dependencies"
+  | "direct"
+  | "environment"
+  | "healthcheck"
+  | "internal-endpoints"
+  | "published-endpoints"
+  | "volumes";
 
 export interface ComposeDispositionEntry {
   readonly disposition: ComposeDisposition;
   readonly rationale: string;
   readonly remediation?: string;
-  readonly planTarget?: string;
+  readonly planTarget?: ReadonlyArray<string>;
+  readonly planAssertion?: ComposePlanAssertion;
+  readonly configTarget?: string;
 }
 
 export class ComposeDispositionMatrixError extends Error {
@@ -60,43 +72,48 @@ const rejectedEntry = (path: string): ComposeDispositionEntry => {
   };
 };
 
-type NormalizedServicePath = readonly [path: string, planTarget?: string];
+type NormalizedServicePath = readonly [
+  path: string,
+  planTarget?: ReadonlyArray<string>,
+  planAssertion?: ComposePlanAssertion,
+  configTarget?: string,
+];
 
 const normalizedServicePaths = [
-  ["build", "build"],
+  ["build", ["artifact"], "artifact-build"],
   ["build.args"],
   ["build.args.*"],
   ["build.context"],
   ["build.dockerfile"],
   ["build.dockerfile_inline"],
   ["build.target"],
-  ["command", "command"],
-  ["depends_on", "dependsOn"],
+  ["command", ["command"], "direct"],
+  ["depends_on", ["dependsOn"], "dependencies", "dependsOn"],
   ["depends_on.*"],
   ["depends_on.*.condition"],
   ["depends_on.*.required"],
-  ["entrypoint", "entrypoint"],
-  ["env_file", "envFile"],
-  ["environment", "environment"],
+  ["entrypoint", ["entrypoint"], "direct"],
+  ["env_file", ["environment"], "environment", "envFile"],
+  ["environment", ["environment"], "environment"],
   ["environment.*"],
-  ["expose", "expose"],
-  ["healthcheck", "healthcheck"],
+  ["expose", ["endpoints"], "internal-endpoints"],
+  ["healthcheck", ["healthcheck"], "healthcheck"],
   ["healthcheck.disable"],
   ["healthcheck.interval"],
   ["healthcheck.retries"],
   ["healthcheck.start_period"],
   ["healthcheck.test"],
   ["healthcheck.timeout"],
-  ["image", "image"],
-  ["ports", "ports"],
+  ["image", ["artifact"], "artifact-ref"],
+  ["ports", ["endpoints"], "published-endpoints"],
   ["ports.app_protocol"],
   ["ports.host_ip"],
   ["ports.name"],
   ["ports.protocol"],
   ["ports.published"],
   ["ports.target"],
-  ["user", "user"],
-  ["volumes", "volumes"],
+  ["user", ["user"], "direct"],
+  ["volumes", ["mounts", "storage", "extensions.compose.tmpfs"], "volumes"],
   ["volumes.bind"],
   ["volumes.bind.create_host_path"],
   ["volumes.read_only"],
@@ -105,7 +122,7 @@ const normalizedServicePaths = [
   ["volumes.type"],
   ["volumes.volume"],
   ["volumes.volume.subpath"],
-  ["working_dir", "workingDirectory"],
+  ["working_dir", ["workingDirectory"], "direct", "workingDirectory"],
 ] as const satisfies ReadonlyArray<NormalizedServicePath>;
 
 const preservedServicePaths = [
@@ -435,8 +452,18 @@ const rejectedServicePaths = [
 
 const serviceEntries = [
   ...normalizedServicePaths.map(
-    ([path, planTarget]) =>
-      [path, planTarget === undefined ? NORMALIZED_ENTRY : { ...NORMALIZED_ENTRY, planTarget }] as const,
+    ([path, planTarget, planAssertion, configTarget]) =>
+      [
+        path,
+        planTarget === undefined
+          ? NORMALIZED_ENTRY
+          : {
+              ...NORMALIZED_ENTRY,
+              planTarget,
+              ...(planAssertion === undefined ? {} : { planAssertion }),
+              ...(configTarget === undefined ? {} : { configTarget }),
+            },
+      ] as const,
   ),
   ...preservedServicePaths.map((path) => [path, PRESERVED_ENTRY] as const),
   ...rejectedServicePaths.map((path) => [path, rejectedEntry(path)] as const),
@@ -458,6 +485,16 @@ const missingPlanTarget = Object.entries(composeServiceDispositions).find(
 if (missingPlanTarget !== undefined) {
   throw new ComposeDispositionMatrixError(
     `Normalized Compose service disposition ${missingPlanTarget[0]} must include a planTarget`,
+  );
+}
+
+const missingPlanAssertion = Object.entries(composeServiceDispositions).find(
+  ([path, entry]) =>
+    !path.includes(".") && entry.disposition === "normalized" && entry.planAssertion === undefined,
+);
+if (missingPlanAssertion !== undefined) {
+  throw new ComposeDispositionMatrixError(
+    `Normalized Compose service disposition ${missingPlanAssertion[0]} must include a planAssertion`,
   );
 }
 
