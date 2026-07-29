@@ -12,6 +12,11 @@ import { deepMerge, envOverlay, resolveConfigFileRoot, rootEnvOverlay } from "@l
 import { MinimalYamlError, parseMinimalYaml } from "@lando/paths/yaml-min";
 import { resolveUserConfRoot } from "../config/roots.ts";
 
+const NETWORK_BOOLEAN_ENV_ALIASES = [
+  "LANDO_NETWORK_CA_INJECT_INTO_SERVICES",
+  "LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES",
+] as const;
+
 const configError = (path: string, message: string, cause?: unknown): ConfigError =>
   new ConfigError({ message, path, ...(cause === undefined ? {} : { cause }) });
 
@@ -57,6 +62,17 @@ export const loadGlobalConfigSync = (): GlobalConfig => {
   try {
     return Schema.decodeUnknownSync(GlobalConfig)(merged);
   } catch (cause) {
+    const malformedAlias = NETWORK_BOOLEAN_ENV_ALIASES.find((name) => {
+      const value = process.env[name];
+      return value !== undefined && value !== "true" && value !== "false";
+    });
+    if (malformedAlias !== undefined) {
+      throw configError(
+        path,
+        `Invalid ${malformedAlias} value. Expected "true" or "false"; set it to one of those values or unset it.`,
+        cause,
+      );
+    }
     throw configError(path, `Invalid config file: ${path}`, cause);
   }
 };

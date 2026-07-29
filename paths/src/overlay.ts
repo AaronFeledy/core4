@@ -14,10 +14,12 @@
 
 export const ENV_OVERLAY_PREFIX = "LANDO_CONFIG__";
 
-const NOTIFY_ENV_OVERLAYS = [
+const FRIENDLY_ENV_OVERLAYS = [
   ["LANDO_NOTIFY_ENABLED", ["notify", "enabled"]],
   ["LANDO_NOTIFY_THRESHOLD_MS", ["notify", "thresholdMs"]],
   ["LANDO_NOTIFY_COMMANDS", ["notify", "commands"]],
+  ["LANDO_NETWORK_CA_INJECT_INTO_SERVICES", ["network", "ca", "injectIntoServices"]],
+  ["LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES", ["network", "proxy", "injectIntoServices"]],
 ] as const;
 
 // `default_provider_id` / `DEFAULT_PROVIDER_ID` -> camelCase key `defaultProviderId`.
@@ -89,7 +91,7 @@ export const envOverlay = (
     const path = segments.map(segmentToKey);
     assignDeep(overlay, path, parseOverlayValue(value, path));
   }
-  for (const [name, path] of NOTIFY_ENV_OVERLAYS) {
+  for (const [name, path] of FRIENDLY_ENV_OVERLAYS) {
     const value = env[name];
     if (value === undefined) continue;
     assignDeep(overlay, path, parseOverlayValue(value, path));

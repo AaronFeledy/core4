@@ -23,6 +23,9 @@ const withEnv = async <T>(vars: Record<string, string>, body: (dir: string) => P
     "LANDO_NOTIFY_ENABLED",
     "LANDO_NOTIFY_THRESHOLD_MS",
     "LANDO_NOTIFY_COMMANDS",
+    "LANDO_NETWORK_CA_CERTS",
+    "LANDO_NETWORK_CA_INJECT_INTO_SERVICES",
+    "LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES",
     ...Object.keys(vars),
   ]);
   // Also clear any pre-existing LANDO_CONFIG__ vars so the test is hermetic.
@@ -233,6 +236,112 @@ describe("notify environment overrides", () => {
         expect(failure._tag).toBe("Some");
         if (failure._tag === "Some") expect(failure.value).toBeInstanceOf(ConfigError);
       }
+    });
+  });
+});
+
+describe("network inject environment overrides", () => {
+  for (const [name, configLines, select] of [
+    [
+      "LANDO_NETWORK_CA_INJECT_INTO_SERVICES",
+      ["network:", "  ca:", "    injectIntoServices: false"],
+      (config: Awaited<ReturnType<typeof loadConfig>>) => config.network?.ca?.injectIntoServices,
+    ],
+    [
+      "LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES",
+      ["network:", "  proxy:", "    injectIntoServices: false"],
+      (config: Awaited<ReturnType<typeof loadConfig>>) => config.network?.proxy?.injectIntoServices,
+    ],
+  ] as const) {
+    for (const value of ["true", "false"] as const) {
+      test(`${name} maps ${value} to a typed boolean`, async () => {
+        await withEnv({ [name]: value }, async (dir) => {
+          await writeConfig(dir, [
+            ...configLines.slice(0, -1),
+            `    injectIntoServices: ${value === "false"}`,
+          ]);
+
+          const config = await loadConfig();
+
+          expect(select(config)).toBe(value === "true");
+        });
+      });
+    }
+
+    test(`${name} absent leaves config.yml intact`, async () => {
+      await withEnv({}, async (dir) => {
+        await writeConfig(dir, configLines);
+
+        const config = await loadConfig();
+
+        expect(select(config)).toBe(false);
+      });
+    });
+
+    test(`${name} overrides its equivalent generic overlay`, async () => {
+      const genericName =
+        name === "LANDO_NETWORK_CA_INJECT_INTO_SERVICES"
+          ? "LANDO_CONFIG__network__ca__inject_into_services"
+          : "LANDO_CONFIG__network__proxy__inject_into_services";
+      await withEnv({ [genericName]: "false", [name]: "true" }, async () => {
+        const config = await loadConfig();
+
+        expect(select(config)).toBe(true);
+      });
+    });
+
+    test(`${name} rejects malformed values with actionable ConfigError context`, async () => {
+      await withEnv({ [name]: "sometimes" }, async (dir) => {
+        const exit = await Effect.runPromiseExit(
+          Effect.flatMap(ConfigService, (configService) => configService.load).pipe(
+            Effect.provide(ConfigServiceLive),
+          ),
+        );
+
+        expect(Exit.isFailure(exit)).toBe(true);
+        if (Exit.isFailure(exit)) {
+          const failure = Cause.failureOption(exit.cause);
+          expect(failure._tag).toBe("Some");
+          if (failure._tag === "Some") {
+            expect(failure.value).toBeInstanceOf(ConfigError);
+            if (failure.value instanceof ConfigError) {
+              expect(failure.value.message).toBe(
+                `Invalid ${name} value. Expected "true" or "false"; set it to one of those values or unset it.`,
+              );
+              expect(failure.value.path).toBe(join(dir, "config.yml"));
+              expect(failure.value.cause).toMatchObject({ _tag: "ParseError" });
+            }
+          }
+        }
+      });
+    });
+  }
+
+  test("the helper clears ambient network aliases", async () => {
+    const name = "LANDO_NETWORK_CA_INJECT_INTO_SERVICES";
+    const previous = process.env[name];
+    process.env[name] = "true";
+    try {
+      await withEnv({}, async (dir) => {
+        await writeConfig(dir, ["network:", "  ca:", "    injectIntoServices: false"]);
+
+        const config = await loadConfig();
+
+        expect(config.network?.ca?.injectIntoServices).toBe(false);
+      });
+    } finally {
+      if (previous === undefined) delete process.env[name];
+      else process.env[name] = previous;
+    }
+  });
+
+  test("LANDO_NETWORK_CA_CERTS remains outside the config overlay", async () => {
+    await withEnv({ LANDO_NETWORK_CA_CERTS: '["/env.pem"]' }, async (dir) => {
+      await writeConfig(dir, ["network:", "  ca:", '    certs: ["/file.pem"]']);
+
+      const config = await loadConfig();
+
+      expect(config.network?.ca?.certs).toEqual(["/file.pem"]);
     });
   });
 });
