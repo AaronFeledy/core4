@@ -29,8 +29,8 @@ For compatibility, `cas`, `certificate-authority`, and `certificate-authorities`
 ## Resolve host CA paths
 
 Host-global CA paths come from `network.ca.certs` or the JSON array in
-`LANDO_NETWORK_CA_CERTS`. Use host-readable absolute paths; Lando reads the UTF-8 PEM bytes once for
-setup and outbound HTTP, then records a stable SHA-256 digest for service planning. Landofile
+`LANDO_NETWORK_CA_CERTS`. Use host-readable absolute paths; one shared loader supplies setup and
+outbound HTTP with the UTF-8 PEM bytes and a stable SHA-256 digest for service planning. Landofile
 `security.ca` remains the project-local CA path list.
 
 If a path cannot be read, Lando names that path and points to all three correction surfaces:
