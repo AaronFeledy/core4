@@ -85,6 +85,38 @@ describe("LandofileServiceLive", () => {
     });
   });
 
+  test("resolves YAML anchors and merge keys while loading a root Landofile", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        [
+          "name: anchored-app",
+          "x-service-defaults: &service-defaults",
+          "  type: node:22",
+          "  environment:",
+          "    MODE: shared",
+          "services:",
+          "  web:",
+          "    <<: *service-defaults",
+          "    primary: true",
+        ].join("\n"),
+      );
+      process.chdir(dir);
+
+      const resolved = await discover();
+
+      expect(resolved).toMatchObject({
+        services: {
+          web: {
+            type: "node:22",
+            environment: { MODE: "shared" },
+            primary: true,
+          },
+        },
+      });
+    });
+  });
+
   test("discovers an app root from a noncanonical merge layer", async () => {
     await withTempCwd(async (dir) => {
       const appRoot = join(dir, "app");

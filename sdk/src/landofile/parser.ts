@@ -22,6 +22,16 @@ import { Effect } from "effect";
 
 import type { LandofileParseError } from "../errors/index.ts";
 import { LandofileParseError as LandofileParseErrorClass } from "../errors/index.ts";
+import {
+  type YamlReferenceState,
+  bindYamlAnchor,
+  makeYamlAlias,
+  makeYamlReferenceState,
+  parseYamlReferenceSyntax,
+  registerYamlMerge,
+  reserveYamlAnchor,
+  resolveYamlReferences,
+} from "./yaml-references.ts";
 
 export type LoadHint = "string" | "yaml" | "json" | "binary";
 
@@ -182,13 +192,20 @@ const parseInlineArray = (
   value: string,
   filePath: string,
   line: number,
+  column: number,
   depth: number,
   maxDepth: number,
+  references: YamlReferenceState,
 ): ReadonlyArray<unknown> => {
   assertDepth(filePath, line, depth, maxDepth);
-  const inner = value.slice(1, -1).trim();
-  if (inner === "") return [];
-  return splitInlineArray(inner).map((part) => parseScalar(part.trim(), filePath, line, depth, maxDepth));
+  const inner = value.slice(1, -1);
+  if (inner.trim() === "") return [];
+  let cursor = 0;
+  return splitInlineArray(inner).map((part) => {
+    const offset = inner.indexOf(part, cursor);
+    cursor = offset + part.length + 1;
+    return parseScalar(part, filePath, line, column + 1 + offset, depth, maxDepth, references);
+  });
 };
 
 const unescapeDoubleQuotedScalar = (value: string): string =>
@@ -203,8 +220,10 @@ const parseScalar = (
   value: string,
   filePath: string,
   line: number,
+  column: number,
   depth: number,
   maxDepth: number,
+  references: YamlReferenceState,
 ): unknown => {
   const trimmed = value.trim();
 
@@ -219,6 +238,23 @@ const parseScalar = (
     return trimmed.slice(1, -1);
   }
 
+  const reference = parseYamlReferenceSyntax(value, { line, column });
+  if (reference.kind === "alias") return makeYamlAlias(reference);
+  if (reference.kind === "anchor") {
+    reserveYamlAnchor(references, reference);
+    const anchored = parseScalar(
+      reference.value,
+      filePath,
+      line,
+      reference.valueColumn,
+      depth,
+      maxDepth,
+      references,
+    );
+    bindYamlAnchor(references, reference.name, anchored);
+    return anchored;
+  }
+
   if (trimmed.includes("${")) {
     throw parseError(filePath, `Expressions are not supported in Landofiles at line ${line}`, line);
   }
@@ -229,7 +265,16 @@ const parseScalar = (
   if (trimmed === "false") return false;
   if (/^-?\d+(?:\.\d+)?$/.test(trimmed)) return Number(trimmed);
   if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
-    return parseInlineArray(trimmed, filePath, line, depth + 1, maxDepth);
+    const leadingWhitespace = value.search(/\S/);
+    return parseInlineArray(
+      trimmed,
+      filePath,
+      line,
+      column + Math.max(leadingWhitespace, 0),
+      depth + 1,
+      maxDepth,
+      references,
+    );
   }
   if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
     // The flow-empty map `{}` is the only inline object the Landofile emitter
@@ -317,7 +362,7 @@ export const detectLandofileTags: (options: {
       const sequenceColumn = line.indent + 3;
       occurrences.push(...detectTagsInValue(sequenceValue, { line: line.line, column: sequenceColumn }));
 
-      const mapMatch = sequenceValue.match(/^[A-Za-z0-9_.-]+:/);
+      const mapMatch = sequenceValue.match(/^(?:<<|[A-Za-z0-9_.-]+):/);
       if (mapMatch !== null) {
         const colon = sequenceValue.indexOf(":");
         occurrences.push(
@@ -330,7 +375,7 @@ export const detectLandofileTags: (options: {
       continue;
     }
 
-    const mapMatch = line.text.match(/^[A-Za-z0-9_.-]+:/);
+    const mapMatch = line.text.match(/^(?:<<|[A-Za-z0-9_.-]+):/);
     if (mapMatch === null) continue;
     const colon = line.text.indexOf(":");
     occurrences.push(
@@ -351,6 +396,7 @@ const parseMap = (
   indent: number,
   depth: number,
   maxDepth: number,
+  references: YamlReferenceState,
 ): readonly [Record<string, unknown>, number] => {
   const startLine = lines[start];
   if (startLine !== undefined) assertDepth(filePath, startLine.line, depth, maxDepth);
@@ -371,33 +417,65 @@ const parseMap = (
     }
     if (line.text.startsWith("- ")) break;
 
-    const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
+    const match = line.text.match(/^(<<|[A-Za-z0-9_.-]+):(.*)$/);
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
 
     const [, key, rawValue] = match as [string, string, string];
+    const valueColumn = line.indent + key.length + 2;
+    const reference = parseYamlReferenceSyntax(rawValue, { line: line.line, column: valueColumn });
+    const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
+    if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
 
-    if (rawValue.trim() === "") {
+    if (rawValue.trim() === "" || blockAnchor !== undefined) {
       const next = lines[index + 1];
       if (next === undefined || next.indent <= line.indent) {
-        result[key] = {};
+        const value = {};
+        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, value);
+        if (key === "<<")
+          registerYamlMerge(references, result, value, { line: line.line, column: valueColumn });
+        else result[key] = value;
         index += 1;
         continue;
       }
       if (next.text.startsWith("- ")) {
-        const [items, nextIndex] = parseList(lines, filePath, index + 1, next.indent, depth + 1, maxDepth);
-        result[key] = items;
+        const [items, nextIndex] = parseList(
+          lines,
+          filePath,
+          index + 1,
+          next.indent,
+          depth + 1,
+          maxDepth,
+          references,
+        );
+        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, items);
+        if (key === "<<")
+          registerYamlMerge(references, result, items, { line: line.line, column: valueColumn });
+        else result[key] = items;
         index = nextIndex;
         continue;
       }
-      const [nested, nextIndex] = parseMap(lines, filePath, index + 1, next.indent, depth + 1, maxDepth);
-      result[key] = nested;
+      const [nested, nextIndex] = parseMap(
+        lines,
+        filePath,
+        index + 1,
+        next.indent,
+        depth + 1,
+        maxDepth,
+        references,
+      );
+      if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, nested);
+      if (key === "<<")
+        registerYamlMerge(references, result, nested, { line: line.line, column: valueColumn });
+      else result[key] = nested;
       index = nextIndex;
       continue;
     }
 
-    result[key] = parseScalar(rawValue, filePath, line.line, depth, maxDepth);
+    const value = parseScalar(rawValue, filePath, line.line, valueColumn, depth, maxDepth, references);
+    if (key === "<<") registerYamlMerge(references, result, value, { line: line.line, column: valueColumn });
+    else result[key] = value;
     index += 1;
   }
 
@@ -411,6 +489,7 @@ const parseList = (
   indent: number,
   depth: number,
   maxDepth: number,
+  references: YamlReferenceState,
 ): readonly [ReadonlyArray<unknown>, number] => {
   const startLine = lines[start];
   if (startLine !== undefined) assertDepth(filePath, startLine.line, depth, maxDepth);
@@ -432,6 +511,27 @@ const parseList = (
     if (!line.text.startsWith("- ")) break;
 
     const value = line.text.slice(2).trim();
+    const valueColumn = line.indent + 3;
+    const reference = parseYamlReferenceSyntax(value, { line: line.line, column: valueColumn });
+    const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
+    if (blockAnchor !== undefined) {
+      reserveYamlAnchor(references, blockAnchor);
+      const next = lines[index + 1];
+      if (next === undefined || next.indent <= line.indent) {
+        const anchored = {};
+        bindYamlAnchor(references, blockAnchor.name, anchored);
+        result.push(anchored);
+        index += 1;
+        continue;
+      }
+      const [anchored, nextIndex] = next.text.startsWith("- ")
+        ? parseList(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references)
+        : parseMap(lines, filePath, index + 1, next.indent, depth + 1, maxDepth, references);
+      bindYamlAnchor(references, blockAnchor.name, anchored);
+      result.push(anchored);
+      index = nextIndex;
+      continue;
+    }
     if (value === "") {
       throw parseError(
         filePath,
@@ -440,10 +540,9 @@ const parseList = (
       );
     }
 
-    const mapMatch = value.match(/^([A-Za-z0-9_.-]+):(?:\s+(.*))?$/);
+    const mapMatch = value.match(/^([A-Za-z0-9_.-]+):((?:\s+.*)?)$/);
     if (mapMatch !== null) {
-      const [, firstKey, firstRawValueRaw] = mapMatch as [string, string, string?];
-      const firstRawValue = firstRawValueRaw ?? "";
+      const [, firstKey, firstRawValue] = mapMatch as [string, string, string];
       const [item, nextIndex] = parseListItemMap(
         lines,
         filePath,
@@ -454,13 +553,14 @@ const parseList = (
         firstRawValue,
         depth + 1,
         maxDepth,
+        references,
       );
       result.push(item);
       index = nextIndex;
       continue;
     }
 
-    result.push(parseScalar(value, filePath, line.line, depth, maxDepth));
+    result.push(parseScalar(value, filePath, line.line, valueColumn, depth, maxDepth, references));
     index += 1;
   }
 
@@ -477,6 +577,7 @@ const parseListItemMap = (
   firstRawValue: string,
   depth: number,
   maxDepth: number,
+  references: YamlReferenceState,
 ): readonly [Record<string, unknown>, number] => {
   assertDepth(filePath, startLine.line, depth, maxDepth);
 
@@ -484,24 +585,53 @@ const parseListItemMap = (
   let index = startIndex + 1;
 
   const consumeKey = (key: string, rawValue: string, keyLine: number, keyIndent: number): void => {
-    if (rawValue.trim() === "") {
+    const valueColumn = keyIndent + key.length + 2;
+    const reference = parseYamlReferenceSyntax(rawValue, { line: keyLine, column: valueColumn });
+    const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
+    if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
+    if (rawValue.trim() === "" || blockAnchor !== undefined) {
       const next = lines[index];
       if (next === undefined || next.indent <= keyIndent) {
-        item[key] = {};
+        const value = {};
+        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, value);
+        if (key === "<<") registerYamlMerge(references, item, value, { line: keyLine, column: valueColumn });
+        else item[key] = value;
         return;
       }
       if (next.text.startsWith("- ")) {
-        const [items, nextIndex] = parseList(lines, filePath, index, next.indent, depth + 1, maxDepth);
-        item[key] = items;
+        const [items, nextIndex] = parseList(
+          lines,
+          filePath,
+          index,
+          next.indent,
+          depth + 1,
+          maxDepth,
+          references,
+        );
+        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, items);
+        if (key === "<<") registerYamlMerge(references, item, items, { line: keyLine, column: valueColumn });
+        else item[key] = items;
         index = nextIndex;
         return;
       }
-      const [nested, nextIndex] = parseMap(lines, filePath, index, next.indent, depth + 1, maxDepth);
-      item[key] = nested;
+      const [nested, nextIndex] = parseMap(
+        lines,
+        filePath,
+        index,
+        next.indent,
+        depth + 1,
+        maxDepth,
+        references,
+      );
+      if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, nested);
+      if (key === "<<") registerYamlMerge(references, item, nested, { line: keyLine, column: valueColumn });
+      else item[key] = nested;
       index = nextIndex;
       return;
     }
-    item[key] = parseScalar(rawValue, filePath, keyLine, depth, maxDepth);
+    const value = parseScalar(rawValue, filePath, keyLine, valueColumn, depth, maxDepth, references);
+    if (key === "<<") registerYamlMerge(references, item, value, { line: keyLine, column: valueColumn });
+    else item[key] = value;
   };
 
   consumeKey(firstKey, firstRawValue, startLine.line, childIndent);
@@ -519,7 +649,7 @@ const parseListItemMap = (
       );
     }
 
-    const match = line.text.match(/^([A-Za-z0-9_.-]+):(.*)$/);
+    const match = line.text.match(/^(<<|[A-Za-z0-9_.-]+):(.*)$/);
     if (match === null) {
       throw parseError(filePath, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
@@ -537,14 +667,15 @@ const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
 
   const maxDepth = limits?.maxDepth ?? DEFAULT_MAX_DEPTH;
   const lines = toLines(content, file);
-  const [parsed, index] = parseMap(lines, file, 0, 0, 1, maxDepth);
+  const references = makeYamlReferenceState(file);
+  const [parsed, index] = parseMap(lines, file, 0, 0, 1, maxDepth, references);
   if (index < lines.length) {
     const line = lines[index];
     if (line !== undefined) {
       throw parseError(file, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
   }
-  return parsed;
+  return resolveYamlReferences(references, parsed);
 };
 
 export const parseLandofile = (options: ParseOptions): Effect.Effect<unknown, LandofileParseError> =>

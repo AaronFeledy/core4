@@ -13,6 +13,7 @@ export class LandofileParseError extends Schema.TaggedError<LandofileParseError>
   filePath: Schema.String,
   line: Schema.UndefinedOr(Schema.Number),
   column: Schema.UndefinedOr(Schema.Number),
+  remediation: Schema.optional(Schema.String),
   cause: Schema.optional(Schema.Unknown),
 }) {}
 

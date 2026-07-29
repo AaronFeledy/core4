@@ -16,6 +16,8 @@ describe("detectLandofileTags", () => {
     ["override with list", "ports: !override [80]", "!override", 1, 8],
     ["override with empty object", "environment: !override {}", "!override", 1, 14],
     ["bare override", "x: !override", "!override", 1, 4],
+    ["merge-key reset", "<<: !reset", "!reset", 1, 5],
+    ["sequence merge-key reset", "values:\n  - <<: !reset", "!reset", 2, 9],
   ] as const;
 
   for (const [name, content, tag, line, column] of matchingCases) {
@@ -90,8 +92,7 @@ describe("detectLandofileTags", () => {
     expect(occurrences).toEqual([]);
   });
 
-  test("does not treat an unsupported merge key as a tag and parsing still rejects it", () => {
-    // These forms are NOT supported by this parser; this test does NOT claim they work.
+  test("does not treat an invalid merge target as a tag and parsing still rejects it", () => {
     // Given
     const content = "base: &base value\n<<: *base";
 
@@ -104,7 +105,8 @@ describe("detectLandofileTags", () => {
     // Then
     expect(occurrences).toEqual([]);
     expect(error._tag).toBe("LandofileParseError");
-    expect(error.message).toMatch(/Malformed YAML/);
+    expect(error.message).toMatch(/YAML merge target must be a mapping/);
+    expect(error.remediation).toMatch(/anchor|alias|mapping/i);
   });
 
   test("throws LandofileParseError for tabs instead of returning occurrences", () => {

@@ -107,12 +107,15 @@ describe("LandofileParseError", () => {
     expect(fields).toContain("message");
     expect(fields).toContain("line");
     expect(fields).toContain("column");
+    expect(fields).toContain("remediation");
   });
 
   test("constructs without line or column (both optional)", () => {
     const error = new LandofileParseError({
       filePath: "/tmp/.lando.yml",
       message: "unexpected token",
+      line: undefined,
+      column: undefined,
     });
     expect(error._tag).toBe("LandofileParseError");
     expect(error.filePath).toBe("/tmp/.lando.yml");
@@ -132,6 +135,18 @@ describe("LandofileParseError", () => {
     expect(error.filePath).toBe("/tmp/.lando.yml");
     expect(error.line).toBe(7);
     expect(error.column).toBe(12);
+  });
+
+  test("carries optional parser remediation", () => {
+    const error = new LandofileParseError({
+      filePath: "/tmp/.lando.yml",
+      message: "unknown alias",
+      line: 7,
+      column: 12,
+      remediation: "Define the anchor before using its alias.",
+    });
+
+    expect(error.remediation).toBe("Define the anchor before using its alias.");
   });
 
   test("survives Effect.failCause then Effect.runPromiseExit with _tag intact", async () => {
@@ -363,7 +378,14 @@ describe("MVP tagged-error catalog", () => {
         actualValue: false,
       })._tag,
     ).toBe("ProviderCapabilityError");
-    expect(new LandofileParseError({ filePath: "/x", message: "x" })._tag).toBe("LandofileParseError");
+    expect(
+      new LandofileParseError({
+        filePath: "/x",
+        message: "x",
+        line: undefined,
+        column: undefined,
+      })._tag,
+    ).toBe("LandofileParseError");
     expect(new PluginLoadError({ message: "x", pluginName: "p" })._tag).toBe("PluginLoadError");
     expect(new NoProviderInstalledError({ message: "x" })._tag).toBe("NoProviderInstalledError");
   });
