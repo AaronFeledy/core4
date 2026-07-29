@@ -10,7 +10,7 @@ interface ServiceConfigJsonSchema {
   readonly properties?: Readonly<Record<string, JsonSchemaProperty | boolean>>;
 }
 
-const COMPOSE_WAVE_FIELDS = ["dependsOn", "environment", "healthcheck"] as const;
+const COMPOSE_WAVE_FIELDS = ["build", "dependsOn", "environment", "healthcheck"] as const;
 
 const publishedDescription = (field: string): unknown => {
   const schema: ServiceConfigJsonSchema = getJsonSchema("ServiceConfig");
