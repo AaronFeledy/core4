@@ -6,8 +6,10 @@ import { ToolingIncludeShape } from "@lando/sdk/schema";
 import { includeError } from "./include-guard.ts";
 
 const FRAGMENT_KEYS = new Set(["tooling", "toolingIncludes"]);
+const TOOLING_INCLUDE_KEYS = new Set(Object.keys(ToolingIncludeShape.fields));
 const FRAGMENT_KEY_REMEDIATION =
   "A tooling fragment may only declare tooling: and toolingIncludes:; move other keys into a Landofile include.";
+const ENTRY_FIELD_REMEDIATION = `A toolingIncludes: entry accepts only ${[...TOOLING_INCLUDE_KEYS].join(", ")}; dir: and checksum: are not part of the Beta 1 tooling-include shape.`;
 
 export const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -59,22 +61,32 @@ export const assertToolingFragment = (
         }),
       );
     }
-    const malformed = Object.entries(parsed.toolingIncludes).find(([, entry]) =>
-      Either.isLeft(
-        Schema.decodeUnknownEither(ToolingIncludeShape)(entry, {
-          onExcessProperty: "error",
-        }),
-      ),
-    );
-    if (malformed !== undefined) {
-      return Effect.fail(
-        includeError({
-          message: `Tooling include ${source} has an invalid toolingIncludes.${malformed[0]} entry.`,
-          source,
-          kind: "forbidden-field",
-          remediation: FRAGMENT_KEY_REMEDIATION,
-        }),
-      );
+    for (const [name, entry] of Object.entries(parsed.toolingIncludes)) {
+      const unsupported = isPlainRecord(entry)
+        ? Object.keys(entry).find((key) => !TOOLING_INCLUDE_KEYS.has(key))
+        : undefined;
+      if (unsupported !== undefined) {
+        return Effect.fail(
+          includeError({
+            message: `Tooling include ${source} sets unsupported field "${unsupported}" on toolingIncludes.${name}.`,
+            source,
+            kind: "forbidden-field",
+            remediation: ENTRY_FIELD_REMEDIATION,
+          }),
+        );
+      }
+      if (
+        Either.isLeft(Schema.decodeUnknownEither(ToolingIncludeShape)(entry, { onExcessProperty: "error" }))
+      ) {
+        return Effect.fail(
+          includeError({
+            message: `Tooling include ${source} has an invalid toolingIncludes.${name} entry.`,
+            source,
+            kind: "forbidden-field",
+            remediation: ENTRY_FIELD_REMEDIATION,
+          }),
+        );
+      }
     }
   }
   return Effect.succeed(parsed);

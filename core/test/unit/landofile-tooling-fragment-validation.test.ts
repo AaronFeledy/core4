@@ -41,6 +41,28 @@ describe("tooling fragment validation", () => {
     if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
   });
 
+  test("a nested toolingIncludes entry names the unsupported field it declares", async () => {
+    // Given a fragment whose nested include authors the pre-Beta-1 dir: field
+    await writeFile(join(appRoot, "tasks.yml"), "tooling:\n  build:\n    cmd: build\n", "utf8");
+    await writeFile(
+      join(appRoot, "parent.yml"),
+      ["toolingIncludes:", "  api:", "    file: ./tasks.yml", "    dir: ./api", ""].join("\n"),
+      "utf8",
+    );
+
+    // When the fragment is resolved
+    const error = await failure({ toolingIncludes: { docs: { file: "./parent.yml" } } }, appRoot);
+
+    // Then the failure names the offending field rather than the fragment top-level-key contract
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") {
+      expect(error.kind).toBe("forbidden-field");
+      expect(error.message).toContain('"dir"');
+      expect(error.message).toContain("toolingIncludes.api");
+      expect(error.remediation).toContain("dir:");
+    }
+  });
+
   test("a fragment key that is also a rejected Compose key still fails as an include error", async () => {
     // Given a tooling fragment declaring a services block carrying a rejected Compose key
     await writeFile(

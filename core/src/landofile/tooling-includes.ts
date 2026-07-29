@@ -19,7 +19,7 @@ import { assertToolingFragment, isPlainRecord } from "./tooling-fragment.ts";
 import {
   type NormalizedToolingInclude,
   assertCompatibleIncludeFields,
-  assertNamespaced,
+  assertNamespacing,
   hasToolingIncludes,
   normalizeToolingIncludes,
 } from "./tooling-include-entries.ts";
@@ -159,7 +159,7 @@ const resolveEntries = (
     }
 
     for (const entry of entries) {
-      const namespaceFailure = assertNamespaced(entry);
+      const namespaceFailure = assertNamespacing(entry);
       if (namespaceFailure !== undefined) return yield* Effect.fail(namespaceFailure);
 
       const filePath = yield* locateFragment(entry, ctx.appRoot, ctx.sourceRoot);

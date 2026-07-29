@@ -107,6 +107,39 @@ test("composes canonical tooling declarations from every Landofile layer", async
   }
 });
 
+test("keeps sibling canonical declarations sharing a namespace in one layer", async () => {
+  // Given one layer pointing a single namespace at two fragments
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-siblings-"));
+  const canonicalPath = join(appRoot, ".lando.yml");
+  try {
+    await writeFile(join(appRoot, "a.yml"), "tooling:\n  atask:\n    cmd: a\n", "utf8");
+    await writeFile(join(appRoot, "b.yml"), "tooling:\n  btask:\n    cmd: b\n", "utf8");
+    await writeFile(
+      canonicalPath,
+      [
+        "name: siblings",
+        "includes:",
+        "  - source: ./a.yml",
+        "    kind: tooling",
+        "    namespace: shared",
+        "  - source: ./b.yml",
+        "    kind: tooling",
+        "    namespace: shared",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    // When the complete Landofile is loaded through the layer path
+    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+
+    // Then the layer path agrees with direct include resolution and drops neither fragment
+    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["shared:atask", "shared:btask"]);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
 test("a higher layer overrides a canonical tooling declaration sharing its namespace", async () => {
   // Given a base-layer canonical declaration the canonical layer redirects by namespace
   const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-canonical-override-"));

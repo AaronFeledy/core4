@@ -36,6 +36,9 @@ const TOOLING_TRANSPORT_FIELDS = ["path", "version", "checksum"] as const;
 const NAMESPACE_REMEDIATION =
   "Set namespace: on the tooling include, or set flatten: true to register its tasks unprefixed.";
 
+const FLATTEN_ALIASES_REMEDIATION =
+  "Drop flatten: true to register the aliases as extra namespaces, or remove aliases: from the flattened include.";
+
 const KIND_REMEDIATION =
   'Move the field to a kind: "tooling" include, or drop it from this Landofile fragment include.';
 const LOCAL_SOURCE_REMEDIATION =
@@ -86,29 +89,52 @@ const canonicalToolingEntries = (
     (entry): entry is ObjectIncludeEntry => typeof entry !== "string" && entry.kind === "tooling",
   );
 
+const groupByNamespace = (
+  source: Pick<LandofileShape, "includes">,
+): ReadonlyMap<string, ReadonlyArray<ObjectIncludeEntry>> => {
+  const declared = new Map<string, ObjectIncludeEntry[]>();
+  for (const entry of canonicalToolingEntries(source)) {
+    const key = entry.namespace ?? entry.source;
+    const group = declared.get(key);
+    if (group === undefined) declared.set(key, [entry]);
+    else group.push(entry);
+  }
+  return declared;
+};
+
 /**
  * Compose canonical `kind: tooling` declarations across sources the way the
- * `toolingIncludes:` map composes them: a repeated namespace deep-merges and
- * distinct namespaces accumulate. Ordinary `includes:` arrays carry no merge
- * identity key, so they replace wholesale (§7.2); without this a declaration
- * from a lower-precedence layer or a sibling fragment would be dropped instead
- * of composed, breaking the §7.7.1 equivalence between the two spellings.
+ * `toolingIncludes:` map composes them: a namespace redeclared by a
+ * higher-precedence source overrides, and distinct namespaces accumulate.
+ * Ordinary `includes:` arrays carry no merge identity key, so they replace
+ * wholesale (§7.2); without this a declaration from a lower-precedence layer or
+ * a sibling fragment would be dropped instead of composed, breaking the §7.7.1
+ * equivalence between the two spellings.
+ *
+ * Declarations made *within* one source are siblings, not overrides: an
+ * `includes:` array may legitimately point several fragments at one namespace,
+ * which the shorthand map cannot even express. Only a single declaration
+ * overriding a single earlier one deep-merges, so a namespace's flags survive
+ * a higher layer that only redirects its source.
  */
 export const composeToolingIncludeEntries = (
   sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
 ): ReadonlyArray<ObjectIncludeEntry> => {
-  const composed = new Map<string, ObjectIncludeEntry>();
+  const composed = new Map<string, ReadonlyArray<ObjectIncludeEntry>>();
   for (const source of sources) {
-    for (const entry of canonicalToolingEntries(source)) {
-      const key = entry.namespace ?? entry.source;
+    for (const [key, declared] of groupByNamespace(source)) {
       const existing = composed.get(key);
+      const overridden = existing?.length === 1 && declared.length === 1 ? existing[0] : undefined;
+      const override = declared[0];
       composed.set(
         key,
-        existing === undefined ? entry : (mergeValues(existing, entry) as ObjectIncludeEntry),
+        overridden === undefined || override === undefined
+          ? declared
+          : [mergeValues(overridden, override) as ObjectIncludeEntry],
       );
     }
   }
-  return [...composed.values()];
+  return [...composed.values()].flat();
 };
 
 export const hasToolingIncludes = (landofile: ToolingIncludeSurface): boolean =>
@@ -213,8 +239,23 @@ export const normalizeToolingIncludes = (
   ...fromShorthandMap(landofile.toolingIncludes ?? {}),
 ];
 
-export const assertNamespaced = (entry: NormalizedToolingInclude): LandofileIncludeError | undefined =>
-  entry.flatten || (entry.namespace !== undefined && entry.namespace.trim() !== "")
+/**
+ * `aliases:` alias the include-namespace (§8.5.8), which `flatten: true` removes,
+ * so the pair would be accepted and then ignored. §8.5.8 fails an include-level
+ * `dir:` closed for that same reason; this guard applies it to aliases.
+ */
+export const assertNamespacing = (entry: NormalizedToolingInclude): LandofileIncludeError | undefined => {
+  if (entry.flatten) {
+    return entry.aliases.length === 0
+      ? undefined
+      : includeError({
+          message: `Tooling include ${entry.source} sets aliases: with flatten: true, which removes the namespace they would alias.`,
+          source: entry.source,
+          kind: "forbidden-field",
+          remediation: FLATTEN_ALIASES_REMEDIATION,
+        });
+  }
+  return entry.namespace !== undefined && entry.namespace.trim() !== ""
     ? undefined
     : includeError({
         message: `Tooling include ${entry.source} must declare a namespace.`,
@@ -222,3 +263,4 @@ export const assertNamespaced = (entry: NormalizedToolingInclude): LandofileIncl
         kind: "forbidden-field",
         remediation: NAMESPACE_REMEDIATION,
       });
+};

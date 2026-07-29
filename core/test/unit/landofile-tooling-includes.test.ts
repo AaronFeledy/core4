@@ -94,6 +94,47 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["build", "publish", "serve"]);
   });
 
+  test("flatten combined with aliases fails closed instead of dropping the aliases", async () => {
+    // Given a flattened include that also declares namespace aliases
+    const landofile: LandofileShape = {
+      includes: [
+        {
+          source: "./docs/.lando.tasks.yml",
+          kind: "tooling",
+          namespace: "docs",
+          flatten: true,
+          aliases: ["documentation"],
+        },
+      ],
+    };
+
+    // When the include is resolved
+    const error = await failure(landofile, appRoot);
+
+    // Then the unusable combination is rejected with remediation rather than silently ignored
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") {
+      expect(error.kind).toBe("forbidden-field");
+      expect(error.remediation).toContain("flatten");
+    }
+  });
+
+  test("the shorthand rejects flatten with aliases the same way the canonical spelling does", async () => {
+    // Given the equivalent shorthand spelling of the same unusable combination
+    const landofile: LandofileShape = {
+      toolingIncludes: {
+        docs: { file: "./docs/.lando.tasks.yml", flatten: true, aliases: ["documentation"] },
+      },
+    };
+
+    // When the include is resolved
+    const error = await failure(landofile, appRoot);
+
+    // Then both spellings fail identically
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
+  });
+
   test("internal marks every included task hidden without polluting the task shape", async () => {
     // Given
     const landofile: LandofileShape = {
@@ -181,6 +222,46 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     // Then neither fragment's declaration is dropped and both spellings agree
     expect(Object.keys(canonical.tooling ?? {}).sort()).toEqual(["a:build", "b:test"]);
     expect(canonical.tooling).toEqual(shorthand.tooling);
+  });
+
+  test("keeps every canonical declaration pointing one namespace at several fragments", async () => {
+    // Given two canonical tooling includes in one array sharing a namespace
+    await writeFile(join(appRoot, "a.yml"), "tooling:\n  atask:\n    cmd: a\n", "utf8");
+    await writeFile(join(appRoot, "b.yml"), "tooling:\n  btask:\n    cmd: b\n", "utf8");
+
+    // When the Landofile is resolved
+    const resolved = await resolve(
+      {
+        includes: [
+          { source: "./a.yml", kind: "tooling", namespace: "shared" },
+          { source: "./b.yml", kind: "tooling", namespace: "shared" },
+        ],
+      },
+      appRoot,
+    );
+
+    // Then neither sibling declaration is treated as an override of the other
+    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["shared:atask", "shared:btask"]);
+  });
+
+  test("still rejects sibling declarations that contribute the same task id", async () => {
+    // Given two canonical tooling includes whose tasks collide under one namespace
+    await writeFile(join(appRoot, "a.yml"), "tooling:\n  build:\n    cmd: a\n", "utf8");
+    await writeFile(join(appRoot, "b.yml"), "tooling:\n  build:\n    cmd: b\n", "utf8");
+
+    // When the Landofile is resolved
+    const failure = await resolve(
+      {
+        includes: [
+          { source: "./a.yml", kind: "tooling", namespace: "shared" },
+          { source: "./b.yml", kind: "tooling", namespace: "shared" },
+        ],
+      },
+      appRoot,
+    ).catch((cause: unknown) => cause);
+
+    // Then the collision fails closed instead of silently picking a winner
+    expect(String(failure)).toContain('Tooling includes both contribute task "shared:build"');
   });
 
   test("resolves a tooling source relative to its declaring Landofile fragment", async () => {
