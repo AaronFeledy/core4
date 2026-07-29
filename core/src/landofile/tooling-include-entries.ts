@@ -4,6 +4,9 @@ import type { LandofileIncludeError } from "@lando/sdk/errors";
 import type { IncludeEntry, LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
 import { includeError } from "./include-guard.ts";
+import { mergeValues } from "./merge.ts";
+
+type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
 
 export interface NormalizedToolingInclude {
   readonly source: string;
@@ -75,6 +78,38 @@ export const resolveToolingIncludeSourceRoots = (
         ),
       }),
 });
+
+const canonicalToolingEntries = (
+  landofile: Pick<LandofileShape, "includes">,
+): ReadonlyArray<ObjectIncludeEntry> =>
+  (landofile.includes ?? []).filter(
+    (entry): entry is ObjectIncludeEntry => typeof entry !== "string" && entry.kind === "tooling",
+  );
+
+/**
+ * Compose canonical `kind: tooling` declarations across sources the way the
+ * `toolingIncludes:` map composes them: a repeated namespace deep-merges and
+ * distinct namespaces accumulate. Ordinary `includes:` arrays carry no merge
+ * identity key, so they replace wholesale (§7.2); without this a declaration
+ * from a lower-precedence layer or a sibling fragment would be dropped instead
+ * of composed, breaking the §7.7.1 equivalence between the two spellings.
+ */
+export const composeToolingIncludeEntries = (
+  sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
+): ReadonlyArray<ObjectIncludeEntry> => {
+  const composed = new Map<string, ObjectIncludeEntry>();
+  for (const source of sources) {
+    for (const entry of canonicalToolingEntries(source)) {
+      const key = entry.namespace ?? entry.source;
+      const existing = composed.get(key);
+      composed.set(
+        key,
+        existing === undefined ? entry : (mergeValues(existing, entry) as ObjectIncludeEntry),
+      );
+    }
+  }
+  return [...composed.values()];
+};
 
 export const hasToolingIncludes = (landofile: ToolingIncludeSurface): boolean =>
   Object.keys(landofile.toolingIncludes ?? {}).length > 0 ||

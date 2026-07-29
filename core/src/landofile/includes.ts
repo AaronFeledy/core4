@@ -39,6 +39,7 @@ import { mergeLandofiles, mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import {
   assertCompatibleIncludeFields,
+  composeToolingIncludeEntries,
   resolveToolingIncludeSourceRoots,
 } from "./tooling-include-entries.ts";
 import {
@@ -593,32 +594,6 @@ const withoutIncludeArrays = (landofile: Record<string, unknown>): Record<string
   return rest;
 };
 
-type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
-
-const toolingIncludeEntries = (
-  landofile: Pick<LandofileShape, "includes">,
-): ReadonlyArray<ObjectIncludeEntry> =>
-  (landofile.includes ?? []).filter(
-    (entry): entry is ObjectIncludeEntry => typeof entry !== "string" && entry.kind === "tooling",
-  );
-
-/**
- * Canonical tooling declarations deep-merge by namespace the way the
- * `toolingIncludes:` map does, so they cannot be replaced wholesale by the
- * array-merge semantics ordinary `includes:` entries use.
- */
-const mergeToolingIncludeEntries = (
-  sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
-): ReadonlyArray<IncludeEntry> => {
-  const merged = new Map<string, ObjectIncludeEntry>();
-  for (const source of sources) {
-    for (const entry of toolingIncludeEntries(source)) {
-      merged.set(entry.namespace ?? entry.source, entry);
-    }
-  }
-  return [...merged.values()];
-};
-
 const withResolvedTooling = (
   landofile: Record<string, unknown>,
   included: Readonly<Record<string, unknown>>,
@@ -741,7 +716,7 @@ const resolveTree = (
       }
     }
 
-    const toolingIncludes = mergeToolingIncludeEntries([...fragments, sourced]);
+    const toolingIncludes = composeToolingIncludeEntries([...fragments, sourced]);
     const merged = mergeLandofiles([
       ...fragmentRecords.map((fragment) => withoutIncludeArrays(fragment)),
       withoutIncludeArrays(sourced as Record<string, unknown>),

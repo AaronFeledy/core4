@@ -72,6 +72,84 @@ test("an authored internal fragment hides its compiled commands", async () => {
   }
 });
 
+test("composes canonical tooling declarations from every Landofile layer", async () => {
+  // Given each layer declaring a distinct canonical tooling include
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-canonical-"));
+  const canonicalPath = join(appRoot, ".lando.yml");
+  try {
+    await writeFile(join(appRoot, "a.tasks.yml"), "tooling:\n  abuild:\n    cmd: a\n", "utf8");
+    await writeFile(join(appRoot, "b.tasks.yml"), "tooling:\n  bbuild:\n    cmd: b\n", "utf8");
+    await writeFile(
+      join(appRoot, ".lando.base.yml"),
+      ["includes:", "  - source: ./a.tasks.yml", "    kind: tooling", "    namespace: a", ""].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      canonicalPath,
+      [
+        "name: layered",
+        "includes:",
+        "  - source: ./b.tasks.yml",
+        "    kind: tooling",
+        "    namespace: b",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    // When the complete Landofile is loaded
+    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+
+    // Then no layer's declaration is replaced by a higher layer's includes array
+    expect(Object.keys(resolved.tooling ?? {}).sort()).toEqual(["a:abuild", "b:bbuild"]);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
+test("a higher layer overrides a canonical tooling declaration sharing its namespace", async () => {
+  // Given a base-layer canonical declaration the canonical layer redirects by namespace
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-canonical-override-"));
+  const canonicalPath = join(appRoot, ".lando.yml");
+  try {
+    await writeFile(join(appRoot, "canonical-tasks.yml"), "tooling:\n  build:\n    cmd: canonical\n", "utf8");
+    await writeFile(
+      join(appRoot, ".lando.base.yml"),
+      [
+        "includes:",
+        "  - source: ./missing-base-tasks.yml",
+        "    kind: tooling",
+        "    namespace: docs",
+        "    internal: true",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      canonicalPath,
+      [
+        "name: layered",
+        "includes:",
+        "  - source: ./canonical-tasks.yml",
+        "    kind: tooling",
+        "    namespace: docs",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+
+    // When the complete Landofile is loaded and command metadata is compiled
+    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const commands = compileToolingCommands(resolved);
+
+    // Then the shadowed source is never read and the base layer's flags still apply
+    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("canonical");
+    expect(commands.find((command) => command.id === "app:docs:build")?.hidden).toBe(true);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
 test("resolves tooling includes only after Landofile layers merge", async () => {
   // Given a lower-layer tooling source replaced by a valid higher-layer source
   const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-order-"));
