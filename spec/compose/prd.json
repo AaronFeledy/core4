@@ -252,7 +252,7 @@
         "Lint passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 7.4 docs-matrix mandate (generated from the disposition matrix) + sdk/AGENTS.md additive-surface rules; closes the wave. Blocked by binding prerequisites US-480 and US-483. Human option-1 adjudication 2026-07-28 remains authoritative for US-480; the 2026-07-28 Drift Audit split top-level configs/secrets/x-* preservation and fail-closed capability handling into co-resident US-483 after the published matrix exposed silent AppPlan loss. The executable guide also requires a production-wired start proof before closeout."
     },
     {
@@ -295,7 +295,7 @@
         "Lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Split from US-477 by the 2026-07-28 Drift Audit after the generated matrix exposed that accepted top-level configs, secrets, and x-* were promised under AppPlan.extensions.compose but silently dropped by planApp. Binding co-resident prerequisite for US-477."
     },
     {

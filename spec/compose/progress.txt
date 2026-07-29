@@ -923,3 +923,17 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Split/excise decisions: added binding co-resident prerequisite US-483 for top-level project preservation and fail-closed capability handling, narrowed US-477 back to publication/guide/SDK closeout, and set US-477 `passes: false`; production-wired guide start proof remains owned by US-477.
 - Verification: typecheck, lint, all boundary and generated-output gates, schema compatibility, guide lint/coverage/public transcripts/drift with the substantive skip, matrix and schema codegen idempotence, the executable guide, and focused spot checks passed; the production-wired guide start proof is not yet present, so story completion remains blocked.
 ---
+
+## 2026-07-28 23:00 CDT - US-483
+- Preserved top-level Compose `configs`, `secrets`, and nested `x-*` values losslessly under `AppPlan.extensions.compose` on fresh and cached plans. Added the exact `composeProjectFields` provider capability refinement so active project fields fail before provider action unless declared, while project extensions remain inert and ungated; bundled providers truthfully leave the unsupported refinement absent.
+- Verification: typecheck and lint passed; focused schema, provider-contract, planner, cache-hit, Landofile, container-runtime, bundled-provider, compatibility, and generated-artifact tests passed. A targeted mutation made fresh and cached unsupported-field tests fail before restoration, proving the guard is load-bearing; schema and matrix generators were byte-idempotent.
+- **Learnings for future iterations:**
+  - Project-scoped preserved intent needs its own exact capability refinement and cache-hit validation; service-scoped declarations cannot truthfully represent top-level realization.
+---
+
+## 2026-07-28 23:00 CDT - US-477
+- Closed the Compose vocabulary wave after both binding prerequisites passed. The generated matrix now publishes truthful top-level capability behavior, and the realistic service-block guide's start/info/destroy scenario is wired to the compiled-binary e2e runner with a live-provider gate instead of the scenario-only success stub; the tagged rejected-key remediation still runs and retries through the real CLI.
+- Verification: typecheck, lint, all boundary/generated-output/Compose/package/import gates, SDK compatibility and plugin-abstraction coverage, guide lint/coverage/public-transcript/drift checks, generator idempotence, and focused tests passed. The compiled binary reached real sandbox provider build/apply and cleaned up successfully; the clean Ubuntu sandbox still cannot complete rootless container start because its known user-scope bus baseline is unavailable, while the generated e2e lane is now live-socket-gated for the managed-runtime run.
+- **Learnings for future iterations:**
+  - A guide `<Run command="lando start" />` proves provider application only when the generated scenario is `layer="e2e"`, invokes `ScenarioContextFactory.e2e`, and is gated on both a compiled binary and a live provider socket; source/fake scenario success is not equivalent.
+---
