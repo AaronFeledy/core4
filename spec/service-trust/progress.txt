@@ -109,14 +109,6 @@ Spec SoT:
   guide lint, and guide coverage passed; guide drift honored the recorded US-483 skip.
 ---
 
-## [2026-07-29 13:23 CDT] - Babysit
-- PR: #650 https://github.com/AaronFeledy/core4/pull/650
-- CI outcome: pass
-- Review feedback: fixed (Guide-Coverage-Skip for alpha-4-11 drift; brew update before podman install for ubuntu-24.04 Homebrew flake)
-- Drift check: clean
-- Merge: merged (squash)
----
-
 ## 2026-07-29 13:53 CDT - US-484
 - Centralized CA PEM loading for setup and outbound HTTP behind one core seam that returns the host
   path, UTF-8 PEM, and stable SHA-256 digest, with a tagged unreadable-path failure naming all global
@@ -152,4 +144,19 @@ Spec SoT:
 - **Learnings for future iterations:** Boundary adapters must copy remediation onto the consumer's
   top-level tagged error as well as preserve the lower-level cause, because structured result encoding
   does not mine nested causes.
+---
+
+## 2026-07-29 14:36 CDT - US-484 Drift Audit
+- Trigger: 2 cycles, 370 changed lines, 8 commits
+- Category 2: Restored explicit empty-cert-list coverage and production-path proof that downloader
+  failures preserve the shared CA remediation.
+- Category 4: Removed a forwarding CA type alias and two unnecessary named type exports.
+- Category 5: Removed unrelated prior-story babysit history from the branch.
+- Category 6: Earlier aggregate test totals lacked reconstructible path sets and remain unverified;
+  this audit records fresh path-level checks instead.
+- Fixed: Added the missing fixture, propagated remediation through the downloader boundary, deleted
+  dead type ceremony, and removed collateral progress history.
+- Split/excise decisions: None; US-484 remains the original contract and `passes` remains true.
+- Verification: typecheck and lint passed; 73 focused tests with 248 assertions passed; network,
+  import-cycle, generated-output, guide lint, guide coverage, and base-aware guide-drift gates passed.
 ---
