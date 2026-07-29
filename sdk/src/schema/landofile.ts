@@ -381,14 +381,40 @@ const ServiceSecurity = Schema.Struct({
 
 const ServiceSecurityCaAlias = Schema.Union(Schema.String, Schema.Array(Schema.String));
 
-const ServiceSecurityInput = Schema.Struct({
-  ca: Schema.optional(Schema.Array(Schema.String)),
-  cas: Schema.optional(ServiceSecurityCaAlias),
-  "certificate-authority": Schema.optional(ServiceSecurityCaAlias),
-  "certificate-authorities": Schema.optional(ServiceSecurityCaAlias),
-  inheritNetworkCa: Schema.optional(Schema.Boolean),
-  inheritNetworkProxy: Schema.optional(Schema.Boolean),
-}).annotations({ description: SERVICE_SECURITY_DESCRIPTION });
+const ServiceSecurityInput = Schema.Union(
+  Schema.Struct({
+    ca: Schema.optional(Schema.Array(Schema.String)),
+    cas: Schema.optional(Schema.Never),
+    "certificate-authority": Schema.optional(Schema.Never),
+    "certificate-authorities": Schema.optional(Schema.Never),
+    inheritNetworkCa: Schema.optional(Schema.Boolean),
+    inheritNetworkProxy: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    ca: Schema.optional(Schema.Never),
+    cas: ServiceSecurityCaAlias,
+    "certificate-authority": Schema.optional(Schema.Never),
+    "certificate-authorities": Schema.optional(Schema.Never),
+    inheritNetworkCa: Schema.optional(Schema.Boolean),
+    inheritNetworkProxy: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    ca: Schema.optional(Schema.Never),
+    cas: Schema.optional(Schema.Never),
+    "certificate-authority": ServiceSecurityCaAlias,
+    "certificate-authorities": Schema.optional(Schema.Never),
+    inheritNetworkCa: Schema.optional(Schema.Boolean),
+    inheritNetworkProxy: Schema.optional(Schema.Boolean),
+  }),
+  Schema.Struct({
+    ca: Schema.optional(Schema.Never),
+    cas: Schema.optional(Schema.Never),
+    "certificate-authority": Schema.optional(Schema.Never),
+    "certificate-authorities": ServiceSecurityCaAlias,
+    inheritNetworkCa: Schema.optional(Schema.Boolean),
+    inheritNetworkProxy: Schema.optional(Schema.Boolean),
+  }),
+).annotations({ description: SERVICE_SECURITY_DESCRIPTION });
 
 const ServiceSecurityField = Schema.transform(ServiceSecurityInput, ServiceSecurity, {
   strict: true,

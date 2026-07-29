@@ -51,6 +51,40 @@ describe("ServiceConfig security authoring", () => {
     expect(decodeAuthored({ security: { [alias]: value } }).security).toEqual({ ca: expected });
   });
 
+  test("CA aliases preserve inherit overrides", () => {
+    expect(
+      decodeAuthored({
+        security: {
+          cas: "./corp-ca.pem",
+          inheritNetworkCa: false,
+          inheritNetworkProxy: true,
+        },
+      }).security,
+    ).toEqual({
+      ca: ["./corp-ca.pem"],
+      inheritNetworkCa: false,
+      inheritNetworkProxy: true,
+    });
+  });
+
+  describe.each([
+    ["default", {}],
+    ["strict", { onExcessProperty: "error" }],
+  ] as const)("%s ServiceConfig decode", (_mode, options) => {
+    test.each([
+      ["ca", "cas"],
+      ["ca", "certificate-authority"],
+      ["ca", "certificate-authorities"],
+      ["cas", "certificate-authority"],
+      ["cas", "certificate-authorities"],
+      ["certificate-authority", "certificate-authorities"],
+    ] as const)("rejects simultaneous %s and %s spellings", (left, right) => {
+      const security = { [left]: ["./corp-ca.pem"], [right]: ["./corp-ca.pem"] };
+
+      expect(Either.isLeft(Schema.decodeUnknownEither(ServiceConfig)({ security }, options))).toBe(true);
+    });
+  });
+
   test("omitted security leaves the decoded service unchanged", () => {
     expect(decodeAuthored({ type: "node" })).toEqual({ type: "node" });
   });

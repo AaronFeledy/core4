@@ -1696,63 +1696,172 @@
       "type": "array"
     },
     "security": {
-      "additionalProperties": false,
-      "description": "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.",
-      "properties": {
-        "ca": {
-          "items": {
-            "type": "string"
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ca": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cas": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "certificate-authorities": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "certificate-authority": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "inheritNetworkCa": {
+              "type": "boolean"
+            },
+            "inheritNetworkProxy": {
+              "type": "boolean"
+            }
           },
-          "type": "array"
+          "required": [],
+          "type": "object"
         },
-        "cas": {
-          "anyOf": [
-            {
-              "type": "string"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ca": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
             },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          ]
-        },
-        "certificate-authorities": {
-          "anyOf": [
-            {
-              "type": "string"
+            "cas": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
             },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          ]
-        },
-        "certificate-authority": {
-          "anyOf": [
-            {
-              "type": "string"
+            "certificate-authorities": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
             },
-            {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
+            "certificate-authority": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "inheritNetworkCa": {
+              "type": "boolean"
+            },
+            "inheritNetworkProxy": {
+              "type": "boolean"
             }
-          ]
+          },
+          "required": [
+            "cas"
+          ],
+          "type": "object"
         },
-        "inheritNetworkCa": {
-          "type": "boolean"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ca": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "cas": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "certificate-authorities": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "certificate-authority": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "inheritNetworkCa": {
+              "type": "boolean"
+            },
+            "inheritNetworkProxy": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "certificate-authority"
+          ],
+          "type": "object"
         },
-        "inheritNetworkProxy": {
-          "type": "boolean"
+        {
+          "additionalProperties": false,
+          "properties": {
+            "ca": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "cas": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "certificate-authorities": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "certificate-authority": {
+              "$id": "/schemas/never",
+              "not": {},
+              "title": "never"
+            },
+            "inheritNetworkCa": {
+              "type": "boolean"
+            },
+            "inheritNetworkProxy": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "certificate-authorities"
+          ],
+          "type": "object"
         }
-      },
-      "required": [],
-      "type": "object"
+      ],
+      "description": "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings."
     },
     "security_opt": {
       "anyOf": [
