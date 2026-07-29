@@ -5,7 +5,7 @@ import { Effect } from "effect";
 import {
   type ComposeKeyRejectedError,
   LandofileIncludeError,
-  LandofileParseError,
+  type LandofileParseError,
   type NotImplementedError,
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
@@ -15,10 +15,11 @@ import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError, realpathOrSelf } from "./include-guard.ts";
 import { parseLandofile } from "./parser.ts";
 import { rejectBetaToolingFeatures } from "./tooling-beta.ts";
+import { assertToolingFragment, isPlainRecord } from "./tooling-fragment.ts";
 import {
   type NormalizedToolingInclude,
+  assertCompatibleIncludeFields,
   assertNamespaced,
-  assertNoToolingFieldsOnNonToolingIncludes,
   hasToolingIncludes,
   normalizeToolingIncludes,
 } from "./tooling-include-entries.ts";
@@ -57,16 +58,10 @@ interface Fragment {
   readonly nested: Pick<LandofileShape, "includes" | "toolingIncludes">;
 }
 
-const FRAGMENT_KEYS = new Set(["tooling", "toolingIncludes"]);
 const MISSING_REMEDIATION = "Create the tooling fragment, fix its path, or mark the include optional: true.";
-const FRAGMENT_KEY_REMEDIATION =
-  "A tooling fragment may only declare tooling: and toolingIncludes:; move other keys into a Landofile include.";
 const COLLISION_REMEDIATION =
   "Give the colliding tooling includes distinct namespaces or aliases, or exclude the duplicated task.";
 const CYCLE_REMEDIATION = "Break the tooling include cycle so no fragment transitively includes itself.";
-
-const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const withIncludeVars = (task: unknown, vars: Readonly<Record<string, ToolingVarLiteral>>): unknown => {
   if (Object.keys(vars).length === 0 || !isPlainRecord(task)) return task;
@@ -87,34 +82,6 @@ const readFragmentText = (filePath: string, source: string): Effect.Effect<strin
         kind: "fetch-failed",
       }),
   });
-
-const assertFragmentKeys = (
-  parsed: unknown,
-  source: string,
-  filePath: string,
-): Effect.Effect<Record<string, unknown>, LandofileIncludeError | LandofileParseError> => {
-  if (!isPlainRecord(parsed)) {
-    return Effect.fail(
-      new LandofileParseError({
-        message: `Tooling include ${source} did not parse to a mapping.`,
-        filePath,
-        line: undefined,
-        column: undefined,
-      }),
-    );
-  }
-  const offending = Object.keys(parsed).find((key) => !FRAGMENT_KEYS.has(key));
-  return offending === undefined
-    ? Effect.succeed(parsed)
-    : Effect.fail(
-        includeError({
-          message: `Tooling include ${source} declares unsupported top-level key "${offending}".`,
-          source,
-          kind: "forbidden-field",
-          remediation: FRAGMENT_KEY_REMEDIATION,
-        }),
-      );
-};
 
 const locateFragment = (
   entry: NormalizedToolingInclude,
@@ -154,7 +121,7 @@ const loadFragment = (
     Effect.flatMap((content) => rejectComposeTags(entry.source, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
     Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed)),
-    Effect.flatMap((parsed) => assertFragmentKeys(parsed, entry.source, filePath)),
+    Effect.flatMap((parsed) => assertToolingFragment(parsed, entry.source, filePath)),
     Effect.tap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
     Effect.map((parsed) => ({
       filePath,
@@ -218,7 +185,7 @@ const resolveEntries = (
       paths.push(filePath, ...nested.paths);
 
       const excluded = new Set(entry.excludes);
-      const contributed = new Map<string, unknown>([...Object.entries(fragment.tooling), ...nested.tasks]);
+      const contributed = new Map<string, unknown>([...nested.tasks, ...Object.entries(fragment.tooling)]);
       for (const name of excluded) contributed.delete(name);
 
       for (const [name, task] of contributed) {
@@ -234,7 +201,9 @@ const resolveEntries = (
             );
           }
           tasks.set(id, withIncludeVars(task, entry.vars));
-          if (entry.internal || nested.internal.has(name)) internal.add(id);
+          if (entry.internal || (!Object.hasOwn(fragment.tooling, name) && nested.internal.has(name))) {
+            internal.add(id);
+          }
         }
       }
     }
@@ -245,7 +214,7 @@ const resolveEntries = (
 export const resolveToolingIncludes = (
   options: ResolveToolingIncludesOptions,
 ): Effect.Effect<ToolingIncludeResolution, ToolingIncludeError> => {
-  const forbidden = assertNoToolingFieldsOnNonToolingIncludes(options.landofile);
+  const forbidden = assertCompatibleIncludeFields(options.landofile);
   if (forbidden !== undefined) return Effect.fail(forbidden);
   if (!hasToolingIncludes(options.landofile)) {
     return Effect.succeed({ tooling: {}, internalTaskIds: [], localFragmentPaths: [] });
