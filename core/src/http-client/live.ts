@@ -187,8 +187,9 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpReq
       Effect.mapError(
         (error) =>
           new HttpRequestError({
-            message: `${error.message} ${error.remediation}`,
+            message: error.message,
             urlOrigin: "unknown",
+            remediation: error.remediation,
             cause: error,
           }),
       ),

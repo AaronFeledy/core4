@@ -417,8 +417,8 @@ describe("HttpClientLive network trust", () => {
       defaultProviderId: ProviderId.make("lando"),
       telemetry: { enabled: false },
       network: {
-        proxy: { https: "http://config-proxy:3128", noProxy: [] },
-        ca: { certs: [caPath], trustHost: true },
+        proxy: { https: "http://config-proxy:3128", noProxy: [], injectIntoServices: false },
+        ca: { certs: [caPath], trustHost: true, injectIntoServices: true },
       },
     };
     const configLayer = Layer.succeed(ConfigService, {
@@ -450,7 +450,7 @@ describe("HttpClientLive network trust", () => {
     const config: GlobalConfig = {
       defaultProviderId: ProviderId.make("lando"),
       telemetry: { enabled: false },
-      network: { ca: { certs: [missing], trustHost: true } },
+      network: { ca: { certs: [missing], trustHost: true, injectIntoServices: true } },
     };
     const configLayer = Layer.succeed(ConfigService, {
       load: Effect.succeed(config),
@@ -471,9 +471,12 @@ describe("HttpClientLive network trust", () => {
       ),
     );
 
-    const error = failureOf(exit) as { _tag: string; message?: string };
+    const error = failureOf(exit) as { _tag: string; message?: string; remediation?: string };
     expect(error._tag).toBe("HttpRequestError");
     expect(error.message).toContain(missing);
+    expect(error.remediation).toContain("network.ca.certs");
+    expect(error.remediation).toContain("LANDO_NETWORK_CA_CERTS");
+    expect(error.remediation).toContain("security.ca");
     expect(fetchCalled).toBe(false);
   });
 

@@ -529,7 +529,7 @@ describe("initApp tarball source boundary", () => {
             caught = error;
           }
           expect(caught).toBeInstanceOf(Error);
-          expect((caught as Error).message).toContain("Failed to read CA certificate");
+          expect((caught as Error).message).toContain(`CA certificate could not be read: ${missingCa}`);
         });
       });
     });
