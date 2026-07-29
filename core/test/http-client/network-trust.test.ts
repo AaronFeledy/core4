@@ -90,6 +90,25 @@ describe("core network trust", () => {
     expect(resolved.landofileCaPaths).toEqual(["./project.pem"]);
   });
 
+  test("uses configured global inject flags when service overrides are absent", () => {
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      network: {
+        ca: { certs: ["/global.pem"], injectIntoServices: false },
+        proxy: { https: "http://proxy.example:3128", injectIntoServices: true },
+      },
+    });
+
+    const resolved = resolveServiceNetworkInject({ network: config.network, env: {} });
+
+    expect(resolved).toEqual({
+      injectCa: false,
+      injectProxy: true,
+      caPaths: [],
+      landofileCaPaths: [],
+      proxy: { https: "http://proxy.example:3128", noProxy: [] },
+    });
+  });
+
   test("applies service overrides without dropping Landofile CA paths", () => {
     const config = Schema.decodeUnknownSync(GlobalConfig)({
       network: {
