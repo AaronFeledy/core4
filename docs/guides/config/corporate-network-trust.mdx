@@ -36,6 +36,12 @@ outbound HTTP with the UTF-8 PEM bytes and a stable SHA-256 digest for service p
 If a path cannot be read, Lando names that path and points to all three correction surfaces:
 `network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`.
 
+Use `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=true|false` to override
+`network.ca.injectIntoServices`, and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES=true|false` to
+override `network.proxy.injectIntoServices`. Values other than `true` or `false` are rejected as
+invalid global config. `LANDO_NETWORK_CA_CERTS` remains a JSON array of additional CA paths; it does
+not replace either injection flag.
+
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
     <Step name="declare-security">
@@ -50,6 +56,13 @@ If a path cannot be read, Lando names that path and points to all three correcti
       <Variable name="globalConfig" value="network.ca.certs" display="Read host-global CA files from global config" />
       <Variable name="environment" value="LANDO_NETWORK_CA_CERTS" display="Append host-global CA files from a JSON path array" />
       <Variable name="projectConfig" value="security.ca" display="Keep project-local CA paths in the Landofile" />
+    </Step>
+  </Scenario>
+  <Scenario id="override-service-network-injection" render={false} reason="Focused ConfigService overlay tests cover true, false, absent, and malformed injection flag values without requiring a live service">
+    <Step name="set-injection-overrides">
+      <Variable name="caInjection" value="LANDO_NETWORK_CA_INJECT_INTO_SERVICES" display="Override network.ca.injectIntoServices with true or false" />
+      <Variable name="proxyInjection" value="LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES" display="Override network.proxy.injectIntoServices with true or false" />
+      <Variable name="caPaths" value="LANDO_NETWORK_CA_CERTS" display="Keep additional CA paths in the network-trust resolver as a JSON array" />
     </Step>
   </Scenario>
 </Guide>
