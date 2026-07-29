@@ -517,12 +517,12 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
   configs: {
     disposition: "preserved",
     rationale:
-      "Preserved losslessly in AppPlan.extensions.compose and capability-checked because AppPlan has no provider-neutral configs field.",
+      "Preserved losslessly in AppPlan.extensions.compose and capability-checked against composeProjectFields; planning fails with CapabilityError when the provider does not declare configs.",
   },
   secrets: {
     disposition: "preserved",
     rationale:
-      "Preserved losslessly in AppPlan.extensions.compose and capability-checked because AppPlan has no provider-neutral secrets field.",
+      "Preserved losslessly in AppPlan.extensions.compose and capability-checked against composeProjectFields; planning fails with CapabilityError when the provider does not declare secrets.",
   },
   include: {
     disposition: "normalized",
@@ -538,7 +538,8 @@ export const composeTopLevelDispositions: Readonly<Record<string, ComposeDisposi
   },
   "x-*": {
     disposition: "preserved",
-    rationale: "Preserved losslessly in AppPlan.extensions.compose.",
+    rationale:
+      "Preserved losslessly in AppPlan.extensions.compose as inert metadata and never capability-gated.",
   },
   models: rejectedEntry("models"),
 };

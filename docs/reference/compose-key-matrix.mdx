@@ -23,16 +23,16 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 
 | Key path | Disposition | Detail |
 | --- | --- | --- |
-| `configs` | preserved | Preserved losslessly in AppPlan.extensions.compose and capability-checked because AppPlan has no provider-neutral configs field. |
+| `configs` | preserved | Preserved losslessly in AppPlan.extensions.compose and capability-checked against composeProjectFields; planning fails with CapabilityError when the provider does not declare configs. |
 | `include` | normalized | Normalizes into Lando includes. |
 | `models` | rejected | Translate models with a Compose-to-Lando config translator. |
 | `name` | normalized | Normalizes into AppPlan.name. |
 | `networks` | normalized | Normalizes into AppPlan.networks. |
-| `secrets` | preserved | Preserved losslessly in AppPlan.extensions.compose and capability-checked because AppPlan has no provider-neutral secrets field. |
+| `secrets` | preserved | Preserved losslessly in AppPlan.extensions.compose and capability-checked against composeProjectFields; planning fails with CapabilityError when the provider does not declare secrets. |
 | `services` | normalized | Normalizes into AppPlan.services. |
 | `version` | normalized | Accepted and ignored after a deprecation notice as normalized compatibility handling. |
 | `volumes` | normalized | Normalizes into AppPlan.stores. |
-| `x-*` | preserved | Preserved losslessly in AppPlan.extensions.compose. |
+| `x-*` | preserved | Preserved losslessly in AppPlan.extensions.compose as inert metadata and never capability-gated. |
 
 ## YAML tags
 
