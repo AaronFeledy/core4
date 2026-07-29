@@ -1023,3 +1023,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - **Learnings for future iterations:**
   - Optional source handling must follow boundary validation, never precede it; `optional` suppresses absence, not path-containment policy.
 ---
+
+## 2026-07-29 05:53 CDT - US-479 Review
+- Closed the contained review defects: tooling-only injected services now resolve instead of taking the no-includes fast path; fragment-local, root-authored, and higher-layer task winners no longer inherit stale `internal` provenance; tooling fragments reject every nested `includes:` key and malformed shorthand maps; canonical tooling entries reject transport-only fields and remote sources instead of accepting integrity or version intent they ignore.
+- Returned the story to Build with `passes: false`: the source criterion “`IncludeEntry.kind` additively accepts `tooling` only when the same change implements app-plan compile-time tooling-fragment resolution” is unmet because tooling resolution currently runs inside each `resolveTree` and each Landofile layer before the layer merge, rather than at app-plan compile time. This work is inside US-479 and no prior Drift Audit entry excised it.
+- Guide-Coverage-Skip: US-479 adds a dedicated executable tooling-includes guide; unrelated legacy library, shell, and general Landofile guide mappings do not own this new include surface.
+- Review notes (deferred/rejected): Cursor Bugbot produced no report because the configured account is out of usage; no Bugbot finding was available to triage.
+- Review notes (deferred/rejected): the same-user symlink swap between containment validation and read is low-impact and adds no privilege beyond existing write access to the app tree, so it remains out-of-scope hardening.
+- Review notes (deferred/rejected): nested canonical `includes:` inside a tooling fragment was rejected, not added, because §8.5.8 explicitly limits fragment nesting to `toolingIncludes:` and says any bare `includes:` key fails closed.
+- Verification: typecheck and lint passed; 116 focused tooling resolver, regression, layer, CLI resolution, Landofile service, command compiler, SDK schema, and compatibility tests passed; the executable tooling guide and explicit-base guide-drift gate passed.
+- **Learnings for future iterations:** A shared public include struct needs semantic compatibility checks in both directions: tooling-only fields must fail on non-tooling kinds, and transport-only fields must fail on local-only tooling kinds before normalization can discard them.
+---
