@@ -20,9 +20,11 @@ import { RuntimeProvider } from "@lando/sdk/services";
 describe("provider-lando capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "hostProxy")
+      .filter((field) => field !== "composePreservedPaths" && field !== "hostProxy")
       .sort();
-    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields).sort();
+    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields)
+      .filter((field) => field !== "composePreservedPaths")
+      .sort();
     const linux = mvpProviderCapabilities("linux");
     const macos = mvpProviderCapabilities("darwin");
     const windows = mvpProviderCapabilities("win32");
@@ -92,7 +94,9 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(true);
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);
     expect(Object.keys(runtimeProvider.capabilities).sort()).toEqual(
-      Object.keys(ProviderCapabilities.fields).sort(),
+      Object.keys(ProviderCapabilities.fields)
+        .filter((field) => field !== "composePreservedPaths")
+        .sort(),
     );
   });
 
