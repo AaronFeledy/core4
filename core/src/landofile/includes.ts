@@ -593,8 +593,14 @@ const withoutIncludeArrays = (landofile: Record<string, unknown>): Record<string
   return rest;
 };
 
-const toolingIncludeEntries = (landofile: Pick<LandofileShape, "includes">): ReadonlyArray<IncludeEntry> =>
-  (landofile.includes ?? []).filter((entry) => typeof entry !== "string" && entry.kind === "tooling");
+type ObjectIncludeEntry = Exclude<IncludeEntry, string>;
+
+const toolingIncludeEntries = (
+  landofile: Pick<LandofileShape, "includes">,
+): ReadonlyArray<ObjectIncludeEntry> =>
+  (landofile.includes ?? []).filter(
+    (entry): entry is ObjectIncludeEntry => typeof entry !== "string" && entry.kind === "tooling",
+  );
 
 /**
  * Canonical tooling declarations deep-merge by namespace the way the
@@ -604,10 +610,9 @@ const toolingIncludeEntries = (landofile: Pick<LandofileShape, "includes">): Rea
 const mergeToolingIncludeEntries = (
   sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
 ): ReadonlyArray<IncludeEntry> => {
-  const merged = new Map<string, IncludeEntry>();
+  const merged = new Map<string, ObjectIncludeEntry>();
   for (const source of sources) {
     for (const entry of toolingIncludeEntries(source)) {
-      if (typeof entry === "string") continue;
       merged.set(entry.namespace ?? entry.source, entry);
     }
   }
