@@ -66,6 +66,7 @@ if ! command -v brew >/dev/null 2>&1; then
   test -x /home/linuxbrew/.linuxbrew/bin/brew
   eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
 fi
+brew update
 brew install podman
 BREW_PREFIX="$(brew --prefix)"
 echo "$BREW_PREFIX/bin" >> "$GITHUB_PATH"

@@ -1,0 +1,38 @@
+---
+id: corporate-network-trust
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, config, services, security, ca]
+---
+
+Project-specific certificate authorities belong under each service's `security` block. The canonical
+form is a list of certificate paths:
+
+```yaml
+services:
+  appserver:
+    security:
+      ca:
+        - ./certs/corporate-root.pem
+      inheritNetworkCa: true
+      inheritNetworkProxy: false
+```
+
+`inheritNetworkCa` and `inheritNetworkProxy` override the corresponding host network-injection
+setting for only that service. Omit either flag to inherit the host default.
+
+For compatibility, `cas`, `certificate-authority`, and `certificate-authorities` are accepted inside
+`security`. Each alias accepts one path or a list and canonicalizes to `security.ca`. The top-level
+`certs` field configures a service's leaf TLS certificate and is not an alias for additional CAs.
+
+<Guide>
+  <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
+    <Step name="declare-security">
+      <Variable name="canonical" value="security.ca" display="Declare project CA certificate paths as a list" />
+      <Variable name="aliases" value="cas, certificate-authority, certificate-authorities" display="Use a scalar or list; each form normalizes to security.ca" />
+      <Variable name="inheritFlags" value="inheritNetworkCa, inheritNetworkProxy" display="Override host network injection for this service only" />
+      <Variable name="leafTls" value="certs" display="Keep service leaf TLS separate from additional certificate authorities" />
+    </Step>
+  </Scenario>
+</Guide>

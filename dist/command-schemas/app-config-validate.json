@@ -48,7 +48,7 @@
       "type": "integer"
     },
     "ServiceConfigInput": {
-      "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+      "description": "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.",
       "patternProperties": {
         "": {
           "$id": "/schemas/unknown",
@@ -1785,6 +1785,174 @@
             ]
           },
           "type": "array"
+        },
+        "security": {
+          "anyOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "ca": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "cas": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "certificate-authorities": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "certificate-authority": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "inheritNetworkCa": {
+                  "type": "boolean"
+                },
+                "inheritNetworkProxy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "ca": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "cas": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "certificate-authorities": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "certificate-authority": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "inheritNetworkCa": {
+                  "type": "boolean"
+                },
+                "inheritNetworkProxy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "cas"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "ca": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "cas": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "certificate-authorities": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "certificate-authority": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "inheritNetworkCa": {
+                  "type": "boolean"
+                },
+                "inheritNetworkProxy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "certificate-authority"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "ca": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "cas": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "certificate-authorities": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ]
+                },
+                "certificate-authority": {
+                  "$id": "/schemas/never",
+                  "not": {},
+                  "title": "never"
+                },
+                "inheritNetworkCa": {
+                  "type": "boolean"
+                },
+                "inheritNetworkProxy": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "certificate-authorities"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings."
         },
         "security_opt": {
           "anyOf": [
