@@ -34,7 +34,7 @@ This set is two PRDs:
 
 ## Non-Goals
 
-- DDEV-style host-global Dockerfile directories.
+- Host-global Dockerfile drop-in directories.
 - Full SSH-agent Live / direct host agent mounts (not a TLS cert concern).
 - Mutagen beyond network.ca on downloads.
 - ACME/public CA for Traefik (dev mkcert only for v4.0 default).

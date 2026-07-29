@@ -31,6 +31,6 @@ Spec SoT:
 
 ## Out of scope
 
-- DDEV global Dockerfiles
+- Host-global Dockerfile drop-in directories
 - Full lando.ssh-agent / SshService Live
 - ACME/public CA for Traefik
