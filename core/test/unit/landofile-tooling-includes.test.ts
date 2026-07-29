@@ -264,6 +264,33 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     expect(String(failure)).toContain('Tooling includes both contribute task "shared:build"');
   });
 
+  test("rejects a remote source in either include spelling", async () => {
+    // Given the same remote intent authored through each spelling
+    const canonical = await resolve(
+      { includes: [{ source: "https://example.test/tasks.yml", kind: "tooling", namespace: "ns" }] },
+      appRoot,
+    ).catch((cause: unknown) => cause);
+    const shorthand = await resolve(
+      { toolingIncludes: { ns: { file: "https://example.test/tasks.yml", optional: true } } },
+      appRoot,
+    ).catch((cause: unknown) => cause);
+
+    // Then neither spelling silently degrades the remote source to a local miss
+    expect(String(canonical)).toContain("unsupported remote source");
+    expect(String(shorthand)).toContain("unsupported remote source");
+  });
+
+  test("strips control bytes authored into an include source", async () => {
+    // Given a fragment path carrying a raw terminal escape sequence
+    const failure = await resolve(
+      { toolingIncludes: { ns: { file: "./\u001b[31mmissing.yml" } } },
+      appRoot,
+    ).catch((cause: unknown) => cause);
+
+    // Then the rendered message cannot carry the escape into the terminal
+    expect(String(failure)).not.toContain("\u001b");
+  });
+
   test("resolves a tooling source relative to its declaring Landofile fragment", async () => {
     // Given an ordinary Landofile fragment that declares a relative tooling include
     await mkdir(join(appRoot, "fragments"), { recursive: true });

@@ -6,6 +6,16 @@ import { LandofileIncludeError } from "@lando/sdk/errors";
 export const INCLUDE_REMEDIATION =
   "Check the includes: entry and retry after the referenced Landofile fragment is available.";
 
+/**
+ * Include messages interpolate authored sources, fragment keys, and namespaces,
+ * and reach the plain terminal renderer unchanged. A repo-authored control byte
+ * could otherwise rewrite or spoof terminal output, so strip them once here
+ * rather than at every interpolation site.
+ */
+const withoutControlBytes = (value: string): string =>
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: stripping control bytes is the point
+  value.replace(/[\u0000-\u001f\u007f]/gu, "");
+
 export const includeError = (input: {
   readonly message: string;
   readonly source: string;
@@ -13,10 +23,10 @@ export const includeError = (input: {
   readonly remediation?: string;
 }): LandofileIncludeError =>
   new LandofileIncludeError({
-    message: input.message,
-    source: input.source,
+    message: withoutControlBytes(input.message),
+    source: withoutControlBytes(input.source),
     kind: input.kind,
-    remediation: input.remediation ?? INCLUDE_REMEDIATION,
+    remediation: withoutControlBytes(input.remediation ?? INCLUDE_REMEDIATION),
   });
 
 export const realpathOrSelf = (path: string): Promise<string> => realpath(path).catch(() => path);

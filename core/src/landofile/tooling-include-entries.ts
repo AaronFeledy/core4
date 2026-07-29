@@ -175,6 +175,15 @@ export const assertCompatibleIncludeFields = (
       remediation: KIND_REMEDIATION,
     });
   }
+  for (const [namespace, entry] of Object.entries(landofile.toolingIncludes ?? {})) {
+    if (!isRemoteSource(entry.file)) continue;
+    return includeError({
+      message: `Tooling include ${namespace} uses an unsupported remote source ${entry.file}.`,
+      source: entry.file,
+      kind: "forbidden-field",
+      remediation: LOCAL_SOURCE_REMEDIATION,
+    });
+  }
   return undefined;
 };
 
