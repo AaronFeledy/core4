@@ -25,8 +25,6 @@ export class SetupNetworkTrustError extends Data.TaggedError("SetupNetworkTrustE
   readonly cause?: unknown;
 }> {}
 
-export type LoadedNetworkCaCert = LoadedCaPem;
-
 export interface ResolvedSetupNetworkTrust extends NetworkConfig {
   readonly proxy: {
     readonly http?: string;
@@ -37,7 +35,7 @@ export interface ResolvedSetupNetworkTrust extends NetworkConfig {
   readonly ca: {
     readonly trustHost: boolean;
     readonly certs: ReadonlyArray<string>;
-    readonly loadedCerts: ReadonlyArray<LoadedNetworkCaCert>;
+    readonly loadedCerts: ReadonlyArray<LoadedCaPem>;
     readonly injectIntoServices: boolean;
   };
 }

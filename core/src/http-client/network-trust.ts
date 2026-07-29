@@ -80,13 +80,13 @@ export const loadCaPems = (
     { concurrency: "unbounded" },
   );
 
-export interface ServiceNetworkInjectInput {
+interface ServiceNetworkInjectInput {
   readonly network?: NetworkConfig | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
   readonly security?: ServiceConfig["security"] | undefined;
 }
 
-export interface ResolvedServiceNetworkInject {
+interface ResolvedServiceNetworkInject {
   readonly injectCa: boolean;
   readonly injectProxy: boolean;
   readonly caPaths: ReadonlyArray<string>;
