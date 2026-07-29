@@ -13,6 +13,7 @@ import {
   type LandofileTimeoutError,
   LandofileValidationError,
   NotImplementedError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
@@ -33,6 +34,7 @@ import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
 import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "./tooling-beta.ts";
+import { composeToolingIncludeEntries } from "./tooling-include-entries.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
@@ -54,7 +56,6 @@ const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
 }> = [
   { key: "env_file", description: "Landofile env file overrides" },
   { key: "toolingDefaults", description: "Tooling defaults" },
-  { key: "toolingIncludes", description: "Tooling includes" },
   { key: "events", description: "Events-as-tasks" },
   { key: "commandAliases", description: "Top-level command aliases" },
 ];
@@ -248,7 +249,8 @@ type LandofileLoadError =
   | LandofileFormConflictError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | NotImplementedError;
+  | NotImplementedError
+  | ToolingIncludeCycleError;
 
 export const loadLandofileFile = (
   filePath: string,
@@ -328,6 +330,7 @@ export const loadLandofileLayers = (
               sourcePath: layer.filePath,
               layer: layer.layer,
               order: layer.order,
+              resolveTooling: false,
             }),
           ),
           Effect.map((landofile) => ({ layer, landofile })),
@@ -335,7 +338,11 @@ export const loadLandofileLayers = (
       ),
     ),
     Effect.flatMap((loaded) => {
-      const merged = mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>));
+      const composedTooling = composeToolingIncludeEntries(loaded.map(({ landofile }) => landofile));
+      const merged = {
+        ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
+        ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
+      };
       return rejectComposeKeys(canonicalPath, merged).pipe(
         Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
         Effect.map((landofile) =>
@@ -351,6 +358,9 @@ export const loadLandofileLayers = (
             ),
             appRoot,
           ),
+        ),
+        Effect.flatMap((landofile) =>
+          resolveLandofileIncludes({ landofile, appRoot, sourcePath: canonicalPath }),
         ),
       );
     }),

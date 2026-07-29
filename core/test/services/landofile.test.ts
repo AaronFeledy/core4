@@ -825,11 +825,23 @@ describe("LandofileServiceLive — tooling: Beta-only rejection (US-017)", () =>
     );
   });
 
-  test("rejects top-level `toolingIncludes:` with remediation", async () => {
-    await assertRejectsLandofile(
-      ["name: myapp", "toolingIncludes:", "  docs:", "    file: ./docs/.lando.tasks.yml", ""],
-      "not supported yet",
-    );
+  test("accepts top-level `toolingIncludes:` and registers its namespaced tasks", async () => {
+    await withTempCwd(async (dir) => {
+      await mkdir(join(dir, "docs"), { recursive: true });
+      await writeFile(
+        join(dir, "docs", ".lando.tasks.yml"),
+        ["tooling:", "  build:", "    service: node", "    cmd: bun run build", ""].join("\n"),
+      );
+      await writeFile(
+        join(dir, ".lando.yml"),
+        ["name: myapp", "toolingIncludes:", "  docs:", "    file: ./docs/.lando.tasks.yml", ""].join("\n"),
+      );
+      process.chdir(dir);
+
+      const landofile = await discover();
+
+      expect(landofile.tooling?.["docs:build"]?.cmd).toBe("bun run build");
+    });
   });
 
   test("rejects top-level `events:` with remediation", async () => {

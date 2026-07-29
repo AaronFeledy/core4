@@ -7,6 +7,7 @@ import type {
   ComposeKeyRejectedError,
   LandofileIncludeError,
   LandofileLockMismatchError,
+  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 
@@ -72,6 +73,7 @@ export type AppIncludesVerifyError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | ComposeKeyRejectedError;
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);

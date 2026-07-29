@@ -330,7 +330,7 @@
         "Lint passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "Materializes the unified tooling include-kind follow-up identified during US-475 spec reconciliation; blocked by the existing spec 8.5.8 toolingIncludes contract."
     }
   ]

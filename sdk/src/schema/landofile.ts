@@ -642,17 +642,77 @@ export const BunShellScriptFrontMatter = Schema.Struct({
 });
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 
+/**
+ * ToolingIncludeShape — one entry of the `toolingIncludes:` shorthand map
+ * (§8.5.8). The map key is the include namespace; the entry names a local
+ * tooling fragment carrying only `tooling:` and `toolingIncludes:`.
+ *
+ * Deliberately omitted for Beta 1 (§8.5.8): `dir:` (task-level `dir:` is rejected) and
+ * `checksum:` (tooling fragments are local-file only, so there is no remote
+ * source to pin).
+ */
+export const ToolingIncludeShape = Schema.Struct({
+  file: Schema.String.annotations({
+    description:
+      "Path to the tooling fragment, resolved relative to the file that declares the include and contained under the app root.",
+  }),
+  optional: Schema.optional(Schema.Boolean).annotations({
+    description: "When true, a missing fragment file is skipped instead of failing the load.",
+  }),
+  flatten: Schema.optional(Schema.Boolean).annotations({
+    description: "When true, included task names register unprefixed instead of under the include namespace.",
+  }),
+  internal: Schema.optional(Schema.Boolean).annotations({
+    description: "When true, every task contributed by this include is registered hidden.",
+  }),
+  aliases: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Additional namespaces the included tasks also register under.",
+  }),
+  excludes: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Fragment task names dropped before flattening or namespace registration.",
+  }),
+  vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })).annotations({
+    description: "Literal vars applied to every included task unless the task defines its own value.",
+  }),
+});
+export type ToolingIncludeShape = typeof ToolingIncludeShape.Type;
+
 export const IncludeEntry = Schema.Union(
   Schema.String,
   Schema.Struct({
     source: Schema.String,
-    kind: Schema.optional(Schema.Literal("landofile", "compose")).annotations({
+    kind: Schema.optional(Schema.Literal("landofile", "compose", "tooling")).annotations({
       description:
-        'The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path. This is not source transport.',
+        'The fragment content semantics: "landofile" is a Landofile fragment; "compose" is a Compose fragment routed through the same parser, rejection, and decode path; "tooling" is a tooling fragment carrying only tooling: and toolingIncludes:. This is not source transport.',
     }),
     path: Schema.optional(Schema.String),
     version: Schema.optional(Schema.String),
     checksum: Schema.optional(Schema.String),
+    namespace: Schema.optional(Schema.String).annotations({
+      description:
+        'kind: "tooling" only — the sub-namespace included tasks register under. Required unless flatten is true.',
+    }),
+    flatten: Schema.optional(Schema.Boolean).annotations({
+      description:
+        'kind: "tooling" only — when true, included task names register unprefixed instead of under the include namespace.',
+    }),
+    internal: Schema.optional(Schema.Boolean).annotations({
+      description: 'kind: "tooling" only — when true, every task contributed by this include is hidden.',
+    }),
+    optional: Schema.optional(Schema.Boolean).annotations({
+      description: 'kind: "tooling" only — when true, a missing fragment file is skipped instead of failing.',
+    }),
+    aliases: Schema.optional(Schema.Array(Schema.String)).annotations({
+      description: 'kind: "tooling" only — additional namespaces the included tasks also register under.',
+    }),
+    excludes: Schema.optional(Schema.Array(Schema.String)).annotations({
+      description:
+        'kind: "tooling" only — fragment task names dropped before flattening or namespace registration.',
+    }),
+    vars: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingVarLiteral })).annotations({
+      description:
+        'kind: "tooling" only — literal vars applied to every included task unless the task defines its own value.',
+    }),
   }),
 );
 export type IncludeEntry = typeof IncludeEntry.Type;
@@ -707,7 +767,7 @@ const ComposeConfigConfig = Schema.Struct({
 
 /**
  * LandofileShape — the authored Landofile shape.
- * Excludes fields not modeled here: toolingDefaults:, toolingIncludes:,
+ * Excludes fields not modeled here: toolingDefaults:,
  * commandAliases:, events:, env_file:, keys:, plugins:, pluginDirs:.
  */
 const LandofileShapeBase = Schema.Struct({
@@ -741,6 +801,12 @@ const LandofileShapeBase = Schema.Struct({
   proxy: Schema.optional(Schema.Record({ key: ServiceName, value: Schema.Array(RouteInput) })),
   providers: Schema.optional(ProviderExtensionConfig),
   tooling: Schema.optional(Schema.Record({ key: Schema.String, value: ToolingTaskShape })),
+  toolingIncludes: Schema.optional(
+    Schema.Record({ key: Schema.String, value: ToolingIncludeShape }),
+  ).annotations({
+    description:
+      "Shorthand map of tooling-fragment includes keyed by include namespace; equivalent to includes: entries with kind: tooling.",
+  }),
 });
 
 export const LandofileShape = Schema.asSchema(

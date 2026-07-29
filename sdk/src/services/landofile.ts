@@ -11,6 +11,7 @@ import type {
   LandofileTimeoutError,
   LandofileValidationError,
   NotImplementedError,
+  ToolingIncludeCycleError,
 } from "../errors/index.ts";
 import type { LandofileShape } from "../schema/index.ts";
 
@@ -27,6 +28,7 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError
+      | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError
     >;

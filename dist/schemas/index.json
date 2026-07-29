@@ -730,6 +730,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Tooling Include Shape.",
+    "docsPath": "docs/reference/schemas/tooling-include-shape.mdx",
+    "id": "ToolingIncludeShape",
+    "jsonSchemaPath": "dist/schemas/tooling-include-shape.json",
+    "packageExport": "@lando/sdk/schema#ToolingIncludeShape",
+    "title": "Tooling Include Shape"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Include Entry.",
     "docsPath": "docs/reference/schemas/include-entry.mdx",
     "id": "IncludeEntry",

@@ -1,0 +1,10 @@
+tooling:
+  build:
+    service: web
+    cmd: bun run docs:build
+  serve:
+    service: web
+    cmd: bun run docs:serve
+  publish:
+    service: web
+    cmd: bun run docs:publish

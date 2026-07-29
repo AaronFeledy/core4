@@ -1,0 +1,22 @@
+name: tooling-includes-demo
+runtime: 4
+includes:
+  - source: ./docs/.lando.tasks.yml
+    kind: tooling
+    namespace: docs
+    aliases: [documentation]
+    excludes: [publish]
+    vars:
+      DOCS_PORT: 4321
+toolingIncludes:
+  api:
+    file: ./api/.lando.tasks.yml
+    internal: true
+services:
+  web:
+    type: node
+    primary: true
+tooling:
+  build:
+    service: web
+    cmd: bun run build

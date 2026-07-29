@@ -611,8 +611,8 @@ Rules:
 - Compose fields without provider-neutral semantics are preserved in plan extensions and, except inert `x-*` extension fields, require a provider that declares the needed Compose capability. They MUST NOT be silently dropped.
 - Lando-specific keys win over equivalent Compose shorthand during normalization. For example, `services.web.endpoints:` wins over endpoint intent inferred from `services.web.ports:`.
 - `lando app config view --format yaml` (equivalently the bare `lando app config --format yaml`, per §8.2.1) SHOULD render the post-merge, post-normalization config so users can see how Compose and Lando keys were resolved. Note that the bare top-level `lando config` alias resolves to `meta:config` (§8.2.2) and reads global config, not the app Landofile.
-- The canonical import surface is **`includes:`** (§7.7), which accepts a `kind:` discriminator. The Beta surface supports `landofile` (the default — whole-file fragment merge) and `compose` (Compose-spec project fragments); each kind preserves its own resolution timing and namespacing rules. `includes:` does not yet accept `kind: tooling` as a literal.
-- Tooling-only fragments continue through the separate `toolingIncludes:` key (§8.5.8), which is not deprecated. Unifying tooling fragments under `includes: [{ kind: tooling, ... }]`, with its own app-plan compile-time resolution and namespacing contract, is deferred follow-up work; shipping a schema-only `kind: "tooling"` literal ahead of that contract would be a partial public surface, which this spec deliberately does not do.
+- The canonical import surface is **`includes:`** (§7.7), which accepts a `kind:` discriminator. The Beta surface supports `landofile` (the default — whole-file fragment merge), `compose` (Compose-spec project fragments), and `tooling` (tooling-only fragments); each kind preserves its own resolution timing and namespacing rules.
+- `kind: tooling` resolves at app-plan compile time and shares the `namespace`, `flatten`, `internal`, `optional`, `aliases`, `excludes`, and `vars` contract defined for `toolingIncludes:` in §8.5.8. The `toolingIncludes:` shorthand key remains available and is not deprecated: wherever both spellings are accepted, they normalize through the same resolver and produce equivalent plans, with no compatibility shim or dual resolution path. The one place they are not interchangeable is inside a tooling fragment, which nests further includes through its own `toolingIncludes:` key only; a bare `includes:` key in a fragment fails closed per §8.5.8.
 - Compose's top-level `include:` is recognized as `includes: [{ ..., kind: compose }]`. When both `includes:` and a top-level `include:` appear in the same file, `include:` entries are appended to the resolved `includes:` list with `kind: compose`. Lando's `includes:` is otherwise a strict superset of the supported Compose `include:` forms, with additional source schemes (git, npm, registry) and Lando-aware merge semantics.
 - A `kind: compose` fragment is subject to the same disposition matrix: a fragment using a `rejected` key (e.g. `extends`) fails with the same tagged error and remediation. The `compose` include kind does not widen the vocabulary.
 
@@ -949,7 +949,7 @@ The `kind:` field discriminates the fragment's shape and resolution timing:
 | `kind:` | Resolves at | Fragment shape | Notes |
 |---|---|---|---|
 | `landofile` (default) | per-file, before §7.2 merge | Whole-Landofile fragment per §7.7.2 | The unmarked default. Most includes are this kind. |
-| `tooling` (not yet accepted) | app-plan compile time | `tooling`/`toolingDefaults`/`toolingIncludes` shape per §8.5.8 | Deferred follow-up: unifying tooling-only fragments under `includes: [{ kind: tooling, ... }]` has its own app-plan timing and namespacing contract (the `namespace`, `flatten`, `internal`, `aliases`, `excludes`, and `vars` fields would apply only to this kind). Until that ships, tooling fragments use the separate `toolingIncludes:` key (§7.4, §8.5.8), which is not deprecated. |
+| `tooling` | app-plan compile time | Tooling-only fragment per §8.5.8 | Shares the `namespace`, `flatten`, `internal`, `optional`, `aliases`, `excludes`, and `vars` contract with the `toolingIncludes:` shorthand (§7.4, §8.5.8); both forms route through one resolver and produce equivalent plans wherever both are accepted, so neither is a compatibility shim for the other. Nesting inside a fragment is `toolingIncludes:`-only (§8.5.8). |
 | `compose` | per-file, before §7.2 merge | Compose-spec project fragment | Recognized for Compose `include:` interop (§7.4). |
 
 #### 7.7.2 Fragment shape
@@ -995,8 +995,8 @@ Network access is required only when an include or app-declared plugin is missin
 
 | Key | Purpose | Resolution time |
 |---|---|---|
-| `includes:` (Lando, §7.7) — the canonical surface | Unified import primitive; `kind:` discriminates `landofile` (default) or `compose`. A future `tooling` kind is deferred follow-up work (§7.7.1). | Per-file before §7.2 merge for `landofile` / `compose` |
-| `toolingIncludes:` (§8.5.8) | Tooling-only fragments; not yet unified under `includes:` | App-plan compile time |
+| `includes:` (Lando, §7.7) — the canonical surface | Unified import primitive; `kind:` discriminates `landofile` (default), `compose`, or `tooling` (§7.7.1). | Per-file before §7.2 merge for `landofile` / `compose`; app-plan compile time for `tooling` |
+| `toolingIncludes:` (§8.5.8) | Tooling-only fragments; shorthand for `includes: [{ kind: tooling, ... }]`, sharing its resolver | App-plan compile time |
 | Compose `include:` | Recognized as `includes: [{ kind: compose, ... }]`; entries are appended to the resolved `includes:` list | Per-file before §7.2 merge |
 
 ### 7.8 Schema and documentation publication

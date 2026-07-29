@@ -15,6 +15,7 @@ import type {
   ComposeKeyRejectedError,
   LandofileIncludeError,
   LandofileLockMismatchError,
+  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 
 import { findLandofilePath } from "../../landofile/discovery.ts";
@@ -70,6 +71,7 @@ export type AppIncludesUpdateError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | ComposeKeyRejectedError;
 
 /**

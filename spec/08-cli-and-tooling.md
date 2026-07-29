@@ -485,7 +485,6 @@ toolingDefaults:
 toolingIncludes:
   frontend:
     file: ./frontend/.lando.tasks.yml
-    dir: ./frontend
     aliases: [fe]
     optional: true
     flatten: false
@@ -861,7 +860,6 @@ includes:
 toolingIncludes:
   docs:
     file: ./docs/.lando.tasks.yml
-    dir: ./docs
     optional: false
     flatten: false
     internal: false
@@ -869,19 +867,21 @@ toolingIncludes:
     excludes: [publish]
     vars:
       DOCS_PORT: 4321
-    checksum: sha256:...
 ```
 
 Rules:
 
-- Included files use the same `tooling`, `toolingDefaults`, and `toolingIncludes` shape as the parent, not a full Landofile unless explicitly named `.lando.yml`.
+- A tooling fragment declares only `tooling:` and `toolingIncludes:` as top-level keys. It is not a full Landofile: `name:`, `runtime:`, `services:`, a top-level `includes:` array, and `toolingDefaults:` are all rejected inside the fragment. `toolingDefaults:` remains valid at the parent Landofile level only (§8.5.3); Beta 1 does not accept it inside a tooling fragment.
+- A fragment MAY nest further tooling includes by declaring its own `toolingIncludes:` key. Nested entries resolve through the same canonical `kind: tooling` machinery (§7.7.1) as the parent's includes — there is no separate nested-resolution path. Any other nested include kind, and any bare `includes:` key at all, fails closed with a tagged `LandofileIncludeError`.
 - Relative paths resolve from the file that declares the include.
 - Included tasks are namespaced as `<include-namespace>:<task>` unless `flatten: true`. The include-namespace is a sub-namespace **within the task's command namespace** (default `app`). For example, an include declared as `toolingIncludes.frontend:` produces canonical command ids of the form `app:frontend:<task>`.
-- `aliases` alias the include-namespace at the same command-namespace level (a `frontend` include with `aliases: [fe]` produces both `app:frontend:<task>` and `app:fe:<task>`).
+- `aliases` alias the include-namespace at the same command-namespace level (a `frontend` include with `aliases: [fe]` produces both `app:frontend:<task>` and `app:fe:<task>`). Combining `aliases` with `flatten: true` fails closed with a tagged `LandofileIncludeError`: flattening removes the include-namespace the aliases would alias, so the pair would otherwise be accepted and then ignored.
 - `optional: true` suppresses missing-file errors.
 - `internal: true` marks all included tasks internal.
-- `checksum` is required for remote includes when remote includes are enabled in a future release; v4.0.0 only requires local file includes.
 - `excludes` removes tasks from the include before flattening or namespace registration.
+- A fragment's own `tooling:` entries win over tasks contributed by its `toolingIncludes:` when a task id collides — the same precedence the parent Landofile's own `tooling:` holds over its top-level `includes:`.
+- `checksum:` is not part of the Beta 1 tooling-include shape. Tooling fragments are local-file only, so there is no remote source to pin; a remote-source `checksum:` is reserved for a future release that adds remote tooling includes.
+- `dir:` is likewise not part of the Beta 1 tooling-include shape. Task-level `dir:` is itself rejected in Beta 1 (§8.5.1), so an include-level working directory would be accepted and then ignored; authoring it fails closed as an unsupported key rather than silently having no effect. It is reserved for the release that accepts task-level `dir:`.
 - Cyclic includes are rejected with a tagged `ToolingIncludeCycleError`.
 
 Per-include `topLevelAlias` settings on individual tasks within an included file behave identically to top-level Landofile-defined tasks (§8.5.1). An include MAY NOT set a single `topLevelAlias` at the include level that applies to all of its tasks; per-task aliases keep collision detection precise.

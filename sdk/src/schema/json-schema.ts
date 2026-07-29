@@ -209,6 +209,7 @@ import {
   ServiceConfigInput,
   ToolingArgShape,
   ToolingFlagShape,
+  ToolingIncludeShape,
   ToolingTaskShape,
   ToolingVar,
 } from "./landofile.ts";
@@ -436,6 +437,7 @@ const rawPublicSchemaRegistry = {
   ToolingFlagShape,
   ToolingArgShape,
   ToolingTaskShape,
+  ToolingIncludeShape,
   IncludeEntry,
   McpConfig,
   AgentEnvConfig,
@@ -749,6 +751,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   ToolingFlagShape: "Public Lando schema contract for Tooling Flag Shape.",
   ToolingArgShape: "Public Lando schema contract for Tooling Arg Shape.",
   ToolingTaskShape: "Public Lando schema contract for Tooling Task Shape.",
+  ToolingIncludeShape: "Public Lando schema contract for Tooling Include Shape.",
   IncludeEntry: "Public Lando schema contract for Include Entry.",
   McpConfig: "Public Lando schema contract for Mcp Config.",
   AgentEnvConfig: "Public Lando schema contract for Agent Env Config.",

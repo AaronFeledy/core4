@@ -7,6 +7,7 @@ import {
   compilePluginCommands,
   compileToolingCommands,
 } from "../../src/cache/command-compiler.ts";
+import { rememberInternalToolingTasks } from "../../src/landofile/tooling-include-provenance.ts";
 
 const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
   name: "myapp",
@@ -52,6 +53,21 @@ describe("compileToolingCommands", () => {
     const [entry] = compileToolingCommands(landofile({ build: { cmd: "make" } }));
     expect(entry).toEqual({ id: "app:build", summary: "", hidden: false });
     expect(entry).not.toHaveProperty("service");
+  });
+
+  test("hides tasks contributed by an internal tooling include", () => {
+    // Given a resolved Landofile whose docs include was marked internal
+    const resolved = rememberInternalToolingTasks(
+      landofile({ "docs:build": { cmd: "bun run build" }, build: { cmd: "make" } }),
+      ["docs:build"],
+    );
+
+    // When
+    const entries = compileToolingCommands(resolved);
+
+    // Then only the included tasks are hidden
+    expect(entries.find((entry) => entry.id === "app:docs:build")?.hidden).toBe(true);
+    expect(entries.find((entry) => entry.id === "app:build")?.hidden).toBe(false);
   });
 });
 

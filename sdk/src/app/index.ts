@@ -54,6 +54,7 @@ import type {
   ShellScriptOutsideRootError,
   ToolingCompileError,
   ToolingExecError,
+  ToolingIncludeCycleError,
   TunnelProviderUnavailableError,
 } from "../errors/index.ts";
 
@@ -191,6 +192,7 @@ export type StartAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
@@ -228,6 +230,7 @@ export type StopAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
@@ -335,6 +338,7 @@ export type InfoAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
@@ -377,6 +381,7 @@ export type ExecAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
@@ -421,6 +426,7 @@ export type ToolingError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
@@ -451,6 +457,7 @@ export type LogsAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | CapabilityError
@@ -505,6 +512,7 @@ export type RemoteSyncError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | RemoteSourceError
   | DatasetServiceError
