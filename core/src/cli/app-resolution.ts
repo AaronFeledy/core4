@@ -27,7 +27,7 @@ import {
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
 import { LANDOFILE_NAME } from "../landofile/discovery.ts";
-import { resolveLandofileIncludes } from "../landofile/includes.ts";
+import { hasResolvableIncludes, resolveLandofileIncludes } from "../landofile/includes.ts";
 import { landofileLayerPaths } from "../landofile/layers.ts";
 import { findDiscoveredLandofilePath, loadLandofileFile, loadLandofileLayers } from "../landofile/service.ts";
 import { CORE_VERSION } from "../version.ts";
@@ -169,7 +169,7 @@ export const loadUserLandofile = (
 ): Effect.Effect<LandofileShape, UserLandofileError> =>
   landofileService.discover.pipe(
     Effect.flatMap((landofile) => {
-      if (landofile.includes === undefined || landofile.includes.length === 0) {
+      if (!hasResolvableIncludes(landofile)) {
         return discoveredLandofilePath().pipe(
           Effect.map((discovered) => ({ landofile, sourcePath: discovered?.filePath })),
         );
