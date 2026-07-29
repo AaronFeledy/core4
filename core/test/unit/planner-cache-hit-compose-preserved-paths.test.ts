@@ -57,7 +57,11 @@ test("fails closed when a cached preserved path is unsupported by the current pr
 
   try {
     const seeded = await runPlan(supportedCapabilities);
-    expect(Exit.isSuccess(seeded)).toBe(true);
+    const cached = await runPlan(supportedCapabilities);
+    expect(Exit.isSuccess(seeded) && Exit.isSuccess(cached)).toBe(true);
+    if (Exit.isSuccess(seeded) && Exit.isSuccess(cached)) {
+      expect(cached.value.metadata.resolvedAt).toEqual(seeded.value.metadata.resolvedAt);
+    }
 
     const exit = await runPlan(TestRuntimeProvider.capabilities);
 
