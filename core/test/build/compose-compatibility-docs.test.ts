@@ -85,6 +85,9 @@ describe("Compose compatibility matrix", () => {
     // Then
     expect(configVerifyIndex).toBeGreaterThan(fixtureIndex);
     expect(configVerifyIndex).toBeLessThan(startIndex);
+    expect(primary).toContain('layer="e2e"');
+    expect(primary).toContain('tags={["@smoke"]}');
+    expect(primary).toContain('<Run command="lando info" />');
     expect(primary).toContain("extra_hosts");
     expect(primary).toContain("published");
     expect(primary).toContain("8080");

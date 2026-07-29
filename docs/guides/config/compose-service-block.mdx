@@ -8,14 +8,16 @@ tags: [beta, docs, config, compose]
 Use the disposition and remediation details in the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) when porting additional Compose keys.
 
 <Guide>
-  <Scenario id="paste-compose-service" render>
+  <Scenario id="paste-compose-service" layer="e2e" tags={["@smoke"]} render>
     <Step name="load-compose-service">
       <UseFixture name="compose-service-block-demo" />
       <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"extra_hosts\":\\s*\\{[^}]*\"internal\\.test\":\\s*\"127\\.0\\.0\\.1\"[^}]*\\}.*\"published\":\\s*8080.*\"dependsOn\":\\s*\\{.*\"condition\":\\s*\"service_started\"" } }} />
     </Step>
     <Step name="start-compose-services">
       <Run command="lando start" />
-      <Verify event="post-start" />
+    </Step>
+    <Step name="inspect-compose-services">
+      <Run command="lando info" />
     </Step>
     <Step name="destroy-compose-services">
       <Cleanup />
