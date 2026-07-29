@@ -59,4 +59,24 @@ describe("Compose service-key vocabulary wave compatibility note", () => {
     });
     expect(Object.hasOwn(SchemaExports, "ComposeServiceKnobFields")).toBe(false);
   });
+
+  test("publishes the exact preserved-path capability schemas through the public barrel", () => {
+    const capabilityBullet = bullets(compatibilityNotesSection()).find(
+      (bullet) =>
+        bullet.includes("ComposePreservedPathKey") &&
+        bullet.includes("ComposePreservedPathCapabilities") &&
+        bullet.includes("composePreservedPaths"),
+    );
+
+    expect(capabilityBullet).toBeDefined();
+    expect(Object.hasOwn(SchemaExports, "ComposePreservedPathKey")).toBe(true);
+    expect(Object.hasOwn(SchemaExports, "ComposePreservedPathCapabilities")).toBe(true);
+    expect(
+      Schema.decodeUnknownSync(SchemaExports.ComposePreservedPathKey)("healthcheck.start_interval"),
+    ).toBe("healthcheck.start_interval");
+    expect(() =>
+      Schema.decodeUnknownSync(SchemaExports.ComposePreservedPathKey)("healthcheck.start_period"),
+    ).toThrow();
+    expect(Object.hasOwn(SchemaExports, "ComposeServiceKnobFields")).toBe(false);
+  });
 });

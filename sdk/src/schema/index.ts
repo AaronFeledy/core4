@@ -6,6 +6,10 @@ export {
   ComposeServiceFieldKey,
 } from "./compose-service-field-capabilities.ts";
 export {
+  ComposePreservedPathCapabilities,
+  ComposePreservedPathKey,
+} from "./compose-preserved-path-capabilities.ts";
+export {
   ComposeDevice,
   ComposeDevicesField,
   ComposeUlimit,

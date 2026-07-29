@@ -5,6 +5,7 @@
 ## Compatibility notes
 
 - `ComposeServiceFieldKey` changes pre-ship from `networks | configs | secrets | profiles | x-*` to `networks | configs | secrets | profiles | labels`. `composeServiceFields` is now a native-tier fail-closed refinement matching `composeKnobs`: non-empty declarations require `composeSpec: "native"`. Service-level `x-*` values remain losslessly preserved inert metadata outside the capability surface.
+- `@lando/sdk/schema` additively exports `ComposePreservedPathKey` and `ComposePreservedPathCapabilities`, and `ProviderCapabilities` additively gains optional `composePreservedPaths`. This fail-closed exact-path refinement covers matrix-preserved Compose service descendants outside the `composeKnobs` and `composeServiceFields` families (`depends_on.*.restart` and `healthcheck.start_interval`). Omitting it is equivalent to `{ supported: [] }`; `composeSpec: "native"` alone never implies support. No internal field map or base struct is exported.
 
 - `GlobalAppService.ensureRunning(services)` additively exposes the scoped global-service startup operation required by `ProxyService.setup`; it returns the selected services' materialized state and published endpoint URLs so global-service-backed plugins do not duplicate publication constants.
 
@@ -416,6 +417,8 @@
 - `ComposeKnobCapabilities`
 - `ComposeServiceFieldKey`
 - `ComposeServiceFieldCapabilities`
+- `ComposePreservedPathKey`
+- `ComposePreservedPathCapabilities`
 - `ComposeBooleanOrStringField`
 - `ComposeByteSizeField`
 - `ComposeCapAddField`
@@ -502,6 +505,10 @@
 - `ProviderCapabilities.composeServiceFields` is a new additive optional field. Omitting it is
   equivalent to `{ supported: [] }`; a preserved Compose service-level field is supported only when
   `composeSpec` is `native` and the exact field family is declared.
+- `ProviderCapabilities.composePreservedPaths` is a new additive optional field. Omitting it is
+  equivalent to `{ supported: [] }`; a matrix-preserved Compose service descendant outside the knob
+  and service-field families is supported only when `composeSpec` is `native` and the exact path is
+  declared.
 - `CapabilityError.key` is a new additive optional field carrying the exact capability key that failed.
 - `ServiceConfig.restart`, `.cap_add`, `.cap_drop`, `.privileged`, `.devices`, `.ulimits`, `.sysctls`,
   `.tmpfs`, `.shm_size`, `.dns`, `.dns_search`, `.dns_opt`, `.extra_hosts`, `.init`, `.stop_signal`,
