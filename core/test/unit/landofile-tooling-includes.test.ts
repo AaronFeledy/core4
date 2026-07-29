@@ -154,6 +154,35 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     expect(resolved).not.toHaveProperty("toolingIncludes");
   });
 
+  test("keeps canonical tooling declarations from every ordinary fragment", async () => {
+    // Given two ordinary fragments that each declare a distinct canonical tooling include
+    await mkdir(join(appRoot, "a"), { recursive: true });
+    await mkdir(join(appRoot, "b"), { recursive: true });
+    await writeFile(join(appRoot, "a", "tasks.yml"), "tooling:\n  build:\n    cmd: a\n", "utf8");
+    await writeFile(join(appRoot, "b", "tasks.yml"), "tooling:\n  test:\n    cmd: b\n", "utf8");
+    await writeFile(
+      join(appRoot, "a", "app.yml"),
+      ["includes:", "  - source: ./tasks.yml", "    kind: tooling", "    namespace: a", ""].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      join(appRoot, "b", "app.yml"),
+      ["includes:", "  - source: ./tasks.yml", "    kind: tooling", "    namespace: b", ""].join("\n"),
+      "utf8",
+    );
+
+    // When both fragments are included and the equivalent shorthand is resolved
+    const canonical = await resolve({ includes: ["./a/app.yml", "./b/app.yml"] }, appRoot);
+    const shorthand = await resolve(
+      { toolingIncludes: { a: { file: "./a/tasks.yml" }, b: { file: "./b/tasks.yml" } } },
+      appRoot,
+    );
+
+    // Then neither fragment's declaration is dropped and both spellings agree
+    expect(Object.keys(canonical.tooling ?? {}).sort()).toEqual(["a:build", "b:test"]);
+    expect(canonical.tooling).toEqual(shorthand.tooling);
+  });
+
   test("resolves a tooling source relative to its declaring Landofile fragment", async () => {
     // Given an ordinary Landofile fragment that declares a relative tooling include
     await mkdir(join(appRoot, "fragments"), { recursive: true });

@@ -588,12 +588,30 @@ const inlineWithoutIncludes = (landofile: Record<string, unknown>): Record<strin
   return rest;
 };
 
-const inlineWithoutLandofileIncludes = (landofile: LandofileShape): Record<string, unknown> => {
-  const { include: _include, includes, ...rest } = landofile;
-  const toolingIncludes = (includes ?? []).filter(
-    (entry) => typeof entry !== "string" && entry.kind === "tooling",
-  );
-  return toolingIncludes.length === 0 ? rest : { ...rest, includes: toolingIncludes };
+const withoutIncludeArrays = (landofile: Record<string, unknown>): Record<string, unknown> => {
+  const { include: _include, includes: _includes, ...rest } = landofile;
+  return rest;
+};
+
+const toolingIncludeEntries = (landofile: Pick<LandofileShape, "includes">): ReadonlyArray<IncludeEntry> =>
+  (landofile.includes ?? []).filter((entry) => typeof entry !== "string" && entry.kind === "tooling");
+
+/**
+ * Canonical tooling declarations deep-merge by namespace the way the
+ * `toolingIncludes:` map does, so they cannot be replaced wholesale by the
+ * array-merge semantics ordinary `includes:` entries use.
+ */
+const mergeToolingIncludeEntries = (
+  sources: ReadonlyArray<Pick<LandofileShape, "includes">>,
+): ReadonlyArray<IncludeEntry> => {
+  const merged = new Map<string, IncludeEntry>();
+  for (const source of sources) {
+    for (const entry of toolingIncludeEntries(source)) {
+      if (typeof entry === "string") continue;
+      merged.set(entry.namespace ?? entry.source, entry);
+    }
+  }
+  return [...merged.values()];
 };
 
 const withResolvedTooling = (
@@ -718,7 +736,12 @@ const resolveTree = (
       }
     }
 
-    const merged = mergeLandofiles([...fragmentRecords, inlineWithoutLandofileIncludes(sourced)]);
+    const toolingIncludes = mergeToolingIncludeEntries([...fragments, sourced]);
+    const merged = mergeLandofiles([
+      ...fragmentRecords.map((fragment) => withoutIncludeArrays(fragment)),
+      withoutIncludeArrays(sourced as Record<string, unknown>),
+      ...(toolingIncludes.length === 0 ? [] : [{ includes: toolingIncludes }]),
+    ]);
     const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
     return rememberLocalIncludePaths(
       rememberVersionConstraintEntries(decoded, [
