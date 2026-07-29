@@ -17,6 +17,7 @@ export interface ProviderCapabilityConstants {
   readonly rootless: ProviderCapabilitiesShape["rootless"];
   readonly composeSpec: ProviderCapabilitiesShape["composeSpec"];
   readonly composeKnobs?: ProviderCapabilitiesShape["composeKnobs"];
+  readonly composePreservedPaths?: ProviderCapabilitiesShape["composePreservedPaths"];
   readonly composeServiceFields?: ProviderCapabilitiesShape["composeServiceFields"];
   readonly providerExtensions: ProviderCapabilitiesShape["providerExtensions"];
   readonly hostProxy?: ProviderCapabilitiesShape["hostProxy"];
@@ -57,6 +58,9 @@ export const buildProviderCapabilities = (
     ...(constants.composeServiceFields === undefined
       ? {}
       : { composeServiceFields: constants.composeServiceFields }),
+    ...(constants.composePreservedPaths === undefined
+      ? {}
+      : { composePreservedPaths: constants.composePreservedPaths }),
     providerExtensions: constants.providerExtensions,
     ...(constants.hostProxy === undefined ? {} : { hostProxy: constants.hostProxy }),
   });

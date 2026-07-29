@@ -76,4 +76,33 @@ describe("container runtime capability helpers", () => {
 
     expect(capabilities.composeServiceFields).toEqual({ supported: ["labels"] });
   });
+
+  test("leaves composePreservedPaths absent when the constant is omitted", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "native",
+      providerExtensions: [],
+    });
+
+    expect(Object.hasOwn(capabilities, "composePreservedPaths")).toBe(false);
+  });
+
+  test("passes an explicit composePreservedPaths declaration through unchanged", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "native",
+      composePreservedPaths: { supported: ["healthcheck.start_interval"] },
+      providerExtensions: [],
+    });
+
+    expect(capabilities.composePreservedPaths).toEqual({
+      supported: ["healthcheck.start_interval"],
+    });
+  });
 });
