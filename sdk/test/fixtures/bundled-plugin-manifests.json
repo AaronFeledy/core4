@@ -209,6 +209,7 @@
           "lando.env",
           "lando.app-mount",
           "lando.healthcheck",
+          "lando.security",
           "lando.host-proxy",
           "lando.user",
           "service-lando.apache",

@@ -42,6 +42,24 @@ override `network.proxy.injectIntoServices`. Values other than `true` or `false`
 invalid global config. `LANDO_NETWORK_CA_CERTS` remains a JSON array of additional CA paths; it does
 not replace either injection flag.
 
+## Runtime CA environment and rebuilds
+
+When a `type: lando` service receives one or more injected CAs, each host PEM is mounted read-only
+under `/usr/local/share/ca-certificates`. The runtime trust paths stay fixed before and after the
+service image is rebuilt:
+
+```text
+NODE_EXTRA_CA_CERTS=/etc/lando/certs/ca-bundle.pem
+SSL_CERT_FILE=/etc/lando/certs/ca-bundle.pem
+SSL_CERT_DIR=/etc/lando/certs
+LANDO_CA_CERT=/etc/lando/certs/ca-bundle.pem
+LANDO_CA_BUNDLE=/etc/lando/certs/ca-bundle.pem
+LANDO_CA_DIR=/etc/lando/certs
+```
+
+Run `lando rebuild` after CA material changes so the service artifact registers the updated trust
+store. The bundle and directory paths do not change across that rebuild.
+
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
     <Step name="declare-security">
@@ -63,6 +81,15 @@ not replace either injection flag.
       <Variable name="caInjection" value="LANDO_NETWORK_CA_INJECT_INTO_SERVICES" display="Override network.ca.injectIntoServices with true or false" />
       <Variable name="proxyInjection" value="LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES" display="Override network.proxy.injectIntoServices with true or false" />
       <Variable name="caPaths" value="LANDO_NETWORK_CA_CERTS" display="Keep additional CA paths in the network-trust resolver as a JSON array" />
+    </Step>
+  </Scenario>
+  <Scenario id="runtime-ca-environment-and-rebuild" render={false} reason="Focused lando.security feature and base-composition tests verify fixed CA environment paths and rebuild-invariant behavior without requiring private CA material or a live provider">
+    <Step name="use-runtime-ca-paths">
+      <Variable name="bundle" value="/etc/lando/certs/ca-bundle.pem" display="Use the stable concatenated CA bundle path" />
+      <Variable name="directory" value="/etc/lando/certs" display="Use the stable Lando CA directory" />
+      <Variable name="runtimeEnv" value="NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR" display="Point Node and OpenSSL-family runtimes at injected CA material" />
+      <Variable name="landoEnv" value="LANDO_CA_CERT, LANDO_CA_BUNDLE, LANDO_CA_DIR" display="Read the same paths through Lando's standard service environment" />
+      <Variable name="rebuild" value="lando rebuild" display="Rebuild services after CA material changes" />
     </Step>
   </Scenario>
 </Guide>

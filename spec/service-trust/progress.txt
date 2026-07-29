@@ -32,6 +32,8 @@ Spec SoT:
 - Friendly single-name config aliases belong in `FRIENDLY_ENV_OVERLAYS` after the generic overlay;
   reuse `parseOverlayValue` so JSON booleans become typed values and malformed input fails at
   `GlobalConfig` decode instead of adding a second parser.
+- A default service feature that will later receive planner-seeded config must decode `{}` and apply
+  as a no-op until that config is present; base composition runs before later planner-wiring stories.
 
 ## Status
 
@@ -192,4 +194,23 @@ Spec SoT:
 - **Learnings for future iterations:** Environment-overlay tests must clear every ambient
   `LANDO_CONFIG__*` key plus their friendly aliases; boundary-specific recovery can enrich an existing
   tagged error message without discarding its schema cause or widening the public error contract.
+---
+
+## 2026-07-29 16:35 CDT - US-485
+- Added the pure `lando.security` feature at priority 1100 on the lando base stack. Planner-seeded CA
+  descriptors now become digest-named read-only trust-input mounts, fixed CA runtime environment,
+  and a sorted CA-digest artifact key marker; resolved proxy values remain independently opt-in.
+- Registered the feature across bundled discovery and packaged metadata while keeping default empty
+  config inert and l337 excluded. The corporate network trust guide now documents runtime paths and
+  the rebuild-invariant single-bundle contract.
+- Verification: typecheck, lint passed; 48 focused and adjacent tests passed with 337 assertions;
+  direct service composition produced the expected mount, CA/proxy environment, and build-step
+  intent; guide lint, guide coverage, base-aware guide drift, public transcripts, generated output,
+  package DAG, import cycle, and diff checks passed; high-rigor review approved without blockers.
+- **Learnings for future iterations:**
+  - Default features need schema defaults that preserve existing base composition before their
+    planner payload is wired; validate resolved payload details at the feature boundary, then keep
+    `apply` free of config and filesystem services.
+  - A digest-derived `.crt` target avoids basename collisions while preserving the host PEM path as
+    provider-neutral bind intent; the image-packing story can consume the same immutable identity.
 ---
