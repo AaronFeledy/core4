@@ -41,6 +41,7 @@ tags: [beta, docs, landofile, includes, lockfile]
     <Step name="parser-limits">
       <Variable name="contentCap" value="1 MiB UTF-8 input" display="The published Landofile parser rejects oversized input with LandofileParseError before include or lockfile state is processed" />
       <Variable name="depthCap" value="64 nested levels" display="Deep block indentation and inline-array nesting fail closed with LandofileParseError instead of recursing indefinitely" />
+      <Variable name="aliasExpansionCap" value="bounded expanded nodes and alias depth" display="Nested YAML aliases fail with LandofileParseError when their resolved graph exceeds the parser's expansion or depth budget" />
     </Step>
   </Scenario>
 </Guide>
