@@ -95,3 +95,13 @@ Spec SoT:
   schema boundary; precedence is unsafe because visually conflicting CA declarations can hide the
   operative trust material.
 ---
+
+## 2026-07-29 12:20 CDT - US-483 Drift Audit
+- Trigger: 2 cycles, 2705 changed lines, 5 commits
+- Findings: None confirmed across scope absorption, proof integrity, review scar tissue, ceremony
+  modules, collateral edits, contract drift, or deferred-work laundering.
+- Fixed: No code change was required; the branch remains aligned with the original US-483 contract.
+- Split/excise decisions: None.
+- Verification: typecheck and lint passed; 58 focused tests with 155 assertions passed; generated-output,
+  guide lint, and guide coverage passed; guide drift honored the recorded US-483 skip.
+---
