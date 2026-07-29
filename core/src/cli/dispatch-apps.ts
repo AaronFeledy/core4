@@ -57,14 +57,19 @@ import {
   scratchRuntimeLayer,
 } from "./compiled-runtime.ts";
 import { initOptionsFromInput } from "./oclif/commands/apps/init.ts";
+import { appsListPathFromInput } from "./oclif/commands/apps/list.ts";
 import { keepVolumesFromInput } from "./oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "./oclif/commands/apps/scratch/gc.ts";
 import type { RenderContext } from "./renderer-boundary.ts";
 
-const runAppsList = async (_argv: ReadonlyArray<string>): Promise<void> => {
+export const appsListPathFromArgv = (argv: ReadonlyArray<string>): string | undefined =>
+  appsListPathFromInput(compiledCommandInputFromArgv("apps:list", argv));
+
+const runAppsList = async (argv: ReadonlyArray<string>): Promise<void> => {
   const format = activeTableJsonFormat();
+  const path = appsListPathFromArgv(argv);
   return runCompiledCommand(
-    listServices(),
+    listServices(path === undefined ? {} : { path }),
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     (value) => renderAppsListResult(value, format),
   );
