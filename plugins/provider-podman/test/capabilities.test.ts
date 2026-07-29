@@ -19,9 +19,11 @@ import { ProviderCapabilities } from "@lando/sdk/schema";
 describe("provider-podman capabilities", () => {
   test("declares every ProviderCapabilities field for Linux, macOS, and Windows", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "hostProxy")
+      .filter((field) => field !== "composePreservedPaths" && field !== "hostProxy")
       .sort();
-    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields).sort();
+    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields)
+      .filter((field) => field !== "composePreservedPaths")
+      .sort();
     const linux = podmanCapabilitiesForPlatform("linux");
     const macos = podmanCapabilitiesForPlatform("darwin");
     const windows = podmanCapabilitiesForPlatform("win32");
@@ -32,6 +34,9 @@ describe("provider-podman capabilities", () => {
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
+    expect(linux.composePreservedPaths).toBeUndefined();
+    expect(macos.composePreservedPaths).toBeUndefined();
+    expect(windows.composePreservedPaths).toBeUndefined();
   });
 
   test("declares native bind-mount performance on Linux", () => {
