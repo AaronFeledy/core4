@@ -77,6 +77,33 @@ describe("container runtime capability helpers", () => {
     expect(capabilities.composeServiceFields).toEqual({ supported: ["labels"] });
   });
 
+  test("leaves composeProjectFields absent when the constant is omitted", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "native",
+      providerExtensions: [],
+    });
+
+    expect(Object.hasOwn(capabilities, "composeProjectFields")).toBe(false);
+  });
+
+  test("passes an explicit composeProjectFields declaration through unchanged", () => {
+    const capabilities = buildProviderCapabilities({
+      bindMounts: true,
+      bindMountPerformance: "native",
+      tlsCertificates: "none",
+      rootless: false,
+      composeSpec: "native",
+      composeProjectFields: { supported: ["configs"] },
+      providerExtensions: [],
+    });
+
+    expect(capabilities.composeProjectFields).toEqual({ supported: ["configs"] });
+  });
+
   test("leaves composePreservedPaths absent when the constant is omitted", () => {
     const capabilities = buildProviderCapabilities({
       bindMounts: true,
