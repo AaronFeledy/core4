@@ -171,7 +171,9 @@ describe("lando app:config:lint (source dispatch)", () => {
       expect(result.exitCode).toBe(0);
       const parsed = parseEnvelopeResult<ConfigLintResult>(result.stdout);
       const violation = parsed.violations.find((entry) => entry.path === "profiles");
-      expect(violation?.suggestedFix).toContain("Unsupported Compose top-level key");
+      expect(violation?.suggestedFix).toContain(
+        'The top-level key "profiles" is not a Compose top-level key; profiles is a service-level key',
+      );
       expect(violation?.suggestedFix).toContain("includes:");
     });
   });
