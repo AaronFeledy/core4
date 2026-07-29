@@ -1062,3 +1062,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Moving a resolution phase later moves the provenance sidecars with it. Version constraints, local include paths, and internal-task provenance are attached per object, so a new final decode silently drops them unless each is re-attached; the layered constraint list collapsing to one canonical entry is the symptom to watch for.
   - When a declaration is carried across a merge, its base directory has to be captured at carry time. Rebinding only declarations that came from nested fragments keeps error messages showing the path the user authored.
 ---
+
+## 2026-07-29 06:58 CDT - US-479 (drift-audit fold-in)
+- Folded the concurrent Drift Audit's confirmed findings that this change makes correctable. The audit recorded no excision and no split, so the surface it flagged remains US-479's to finish.
+- Hidden-task provenance now has one owner instead of three. With fragments compiled after the merge, the layer merge's own visibility re-attachment could only ever contribute an empty set, so it was removed; the single post-merge pass is the only writer, which is the structural fix for the seam the audit traced the returning Build to.
+- A tooling fragment's shape contract now decides its failure before the generic Compose-key scan runs, so a fragment declaring a non-tooling key fails with the `LandofileIncludeError` §8.5.8 requires instead of a Compose rejection tag. Proven by falsification: restoring the old order turns the new test red with `ComposeKeyRejectedError` and green again once the shape guard leads.
+- Closed the audit's coverage gap: a test now resolves an authored `internal: true` fragment through the real layered loader and asserts the compiled command is hidden, rather than hand-injecting provenance into the compiler.
+- Deferred with reasons: the `dir:`/`checksum:` shorthand narrowing and the §7.7.1 equivalence qualification are contract-wording decisions rather than resolution behavior, and the remaining unused exports are cosmetic; both belong to the review and cleanup steps rather than another same-branch code pass.
+- Verification: typecheck, lint, all boundary gates, and the executable tooling guide passed; 31 tooling-resolver and layer tests plus 44 adjacent include-update, app-config, and app-resolve tests passed.
+---
