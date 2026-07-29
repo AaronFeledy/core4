@@ -1016,3 +1016,10 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - When a resolver consumes an authored key, strip it in the same place the existing `includes:` stripping happens; otherwise the merged re-decode with `onExcessProperty: "error"` sees a key nothing will consume again and the no-includes fast path silently skips resolution.
   - Loader-only metadata that must not reach serialized output belongs in a WeakMap sidecar re-attached after every decode. The sidecar has to be re-attached at each seam that produces a NEW object — the merged decode in `resolveTree` and the layer merge in the Landofile service — or it silently disappears exactly where the value is finally consumed.
 ---
+
+## 2026-07-29 04:31 CDT - US-479 (completion verification)
+- Closed an optional-include containment gap found during final verification: missing `optional: true` tooling fragments now pass the app-root boundary check before missing-file suppression, so an outside-root authored path still fails closed with `LandofileIncludeError`.
+- Verification: typecheck and lint passed; focused tooling-include, ordinary-include, command compiler/registry, Landofile, SDK schema/compatibility, and generated guide tests passed; schema codegen remained drift-clean. The rebuilt binary in `lando4-dev` rendered the canonical and shorthand tasks together, rejected the optional outside-root fixture through the JSON error envelope, and removed its temporary fixture on exit.
+- **Learnings for future iterations:**
+  - Optional source handling must follow boundary validation, never precede it; `optional` suppresses absence, not path-containment policy.
+---
