@@ -82,6 +82,7 @@ import {
   collectComposePreservedPaths,
   findUnsupportedComposePreservedPath,
 } from "./compose-preserved-paths.ts";
+import { collectComposeProjectFields, findUnsupportedComposeProjectField } from "./compose-project-fields.ts";
 import { collectComposeServiceFields, findUnsupportedComposeServiceField } from "./compose-service-fields.ts";
 import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
@@ -277,6 +278,25 @@ const assertComposeServiceFieldsSupported = (
       capability: "composeSpec",
       providerId: String(providerId),
       remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composeServiceFields support for ${use.family}, or move provider-specific intent under providers.<id>.`,
+    }),
+  );
+};
+
+const assertComposeProjectFieldsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  extensions: AppPlan["extensions"],
+): Effect.Effect<void, CapabilityError> => {
+  const use = findUnsupportedComposeProjectField(collectComposeProjectFields(extensions), capabilities);
+  if (use === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `App uses Compose project field ${use.key}, which provider ${String(providerId)} does not support.`,
+      key: use.key,
+      feature: `compose project field ${use.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove top-level ${use.key}, choose a provider that declares composeProjectFields support for ${use.key}, or move provider-specific intent under providers.<id>.`,
     }),
   );
 };
@@ -1291,6 +1311,7 @@ const planApp = (
         yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
+        yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
         return cached;
       }
     }
@@ -1659,6 +1680,13 @@ const planApp = (
       : undefined;
 
     const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);
+    const authoredProjectExtensions = Object.entries(landofile).filter(([key]) => key.startsWith("x-"));
+    const composeProjectExtension = {
+      ...(landofile.configs === undefined ? {} : { configs: landofile.configs }),
+      ...(landofile.secrets === undefined ? {} : { secrets: landofile.secrets }),
+      ...Object.fromEntries(authoredProjectExtensions),
+    };
+    const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
     const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
@@ -1673,7 +1701,14 @@ const planApp = (
       fileSync: fileSyncEntries,
       metadata: encodedMetadata,
       extensions:
-        hostProxyExtension === undefined ? {} : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension },
+        hostProxyExtension === undefined && !hasComposeProjectExtension
+          ? {}
+          : {
+              ...(hostProxyExtension === undefined
+                ? {}
+                : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
+              ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
+            },
       ...(() => {
         const requiredGlobalServices = [
           ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
@@ -1687,6 +1722,7 @@ const planApp = (
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
+    yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);
     if (
       cacheService !== undefined &&
       !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
