@@ -29,6 +29,9 @@ Spec SoT:
 - Keep `@lando/sdk/network-trust` path-only and file-IO-free. Core's shared `loadCaPems` seam owns
   UTF-8 PEM loading, stable digests, and the tagged path/remediation failure; consumers map that
   failure into their own boundary errors rather than reading CA files again.
+- Friendly single-name config aliases belong in `FRIENDLY_ENV_OVERLAYS` after the generic overlay;
+  reuse `parseOverlayValue` so JSON booleans become typed values and malformed input fails at
+  `GlobalConfig` decode instead of adding a second parser.
 
 ## Status
 
@@ -159,4 +162,18 @@ Spec SoT:
 - Split/excise decisions: None; US-484 remains the original contract and `passes` remains true.
 - Verification: typecheck and lint passed; 73 focused tests with 248 assertions passed; network,
   import-cycle, generated-output, guide lint, guide coverage, and base-aware guide-drift gates passed.
+---
+
+## 2026-07-29 15:16 CDT - US-489
+- Added friendly CA and proxy service-injection environment overrides that decode through the global
+  config service, preserve config values when absent, reject malformed booleans, and leave
+  `LANDO_NETWORK_CA_CERTS` owned by the network-trust resolver.
+- Documented both override variables and their strict boolean contract in the corporate network trust
+  guide with unit-backed executable-guide coverage.
+- Verification: typecheck, lint passed; 56 focused and adjacent tests passed with 85 assertions;
+  direct ConfigService loading, focused guide execution, guide lint, guide coverage, base-aware guide
+  drift, and generated-output gates passed.
+- **Learnings for future iterations:**
+  - Add friendly config aliases after generic overlays so the canonical name wins consistently with
+    notify aliases; keep specialized network material variables out of the global config overlay.
 ---
