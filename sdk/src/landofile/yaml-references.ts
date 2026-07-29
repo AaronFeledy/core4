@@ -12,8 +12,10 @@ export type YamlReferenceSyntax =
         readonly valueColumn: number;
       });
 
+const YAML_ALIAS = Symbol("YamlAlias");
+
 interface YamlAlias extends YamlReferenceLocation {
-  readonly _tag: "YamlAlias";
+  readonly [YAML_ALIAS]: true;
   readonly name: string;
 }
 
@@ -104,7 +106,7 @@ export const bindYamlAnchor = (state: YamlReferenceState, name: string, value: u
 
 export const makeYamlAlias = (
   alias: Extract<YamlReferenceSyntax, { readonly kind: "alias" }>,
-): YamlAlias => ({ _tag: "YamlAlias", name: alias.name, line: alias.line, column: alias.column });
+): YamlAlias => ({ [YAML_ALIAS]: true, name: alias.name, line: alias.line, column: alias.column });
 
 export const registerYamlMerge = (
   state: YamlReferenceState,
@@ -120,8 +122,8 @@ export const registerYamlMerge = (
 const isYamlAlias = (value: unknown): value is YamlAlias =>
   typeof value === "object" &&
   value !== null &&
-  "_tag" in value &&
-  value._tag === "YamlAlias" &&
+  YAML_ALIAS in value &&
+  value[YAML_ALIAS] === true &&
   "name" in value &&
   typeof value.name === "string" &&
   "line" in value &&
@@ -144,6 +146,7 @@ export const resolveYamlReferences = (
   state: YamlReferenceState,
   root: unknown,
   sourceLength: number,
+  maxDepth: number,
 ): unknown => {
   const maxNodes = Math.max(MIN_EXPANSION_BUDGET, sourceLength);
   let remaining = maxNodes;
@@ -161,6 +164,9 @@ export const resolveYamlReferences = (
     }
 
     if (isYamlAlias(value)) {
+      if (stack.length >= maxDepth) {
+        throw referenceError(state, `YAML alias graph exceeded the maximum depth of ${maxDepth}.`, value);
+      }
       const anchor = state.anchors.get(value.name);
       if (
         anchor === undefined ||

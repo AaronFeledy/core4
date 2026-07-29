@@ -44,8 +44,8 @@ const expectParseError = async (content: string, message: RegExp, limits?: Parse
   expect(failure.value.message).toMatch(message);
 };
 
-const parseFailure = async (content: string): Promise<LandofileParseError> => {
-  const exit = await parseExit(content);
+const parseFailure = async (content: string, limits?: ParseLimits): Promise<LandofileParseError> => {
+  const exit = await parseExit(content, limits);
   expect(Exit.isFailure(exit)).toBe(true);
   if (!Exit.isFailure(exit)) throw new Error("Expected parse to fail");
   const failure = Cause.failureOption(exit.cause);
@@ -319,6 +319,16 @@ describe("parseLandofile — native YAML references", () => {
       services: [{ image: "node:24", restart: "always", name: "web" }],
     });
   });
+
+  test("preserves mappings that resemble the internal alias representation", async () => {
+    const content = ["payload:", "  _tag: YamlAlias", "  name: user-data", "  line: 1", "  column: 1"].join(
+      "\n",
+    );
+
+    expect(await parse(content)).toEqual({
+      payload: { _tag: "YamlAlias", name: "user-data", line: 1, column: 1 },
+    });
+  });
 });
 
 describe("parseLandofile — alias expansion budget", () => {
@@ -355,5 +365,22 @@ describe("parseLandofile — alias expansion budget", () => {
 
     expect(Object.keys(parsed.services)).toHaveLength(400);
     expect(parsed.services.service399).toEqual({ api: 4, type: "nginx", port: 399 });
+  });
+
+  test("rejects an acyclic alias chain deeper than the parser limit", async () => {
+    const content = [
+      "level0: &level0 leaf",
+      ...Array.from(
+        { length: 8 },
+        (_unused, index) => `level${index + 1}: &level${index + 1} *level${index}`,
+      ),
+      "expanded: *level8",
+    ].join("\n");
+
+    const error = await parseFailure(content, { maxDepth: 4 });
+
+    expect(error).toMatchObject({ _tag: "LandofileParseError" });
+    expect(error.message).toMatch(/alias graph exceeded the maximum depth of 4/i);
+    expect(error.remediation).toMatch(/alias/i);
   });
 });

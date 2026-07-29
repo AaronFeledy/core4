@@ -675,7 +675,7 @@ const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
       throw parseError(file, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
   }
-  return resolveYamlReferences(references, parsed, content.length);
+  return resolveYamlReferences(references, parsed, content.length, maxDepth);
 };
 
 export const parseLandofile = (options: ParseOptions): Effect.Effect<unknown, LandofileParseError> =>
