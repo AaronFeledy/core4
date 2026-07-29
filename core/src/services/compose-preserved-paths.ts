@@ -1,7 +1,7 @@
 import { ComposePreservedPathKey } from "@lando/sdk/schema";
 import type { ProviderCapabilities, ServicePlan } from "@lando/sdk/schema";
 
-export type ComposePreservedPathUse = {
+type ComposePreservedPathUse = {
   readonly service: string;
   readonly key: ComposePreservedPathKey;
 };
