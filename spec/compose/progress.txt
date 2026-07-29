@@ -904,3 +904,11 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - A generated compatibility row cannot close a docs story until every capability claim it publishes has a real production gate; a truthful rejection note is better than provider support inferred from a coarse tier.
   - When a binding production prerequisite lands co-resident with a docs closeout, mark and record the prerequisite first, then re-run the docs and guide proofs without re-owning its production changes.
 ---
+
+## 2026-07-28 20:44 CDT - US-477 Review
+- Closed two review blockers without changing production behavior: the preserved-path cache regression now proves it reached a cached plan before testing restrictive capabilities, and capability inventories now treat the new exact-path declaration as optional while pinning truthful omission on bundled providers that realize neither path.
+- Guide-Coverage-Skip: US-480 adds internal exact-path capability checks already documented in the dedicated Compose guide and generated matrix; mapped Landofile, SDK, and provider setup guides do not own this behavior.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the configured account exhausted its usage; the review-work security lane found no exploitable defect. Requiring bundled-provider realization, gating service-level `x-*`, or re-exporting the excised internal knob field map conflicts with the adjudicated fail-closed and SDK-boundary contracts and was rejected.
+- Verification: typecheck and lint passed; 199 focused preserved-path, cache, provider-capability, provider-inventory, and doctor tests passed with one intentional skip; all boundary, generated-output, Compose coverage, guide lint/coverage/public-transcript, explicit-base guide-drift, and executable-guide checks passed. Changed-file diagnostics were clean before the final formatting-only edit; the doctor test diagnostic refresh then timed out twice while root typecheck remained clean.
+- **Learnings for future iterations:** Cache-path regressions must first prove the cache was hit before asserting behavior shared with a fresh plan; inventory tests derived from a schema must distinguish optional declarations from required capability fields and separately assert truthful omission.
+---
