@@ -14,6 +14,17 @@ Spec SoT:
   (Note: section 18 is spec/16-deprecation-and-surface-evolution.md and is unrelated to this set.
    Cite spec/18-global-app.md by file plus section 20.10, never as "section 18".)
 
+## Codebase Patterns
+
+- Nested Landofile authoring aliases: model them as a `Schema.transform` whose `from` struct declares
+  every accepted spelling, canonical key first in the precedence chain. Annotate the `from` struct so
+  the description survives into `ServiceConfigInput` and the published artifact.
+- A nested `Schema.Struct` publishes `additionalProperties: false`, so unknown nested keys fail closed
+  under both default and strict decode and surface as path-precise lint violations.
+- After any `ServiceConfig` field change, run `bun run codegen:schema-snapshot` early: it refreshes
+  `dist/schemas`, `dist/command-schemas`, and `docs/reference/schemas`, and it runs the
+  public-field-description gate.
+
 ## Status
 
 - Expanded to include Traefik edge TLS (US-497..498). SSH agent explicitly out of scope (not CertificateAuthority TLS).
@@ -34,3 +45,30 @@ Spec SoT:
 - Host-global Dockerfile drop-in directories
 - Full lando.ssh-agent / SshService Live
 - ACME/public CA for Traefik
+
+## 2026-07-29 - US-483
+- Added the `services.<name>.security` authoring surface to `ServiceConfig` / `ServiceConfigInput`:
+  canonical `ca` list plus `inheritNetworkCa` / `inheritNetworkProxy` overrides, with the §6.8
+  aliases `cas`, `certificate-authority`, and `certificate-authorities` accepting a scalar or list
+  and canonicalizing to `ca`. Unknown keys under `security` (including leaf-TLS `certs`) fail closed
+  through the production strict Landofile decode with key-named remediation.
+- Refreshed the schema artifact set and generated schema reference docs, recorded the additive
+  fields in `sdk/API_COMPATIBILITY.md`, and added the planned `corporate-network-trust` guide
+  documenting the canonical form, aliases, inherit flags, and the `certs` distinction.
+- Verification: typecheck, lint passed; schema/landofile test spot checks passed (444 SDK schema
+  assertions plus 54 core Landofile tests); `lint:guides`, `check:guide-coverage`,
+  `check:generated-output` green; real `.lando.yml` files linted through `lintLandofile` — the alias
+  form reports `valid: true`, and a misspelled `inheritNetworkCA` plus `security.certs` reports
+  per-key violations listing the six accepted keys.
+- **Learnings for future iterations:**
+  - Nested service authoring aliases belong in a `Schema.transform` whose `from` struct carries every
+    accepted spelling; annotate that `from` struct (not just the field site) or the description is
+    dropped from `ServiceConfigInput` and its published artifact.
+  - A nested `Schema.Struct` yields `additionalProperties: false`, so unknown nested keys fail even
+    under default decode options and surface as path-precise `app:config:lint` violations naming the
+    accepted key set — no extra guard is needed for fail-closed behavior.
+  - `bun test` prints no summary when every test in a file fails; use
+    `--reporter=junit --reporter-outfile=<path>` to capture per-case RED evidence.
+  - Guides whose scenarios are all `render={false}` add no generated scenario tests, so a new guide
+    of that shape leaves `build-guide-scenarios` output unchanged.
+---
