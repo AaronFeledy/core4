@@ -2,9 +2,9 @@
 
 Branch: docs/service-trust-prd
 PRDs: 00 index, 01 inject (US-483..489), 02 certs/boot/doctor/Traefik (US-490..498)
-Execution order: `priority` in spec/service-trust/prd.json (1..16, strict). US-489 precedes US-486
-  because the planner consumes its env overlays; US-496 runs last because it closes the guide pack
-  produced by US-493..US-498.
+Execution order: `priority` in spec/service-trust/prd.json (1..17, strict). US-489 precedes US-486
+  because the planner consumes its env overlays; US-499 follows US-486; US-496 runs last because it
+  closes the guide pack produced by US-493..US-498.
 Spec SoT:
   - spec/06-services.md   6.8 certs/security, 6.9 service env, 6.11 feature priority table,
                           6.13.1 artifact-vs-app phases, 6.13.5 build keys
@@ -234,4 +234,20 @@ Spec SoT:
     selecting the already-loaded descriptors; this avoids divergent reads while preserving opt-out.
   - Inline PEMs need digest-named app-cache files as host mount/packing identities, while the
     concatenated bundle uses the same ordered, de-duplicated bytes and a stable in-container target.
+---
+
+## 2026-07-29 18:23 CDT - US-486 Adjudication
+- Contradiction: Review required the US-486 acceptance criterion "Inline PEM text and `load`/`import`-produced PEM bodies are accepted (digest from content; synthetic path labels for packing); non-PEM garbage fails with remediation." The production proof requires the normative spec/07-landofile-and-config.md section 7.3 surfaces `load(path) -> FileRef`, `import(path) -> ImportRef<T>`, and `security.ca` as an `acceptsImportRef: true` schema position, plus spec/06-services.md section 6.8's `load()`/`import()` CA forms. But US-143 shipped the pure SDK evaluator with `load` and `import` deliberately forbidden and recorded that a later core wiring story must override those I/O helpers; no story owned that production I/O/schema seam. Treating it as an AppPlanner-local fix would absorb the deferred expression-loader contract into US-486.
+- Decision: split into a follow-up story. In spec/service-trust/prd.json, US-486 now names path-backed and inline PEM strings as its production proof and explicitly assigns Landofile `load()`/`import()` expression I/O and `ImportRef` values to US-499. The remaining stories were shifted one priority so US-499 follows US-486 and US-496 remains last.
+- Follow-up story: US-499 — production Landofile `load()`/`import()` file I/O, `ImportRef`-accepting `security.ca` schema/provenance, app-plan cache identity, and end-to-end CA planner proof.
+---
+
+## 2026-07-29 18:57 CDT - US-486 Build Closeout
+- Synchronized the source PRD, index, and execution order with the US-499 adjudication. US-486 retains the pre-build app-cache CA bundle mount; US-487 now owns removing it only after its trust-store build produces an artifact carrying the baked bundle, plus pre/post-rebuild environment parity.
+- Strengthened planner coverage for invalid inline PEMs, symlink escapes, and l337 pre-validation skipping with poison inputs. Temporary guard mutations proved each new assertion fails on the intended regression and were fully reverted.
+- Verification: typecheck, lint passed; 154 focused and adjacent tests passed; guide lint, guide coverage, base-aware guide drift, public transcripts, generated output, package DAG, and all boundary rules passed; high-rigor closeout review approved.
+- **Learnings for future iterations:**
+  - Post-build mount removal belongs to the story that creates the baked-artifact signal; removing the fallback before the trust-store build exists would break first-start trust.
+  - A non-lando skip needs poison input to prove the planner bypasses validation rather than merely producing empty feature output.
+  - Lexical outside-root and symlink-escape cases exercise different containment guards; keep both when changing path resolution.
 ---

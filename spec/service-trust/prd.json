@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Service Trust (corporate inject, leaf certs, boot, doctor, Traefik TLS, guides)",
   "branchName": "docs/service-trust-prd",
-  "description": "PRD-01 (US-483..US-489): host-global corporate CA/proxy inject into type: lando services. PRD-02 (US-490..US-498): leaf certs + mkcert Live, lando.boot scaffolding, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..16, strict): US-489 precedes US-486, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
+  "description": "PRD-01 (US-483..US-489 plus US-499): host-global corporate CA/proxy inject into type: lando services and the production Landofile load/import seam consumed by security.ca. PRD-02 (US-490..US-498): leaf certs + mkcert Live, lando.boot scaffolding, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..17, strict): US-489 precedes US-486, US-499 follows US-486, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
   "userStories": [
     {
       "id": "US-483",
@@ -75,7 +75,7 @@
         "Empty cas + injectProxy false is no-op; non-empty cas bind-mounts each PEM at the CA-distro-appropriate path (never under /etc/lando/certs) and sets NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR when applicable, LANDO_CA_*, build step with caDigests.",
         "injectProxy true sets HTTP_PROXY/HTTPS_PROXY/NO_PROXY when defined.",
         "Feature does not use ConfigService/FileSystem.",
-        "Composition and base-id tests updated, including a test that LANDO_CA_BUNDLE is /etc/lando/certs/ca-bundle.pem and LANDO_CA_DIR is /etc/lando/certs identically before and after the first rebuild.",
+        "Composition and base-id tests updated, including a test that LANDO_CA_BUNDLE is /etc/lando/certs/ca-bundle.pem and LANDO_CA_DIR is /etc/lando/certs across host materialization paths; US-487 owns pre-rebuild/post-rebuild parity.",
         "Guide: corporate-network-trust documents runtime env vars and rebuild expectation.",
         "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
         "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
@@ -90,10 +90,10 @@
     {
       "id": "US-486",
       "title": "AppPlanner wires global inject into lando-base services",
-      "description": "As AppPlanner, resolve inject once, materialize path and load/import PEMs, seed lando.security, exclude proxy env from artifact build keys.",
+      "description": "As AppPlanner, resolve inject once, materialize path-backed and inline PEM strings, seed lando.security, and exclude proxy env from artifact build keys.",
       "acceptanceCriteria": [
         "planApp uses ConfigService + US-484/US-489; only base lando services inject; l337 skipped.",
-        "security.ca paths app-root contained; inline/load/import PEM bodies accepted; non-PEM fails closed. Planner writes an app-cache CA bundle and mounts it at /etc/lando/certs/ca-bundle.pem for first start, dropped once the baked bundle exists.",
+        "security.ca path entries are app-root contained; path-backed and inline PEM strings are accepted and digested from content; non-PEM path content or inline garbage fails closed with remediation. Production Landofile load()/import() expression I/O and ImportRef values are owned by US-499. Planner writes an app-cache CA bundle and mounts it at /etc/lando/certs/ca-bundle.pem before a derived artifact carries the baked bundle; US-487 owns dropping that mount after a successful trust-store build while preserving the in-container path.",
         "inheritNetworkCa false suppresses global PEMs but keeps landofile security.ca.",
         "build-key excludes HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY matched CASE-INSENSITIVELY so lowercase http_proxy/https_proxy/all_proxy/no_proxy are excluded too; CA digests bust keys. Test asserts flipping lowercase http_proxy leaves the artifact key unchanged.",
         "Planner tests cover inject, opt-out, inline PEM, l337 skip.",
@@ -109,11 +109,36 @@
       "notes": "PRD-01"
     },
     {
+      "id": "US-499",
+      "title": "Production Landofile load/import CA expressions",
+      "description": "As a Landofile author, load() and import() resolve local PEM content through the production expression pipeline, and security.ca accepts provenance-preserving ImportRef values.",
+      "acceptanceCriteria": [
+        "Core production Landofile discovery/evaluation wires the spec section 7.3 local-only load() and import() file-I/O helpers without adding host I/O to the pure @lando/sdk/expressions evaluator.",
+        "load() produces the decoded value required by security.ca; import() produces an ImportRef with value, authored path, basename, checksum, and Landofile-layer provenance.",
+        "ServiceConfig.security.ca accepts ImportRef<string> in addition to its existing string forms, and its published Landofile schema position carries acceptsImportRef: true; schema artifacts and sdk/API_COMPATIBILITY.md are updated.",
+        "security.ca accepts load()/import()-produced PEM bodies, computes identity from content, and supplies stable provenance-derived or synthetic path labels for mounting and later image packing; non-PEM content fails closed with actionable remediation.",
+        "Relative resolution, fragment source provenance, app-root containment, the allow-load-outside-root policy, and tagged failures conform to spec section 7.3.",
+        "Every successful load()/import() contributes its absolutePath, size, mtime, and sha256 tuple to the app-plan cache key as required by spec sections 7.3 and 12.1.",
+        "Production-path tests exercise actual Landofile discovery through AppPlanner for load() and import() security.ca entries, outside-root rejection, ImportRef misuse at a non-accepting key, invalid PEM remediation, and cache invalidation when referenced bytes change.",
+        "Guide: corporate-network-trust documents load() and import() security.ca forms and their containment/remediation behavior.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "PRD-01; adjudicated split from US-486 because US-143 intentionally kept the SDK evaluator file-IO-free and deferred the production core loader seam"
+    },
+    {
       "id": "US-487",
       "title": "Derived image build packs injected CAs",
       "description": "As the image builder, derived builds pack CA files and install trust stores.",
       "acceptanceCriteria": [
         "Derived-build packs CA files + Dockerfile COPY + multi-distro update-ca, then mkdir -p /etc/lando/certs and writes /etc/lando/certs/ca-bundle.pem. The build step creates the directory itself rather than assuming lando.boot exists, and stays correct once lando.boot (US-493) takes ownership.",
+        "After a successful trust-store build produces an artifact carrying /etc/lando/certs/ca-bundle.pem, the planner-written app-cache bundle mount is dropped while the in-container bundle path remains unchanged.",
+        "A test asserts LANDO_CA_BUNDLE and LANDO_CA_DIR are identical in the pre-rebuild and post-rebuild plans.",
         "Missing host file or digest mismatch fails with ProviderInternalError before successful /build.",
         "Existing image-build tests remain green; new tar/failure tests added.",
         "Guide: corporate-network-trust notes rebuild when CA material changes.",
@@ -123,7 +148,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 6,
+      "priority": 7,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -141,7 +166,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 7,
+      "priority": 8,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -160,7 +185,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 8,
+      "priority": 9,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -180,7 +205,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 9,
+      "priority": 10,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -199,7 +224,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 10,
+      "priority": 11,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -219,7 +244,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 11,
+      "priority": 12,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -237,7 +262,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -256,7 +281,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -276,7 +301,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": "PRD-02. Origin: plugins/proxy-traefik tls: {} gap; spec/18-global-app.md section 20.10 + spec/11-subsystems.md sections 10.2-10.3"
     },
@@ -294,7 +319,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 15,
+      "priority": 16,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -316,7 +341,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": "PRD-02; includes Traefik guide"
     }

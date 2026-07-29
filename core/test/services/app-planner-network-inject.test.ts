@@ -1,5 +1,5 @@
 import { createHash as createNodeHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -63,6 +63,33 @@ const serviceFeatureBuildSteps = (extensions: Readonly<Record<string, unknown>>)
   return Array.isArray(buildSteps) ? buildSteps : [];
 };
 
+const expectProjectCaRejection = async (input: {
+  readonly appRoot: string;
+  readonly cacheRoot: string;
+  readonly authoredPath: string;
+  readonly remediation: string;
+}) => {
+  const exit = await Effect.runPromiseExit(
+    planEffect({
+      appRoot: input.appRoot,
+      cacheRoot: input.cacheRoot,
+      config: Schema.decodeUnknownSync(GlobalConfig)({}),
+      landofile: Schema.decodeUnknownSync(LandofileShape)({
+        name: "trust-invalid",
+        runtime: 4,
+        services: { web: { type: "node:22", security: { ca: [input.authoredPath] } } },
+      }),
+    }),
+  );
+
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
+  const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+  expect(failure).toBeInstanceOf(LandofileValidationError);
+  expect(String(failure)).toContain("security.ca");
+  expect(String(failure)).toContain(input.remediation);
+};
+
 test("injects global, project, and inline CAs into lando-base services", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-planner-network-inject-"));
   const appRoot = join(root, "app");
@@ -95,7 +122,11 @@ test("injects global, project, and inline CAs into lando-base services", async (
           type: "node:22",
           security: { ca: ["./certs/project.pem", inlinePem, globalPem] },
         },
-        edge: { type: "compose", image: "nginx:alpine" },
+        edge: {
+          type: "compose",
+          image: "nginx:alpine",
+          security: { ca: ["../escape.pem", "definitely not a pem\n"] },
+        },
       },
     });
 
@@ -117,6 +148,15 @@ test("injects global, project, and inline CAs into lando-base services", async (
     expect(web.environment.HTTPS_PROXY).toBe("http://proxy.example.test:8443");
     expect(web.environment.NO_PROXY).toBe("localhost");
     expect(edge.environment.LANDO_CA_BUNDLE).toBeUndefined();
+    expect(edge.environment.LANDO_CA_DIR).toBeUndefined();
+    expect(edge.environment.LANDO_CA_CERT).toBeUndefined();
+    expect(edge.mounts.some((mount) => String(mount.target).includes("lando-"))).toBe(false);
+    expect(edge.mounts.some((mount) => String(mount.target) === "/etc/lando/certs/ca-bundle.pem")).toBe(
+      false,
+    );
+    expect(
+      serviceFeatureBuildSteps(edge.extensions).some((step) => step.id === "lando.security:trust-store"),
+    ).toBe(false);
 
     const bundleMount = web.mounts.find((mount) => String(mount.target) === "/etc/lando/certs/ca-bundle.pem");
     expect(bundleMount?.source).toEqual(expect.stringContaining(cacheRoot));
@@ -204,34 +244,29 @@ test("fails planning when a configured global CA is unreadable", async () => {
 });
 
 test.each([
-  ["outside app root", "../outside.pem", PEM("outside"), "stay inside the app root"],
-  ["invalid PEM", "./invalid.pem", "not a certificate\n", "valid PEM certificate"],
-])("rejects %s project CA input", async (_label, authoredPath, content, remediation) => {
+  ["outside app root", "../outside.pem", PEM("outside"), "stay inside the app root", false],
+  ["invalid PEM", "./invalid.pem", "not a certificate\n", "valid PEM certificate", false],
+  ["invalid inline PEM", "not a certificate\n", undefined, "valid PEM certificate", false],
+  ["symlink escape", "./link.pem", PEM("outside"), "stay inside the app root", true],
+])("rejects %s project CA input", async (_label, authoredPath, content, remediation, symlinkEscape) => {
   const root = await mkdtemp(join(tmpdir(), "lando-planner-network-invalid-"));
   const appRoot = join(root, "app");
-  const source = authoredPath.startsWith("../") ? join(root, "outside.pem") : join(appRoot, "invalid.pem");
 
   try {
     await mkdir(appRoot, { recursive: true });
-    await writeFile(source, content, "utf-8");
-    const effect = planEffect({
+    if (content !== undefined) {
+      const source =
+        authoredPath.startsWith("../") || symlinkEscape ? join(root, "outside.pem") : authoredPath;
+      const absoluteSource = source.startsWith(root) ? source : join(appRoot, source);
+      await writeFile(absoluteSource, content, "utf-8");
+      if (symlinkEscape) await symlink(absoluteSource, join(appRoot, authoredPath));
+    }
+    await expectProjectCaRejection({
       appRoot,
       cacheRoot: join(root, "cache"),
-      config: Schema.decodeUnknownSync(GlobalConfig)({}),
-      landofile: Schema.decodeUnknownSync(LandofileShape)({
-        name: "trust-invalid",
-        runtime: 4,
-        services: { web: { type: "node:22", security: { ca: [authoredPath] } } },
-      }),
+      authoredPath,
+      remediation,
     });
-    const exit = await Effect.runPromiseExit(effect);
-
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (!Exit.isFailure(exit)) throw new Error("expected planner failure");
-    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
-    expect(failure).toBeInstanceOf(LandofileValidationError);
-    expect(String(failure)).toContain("security.ca");
-    expect(String(failure)).toContain(remediation);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

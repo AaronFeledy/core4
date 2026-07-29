@@ -103,7 +103,7 @@ Leaf certs, `lando.boot`, language CA env, doctor, and Traefik edge TLS live in 
 - [ ] Feature config schema carries pre-resolved `{ injectCa, injectProxy, cas: [{ path, digest }], proxy? }` (planner-supplied).
 - [ ] Empty cas and `injectProxy: false` → apply is a no-op.
 - [ ] Non-empty cas → bind-mount each host PEM at the **CA-distro-appropriate path** per §6.8 (e.g. `/usr/local/share/ca-certificates/` on Debian-family), never under `/etc/lando/certs/`; set `NODE_EXTRA_CA_CERTS`, `SSL_CERT_FILE`, `SSL_CERT_DIR` when applicable, `LANDO_CA_BUNDLE`, `LANDO_CA_DIR`, `LANDO_CA_CERT` per §6.8/§6.9.
-- [ ] **Single bundle contract.** `LANDO_CA_BUNDLE` is always `/etc/lando/certs/ca-bundle.pem` and `LANDO_CA_DIR` is always `/etc/lando/certs`, for every service and both before and after the first rebuild. The three CA materializations have a fixed precedence and non-overlapping targets, so none can shadow another: (1) per-PEM bind mounts land at the distro trust-store input path, (2) the optional planner-written app-cache bundle (US-486) is a **host-side** file that is mounted **to** `/etc/lando/certs/ca-bundle.pem` only when the image has not yet been rebuilt with the baked bundle, and (3) the baked bundle (US-487) is written to that same in-container path by the artifact build. A test asserts the env var values are identical across the pre-rebuild and post-rebuild plans.
+- [ ] **Single bundle contract.** `LANDO_CA_BUNDLE` is always `/etc/lando/certs/ca-bundle.pem` and `LANDO_CA_DIR` is always `/etc/lando/certs`, for every service and both before and after the first rebuild. The three CA materializations have a fixed precedence and non-overlapping targets, so none can shadow another: (1) per-PEM bind mounts land at the distro trust-store input path, (2) the planner-written app-cache bundle (US-486) is a **host-side** file mounted **to** `/etc/lando/certs/ca-bundle.pem` until a derived artifact carries the baked bundle, and (3) the baked bundle (US-487) is written to that same in-container path by the artifact build. US-487 owns dropping the host mount after its successful trust-store build and proving that the env var values remain identical across the transition.
 - [ ] `injectProxy: true` → set `HTTP_PROXY` / `HTTPS_PROXY` / `NO_PROXY` from payload when defined.
 - [ ] Artifact `phase: "build"` step `lando.security:trust-store` with `buildKeyInputs.caDigests` (sorted digests).
 - [ ] Feature does not import or yield `ConfigService` / `FileSystem`.
@@ -116,17 +116,17 @@ Leaf certs, `lando.boot`, language CA env, doctor, and Traefik edge TLS live in 
 
 ### US-486: AppPlanner wires global inject into lando-base services
 
-**Description:** As `AppPlanner`, each plan resolves global network trust once, loads PEMs, applies per-service security overrides, materializes Landofile `security.ca` paths and inline/`load`/`import` PEM bodies, seeds `lando.security` feature config, and keeps proxy URLs out of the artifact build-key environment hash.
+**Description:** As `AppPlanner`, each plan resolves global network trust once, loads PEMs, applies per-service security overrides, materializes path-backed and inline Landofile `security.ca` PEM strings, seeds `lando.security` feature config, and keeps proxy URLs out of the artifact build-key environment hash. Production Landofile `load()`/`import()` expression I/O and `ImportRef` values are owned by US-499.
 
 **Acceptance Criteria:**
 
 - [ ] `planApp` loads `ConfigService` global config when available; resolves inject via US-484 helpers (including US-489 env overlays).
 - [ ] Only `resolution.base === "lando"` services receive security inject seeding; `l337` does not.
 - [ ] Landofile `security.ca` path entries resolve relative to app root; paths escaping the app root fail with remediation (same containment spirit as includes/load unless an existing allow-outside flag applies).
-- [ ] Inline PEM text and `load`/`import`-produced PEM bodies are accepted (digest from content; synthetic path labels for packing); non-PEM garbage fails with remediation.
+- [ ] Path-backed and inline PEM strings are accepted (digest from content; synthetic path labels for packing); non-PEM path content and inline garbage fail with remediation. Production Landofile `load()`/`import()` expression I/O and `ImportRef` values are owned by US-499.
 - [ ] `inheritNetworkCa: false` suppresses global PEMs but still applies Landofile `security.ca`.
 - [ ] Global + landofile PEMs are unioned with content-digest de-duplication (global first).
-- [ ] When cas non-empty, the planner writes a stable app-cache CA bundle file (path under the app cache via `PathsService`; content digest in the name or a sidecar) and mounts it at `/etc/lando/certs/ca-bundle.pem` so `LANDO_CA_BUNDLE` resolves before the first rebuild. Once the artifact carries the baked bundle (US-487) the mount is dropped, and the in-container path is unchanged either way.
+- [ ] When cas non-empty, the planner writes a stable app-cache CA bundle file (path under the app cache via `PathsService`; content digest in the name or a sidecar) and mounts it at `/etc/lando/certs/ca-bundle.pem` so `LANDO_CA_BUNDLE` resolves before a derived artifact carries the baked bundle. US-487 owns dropping the mount after its successful trust-store build; the in-container path is unchanged either way.
 - [ ] Feature config for `lando.security` is merged into the composed feature list for each lando-base service.
 - [ ] `build-key.ts` excludes `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` from the environment portion of the artifact key, **matched case-insensitively** so the conventional lowercase spellings (`http_proxy`, `https_proxy`, `all_proxy`, `no_proxy`) are excluded too. The rest of the codebase already treats both casings as first-class (`firstEnv` in `sdk/src/network-trust/index.ts`, `core/src/subsystems/host-proxy/proxy-bypass.ts`); a case-sensitive list would let a Linux/macOS user's lowercase `http_proxy` bust artifact keys on every proxy change, which is exactly what FR-5 forbids.
 - [ ] Build-key unit test asserts that flipping `http_proxy` (lowercase) leaves the artifact key unchanged, alongside the uppercase case.
@@ -138,6 +138,28 @@ Leaf certs, `lando.boot`, language CA env, doctor, and Traefik edge TLS live in 
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+### US-499: Production Landofile load/import CA expressions
+
+**Description:** As a Landofile author, `load()` and `import()` resolve local PEM content through the production expression pipeline, and `security.ca` accepts provenance-preserving `ImportRef` values.
+
+**Acceptance Criteria:**
+
+- [ ] Core production Landofile discovery/evaluation wires the §7.3 local-only `load()` and `import()` file-I/O helpers without adding host I/O to the pure `@lando/sdk/expressions` evaluator.
+- [ ] `load()` produces the decoded value required by `security.ca`; `import()` produces an `ImportRef` with value, authored path, basename, checksum, and Landofile-layer provenance.
+- [ ] `ServiceConfig.security.ca` accepts `ImportRef<string>` in addition to its existing string forms, and its published Landofile schema position carries `acceptsImportRef: true`; schema artifacts and `sdk/API_COMPATIBILITY.md` are updated.
+- [ ] `security.ca` accepts `load()`/`import()`-produced PEM bodies, computes identity from content, and supplies stable provenance-derived or synthetic path labels for mounting and later image packing; non-PEM content fails closed with actionable remediation.
+- [ ] Relative resolution, fragment source provenance, app-root containment, the allow-load-outside-root policy, and tagged failures conform to §7.3.
+- [ ] Every successful `load()`/`import()` contributes its absolutePath, size, mtime, and sha256 tuple to the app-plan cache key as required by §7.3 and §12.1.
+- [ ] Production-path tests exercise actual Landofile discovery through AppPlanner for `load()` and `import()` `security.ca` entries, outside-root rejection, `ImportRef` misuse at a non-accepting key, invalid PEM remediation, and cache invalidation when referenced bytes change.
+- [ ] **Guide:** corporate-network-trust documents `load()` and `import()` `security.ca` forms and their containment/remediation behavior.
+- [ ] Executable guide coverage updated for this user-facing behavior (`render={false}` OK if unit-backed).
+- [ ] `bun run lint:guides` and `bun run check:guide-coverage` pass for touched guides (final pack may complete in US-496).
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+**Notes:** Adjudicated from US-486 because US-143 kept the SDK evaluator file-IO-free and deferred the production core loader seam.
+
 ### US-487: Derived image build packs injected CAs
 
 **Description:** As the container image builder, derived builds (`artifact.kind === "ref"` + build steps, or build + steps) pack injected CA files into the build context and install them into the image trust store so tools that only consult the OS store succeed after rebuild.
@@ -147,6 +169,8 @@ Leaf certs, `lando.boot`, language CA env, doctor, and Traefik edge TLS live in 
 - [ ] `container-runtime` derived-build path accepts CA file descriptors from the service-features extension (host path + digest + archive name) set by `lando.security`.
 - [ ] Packed context includes CA files and a Dockerfile that `COPY`s them and runs a multi-distro trust-store update (Debian/Ubuntu `update-ca-certificates`, RHEL-family `update-ca-trust` when present, Alpine `update-ca-certificates`), then `mkdir -p /etc/lando/certs` and writes `/etc/lando/certs/ca-bundle.pem`.
 - [ ] The build step creates `/etc/lando/certs` itself (idempotent `mkdir -p`) rather than assuming `lando.boot` exists, and remains correct once `lando.boot` (PRD-02 US-493) takes ownership of `/etc/lando/*` — both are artifact build steps in the same image and `lando.boot` (priority 100) runs before `lando.security` (1100), so the directory is created at most twice and never shadowed.
+- [ ] After a successful trust-store build produces an artifact carrying `/etc/lando/certs/ca-bundle.pem`, the planner-written app-cache bundle mount is dropped while the in-container bundle path remains unchanged.
+- [ ] A test asserts `LANDO_CA_BUNDLE` and `LANDO_CA_DIR` are identical in the pre-rebuild and post-rebuild plans.
 - [ ] Host file missing or digest mismatch fails with `ProviderInternalError` before `/build` succeeds.
 - [ ] Existing image-build tests remain green; new tests assert tar entries and failure modes (fake HTTP API pattern already used in `image-build.test.ts`).
 - [ ] **Guide:** corporate-network-trust notes that CA changes require service image rebuild / `lando rebuild` when trust-store layers change.
@@ -230,6 +254,7 @@ Every user-facing story in this PRD carries executable-guide acceptance criteria
 | US-484 | global cert path resolution and failure remediation | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-485 | runtime CA env vars (`NODE_EXTRA_CA_CERTS`, `SSL_CERT_*`, `LANDO_CA_*`) | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-486 | set-and-forget global config + per-service opt-out | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
+| US-499 | `load()` / `import()` `security.ca` forms and containment remediation | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-487 | rebuild expectation when CA material changes | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-488 | setup inject note and inject-path guide completion | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-489 | `LANDO_NETWORK_*_INJECT_INTO_SERVICES` env overrides | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
