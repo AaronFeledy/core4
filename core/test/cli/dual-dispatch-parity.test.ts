@@ -10,6 +10,7 @@ import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.
 import type { ResultFormat } from "../../src/cli/format-flags.ts";
 import { logsFollowFromInput, logsOptionsFromInput } from "../../src/cli/oclif/commands/app/logs.ts";
 import { initOptionsFromInput } from "../../src/cli/oclif/commands/apps/init.ts";
+import { appsListPathFromInput } from "../../src/cli/oclif/commands/apps/list.ts";
 import { keepVolumesFromInput } from "../../src/cli/oclif/commands/apps/scratch/destroy.ts";
 import { pruneFromInput } from "../../src/cli/oclif/commands/apps/scratch/gc.ts";
 import { globalConfigFormatFromInput } from "../../src/cli/oclif/commands/meta/global/config.ts";
@@ -43,6 +44,12 @@ describe("dual-dispatch argv parser parity", () => {
     expect(globalConfigFormatFromInput(compiledInput("meta:global:config", [], "lando", "json"))).toBe(
       "json",
     );
+  });
+
+  test("apps:list uses the same parsed input shape as the OCLIF helper", () => {
+    expect(appsListPathFromInput(compiledInput("apps:list", ["--path", "demo"]))).toBe("demo");
+    expect(appsListPathFromInput(compiledInput("apps:list", ["--path=demo"]))).toBe("demo");
+    expect(appsListPathFromInput(compiledInput("apps:list", []))).toBeUndefined();
   });
 
   test("apps:init uses the same parsed input shape as the OCLIF helper", () => {

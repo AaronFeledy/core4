@@ -14,7 +14,7 @@ const extractFormat = (input: unknown): "json" | "table" => {
   return flags?.format === "json" ? "json" : "table";
 };
 
-const extractPath = (input: unknown): string | undefined => {
+export const appsListPathFromInput = (input: unknown): string | undefined => {
   if (typeof input !== "object" || input === null) return undefined;
   const flags = (input as { flags?: { path?: unknown } }).flags;
   return typeof flags?.path === "string" ? flags.path : undefined;
@@ -29,7 +29,7 @@ export const listSpec: LandoCommandSpec<ListServicesResult> = {
   topLevelAlias: true,
   bootstrap: "minimal",
   run: (input) => {
-    const path = extractPath(input);
+    const path = appsListPathFromInput(input);
     return listServices(path === undefined ? {} : { path });
   },
   render: (result, input?: unknown) =>
