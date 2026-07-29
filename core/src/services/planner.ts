@@ -42,6 +42,7 @@ import {
   CacheService,
   ConfigService,
   FileSystem,
+  PathsService,
   PluginRegistry,
   type ServiceBuildStepIntent,
   type ServiceType,
@@ -66,6 +67,7 @@ import {
   getVersionConstraintEntries,
   hasSkippedUnsatisfiedVersionConstraint,
 } from "../config/version-constraint.ts";
+import { resolveNetworkTrustPlan } from "../http-client/network-trust.ts";
 import { getLandofileAppRoot } from "../landofile/app-root-provenance.ts";
 import { parseEnvFile } from "../landofile/env-file.ts";
 import {
@@ -89,6 +91,7 @@ import type { DraftServicePlan } from "./draft.ts";
 import { sortRecord } from "./draft.ts";
 import { type ComposeServiceFeature, composeService } from "./feature.ts";
 import { mergeLogSources } from "./log-sources.ts";
+import { loadGlobalSecurityCas, resolveSecurityFeature } from "./network-inject.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "./redirect-log-sources.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
@@ -700,7 +703,10 @@ interface ResolvedService {
   readonly resolution: ServiceTypeResolution;
   readonly logSources: ReadonlyArray<LogSource>;
   readonly baseDefaultIds: ReadonlyArray<string>;
-  readonly featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }>;
+  readonly featureRefs: ReadonlyArray<{
+    readonly id: string;
+    readonly config?: Readonly<Record<string, unknown>>;
+  }>;
   readonly resolvedArtifactTag: string | undefined;
   readonly envFileInputs: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
 }
@@ -1034,6 +1040,7 @@ const planApp = (
   cacheService: Context.Tag.Service<typeof CacheService> | undefined,
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   fileSystem: Context.Tag.Service<typeof FileSystem> | undefined,
+  pathsService: Context.Tag.Service<typeof PathsService> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<
@@ -1090,12 +1097,30 @@ const planApp = (
   };
 
   return Effect.gen(function* () {
-    const configProvider =
+    const globalConfig =
       configService === undefined
         ? undefined
-        : yield* configService
-            .get("defaultProviderId")
-            .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+        : yield* configService.load.pipe(
+            Effect.mapError(
+              (cause) =>
+                new LandofileValidationError({
+                  message: `Global configuration could not be loaded for service network injection: ${cause.message}`,
+                  file: `${appRoot}/.lando.yml`,
+                  issues: ["network"],
+                }),
+            ),
+          );
+    const configProvider = globalConfig?.defaultProviderId;
+    const networkPlan = yield* Effect.try({
+      try: () => resolveNetworkTrustPlan({ network: globalConfig?.network }, process.env),
+      catch: (cause) =>
+        new LandofileValidationError({
+          message: `Global network trust configuration is invalid: ${cause instanceof Error ? cause.message : String(cause)}`,
+          file: `${appRoot}/.lando.yml`,
+          issues: ["network"],
+        }),
+    });
+    const globalCas = yield* loadGlobalSecurityCas(appRoot, networkPlan.caCertPaths);
     const envProvider = readProviderEnvVar(process.env);
     const provider = resolveProviderSelection({
       ...(landofile.provider === undefined ? {} : { landofile: landofile.provider }),
@@ -1230,13 +1255,32 @@ const planApp = (
       const baseDefaultIds = baseDefaultFeatureIds(resolution.base).filter(
         (id) => !resolutionFeatureIds.has(id),
       );
-      const featureRefs: ReadonlyArray<{ readonly id: string; readonly config?: unknown }> = [
+      const securityFeature =
+        resolution.base === "lando"
+          ? yield* resolveSecurityFeature({
+              appName,
+              appRoot,
+              serviceName: name,
+              security: pinnedService.security,
+              network: globalConfig?.network,
+              networkPlan,
+              globalCas,
+              fileSystem,
+              paths: pathsService,
+            })
+          : undefined;
+      const featureRefs: ReadonlyArray<{
+        readonly id: string;
+        readonly config?: Readonly<Record<string, unknown>>;
+      }> = [
         ...baseDefaultIds.map((id) => ({ id })),
         ...resolution.features.map((featureRef) => ({
           id: featureRef.id,
           ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
         })),
-      ];
+      ].map((featureRef) =>
+        securityFeature !== undefined && featureRef.id === securityFeature.id ? securityFeature : featureRef,
+      );
 
       resolvedServices.push({
         name,
@@ -1319,9 +1363,14 @@ const planApp = (
       resolution,
       logSources,
       baseDefaultIds,
+      featureRefs,
     } of resolvedServices) {
       const rawPlan = yield* Effect.gen(function* () {
-        const features = yield* Effect.forEach(resolution.features, (featureRef) =>
+        const configuredFeatureRefs = featureRefs.filter(
+          (featureRef) => !baseDefaultIds.includes(featureRef.id) || featureRef.config !== undefined,
+        );
+        const configuredFeatureIds = new Set(configuredFeatureRefs.map((featureRef) => featureRef.id));
+        const features = yield* Effect.forEach(configuredFeatureRefs, (featureRef) =>
           pluginRegistry.loadServiceFeature(featureRef.id).pipe(
             Effect.map(
               (definition): ComposeServiceFeature => ({
@@ -1333,10 +1382,12 @@ const planApp = (
             Effect.mapError((error) => servicePlanError(appRoot, name, error)),
           ),
         );
-        const defaultFeatures = yield* Effect.forEach(baseDefaultIds, (id) =>
-          pluginRegistry
-            .loadServiceFeature(id)
-            .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error))),
+        const defaultFeatures = yield* Effect.forEach(
+          baseDefaultIds.filter((id) => !configuredFeatureIds.has(id)),
+          (id) =>
+            pluginRegistry
+              .loadServiceFeature(id)
+              .pipe(Effect.mapError((error) => servicePlanError(appRoot, name, error))),
         );
         return yield* composeService({
           base: {
@@ -1740,6 +1791,7 @@ export const AppPlannerLive = Layer.effect(
     const cacheService = yield* Effect.serviceOption(CacheService);
     const configService = yield* Effect.serviceOption(ConfigService);
     const fileSystem = yield* Effect.serviceOption(FileSystem);
+    const pathsService = yield* Effect.serviceOption(PathsService);
     return {
       plan: (landofile, providerCapabilities) =>
         planApp(
@@ -1747,6 +1799,7 @@ export const AppPlannerLive = Layer.effect(
           Option.getOrUndefined(cacheService),
           Option.getOrUndefined(configService),
           Option.getOrUndefined(fileSystem),
+          Option.getOrUndefined(pathsService),
           landofile,
           providerCapabilities,
         ),

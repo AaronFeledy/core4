@@ -84,6 +84,7 @@ interface ServiceNetworkInjectInput {
   readonly network?: NetworkConfig | undefined;
   readonly env?: NodeJS.ProcessEnv | undefined;
   readonly security?: ServiceConfig["security"] | undefined;
+  readonly plan?: NetworkTrustPlan | undefined;
 }
 
 interface ResolvedServiceNetworkInject {
@@ -97,7 +98,7 @@ interface ResolvedServiceNetworkInject {
 export const resolveServiceNetworkInject = (
   input: ServiceNetworkInjectInput,
 ): ResolvedServiceNetworkInject => {
-  const plan = resolveNetworkTrustPlan({ network: input.network }, input.env);
+  const plan = input.plan ?? resolveNetworkTrustPlan({ network: input.network }, input.env);
   const injectCa = input.security?.inheritNetworkCa ?? input.network?.ca?.injectIntoServices ?? true;
   const injectProxy =
     input.security?.inheritNetworkProxy ?? input.network?.proxy?.injectIntoServices ?? false;

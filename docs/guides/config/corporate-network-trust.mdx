@@ -33,6 +33,11 @@ Host-global CA paths come from `network.ca.certs` or the JSON array in
 outbound HTTP with the UTF-8 PEM bytes and a stable SHA-256 digest for service planning. Landofile
 `security.ca` remains the project-local CA path list.
 
+This is set-and-forget for `type: lando` services: global CAs inject by default. Set
+`security.inheritNetworkCa: false` on one service to opt out of the global CA set while retaining
+that service's own `security.ca` entries. `lando setup` remains the preflight for host trust and
+reports unreadable CA paths before service startup.
+
 If a path cannot be read, Lando names that path and points to all three correction surfaces:
 `network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`.
 
@@ -81,6 +86,13 @@ store. The bundle and directory paths do not change across that rebuild.
       <Variable name="caInjection" value="LANDO_NETWORK_CA_INJECT_INTO_SERVICES" display="Override network.ca.injectIntoServices with true or false" />
       <Variable name="proxyInjection" value="LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES" display="Override network.proxy.injectIntoServices with true or false" />
       <Variable name="caPaths" value="LANDO_NETWORK_CA_CERTS" display="Keep additional CA paths in the network-trust resolver as a JSON array" />
+    </Step>
+  </Scenario>
+  <Scenario id="plan-service-network-injection" render={false} reason="Focused AppPlanner tests cover global CA injection, per-service opt-out, project and inline PEM material, lando-base selection, and app-cache bundle creation without exposing private CA material">
+    <Step name="plan-service-trust">
+      <Variable name="globalDefault" value="network.ca.injectIntoServices=true" display="Inject configured host CAs into type: lando services by default" />
+      <Variable name="serviceOptOut" value="security.inheritNetworkCa=false" display="Suppress global CAs for one service while preserving security.ca" />
+      <Variable name="preflight" value="lando setup" display="Validate host trust and configured CA paths before service startup" />
     </Step>
   </Scenario>
   <Scenario id="runtime-ca-environment-and-rebuild" render={false} reason="Focused lando.security feature and base-composition tests verify fixed CA environment paths and rebuild-invariant behavior without requiring private CA material or a live provider">

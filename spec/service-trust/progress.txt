@@ -34,6 +34,9 @@ Spec SoT:
   `GlobalConfig` decode instead of adding a second parser.
 - A default service feature that will later receive planner-seeded config must decode `{}` and apply
   as a no-op until that config is present; base composition runs before later planner-wiring stories.
+- When a planner configures one base-default feature, keep unconfigured defaults on
+  `base.defaultFeatures` and move only configured refs through `ComposeServiceFeature`; this preserves
+  established base semantics while allowing schema-decoded planner payloads.
 
 ## Status
 
@@ -213,4 +216,22 @@ Spec SoT:
     `apply` free of config and filesystem services.
   - A digest-derived `.crt` target avoids basename collisions while preserving the host PEM path as
     provider-neutral bind intent; the image-packing story can consume the same immutable identity.
+---
+
+## 2026-07-29 18:00 CDT - US-486
+- Wired global network trust through AppPlanner once per plan, with lando-base-only security feature
+  seeding, per-service CA/proxy inheritance, content-digest de-duplication, contained project paths,
+  inline PEM materialization, and a stable pre-rebuild app-cache bundle mount.
+- Kept proxy environment values out of artifact identity for uppercase and lowercase spellings while
+  retaining sorted CA digests as rebuild inputs; documented set-and-forget injection, service opt-out,
+  and setup preflight behavior.
+- Verification: typecheck, lint passed; 152 focused and adjacent tests passed with 528 assertions;
+  guide lint, guide coverage, base-aware guide drift, generated output, public transcripts, paths
+  boundary, and import-cycle gates passed; direct AppPlanner surface created/read the bundle and
+  rejected unreadable, invalid, and outside-root CA inputs with clean temp-root teardown.
+- **Learnings for future iterations:**
+  - Load global CA material once before per-service planning, then apply service inheritance only when
+    selecting the already-loaded descriptors; this avoids divergent reads while preserving opt-out.
+  - Inline PEMs need digest-named app-cache files as host mount/packing identities, while the
+    concatenated bundle uses the same ordered, de-duplicated bytes and a stable in-container target.
 ---
