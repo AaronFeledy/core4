@@ -34,7 +34,11 @@ import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
 import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "./tooling-beta.ts";
-import { getInternalToolingTasks, rememberInternalToolingTasks } from "./tooling-include-provenance.ts";
+import {
+  getInternalToolingTasks,
+  rememberInternalToolingTasks,
+  winningInternalToolingTasks,
+} from "./tooling-include-provenance.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
@@ -352,7 +356,12 @@ export const loadLandofileLayers = (
                 ),
                 loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
               ),
-              loaded.flatMap(({ landofile }) => getInternalToolingTasks(landofile)),
+              winningInternalToolingTasks(
+                loaded.map(({ landofile }) => ({
+                  tooling: landofile.tooling,
+                  internalTaskIds: getInternalToolingTasks(landofile),
+                })),
+              ),
             ),
             appRoot,
           ),
