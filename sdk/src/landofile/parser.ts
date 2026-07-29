@@ -76,6 +76,19 @@ const DEFAULT_MAX_DEPTH = 64;
 
 const ANCHOR_PREFIX_PATTERN = new RegExp(`^&${YAML_REFERENCE_NAME_PATTERN.source}\\s+`);
 
+const assignKeyedValue = (
+  references: YamlReferenceState,
+  target: Record<string, unknown>,
+  key: string,
+  value: unknown,
+  location: { readonly line: number; readonly column: number },
+  blockAnchorName: string | undefined,
+): void => {
+  if (blockAnchorName !== undefined) bindYamlAnchor(references, blockAnchorName, value);
+  if (key === "<<") registerYamlMerge(references, target, value, location);
+  else target[key] = value;
+};
+
 const assertContentSize = (content: string, filePath: string, maxContentBytes: number): void => {
   const actualContentBytes = Buffer.byteLength(content, "utf8");
   if (actualContentBytes > maxContentBytes) {
@@ -312,9 +325,8 @@ interface ValuePosition {
   readonly column: number;
 }
 
-// An anchored value (`&name !reset`) still carries the tag, so the anchor
-// prefix is skipped before tag matching; otherwise anchoring silently escapes
-// Compose rejection.
+// Skip indentation and an optional `&name` prefix so Compose tags after anchors
+// are still matched at the tag token.
 const skipValuePrefix = (value: string): { readonly text: string; readonly offset: number } => {
   const leadingWhitespace = value.search(/\S/);
   if (leadingWhitespace < 0) return { text: "", offset: 0 };
@@ -442,12 +454,9 @@ const parseMap = (
 
     if (rawValue.trim() === "" || blockAnchor !== undefined) {
       const next = lines[index + 1];
+      const location = { line: line.line, column: valueColumn };
       if (next === undefined || next.indent <= line.indent) {
-        const value = {};
-        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, value);
-        if (key === "<<")
-          registerYamlMerge(references, result, value, { line: line.line, column: valueColumn });
-        else result[key] = value;
+        assignKeyedValue(references, result, key, {}, location, blockAnchor?.name);
         index += 1;
         continue;
       }
@@ -461,10 +470,7 @@ const parseMap = (
           maxDepth,
           references,
         );
-        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, items);
-        if (key === "<<")
-          registerYamlMerge(references, result, items, { line: line.line, column: valueColumn });
-        else result[key] = items;
+        assignKeyedValue(references, result, key, items, location, blockAnchor?.name);
         index = nextIndex;
         continue;
       }
@@ -477,17 +483,13 @@ const parseMap = (
         maxDepth,
         references,
       );
-      if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, nested);
-      if (key === "<<")
-        registerYamlMerge(references, result, nested, { line: line.line, column: valueColumn });
-      else result[key] = nested;
+      assignKeyedValue(references, result, key, nested, location, blockAnchor?.name);
       index = nextIndex;
       continue;
     }
 
     const value = parseScalar(rawValue, filePath, line.line, valueColumn, depth, maxDepth, references);
-    if (key === "<<") registerYamlMerge(references, result, value, { line: line.line, column: valueColumn });
-    else result[key] = value;
+    assignKeyedValue(references, result, key, value, { line: line.line, column: valueColumn }, undefined);
     index += 1;
   }
 
@@ -599,16 +601,14 @@ const parseListItemMap = (
 
   const consumeKey = (key: string, rawValue: string, keyLine: number, keyIndent: number): void => {
     const valueColumn = keyIndent + key.length + 2;
-    const reference = parseYamlReferenceSyntax(rawValue, { line: keyLine, column: valueColumn });
+    const location = { line: keyLine, column: valueColumn };
+    const reference = parseYamlReferenceSyntax(rawValue, location);
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
     if (blockAnchor !== undefined) reserveYamlAnchor(references, blockAnchor);
     if (rawValue.trim() === "" || blockAnchor !== undefined) {
       const next = lines[index];
       if (next === undefined || next.indent <= keyIndent) {
-        const value = {};
-        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, value);
-        if (key === "<<") registerYamlMerge(references, item, value, { line: keyLine, column: valueColumn });
-        else item[key] = value;
+        assignKeyedValue(references, item, key, {}, location, blockAnchor?.name);
         return;
       }
       if (next.text.startsWith("- ")) {
@@ -621,9 +621,7 @@ const parseListItemMap = (
           maxDepth,
           references,
         );
-        if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, items);
-        if (key === "<<") registerYamlMerge(references, item, items, { line: keyLine, column: valueColumn });
-        else item[key] = items;
+        assignKeyedValue(references, item, key, items, location, blockAnchor?.name);
         index = nextIndex;
         return;
       }
@@ -636,15 +634,12 @@ const parseListItemMap = (
         maxDepth,
         references,
       );
-      if (blockAnchor !== undefined) bindYamlAnchor(references, blockAnchor.name, nested);
-      if (key === "<<") registerYamlMerge(references, item, nested, { line: keyLine, column: valueColumn });
-      else item[key] = nested;
+      assignKeyedValue(references, item, key, nested, location, blockAnchor?.name);
       index = nextIndex;
       return;
     }
     const value = parseScalar(rawValue, filePath, keyLine, valueColumn, depth, maxDepth, references);
-    if (key === "<<") registerYamlMerge(references, item, value, { line: keyLine, column: valueColumn });
-    else item[key] = value;
+    assignKeyedValue(references, item, key, value, location, undefined);
   };
 
   consumeKey(firstKey, firstRawValue, startLine.line, childIndent);

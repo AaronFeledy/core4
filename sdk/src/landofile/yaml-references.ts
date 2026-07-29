@@ -33,14 +33,13 @@ export interface YamlReferenceState {
   readonly merges: WeakMap<Record<string, unknown>, MergeEntry[]>;
 }
 
-// YAML 1.2 anchor/alias names accept any non-space character except the flow
-// indicators. The tag detector in parser.ts MUST reuse this exact pattern: when
-// the two disagree, an anchored value is a reference to one and an opaque
-// string to the other, which is how `&a.b !reset` escaped Compose rejection.
-export const YAML_REFERENCE_NAME_PATTERN = /[^\s,[\]{}]+/;
+// YAML 1.2 anchor/alias names: non-space characters excluding flow indicators.
+// Tag detection reuses this pattern so anchored Compose tags stay visible.
+const YAML_REFERENCE_NAME_CLASS = String.raw`[^\s,[\]{}]+`;
+export const YAML_REFERENCE_NAME_PATTERN = new RegExp(YAML_REFERENCE_NAME_CLASS);
 
-const ALIAS_PATTERN = /^\*([^\s,[\]{}]+)$/;
-const ANCHOR_PATTERN = /^&([^\s,[\]{}]+)(?:\s+(.*))?$/;
+const ALIAS_PATTERN = new RegExp(`^\\*(${YAML_REFERENCE_NAME_CLASS})$`);
+const ANCHOR_PATTERN = new RegExp(`^&(${YAML_REFERENCE_NAME_CLASS})(?:\\s+(.*))?$`);
 
 const UNBOUND = Symbol("YamlAnchorUnbound");
 const REFERENCE_REMEDIATION =
@@ -129,16 +128,7 @@ export const registerYamlMerge = (
 };
 
 const isYamlAlias = (value: unknown): value is YamlAlias =>
-  typeof value === "object" &&
-  value !== null &&
-  YAML_ALIAS in value &&
-  value[YAML_ALIAS] === true &&
-  "name" in value &&
-  typeof value.name === "string" &&
-  "line" in value &&
-  typeof value.line === "number" &&
-  "column" in value &&
-  typeof value.column === "number";
+  typeof value === "object" && value !== null && YAML_ALIAS in value;
 
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value) && !isYamlAlias(value);
