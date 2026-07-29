@@ -177,3 +177,19 @@ Spec SoT:
   - Add friendly config aliases after generic overlays so the canonical name wins consistently with
     notify aliases; keep specialized network material variables out of the global config overlay.
 ---
+
+## 2026-07-29 15:32 CDT - US-489 Review
+- Consolidated the inject-flag cases into the established environment-overlay suite, made them
+  hermetic against ambient generic and friendly overrides, locked friendly-over-generic precedence,
+  and added actionable malformed-value failures that preserve the config path and schema cause.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit
+  rejected both attempts; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected adding a public `ConfigError.remediation` field as
+  out-of-scope SDK/schema churn; the existing human-facing message now names the invalid variable and
+  the exact set-or-unset recovery while preserving the structured decode cause.
+- Verification: typecheck and lint passed; 40 focused and adjacent tests passed with 66 assertions;
+  generated-output, guide lint, guide coverage, and base-aware guide drift passed.
+- **Learnings for future iterations:** Environment-overlay tests must clear every ambient
+  `LANDO_CONFIG__*` key plus their friendly aliases; boundary-specific recovery can enrich an existing
+  tagged error message without discarding its schema cause or widening the public error contract.
+---
