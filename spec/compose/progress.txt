@@ -950,3 +950,10 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - **Learnings for future iterations:**
   - For a reviewed story changed only by acceptance-criteria adjudication, rerun the decisive host-safe proof and commit the contract record without inventing implementation work; Push/Babysit still owns the fresh managed-runtime guide result.
 ---
+
+## 2026-07-28 23:59 CDT - US-477 Review
+- Fixed the contract record the adjudication left half-applied: the narrative source PRD now carries the same narrowed executable-guide criteria as the machine-read index, so the compiled-binary e2e wiring, start/info/destroy cleanup, tested no-provider skip, and Push/Babysit ownership of the fresh managed-runtime run read identically in both places. Also reconciled the PRD-set index, which still advertised a US-475..US-482 range and `composeKnobs` as the only fail-closed refinement despite this wave adding `composeServiceFields`, `composePreservedPaths`, and `composeProjectFields`.
+- Review notes (deferred/rejected): the demand for a locally proven full `bun test` green result was rejected because the loop contract assigns the full suite to CI and forbids running it here; Push/Babysit owns that gate. Cursor Bugbot was unavailable across three attempts because the configured account is out of usage, so no Bugbot findings were available to triage.
+- Verification: typecheck and lint passed; 35 focused matrix, scenario-context, and compatibility-docs tests passed with 969 assertions; guide lint, coverage, public-transcript, generated-output gates and the executable guide run passed; guide drift passed with explicit base context and the substantive dedicated-guide skip.
+- **Learnings for future iterations:** An adjudication that edits only `prd.json` leaves the narrative PRD authoritative-looking but stale; reconcile both in the same pass, and re-check the PRD-set index whenever a story split or a new capability refinement lands, since its range and summary lines are hand-maintained and no gate covers them.
+---
