@@ -875,7 +875,7 @@ Rules:
 - A fragment MAY nest further tooling includes by declaring its own `toolingIncludes:` key. Nested entries resolve through the same canonical `kind: tooling` machinery (§7.7.1) as the parent's includes — there is no separate nested-resolution path. Any other nested include kind, and any bare `includes:` key at all, fails closed with a tagged `LandofileIncludeError`.
 - Relative paths resolve from the file that declares the include.
 - Included tasks are namespaced as `<include-namespace>:<task>` unless `flatten: true`. The include-namespace is a sub-namespace **within the task's command namespace** (default `app`). For example, an include declared as `toolingIncludes.frontend:` produces canonical command ids of the form `app:frontend:<task>`.
-- `aliases` alias the include-namespace at the same command-namespace level (a `frontend` include with `aliases: [fe]` produces both `app:frontend:<task>` and `app:fe:<task>`).
+- `aliases` alias the include-namespace at the same command-namespace level (a `frontend` include with `aliases: [fe]` produces both `app:frontend:<task>` and `app:fe:<task>`). Combining `aliases` with `flatten: true` fails closed with a tagged `LandofileIncludeError`: flattening removes the include-namespace the aliases would alias, so the pair would otherwise be accepted and then ignored.
 - `optional: true` suppresses missing-file errors.
 - `internal: true` marks all included tasks internal.
 - `excludes` removes tasks from the include before flattening or namespace registration.
