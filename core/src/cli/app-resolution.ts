@@ -15,6 +15,7 @@ import {
   type LandofileValidationError,
   LandofileVersionConstraintError,
   type NotImplementedError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
 import { type LandofileService, Renderer } from "@lando/sdk/services";
@@ -58,6 +59,7 @@ export type UserLandofileError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | AppIdReservedError
   | ComposeKeyRejectedError;

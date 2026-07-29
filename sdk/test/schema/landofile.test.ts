@@ -60,15 +60,49 @@ describe("LandofileShape — schema gate", () => {
     expect(Either.isRight(result)).toBe(true);
   });
 
-  test('IncludeEntry rejects kind: "tooling"', () => {
+  test('IncludeEntry decodes kind: "tooling" with its namespacing contract', () => {
     // Given
-    const input = { source: "./f.yml", kind: "tooling" };
+    const input = {
+      source: "./docs/.lando.tasks.yml",
+      kind: "tooling",
+      namespace: "docs",
+      flatten: false,
+      internal: false,
+      optional: true,
+      aliases: ["documentation"],
+      excludes: ["publish"],
+      vars: { DOCS_PORT: 4321 },
+    };
 
     // When
     const result = Schema.decodeUnknownEither(IncludeEntry)(input);
 
     // Then
-    expect(Either.isLeft(result)).toBe(true);
+    expect(Either.isRight(result)).toBe(true);
+  });
+
+  test("LandofileShape decodes the toolingIncludes shorthand", () => {
+    // Given
+    const input = {
+      name: "myapp",
+      toolingIncludes: {
+        docs: {
+          file: "./docs/.lando.tasks.yml",
+          optional: true,
+          flatten: false,
+          internal: false,
+          aliases: ["documentation"],
+          excludes: ["publish"],
+          vars: { DOCS_PORT: 4321 },
+        },
+      },
+    };
+
+    // When
+    const result = Schema.decodeUnknownEither(LandofileShape)(input, { onExcessProperty: "error" });
+
+    // Then
+    expect(Either.isRight(result)).toBe(true);
   });
 
   test("IncludeEntry still decodes the bare string form", () => {

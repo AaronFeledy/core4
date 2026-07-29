@@ -108,6 +108,7 @@ import type {
   ServiceTypeCollisionError,
   ShellExecError,
   ToolingExecError,
+  ToolingIncludeCycleError,
 } from "../errors/index.ts";
 
 import type { DeprecatedSurfaceError, DeprecationContradictionError } from "../errors/index.ts";
@@ -314,6 +315,7 @@ export declare class LandofileService extends Context.Tag("@lando/core/Landofile
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError
+      | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError
     >;

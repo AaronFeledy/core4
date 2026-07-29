@@ -1,6 +1,7 @@
 import type { LandofileShape, PluginManifest, ToolingTaskShape } from "@lando/sdk/schema";
 
 import type { DiscoveredBunShellScript } from "../landofile/bun-sh-discovery.ts";
+import { getInternalToolingTasks } from "../landofile/tooling-include-provenance.ts";
 import type { CommandIndexEntry } from "./command-index.ts";
 
 const summaryForTask = (task: ToolingTaskShape): string => task.description ?? task.summary ?? "";
@@ -10,12 +11,13 @@ const contributionId = (entry: string | { readonly id: string }): string =>
 export const compileToolingCommands = (landofile: LandofileShape): ReadonlyArray<CommandIndexEntry> => {
   const tooling = landofile.tooling;
   if (tooling === undefined) return [];
+  const internal = new Set(getInternalToolingTasks(landofile));
   return Object.entries(tooling)
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, task]) => ({
       id: `app:${name}`,
       summary: summaryForTask(task),
-      hidden: false,
+      hidden: internal.has(name),
       ...(task.service === undefined ? {} : { service: task.service }),
     }));
 };

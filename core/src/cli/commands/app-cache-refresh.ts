@@ -27,6 +27,7 @@ import type {
   ProviderConfigError,
   ProviderUnavailableError,
   PublicationUnsupportedError,
+  ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import {
   AppPlanner,
@@ -76,6 +77,7 @@ type AppCacheRefreshError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
   | PluginManifestError

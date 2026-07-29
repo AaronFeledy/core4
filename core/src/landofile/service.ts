@@ -13,6 +13,7 @@ import {
   type LandofileTimeoutError,
   LandofileValidationError,
   NotImplementedError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
 import { LandofileService } from "@lando/sdk/services";
@@ -33,6 +34,7 @@ import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
 import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "./tooling-beta.ts";
+import { getInternalToolingTasks, rememberInternalToolingTasks } from "./tooling-include-provenance.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
@@ -54,7 +56,6 @@ const BETA_TOP_LEVEL_KEYS: ReadonlyArray<{
 }> = [
   { key: "env_file", description: "Landofile env file overrides" },
   { key: "toolingDefaults", description: "Tooling defaults" },
-  { key: "toolingIncludes", description: "Tooling includes" },
   { key: "events", description: "Events-as-tasks" },
   { key: "commandAliases", description: "Top-level command aliases" },
 ];
@@ -248,7 +249,8 @@ type LandofileLoadError =
   | LandofileFormConflictError
   | LandofileIncludeError
   | LandofileLockMismatchError
-  | NotImplementedError;
+  | NotImplementedError
+  | ToolingIncludeCycleError;
 
 export const loadLandofileFile = (
   filePath: string,
@@ -340,14 +342,17 @@ export const loadLandofileLayers = (
         Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
         Effect.map((landofile) =>
           rememberLandofileAppRoot(
-            rememberLocalIncludePaths(
-              rememberVersionConstraintEntries(
-                landofile,
-                loaded.flatMap(({ landofile, layer }) =>
-                  getVersionConstraintEntries(landofile, layer.filePath),
+            rememberInternalToolingTasks(
+              rememberLocalIncludePaths(
+                rememberVersionConstraintEntries(
+                  landofile,
+                  loaded.flatMap(({ landofile, layer }) =>
+                    getVersionConstraintEntries(landofile, layer.filePath),
+                  ),
                 ),
+                loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
               ),
-              loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
+              loaded.flatMap(({ landofile }) => getInternalToolingTasks(landofile)),
             ),
             appRoot,
           ),

@@ -29,6 +29,7 @@ import {
   type ShellExecError,
   ShellRequiresTtyError,
   ToolingExecError,
+  type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import type { AppPlan, ServicePlan } from "@lando/sdk/schema";
 import {
@@ -133,6 +134,7 @@ export type ShellAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError
   | NotImplementedError
