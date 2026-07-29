@@ -1,3 +1,5 @@
+import { isAbsolute, resolve } from "node:path";
+
 import type { LandofileIncludeError } from "@lando/sdk/errors";
 import type { IncludeEntry, LandofileShape, ToolingVarLiteral } from "@lando/sdk/schema";
 
@@ -41,6 +43,38 @@ const isRemoteSource = (source: string): boolean =>
   source.startsWith("git@") ||
   source.startsWith("github:") ||
   /^https?:\/\//u.test(source);
+
+const sourceFromRoot = (source: string, sourceRoot: string, appRoot: string): string =>
+  sourceRoot === appRoot || isAbsolute(source) || isRemoteSource(source)
+    ? source
+    : resolve(sourceRoot, source);
+
+export const resolveToolingIncludeSourceRoots = (
+  landofile: LandofileShape,
+  sourceRoot: string,
+  appRoot: string,
+): LandofileShape => ({
+  ...landofile,
+  ...(landofile.includes === undefined
+    ? {}
+    : {
+        includes: landofile.includes.map((entry) =>
+          typeof entry === "string" || entry.kind !== "tooling"
+            ? entry
+            : { ...entry, source: sourceFromRoot(entry.source, sourceRoot, appRoot) },
+        ),
+      }),
+  ...(landofile.toolingIncludes === undefined
+    ? {}
+    : {
+        toolingIncludes: Object.fromEntries(
+          Object.entries(landofile.toolingIncludes).map(([namespace, entry]) => [
+            namespace,
+            { ...entry, file: sourceFromRoot(entry.file, sourceRoot, appRoot) },
+          ]),
+        ),
+      }),
+});
 
 export const hasToolingIncludes = (landofile: ToolingIncludeSurface): boolean =>
   Object.keys(landofile.toolingIncludes ?? {}).length > 0 ||

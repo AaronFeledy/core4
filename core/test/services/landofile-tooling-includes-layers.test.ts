@@ -45,3 +45,32 @@ test("a higher Landofile layer removes internal provenance from its task winner"
     await rm(appRoot, { recursive: true, force: true });
   }
 });
+
+test("resolves tooling includes only after Landofile layers merge", async () => {
+  // Given a lower-layer tooling source replaced by a valid higher-layer source
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-order-"));
+  const canonicalPath = join(appRoot, ".lando.yml");
+  try {
+    await writeFile(join(appRoot, "canonical-tasks.yml"), "tooling:\n  build:\n    cmd: canonical\n", "utf8");
+    await writeFile(
+      join(appRoot, ".lando.base.yml"),
+      ["toolingIncludes:", "  docs:", "    file: ./missing-base-tasks.yml", ""].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      canonicalPath,
+      ["name: layered", "toolingIncludes:", "  docs:", "    file: ./canonical-tasks.yml", ""].join("\n"),
+      "utf8",
+    );
+
+    // When the complete Landofile is loaded and command metadata is compiled
+    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const commands = compileToolingCommands(resolved);
+
+    // Then only the winning declaration is resolved
+    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("canonical");
+    expect(commands.map((command) => command.id)).toContain("app:docs:build");
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});

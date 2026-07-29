@@ -38,6 +38,10 @@ import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-prove
 import { mergeLandofiles, mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import {
+  assertCompatibleIncludeFields,
+  resolveToolingIncludeSourceRoots,
+} from "./tooling-include-entries.ts";
+import {
   getInternalToolingTasks,
   rememberInternalToolingTasks,
   winningInternalToolingTasks,
@@ -67,6 +71,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly maxDepth?: number;
   readonly layer?: VersionConstraintEntry["layer"];
   readonly order?: VersionConstraintEntry["order"];
+  readonly resolveTooling?: boolean;
 }
 
 interface NormalizedInclude {
@@ -583,6 +588,14 @@ const inlineWithoutIncludes = (landofile: Record<string, unknown>): Record<strin
   return rest;
 };
 
+const inlineWithoutLandofileIncludes = (landofile: LandofileShape): Record<string, unknown> => {
+  const { include: _include, includes, ...rest } = landofile;
+  const toolingIncludes = (includes ?? []).filter(
+    (entry) => typeof entry !== "string" && entry.kind === "tooling",
+  );
+  return toolingIncludes.length === 0 ? rest : { ...rest, includes: toolingIncludes };
+};
+
 const withResolvedTooling = (
   landofile: Record<string, unknown>,
   included: Readonly<Record<string, unknown>>,
@@ -621,28 +634,19 @@ const resolveTree = (
         }),
       );
     }
-    const includes = authoredIncludeEntries(landofile);
-    const tooling = yield* resolveToolingIncludes({
-      landofile,
-      appRoot: ctx.appRoot,
-      sourceRoot: ctx.sourceRoot,
-      maxDepth: ctx.maxDepth,
-    });
-    if (!hasResolvableIncludes(landofile))
-      return rememberInternalToolingTasks(
-        rememberLocalIncludePaths(
-          rememberVersionConstraintEntries(
-            landofile,
-            ownVersionConstraintEntries(landofile, source, layer, order),
-          ),
-          [],
-        ),
-        [],
+    const incompatible = assertCompatibleIncludeFields(landofile);
+    if (incompatible !== undefined) return yield* Effect.fail(incompatible);
+    const sourced = resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot);
+    const includes = authoredIncludeEntries(sourced);
+    if (includes.length === 0)
+      return rememberLocalIncludePaths(
+        rememberVersionConstraintEntries(sourced, ownVersionConstraintEntries(sourced, source, layer, order)),
+        getLocalIncludePaths(landofile),
       );
 
     const fragments: LandofileShape[] = [];
     const fragmentRecords: Record<string, unknown>[] = [];
-    const localIncludePaths: string[] = [...tooling.localFragmentPaths];
+    const localIncludePaths: string[] = [...getLocalIncludePaths(landofile)];
     for (const rawEntry of includes) {
       const entry = normalizeInclude(rawEntry);
       const fragment = yield* Effect.tryPromise({
@@ -714,25 +718,14 @@ const resolveTree = (
       }
     }
 
-    const current = withResolvedTooling(landofile as Record<string, unknown>, tooling.tooling);
-    const merged = mergeLandofiles([...fragmentRecords, current]);
+    const merged = mergeLandofiles([...fragmentRecords, inlineWithoutLandofileIncludes(sourced)]);
     const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
-    return rememberInternalToolingTasks(
-      rememberLocalIncludePaths(
-        rememberVersionConstraintEntries(decoded, [
-          ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-          ...ownVersionConstraintEntries(landofile, source, layer, order),
-        ]),
-        [...localIncludePaths],
-      ),
-      winningInternalToolingTasks([
-        ...fragments.map((fragment) => ({
-          tooling: fragment.tooling,
-          internalTaskIds: getInternalToolingTasks(fragment),
-        })),
-        { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
-        { tooling: landofile.tooling, internalTaskIds: [] },
+    return rememberLocalIncludePaths(
+      rememberVersionConstraintEntries(decoded, [
+        ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
+        ...ownVersionConstraintEntries(sourced, source, layer, order),
       ]),
+      [...localIncludePaths],
     );
   });
 
@@ -932,6 +925,14 @@ const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, Landofi
   return writeLockEntries(ctx.appRoot, ctx.lockfilePath, [...merged.values()]);
 };
 
+const authoredVersionConstraintEntries = (
+  options: ResolveLandofileIncludesOptions,
+  sourcePath: string,
+): ReadonlyArray<VersionConstraintEntry> =>
+  options.layer === undefined || options.order === undefined
+    ? getVersionConstraintEntries(options.landofile, sourcePath)
+    : ownVersionConstraintEntries(options.landofile, sourcePath, options.layer, options.order);
+
 export const resolveLandofileIncludes = (
   options: ResolveLandofileIncludesOptions,
 ): Effect.Effect<LandofileShape, ResolveIncludesError, never> => {
@@ -940,11 +941,9 @@ export const resolveLandofileIncludes = (
       rememberLandofileAppRoot(
         rememberVersionConstraintEntries(
           options.landofile,
-          ownVersionConstraintEntries(
-            options.landofile,
+          authoredVersionConstraintEntries(
+            options,
             options.sourcePath ?? join(options.appRoot, ".lando.yml"),
-            options.layer ?? "canonical",
-            options.order ?? 3,
           ),
         ),
         options.appRoot,
@@ -967,7 +966,9 @@ export const resolveLandofileIncludes = (
       noNetwork: false,
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
-    const resolved = yield* resolveTree(
+    const existingLocalIncludePaths = getLocalIncludePaths(options.landofile);
+    const existingVersionConstraints = authoredVersionConstraintEntries(options, sourcePath);
+    const unresolved = yield* resolveTree(
       options.landofile,
       ctx,
       0,
@@ -977,7 +978,41 @@ export const resolveLandofileIncludes = (
       options.order ?? 3,
     );
     yield* writeLockfileIfNeeded(ctx);
-    return rememberLandofileAppRoot(resolved, options.appRoot);
+    if (options.resolveTooling === false) return rememberLandofileAppRoot(unresolved, options.appRoot);
+
+    const tooling = yield* resolveToolingIncludes({
+      landofile: unresolved,
+      appRoot: options.appRoot,
+      sourceRoot: options.appRoot,
+      ...(options.maxDepth === undefined ? {} : { maxDepth: options.maxDepth }),
+    });
+    const decoded = yield* decodeMerged(
+      withResolvedTooling(unresolved as Record<string, unknown>, tooling.tooling),
+      lockfilePath,
+    );
+    const versionConstraints =
+      authoredIncludeEntries(options.landofile).length === 0
+        ? existingVersionConstraints
+        : getVersionConstraintEntries(unresolved, sourcePath);
+    return rememberLandofileAppRoot(
+      rememberVersionConstraintEntries(
+        rememberInternalToolingTasks(
+          rememberLocalIncludePaths(decoded, [
+            ...new Set([
+              ...existingLocalIncludePaths,
+              ...getLocalIncludePaths(unresolved),
+              ...tooling.localFragmentPaths,
+            ]),
+          ]),
+          winningInternalToolingTasks([
+            { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
+            { tooling: unresolved.tooling, internalTaskIds: getInternalToolingTasks(unresolved) },
+          ]),
+        ),
+        versionConstraints,
+      ),
+      options.appRoot,
+    );
   });
 };
 

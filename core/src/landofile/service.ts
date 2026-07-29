@@ -334,6 +334,7 @@ export const loadLandofileLayers = (
               sourcePath: layer.filePath,
               layer: layer.layer,
               order: layer.order,
+              resolveTooling: false,
             }),
           ),
           Effect.map((landofile) => ({ layer, landofile })),
@@ -365,6 +366,9 @@ export const loadLandofileLayers = (
             ),
             appRoot,
           ),
+        ),
+        Effect.flatMap((landofile) =>
+          resolveLandofileIncludes({ landofile, appRoot, sourcePath: canonicalPath }),
         ),
       );
     }),

@@ -153,6 +153,27 @@ describe("tooling includes — canonical includes[] kind: tooling", () => {
     expect(resolved.includes).toBeUndefined();
     expect(resolved).not.toHaveProperty("toolingIncludes");
   });
+
+  test("resolves a tooling source relative to its declaring Landofile fragment", async () => {
+    // Given an ordinary Landofile fragment that declares a relative tooling include
+    await mkdir(join(appRoot, "fragments"), { recursive: true });
+    await writeFile(
+      join(appRoot, "fragments", "app.yml"),
+      ["toolingIncludes:", "  docs:", "    file: ./tasks.yml", ""].join("\n"),
+      "utf8",
+    );
+    await writeFile(
+      join(appRoot, "fragments", "tasks.yml"),
+      ["tooling:", "  build:", "    cmd: bun run build", ""].join("\n"),
+      "utf8",
+    );
+
+    // When the complete include tree is resolved
+    const resolved = await resolve({ includes: ["./fragments/app.yml"] }, appRoot);
+
+    // Then the tooling source uses the directory of the fragment that declared it
+    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("bun run build");
+  });
 });
 
 describe("tooling includes — toolingIncludes shorthand", () => {
