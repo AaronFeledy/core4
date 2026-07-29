@@ -313,7 +313,7 @@
         "Lint passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Split from US-475's original bundled YAML-support criterion during its Drift Audit; this is parser capability, not a Compose disposition."
     },
     {

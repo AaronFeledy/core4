@@ -540,7 +540,7 @@ const parseList = (
       );
     }
 
-    const mapMatch = value.match(/^([A-Za-z0-9_.-]+):((?:\s+.*)?)$/);
+    const mapMatch = value.match(/^(<<|[A-Za-z0-9_.-]+):((?:\s+.*)?)$/);
     if (mapMatch !== null) {
       const [, firstKey, firstRawValue] = mapMatch as [string, string, string];
       const [item, nextIndex] = parseListItemMap(
@@ -675,7 +675,7 @@ const parseYaml = ({ content, file, limits }: ParseOptions): unknown => {
       throw parseError(file, `Malformed YAML at line ${line.line}`, line.line, 1);
     }
   }
-  return resolveYamlReferences(references, parsed);
+  return resolveYamlReferences(references, parsed, content.length);
 };
 
 export const parseLandofile = (options: ParseOptions): Effect.Effect<unknown, LandofileParseError> =>

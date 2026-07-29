@@ -1,7 +1,10 @@
 services:
-  web:
+  web: &node-service
     type: node
     port: 3000
+  worker:
+    <<: *node-service
+    port: 3001
 tooling:
   node-version:
     service: web

@@ -43,6 +43,7 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - When stories share a conformance harness, distinguish ownership of the shared runner and tooling from ownership of fixtures and fixture-specific assertions; executing another story's proof does not transfer its scope.
 - Compose conformance has no static skip-list file: a fixture is treated as rejected only when runtime classification from the disposition matrix says so, and `manifest.json` is purely the drift record. An audit that greps for a skip-list artifact reports a false MISSING; re-falsify the manifest parity guard instead.
 - One mutation that turns two guards red proves complementary detection, not guard independence: the same deleted input can violate both predicates at once. The claim the evidence supports is "a targeted mutation activated two complementary guards while unrelated assertions stayed green"; real independence needs one mutation per guard, each leaving the other violation exposed. Do not upgrade the weaker observation to an independence claim in the record.
+- The dependency-free Landofile parser intentionally stays a YAML subset. Resolve native anchors, aliases, and merge keys after subset parsing but before schema decode; do not switch wholesale to `Bun.YAML.parse`, which enables unrelated YAML surfaces. Once `<<:` is legal syntax, tag detection must inspect merge-key values so `!reset`/`!override` keep their Compose rejection shape.
 
 ## Log
 
@@ -956,4 +957,28 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Review notes (deferred/rejected): the demand for a locally proven full `bun test` green result was rejected because the loop contract assigns the full suite to CI and forbids running it here; Push/Babysit owns that gate. Cursor Bugbot was unavailable across three attempts because the configured account is out of usage, so no Bugbot findings were available to triage.
 - Verification: typecheck and lint passed; 35 focused matrix, scenario-context, and compatibility-docs tests passed with 969 assertions; guide lint, coverage, public-transcript, generated-output gates and the executable guide run passed; guide drift passed with explicit base context and the substantive dedicated-guide skip.
 - **Learnings for future iterations:** An adjudication that edits only `prd.json` leaves the narrative PRD authoritative-looking but stale; reconcile both in the same pass, and re-check the PRD-set index whenever a story split or a new capability refinement lands, since its range and summary lines are hand-maintained and no gate covers them.
+---
+## 2026-07-29 01:54 CDT - Babysit
+- PR: #646 https://github.com/AaronFeledy/core4/pull/646
+- CI outcome: pass
+- Review feedback: fixed (merged main; refreshed app-plan binary fixture; declared project-field fixture capabilities; linked compose coverage deps; matched profiles lint remediation; restored setup trust production-path tests)
+- Drift check: fixes pushed (restored setup trust tests to production path)
+- Merge: merged (squash)
+---
+
+## 2026-07-29 02:28 CDT - US-478
+- Added native YAML anchors, aliases, and merge keys to the canonical dependency-free parser. References resolve before schema decoding for root files and both include kinds; explicit mapping keys override merges, earlier entries win within merge sequences, and malformed reference graphs fail as `LandofileParseError` with source location and remediation. Compose reset/override tags remain on the tagged rejection path, including merge-key values.
+- Verification: typecheck, lint, and import-cycle passed; relevant parser, root-loader, include, lint, tag/rejection, SDK compatibility, and serializer/round-trip spot checks passed. The real CLI rendered merged config, returned `LandofileParseError` for an unknown alias, and retained `ComposeKeyRejectedError` for `!reset`; temporary fixtures were removed.
+- **Learnings for future iterations:**
+  - Sequence-item map detection must require whitespace after `:` while preserving the raw post-colon slice for source columns; otherwise a scalar port such as `8080:80` is misparsed as a mapping.
+  - Merge-key support expands the tag detector's set of value positions even though it does not change the tag vocabulary.
+---
+
+## 2026-07-29 02:55 CDT - US-478 Review
+- Fixed three defects in the new reference resolver, each proven by a mutation that reddens only its own guard. Nested aliases expanded without any budget, so a 367-byte Landofile ballooned to 851 MB of value tree and 6 GB RSS in 18.7s; expansion is now bounded by the source length, which provably cannot reject an alias-free document because a document never has more nodes than bytes. Aliases inside inline sequences written with surrounding whitespace (`[ *base ]`) silently decayed to the literal string `"*base"` instead of resolving. A merge key opening a sequence item (`- <<: *base`) was silently parsed as a scalar string, because only the sequence-item entry regex was left without merge-key support after the tag detector and the continuation-key regex gained it.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable again (account out of usage), so no Bugbot findings were triageable this iteration. The guide fixture demonstrating anchors in an included fragment was kept as documentation but is explicitly not counted as proof: disabling merge resolution entirely leaves the guide green, while the loader- and include-level tests fail, so those tests carry the AC5 claim.
+- Verification: typecheck, lint, and guide drift with explicit base context passed; 38 parser, 125 landofile loader/include/lint/tag/SDK-error, and 113 wider landofile tests passed, plus both affected executable guides. A 729 KB alias-free Landofile still parses in 72 ms under the new budget.
+- **Learnings for future iterations:**
+  - When adding a YAML feature that expands one node into many, the existing content-size and depth caps do not bound it, because expansion is exponential in fan-out rather than depth; bound the expanded node count against the source length so the guard cannot false-positive.
+  - A guide fixture that exercises a feature proves nothing unless the guide asserts on the result; confirm with a mutation that the guide actually reddens before treating it as production-path proof.
 ---

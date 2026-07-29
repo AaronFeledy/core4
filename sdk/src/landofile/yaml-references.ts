@@ -34,6 +34,9 @@ export interface YamlReferenceState {
 const UNBOUND = Symbol("YamlAnchorUnbound");
 const REFERENCE_REMEDIATION =
   "Define each anchor once before use, avoid recursive aliases, and merge only mapping aliases.";
+const EXPANSION_REMEDIATION =
+  "Reduce how many times aliases re-expand anchors that themselves contain aliases.";
+const MIN_EXPANSION_BUDGET = 50_000;
 
 const referenceError = (
   state: YamlReferenceState,
@@ -60,7 +63,9 @@ export const parseYamlReferenceSyntax = (
 ): YamlReferenceSyntax => {
   const leadingWhitespace = value.search(/\S/);
   if (leadingWhitespace < 0) return { kind: "plain" };
-  const trimmed = value.slice(leadingWhitespace);
+  // Inline sequence entries reach here untrimmed (`[ *base ]`), so trailing
+  // whitespace must not defeat the anchor/alias patterns below.
+  const trimmed = value.slice(leadingWhitespace).trimEnd();
   const column = location.column + leadingWhitespace;
 
   const alias = trimmed.match(/^\*([A-Za-z0-9_-]+)$/);
@@ -127,8 +132,34 @@ const isYamlAlias = (value: unknown): value is YamlAlias =>
 const isMapping = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value) && !isYamlAlias(value);
 
-export const resolveYamlReferences = (state: YamlReferenceState, root: unknown): unknown => {
-  const resolve = (value: unknown, stack: ReadonlyArray<string>): unknown => {
+/**
+ * Resolves anchors, aliases, and merge keys into a plain value tree.
+ *
+ * `sourceLength` bounds alias expansion: nested aliases multiply, so a few
+ * hundred bytes of YAML can otherwise expand to gigabytes. A document with no
+ * aliases can never emit more nodes than it has bytes, so a budget of at least
+ * the source length never rejects an alias-free document.
+ */
+export const resolveYamlReferences = (
+  state: YamlReferenceState,
+  root: unknown,
+  sourceLength: number,
+): unknown => {
+  const maxNodes = Math.max(MIN_EXPANSION_BUDGET, sourceLength);
+  let remaining = maxNodes;
+
+  const resolve = (value: unknown, stack: ReadonlyArray<string>, origin: YamlReferenceLocation): unknown => {
+    remaining -= 1;
+    if (remaining < 0) {
+      throw new LandofileParseError({
+        message: `Resolving YAML aliases exceeded the maximum of ${maxNodes} expanded nodes.`,
+        filePath: state.filePath,
+        line: origin.line,
+        column: origin.column,
+        remediation: EXPANSION_REMEDIATION,
+      });
+    }
+
     if (isYamlAlias(value)) {
       const anchor = state.anchors.get(value.name);
       if (
@@ -141,16 +172,16 @@ export const resolveYamlReferences = (state: YamlReferenceState, root: unknown):
       if (anchor.value === UNBOUND || stack.includes(value.name)) {
         throw referenceError(state, `Detected a recursive YAML alias graph through *${value.name}.`, value);
       }
-      return resolve(anchor.value, [...stack, value.name]);
+      return resolve(anchor.value, [...stack, value.name], value);
     }
-    if (Array.isArray(value)) return value.map((entry) => resolve(entry, stack));
+    if (Array.isArray(value)) return value.map((entry) => resolve(entry, stack, origin));
     if (!isMapping(value)) return value;
 
     const resolvedEntries = new Map<string, unknown>();
     for (const merge of state.merges.get(value) ?? []) {
       const targets = Array.isArray(merge.value) ? merge.value : [merge.value];
       for (const target of targets) {
-        const mapping = resolve(target, stack);
+        const mapping = resolve(target, stack, origin);
         if (!isMapping(mapping)) {
           throw referenceError(
             state,
@@ -164,10 +195,10 @@ export const resolveYamlReferences = (state: YamlReferenceState, root: unknown):
       }
     }
     for (const [key, entry] of Object.entries(value)) {
-      resolvedEntries.set(key, resolve(entry, stack));
+      resolvedEntries.set(key, resolve(entry, stack, origin));
     }
     return Object.fromEntries(resolvedEntries);
   };
 
-  return resolve(root, []);
+  return resolve(root, [], { line: 1, column: 1 });
 };

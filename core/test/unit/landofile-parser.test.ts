@@ -292,4 +292,68 @@ describe("parseLandofile — native YAML references", () => {
     expect(error.message).toMatch(message);
     expect(error.remediation).toMatch(/anchor|alias|mapping/i);
   });
+
+  test("resolves aliases in inline sequences written with surrounding whitespace", async () => {
+    const content = ["base: &base shared", "tight: [*base]", "spaced: [ *base , *base ]"].join("\n");
+
+    expect(await parse(content)).toEqual({
+      base: "shared",
+      tight: ["shared"],
+      spaced: ["shared", "shared"],
+    });
+  });
+
+  test("merges a merge key that opens a sequence item", async () => {
+    const content = [
+      "defaults: &defaults",
+      "  image: node:22",
+      "  restart: always",
+      "services:",
+      "  - <<: *defaults",
+      "    name: web",
+      "    image: node:24",
+    ].join("\n");
+
+    expect(await parse(content)).toEqual({
+      defaults: { image: "node:22", restart: "always" },
+      services: [{ image: "node:24", restart: "always", name: "web" }],
+    });
+  });
+});
+
+describe("parseLandofile — alias expansion budget", () => {
+  const nestedAliasBomb = (levels: number, fanOut: number): string =>
+    [
+      "level0: &level0 leaf",
+      ...Array.from(
+        { length: levels },
+        (_unused, index) =>
+          `level${index + 1}: &level${index + 1} [${Array(fanOut).fill(`*level${index}`).join(",")}]`,
+      ),
+      `expanded: *level${levels}`,
+    ].join("\n");
+
+  test("rejects nested aliases that expand far beyond their source size", async () => {
+    const content = nestedAliasBomb(8, 5);
+    expect(content.length).toBeLessThan(1_000);
+
+    const error = await parseFailure(content);
+
+    expect(error).toMatchObject({ _tag: "LandofileParseError" });
+    expect(error.message).toMatch(/exceeded the maximum of \d+ expanded nodes/);
+    expect(error.remediation).toMatch(/alias/i);
+  });
+
+  test("accepts a document whose node count is bounded by its own source", async () => {
+    const services = Array.from(
+      { length: 400 },
+      (_unused, index) => `  service${index}:\n    <<: *defaults\n    port: ${index}`,
+    );
+    const content = ["defaults: &defaults", "  api: 4", "  type: nginx", "services:", ...services].join("\n");
+
+    const parsed = (await parse(content)) as { services: Record<string, unknown> };
+
+    expect(Object.keys(parsed.services)).toHaveLength(400);
+    expect(parsed.services.service399).toEqual({ api: 4, type: "nginx", port: 399 });
+  });
 });
