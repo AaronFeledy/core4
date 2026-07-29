@@ -75,6 +75,22 @@ describe("core network trust", () => {
     });
   });
 
+  test("preserves defaults when decoded config explicitly has an empty CA cert list", () => {
+    const config = Schema.decodeUnknownSync(GlobalConfig)({
+      network: { ca: { certs: [] } },
+    });
+
+    const resolved = resolveServiceNetworkInject({ network: config.network, env: {} });
+
+    expect(resolved).toEqual({
+      injectCa: true,
+      injectProxy: false,
+      caPaths: [],
+      landofileCaPaths: [],
+      proxy: { noProxy: [] },
+    });
+  });
+
   test("returns global and Landofile CA paths in their separate ordered inputs", () => {
     const config = Schema.decodeUnknownSync(GlobalConfig)({
       network: { ca: { certs: ["/global-first.pem", "/global-second.pem"] } },
