@@ -50,8 +50,7 @@ export const findUnsupportedComposePreservedPath = (
   capabilities: ComposePreservedPathCapabilityView,
 ): ComposePreservedPathUse | undefined => {
   const supported = capabilities.composePreservedPaths?.supported ?? [];
-  for (const use of [...uses].sort(compareUses)) {
-    if (capabilities.composeSpec !== "native" || !supported.includes(use.key)) return use;
-  }
-  return undefined;
+  return [...uses]
+    .sort(compareUses)
+    .find((use) => capabilities.composeSpec !== "native" || !supported.includes(use.key));
 };

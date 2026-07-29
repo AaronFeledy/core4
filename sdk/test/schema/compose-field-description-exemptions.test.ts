@@ -1,3 +1,5 @@
+import { expect, test } from "bun:test";
+
 import { ServiceConfig } from "@lando/sdk/schema";
 
 import { getJsonSchema, validatePublicSchemaAnnotations } from "../../src/schema/json-schema.ts";
@@ -25,8 +27,7 @@ for (const field of COMPOSE_WAVE_FIELDS) {
 
     // Then
     expect(typeof description).toBe("string");
-    if (typeof description !== "string") throw new Error(`ServiceConfig.${field} description is missing`);
-    expect(description.length).toBeGreaterThan(0);
+    expect(description).not.toBe("");
   });
 
   test(`does not exempt ServiceConfig.${field} from the field-description gate`, async () => {

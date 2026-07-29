@@ -21,6 +21,9 @@ const withTempCwd = async <A>(body: (root: string) => Promise<A>): Promise<A> =>
   }
 };
 
+const writeLandofile = (testDir: string, lines: ReadonlyArray<string>): Effect.Effect<void> =>
+  Effect.promise(() => writeFile(join(testDir, ".lando.yml"), `${lines.join("\n")}\n`));
+
 describe("withScenarioContext", () => {
   test("provides a scoped ScenarioContext and removes testDir after success", async () => {
     let cleanupSawTestDir = false;
@@ -139,14 +142,13 @@ describe("withScenarioContext", () => {
             yield* Effect.promise(() =>
               writeFile(join(context.testDir, "config.json"), JSON.stringify({ name: "demo" })),
             );
-            yield* Effect.promise(() =>
-              writeFile(
-                join(context.testDir, ".lando.yml"),
-                ["name: static-demo", "services:", "  web:", "    type: static", "    root: .", ""].join(
-                  "\n",
-                ),
-              ),
-            );
+            yield* writeLandofile(context.testDir, [
+              "name: static-demo",
+              "services:",
+              "  web:",
+              "    type: static",
+              "    root: .",
+            ]);
 
             yield* context.runCli(["version"]);
             yield* context.inspect({ output: true });
@@ -262,35 +264,23 @@ describe("withScenarioContext", () => {
       const result = await Effect.runPromise(
         withScenarioContext({ guideId: "compose", scenarioId: "failure-then-success" }, (context) =>
           Effect.gen(function* () {
-            yield* Effect.promise(() =>
-              writeFile(
-                join(context.testDir, ".lando.yml"),
-                [
-                  "name: rejected-compose-key",
-                  "services:",
-                  "  web:",
-                  "    type: compose",
-                  "    image: traefik/whoami:v1.10",
-                  "    container_name: rejected",
-                  "",
-                ].join("\n"),
-              ),
-            );
+            yield* writeLandofile(context.testDir, [
+              "name: rejected-compose-key",
+              "services:",
+              "  web:",
+              "    type: compose",
+              "    image: traefik/whoami:v1.10",
+              "    container_name: rejected",
+            ]);
             const rejected = yield* context.runCli(["app:config", "--format=json"]);
 
-            yield* Effect.promise(() =>
-              writeFile(
-                join(context.testDir, ".lando.yml"),
-                [
-                  "name: accepted-compose-key",
-                  "services:",
-                  "  web:",
-                  "    type: compose",
-                  "    image: traefik/whoami:v1.10",
-                  "",
-                ].join("\n"),
-              ),
-            );
+            yield* writeLandofile(context.testDir, [
+              "name: accepted-compose-key",
+              "services:",
+              "  web:",
+              "    type: compose",
+              "    image: traefik/whoami:v1.10",
+            ]);
             const accepted = yield* context.runCli(["app:config", "--format=json"]);
             return { rejected, accepted };
           }),
@@ -309,14 +299,13 @@ describe("withScenarioContext", () => {
       withScenarioContext({ guideId: "static", scenarioId: "fetch-known-file" }, (context) =>
         Effect.gen(function* () {
           yield* Effect.promise(() => mkdir(join(context.testDir, "dist"), { recursive: true }));
-          yield* Effect.promise(() =>
-            writeFile(
-              join(context.testDir, ".lando.yml"),
-              ["name: static-demo", "services:", "  web:", "    type: static", "    root: dist", ""].join(
-                "\n",
-              ),
-            ),
-          );
+          yield* writeLandofile(context.testDir, [
+            "name: static-demo",
+            "services:",
+            "  web:",
+            "    type: static",
+            "    root: dist",
+          ]);
           yield* Effect.promise(() =>
             writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
           );
@@ -525,14 +514,13 @@ describe("ScenarioContextFactory", () => {
         Effect.gen(function* () {
           expect(context.layer).toBe("scenario");
           yield* Effect.promise(() => mkdir(join(context.testDir, "dist"), { recursive: true }));
-          yield* Effect.promise(() =>
-            writeFile(
-              join(context.testDir, ".lando.yml"),
-              ["name: static-demo", "services:", "  web:", "    type: static", "    root: dist", ""].join(
-                "\n",
-              ),
-            ),
-          );
+          yield* writeLandofile(context.testDir, [
+            "name: static-demo",
+            "services:",
+            "  web:",
+            "    type: static",
+            "    root: dist",
+          ]);
           yield* Effect.promise(() =>
             writeFile(join(context.testDir, "dist", "index.html"), "hello from lando static\n"),
           );

@@ -125,15 +125,11 @@ describe("Compose compatibility matrix", () => {
 });
 
 /**
- * Detects hand-maintained Compose key lists anywhere in `docs/`.
- *
- * Cheaper heuristics were measured and rejected: flagging any comma-separated
- * `<Variable value>` matched ~40 legitimate pages, and "at least four distinct
- * Compose key names on a line" still matched seven unrelated pages that merely
- * discuss several keys in prose. Only a run of CONSECUTIVE comma-separated items
- * that are each exactly a bare key name distinguishes a maintained classification
- * list from prose or an example snippet, so keep the contiguous-run shape and the
- * fenced-code blanking rather than simplifying either away.
+ * Looser heuristics were measured and rejected: any comma-separated `<Variable value>`
+ * matched ~40 legitimate pages, and "four distinct Compose keys on one line" still
+ * matched seven pages that merely discuss keys in prose. Only a run of CONSECUTIVE
+ * comma-separated bare key names separates a maintained classification list from prose
+ * or an example, so the contiguous-run shape and the fenced-code blanking both stay.
  */
 const COMPOSE_KEY_RUN_THRESHOLD = 4;
 

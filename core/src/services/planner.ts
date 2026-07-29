@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import * as os from "node:os";
 import { resolve } from "node:path";
 
-import { type Context, DateTime, Effect, Either, Layer, ParseResult, Schema } from "effect";
+import { type Context, DateTime, Effect, Either, Layer, Option, ParseResult, Schema } from "effect";
 
 import {
   CapabilityError,
@@ -380,14 +380,7 @@ export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return servicePlan;
-  const seen = new Set<string>();
-  const merged: Array<string> = [];
-  for (const e of [...FILE_SYNC_DEFAULT_EXCLUDES, ...(appMount.excludes ?? [])]) {
-    if (!seen.has(e)) {
-      seen.add(e);
-      merged.push(e);
-    }
-  }
+  const merged = [...new Set([...FILE_SYNC_DEFAULT_EXCLUDES, ...(appMount.excludes ?? [])])];
   return { ...servicePlan, appMount: { ...appMount, excludes: merged } };
 };
 
@@ -632,8 +625,7 @@ const expandExcludesToShadows = (
 
 export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.appMount;
-  if (authored === undefined) return servicePlan;
-  if (authored === false) return servicePlan;
+  if (authored === undefined || authored === false) return servicePlan;
   const existingMount = servicePlan.appMount;
   if (existingMount === undefined) return servicePlan;
   const merged = {
@@ -1687,6 +1679,10 @@ const planApp = (
       ...Object.fromEntries(authoredProjectExtensions),
     };
     const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
+    const requiredGlobalServices = [
+      ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
+      ...appFeatureResult.requires.globalServices,
+    ];
     const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
@@ -1709,15 +1705,9 @@ const planApp = (
                 : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
               ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
             },
-      ...(() => {
-        const requiredGlobalServices = [
-          ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
-          ...appFeatureResult.requires.globalServices,
-        ];
-        return requiredGlobalServices.length === 0
-          ? {}
-          : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
-      })(),
+      ...(requiredGlobalServices.length === 0
+        ? {}
+        : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
     });
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
@@ -1754,9 +1744,9 @@ export const AppPlannerLive = Layer.effect(
       plan: (landofile, providerCapabilities) =>
         planApp(
           pluginRegistry,
-          cacheService._tag === "Some" ? cacheService.value : undefined,
-          configService._tag === "Some" ? configService.value : undefined,
-          fileSystem._tag === "Some" ? fileSystem.value : undefined,
+          Option.getOrUndefined(cacheService),
+          Option.getOrUndefined(configService),
+          Option.getOrUndefined(fileSystem),
           landofile,
           providerCapabilities,
         ),

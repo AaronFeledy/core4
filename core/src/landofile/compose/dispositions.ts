@@ -26,11 +26,9 @@ const PRESERVED_ENTRY = {
   rationale: "Preserved losslessly in ServicePlan.extensions.compose and capability-checked.",
 } as const satisfies ComposeDispositionEntry;
 
-// Spec 7.4/5.4 carve service-level x-* out of capability gating; it is preserved inert.
 const PRESERVED_INERT_EXTENSION_ENTRY = {
   disposition: "preserved",
-  rationale:
-    "Preserved losslessly in ServicePlan.extensions.compose, inert and not capability-gated per spec 5.4.",
+  rationale: "Preserved losslessly in ServicePlan.extensions.compose; inert and not capability-gated.",
 } as const satisfies ComposeDispositionEntry;
 
 const PRESERVED_EXACT_PATH_ENTRY = {

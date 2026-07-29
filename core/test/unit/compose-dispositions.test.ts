@@ -43,10 +43,7 @@ describe("Compose disposition analysis", () => {
     ]);
     for (const match of matches) {
       const matrix = match.service === undefined ? composeTopLevelDispositions : composeServiceDispositions;
-      const matrixEntry = matrix[match.matrixPath];
-      expect(matrixEntry).toBeDefined();
-      if (matrixEntry === undefined) continue;
-      expect(match.rationale).toBe(matrixEntry.rationale);
+      expect(matrix[match.matrixPath]?.rationale).toBe(match.rationale);
     }
     expect(matches[0]).not.toHaveProperty("service");
     expect(matches[0]).not.toHaveProperty("remediation");
@@ -68,8 +65,9 @@ describe("Compose disposition analysis", () => {
 
     // Then
     const matrixEntry = composeServiceDispositions["ports.mode"];
-    expect(matrixEntry).toBeDefined();
-    if (matrixEntry === undefined || matrixEntry.remediation === undefined) return;
+    if (matrixEntry?.remediation === undefined) {
+      throw new Error("ports.mode must stay a rejected key carrying remediation");
+    }
     expect(matches).toEqual([
       {
         matrixPath: "ports.mode",
@@ -108,8 +106,8 @@ describe("Compose disposition analysis", () => {
     // When / Then
     expect(normalizedEntries.length).toBeGreaterThan(0);
     for (const [path, entry] of normalizedEntries) {
-      const [root] = path.split(".", 1);
-      const rootTargets = root === undefined ? undefined : composeServiceDispositions[root]?.planTarget;
+      const root = path.split(".", 1)[0] ?? path;
+      const rootTargets = composeServiceDispositions[root]?.planTarget;
       expect(entry.planTarget).toBeDefined();
       expect(entry.planTarget?.length).toBeGreaterThan(0);
       for (const target of entry.planTarget ?? []) {

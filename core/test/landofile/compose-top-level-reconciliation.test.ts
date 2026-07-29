@@ -50,12 +50,9 @@ describe("Compose top-level classification reconciliation", () => {
     // Given
     const matrixKeys = new Set(Object.keys(composeTopLevelDispositions));
 
-    // When
-    const extensionPattern = COMPOSE_EXTENSION_TOP_LEVEL_PATTERN;
-
-    // Then
-    expect(extensionPattern).toBe("x-*");
-    expect(matrixKeys.has(extensionPattern)).toBe(true);
+    // When / Then
+    expect(COMPOSE_EXTENSION_TOP_LEVEL_PATTERN).toBe("x-*");
+    expect(matrixKeys.has(COMPOSE_EXTENSION_TOP_LEVEL_PATTERN)).toBe(true);
   });
 
   test("every accepted top-level key decodes through LandofileShape", () => {
@@ -71,12 +68,13 @@ describe("Compose top-level classification reconciliation", () => {
     };
     const decode = Schema.decodeUnknownEither(LandofileShape);
 
+    expect(COMPOSE_TOP_LEVEL_KEYS.length).toBeGreaterThan(0);
     for (const key of COMPOSE_TOP_LEVEL_KEYS) {
       // When
       const decoded = decode({ [key]: minimalValues[key] });
 
       // Then
-      expect(Either.isRight(decoded)).toBe(true);
+      expect(Either.isRight(decoded), key).toBe(true);
     }
   });
 });

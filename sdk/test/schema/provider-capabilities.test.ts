@@ -41,8 +41,8 @@ const ARRAY_FIELDS = ["providerExtensions"] as const;
 
 const OPTIONAL_FIELDS = [
   "composeKnobs",
-  "composeProjectFields",
   "composePreservedPaths",
+  "composeProjectFields",
   "composeServiceFields",
   "hostProxy",
 ] as const;

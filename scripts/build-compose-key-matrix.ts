@@ -133,13 +133,6 @@ const renderServiceSections = (groups: ReadonlyArray<ServiceGroup>): string =>
     )
     .join("\n\n");
 
-const assertEmittedCount = (label: string, entries: DispositionMap, emittedCount: number): void => {
-  const sourceCount = Object.keys(entries).length;
-  if (emittedCount !== sourceCount) {
-    failInvariant(`${label} emitted ${emittedCount} rows for ${sourceCount} disposition entries`);
-  }
-};
-
 const assertMatrixInvariants = (sources: MatrixSources = DEFAULT_SOURCES): void => {
   const matrices = [
     ["service", sources.service],
@@ -166,14 +159,16 @@ const assertMatrixInvariants = (sources: MatrixSources = DEFAULT_SOURCES): void 
     }
   }
 
-  const groups = serviceGroups(sources.service);
-  assertEmittedCount(
-    "Service matrix",
-    sources.service,
-    groups.reduce((count, group) => count + 1 + group.descendants.length, 0),
+  // Grouping is the only render path that can drop a row: a descendant whose root key is absent
+  // never reaches a section. Flat scopes map one row per entry by construction.
+  const emittedCount = serviceGroups(sources.service).reduce(
+    (count, group) => count + 1 + group.descendants.length,
+    0,
   );
-  assertEmittedCount("Top-level matrix", sources.topLevel, sortedEntries(sources.topLevel).length);
-  assertEmittedCount("YAML tag matrix", sources.tags, sortedEntries(sources.tags).length);
+  const sourceCount = Object.keys(sources.service).length;
+  if (emittedCount !== sourceCount) {
+    failInvariant(`Service matrix emitted ${emittedCount} rows for ${sourceCount} disposition entries`);
+  }
 };
 
 const renderComposeKeyMatrixPage = (): string => {

@@ -22,7 +22,6 @@ export const NetworkProxyConfig = Schema.Struct({
    * When true, write the resolved proxy env (`HTTP_PROXY` / `HTTPS_PROXY` /
    * `NO_PROXY`) into `type: lando` service env layers. Default false — proxy
    * URLs may embed credentials. Per-service override: `security.inheritNetworkProxy`.
-   * SPEC: §6.8, §7.5, §10.3.1.
    */
   injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
     description:
@@ -39,7 +38,7 @@ export const NetworkCaConfig = Schema.Struct({
    * service trust store and runtime CA env (`NODE_EXTRA_CA_CERTS`, etc.) so
    * in-container tools work behind corporate TLS interception without
    * per-project Dockerfiles or Landofile edits. Per-service override:
-   * `security.inheritNetworkCa`. SPEC: §6.8, §7.5, §10.3.1.
+   * `security.inheritNetworkCa`.
    */
   injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
     description: "When true (default), install network.ca.certs into type: lando service trust stores.",
@@ -140,7 +139,7 @@ export const GlobalConfig = Schema.Struct({
     description: "Global host agent-context env forwarding policy (global agentEnv).",
   }),
   notify: Schema.optional(NotifyConfig).annotations({
-    description: "Global desktop-notification policy (global notify; §8.9.7).",
+    description: "Global desktop-notification policy (global notify).",
   }),
   events: Schema.optional(
     Schema.Struct({

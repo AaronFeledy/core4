@@ -30,6 +30,7 @@ import {
   makeTestSshService,
 } from "@lando/sdk/test";
 import {
+  type ResolvedSetupNetworkTrust,
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
@@ -1105,9 +1106,7 @@ describe("meta:setup command", () => {
         setupSpec
           .run({
             installDir: "/opt/lando",
-            _networkProbe: (network: {
-              readonly proxy: { readonly https?: string; readonly noProxy: readonly string[] };
-            }) =>
+            _networkProbe: (network: ResolvedSetupNetworkTrust) =>
               Effect.sync(() => {
                 expect(network.proxy.https).toBe("http://config-proxy.example:8080");
                 expect(network.proxy.noProxy).toEqual(["config.example"]);
@@ -1239,12 +1238,7 @@ describe("meta:setup command", () => {
         setupSpec
           .run({
             installDir: "/opt/lando",
-            _networkProbe: (network: {
-              readonly ca: {
-                readonly certs: readonly string[];
-                readonly loadedCerts: readonly { readonly path: string }[];
-              };
-            }) =>
+            _networkProbe: (network: ResolvedSetupNetworkTrust) =>
               Effect.sync(() => {
                 expect(network.ca.certs).toEqual([configCert, envCert]);
                 expect(network.ca.loadedCerts.map((cert) => cert.path)).toEqual([configCert, envCert]);
@@ -1291,13 +1285,7 @@ describe("meta:setup command", () => {
         setupSpec
           .run({
             installDir: "/opt/lando",
-            _networkProbe: (network: {
-              readonly proxy: {
-                readonly http?: string;
-                readonly https?: string;
-                readonly noProxy: readonly string[];
-              };
-            }) =>
+            _networkProbe: (network: ResolvedSetupNetworkTrust) =>
               Effect.sync(() => {
                 expect(network.proxy).toEqual({
                   http: "http://env-http-proxy.example:8080",

@@ -16,24 +16,25 @@ import {
 import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "composeProjectFields"];
+
+const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
+  .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
+  .sort();
+
+const EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY = EXPECTED_CAPABILITY_FIELDS.filter(
+  (field) => field !== "hostProxy",
+);
+
 describe("provider-podman capabilities", () => {
   test("declares every ProviderCapabilities field for Linux, macOS, and Windows", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter(
-        (field) =>
-          field !== "composePreservedPaths" && field !== "composeProjectFields" && field !== "hostProxy",
-      )
-      .sort();
-    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composePreservedPaths" && field !== "composeProjectFields")
-      .sort();
     const linux = podmanCapabilitiesForPlatform("linux");
     const macos = podmanCapabilitiesForPlatform("darwin");
     const windows = podmanCapabilitiesForPlatform("win32");
 
-    expect(Object.keys(linux).sort()).toEqual(expectedFields);
-    expect(Object.keys(macos).sort()).toEqual(expectedFields);
-    expect(Object.keys(windows).sort()).toEqual(expectedWindowsFields);
+    expect(Object.keys(linux).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(Object.keys(windows).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
     expect(linux.sharedCrossAppNetwork).toBe(true);
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
@@ -267,16 +268,17 @@ describe("provider-podman Podman Desktop discovery", () => {
 
 describe("provider-podman RuntimeProvider layer", () => {
   const responsiveApi = { ping: Effect.void } as const;
+  const podmanApiForArch = (arch: string) => ({
+    ...responsiveApi,
+    info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch } }),
+  });
 
   test("introspects platform-specific capabilities", async () => {
     const linuxProvider = await Effect.runPromise(
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
-        },
+        podmanApi: podmanApiForArch("x64"),
       }),
     );
     const macosProvider = await Effect.runPromise(
@@ -284,10 +286,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "darwin",
         arch: "arm64",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }),
-        },
+        podmanApi: podmanApiForArch("arm64"),
       }),
     );
     const windowsProvider = await Effect.runPromise(
@@ -295,10 +294,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "win32",
         arch: "arm64",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "arm64" } }),
-        },
+        podmanApi: podmanApiForArch("arm64"),
       }),
     );
 
@@ -320,10 +316,7 @@ describe("provider-podman RuntimeProvider layer", () => {
         platform: "win32",
         arch: "x64",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }),
-        },
+        podmanApi: podmanApiForArch("aarch64"),
       }),
     );
 
@@ -349,10 +342,7 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
-        },
+        podmanApi: podmanApiForArch("x64"),
         logFileAccess: fs.access,
       }),
     );
@@ -365,10 +355,7 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
-        },
+        podmanApi: podmanApiForArch("x64"),
         logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
       }),
     );
@@ -381,10 +368,7 @@ describe("provider-podman RuntimeProvider layer", () => {
       makeRuntimeProvider({
         platform: "linux",
         env: {},
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "aarch64" } }),
-        },
+        podmanApi: podmanApiForArch("aarch64"),
         logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
       }),
     );
@@ -430,10 +414,7 @@ describe("provider-podman RuntimeProvider layer", () => {
           XDG_RUNTIME_DIR: "/run/user/1000",
           LANDO_PODMAN_MACHINE: "bad;name",
         },
-        podmanApi: {
-          ...responsiveApi,
-          info: Effect.succeed({ version: { Version: "6.0.2" }, host: { arch: "x64" } }),
-        },
+        podmanApi: podmanApiForArch("x64"),
       }),
     );
 

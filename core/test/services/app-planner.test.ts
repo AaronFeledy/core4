@@ -1810,12 +1810,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const appPlan = await planWithCustomRegistry(landofile);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
@@ -1835,14 +1830,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) =>
-        appPlanner.plan(landofile, composePreservedPathCapabilities),
-      ).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const appPlan = await planWithCustomRegistry(landofile, composePreservedPathCapabilities);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
@@ -3557,12 +3545,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3597,12 +3580,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const appPlan = await planWithCustomRegistry(landofile);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
@@ -3629,12 +3607,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3666,12 +3639,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3712,12 +3680,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3748,12 +3711,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);

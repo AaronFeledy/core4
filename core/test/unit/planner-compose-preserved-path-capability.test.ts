@@ -94,7 +94,8 @@ describe("Compose preserved path capabilities", () => {
         capability: "composeSpec",
         providerId: "lando",
       });
-      expect(failure instanceof CapabilityError ? (failure.remediation?.length ?? 0) : 0).toBeGreaterThan(0);
+      if (!(failure instanceof CapabilityError)) throw new Error("Expected a CapabilityError");
+      expect(failure.remediation?.length ?? 0).toBeGreaterThan(0);
     });
   });
 

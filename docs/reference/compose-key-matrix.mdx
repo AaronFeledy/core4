@@ -140,7 +140,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | [`volumes`](#volumes) | normalized | 25 | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
 | `volumes_from` | rejected | — | Translate volumes_from with a Compose-to-Lando config translator. |
 | `working_dir` | normalized | — | Normalizes into `ServicePlan.workingDirectory` |
-| `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose, inert and not capability-gated per spec 5.4. |
+| `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose; inert and not capability-gated. |
 
 ### `annotations`
 

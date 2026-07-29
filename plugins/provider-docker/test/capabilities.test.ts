@@ -77,19 +77,23 @@ const listenTcp = (server: Server): Promise<number> =>
     });
   });
 
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "composeProjectFields"];
+
+const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
+  .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
+  .sort();
+
+const EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY = EXPECTED_CAPABILITY_FIELDS.filter(
+  (field) => field !== "hostProxy",
+);
+
 describe("provider-docker capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter(
-        (field) =>
-          field !== "composePreservedPaths" && field !== "composeProjectFields" && field !== "hostProxy",
-      )
-      .sort();
     const linux = dockerCapabilitiesForPlatform("linux");
     const macos = dockerCapabilitiesForPlatform("darwin");
 
-    expect(Object.keys(linux).sort()).toEqual(expectedFields);
-    expect(Object.keys(macos).sort()).toEqual(expectedFields);
+    expect(Object.keys(linux).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(macos.bindMounts).toBe(true);
@@ -347,12 +351,9 @@ describe("provider-docker capabilities", () => {
   });
 
   test("declares the Windows capability matrix with slow bind mount performance", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composePreservedPaths" && field !== "composeProjectFields")
-      .sort();
     const windows = dockerCapabilitiesForPlatform("win32");
 
-    expect(Object.keys(windows).sort()).toEqual(expectedFields);
+    expect(Object.keys(windows).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
     expect(windows.bindMountPerformance).toBe("slow");
     expect(windows.bindMounts).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);

@@ -274,7 +274,7 @@ const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
     if (typeof input === "string") {
       const withPath = input.split(testDir).join("<testDir>");
       const lowerKey = key?.toLowerCase() ?? "";
-      return lowerKey === "stdout" || lowerKey === "stderr" || lowerKey.includes("stdout")
+      return lowerKey === "stderr" || lowerKey.includes("stdout")
         ? withPath.replace(TIMESTAMP_PATTERN, "<timestamp>")
         : withPath;
     }
@@ -468,7 +468,7 @@ const createInspect =
         yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "events", value }));
         return;
       }
-      const lastRun = [...transcriptFrames].reverse().find((frame) => frame.kind === "run");
+      const lastRun = transcriptFrames.findLast((frame) => frame.kind === "run");
       const value = lastRun !== undefined && lastRun.kind === "run" ? lastRun.stdout : "";
       yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "output", value }));
     });
@@ -876,12 +876,14 @@ const withScenarioContextInternal = <A, E, R>(
       Effect.tryPromise(() =>
         mkdtemp(join(tmpdir(), `lando-scenario-${options.guideId}-${options.scenarioId}-`)),
       ),
-      (testDir) =>
-        process.env.KEEP_SCENARIO_DIRS === "1"
-          ? process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
-            ? Console.log(`Scenario temp dir: ${testDir}`)
-            : Effect.void
-          : Effect.promise(() => rm(testDir, { recursive: true, force: true })),
+      (testDir) => {
+        if (process.env.KEEP_SCENARIO_DIRS !== "1") {
+          return Effect.promise(() => rm(testDir, { recursive: true, force: true }));
+        }
+        return process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
+          ? Console.log(`Scenario temp dir: ${testDir}`)
+          : Effect.void;
+      },
     ).pipe(
       Effect.flatMap((testDir) => {
         const context = makeScenarioContext(options, testDir, runnerKind);
