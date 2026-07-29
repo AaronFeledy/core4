@@ -881,6 +881,7 @@ Rules:
 - `excludes` removes tasks from the include before flattening or namespace registration.
 - A fragment's own `tooling:` entries win over tasks contributed by its `toolingIncludes:` when a task id collides — the same precedence the parent Landofile's own `tooling:` holds over its top-level `includes:`.
 - `checksum:` is not part of the Beta 1 tooling-include shape. Tooling fragments are local-file only, so there is no remote source to pin; a remote-source `checksum:` is reserved for a future release that adds remote tooling includes.
+- `dir:` is likewise not part of the Beta 1 tooling-include shape. Task-level `dir:` is itself rejected in Beta 1 (§8.5.1), so an include-level working directory would be accepted and then ignored; authoring it fails closed as an unsupported key rather than silently having no effect. It is reserved for the release that accepts task-level `dir:`.
 - Cyclic includes are rejected with a tagged `ToolingIncludeCycleError`.
 
 Per-include `topLevelAlias` settings on individual tasks within an included file behave identically to top-level Landofile-defined tasks (§8.5.1). An include MAY NOT set a single `topLevelAlias` at the include level that applies to all of its tasks; per-task aliases keep collision detection precise.
