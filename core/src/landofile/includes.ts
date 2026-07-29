@@ -37,7 +37,11 @@ import { assertUnderRoot, includeError } from "./include-guard.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
 import { mergeLandofiles, mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
-import { getInternalToolingTasks, rememberInternalToolingTasks } from "./tooling-include-provenance.ts";
+import {
+  getInternalToolingTasks,
+  rememberInternalToolingTasks,
+  winningInternalToolingTasks,
+} from "./tooling-include-provenance.ts";
 import { hasToolingIncludes, resolveToolingIncludes } from "./tooling-includes.ts";
 
 export type GitIncludeCloner = GitRecipeCloner;
@@ -144,6 +148,10 @@ const authoredIncludeEntries = (
   ...(landofile.includes ?? []).filter((entry) => typeof entry === "string" || entry.kind !== "tooling"),
   ...(landofile.include ?? []),
 ];
+
+export const hasResolvableIncludes = (
+  landofile: Pick<LandofileShape, "include" | "includes" | "toolingIncludes">,
+): boolean => authoredIncludeEntries(landofile).length > 0 || hasToolingIncludes(landofile);
 
 const safeRelativeSubpath = (subpath: string | undefined, source: string): string => {
   if (subpath === undefined || subpath.trim() === "") {
@@ -620,7 +628,7 @@ const resolveTree = (
       sourceRoot: ctx.sourceRoot,
       maxDepth: ctx.maxDepth,
     });
-    if (includes.length === 0 && !hasToolingIncludes(landofile))
+    if (!hasResolvableIncludes(landofile))
       return rememberInternalToolingTasks(
         rememberLocalIncludePaths(
           rememberVersionConstraintEntries(
@@ -706,10 +714,8 @@ const resolveTree = (
       }
     }
 
-    const merged = mergeLandofiles([
-      ...fragmentRecords,
-      withResolvedTooling(landofile as Record<string, unknown>, tooling.tooling),
-    ]);
+    const current = withResolvedTooling(landofile as Record<string, unknown>, tooling.tooling);
+    const merged = mergeLandofiles([...fragmentRecords, current]);
     const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
     return rememberInternalToolingTasks(
       rememberLocalIncludePaths(
@@ -719,7 +725,14 @@ const resolveTree = (
         ]),
         [...localIncludePaths],
       ),
-      [...fragments.flatMap((fragment) => getInternalToolingTasks(fragment)), ...tooling.internalTaskIds],
+      winningInternalToolingTasks([
+        ...fragments.map((fragment) => ({
+          tooling: fragment.tooling,
+          internalTaskIds: getInternalToolingTasks(fragment),
+        })),
+        { tooling: tooling.tooling, internalTaskIds: tooling.internalTaskIds },
+        { tooling: landofile.tooling, internalTaskIds: [] },
+      ]),
     );
   });
 
@@ -922,7 +935,7 @@ const writeLockfileIfNeeded = (ctx: ResolveContext): Effect.Effect<void, Landofi
 export const resolveLandofileIncludes = (
   options: ResolveLandofileIncludesOptions,
 ): Effect.Effect<LandofileShape, ResolveIncludesError, never> => {
-  if (authoredIncludeEntries(options.landofile).length === 0 && !hasToolingIncludes(options.landofile)) {
+  if (!hasResolvableIncludes(options.landofile)) {
     return Effect.succeed(
       rememberLandofileAppRoot(
         rememberVersionConstraintEntries(
