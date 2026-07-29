@@ -112,6 +112,7 @@ export {
   landoEnvFeature,
   landoHealthcheckFeature,
   landoHostProxyFeature,
+  landoSecurityFeature,
   landoStorageFeature,
   landoUserFeature,
   landoUserIdFeature,

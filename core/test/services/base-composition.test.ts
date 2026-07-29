@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 
 import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
@@ -61,6 +61,33 @@ const compose = (input: ComposeServiceInput): Promise<ServicePlan> =>
   Effect.runPromise(composeService(input));
 
 describe("lando base composition", () => {
+  test("seeds lando.security between healthcheck and host-proxy", () => {
+    expect(LANDO_BASE_DEFAULT_FEATURE_IDS).toEqual([
+      "lando.user-id",
+      "lando.storage",
+      "lando.env",
+      "lando.app-mount",
+      "lando.healthcheck",
+      "lando.security",
+      "lando.host-proxy",
+      "lando.user",
+    ]);
+  });
+
+  test("keeps default lando.security inert before planner config exists", async () => {
+    const plan = await compose(inputFor("lando"));
+
+    expect(plan.mounts.some((mount) => String(mount.target).includes("ca-certificates"))).toBe(false);
+    expect(plan.environment.LANDO_CA_BUNDLE).toBeUndefined();
+    expect(
+      Schema.decodeUnknownSync(
+        Schema.Struct({
+          buildSteps: Schema.optional(Schema.Array(Schema.Struct({ id: Schema.optional(Schema.String) }))),
+        }),
+      )(plan.extensions["@lando/core/service-features"]).buildSteps ?? [],
+    ).not.toContainEqual({ id: "lando.security:trust-store" });
+  });
+
   test("carries the LANDO_* identity env via lando.env", async () => {
     const plan = await compose(inputFor("lando", { withHost: true }));
 
@@ -126,6 +153,10 @@ describe("lando base composition", () => {
 });
 
 describe("l337 base composition", () => {
+  test("does not seed lando.security", () => {
+    expect(L337_BASE_DEFAULT_FEATURE_IDS).not.toContain("lando.security");
+  });
+
   test("does not activate host-proxy by default for l337 base services", async () => {
     const plan = await compose(inputFor("l337", { withHost: true }));
 

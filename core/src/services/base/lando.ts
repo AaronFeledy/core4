@@ -18,6 +18,7 @@ export const LANDO_BASE_DEFAULT_FEATURE_IDS: ReadonlyArray<string> = [
   "lando.env",
   "lando.app-mount",
   "lando.healthcheck",
+  "lando.security",
   "lando.host-proxy",
   "lando.user",
 ];

@@ -62,4 +62,10 @@ describe("@lando/service-lando package", () => {
       expect(manifest).toContain(`- "${serviceType}"`);
     }
   });
+
+  test("publishes lando.security through packaged plugin.yaml", async () => {
+    const manifest = await readFile(new URL("../plugin.yaml", import.meta.url), "utf8");
+
+    expect(manifest).toContain('- "lando.security"');
+  });
 });
