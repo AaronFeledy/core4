@@ -274,7 +274,7 @@
         "Lint passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Split from US-477 adjudication. Human option-1 adjudication 2026-07-28 amended \u00a75.4/\u00a75.5.1 to add composePreservedPaths and authorized co-resident execution on us-477-compose-docs-matrix-guide with attribution to US-480 so the Build in-flight gate cannot deadlock dispatch. Binding prerequisite for US-477."
     },
     {

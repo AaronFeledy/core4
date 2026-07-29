@@ -884,3 +884,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Follow-up story: none new — US-480 remains the production prerequisite; US-477 remains the docs/SDK closeout after US-480 passes.
 - **Dispatch note (still in force):** commit and push existing in-flight work, then Build should execute US-480 on the current branch before closing US-477.
 ---
+
+## 2026-07-28 20:25 CDT - US-480
+- Added the fail-closed exact-path provider capability refinement for matrix-preserved Compose descendants. `depends_on.*.restart` and `healthcheck.start_interval` remain lossless in the Compose plan extension, but planning now requires an explicit native-tier `composePreservedPaths` declaration on both fresh and cached plans; omission, partial declarations, and non-native declarations fail with a tagged `CapabilityError` before provider action.
+- Kept bundled Podman support truthful: provider-lando leaves both paths undeclared because it realizes neither dependency-recreation restarts nor a start-period-specific healthcheck cadence. Its capability inventory now proves that omission on every platform, while the test provider exercises deterministic supported, unsupported, partial, and inconsistent declarations.
+- Regenerated the public provider-capability schema and Compose key matrix so both preserved rows name the exact gate and failure behavior. The prior SDK boundary remains intact: service-level `x-*` stays inert and ungated, and no internal field map or duplicate rejection helper was exported.
+- Verification: typecheck and lint passed; 15 boundary gates passed; schema compatibility classified the optional field as additive; 336 focused schema, contract, planner, cache, conformance, matrix, docs, and provider tests passed with 3,060 assertions; matrix and schema codegen were byte-idempotent. The compiled CLI in `lando4-dev` rejected a real `depends_on.*.restart` Landofile with exit 1 and a JSON `CapabilityError` naming the exact key and `composePreservedPaths` remediation before provider execution.
+- **Learnings for future iterations:**
+  - Provider capabilities are intentionally absent from the app-plan cache key, so every new provider-dependent plan invariant must be rechecked on the cache-hit return path as well as after fresh planning.
+  - Exact-path refinements should use the disposition-matrix wildcard literal in errors and declarations; that keeps schema, planner, generated docs, and remediation aligned without inventing a second concrete-path vocabulary.
+  - An optional capability being absent is stronger evidence than an empty implementation claim: bundled providers should omit unsupported refinements and pin that omission in their capability inventory tests.
+---
