@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { ComposePreservedPathKey } from "@lando/sdk/schema";
+
 import {
   composeServiceDispositions,
   composeTopLevelDispositions,
@@ -133,6 +135,15 @@ describe("Compose disposition analysis", () => {
     expect(serviceExtension?.rationale).not.toContain("capability-checked");
     expect(serviceExtension?.rationale).toContain("inert");
     expect(gatedExtension?.rationale).toContain("capability-checked");
+  });
+
+  test("documents every exact preserved path with its fail-closed capability gate", () => {
+    for (const path of ComposePreservedPathKey.literals) {
+      const entry = composeServiceDispositions[path];
+      expect(entry?.disposition).toBe("preserved");
+      expect(entry?.rationale).toContain("composePreservedPaths");
+      expect(entry?.rationale).toContain("CapabilityError");
+    }
   });
 
   test("narrows type-specific volume options to the destination they actually reach", () => {

@@ -1,3 +1,5 @@
+import { ComposePreservedPathKey } from "@lando/sdk/schema";
+
 export type ComposeDisposition = "normalized" | "preserved" | "rejected";
 
 export interface ComposeDispositionEntry {
@@ -31,8 +33,20 @@ const PRESERVED_INERT_EXTENSION_ENTRY = {
     "Preserved losslessly in ServicePlan.extensions.compose, inert and not capability-gated per spec 5.4.",
 } as const satisfies ComposeDispositionEntry;
 
+const PRESERVED_EXACT_PATH_ENTRY = {
+  disposition: "preserved",
+  rationale:
+    "Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path.",
+} as const satisfies ComposeDispositionEntry;
+
+const preservedExactPaths: ReadonlySet<string> = new Set(ComposePreservedPathKey.literals);
+
 const preservedEntry = (path: string): ComposeDispositionEntry =>
-  path === "x-*" ? PRESERVED_INERT_EXTENSION_ENTRY : PRESERVED_ENTRY;
+  path === "x-*"
+    ? PRESERVED_INERT_EXTENSION_ENTRY
+    : preservedExactPaths.has(path)
+      ? PRESERVED_EXACT_PATH_ENTRY
+      : PRESERVED_ENTRY;
 
 const rejectedEntry = (path: string): ComposeDispositionEntry => {
   if (path === "extends" || path.startsWith("extends.")) {

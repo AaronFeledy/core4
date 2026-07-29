@@ -248,7 +248,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `depends_on.*` | normalized | Normalizes into `ServicePlan.dependsOn` |
 | `depends_on.*.condition` | normalized | Normalizes into `ServicePlan.dependsOn` |
 | `depends_on.*.required` | normalized | Normalizes into `ServicePlan.dependsOn` |
-| `depends_on.*.restart` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `depends_on.*.restart` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
 | `depends_on.*.x-*` | rejected | Translate depends_on.*.x-* with a Compose-to-Lando config translator. |
 
 ### `deploy`
@@ -402,7 +402,7 @@ See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Co
 | `healthcheck.disable` | normalized | Normalizes into `ServicePlan.healthcheck` |
 | `healthcheck.interval` | normalized | Normalizes into `ServicePlan.healthcheck` |
 | `healthcheck.retries` | normalized | Normalizes into `ServicePlan.healthcheck` |
-| `healthcheck.start_interval` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `healthcheck.start_interval` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
 | `healthcheck.start_period` | normalized | Normalizes into `ServicePlan.healthcheck` |
 | `healthcheck.test` | normalized | Normalizes into `ServicePlan.healthcheck` |
 | `healthcheck.timeout` | normalized | Normalizes into `ServicePlan.healthcheck` |
