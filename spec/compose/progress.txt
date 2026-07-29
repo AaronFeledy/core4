@@ -912,3 +912,14 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - Verification: typecheck and lint passed; 199 focused preserved-path, cache, provider-capability, provider-inventory, and doctor tests passed with one intentional skip; all boundary, generated-output, Compose coverage, guide lint/coverage/public-transcript, explicit-base guide-drift, and executable-guide checks passed. Changed-file diagnostics were clean before the final formatting-only edit; the doctor test diagnostic refresh then timed out twice while root typecheck remained clean.
 - **Learnings for future iterations:** Cache-path regressions must first prove the cache was hit before asserting behavior shared with a fresh plan; inventory tests derived from a schema must distinguish optional declarations from required capability fields and separately assert truthful omission.
 ---
+
+## 2026-07-28 21:17 CDT - US-477 Drift Audit
+- Trigger: 5 cycles, 2786 changed lines, 28 commits
+- Contract drift / deferred-work laundering: the generated matrix publishes top-level `configs`, `secrets`, and `x-*` as losslessly preserved in `AppPlan.extensions.compose`, but planning drops all three; the branch-owned publication cannot close over that pre-existing production gap.
+- Weakened proofs: the guide's configuration and rejection checks use the real CLI, but its `start`/`destroy` steps use the scenario-only success stub and do not prove provider application.
+- Ceremony modules: consolidated duplicate schema-annotation coverage, removed a redundant provider capability test entrypoint, and localized a helper type that had no external consumer.
+- Contract documentation: corrected the claim that JSON Schema is derived from the disposition matrix; the hand-authored Effect schema is reconciled against it by tests and coverage gates.
+- Fixed: deleted duplicate test modules, retained their assertions in existing suites, removed the dead type export, and restored truthful matrix/schema wording.
+- Split/excise decisions: added binding co-resident prerequisite US-483 for top-level project preservation and fail-closed capability handling, narrowed US-477 back to publication/guide/SDK closeout, and set US-477 `passes: false`; production-wired guide start proof remains owned by US-477.
+- Verification: typecheck, lint, all boundary and generated-output gates, schema compatibility, guide lint/coverage/public transcripts/drift with the substantive skip, matrix and schema codegen idempotence, the executable guide, and focused spot checks passed; the production-wired guide start proof is not yet present, so story completion remains blocked.
+---

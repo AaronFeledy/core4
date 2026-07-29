@@ -89,13 +89,31 @@ The vocabulary promise is only honest if the boundary is sharp on both sides: ev
 - [ ] Typecheck passes
 - [ ] Lint passes
 
+### US-483: Top-level preserved Compose fields are honest end to end
+
+**Description:** As a user authoring top-level Compose `configs`, `secrets`, or `x-*` values, my project-level intent is preserved in the app plan and either realized by a provider that explicitly declares support or rejected before provider action; inert extensions are never capability-gated.
+
+**Acceptance Criteria:**
+
+- [ ] Co-resident dispatch: while US-477 is in flight with US-483 still `passes: false`, US-483 MUST be implemented first on branch `us-477-compose-docs-matrix-guide`. Whole-branch accounting attributes this story's top-level schema, planner, cache, capability, container-runtime, and provider changes to US-483 even when physically co-resident with US-477 closeout work. Build marks US-483 `passes: true` before completing US-477; Review and Drift Audit MUST NOT classify that attributed surface as US-477 scope absorption.
+- [ ] The published Landofile boundary accepts top-level Compose `configs`, `secrets`, and nested `x-*` values in their documented forms and preserves each value losslessly under `AppPlan.extensions.compose` on cache-miss and cache-hit planning paths.
+- [ ] Planning validates every used active project field before provider action. A provider may accept `configs` or `secrets` only through an explicit capability declaration that represents complete realization of the accepted forms; a coarse `composeSpec: native` tier alone MUST NOT imply support.
+- [ ] Unsupported active fields fail with `CapabilityError` carrying the exact project key, `providerId`, and actionable remediation. Top-level `x-*` remains preserved-inert and is never capability-gated.
+- [ ] Each bundled provider either realizes the accepted top-level config/secret semantics and declares support or leaves support undeclared so planning rejects it. Declaration-versus-realization tests prevent a provider from claiming ignored project fields.
+- [ ] The disposition matrix and generated docs rows for `configs`, `secrets`, and `x-*` describe the implemented preservation and fail-closed behavior exactly.
+- [ ] SDK capability schemas, `sdk/API_COMPATIBILITY.md`, compatibility exceptions, generated schema artifacts, and reference pages are updated together if the public capability contract changes; internal field maps remain private.
+- [ ] Focused schema, loader, planner, cache, provider-contract, and bundled-provider tests cover lossless preservation, accepted support, unsupported rejection before action, and inert extensions.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
 ### US-477: Published matrix, executable guide, and SDK reconciliation
 
 **Description:** As a user, I can read exactly which Compose keys work, which are provider-dependent, and which are replaced by Lando surfaces, and follow a runnable guide that pastes a Compose service into a Landofile — and as an SDK consumer, the wave's schema additions are published coherently with nothing left drifting.
 
 **Acceptance Criteria:**
 
-- [ ] US-480 is a binding prerequisite for story completion: US-477 MUST remain `passes: false` until US-480 passes, and once US-480 passes that prerequisite is satisfied. US-477 owns generation and publication only after the prerequisite is met; its owned work is the §7.4-mandated docs key matrix generated from the disposition matrix (key, disposition, normalization target or truthful capability note or remediation) by a `codegen:*` script and drift-gated with `git diff --exit-code` like other generated docs, plus the executable guide and SDK reconciliation criteria below. A preserved row whose capability note is not yet true blocks on US-480 or another production story that owns that path. Whole-branch accounting MUST attribute production schema, planner, cache, capability, container-runtime, and provider changes that satisfy US-480's acceptance criteria to US-480 even when those changes are physically co-resident on the US-477 branch (`us-477-compose-docs-matrix-guide`); their presence is not US-477 scope absorption. This attribution applies only to changes traceable to US-480's acceptance criteria and progress record; any other production change remains subject to its owning story's boundary. In-flight dispatch authorization (human adjudication 2026-07-28 option 1): while US-477 is in flight on `us-477-compose-docs-matrix-guide` and US-480 is still `passes: false`, Build is AUTHORIZED and REQUIRED to implement US-480's production surface on that same branch first, mark US-480 `passes: true` when its criteria are met (with progress attributed to US-480), then complete US-477 closeout work. The Build in-flight gate MUST NOT treat that prerequisite implementation as foreign-scope absorption or as selecting a second story. After US-480 passes, US-477 MUST NOT re-implement, broaden, or re-own the US-480 production surface.
+- [ ] US-480 and US-483 are binding prerequisites for story completion: US-477 MUST remain `passes: false` until both pass. US-477 owns only generation and publication of the §7.4 docs key matrix, the executable guide, and SDK reconciliation. Whole-branch accounting attributes exact preserved-descendant capability work to US-480 and top-level `configs`/`secrets`/`x-*` preservation and capability work to US-483 even when those changes are physically co-resident on `us-477-compose-docs-matrix-guide`; neither surface is US-477 scope absorption. Human option-1 adjudication remains authoritative for US-480. While US-477 is in flight and US-483 is false, Build is AUTHORIZED and REQUIRED to implement US-483 on the same branch first, mark it passing with progress attributed to US-483, then complete US-477. After either prerequisite passes, US-477 MUST NOT re-implement, broaden, or re-own that production surface. A generated row whose production claim is not yet true blocks US-477 completion.
 - [ ] An executable guide ports a realistic Compose service block (long-form ports, `depends_on` condition, a knob like `extra_hosts`) into a Landofile and runs it; one rejected-key step shows the tagged error and applies the remediation.
 - [ ] `bun run dev:guides <guide> --once` passes; `lint:guides`, `check:guide-coverage`, and `check:public-transcripts` / `check:guide-drift` gates are green.
 - [ ] The guide and the matrix cross-link; no hand-maintained key list exists anywhere in docs.
