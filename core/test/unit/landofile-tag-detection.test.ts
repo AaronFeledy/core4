@@ -18,6 +18,9 @@ describe("detectLandofileTags", () => {
     ["bare override", "x: !override", "!override", 1, 4],
     ["merge-key reset", "<<: !reset", "!reset", 1, 5],
     ["sequence merge-key reset", "values:\n  - <<: !reset", "!reset", 2, 9],
+    ["anchored reset", "ports: &shared !reset", "!reset", 1, 16],
+    ["anchored override in a sequence", "values:\n  - &shared !override", "!override", 2, 13],
+    ["anchored reset in an inline list", "ports: &shared [!reset]", "!reset", 1, 17],
   ] as const;
 
   for (const [name, content, tag, line, column] of matchingCases) {

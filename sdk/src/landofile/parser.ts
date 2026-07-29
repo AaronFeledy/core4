@@ -307,18 +307,27 @@ interface ValuePosition {
   readonly column: number;
 }
 
-const detectLeadingTag = (value: string, position: ValuePosition): LandofileTagOccurrence | undefined => {
+// An anchored value (`&name !reset`) still carries the tag, so the anchor
+// prefix is skipped before tag matching; otherwise anchoring silently escapes
+// Compose rejection.
+const skipValuePrefix = (value: string): { readonly text: string; readonly offset: number } => {
   const leadingWhitespace = value.search(/\S/);
-  if (leadingWhitespace < 0) return undefined;
+  if (leadingWhitespace < 0) return { text: "", offset: 0 };
+  const withoutIndent = value.slice(leadingWhitespace);
+  const anchorLength = withoutIndent.match(/^&[A-Za-z0-9_-]+\s+/)?.[0].length ?? 0;
+  return { text: withoutIndent.slice(anchorLength), offset: leadingWhitespace + anchorLength };
+};
 
-  const trimmed = value.slice(leadingWhitespace);
+const detectLeadingTag = (value: string, position: ValuePosition): LandofileTagOccurrence | undefined => {
+  const { text: trimmed, offset } = skipValuePrefix(value);
+  if (trimmed === "") return undefined;
   if (trimmed.startsWith('"') || trimmed.startsWith("'")) return undefined;
   if (!/^!(?:reset|override)(?=$|\s)/.test(trimmed)) return undefined;
 
   return {
     tag: trimmed.startsWith("!reset") ? "!reset" : "!override",
     line: position.line,
-    column: position.column + leadingWhitespace,
+    column: position.column + offset,
   };
 };
 
@@ -326,9 +335,7 @@ const detectTagsInValue = (value: string, position: ValuePosition): ReadonlyArra
   const leading = detectLeadingTag(value, position);
   if (leading !== undefined) return [leading];
 
-  const leadingWhitespace = value.search(/\S/);
-  if (leadingWhitespace < 0) return [];
-  const trimmed = value.slice(leadingWhitespace);
+  const { text: trimmed, offset } = skipValuePrefix(value);
   if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return [];
 
   const inner = trimmed.slice(1, -1);
@@ -338,7 +345,7 @@ const detectTagsInValue = (value: string, position: ValuePosition): ReadonlyArra
     const itemOffset = inner.indexOf(item, cursor);
     const occurrence = detectLeadingTag(item, {
       line: position.line,
-      column: position.column + leadingWhitespace + 1 + itemOffset,
+      column: position.column + offset + 1 + itemOffset,
     });
     if (occurrence !== undefined) occurrences.push(occurrence);
     cursor = itemOffset + item.length + 1;

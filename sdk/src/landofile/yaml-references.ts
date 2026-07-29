@@ -187,16 +187,18 @@ export const resolveYamlReferences = (
     for (const merge of state.merges.get(value) ?? []) {
       const targets = Array.isArray(merge.value) ? merge.value : [merge.value];
       for (const target of targets) {
-        const mapping = resolve(target, stack, origin);
-        if (!isMapping(mapping)) {
-          throw referenceError(
-            state,
-            "YAML merge target must be a mapping or a sequence of mappings.",
-            isYamlAlias(target) ? target : merge,
-          );
-        }
-        for (const [key, entry] of Object.entries(mapping)) {
-          if (!resolvedEntries.has(key)) resolvedEntries.set(key, entry);
+        const resolved = resolve(target, stack, origin);
+        for (const mapping of Array.isArray(resolved) ? resolved : [resolved]) {
+          if (!isMapping(mapping)) {
+            throw referenceError(
+              state,
+              "YAML merge target must be a mapping or a sequence of mappings.",
+              isYamlAlias(target) ? target : merge,
+            );
+          }
+          for (const [key, entry] of Object.entries(mapping)) {
+            if (!resolvedEntries.has(key)) resolvedEntries.set(key, entry);
+          }
         }
       }
     }

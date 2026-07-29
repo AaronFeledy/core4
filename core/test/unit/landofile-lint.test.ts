@@ -270,6 +270,21 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("an anchored Compose tag is still rejected with the matrix remediation", async () => {
+    await write("name: myapp\nservices:\n  web:\n    image: &shared !reset node:20\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(
+        exit.value.violations.some(
+          (entry) => entry.suggestedFix === composeTagDispositions["!reset"].remediation,
+        ),
+      ).toBe(true);
+    }
+  });
+
   test("a rejected key suppresses its schema cascade without hiding ordinary violations", async () => {
     const rejectedPath = "services.web.deploy.replicas";
     await write("name: myapp\nservices:\n  web:\n    deploy:\n      replicas: 3\n    bogus_nested: true\n");

@@ -303,6 +303,25 @@ describe("parseLandofile — native YAML references", () => {
     });
   });
 
+  test("merges an alias whose anchor is a sequence of mappings", async () => {
+    const content = [
+      "first: &first",
+      "  winner: first",
+      "second: &second",
+      "  winner: second",
+      "  fromSecond: true",
+      "both: &both",
+      "  - *first",
+      "  - *second",
+      "merged:",
+      "  <<: *both",
+    ].join("\n");
+
+    expect((await parse(content)) as Record<string, unknown>).toMatchObject({
+      merged: { winner: "first", fromSecond: true },
+    });
+  });
+
   test("merges a merge key that opens a sequence item", async () => {
     const content = [
       "defaults: &defaults",
