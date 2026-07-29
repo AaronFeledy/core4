@@ -127,7 +127,7 @@ Acceptance criteria:
 - **Reuses, does not reinvent:** the canonical `RedactionService` (§3.7, ALPHA4-06) is the only redactor; the §13.2 snapshot is the freeze mechanism; the §13.1 dispatch-parity layer (ALPHA4-11) is extended, not duplicated; the `EventService` redacted history (ALPHA4-14) feeds streaming `event` frames.
 - **Primary risk — dual dispatch:** the `--format` parser exists twice (OCLIF + `runCompiledCli`); the single-source-of-truth rule (§8.4.1) and the parity layer are mandatory.
 - **`apiVersion`:** one global `"v4"` envelope version; per-command shape stability is enforced by the snapshot, not per-command versioning.
-- **`--json` shorthand:** `--json` and `-j` are global aliases for `--format json`, injected by the adapter, mirroring the `-j` convention agents/scripts expect (matching tools like DDEV/act).
+- **`--json` shorthand:** `--json` and `-j` are global aliases for `--format json`, injected by the adapter, mirroring the `-j` convention agents/scripts expect.
 
 ## Success Metrics
 

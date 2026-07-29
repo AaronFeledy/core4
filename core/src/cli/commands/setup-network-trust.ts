@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { Data, Effect } from "effect";
 
-import type { GlobalConfig, NetworkCaConfig, NetworkConfig, NetworkProxyConfig } from "@lando/sdk/schema";
+import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
 import { HttpClient } from "@lando/sdk/services";
 
 import {
@@ -31,9 +31,17 @@ export interface LoadedNetworkCaCert {
 }
 
 export interface ResolvedSetupNetworkTrust extends NetworkConfig {
-  readonly proxy: NetworkProxyConfig;
-  readonly ca: NetworkCaConfig & {
+  readonly proxy: {
+    readonly http?: string;
+    readonly https?: string;
+    readonly noProxy: ReadonlyArray<string>;
+    readonly injectIntoServices: boolean;
+  };
+  readonly ca: {
+    readonly trustHost: boolean;
+    readonly certs: ReadonlyArray<string>;
     readonly loadedCerts: ReadonlyArray<LoadedNetworkCaCert>;
+    readonly injectIntoServices: boolean;
   };
 }
 
@@ -89,14 +97,10 @@ const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNet
 
 /** Adapt setup's resolved trust onto the core-private `ResolvedNetworkTrust` consumed by `HttpClient`. */
 export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => {
-  const http = typeof network.proxy.http === "string" ? network.proxy.http : undefined;
-  const https = typeof network.proxy.https === "string" ? network.proxy.https : undefined;
+  // `injectIntoServices` is a service-planning flag; egress trust must not carry it.
+  const { injectIntoServices: _injectIntoServices, ...proxy } = network.proxy;
   return {
-    proxy: {
-      ...(http === undefined ? {} : { http }),
-      ...(https === undefined ? {} : { https }),
-      noProxy: network.proxy.noProxy,
-    },
+    proxy,
     caPems: network.ca.loadedCerts.map((cert) => cert.pem),
     trustHost: network.ca.trustHost,
   };
@@ -144,6 +148,8 @@ export const resolveSetupNetworkTrust = (
     const loadedCerts = yield* Effect.all(plan.caCertPaths.map(loadCustomCa), { concurrency: "unbounded" });
 
     return {
+      // §6.8 defaults are deliberately asymmetric: CA material is not secret so inject is on,
+      // while proxy URLs may embed credentials so inject stays opt-in.
       proxy: {
         ...plan.proxy,
         injectIntoServices: config.network?.proxy?.injectIntoServices ?? false,
@@ -151,8 +157,8 @@ export const resolveSetupNetworkTrust = (
       ca: {
         trustHost: plan.trustHost,
         certs: plan.caCertPaths,
-        injectIntoServices: config.network?.ca?.injectIntoServices ?? true,
         loadedCerts,
+        injectIntoServices: config.network?.ca?.injectIntoServices ?? true,
       },
     };
   });

@@ -17,8 +17,8 @@ import {
 } from "../../src/cli/oclif/commands/meta/setup-steps.ts";
 
 const network = {
-  proxy: { noProxy: [] },
-  ca: { trustHost: true, certs: [], loadedCerts: [] },
+  proxy: { noProxy: [], injectIntoServices: false },
+  ca: { trustHost: true, certs: [], loadedCerts: [], injectIntoServices: true },
 } satisfies ResolvedSetupNetworkTrust;
 
 const slowProvider = { capabilities: { bindMountPerformance: "slow" } } as const;
