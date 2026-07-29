@@ -136,3 +136,20 @@ Spec SoT:
   - Preserve the shared loader's tagged failure as `cause` when adapting it to consumer-specific
     setup or HTTP errors, so path and remediation context survive without duplicating filesystem IO.
 ---
+
+## 2026-07-29 14:07 CDT - US-484 Review
+- Restored the adjacent tarball-download trust contract and preserved CA-path remediation as the
+  structured `HttpRequestError.remediation` field, while locking global inject-flag fallback when a
+  service supplies no override and correcting the guide's per-resolution loading description.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit
+  rejected the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected treating the resolver's lack of a production planner
+  caller as a US-484 failure because the source PRD assigns planner wiring and path containment to US-486.
+- Review notes (deferred/rejected): Rejected bounding loader concurrency as out of scope; the shared
+  seam retains the prior same-user-controlled config behavior and introduces no new remote input path.
+- Verification: typecheck, lint passed; 143 focused and adjacent tests passed with 392 assertions;
+  focused guide execution, guide lint, guide coverage, and base-aware guide drift passed.
+- **Learnings for future iterations:** Boundary adapters must copy remediation onto the consumer's
+  top-level tagged error as well as preserve the lower-level cause, because structured result encoding
+  does not mine nested causes.
+---
