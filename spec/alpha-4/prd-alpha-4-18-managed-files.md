@@ -23,8 +23,8 @@ management modes, and the migration of the one existing on-disk-scaffold consume
 `DataMover` (PRD-16) and `RemoteSource` (PRD-17) shape: the user-facing *consumers* — CMS
 settings management, `lando add <service>`, devcontainer generation, the user-facing
 `files:` Landofile key, the `lando files *` command surface, and the `keys`-mode
-structural merge — ship in 4.x. The marker safety model is deliberately **safer than
-DDEV's `#ddev-generated`**: an in-place user edit under a still-present marker is detected
+structural merge — ship in 4.x. The marker safety model is deliberately **stricter than a
+bare generated-file marker**: an in-place user edit under a still-present marker is detected
 via the ledger checksum and surfaces as a *conflict* (skip + `lando doctor`), not a silent
 overwrite.
 
@@ -396,7 +396,7 @@ generation, the `files:` key) are owned by the 4.x PRDs that ship those consumer
 ## Open Questions
 
 - Default conflict policy: `onConflict: "skip"` + `lando doctor` (safe, recommended) vs
-  DDEV's overwrite-marked-files behavior, with `--force`? Default: `skip` for Alpha 4 — a
+  unconditional overwrite of marked files, with `--force`? Default: `skip` for Alpha 4 — a
   detected in-place edit is never silently clobbered; revisit only if field data shows the
   skip is surprising.
 - Ledger location: `userData` local + rebuildable-from-markers (recommended, this PRD) vs a

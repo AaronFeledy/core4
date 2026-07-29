@@ -792,7 +792,7 @@ The §13.1 provider contract suite gains a data-plane section run against `TestR
 
 Core owns the remote-sync intent, schemas, tagged errors, CLI/API shape, safety rules, the `Sync` lifecycle events, and the contract suites. Two §4.2 pluggable abstractions compose to do the work, and the split is the whole design: **`RemoteSource`** owns *where data lives and how to move it across the network* (the egress half), and **`Dataset`** owns *what a slice of app state is and how to capture/apply it locally* (the landing half). A portable artifact is the seam between them. This part is **contract-only for Beta 1** (frozen in PRD-17, mirroring the §10.2.2 `TunnelService` freeze); the bundled generic remotes, the first hoster plugins, the `database`/`files` `Dataset` implementations, and the real `app:pull`/`app:push` connector wiring ship in 4.1.
 
-**Scope.** Remote sync moves **datasets — database, user files, and config — never application code.** Code is git's job (matching DDEV/Docksal). A `RemoteSource` that would write into the app's tracked source tree is rejected (`DatasetBindingError`). `pull` is destructive locally (overwrites a dataset); `push` is destructive remotely.
+**Scope.** Remote sync moves **datasets — database, user files, and config — never application code.** Code is git's job. A `RemoteSource` that would write into the app's tracked source tree is rejected (`DatasetBindingError`). `pull` is destructive locally (overwrites a dataset); `push` is destructive remotely.
 
 **Why two abstractions, not one monolithic hoster abstraction.** A monolithic hosting provider re-implements DB dump, file tar, gzip, progress, and redaction per provider — an N×M explosion. Splitting `Dataset` (a `database` dataset is identical whether the remote is Pantheon, rsync, or S3) from `RemoteSource` (an rsync transport works for DB *and* files) makes it N+M: a new hoster is one `RemoteSource`; a new dataset kind is one `Dataset`; they compose for free. "Hosting" is the marquee *category* of `RemoteSource`, not the contract name — the contract also covers rsync/ssh/s3/url/local and future peer/CI-artifact remotes.
 
@@ -937,7 +937,7 @@ Decision table:
 | Ledger state is `adopted` | `skip-adopted` |
 | Marker was removed from a previously managed file | `adopt-detected` then `skip-adopted` |
 
-This is safer than DDEV's `#ddev-generated` rule: an in-place user edit under a still-present marker is detected through the ledger checksum and is a conflict by default, not a silent overwrite.
+This is safer than a bare generated-file marker rule: an in-place user edit under a still-present marker is detected through the ledger checksum and is a conflict by default, not a silent overwrite.
 
 #### 10.13.4 Errors
 
