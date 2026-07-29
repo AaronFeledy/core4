@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Runtime } from "effect";
 
-import { RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
+import { DownloadFetchError, RecipeManifestNotFoundError, RecipeSourceError } from "@lando/sdk/errors";
 import { RecipeManifestService } from "@lando/sdk/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
@@ -528,8 +528,19 @@ describe("initApp tarball source boundary", () => {
           } catch (error) {
             caught = error;
           }
-          expect(caught).toBeInstanceOf(Error);
-          expect((caught as Error).message).toContain(`CA certificate could not be read: ${missingCa}`);
+          expect(Runtime.isFiberFailure(caught)).toBe(true);
+          if (!Runtime.isFiberFailure(caught)) throw new Error("expected Effect fiber failure");
+          const failure = Cause.failureOption(caught[Runtime.FiberFailureCauseId]);
+          expect(failure._tag).toBe("Some");
+          if (failure._tag !== "Some") throw new Error("expected typed download failure");
+          expect(failure.value).toBeInstanceOf(DownloadFetchError);
+          if (!(failure.value instanceof DownloadFetchError))
+            throw new Error("expected download fetch failure");
+          expect(failure.value._tag).toBe("DownloadFetchError");
+          expect(failure.value.message).toContain(`CA certificate could not be read: ${missingCa}`);
+          expect(failure.value.remediation).toContain("network.ca.certs");
+          expect(failure.value.remediation).toContain("LANDO_NETWORK_CA_CERTS");
+          expect(failure.value.remediation).toContain("security.ca");
         });
       });
     });

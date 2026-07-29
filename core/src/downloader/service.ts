@@ -403,6 +403,7 @@ export const makeDownloaderService = (
                 message: error.message,
                 urlOrigin: origin,
                 ...(error.status === undefined ? {} : { status: error.status }),
+                ...(error.remediation === undefined ? {} : { remediation: error.remediation }),
                 ...(error.cause === undefined ? {} : { cause: error.cause }),
               }),
             ),
