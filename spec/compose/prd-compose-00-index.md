@@ -35,7 +35,7 @@ This PRD set picks up at **US-466** (Beta 1 ended at US-465) and runs through **
 
 - No Compose project-file compatibility: no `extends`, no multi-file override semantics, no `!reset`/`!override` tags, no compose-go loader port.
 - No Swarm orchestration (`deploy` beyond `resources`), no `container_name`, `network_mode`, or `links`.
-- No new coarse provider-capability axis beyond `composeSpec`; the existing axis gains only a fail-closed knob-level refinement (`composeKnobs`). No provider-neutral planner semantics for preserved knobs.
+- No new coarse provider-capability axis beyond `composeSpec`; the existing axis gains only fail-closed detail refinements (`composeKnobs`, `composeServiceFields`, `composePreservedPaths`, `composeProjectFields`). No provider-neutral planner semantics for preserved knobs.
 - No changes to Lando's own composition primitives (`includes:`, recipes, §7.2 merge).
 
 ## PRDs in this set
@@ -45,7 +45,7 @@ This PRD set picks up at **US-466** (Beta 1 ended at US-465) and runs through **
 | 01 | [Spec-alignment substrate](./prd-compose-01-alignment-substrate.md) | vendored pinned compose-go schema + committed disposition matrix + `check:compose-coverage` gate, automated upstream-bump workflow | US-466..US-467 | — |
 | 02 | [Service-key vocabulary normalization](./prd-compose-02-service-vocabulary.md) | Compose spellings + alternate forms, `ports`/`expose`/`volumes` long syntax, Compose `healthcheck` shape, `build:` shape discrimination, `depends_on` conditions in orchestration | US-468..US-472 | PRD-01 (matrix classifies the keys) |
 | 03 | [Per-container runtime knobs](./prd-compose-03-runtime-knobs.md) | knob-tier schema shapes + preserve + capability planning path, Podman realization | US-473..US-474 | PRD-01; PRD-02 (US-469 tmpfs routing) |
-| 04 | [Rejection surface & conformance](./prd-compose-04-rejection-and-conformance.md) | tagged rejections + remediation (incl. `kind: compose` fragments and YAML override tags), conformance fixtures, native-field prerequisite, closeout: published docs matrix + executable guide + SDK snapshot reconciliation | US-475..US-482 | PRD-01..03 |
+| 04 | [Rejection surface & conformance](./prd-compose-04-rejection-and-conformance.md) | tagged rejections + remediation (incl. `kind: compose` fragments and YAML override tags), conformance fixtures, native-field prerequisite, closeout: published docs matrix + executable guide + SDK snapshot reconciliation | US-475..US-483 | PRD-01..03 |
 
 ## Verification contract
 
@@ -55,4 +55,4 @@ Every story carries TDD acceptance criteria plus `Tests pass`, `Typecheck passes
 
 - Whether `deploy.resources` should eventually normalize into a provider-neutral `resources:` plan field instead of riding `extensions.compose`; deferred until a second provider needs it.
 - Whether `profiles:` should gain active semantics (service subset activation) or remain shape-accepted and inert; current disposition is `preserved`-inert pending user signal.
-- Resolved: the `composeSpec` tier is retained and gains the optional, fail-closed `composeKnobs` detail declaration for per-knob support.
+- Resolved: the `composeSpec` tier is retained and gains optional, fail-closed detail declarations — `composeKnobs` for per-knob support, `composeServiceFields` for service-level families, `composePreservedPaths` for exact preserved descendants, and `composeProjectFields` for top-level project fields.
