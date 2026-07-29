@@ -35,11 +35,13 @@ export interface ResolvedSetupNetworkTrust extends NetworkConfig {
     readonly http?: string;
     readonly https?: string;
     readonly noProxy: ReadonlyArray<string>;
+    readonly injectIntoServices: boolean;
   };
   readonly ca: {
     readonly trustHost: boolean;
     readonly certs: ReadonlyArray<string>;
     readonly loadedCerts: ReadonlyArray<LoadedNetworkCaCert>;
+    readonly injectIntoServices: boolean;
   };
 }
 
@@ -73,11 +75,15 @@ const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNet
   });
 
 /** Adapt setup's resolved trust onto the core-private `ResolvedNetworkTrust` consumed by `HttpClient`. */
-export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => ({
-  proxy: network.proxy,
-  caPems: network.ca.loadedCerts.map((cert) => cert.pem),
-  trustHost: network.ca.trustHost,
-});
+export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): ResolvedNetworkTrust => {
+  // `injectIntoServices` is a service-planning flag; egress trust must not carry it.
+  const { injectIntoServices: _injectIntoServices, ...proxy } = network.proxy;
+  return {
+    proxy,
+    caPems: network.ca.loadedCerts.map((cert) => cert.pem),
+    trustHost: network.ca.trustHost,
+  };
+};
 
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const text = cause instanceof Error ? `${cause.name} ${cause.message}` : String(cause);
@@ -133,11 +139,17 @@ export const resolveSetupNetworkTrust = (
     const loadedCerts = yield* Effect.all(plan.caCertPaths.map(loadCustomCa), { concurrency: "unbounded" });
 
     return {
-      proxy: plan.proxy,
+      // §6.8 defaults are deliberately asymmetric: CA material is not secret so inject is on,
+      // while proxy URLs may embed credentials so inject stays opt-in.
+      proxy: {
+        ...plan.proxy,
+        injectIntoServices: config.network?.proxy?.injectIntoServices ?? false,
+      },
       ca: {
         trustHost: plan.trustHost,
         certs: plan.caCertPaths,
         loadedCerts,
+        injectIntoServices: config.network?.ca?.injectIntoServices ?? true,
       },
     };
   });

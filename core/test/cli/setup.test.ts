@@ -32,6 +32,7 @@ import {
 import {
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
+  resolveSetupNetworkTrust,
 } from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
@@ -1296,6 +1297,7 @@ describe("meta:setup command", () => {
                 readonly http?: string;
                 readonly https?: string;
                 readonly noProxy: readonly string[];
+                readonly injectIntoServices: boolean;
               };
             }) =>
               Effect.sync(() => {
@@ -1303,6 +1305,7 @@ describe("meta:setup command", () => {
                   http: "http://env-http-proxy.example:8080",
                   https: "http://env-https-proxy.example:8080",
                   noProxy: ["localhost", "internal.example"],
+                  injectIntoServices: false,
                 });
               }),
           })
@@ -1424,6 +1427,27 @@ describe("meta:setup command", () => {
     expect(error.kind).toBe("blocked-registry");
     expect(error.remediation ?? "").toContain("network.proxy");
     expect(setupCalls).toBe(0);
+  });
+
+  test("resolved setup network trust carries the schema inject defaults when network is absent", async () => {
+    const resolved = await Effect.runPromise(resolveSetupNetworkTrust({} as GlobalConfig, {}));
+
+    expect(resolved.ca.injectIntoServices).toBe(true);
+    expect(resolved.proxy.injectIntoServices).toBe(false);
+  });
+
+  test("resolved setup network trust carries configured inject flags", async () => {
+    const config = {
+      network: {
+        ca: { trustHost: true, certs: [], injectIntoServices: false },
+        proxy: { noProxy: [], injectIntoServices: true },
+      },
+    } as unknown as GlobalConfig;
+
+    const resolved = await Effect.runPromise(resolveSetupNetworkTrust(config, {}));
+
+    expect(resolved.ca.injectIntoServices).toBe(false);
+    expect(resolved.proxy.injectIntoServices).toBe(true);
   });
 
   test("network trust probe maps HTTP 407 responses to proxy authentication failures", async () => {
