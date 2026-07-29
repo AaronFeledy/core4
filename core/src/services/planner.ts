@@ -78,6 +78,10 @@ import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
 import { collectComposeKnobs, findUnsupportedComposeKnob, mergeComposeKnobs } from "./compose-knobs.ts";
+import {
+  collectComposePreservedPaths,
+  findUnsupportedComposePreservedPath,
+} from "./compose-preserved-paths.ts";
 import { collectComposeServiceFields, findUnsupportedComposeServiceField } from "./compose-service-fields.ts";
 import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
@@ -273,6 +277,26 @@ const assertComposeServiceFieldsSupported = (
       capability: "composeSpec",
       providerId: String(providerId),
       remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composeServiceFields support for ${use.family}, or move provider-specific intent under providers.<id>.`,
+    }),
+  );
+};
+
+const assertComposePreservedPathsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: AppPlan["services"],
+): Effect.Effect<void, CapabilityError> => {
+  const use = findUnsupportedComposePreservedPath(collectComposePreservedPaths(services), capabilities);
+  if (use === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `Service ${use.service} uses preserved Compose path ${use.key}, which provider ${String(providerId)} does not support.`,
+      service: use.service,
+      key: use.key,
+      feature: `compose preserved path ${use.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composePreservedPaths support for ${use.key}, or move provider-specific intent under providers.<id>.`,
     }),
   );
 };
@@ -1266,6 +1290,7 @@ const planApp = (
         yield* validateServiceDependencies(appRoot, cached.services);
         yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
+        yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
         return cached;
       }
     }
@@ -1661,6 +1686,7 @@ const planApp = (
     });
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
+    yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
     if (
       cacheService !== undefined &&
       !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)

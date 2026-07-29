@@ -73,6 +73,13 @@ const providerLandoCapabilities: ProviderCapabilities = {
   providerExtensions: ["compose", "labels", "registryCredentials"],
 };
 
+const composePreservedPathCapabilities: ProviderCapabilities = {
+  ...providerLandoCapabilities,
+  composePreservedPaths: {
+    supported: ["depends_on.*.restart", "healthcheck.start_interval"],
+  },
+};
+
 const slowBindMountCapabilities: ProviderCapabilities = {
   ...providerLandoCapabilities,
   bindMountPerformance: "slow",
@@ -1829,7 +1836,9 @@ describe("AppPlannerLive", () => {
 
     // When
     const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
+      Effect.flatMap(AppPlanner, (appPlanner) =>
+        appPlanner.plan(landofile, composePreservedPathCapabilities),
+      ).pipe(
         Effect.provide(AppPlannerLive),
         Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
       ),
@@ -2880,7 +2889,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await plan(landofile);
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
 
     // Then
     const servicePlan = appPlan.services[ServiceName.make("web")];
@@ -2909,7 +2918,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await plan(landofile);
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.extensions).toMatchObject({
