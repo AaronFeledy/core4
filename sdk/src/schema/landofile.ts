@@ -380,36 +380,37 @@ const ServiceSecurity = Schema.Struct({
 });
 
 const ServiceSecurityCaAlias = Schema.Union(Schema.String, Schema.Array(Schema.String));
+const Forbidden = Schema.optional(Schema.Never);
 
 const ServiceSecurityInput = Schema.Union(
   Schema.Struct({
     ca: Schema.optional(Schema.Array(Schema.String)),
-    cas: Schema.optional(Schema.Never),
-    "certificate-authority": Schema.optional(Schema.Never),
-    "certificate-authorities": Schema.optional(Schema.Never),
+    cas: Forbidden,
+    "certificate-authority": Forbidden,
+    "certificate-authorities": Forbidden,
     inheritNetworkCa: Schema.optional(Schema.Boolean),
     inheritNetworkProxy: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
-    ca: Schema.optional(Schema.Never),
+    ca: Forbidden,
     cas: ServiceSecurityCaAlias,
-    "certificate-authority": Schema.optional(Schema.Never),
-    "certificate-authorities": Schema.optional(Schema.Never),
+    "certificate-authority": Forbidden,
+    "certificate-authorities": Forbidden,
     inheritNetworkCa: Schema.optional(Schema.Boolean),
     inheritNetworkProxy: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
-    ca: Schema.optional(Schema.Never),
-    cas: Schema.optional(Schema.Never),
+    ca: Forbidden,
+    cas: Forbidden,
     "certificate-authority": ServiceSecurityCaAlias,
-    "certificate-authorities": Schema.optional(Schema.Never),
+    "certificate-authorities": Forbidden,
     inheritNetworkCa: Schema.optional(Schema.Boolean),
     inheritNetworkProxy: Schema.optional(Schema.Boolean),
   }),
   Schema.Struct({
-    ca: Schema.optional(Schema.Never),
-    cas: Schema.optional(Schema.Never),
-    "certificate-authority": Schema.optional(Schema.Never),
+    ca: Forbidden,
+    cas: Forbidden,
+    "certificate-authority": Forbidden,
     "certificate-authorities": ServiceSecurityCaAlias,
     inheritNetworkCa: Schema.optional(Schema.Boolean),
     inheritNetworkProxy: Schema.optional(Schema.Boolean),
@@ -720,11 +721,11 @@ export const BunShellScriptFrontMatter = Schema.Struct({
 export type BunShellScriptFrontMatter = typeof BunShellScriptFrontMatter.Type;
 
 /**
- * ToolingIncludeShape — one entry of the `toolingIncludes:` shorthand map
- * (§8.5.8). The map key is the include namespace; the entry names a local
- * tooling fragment carrying only `tooling:` and `toolingIncludes:`.
+ * ToolingIncludeShape — one entry of the `toolingIncludes:` shorthand map.
+ * The map key is the include namespace; the entry names a local tooling
+ * fragment carrying only `tooling:` and `toolingIncludes:`.
  *
- * Deliberately omitted for Beta 1 (§8.5.8): `dir:` (task-level `dir:` is rejected) and
+ * Deliberately omitted: `dir:` (task-level `dir:` is rejected) and
  * `checksum:` (tooling fragments are local-file only, so there is no remote
  * source to pin).
  */
