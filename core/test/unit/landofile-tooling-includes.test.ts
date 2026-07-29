@@ -285,6 +285,29 @@ describe("tooling includes — failure modes", () => {
     expect(resolved.tooling).toBeUndefined();
   });
 
+  test("optional does not suppress an outside-root fragment", async () => {
+    // Given a missing optional fragment whose authored path escapes the app root
+    const outside = join(appRoot, "..", "missing-tooling-fragment.yml");
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.either(
+        resolveLandofileIncludes({
+          landofile: { toolingIncludes: { out: { file: outside, optional: true } } },
+          appRoot,
+          cacheRoot: join(appRoot, ".cache"),
+        }),
+      ),
+    );
+
+    // Then containment still fails closed before optional missing-file handling
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left._tag).toBe("LandofileIncludeError");
+      if (result.left._tag === "LandofileIncludeError") expect(result.left.kind).toBe("outside-root");
+    }
+  });
+
   test("a cyclic tooling include fails with ToolingIncludeCycleError", async () => {
     // Given two fragments that include each other
     await writeFile(
@@ -303,7 +326,9 @@ describe("tooling includes — failure modes", () => {
 
     // Then
     expect(error._tag).toBe("ToolingIncludeCycleError");
-    expect(error.remediation.length).toBeGreaterThan(0);
+    if (error._tag === "ToolingIncludeCycleError") {
+      expect(error.remediation.length).toBeGreaterThan(0);
+    }
   });
 
   test("a fragment outside the app root is rejected", async () => {

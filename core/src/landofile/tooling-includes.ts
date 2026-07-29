@@ -124,7 +124,8 @@ const locateFragment = (
   Effect.tryPromise({
     try: async (): Promise<string | undefined> => {
       const candidate = isAbsolute(entry.source) ? entry.source : resolve(sourceRoot, entry.source);
-      if (!(await Bun.file(candidate).exists())) {
+      const contained = await assertUnderRoot(appRoot, candidate, entry.source);
+      if (!(await Bun.file(contained).exists())) {
         if (entry.optional) return undefined;
         throw includeError({
           message: `Tooling include ${entry.source} was not found at ${candidate}.`,
@@ -133,7 +134,7 @@ const locateFragment = (
           remediation: MISSING_REMEDIATION,
         });
       }
-      return assertUnderRoot(appRoot, candidate, entry.source);
+      return contained;
     },
     catch: (cause) =>
       cause instanceof LandofileIncludeError
