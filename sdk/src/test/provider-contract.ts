@@ -1,6 +1,7 @@
 import { Duration, Effect, Either, Schema, Stream } from "effect";
 
 import {
+  ComposePreservedPathKey,
   ComposeServiceFieldKey,
   type HostPlatform,
   ProviderCapabilities,
@@ -70,6 +71,17 @@ export const runProviderContract = (provider: RuntimeProviderShape): Effect.Effe
     yield* requireContract(
       declaredComposeServiceFields.every((key) => ComposeServiceFieldKey.literals.includes(key)),
       "compose service field support uses published keys",
+      provider.capabilities,
+    );
+    const declaredComposePreservedPaths = provider.capabilities.composePreservedPaths?.supported ?? [];
+    yield* requireContract(
+      declaredComposePreservedPaths.length === 0 || provider.capabilities.composeSpec === "native",
+      "compose preserved path support requires native composeSpec",
+      provider.capabilities,
+    );
+    yield* requireContract(
+      declaredComposePreservedPaths.every((key) => ComposePreservedPathKey.literals.includes(key)),
+      "compose preserved path support uses published keys",
       provider.capabilities,
     );
     for (const key of REQUIRED_CAPABILITY_KEYS) {

@@ -74,6 +74,32 @@ describe("RuntimeProvider contract", () => {
     await expectContractFailure(provider, "compose service field support requires native composeSpec");
   });
 
+  test("rejects compose preserved path support when composeSpec is not native", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        composeSpec: "portable" as const,
+        composeKnobs: { supported: [] },
+        composePreservedPaths: { supported: ["healthcheck.start_interval"] as const },
+      },
+    } satisfies typeof TestRuntimeProvider;
+
+    await expectContractFailure(provider, "compose preserved path support requires native composeSpec");
+  });
+
+  test("accepts a partial native compose preserved path declaration", async () => {
+    const provider = {
+      ...TestRuntimeProvider,
+      capabilities: {
+        ...TestRuntimeProvider.capabilities,
+        composePreservedPaths: { supported: ["healthcheck.start_interval"] as const },
+      },
+    } satisfies typeof TestRuntimeProvider;
+
+    await expect(Effect.runPromise(runProviderContract(provider))).resolves.toBeUndefined();
+  });
+
   test("documents the Phase 1 provider assertions", async () => {
     expect(TestRuntimeProvider.capabilities.serviceExec).toBe(true);
     expect(TestRuntimeProvider.capabilities.serviceLogs).toBe(true);
