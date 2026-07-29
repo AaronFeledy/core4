@@ -20,10 +20,13 @@ import { RuntimeProvider } from "@lando/sdk/services";
 describe("provider-lando capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composePreservedPaths" && field !== "hostProxy")
+      .filter(
+        (field) =>
+          field !== "composePreservedPaths" && field !== "composeProjectFields" && field !== "hostProxy",
+      )
       .sort();
     const expectedWindowsFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composePreservedPaths")
+      .filter((field) => field !== "composePreservedPaths" && field !== "composeProjectFields")
       .sort();
     const linux = mvpProviderCapabilities("linux");
     const macos = mvpProviderCapabilities("darwin");
@@ -41,6 +44,9 @@ describe("provider-lando capabilities", () => {
     expect(linux.artifactBuild).toBe(true);
     expect(macos.artifactBuild).toBe(true);
     expect(windows.artifactBuild).toBe(true);
+    expect(linux.composeProjectFields).toBeUndefined();
+    expect(macos.composeProjectFields).toBeUndefined();
+    expect(windows.composeProjectFields).toBeUndefined();
   });
 
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
@@ -95,7 +101,7 @@ describe("provider-lando capabilities", () => {
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);
     expect(Object.keys(runtimeProvider.capabilities).sort()).toEqual(
       Object.keys(ProviderCapabilities.fields)
-        .filter((field) => field !== "composePreservedPaths")
+        .filter((field) => field !== "composePreservedPaths" && field !== "composeProjectFields")
         .sort(),
     );
   });

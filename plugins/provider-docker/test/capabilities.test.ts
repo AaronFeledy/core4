@@ -80,7 +80,10 @@ const listenTcp = (server: Server): Promise<number> =>
 describe("provider-docker capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composePreservedPaths" && field !== "hostProxy")
+      .filter(
+        (field) =>
+          field !== "composePreservedPaths" && field !== "composeProjectFields" && field !== "hostProxy",
+      )
       .sort();
     const linux = dockerCapabilitiesForPlatform("linux");
     const macos = dockerCapabilitiesForPlatform("darwin");
@@ -94,6 +97,8 @@ describe("provider-docker capabilities", () => {
     expect(macos.sharedCrossAppNetwork).toBe(true);
     expect(linux.composePreservedPaths).toBeUndefined();
     expect(macos.composePreservedPaths).toBeUndefined();
+    expect(linux.composeProjectFields).toBeUndefined();
+    expect(macos.composeProjectFields).toBeUndefined();
   });
 
   test("classifies Docker host bind mount performance", () => {
@@ -343,7 +348,7 @@ describe("provider-docker capabilities", () => {
 
   test("declares the Windows capability matrix with slow bind mount performance", () => {
     const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "composePreservedPaths")
+      .filter((field) => field !== "composePreservedPaths" && field !== "composeProjectFields")
       .sort();
     const windows = dockerCapabilitiesForPlatform("win32");
 
@@ -352,6 +357,7 @@ describe("provider-docker capabilities", () => {
     expect(windows.bindMounts).toBe(true);
     expect(windows.sharedCrossAppNetwork).toBe(true);
     expect(windows.composePreservedPaths).toBeUndefined();
+    expect(windows.composeProjectFields).toBeUndefined();
     expect(windows).toEqual(windowsDockerCapabilities);
   });
 
