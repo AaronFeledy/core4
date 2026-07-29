@@ -19,7 +19,6 @@ import type { ReadStream } from "node:fs";
  * `Effect.interrupt` aborts the in-flight transfer. An unsupported scheme (or a
  * disallowed `file://`) fails before any connection opens.
  */
-import { readFile } from "node:fs/promises";
 import { type FileHandle, open } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { Cause, type Context, DateTime, Effect, Exit, Layer, Option, type Scope, Stream } from "effect";
@@ -42,6 +41,7 @@ import {
   type SystemCaProvider,
   defaultSystemCaPems,
   fetchInitForNetwork,
+  loadCaPems,
   resolveNetworkTrustPlan,
 } from "./network-trust.ts";
 import { HttpClient, type HttpClientShape } from "./service.ts";
@@ -164,22 +164,6 @@ const releaseWebReader = (reader: WebBodyReader) =>
     }
   });
 
-const loadCaPems = (paths: ReadonlyArray<string>): Effect.Effect<ReadonlyArray<string>, HttpRequestError> =>
-  Effect.all(
-    paths.map((path) =>
-      Effect.tryPromise({
-        try: () => readFile(path, "utf-8"),
-        catch: (cause) =>
-          new HttpRequestError({
-            message: `Failed to read CA certificate: ${path}`,
-            urlOrigin: "unknown",
-            cause,
-          }),
-      }),
-    ),
-    { concurrency: "unbounded" },
-  );
-
 /** Resolve trust for a request: injected `NetworkTrust` wins, else config+env. */
 const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpRequestError> =>
   Effect.gen(function* () {
@@ -199,8 +183,18 @@ const resolveTrust = (): Effect.Effect<ResolvedNetworkTrust | undefined, HttpReq
           cause,
         }),
     });
-    const caPems = yield* loadCaPems(plan.caCertPaths);
-    return { proxy: plan.proxy, caPems, trustHost: plan.trustHost };
+    const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
+      Effect.mapError(
+        (error) =>
+          new HttpRequestError({
+            message: error.message,
+            urlOrigin: "unknown",
+            remediation: error.remediation,
+            cause: error,
+          }),
+      ),
+    );
+    return { proxy: plan.proxy, caPems: loadedCerts.map((cert) => cert.pem), trustHost: plan.trustHost };
   });
 
 interface HttpCallEvents {

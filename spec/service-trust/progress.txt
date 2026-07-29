@@ -26,6 +26,9 @@ Spec SoT:
 - After any `ServiceConfig` field change, run `bun run codegen:schema-snapshot` early: it refreshes
   `dist/schemas`, `dist/command-schemas`, and `docs/reference/schemas`, and it runs the
   public-field-description gate.
+- Keep `@lando/sdk/network-trust` path-only and file-IO-free. Core's shared `loadCaPems` seam owns
+  UTF-8 PEM loading, stable digests, and the tagged path/remediation failure; consumers map that
+  failure into their own boundary errors rather than reading CA files again.
 
 ## Status
 
@@ -104,4 +107,56 @@ Spec SoT:
 - Split/excise decisions: None.
 - Verification: typecheck and lint passed; 58 focused tests with 155 assertions passed; generated-output,
   guide lint, and guide coverage passed; guide drift honored the recorded US-483 skip.
+---
+
+## 2026-07-29 13:53 CDT - US-484
+- Centralized CA PEM loading for setup and outbound HTTP behind one core seam that returns the host
+  path, UTF-8 PEM, and stable SHA-256 digest, with a tagged unreadable-path failure naming all global
+  and Landofile correction surfaces.
+- Added pure service-inject resolution for asymmetric CA/proxy defaults, per-service overrides,
+  separate global and project CA path lists, and decoded configs whose optional network parents are
+  absent; the SDK network-trust resolver remains file-IO-free.
+- Documented host CA path resolution, digest behavior, and failure remediation in the executable
+  corporate network trust guide.
+- Verification: typecheck, lint passed; 148 focused and adjacent tests passed with 365 assertions;
+  guide lint, guide coverage, generated-output, import-cycle, and network-boundary gates passed;
+  direct Effect surface verification passed with clean temp-directory teardown; high-rigor review
+  approved unconditionally.
+- **Learnings for future iterations:**
+  - Resolve optional `network.ca` / `network.proxy` parents before reading decoded child defaults;
+    decoded child fields are total only when their parent block exists.
+  - Preserve the shared loader's tagged failure as `cause` when adapting it to consumer-specific
+    setup or HTTP errors, so path and remediation context survive without duplicating filesystem IO.
+---
+
+## 2026-07-29 14:07 CDT - US-484 Review
+- Restored the adjacent tarball-download trust contract and preserved CA-path remediation as the
+  structured `HttpRequestError.remediation` field, while locking global inject-flag fallback when a
+  service supplies no override and correcting the guide's per-resolution loading description.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit
+  rejected the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected treating the resolver's lack of a production planner
+  caller as a US-484 failure because the source PRD assigns planner wiring and path containment to US-486.
+- Review notes (deferred/rejected): Rejected bounding loader concurrency as out of scope; the shared
+  seam retains the prior same-user-controlled config behavior and introduces no new remote input path.
+- Verification: typecheck, lint passed; 143 focused and adjacent tests passed with 392 assertions;
+  focused guide execution, guide lint, guide coverage, and base-aware guide drift passed.
+- **Learnings for future iterations:** Boundary adapters must copy remediation onto the consumer's
+  top-level tagged error as well as preserve the lower-level cause, because structured result encoding
+  does not mine nested causes.
+---
+
+## 2026-07-29 14:36 CDT - US-484 Drift Audit
+- Trigger: 2 cycles, 370 changed lines, 8 commits
+- Category 2: Restored explicit empty-cert-list coverage and production-path proof that downloader
+  failures preserve the shared CA remediation.
+- Category 4: Removed a forwarding CA type alias and two unnecessary named type exports.
+- Category 5: Removed unrelated prior-story babysit history from the branch.
+- Category 6: Earlier aggregate test totals lacked reconstructible path sets and remain unverified;
+  this audit records fresh path-level checks instead.
+- Fixed: Added the missing fixture, propagated remediation through the downloader boundary, deleted
+  dead type ceremony, and removed collateral progress history.
+- Split/excise decisions: None; US-484 remains the original contract and `passes` remains true.
+- Verification: typecheck and lint passed; 73 focused tests with 248 assertions passed; network,
+  import-cycle, generated-output, guide lint, guide coverage, and base-aware guide-drift gates passed.
 ---

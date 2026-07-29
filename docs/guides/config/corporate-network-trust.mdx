@@ -26,6 +26,16 @@ For compatibility, `cas`, `certificate-authority`, and `certificate-authorities`
 `security`. Each alias accepts one path or a list and canonicalizes to `security.ca`. The top-level
 `certs` field configures a service's leaf TLS certificate and is not an alias for additional CAs.
 
+## Resolve host CA paths
+
+Host-global CA paths come from `network.ca.certs` or the JSON array in
+`LANDO_NETWORK_CA_CERTS`. Use host-readable absolute paths; one shared loader supplies setup and
+outbound HTTP with the UTF-8 PEM bytes and a stable SHA-256 digest for service planning. Landofile
+`security.ca` remains the project-local CA path list.
+
+If a path cannot be read, Lando names that path and points to all three correction surfaces:
+`network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`.
+
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
     <Step name="declare-security">
@@ -33,6 +43,13 @@ For compatibility, `cas`, `certificate-authority`, and `certificate-authorities`
       <Variable name="aliases" value="cas, certificate-authority, certificate-authorities" display="Use a scalar or list; each form normalizes to security.ca" />
       <Variable name="inheritFlags" value="inheritNetworkCa, inheritNetworkProxy" display="Override host network injection for this service only" />
       <Variable name="leafTls" value="certs" display="Keep service leaf TLS separate from additional certificate authorities" />
+    </Step>
+  </Scenario>
+  <Scenario id="resolve-corporate-ca-paths" render={false} reason="Focused core network-trust tests cover host path loading, stable digests, and unreadable-path remediation without requiring private CA material">
+    <Step name="load-host-ca-paths">
+      <Variable name="globalConfig" value="network.ca.certs" display="Read host-global CA files from global config" />
+      <Variable name="environment" value="LANDO_NETWORK_CA_CERTS" display="Append host-global CA files from a JSON path array" />
+      <Variable name="projectConfig" value="security.ca" display="Keep project-local CA paths in the Landofile" />
     </Step>
   </Scenario>
 </Guide>

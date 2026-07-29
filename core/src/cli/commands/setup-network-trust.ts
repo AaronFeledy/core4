@@ -1,14 +1,14 @@
-import { readFile } from "node:fs/promises";
-
 import { Data, Effect } from "effect";
 
 import type { GlobalConfig, NetworkConfig } from "@lando/sdk/schema";
 import { HttpClient } from "@lando/sdk/services";
 
 import {
+  type LoadedCaPem,
   NetworkTrust,
   NetworkTrustResolutionError,
   type ResolvedNetworkTrust,
+  loadCaPems,
   resolveNetworkTrustPlan,
 } from "../../http-client/network-trust.ts";
 
@@ -25,11 +25,6 @@ export class SetupNetworkTrustError extends Data.TaggedError("SetupNetworkTrustE
   readonly cause?: unknown;
 }> {}
 
-export interface LoadedNetworkCaCert {
-  readonly path: string;
-  readonly pem: string;
-}
-
 export interface ResolvedSetupNetworkTrust extends NetworkConfig {
   readonly proxy: {
     readonly http?: string;
@@ -40,7 +35,7 @@ export interface ResolvedSetupNetworkTrust extends NetworkConfig {
   readonly ca: {
     readonly trustHost: boolean;
     readonly certs: ReadonlyArray<string>;
-    readonly loadedCerts: ReadonlyArray<LoadedNetworkCaCert>;
+    readonly loadedCerts: ReadonlyArray<LoadedCaPem>;
     readonly injectIntoServices: boolean;
   };
 }
@@ -81,18 +76,6 @@ const blockedRegistryError = (
         : `The setup artifact registry returned HTTP ${input.status} through the configured network path.`,
     remediation: `Allow GitHub release downloads and Lando runtime bundle URLs through the corporate proxy/firewall, or update network.proxy / HTTP_PROXY / HTTPS_PROXY / NO_PROXY. ${platformNetworkHint()}`,
     ...(input.cause === undefined ? {} : { cause: input.cause }),
-  });
-
-const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNetworkTrustError> =>
-  Effect.tryPromise({
-    try: async () => ({ path, pem: await readFile(path, "utf-8") }),
-    catch: (cause) =>
-      new SetupNetworkTrustError({
-        kind: "missing-custom-ca",
-        message: `Custom CA certificate could not be read: ${path}`,
-        remediation: `Fix network.ca.certs in the global config or LANDO_NETWORK_CA_CERTS so every path points to a readable PEM certificate, then rerun \`lando setup\`. ${platformNetworkHint()}`,
-        cause,
-      }),
   });
 
 /** Adapt setup's resolved trust onto the core-private `ResolvedNetworkTrust` consumed by `HttpClient`. */
@@ -145,10 +128,20 @@ export const resolveSetupNetworkTrust = (
             }),
     });
 
-    const loadedCerts = yield* Effect.all(plan.caCertPaths.map(loadCustomCa), { concurrency: "unbounded" });
+    const loadedCerts = yield* loadCaPems(plan.caCertPaths).pipe(
+      Effect.mapError(
+        (error) =>
+          new SetupNetworkTrustError({
+            kind: "missing-custom-ca",
+            message: error.message,
+            remediation: `${error.remediation} Then rerun \`lando setup\`. ${platformNetworkHint()}`,
+            cause: error,
+          }),
+      ),
+    );
 
     return {
-      // §6.8 defaults are deliberately asymmetric: CA material is not secret so inject is on,
+      // Defaults are deliberately asymmetric: CA material is not secret so inject is on,
       // while proxy URLs may embed credentials so inject stays opt-in.
       proxy: {
         ...plan.proxy,
