@@ -2,6 +2,10 @@ export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
 export {
+  ComposeProjectFieldCapabilities,
+  ComposeProjectFieldKey,
+} from "./compose-project-field-capabilities.ts";
+export {
   ComposeServiceFieldCapabilities,
   ComposeServiceFieldKey,
 } from "./compose-service-field-capabilities.ts";

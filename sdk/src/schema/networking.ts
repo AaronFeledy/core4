@@ -2,6 +2,7 @@ import { Schema } from "effect";
 
 import { ComposeKnobCapabilities } from "./compose-knob-capabilities.ts";
 import { ComposePreservedPathCapabilities } from "./compose-preserved-path-capabilities.ts";
+import { ComposeProjectFieldCapabilities } from "./compose-project-field-capabilities.ts";
 import { ComposeServiceFieldCapabilities } from "./compose-service-field-capabilities.ts";
 import { EndpointPlan as EndpointPlanSchema } from "./endpoint.ts";
 import { AbsolutePath, CommandSpec, PortNumber, ServiceName } from "./primitives.ts";
@@ -263,6 +264,10 @@ export const ProviderCapabilities = Schema.Struct({
   composeServiceFields: Schema.optional(ComposeServiceFieldCapabilities).annotations({
     title: "Compose Service Fields",
     description: "Native-tier fail-closed support declaration for preserved Compose service-level fields.",
+  }),
+  composeProjectFields: Schema.optional(ComposeProjectFieldCapabilities).annotations({
+    title: "Compose Project Fields",
+    description: "Native-tier fail-closed support declaration for preserved Compose project-level fields.",
   }),
   composePreservedPaths: Schema.optional(ComposePreservedPathCapabilities).annotations({
     title: "Compose Preserved Paths",

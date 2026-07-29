@@ -41,12 +41,15 @@ const ARRAY_FIELDS = ["providerExtensions"] as const;
 
 const OPTIONAL_FIELDS = [
   "composeKnobs",
+  "composeProjectFields",
   "composePreservedPaths",
   "composeServiceFields",
   "hostProxy",
 ] as const;
 
 const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_interval"] as const;
+
+const COMPOSE_PROJECT_FIELD_KEYS = ["configs", "secrets"] as const;
 
 const COMPOSE_SERVICE_FIELD_KEYS = ["networks", "configs", "secrets", "profiles", "labels"] as const;
 
@@ -160,7 +163,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(32);
+    expect(actual).toHaveLength(33);
   });
 
   test("every boolean capability accepts only booleans", () => {
@@ -307,6 +310,14 @@ describe("ProviderCapabilities — field set lock", () => {
   test("composePreservedPaths may be absent", () => {
     const decoded = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
     expect(decoded.composePreservedPaths).toBeUndefined();
+  });
+
+  test("composeProjectFields accepts every published project field in contract order", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeProjectFields: { supported: COMPOSE_PROJECT_FIELD_KEYS },
+    });
+    expect(decoded.composeProjectFields?.supported).toEqual(COMPOSE_PROJECT_FIELD_KEYS);
   });
 
   test("composePreservedPaths accepts every published exact path in contract order", () => {
