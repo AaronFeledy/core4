@@ -46,6 +46,32 @@ test("a higher Landofile layer removes internal provenance from its task winner"
   }
 });
 
+test("an authored internal fragment hides its compiled commands", async () => {
+  // Given a Landofile whose only tooling include is marked internal
+  const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-internal-"));
+  const canonicalPath = join(appRoot, ".lando.yml");
+  try {
+    await writeFile(join(appRoot, "tasks.yml"), "tooling:\n  build:\n    cmd: make\n", "utf8");
+    await writeFile(
+      canonicalPath,
+      ["name: hidden", "toolingIncludes:", "  docs:", "    file: ./tasks.yml", "    internal: true", ""].join(
+        "\n",
+      ),
+      "utf8",
+    );
+
+    // When the Landofile is loaded and command metadata is compiled
+    const resolved = await Effect.runPromise(loadLandofileLayers(appRoot, canonicalPath));
+    const commands = compileToolingCommands(resolved);
+
+    // Then the contributed command exists but is hidden from listings
+    expect(resolved.tooling?.["docs:build"]?.cmd).toBe("make");
+    expect(commands.find((command) => command.id === "app:docs:build")?.hidden).toBe(true);
+  } finally {
+    await rm(appRoot, { recursive: true, force: true });
+  }
+});
+
 test("resolves tooling includes only after Landofile layers merge", async () => {
   // Given a lower-layer tooling source replaced by a valid higher-layer source
   const appRoot = await mkdtemp(join(tmpdir(), "lando-tooling-layer-order-"));

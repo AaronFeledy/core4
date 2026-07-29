@@ -120,8 +120,8 @@ const loadFragment = (
   readFragmentText(filePath, entry.source).pipe(
     Effect.flatMap((content) => rejectComposeTags(entry.source, content)),
     Effect.flatMap((content) => parseLandofile({ file: filePath, content, cwd: dirname(filePath) })),
-    Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed)),
     Effect.flatMap((parsed) => assertToolingFragment(parsed, entry.source, filePath)),
+    Effect.flatMap((parsed) => rejectComposeKeys(entry.source, parsed).pipe(Effect.as(parsed))),
     Effect.tap((parsed) => rejectBetaToolingFeatures(filePath, parsed)),
     Effect.map((parsed) => ({
       filePath,

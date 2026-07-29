@@ -34,11 +34,6 @@ import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
 import { BETA_REMEDIATION, rejectBetaToolingFeatures } from "./tooling-beta.ts";
-import {
-  getInternalToolingTasks,
-  rememberInternalToolingTasks,
-  winningInternalToolingTasks,
-} from "./tooling-include-provenance.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export { LandofileService } from "@lando/sdk/services";
@@ -347,22 +342,14 @@ export const loadLandofileLayers = (
         Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
         Effect.map((landofile) =>
           rememberLandofileAppRoot(
-            rememberInternalToolingTasks(
-              rememberLocalIncludePaths(
-                rememberVersionConstraintEntries(
-                  landofile,
-                  loaded.flatMap(({ landofile, layer }) =>
-                    getVersionConstraintEntries(landofile, layer.filePath),
-                  ),
+            rememberLocalIncludePaths(
+              rememberVersionConstraintEntries(
+                landofile,
+                loaded.flatMap(({ landofile, layer }) =>
+                  getVersionConstraintEntries(landofile, layer.filePath),
                 ),
-                loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
               ),
-              winningInternalToolingTasks(
-                loaded.map(({ landofile }) => ({
-                  tooling: landofile.tooling,
-                  internalTaskIds: getInternalToolingTasks(landofile),
-                })),
-              ),
+              loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
             ),
             appRoot,
           ),

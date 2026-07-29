@@ -41,6 +41,22 @@ describe("tooling fragment validation", () => {
     if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
   });
 
+  test("a fragment key that is also a rejected Compose key still fails as an include error", async () => {
+    // Given a tooling fragment declaring a services block carrying a rejected Compose key
+    await writeFile(
+      join(appRoot, "parent.yml"),
+      ["services:", "  web:", "    container_name: pinned", ""].join("\n"),
+      "utf8",
+    );
+
+    // When the fragment is resolved
+    const error = await failure({ toolingIncludes: { docs: { file: "./parent.yml" } } }, appRoot);
+
+    // Then the fragment shape contract owns the failure instead of the Compose rejection surface
+    expect(error._tag).toBe("LandofileIncludeError");
+    if (error._tag === "LandofileIncludeError") expect(error.kind).toBe("forbidden-field");
+  });
+
   test("a tooling fragment rejects a bare nested include", async () => {
     // Given a tooling fragment with an untyped nested include
     await writeFile(join(appRoot, "parent.yml"), "includes:\n  - ./tasks.yml\n", "utf8");
