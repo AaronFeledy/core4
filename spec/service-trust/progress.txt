@@ -16,9 +16,11 @@ Spec SoT:
 
 ## Codebase Patterns
 
-- Nested Landofile authoring aliases: model them as a `Schema.transform` whose `from` struct declares
-  every accepted spelling, canonical key first in the precedence chain. Annotate the `from` struct so
-  the description survives into `ServiceConfigInput` and the published artifact.
+- Nested Landofile authoring aliases: model them as a `Schema.transform` whose `from` schema declares
+  mutually exclusive `Schema.Union` variants, with `Schema.optional(Schema.Never)` anti-fields for
+  every competing spelling. Keep the canonical variant first so canonical output survives a second
+  decode. Annotate the `from` union so its description survives into `ServiceConfigInput` and the
+  published artifact.
 - A nested `Schema.Struct` publishes `additionalProperties: false`, so unknown nested keys fail closed
   under both default and strict decode and surface as path-precise lint violations.
 - After any `ServiceConfig` field change, run `bun run codegen:schema-snapshot` early: it refreshes
@@ -71,4 +73,25 @@ Spec SoT:
     `--reporter=junit --reporter-outfile=<path>` to capture per-case RED evidence.
   - Guides whose scenarios are all `render={false}` add no generated scenario tests, so a new guide
     of that shape leaves `build-guide-scenarios` output unchanged.
+---
+
+## 2026-07-29 12:11 CDT - US-483 Review
+- Fixed a fail-closed trust-authoring bug found by the security and code-quality review lanes:
+  simultaneous `ca`, `cas`, `certificate-authority`, or `certificate-authorities` spellings now
+  reject instead of silently discarding lower-precedence CA paths. All six spelling pairs are covered
+  under default and strict decode, while alias inherit flags and canonical second decode remain valid.
+- Review notes (deferred/rejected): Cursor Bugbot produced no report because both the canonical and
+  Auto fallback attempts were rejected for account usage limits; this was not treated as a pass.
+- Review notes (deferred/rejected): Rejected rewriting the focused JSON Schema name assertions as a
+  blocker; adjacent structural schema contracts, generated-output validation, and direct artifact
+  inspection already prove the nested types, closed objects, and four mutually exclusive variants.
+- Review notes (deferred/rejected): Rejected an additional encode-round-trip test as non-blocking;
+  canonical double-decode coverage exercises the repository-specific transform risk and encoding is
+  the existing identity path.
+- Guide-Coverage-Skip: US-483 adds its owned corporate-network-trust guide; the legacy Alpha-4 library, embedding, SDK-compatibility, and release guides do not document ServiceConfig.security alias validation.
+- Verification: typecheck, lint passed; 387 focused and adjacent tests passed with 1,447 assertions;
+  generated-output, guide lint, guide coverage, and base-aware guide drift with the recorded skip passed.
+- **Learnings for future iterations:** Security/trust aliases must be structurally exclusive at the
+  schema boundary; precedence is unsafe because visually conflicting CA declarations can hide the
+  operative trust material.
 ---
