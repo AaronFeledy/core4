@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import { LandofileParseError } from "@lando/core/errors";
+import { ComposeKeyRejectedError, LandofileParseError } from "@lando/core/errors";
 import { parseLandofile } from "../../src/landofile/parser.ts";
 
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
@@ -42,6 +42,18 @@ const expectParseError = async (content: string, message: RegExp, limits?: Parse
   if (failure._tag !== "Some") throw new Error("Expected tagged failure");
   expect(failure.value).toBeInstanceOf(LandofileParseError);
   expect(failure.value.message).toMatch(message);
+};
+
+const parseFailure = async (content: string, limits?: ParseLimits): Promise<LandofileParseError> => {
+  const exit = await parseExit(content, limits);
+  expect(Exit.isFailure(exit)).toBe(true);
+  if (!Exit.isFailure(exit)) throw new Error("Expected parse to fail");
+  const failure = Cause.failureOption(exit.cause);
+  expect(failure._tag).toBe("Some");
+  if (failure._tag !== "Some") throw new Error("Expected tagged failure");
+  expect(failure.value).toBeInstanceOf(LandofileParseError);
+  if (!(failure.value instanceof LandofileParseError)) throw failure.value;
+  return failure.value;
 };
 
 describe("parseLandofile — input caps", () => {
@@ -201,5 +213,211 @@ describe("parseLandofile — empty-record list item round-trip", () => {
   test("a flow-empty `{}` map value parses to an empty object", async () => {
     const result = await parse("config: {}\n");
     expect((result as Record<string, unknown>).config).toEqual({});
+  });
+});
+
+describe("parseLandofile — native YAML references", () => {
+  test("resolves scalar, mapping, and sequence aliases before schema decoding", async () => {
+    const content = [
+      "sharedName: &sharedName worker",
+      "defaults: &defaults",
+      "  image: node:22",
+      "  environment:",
+      "    MODE: shared",
+      "sharedPorts: &sharedPorts",
+      "  - 8080:80",
+      "services:",
+      "  web:",
+      "    <<: *defaults",
+      "    image: node:24",
+      "    ports: *sharedPorts",
+      "  worker: *defaults",
+      "aliasName: *sharedName",
+    ].join("\n");
+
+    expect(await parse(content)).toEqual({
+      sharedName: "worker",
+      defaults: { image: "node:22", environment: { MODE: "shared" } },
+      sharedPorts: ["8080:80"],
+      services: {
+        web: {
+          image: "node:24",
+          environment: { MODE: "shared" },
+          ports: ["8080:80"],
+        },
+        worker: { image: "node:22", environment: { MODE: "shared" } },
+      },
+      aliasName: "worker",
+    });
+  });
+
+  test("uses YAML merge precedence for sequences and explicit keys regardless of order", async () => {
+    const content = [
+      "first: &first",
+      "  winner: first",
+      "  fromFirst: true",
+      "second: &second",
+      "  winner: second",
+      "  fromSecond: true",
+      "merged:",
+      "  winner: explicit",
+      "  <<: [*first, *second]",
+    ].join("\n");
+
+    expect(await parse(content)).toEqual({
+      first: { winner: "first", fromFirst: true },
+      second: { winner: "second", fromSecond: true },
+      merged: { winner: "explicit", fromFirst: true, fromSecond: true },
+    });
+  });
+
+  test.each([
+    ["unknown alias", "value: *missing", /Unknown YAML alias/, 1, 8],
+    ["forward alias", "value: *later\nlater: &later resolved", /Unknown YAML alias/, 1, 8],
+    ["unknown alias in a sequence mapping", "items:\n  - name: *missing", /Unknown YAML alias/, 2, 11],
+    ["recursive alias graph", "value: &loop\n  self: *loop", /recursive YAML alias graph/i, 2, 9],
+    [
+      "invalid merge target",
+      "scalar: &scalar value\nmerged:\n  <<: *scalar",
+      /YAML merge target must be a mapping/i,
+      3,
+      7,
+    ],
+    ["duplicate anchor", "first: &dup one\nsecond: &dup two", /Duplicate YAML anchor/, 2, 9],
+  ] as const)("rejects a %s with location and remediation", async (_name, content, message, line, column) => {
+    const error = await parseFailure(content);
+
+    expect(error).not.toBeInstanceOf(ComposeKeyRejectedError);
+    expect(error).toMatchObject({ _tag: "LandofileParseError", line, column });
+    expect(error.message).toMatch(message);
+    expect(error.remediation).toMatch(/anchor|alias|mapping/i);
+  });
+
+  test("resolves aliases in inline sequences written with surrounding whitespace", async () => {
+    const content = ["base: &base shared", "tight: [*base]", "spaced: [ *base , *base ]"].join("\n");
+
+    expect(await parse(content)).toEqual({
+      base: "shared",
+      tight: ["shared"],
+      spaced: ["shared", "shared"],
+    });
+  });
+
+  test("merges an alias whose anchor is a sequence of mappings", async () => {
+    const content = [
+      "first: &first",
+      "  winner: first",
+      "second: &second",
+      "  winner: second",
+      "  fromSecond: true",
+      "both: &both",
+      "  - *first",
+      "  - *second",
+      "merged:",
+      "  <<: *both",
+    ].join("\n");
+
+    expect((await parse(content)) as Record<string, unknown>).toMatchObject({
+      merged: { winner: "first", fromSecond: true },
+    });
+  });
+
+  test("merges a merge key that opens a sequence item", async () => {
+    const content = [
+      "defaults: &defaults",
+      "  image: node:22",
+      "  restart: always",
+      "services:",
+      "  - <<: *defaults",
+      "    name: web",
+      "    image: node:24",
+    ].join("\n");
+
+    expect(await parse(content)).toEqual({
+      defaults: { image: "node:22", restart: "always" },
+      services: [{ image: "node:24", restart: "always", name: "web" }],
+    });
+  });
+
+  test("keeps a hash inside an anchored quoted scalar", async () => {
+    const content = ['original: &shared "foo # bar"', "copied: *shared"].join("\n");
+
+    expect(await parse(content)).toEqual({ original: "foo # bar", copied: "foo # bar" });
+  });
+
+  test("resolves anchor names containing punctuation", async () => {
+    const content = ["base: &service.defaults value", "copy: *service.defaults"].join("\n");
+
+    expect(await parse(content)).toEqual({ base: "value", copy: "value" });
+  });
+
+  test("reports the alias column after extra sequence-item whitespace", async () => {
+    const error = await parseFailure("items:\n  -   *missing");
+
+    expect(error).toMatchObject({ _tag: "LandofileParseError", line: 2, column: 7 });
+  });
+
+  test("preserves mappings that resemble the internal alias representation", async () => {
+    const content = ["payload:", "  _tag: YamlAlias", "  name: user-data", "  line: 1", "  column: 1"].join(
+      "\n",
+    );
+
+    expect(await parse(content)).toEqual({
+      payload: { _tag: "YamlAlias", name: "user-data", line: 1, column: 1 },
+    });
+  });
+});
+
+describe("parseLandofile — alias expansion budget", () => {
+  const nestedAliasBomb = (levels: number, fanOut: number): string =>
+    [
+      "level0: &level0 leaf",
+      ...Array.from(
+        { length: levels },
+        (_unused, index) =>
+          `level${index + 1}: &level${index + 1} [${Array(fanOut).fill(`*level${index}`).join(",")}]`,
+      ),
+      `expanded: *level${levels}`,
+    ].join("\n");
+
+  test("rejects nested aliases that expand far beyond their source size", async () => {
+    const content = nestedAliasBomb(8, 5);
+    expect(content.length).toBeLessThan(1_000);
+
+    const error = await parseFailure(content);
+
+    expect(error).toMatchObject({ _tag: "LandofileParseError" });
+    expect(error.message).toMatch(/exceeded the maximum of \d+ expanded nodes/);
+    expect(error.remediation).toMatch(/alias/i);
+  });
+
+  test("accepts a document whose node count is bounded by its own source", async () => {
+    const services = Array.from(
+      { length: 400 },
+      (_unused, index) => `  service${index}:\n    <<: *defaults\n    port: ${index}`,
+    );
+    const content = ["defaults: &defaults", "  api: 4", "  type: nginx", "services:", ...services].join("\n");
+
+    const parsed = (await parse(content)) as { services: Record<string, unknown> };
+
+    expect(Object.keys(parsed.services)).toHaveLength(400);
+    expect(parsed.services.service399).toEqual({ api: 4, type: "nginx", port: 399 });
+  });
+
+  test("rejects an acyclic alias chain deeper than the parser limit", async () => {
+    const content = [
+      "level0: &level0 leaf",
+      ...Array.from(
+        { length: 8 },
+        (_unused, index) => `level${index + 1}: &level${index + 1} *level${index}`,
+      ),
+      "expanded: *level8",
+    ].join("\n");
+
+    const error = await parseFailure(content, { maxDepth: 4 });
+
+    expect(error).toMatchObject({ _tag: "LandofileParseError" });
+    expect(error.message).toMatch(/alias graph exceeded the maximum depth of 4/i);
+    expect(error.remediation).toMatch(/alias/i);
   });
 });

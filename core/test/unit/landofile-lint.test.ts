@@ -41,6 +41,48 @@ describe("lintLandofile", () => {
     }
   });
 
+  test("YAML anchors and merge keys lint through their resolved values", async () => {
+    await write(
+      [
+        "name: anchored-app",
+        "x-service-defaults: &service-defaults",
+        "  type: node:22",
+        "services:",
+        "  web:",
+        "    <<: *service-defaults",
+      ].join("\n"),
+    );
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(true);
+      expect(exit.value.violations).toHaveLength(0);
+    }
+  });
+
+  test("an unknown alias stays a parser violation instead of a Compose rejection", async () => {
+    await write("name: alias-error\nservices:\n  web: *missing\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(exit.value.valid).toBe(false);
+      expect(exit.value.violations).toEqual([
+        expect.objectContaining({ path: "", message: expect.stringMatching(/Unknown YAML alias/) }),
+      ]);
+      expect(
+        exit.value.violations.some((entry) =>
+          Object.values(composeTagDispositions).some(
+            (disposition) => entry.suggestedFix === disposition.remediation,
+          ),
+        ),
+      ).toBe(false);
+    }
+  });
+
   test("a TS-only Landofile lints clean", async () => {
     await writeFile(
       join(dir, ".lando.ts"),
@@ -215,6 +257,21 @@ describe("lintLandofile", () => {
 
   test("a rejected Compose tag uses the matrix remediation", async () => {
     await write("name: myapp\nservices:\n  web:\n    image: !reset node:20\n");
+
+    const exit = await lint(dir);
+
+    expect(Exit.isSuccess(exit)).toBe(true);
+    if (Exit.isSuccess(exit)) {
+      expect(
+        exit.value.violations.some(
+          (entry) => entry.suggestedFix === composeTagDispositions["!reset"].remediation,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  test("an anchored Compose tag is still rejected with the matrix remediation", async () => {
+    await write("name: myapp\nservices:\n  web:\n    image: &shared !reset node:20\n");
 
     const exit = await lint(dir);
 

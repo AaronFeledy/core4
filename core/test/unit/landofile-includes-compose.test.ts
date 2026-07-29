@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
+import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 
 import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
@@ -60,6 +61,53 @@ describe("Compose include fragments", () => {
     // Then
     expect(result).toMatchObject({ services: { cache: { type: "redis" } } });
   });
+
+  test.each(["landofile", "compose"] as const)(
+    "resolves YAML anchors and merge keys in a %s include fragment",
+    async (kind) => {
+      await writeFile(
+        join(appRoot, "anchored.yml"),
+        [
+          "x-service-defaults: &service-defaults",
+          "  type: node:22",
+          "  environment:",
+          "    MODE: included",
+          "services:",
+          "  web:",
+          "    <<: *service-defaults",
+        ].join("\n"),
+        "utf8",
+      );
+
+      const result = await resolve({ includes: [{ source: "./anchored.yml", kind }] }, appRoot);
+
+      expect(result).toMatchObject({
+        services: {
+          web: { type: "node:22", environment: { MODE: "included" } },
+        },
+      });
+    },
+  );
+
+  test.each(["landofile", "compose"] as const)(
+    "keeps an unknown alias in a %s include on the parser error surface",
+    async (kind) => {
+      await writeFile(join(appRoot, "alias-error.yml"), "services:\n  web: *missing\n", "utf8");
+
+      const error = await Effect.runPromise(
+        Effect.flip(
+          resolveLandofileIncludes({
+            landofile: { includes: [{ source: "./alias-error.yml", kind }] },
+            appRoot,
+          }),
+        ),
+      );
+
+      expect(error).toBeInstanceOf(LandofileParseError);
+      expect(error).not.toBeInstanceOf(ComposeKeyRejectedError);
+      expect(error).toMatchObject({ _tag: "LandofileParseError", line: 2, column: 8 });
+    },
+  );
 
   test("appends top-level Compose includes after authored includes", async () => {
     // Given
