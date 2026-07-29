@@ -1,11 +1,11 @@
 ---
 title: Service Config Input
-description: "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases."
+description: "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases."
 ---
 
 # Service Config Input
 
-Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.
+Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.
 
 [JSON Schema artifact](../../../dist/schemas/service-config-input.json)
 
@@ -69,6 +69,7 @@ Accepted Landofile service authoring surface with canonical keys and the working
 | `healthcheck` | No | `object` | — | — | — | — | — |
 | `logs` | No | `array` | — | — | — | — | — |
 | `hostnames` | No | `array` | — | — | — | — | — |
+| `security` | No | `object` | — | — | — | — | — |
 | `dependsOn` | No | `array`, `object` | — | — | — | — | — |
 | `providers` | No | `object` | — | — | — | — | — |
 | `working_dir` | No | `string` | Compose alias for the canonical workingDirectory service field. | — | — | — | — |

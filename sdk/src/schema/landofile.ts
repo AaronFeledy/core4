@@ -364,6 +364,53 @@ const COMPOSE_CONFIGS_DESCRIPTION =
 const COMPOSE_SECRETS_DESCRIPTION =
   "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
 
+const SERVICE_SECURITY_DESCRIPTION =
+  "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
+
+const ServiceSecurity = Schema.Struct({
+  ca: Schema.optional(Schema.Array(Schema.String)).annotations({
+    description: "Additional CA certificate paths for this service.",
+  }),
+  inheritNetworkCa: Schema.optional(Schema.Boolean).annotations({
+    description: "Override whether this service inherits host network CA certificates.",
+  }),
+  inheritNetworkProxy: Schema.optional(Schema.Boolean).annotations({
+    description: "Override whether this service inherits host network proxy settings.",
+  }),
+});
+
+const ServiceSecurityCaAlias = Schema.Union(Schema.String, Schema.Array(Schema.String));
+
+const ServiceSecurityInput = Schema.Struct({
+  ca: Schema.optional(Schema.Array(Schema.String)),
+  cas: Schema.optional(ServiceSecurityCaAlias),
+  "certificate-authority": Schema.optional(ServiceSecurityCaAlias),
+  "certificate-authorities": Schema.optional(ServiceSecurityCaAlias),
+  inheritNetworkCa: Schema.optional(Schema.Boolean),
+  inheritNetworkProxy: Schema.optional(Schema.Boolean),
+}).annotations({ description: SERVICE_SECURITY_DESCRIPTION });
+
+const ServiceSecurityField = Schema.transform(ServiceSecurityInput, ServiceSecurity, {
+  strict: true,
+  decode: (input) => {
+    const {
+      ca,
+      cas,
+      "certificate-authority": certificateAuthority,
+      "certificate-authorities": certificateAuthorities,
+      inheritNetworkCa,
+      inheritNetworkProxy,
+    } = input;
+    const authoredCa = ca ?? cas ?? certificateAuthority ?? certificateAuthorities;
+    return {
+      ...(authoredCa === undefined ? {} : { ca: typeof authoredCa === "string" ? [authoredCa] : authoredCa }),
+      ...(inheritNetworkCa === undefined ? {} : { inheritNetworkCa }),
+      ...(inheritNetworkProxy === undefined ? {} : { inheritNetworkProxy }),
+    };
+  },
+  encode: (security) => security,
+}).annotations({ description: SERVICE_SECURITY_DESCRIPTION });
+
 /**
  * ServiceConfig — what a user authors under `services.<name>:` in a Landofile.
  * Covers the fields consumed by downstream provider logic.
@@ -452,6 +499,9 @@ const ServiceConfigWithExtensions = Schema.Struct(
     }),
     logs: Schema.optional(Schema.Array(LogSourceInput)),
     hostnames: Schema.optional(Schema.Array(Schema.String)),
+    security: Schema.optional(ServiceSecurityField).annotations({
+      description: SERVICE_SECURITY_DESCRIPTION,
+    }),
     dependsOn: Schema.optional(ComposeDependsOnInput),
 
     providers: Schema.optional(ProviderExtensionConfig),
@@ -467,7 +517,8 @@ export type ServiceConfig = typeof ServiceConfig.Type;
 /**
  * ServiceConfigInput — the accepted authoring surface: every {@link ServiceConfig}
  * key plus the Compose cross-key spellings (`working_dir`, `env_file`,
- * `depends_on`). Used as the decode boundary for `services.<name>:`.
+ * `depends_on`) and service security CA aliases. Used as the decode boundary
+ * for `services.<name>:`.
  */
 export const ServiceConfigInput = Schema.extend(
   Schema.encodedBoundSchema(ServiceConfig),
@@ -489,7 +540,7 @@ export const ServiceConfigInput = Schema.extend(
   identifier: "ServiceConfigInput",
   title: "Service Config Input",
   description:
-    "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+    "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.",
 });
 export type ServiceConfigInput = typeof ServiceConfigInput.Type;
 

@@ -738,7 +738,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   LandofileShape: "Public Lando schema contract for Landofile Shape.",
   ServiceConfig: "Public Lando schema contract for Service Config.",
   ServiceConfigInput:
-    "Accepted service authoring schema with canonical Lando keys and Compose working_dir, env_file, and depends_on aliases.",
+    "Accepted service authoring schema with canonical Lando keys, Compose cross-key aliases, and service security CA aliases.",
   LogSource: "Public Lando schema contract for Log Source.",
   LogSourceId: "Public Lando schema contract for Log Source Id.",
   LogSourceInput: "Public Lando schema contract for Log Source Input.",

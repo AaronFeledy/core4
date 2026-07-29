@@ -7,7 +7,7 @@
     },
     "ServiceConfigInput": {
       "additionalProperties": false,
-      "description": "Accepted Landofile service authoring surface with canonical keys and the working_dir, env_file, and depends_on Compose aliases.",
+      "description": "Accepted Landofile service authoring surface with canonical keys, Compose cross-key aliases, and service security CA aliases.",
       "patternProperties": {
         "^x-": {
           "$id": "/schemas/unknown",
@@ -1708,6 +1708,65 @@
             ]
           },
           "type": "array"
+        },
+        "security": {
+          "additionalProperties": false,
+          "description": "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.",
+          "properties": {
+            "ca": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "cas": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "certificate-authorities": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "certificate-authority": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                }
+              ]
+            },
+            "inheritNetworkCa": {
+              "type": "boolean"
+            },
+            "inheritNetworkProxy": {
+              "type": "boolean"
+            }
+          },
+          "required": [],
+          "type": "object"
         },
         "security_opt": {
           "anyOf": [
