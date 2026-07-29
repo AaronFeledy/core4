@@ -141,7 +141,7 @@ export const resolveSetupNetworkTrust = (
     );
 
     return {
-      // §6.8 defaults are deliberately asymmetric: CA material is not secret so inject is on,
+      // Defaults are deliberately asymmetric: CA material is not secret so inject is on,
       // while proxy URLs may embed credentials so inject stays opt-in.
       proxy: {
         ...plan.proxy,
