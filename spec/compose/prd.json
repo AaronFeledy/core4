@@ -252,7 +252,7 @@
         "Lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "Origin: spec 7.4 docs-matrix mandate (generated from the disposition matrix) + sdk/AGENTS.md additive-surface rules; closes the wave. Blocked by every prior story in the set, including binding prerequisite US-480. Human option-1 adjudication 2026-07-28 authorizes US-480 production work co-resident on the US-477 branch with attribution to US-480 before US-477 may close. Consolidates the former docs-matrix and SDK-reconciliation closeout stories."
     },
     {

@@ -895,3 +895,12 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
   - Exact-path refinements should use the disposition-matrix wildcard literal in errors and declarations; that keeps schema, planner, generated docs, and remediation aligned without inventing a second concrete-path vocabulary.
   - An optional capability being absent is stronger evidence than an empty implementation claim: bundled providers should omit unsupported refinements and pin that omission in their capability inventory tests.
 ---
+
+## 2026-07-28 20:27 CDT - US-477
+- Confirmed the published Compose matrix, executable service-block guide, and SDK reconciliation remain complete after the preserved-path prerequisite landed. The two affected generated rows now truthfully name the exact capability declaration and fail-closed planner behavior; the guide continues to run its realistic accepted service block and tagged rejected-key remediation scenarios without adding another key list.
+- Closed the prerequisite without broadening this story: no additional production surface, provider realization, internal SDK field-map export, duplicate rejection helper, or service-level `x-*` gate was added during closeout.
+- Verification: typecheck and lint passed; all boundary, Compose coverage, generated-output, package-DAG, import-cycle, schema-compatibility, and plugin-abstraction gates passed. The executable guide ran green; guide lint, coverage, public transcripts, and explicit-base guide drift with the substantive dedicated-guide skip passed; 18 focused guide, docs-matrix, and plugin-coverage tests passed with 981 assertions. Matrix and schema codegen remained byte-idempotent.
+- **Learnings for future iterations:**
+  - A generated compatibility row cannot close a docs story until every capability claim it publishes has a real production gate; a truthful rejection note is better than provider support inferred from a coarse tier.
+  - When a binding production prerequisite lands co-resident with a docs closeout, mark and record the prerequisite first, then re-run the docs and guide proofs without re-owning its production changes.
+---
