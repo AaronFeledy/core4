@@ -26,6 +26,9 @@ Spec SoT:
 - After any `ServiceConfig` field change, run `bun run codegen:schema-snapshot` early: it refreshes
   `dist/schemas`, `dist/command-schemas`, and `docs/reference/schemas`, and it runs the
   public-field-description gate.
+- Keep `@lando/sdk/network-trust` path-only and file-IO-free. Core's shared `loadCaPems` seam owns
+  UTF-8 PEM loading, stable digests, and the tagged path/remediation failure; consumers map that
+  failure into their own boundary errors rather than reading CA files again.
 
 ## Status
 
@@ -104,4 +107,32 @@ Spec SoT:
 - Split/excise decisions: None.
 - Verification: typecheck and lint passed; 58 focused tests with 155 assertions passed; generated-output,
   guide lint, and guide coverage passed; guide drift honored the recorded US-483 skip.
+---
+
+## [2026-07-29 13:23 CDT] - Babysit
+- PR: #650 https://github.com/AaronFeledy/core4/pull/650
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for alpha-4-11 drift; brew update before podman install for ubuntu-24.04 Homebrew flake)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-07-29 13:53 CDT - US-484
+- Centralized CA PEM loading for setup and outbound HTTP behind one core seam that returns the host
+  path, UTF-8 PEM, and stable SHA-256 digest, with a tagged unreadable-path failure naming all global
+  and Landofile correction surfaces.
+- Added pure service-inject resolution for asymmetric CA/proxy defaults, per-service overrides,
+  separate global and project CA path lists, and decoded configs whose optional network parents are
+  absent; the SDK network-trust resolver remains file-IO-free.
+- Documented host CA path resolution, digest behavior, and failure remediation in the executable
+  corporate network trust guide.
+- Verification: typecheck, lint passed; 148 focused and adjacent tests passed with 365 assertions;
+  guide lint, guide coverage, generated-output, import-cycle, and network-boundary gates passed;
+  direct Effect surface verification passed with clean temp-directory teardown; high-rigor review
+  approved unconditionally.
+- **Learnings for future iterations:**
+  - Resolve optional `network.ca` / `network.proxy` parents before reading decoded child defaults;
+    decoded child fields are total only when their parent block exists.
+  - Preserve the shared loader's tagged failure as `cause` when adapting it to consumer-specific
+    setup or HTTP errors, so path and remediation context survive without duplicating filesystem IO.
 ---
