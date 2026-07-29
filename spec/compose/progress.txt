@@ -937,3 +937,16 @@ Origin: 2026-07-20 compose-alignment assessment (vocabulary-not-file-format deci
 - **Learnings for future iterations:**
   - A guide `<Run command="lando start" />` proves provider application only when the generated scenario is `layer="e2e"`, invokes `ScenarioContextFactory.e2e`, and is gated on both a compiled binary and a live provider socket; source/fake scenario success is not equivalent.
 ---
+
+## 2026-07-28 23:25 CDT - US-477 Adjudication
+- Contradiction: Drift Audit applied US-477's criteria, "An executable guide ... runs it" and "bun run dev:guides <guide> --once passes," together with spec §13.1's rule that an `e2e` executable-guide layer runs "against the real provider" and §19.11's rule that the `@smoke` e2e subset runs in per-PR Linux CI, and therefore treated the missing clean-host `lando start` completion as blocking. Build's 23:00 completion instead treated the generated `layer=e2e` -> `ScenarioContextFactory.e2e` -> compiled-binary/live-provider seam and its safe no-provider gate as sufficient pre-dispatch proof, leaving the fresh managed-runtime execution to CI.
+- Decision: narrowed US-477's two executable-guide criteria in `spec/compose/prd.json` to name the proof and gate ownership exactly. Build, Review, and Drift Audit require compiled-binary e2e wiring, start/info/destroy cleanup, and a tested explicit no-provider skip; `bun run dev:guides <guide> --once` must pass in that host-safe mode. Push/Babysit exclusively owns the fresh managed-runtime `@smoke` execution required by spec §13.1/§19.11, and only a failed live CI result reopens US-477. US-477 remains passing; no follow-up story was created.
+- Follow-up story (if created): none.
+---
+
+## 2026-07-28 23:49 CDT - US-477
+- Verified the story complete on the in-flight branch without new code. The generated matrix and SDK reconciliation remain drift-free, and the executable guide runs its remediation scenario while explicitly skipping the live-provider e2e scenario in the host-safe pre-dispatch environment.
+- Verification: typecheck and lint passed; 62 focused tests passed with 1,427 assertions; relevant guide, generated-output, Compose coverage, schema compatibility, and boundary gates passed.
+- **Learnings for future iterations:**
+  - For a reviewed story changed only by acceptance-criteria adjudication, rerun the decisive host-safe proof and commit the contract record without inventing implementation work; Push/Babysit still owns the fresh managed-runtime guide result.
+---
