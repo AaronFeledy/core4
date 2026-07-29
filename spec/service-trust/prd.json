@@ -1,0 +1,324 @@
+{
+  "project": "Lando v4 Service Trust (corporate inject, leaf certs, boot, doctor, Traefik TLS, guides)",
+  "branchName": "docs/service-trust-prd",
+  "description": "PRD-01 (US-483..US-489): host-global corporate CA/proxy inject into type: lando services. PRD-02 (US-490..US-498): leaf certs + mkcert Live, lando.boot scaffolding, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..16, strict): US-489 precedes US-486, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
+  "userStories": [
+    {
+      "id": "US-483",
+      "title": "ServiceConfig.security authoring surface",
+      "description": "As a Landofile author, I can declare security.ca (and aliases), inheritNetworkCa, and inheritNetworkProxy.",
+      "acceptanceCriteria": [
+        "ServiceConfig accepts security.ca, inheritNetworkCa, inheritNetworkProxy.",
+        "Aliases cas, certificate-authority, certificate-authorities canonicalize to ca.",
+        "Omitted security decodes unchanged; excess properties fail closed.",
+        "certs: leaf TLS is not an alias of security.ca.",
+        "Schema snapshot and sdk/API_COMPATIBILITY.md updated.",
+        "Unit decode tests cover present/absent/overrides/aliases.",
+        "Guide: docs/guides/config/corporate-network-trust.mdx documents security.ca/aliases/inherit flags.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-484",
+      "title": "Shared CA PEM load and service inject resolution",
+      "description": "As core, one PEM loader and inject resolver serve setup, HttpClient, and planner.",
+      "acceptanceCriteria": [
+        "Shared core helper returns {path,pem,digest} with stable sha256.",
+        "HttpClientLive and setup consume the shared loader.",
+        "resolveServiceNetworkInject: injectCa = security.inheritNetworkCa ?? network.ca?.injectIntoServices ?? true; injectProxy = security.inheritNetworkProxy ?? network.proxy?.injectIntoServices ?? false. Optional chain on the PARENT is required: NetworkConfig.ca/.proxy are Schema.optional, so a config with no network.ca block leaves the parent undefined.",
+        "Unreadable path fails with path-named remediation; sdk network-trust stays file-IO-free.",
+        "Unit tests cover defaults, overrides, empty lists, missing files, and a decoded config with NO network.ca/network.proxy block (asserts injectCa true / injectProxy false instead of throwing).",
+        "Guide: corporate-network-trust documents cert path resolution and failure remediation.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-489",
+      "title": "Friendly env overrides for inject flags",
+      "description": "As an operator, LANDO_NETWORK_*_INJECT_INTO_SERVICES env vars work per section 7.6.",
+      "acceptanceCriteria": [
+        "paths overlay maps both inject env vars to network.ca/proxy.injectIntoServices.",
+        "LANDO_NETWORK_CA_CERTS remains owned by resolveNetworkTrustPlan.",
+        "loadGlobalConfigSync reflects overlays; garbage values fail closed with tested behavior.",
+        "Unit tests true/false/absent.",
+        "Guide: corporate-network-trust documents both env vars.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-485",
+      "title": "lando.security feature on the lando base stack",
+      "description": "As a user of lando-base services, lando.security materializes mounts, trust env, optional proxy env, and artifact build steps from planner-seeded config.",
+      "acceptanceCriteria": [
+        "Feature id lando.security priority 1100 registered and on LANDO_BASE_DEFAULT_FEATURE_IDS.",
+        "Empty cas + injectProxy false is no-op; non-empty cas bind-mounts each PEM at the CA-distro-appropriate path (never under /etc/lando/certs) and sets NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR when applicable, LANDO_CA_*, build step with caDigests.",
+        "injectProxy true sets HTTP_PROXY/HTTPS_PROXY/NO_PROXY when defined.",
+        "Feature does not use ConfigService/FileSystem.",
+        "Composition and base-id tests updated, including a test that LANDO_CA_BUNDLE is /etc/lando/certs/ca-bundle.pem and LANDO_CA_DIR is /etc/lando/certs identically before and after the first rebuild.",
+        "Guide: corporate-network-trust documents runtime env vars and rebuild expectation.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-486",
+      "title": "AppPlanner wires global inject into lando-base services",
+      "description": "As AppPlanner, resolve inject once, materialize path and load/import PEMs, seed lando.security, exclude proxy env from artifact build keys.",
+      "acceptanceCriteria": [
+        "planApp uses ConfigService + US-484/US-489; only base lando services inject; l337 skipped.",
+        "security.ca paths app-root contained; inline/load/import PEM bodies accepted; non-PEM fails closed. Planner writes an app-cache CA bundle and mounts it at /etc/lando/certs/ca-bundle.pem for first start, dropped once the baked bundle exists.",
+        "inheritNetworkCa false suppresses global PEMs but keeps landofile security.ca.",
+        "build-key excludes HTTP_PROXY HTTPS_PROXY ALL_PROXY NO_PROXY matched CASE-INSENSITIVELY so lowercase http_proxy/https_proxy/all_proxy/no_proxy are excluded too; CA digests bust keys. Test asserts flipping lowercase http_proxy leaves the artifact key unchanged.",
+        "Planner tests cover inject, opt-out, inline PEM, l337 skip.",
+        "Guide: corporate-network-trust documents set-and-forget global config, opt-out, setup note.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-487",
+      "title": "Derived image build packs injected CAs",
+      "description": "As the image builder, derived builds pack CA files and install trust stores.",
+      "acceptanceCriteria": [
+        "Derived-build packs CA files + Dockerfile COPY + multi-distro update-ca, then mkdir -p /etc/lando/certs and writes /etc/lando/certs/ca-bundle.pem. The build step creates the directory itself rather than assuming lando.boot exists, and stays correct once lando.boot (US-493) takes ownership.",
+        "Missing host file or digest mismatch fails with ProviderInternalError before successful /build.",
+        "Existing image-build tests remain green; new tar/failure tests added.",
+        "Guide: corporate-network-trust notes rebuild when CA material changes.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-488",
+      "title": "Setup messaging and inject verification gates",
+      "description": "As a user running lando setup, I see when CAs inject; as a maintainer inject path gates stay green.",
+      "acceptanceCriteria": [
+        "Setup notes type:lando inject when certs present and inject enabled.",
+        "Setup tests cover the note.",
+        "Inject path test filters green (sdk, paths, core, service-lando security, container-runtime).",
+        "Guide: corporate-network-trust complete for inject path; lint:guides, check:guide-coverage, check:guide-drift green for inject guides.",
+        "No global-Dockerfile feature and no lando.boot FEATURE in the PRD-01 diff; creating /etc/lando/certs from the US-487 build step is in scope and is not lando.boot.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-490",
+      "title": "ServiceConfig.certs authoring surface",
+      "description": "As a Landofile author, certs true/false/path/object decode distinct from security.ca.",
+      "acceptanceCriteria": [
+        "ServiceConfig accepts section 6.8 certs shapes; invalid shapes remediate.",
+        "Dual presence tests: certs vs security.ca do not collide.",
+        "Schema snapshot and API_COMPATIBILITY updated.",
+        "Guide: certificates-mkcert.mdx documents each certs shape with Landofile examples.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-491",
+      "title": "@lando/ca-mkcert Live implementation",
+      "description": "As a user running lando setup, mkcert downloads and installs; issueCert works; opt-out remains.",
+      "acceptanceCriteria": [
+        "Live setup/issueCert replace fail-stub when binary available; remediation when not.",
+        "Binary fetch uses Downloader/HttpClient (network.ca aware).",
+        "Trust-store install PrivilegeService-aware; skipTrustInstall and setup --ca=none tested.",
+        "Fake downloader/fs unit tests; TestCertificateAuthority contract still green.",
+        "Guide: certificates-mkcert setup/opt-out scenarios accurate.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-492",
+      "title": "lando.certs feature + planner leaf issuance",
+      "description": "As a user with certs true, leaf certs are issued and mounted with LANDO_SERVICE_CERT/KEY.",
+      "acceptanceCriteria": [
+        "lando.certs priority 1000 on lando base defaults.",
+        "certs true issues SANs per section 6.8; custom paths validated; certs false no-op.",
+        "Composition tests with fake CA; l337 skipped.",
+        "Guide: certificates-mkcert documents service env and SAN coverage.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-493",
+      "title": "lando.boot scaffolding feature",
+      "description": "As a user of type lando services, lando.boot materializes /etc/lando scaffold paths.",
+      "acceptanceCriteria": [
+        "lando.boot priority 100 on lando base defaults.",
+        "Realized as ARTIFACT-PHASE BUILD STEPS, not mounts (spec 6.13.1: the lando.boot scaffolding lives inside the built artifact); idempotent mkdir -p of /etc/lando, /etc/lando/env.d, /etc/lando/certs.",
+        "Does NOT write /etc/lando/environment, add env.d/*.sh sourcing, or export LANDO_LINUX_* — spec 6.11 assigns those to lando.env (priority 700), which already ships; a test asserts lando.env stays their only producer. Composition test asserts boot(100) -> env(700) -> certs(1000) -> security(1100) order and that /etc/lando/certs/ca-bundle.pem from PRD-01 is not shadowed or clobbered.",
+        "l337 does not include boot.",
+        "Guide: docs/guides/services/lando-boot-scaffold.mdx documents the boot contract and the lando.boot / lando.env ownership split; its docs/guides/INDEX.md row flips Planned -> Shipped in this story.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-494",
+      "title": "Language-runtime CA environment equivalents",
+      "description": "As a user of language runtimes, correct CA env is set when corporate CAs inject.",
+      "acceptanceCriteria": [
+        "Python REQUESTS_CA_BUNDLE when CA inject active; Node/PHP/Ruby/Go behavior per plan; only existing service types touched.",
+        "Unit tests per modified language feature.",
+        "Guide: corporate-network-trust runtime env table; language guides link when they discuss HTTPS.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-495",
+      "title": "Doctor CA and network-trust diagnostics",
+      "description": "As a user running lando doctor, CA and network-trust problems show remediation.",
+      "acceptanceCriteria": [
+        "Doctor certs check reflects CA plugin status/remediation.",
+        "Network-trust/unreadable cert path diagnostics without secret leakage.",
+        "Unit/scenario tests for degraded paths.",
+        "Guide: subsystems and global doctor-walkthrough document check names and remediation.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-497",
+      "title": "Traefik edge TLS certificates from CertificateAuthority",
+      "description": "As a user opening https://*.lndo.site routes, Traefik terminates TLS with CA-issued certificates, not empty tls: {}.",
+      "acceptanceCriteria": [
+        "Proxy setup/applyRoutes ensures a default proxy cert via CertificateAuthority.issueCert (the only issuance method on the shape in sdk/src/services/platform.ts; no new SDK surface) covering domain wildcards and traefik.lndo.site; SAN coverage for HTTPS route hostnames tested.",
+        "Cert/key mounted into Traefik global service; config references file paths (not bare tls: {}).",
+        "Unit tests with fake CA + filesystem; proxy contract tests updated.",
+        "Depends on US-491; service leaf certs (US-492) remain separate.",
+        "Guide: proxy-traefik.mdx documents HTTPS cert dependency on lando setup/mkcert.",
+        "Executable guide coverage updated (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496/US-498).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "PRD-02. Origin: plugins/proxy-traefik tls: {} gap; spec/18-global-app.md section 20.10 + spec/11-subsystems.md sections 10.2-10.3"
+    },
+    {
+      "id": "US-498",
+      "title": "Doctor proxy TLS readiness + proxy HTTPS guide pack",
+      "description": "As a user running doctor or reading docs, missing proxy TLS material is visible with remediation; proxy HTTPS guide is complete.",
+      "acceptanceCriteria": [
+        "Doctor warns/degrades when HTTPS expected but proxy cert files missing; remediation cites lando setup/CA.",
+        "Unit/scenario test for degraded path; no secret leakage.",
+        "Guide pack: proxy-traefik HTTPS complete; cross-links from certificates-mkcert and corporate-network-trust.",
+        "Documents that SSH agent forwarding is unrelated to this TLS path.",
+        "Guide gates green for touched paths.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-496",
+      "title": "Guide coverage pack and drift gates",
+      "description": "As a docs consumer, all user-facing service-trust behavior is guide-covered and gates pass.",
+      "acceptanceCriteria": [
+        "docs/guides/config/corporate-network-trust.mdx complete for inject path.",
+        "certificates-mkcert.mdx complete for leaf certs user path.",
+        "proxy-traefik.mdx complete for HTTPS/certs user path.",
+        "Boot, doctor, language, proxy HTTPS links satisfied from US-493..498.",
+        "docs/guides/INDEX.md carries a row for EVERY guide path declared in the PRD-01 and PRD-02 Guide Coverage tables, and no service-trust row is left at Status Planned — every one reads Shipped and resolves to a file on disk. Planned rows are exempt from the on-disk existence check, so this flip is what gives the per-story check:guide-coverage criteria teeth.",
+        "bun run lint:guides passes.",
+        "bun run check:guide-coverage passes WITH spec/service-trust in its scanned spec directories, so a declared-but-unindexed guide fails with coverage.missing-index-row and an empty user-facing Guide Coverage section fails with coverage.empty-user-facing-section.",
+        "bun run check:guide-drift passes.",
+        "bun run check:public-transcripts passes if transcripts changed.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "PRD-02; includes Traefik guide"
+    }
+  ]
+}

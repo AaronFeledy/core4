@@ -42,8 +42,7 @@ export const NetworkCaConfig = Schema.Struct({
    * `security.inheritNetworkCa`. SPEC: §6.8, §7.5, §10.3.1.
    */
   injectIntoServices: Schema.optionalWith(Schema.Boolean, { default: () => true }).annotations({
-    description:
-      "When true (default), install network.ca.certs into type: lando service trust stores.",
+    description: "When true (default), install network.ca.certs into type: lando service trust stores.",
   }),
 });
 export type NetworkCaConfig = typeof NetworkCaConfig.Type;

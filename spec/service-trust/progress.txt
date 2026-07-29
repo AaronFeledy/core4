@@ -1,0 +1,36 @@
+# Ralph Progress Log — Service Trust
+
+Branch: docs/service-trust-prd
+PRDs: 00 index, 01 inject (US-483..489), 02 certs/boot/doctor/Traefik (US-490..498)
+Execution order: `priority` in spec/service-trust/prd.json (1..16, strict). US-489 precedes US-486
+  because the planner consumes its env overlays; US-496 runs last because it closes the guide pack
+  produced by US-493..US-498.
+Spec SoT:
+  - spec/06-services.md   6.8 certs/security, 6.9 service env, 6.11 feature priority table,
+                          6.13.1 artifact-vs-app phases, 6.13.5 build keys
+  - spec/07-landofile-and-config.md 7.5 network.ca / network.proxy, 7.6 env overrides
+  - spec/11-subsystems.md 10.2 proxy and routing, 10.3 CertificateAuthority, 10.3.1 corporate proxies
+  - spec/18-global-app.md 20.10 proxy and CA realization through the global app
+  (Note: section 18 is spec/16-deprecation-and-surface-evolution.md and is unrelated to this set.
+   Cite spec/18-global-app.md by file plus section 20.10, never as "section 18".)
+
+## Status
+
+- Expanded to include Traefik edge TLS (US-497..498). SSH agent explicitly out of scope (not CertificateAuthority TLS).
+- `bun run check:guide-coverage` now scans spec/service-trust/, so the per-story guide criteria are
+  enforced rather than vacuous. New guides are registered Planned in docs/guides/INDEX.md and flip to
+  Shipped in US-488 (corporate-network-trust) and US-493 (lando-boot-scaffold).
+- Implementation: not started.
+
+## Ownership notes (spec-derived, easy to get wrong)
+
+- lando.boot (priority 100) owns only the /etc/lando/* DIRECTORY scaffold, baked into the artifact.
+- lando.env (priority 700) owns /etc/lando/environment content, env.d/, per-exec sourcing, and the
+  LANDO_LINUX_* distro exports. It already ships at plugins/service-lando/src/features/env.ts.
+- LANDO_CA_BUNDLE is always /etc/lando/certs/ca-bundle.pem, before and after the first rebuild.
+
+## Out of scope
+
+- Host-global Dockerfile drop-in directories
+- Full lando.ssh-agent / SshService Live
+- ACME/public CA for Traefik
