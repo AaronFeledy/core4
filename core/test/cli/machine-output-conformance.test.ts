@@ -42,16 +42,26 @@ const tunnelSessionSample = Schema.decodeUnknownSync(TunnelSession)({
   startedAt: "2026-01-01T00:00:00.000Z",
 });
 
-const appConfigResultCommandIds = new Set<string>([
+// These commands' result schemas embed an optional LandofileShape (directly, or via
+// GlobalConfigResultSchema's `landofile` field). LandofileShape is large enough that
+// FastCheck arbitrary generation for it is impractically slow/non-terminating for a
+// unit test, so every such command gets a fixed empty success value instead — {} is a
+// valid instance since every field on these schemas is optional.
+const landofileResultCommandIds = new Set<string>([
   "app:config",
   "app:config:edit",
   "app:config:set",
   "app:config:unset",
   "app:config:validate",
+  "meta:global:config",
+  "meta:global:config:edit",
+  "meta:global:config:set",
+  "meta:global:config:unset",
+  "meta:global:config:validate",
 ]);
 
 const successValueFor = (spec: LandoCommandSpec): unknown => {
-  if (appConfigResultCommandIds.has(spec.id)) return {};
+  if (landofileResultCommandIds.has(spec.id)) return {};
   if (spec.id === "app:share") return tunnelSessionSample;
   if (spec.id === "app:share:list") return [tunnelSessionSample];
   const arbitrary = Arbitrary.make(spec.resultSchema);
