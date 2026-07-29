@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import * as os from "node:os";
 import { resolve } from "node:path";
 
-import { type Context, DateTime, Effect, Either, Layer, ParseResult, Schema } from "effect";
+import { type Context, DateTime, Effect, Either, Layer, Option, ParseResult, Schema } from "effect";
 
 import {
   CapabilityError,
@@ -78,6 +78,11 @@ import { L337_BASE_DEFAULT_FEATURE_IDS } from "./base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "./base/lando.ts";
 import { composeBuildToArtifact, isComposeBuild } from "./compose-build-artifact.ts";
 import { collectComposeKnobs, findUnsupportedComposeKnob, mergeComposeKnobs } from "./compose-knobs.ts";
+import {
+  collectComposePreservedPaths,
+  findUnsupportedComposePreservedPath,
+} from "./compose-preserved-paths.ts";
+import { collectComposeProjectFields, findUnsupportedComposeProjectField } from "./compose-project-fields.ts";
 import { collectComposeServiceFields, findUnsupportedComposeServiceField } from "./compose-service-fields.ts";
 import { validateServiceDependencies } from "./dependency-validation.ts";
 import type { DraftServicePlan } from "./draft.ts";
@@ -277,6 +282,45 @@ const assertComposeServiceFieldsSupported = (
   );
 };
 
+const assertComposeProjectFieldsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  extensions: AppPlan["extensions"],
+): Effect.Effect<void, CapabilityError> => {
+  const use = findUnsupportedComposeProjectField(collectComposeProjectFields(extensions), capabilities);
+  if (use === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `App uses Compose project field ${use.key}, which provider ${String(providerId)} does not support.`,
+      key: use.key,
+      feature: `compose project field ${use.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove top-level ${use.key}, choose a provider that declares composeProjectFields support for ${use.key}, or move provider-specific intent under providers.<id>.`,
+    }),
+  );
+};
+
+const assertComposePreservedPathsSupported = (
+  providerId: ProviderId,
+  capabilities: ProviderCapabilities,
+  services: AppPlan["services"],
+): Effect.Effect<void, CapabilityError> => {
+  const use = findUnsupportedComposePreservedPath(collectComposePreservedPaths(services), capabilities);
+  if (use === undefined) return Effect.void;
+  return Effect.fail(
+    new CapabilityError({
+      message: `Service ${use.service} uses preserved Compose path ${use.key}, which provider ${String(providerId)} does not support.`,
+      service: use.service,
+      key: use.key,
+      feature: `compose preserved path ${use.key}`,
+      capability: "composeSpec",
+      providerId: String(providerId),
+      remediation: `Remove ${use.key} from service ${use.service}, choose a provider that declares composePreservedPaths support for ${use.key}, or move provider-specific intent under providers.<id>.`,
+    }),
+  );
+};
+
 const serviceBindRemediation = (serviceName: string) =>
   `Choose a provider with bind mount support or remove bind mounts from service ${serviceName}.`;
 
@@ -336,14 +380,7 @@ export const DEFAULT_PROXY_DOMAIN = "lndo.site";
 export const mergeDefaultExcludes = (servicePlan: ServicePlan): ServicePlan => {
   const appMount = servicePlan.appMount;
   if (appMount === undefined) return servicePlan;
-  const seen = new Set<string>();
-  const merged: Array<string> = [];
-  for (const e of [...FILE_SYNC_DEFAULT_EXCLUDES, ...(appMount.excludes ?? [])]) {
-    if (!seen.has(e)) {
-      seen.add(e);
-      merged.push(e);
-    }
-  }
+  const merged = [...new Set([...FILE_SYNC_DEFAULT_EXCLUDES, ...(appMount.excludes ?? [])])];
   return { ...servicePlan, appMount: { ...appMount, excludes: merged } };
 };
 
@@ -588,8 +625,7 @@ const expandExcludesToShadows = (
 
 export const applyAuthoredAppMount = (servicePlan: ServicePlan, service: ServiceConfig): ServicePlan => {
   const authored = service.appMount;
-  if (authored === undefined) return servicePlan;
-  if (authored === false) return servicePlan;
+  if (authored === undefined || authored === false) return servicePlan;
   const existingMount = servicePlan.appMount;
   if (existingMount === undefined) return servicePlan;
   const merged = {
@@ -1266,6 +1302,8 @@ const planApp = (
         yield* validateServiceDependencies(appRoot, cached.services);
         yield* assertComposeKnobsSupported(provider, providerCapabilities, cached.services);
         yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, cached.services);
+        yield* assertComposePreservedPathsSupported(provider, providerCapabilities, cached.services);
+        yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, cached.extensions);
         return cached;
       }
     }
@@ -1634,6 +1672,17 @@ const planApp = (
       : undefined;
 
     const hostProxyExtension = hostProxyExtensionForCapabilities(providerCapabilities);
+    const authoredProjectExtensions = Object.entries(landofile).filter(([key]) => key.startsWith("x-"));
+    const composeProjectExtension = {
+      ...(landofile.configs === undefined ? {} : { configs: landofile.configs }),
+      ...(landofile.secrets === undefined ? {} : { secrets: landofile.secrets }),
+      ...Object.fromEntries(authoredProjectExtensions),
+    };
+    const hasComposeProjectExtension = Object.keys(composeProjectExtension).length > 0;
+    const requiredGlobalServices = [
+      ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
+      ...appFeatureResult.requires.globalServices,
+    ];
     const plan = yield* decodeAppPlan(appRoot, {
       id: appId,
       name: appName,
@@ -1648,19 +1697,22 @@ const planApp = (
       fileSync: fileSyncEntries,
       metadata: encodedMetadata,
       extensions:
-        hostProxyExtension === undefined ? {} : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension },
-      ...(() => {
-        const requiredGlobalServices = [
-          ...(aggregatedRoutes.length > 0 ? ["traefik"] : []),
-          ...appFeatureResult.requires.globalServices,
-        ];
-        return requiredGlobalServices.length === 0
+        hostProxyExtension === undefined && !hasComposeProjectExtension
           ? {}
-          : { requires: { globalServices: [...new Set(requiredGlobalServices)] } };
-      })(),
+          : {
+              ...(hostProxyExtension === undefined
+                ? {}
+                : { [HOST_PROXY_PLAN_EXTENSION_KEY]: hostProxyExtension }),
+              ...(hasComposeProjectExtension ? { compose: composeProjectExtension } : {}),
+            },
+      ...(requiredGlobalServices.length === 0
+        ? {}
+        : { requires: { globalServices: [...new Set(requiredGlobalServices)] } }),
     });
     yield* assertComposeKnobsSupported(provider, providerCapabilities, plan.services);
     yield* assertComposeServiceFieldsSupported(provider, providerCapabilities, plan.services);
+    yield* assertComposePreservedPathsSupported(provider, providerCapabilities, plan.services);
+    yield* assertComposeProjectFieldsSupported(provider, providerCapabilities, plan.extensions);
     if (
       cacheService !== undefined &&
       !hasSkippedUnsatisfiedVersionConstraint(versionConstraints, CORE_VERSION)
@@ -1692,9 +1744,9 @@ export const AppPlannerLive = Layer.effect(
       plan: (landofile, providerCapabilities) =>
         planApp(
           pluginRegistry,
-          cacheService._tag === "Some" ? cacheService.value : undefined,
-          configService._tag === "Some" ? configService.value : undefined,
-          fileSystem._tag === "Some" ? fileSystem.value : undefined,
+          Option.getOrUndefined(cacheService),
+          Option.getOrUndefined(configService),
+          Option.getOrUndefined(fileSystem),
           landofile,
           providerCapabilities,
         ),

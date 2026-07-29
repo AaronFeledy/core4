@@ -345,7 +345,7 @@
     "surface": "schema:ProviderCapabilities",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "Additive optional composeServiceFields capability struct per amended spec §5.4 native-tier fail-closed refinement (US-482)."
+    "justification": "Additive optional composeServiceFields, composeProjectFields, and composePreservedPaths capability structs per amended spec §5.4 native-tier fail-closed refinements."
   },
   {
     "surface": "schema:ServiceConfig",

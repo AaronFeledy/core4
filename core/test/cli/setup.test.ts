@@ -30,9 +30,9 @@ import {
   makeTestSshService,
 } from "@lando/sdk/test";
 import {
+  type ResolvedSetupNetworkTrust,
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
-  resolveSetupNetworkTrust,
 } from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
@@ -75,6 +75,12 @@ const buildSetupLayers = (
     Layer.succeed(ConfigService, makeConfigService(configOverrides)),
     makeHttpClientLive(httpFetch),
   );
+
+const testRuntimeProviderRegistry = {
+  list: Effect.succeed([ProviderId.make("lando")]),
+  capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+  select: () => Effect.succeed(TestRuntimeProvider),
+};
 
 const buildSetupLayersWithHostIntegrations = (
   registry: Context.Tag.Service<typeof RuntimeProviderRegistry>,
@@ -1106,9 +1112,7 @@ describe("meta:setup command", () => {
         setupSpec
           .run({
             installDir: "/opt/lando",
-            _networkProbe: (network: {
-              readonly proxy: { readonly https?: string; readonly noProxy: readonly string[] };
-            }) =>
+            _networkProbe: (network: ResolvedSetupNetworkTrust) =>
               Effect.sync(() => {
                 expect(network.proxy.https).toBe("http://config-proxy.example:8080");
                 expect(network.proxy.noProxy).toEqual(["config.example"]);
@@ -1240,12 +1244,7 @@ describe("meta:setup command", () => {
         setupSpec
           .run({
             installDir: "/opt/lando",
-            _networkProbe: (network: {
-              readonly ca: {
-                readonly certs: readonly string[];
-                readonly loadedCerts: readonly { readonly path: string }[];
-              };
-            }) =>
+            _networkProbe: (network: ResolvedSetupNetworkTrust) =>
               Effect.sync(() => {
                 expect(network.ca.certs).toEqual([configCert, envCert]);
                 expect(network.ca.loadedCerts.map((cert) => cert.path)).toEqual([configCert, envCert]);
@@ -1292,14 +1291,7 @@ describe("meta:setup command", () => {
         setupSpec
           .run({
             installDir: "/opt/lando",
-            _networkProbe: (network: {
-              readonly proxy: {
-                readonly http?: string;
-                readonly https?: string;
-                readonly noProxy: readonly string[];
-                readonly injectIntoServices: boolean;
-              };
-            }) =>
+            _networkProbe: (network: ResolvedSetupNetworkTrust) =>
               Effect.sync(() => {
                 expect(network.proxy).toEqual({
                   http: "http://env-http-proxy.example:8080",
@@ -1429,25 +1421,43 @@ describe("meta:setup command", () => {
     expect(setupCalls).toBe(0);
   });
 
-  test("resolved setup network trust carries the schema inject defaults when network is absent", async () => {
-    const resolved = await Effect.runPromise(resolveSetupNetworkTrust({} as GlobalConfig, {}));
-
-    expect(resolved.ca.injectIntoServices).toBe(true);
-    expect(resolved.proxy.injectIntoServices).toBe(false);
+  test("setup passes schema inject defaults to the network probe when network config is absent", async () => {
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          _networkProbe: (network: ResolvedSetupNetworkTrust) =>
+            Effect.sync(() => {
+              expect(network.ca.injectIntoServices).toBe(true);
+              expect(network.proxy.injectIntoServices).toBe(false);
+            }),
+        })
+        .pipe(Effect.provide(buildSetupLayers(testRuntimeProviderRegistry))),
+    );
   });
 
-  test("resolved setup network trust carries configured inject flags", async () => {
-    const config = {
-      network: {
-        ca: { trustHost: true, certs: [], injectIntoServices: false },
-        proxy: { noProxy: [], injectIntoServices: true },
-      },
-    } as unknown as GlobalConfig;
-
-    const resolved = await Effect.runPromise(resolveSetupNetworkTrust(config, {}));
-
-    expect(resolved.ca.injectIntoServices).toBe(false);
-    expect(resolved.proxy.injectIntoServices).toBe(true);
+  test("setup passes configured inject flags to the network probe", async () => {
+    await Effect.runPromise(
+      setupSpec
+        .run({
+          installDir: "/opt/lando",
+          _networkProbe: (network: ResolvedSetupNetworkTrust) =>
+            Effect.sync(() => {
+              expect(network.ca.injectIntoServices).toBe(false);
+              expect(network.proxy.injectIntoServices).toBe(true);
+            }),
+        })
+        .pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: {
+                ca: { trustHost: true, certs: [], injectIntoServices: false },
+                proxy: { noProxy: [], injectIntoServices: true },
+              },
+            }),
+          ),
+        ),
+    );
   });
 
   test("network trust probe maps HTTP 407 responses to proxy authentication failures", async () => {

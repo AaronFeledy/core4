@@ -205,6 +205,26 @@ export const ComposeServiceFieldCapabilities = Schema.Struct({
   supported: Schema.Array(ComposeServiceFieldKey),
 });
 
+// Exact-path refinement for matrix-preserved service descendants that are
+// neither ComposeServiceKnobKey runtime knobs nor ComposeServiceFieldKey families.
+// The committed set starts with the two paths that §7.4 preserves but that prior
+// knob/field stories did not assign to a capability family; new paths are additive
+// schema literals, never inferred from composeSpec: "native" alone.
+export const ComposePreservedPathKey = Schema.Literal(
+  "depends_on.*.restart",
+  "healthcheck.start_interval",
+);
+
+export const ComposePreservedPathCapabilities = Schema.Struct({
+  supported: Schema.Array(ComposePreservedPathKey),
+});
+
+export const ComposeProjectFieldKey = Schema.Literal("configs", "secrets");
+
+export const ComposeProjectFieldCapabilities = Schema.Struct({
+  supported: Schema.Array(ComposeProjectFieldKey),
+});
+
 export const ProviderCapabilities = Schema.Struct({
   artifactBuild: Schema.Boolean,
   artifactPull: Schema.Boolean,
@@ -229,6 +249,8 @@ export const ProviderCapabilities = Schema.Struct({
   composeSpec: Schema.Literal("none", "portable", "native"),
   composeKnobs: Schema.optional(ComposeKnobCapabilities),
   composeServiceFields: Schema.optional(ComposeServiceFieldCapabilities),
+  composeProjectFields: Schema.optional(ComposeProjectFieldCapabilities),
+  composePreservedPaths: Schema.optional(ComposePreservedPathCapabilities),
   // Data plane (§10.11). Drive `DataMover` dispatch: native method vs generic helper-container fallback.
   volumeSnapshot: Schema.Literal("native", "copy", "none"),  // native=CoW/commit; copy=tar export+import; none
   serviceFileCopy: Schema.Literal("native", "exec", "none"), // native=cp API; exec=tar-over-exec; none
@@ -248,13 +270,17 @@ Endpoint publication is explicit desired state (§6.6). Before returning an `App
 
 - `none` — the provider can only realize fields that core normalized into provider-neutral `AppPlan` fields.
 - `portable` — the provider can realize the Compose keys that have direct provider-neutral equivalents, such as standard service environment, command, mounts, stores, top-level networks (normalized into `AppPlan.networks`), endpoints, and dependencies. Service-level network attachments are not portable-tier semantics; they are preserved Compose-native fields gated by `composeServiceFields`.
-- `native` — the provider can also consume Compose-native semantics preserved in plan extensions, such as provider labels, deploy hints, build variants, profiles, configs, and secrets. `native` is necessary but not sufficient: for the per-container runtime knobs listed by `ComposeServiceKnobKey`, the exact knob path MUST also appear in `composeKnobs.supported`, and for the preserved service-level fields listed by `ComposeServiceFieldKey`, the exact field family MUST also appear in `composeServiceFields.supported`.
+- `native` — the provider can also consume Compose-native semantics preserved in plan extensions, such as provider labels, deploy hints, build variants, profiles, configs, and secrets. `native` is necessary but not sufficient: for the per-container runtime knobs listed by `ComposeServiceKnobKey`, the exact knob path MUST also appear in `composeKnobs.supported`; for the preserved service-level fields listed by `ComposeServiceFieldKey`, the exact field family MUST also appear in `composeServiceFields.supported`; for preserved project-level fields listed by `ComposeProjectFieldKey`, the exact field MUST also appear in `composeProjectFields.supported`; and for matrix-preserved service descendants listed by `ComposePreservedPathKey`, the exact path MUST also appear in `composePreservedPaths.supported`.
 
-`composeSpec`, `composeKnobs`, and `composeServiceFields` form one capability surface. `composeKnobs` is a fail-closed refinement for the preserved per-container runtime knobs of §6.2. Omitting it is equivalent to `{ supported: [] }`. A runtime knob is supported only when `composeSpec` is `native` and its exact `ComposeServiceKnobKey` appears in `supported`; the planner never infers knob support from the tier alone. A provider declaring a non-empty `supported` set at a tier other than `native` is an inconsistent declaration and is rejected by the §13.1 provider contract suite. The contract suite validates both the declaration shape and partial declarations.
+`composeSpec`, `composeKnobs`, `composeServiceFields`, `composeProjectFields`, and `composePreservedPaths` form one capability surface. `composeKnobs` is a fail-closed refinement for the preserved per-container runtime knobs of §6.2. Omitting it is equivalent to `{ supported: [] }`. A runtime knob is supported only when `composeSpec` is `native` and its exact `ComposeServiceKnobKey` appears in `supported`; the planner never infers knob support from the tier alone. A provider declaring a non-empty `supported` set at a tier other than `native` is an inconsistent declaration and is rejected by the §13.1 provider contract suite. The contract suite validates both the declaration shape and partial declarations.
 
 `composeServiceFields` follows the identical fail-closed rules for the preserved service-level fields of §6.2 (`networks`, `configs`, `secrets`, `profiles`, `labels`). Omitting it is equivalent to `{ supported: [] }`. A preserved service-level field family is supported only when `composeSpec` is `native` and the family appears in `composeServiceFields.supported`; a non-empty `supported` set at a tier other than `native` is an inconsistent declaration rejected by the §13.1 provider contract suite. Declaring a family is a claim that the provider realizes every accepted form of that field's documented semantics — partial realization of a declared family is a contract violation, not a planning-time refinement.
 
-Service-level `x-*` extension fields are deliberately outside this capability surface. The Compose specification defines unknown extension fields as inert metadata that conforming tools preserve and otherwise ignore, so there is no runtime intent for a provider to realize or reject. Core preserves service-level `x-*` values losslessly in `ServicePlan.extensions.compose` without capability gating. If a specific extension namespace later acquires runtime semantics, that namespace is gated through `providerExtensions` or an explicit capability field — never through a wildcard `x-*` declaration.
+`composeProjectFields` follows the same fail-closed rules for preserved top-level `configs` and `secrets`. Omitting it is equivalent to `{ supported: [] }`. A project field is supported only when `composeSpec` is `native` and the exact `ComposeProjectFieldKey` appears in `composeProjectFields.supported`; a non-empty declaration below `native` is inconsistent. Declaring a field claims complete realization of every accepted form. Top-level `x-*` values are inert metadata preserved in `AppPlan.extensions.compose` and are never capability-gated.
+
+`composePreservedPaths` is the fail-closed exact-path refinement for matrix-`preserved` service descendants that are neither `ComposeServiceKnobKey` runtime knobs nor `ComposeServiceFieldKey` families (initially `depends_on.*.restart` and `healthcheck.start_interval`). Omitting it is equivalent to `{ supported: [] }`. Such a path is supported only when `composeSpec` is `native` and its exact `ComposePreservedPathKey` appears in `supported`; the planner never infers path support from the tier, from a parent field's normalization, or from another refinement. A non-empty `supported` set at a tier other than `native` is an inconsistent declaration rejected by the §13.1 provider contract suite. Declaring a path is a claim that the provider realizes that path's documented Compose semantics — claiming support while ignoring the path is a contract violation. Adding a new path to this refinement requires an additive schema-literal change; it is not a silent expansion of `composeSpec: "native"`.
+
+Service- and project-level `x-*` extension fields are deliberately outside this capability surface. The Compose specification defines unknown extension fields as inert metadata that conforming tools preserve and otherwise ignore, so there is no runtime intent for a provider to realize or reject. Core preserves service-level values in `ServicePlan.extensions.compose` and project-level values in `AppPlan.extensions.compose` without capability gating. If a specific extension namespace later acquires runtime semantics, that namespace is gated through `providerExtensions` or an explicit capability field — never through a wildcard `x-*` declaration.
 
 `bindMountPerformance` describes the provider's host↔guest filesystem-IO characteristics for `bind`-type mounts:
 
@@ -331,8 +357,8 @@ Planning handles supported Compose input in this order:
 
 1. Parse, merge, and validate the Landofile against the Lando schema plus the documented Compose subset.
 2. Normalize Compose keys with provider-neutral meaning into `AppPlan` fields. Examples: top-level `volumes:` → `stores`, top-level `networks:` → `networks`, service `volumes:` → `mounts`/`storage`, service `ports:`/`expose:` → `endpoints`, service `depends_on:` → `dependsOn`.
-3. Preserve supported Compose keys that are valid but not provider-neutral under `AppPlan.extensions.compose` or `ServicePlan.extensions.compose` with secrets redacted where needed. Service-level `x-*` extension fields are always preserved inert per §5.4 and are never capability-gated.
-4. Check provider capabilities before any provider action. For each service, collect the preserved per-container runtime-knob paths and the preserved service-level field families (`networks`, `configs`, `secrets`, `profiles`, `labels`) present in `ServicePlan.extensions.compose`. A knob is supported only when the selected provider declares `composeSpec: native` and includes the exact path in `composeKnobs.supported`; omitting `composeKnobs` means no knob support. A service-level field family is supported only when the selected provider declares `composeSpec: native` and includes the family in `composeServiceFields.supported`; omitting `composeServiceFields` means no service-level field support. An unsupported knob or field fails planning with `CapabilityError` carrying `service`, `key`, `providerId`, `capability: "composeSpec"`, and actionable remediation to remove the key, choose a supporting provider, or move provider-specific intent under `providers.<id>`.
+3. Preserve supported Compose keys that are valid but not provider-neutral under `AppPlan.extensions.compose` or `ServicePlan.extensions.compose` with secrets redacted where needed. Service- and project-level `x-*` extension fields are always preserved inert per §5.4 and are never capability-gated.
+4. Check provider capabilities before any provider action. For each service, collect from `ServicePlan.extensions.compose` (a) the preserved per-container runtime-knob paths, (b) the preserved service-level field families (`networks`, `configs`, `secrets`, `profiles`, `labels`), and (c) any matrix-`preserved` exact paths listed by `ComposePreservedPathKey` that are present as descendants (today `depends_on.*.restart` and `healthcheck.start_interval`). From `AppPlan.extensions.compose`, collect preserved project-level `configs` and `secrets`; top-level `x-*` remains inert and ungated. A knob is supported only when the selected provider declares `composeSpec: native` and includes the exact path in `composeKnobs.supported`; omitting `composeKnobs` means no knob support. A service-level field family is supported only when the selected provider declares `composeSpec: native` and includes the family in `composeServiceFields.supported`; omitting `composeServiceFields` means no service-level field support. A project field is supported only when the selected provider declares `composeSpec: native` and includes it in `composeProjectFields.supported`; omitting `composeProjectFields` means no project-field support. A `ComposePreservedPathKey` path is supported only when the selected provider declares `composeSpec: native` and includes the exact path in `composePreservedPaths.supported`; omitting `composePreservedPaths` means no support for those paths. An unsupported knob, field, or preserved path fails planning with `CapabilityError` carrying `key`, `providerId`, `capability: "composeSpec"`, optional service context for service-scoped intent, and actionable remediation to remove the key, choose a supporting provider, or move provider-specific intent under `providers.<id>`.
 5. Reject Compose keys carrying the `rejected` disposition with remediation pointing to either a supported Lando key, a provider extension, or a config translator when one is available.
 
 The normalize/preserve/reject classification for every Compose service key is committed as the §7.4 disposition matrix (backed by the vendored, pinned upstream Compose JSON Schema) and enforced by the `check:compose-coverage` gate; planning consults that matrix rather than re-deciding per key. This preserves the user-facing Compose subset while keeping the provider-neutral `AppPlan` as the runtime contract.

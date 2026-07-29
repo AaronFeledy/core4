@@ -17,19 +17,39 @@ import { makeMemoryLogFileAccess } from "@lando/sdk/log-follow";
 import { ProviderCapabilities } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
 
+const UNDECLARED_COMPOSE_CAPABILITY_FIELDS = ["composePreservedPaths", "composeProjectFields"];
+
+const EXPECTED_CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields)
+  .filter((field) => !UNDECLARED_COMPOSE_CAPABILITY_FIELDS.includes(field))
+  .sort();
+
+const EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY = EXPECTED_CAPABILITY_FIELDS.filter(
+  (field) => field !== "hostProxy",
+);
+
+const resolveRuntimeProvider = (
+  options: Omit<Parameters<typeof makeProviderLayer>[0], "sanitizeAppliedPlan">,
+) =>
+  Effect.runPromise(
+    RuntimeProvider.pipe(
+      Effect.provide(makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, ...options })),
+    ),
+  );
+
+const podmanApiForArch = (arch: string) => ({
+  info: Effect.succeed({ host: { arch } }),
+  ping: Effect.succeed(undefined),
+});
+
 describe("provider-lando capabilities", () => {
   test("declares every ProviderCapabilities field for Linux and macOS", () => {
-    const expectedFields = Object.keys(ProviderCapabilities.fields)
-      .filter((field) => field !== "hostProxy")
-      .sort();
-    const expectedWindowsFields = Object.keys(ProviderCapabilities.fields).sort();
     const linux = mvpProviderCapabilities("linux");
     const macos = mvpProviderCapabilities("darwin");
     const windows = mvpProviderCapabilities("win32");
 
-    expect(Object.keys(linux).sort()).toEqual(expectedFields);
-    expect(Object.keys(macos).sort()).toEqual(expectedFields);
-    expect(Object.keys(windows).sort()).toEqual(expectedWindowsFields);
+    expect(Object.keys(linux).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(Object.keys(macos).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS_WITHOUT_HOST_PROXY);
+    expect(Object.keys(windows).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
     expect(linux.bindMountPerformance).toBe("native");
     expect(macos.bindMountPerformance).toBe("slow");
     expect(windows.bindMountPerformance).toBe("slow");
@@ -39,6 +59,9 @@ describe("provider-lando capabilities", () => {
     expect(linux.artifactBuild).toBe(true);
     expect(macos.artifactBuild).toBe(true);
     expect(windows.artifactBuild).toBe(true);
+    expect(linux.composeProjectFields).toBeUndefined();
+    expect(macos.composeProjectFields).toBeUndefined();
+    expect(windows.composeProjectFields).toBeUndefined();
   });
 
   test("does not advertise host-proxy container targets without runtime API introspection", () => {
@@ -48,38 +71,26 @@ describe("provider-lando capabilities", () => {
   });
 
   test("does not advertise artifact builds without a Podman API client", async () => {
-    const runtimeProvider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(makeProviderLayer({ sanitizeAppliedPlan: stripHostProxyRunLando, platform: "linux" })),
-      ),
-    );
+    const runtimeProvider = await resolveRuntimeProvider({ platform: "linux" });
+
     expect(runtimeProvider.capabilities.artifactBuild).toBe(false);
     expect(runtimeProvider.capabilities.artifactPull).toBe(false);
   });
 
   test("advertises artifact pull only when a Podman API client is wired", async () => {
-    const runtimeProvider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(
-          makeProviderLayer({
-            sanitizeAppliedPlan: stripHostProxyRunLando,
-            platform: "linux",
-            podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
-          }),
-        ),
-      ),
-    );
+    const runtimeProvider = await resolveRuntimeProvider({
+      platform: "linux",
+      podmanApi: podmanApiForArch("x64"),
+    });
 
     expect(runtimeProvider.capabilities.artifactPull).toBe(true);
   });
 
   test("declares the Linux ProviderCapabilities through the Live Layer", async () => {
-    const layer = makeProviderLayer({
-      sanitizeAppliedPlan: stripHostProxyRunLando,
+    const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
+      podmanApi: podmanApiForArch("x64"),
     });
-    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities).toEqual({
       ...linuxMvpCapabilities,
@@ -91,56 +102,46 @@ describe("provider-lando capabilities", () => {
     );
     expect(runtimeProvider.capabilities.sharedCrossAppNetwork).toBe(true);
     expect(runtimeProvider.capabilities.copyMounts).toBe(false);
-    expect(Object.keys(runtimeProvider.capabilities).sort()).toEqual(
-      Object.keys(ProviderCapabilities.fields).sort(),
-    );
+    expect(Object.keys(runtimeProvider.capabilities).sort()).toEqual(EXPECTED_CAPABILITY_FIELDS);
   });
 
   test("advertises service log source following only when file access is injected", async () => {
     const fs = makeMemoryLogFileAccess();
-    const layer = makeProviderLayer({
-      sanitizeAppliedPlan: stripHostProxyRunLando,
+    const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: { info: Effect.succeed({ host: { arch: "x64" } }), ping: Effect.succeed(undefined) },
+      podmanApi: podmanApiForArch("x64"),
       logFileAccess: fs.access,
     });
-    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
   });
 
   test("advertises service log source following when a helper payload matches Podman info architecture", async () => {
-    const layer = makeProviderLayer({
-      sanitizeAppliedPlan: stripHostProxyRunLando,
+    const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: { info: Effect.succeed({ host: { arch: "x86_64" } }), ping: Effect.succeed(undefined) },
+      podmanApi: podmanApiForArch("x86_64"),
       logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
     });
-    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(true);
   });
 
   test("does not advertise service log source following when Podman info architecture has no helper payload", async () => {
-    const layer = makeProviderLayer({
-      sanitizeAppliedPlan: stripHostProxyRunLando,
+    const runtimeProvider = await resolveRuntimeProvider({
       platform: "linux",
-      podmanApi: { info: Effect.succeed({ host: { arch: "aarch64" } }), ping: Effect.succeed(undefined) },
+      podmanApi: podmanApiForArch("aarch64"),
       logFileHelperPayloads: { "linux-x64": new Uint8Array([1, 2, 3]) },
     });
-    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.capabilities.serviceLogSources).toBe(false);
   });
 
   test("declares macOS support with slow bind mount performance", async () => {
-    const layer = makeProviderLayer({
-      sanitizeAppliedPlan: stripHostProxyRunLando,
+    const runtimeProvider = await resolveRuntimeProvider({
       platform: "darwin",
       arch: "arm64",
-      podmanApi: { info: Effect.succeed({ host: { arch: "arm64" } }), ping: Effect.succeed(undefined) },
+      podmanApi: podmanApiForArch("arm64"),
     });
-    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
 
     expect(runtimeProvider.platform).toBe("darwin");
     expect(runtimeProvider.capabilities).toEqual({
@@ -153,12 +154,7 @@ describe("provider-lando capabilities", () => {
   });
 
   test("declares Windows support with slow bind mount performance", async () => {
-    const layer = makeProviderLayer({
-      sanitizeAppliedPlan: stripHostProxyRunLando,
-      platform: "win32",
-      arch: "arm64",
-    });
-    const runtimeProvider = await Effect.runPromise(RuntimeProvider.pipe(Effect.provide(layer)));
+    const runtimeProvider = await resolveRuntimeProvider({ platform: "win32", arch: "arm64" });
 
     expect(runtimeProvider.platform).toBe("win32");
     expect(runtimeProvider.capabilities).toEqual({
@@ -177,18 +173,11 @@ describe("provider-lando capabilities", () => {
   });
 
   test("uses Podman info architecture over injected host architecture", async () => {
-    const runtimeProvider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(
-          makeProviderLayer({
-            sanitizeAppliedPlan: stripHostProxyRunLando,
-            platform: "linux",
-            arch: "x64",
-            podmanApi: { info: Effect.succeed({ host: { arch: "arm64" } }), ping: Effect.succeed(undefined) },
-          }),
-        ),
-      ),
-    );
+    const runtimeProvider = await resolveRuntimeProvider({
+      platform: "linux",
+      arch: "x64",
+      podmanApi: podmanApiForArch("arm64"),
+    });
 
     expect(runtimeProvider.capabilities.hostProxy?.containerTargets).toEqual([
       { os: "linux", arch: "arm64" },
@@ -196,46 +185,32 @@ describe("provider-lando capabilities", () => {
   });
 
   test("omits host-proxy container targets when Podman info omits architecture despite injected host architecture", async () => {
-    const runtimeProvider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(
-          makeProviderLayer({
-            sanitizeAppliedPlan: stripHostProxyRunLando,
-            platform: "linux",
-            arch: "arm64",
-            podmanApi: { info: Effect.succeed({ host: {} }), ping: Effect.succeed(undefined) },
-          }),
-        ),
-      ),
-    );
+    const runtimeProvider = await resolveRuntimeProvider({
+      platform: "linux",
+      arch: "arm64",
+      podmanApi: { info: Effect.succeed({ host: {} }), ping: Effect.succeed(undefined) },
+    });
 
     expect(runtimeProvider.capabilities.hostProxy).toBeUndefined();
   });
 
   test("uses injected architecture without probing a cold managed runtime during registry construction", async () => {
     const calls: string[] = [];
-    const runtimeProvider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(
-          makeProviderLayer({
-            sanitizeAppliedPlan: stripHostProxyRunLando,
-            platform: "linux",
-            arch: "arm64",
-            providerSocketPath: "/tmp/lando-managed-podman.sock",
-            podmanApiFactory: (socketPath) => {
-              expect(socketPath).toBe("/tmp/lando-managed-podman.sock");
-              return {
-                info: Effect.sync(() => {
-                  calls.push("info");
-                  return { host: { arch: "x86_64" } };
-                }),
-                ping: Effect.succeed(undefined),
-              };
-            },
+    const runtimeProvider = await resolveRuntimeProvider({
+      platform: "linux",
+      arch: "arm64",
+      providerSocketPath: "/tmp/lando-managed-podman.sock",
+      podmanApiFactory: (socketPath) => {
+        expect(socketPath).toBe("/tmp/lando-managed-podman.sock");
+        return {
+          info: Effect.sync(() => {
+            calls.push("info");
+            return { host: { arch: "x86_64" } };
           }),
-        ),
-      ),
-    );
+          ping: Effect.succeed(undefined),
+        };
+      },
+    });
 
     expect(runtimeProvider.capabilities.hostProxy?.containerTargets).toEqual([
       { os: "linux", arch: "arm64" },
@@ -246,61 +221,43 @@ describe("provider-lando capabilities", () => {
   test("does not launch a managed runtime while resolving provider capabilities", async () => {
     const calls: string[] = [];
     let ready = false;
-    const provider = await Effect.runPromise(
-      RuntimeProvider.pipe(
-        Effect.provide(
-          makeProviderLayer({
-            sanitizeAppliedPlan: stripHostProxyRunLando,
-            platform: "linux",
-            arch: "arm64",
-            providerSocketPath: "/tmp/lando-managed-cold.sock",
-            providerPidPath: "/tmp/lando-managed-cold.pid",
-            runtimeStorageDir: "/tmp/lando-managed-storage",
-            runtimeRunDir: "/tmp/lando-managed-run",
-            runtimeConfigDir: "/tmp/lando-managed-config",
-            podmanService: {
-              launch: () =>
-                Effect.sync(() => {
-                  calls.push("launch");
-                  ready = true;
-                  return 1234;
-                }),
-              isAlive: () => Effect.succeed(false),
-              terminate: () => Effect.void,
-            },
-            podmanApiFactory: () => ({
-              ping: Effect.gen(function* () {
-                yield* Effect.sync(() => calls.push("ping"));
-                if (!ready) {
-                  return yield* Effect.fail(
-                    new ProviderUnavailableError({
-                      providerId: "lando",
-                      operation: "ping",
-                      message: "cold socket",
-                      remediation: "test only",
-                    }),
-                  );
-                }
-              }),
-              info: Effect.gen(function* () {
-                yield* Effect.sync(() => calls.push("info"));
-                if (!ready) {
-                  return yield* Effect.fail(
-                    new ProviderUnavailableError({
-                      providerId: "lando",
-                      operation: "info",
-                      message: "info called before runtime launch",
-                      remediation: "test only",
-                    }),
-                  );
-                }
-                return { host: { arch: "aarch64" } };
-              }),
-            }),
+    const coldRuntimeFailure = (operation: "ping" | "info") =>
+      new ProviderUnavailableError({
+        providerId: "lando",
+        operation,
+        message: `${operation} called before runtime launch`,
+        remediation: "test only",
+      });
+    const provider = await resolveRuntimeProvider({
+      platform: "linux",
+      arch: "arm64",
+      providerSocketPath: "/tmp/lando-managed-cold.sock",
+      providerPidPath: "/tmp/lando-managed-cold.pid",
+      runtimeStorageDir: "/tmp/lando-managed-storage",
+      runtimeRunDir: "/tmp/lando-managed-run",
+      runtimeConfigDir: "/tmp/lando-managed-config",
+      podmanService: {
+        launch: () =>
+          Effect.sync(() => {
+            calls.push("launch");
+            ready = true;
+            return 1234;
           }),
-        ),
-      ),
-    );
+        isAlive: () => Effect.succeed(false),
+        terminate: () => Effect.void,
+      },
+      podmanApiFactory: () => ({
+        ping: Effect.gen(function* () {
+          yield* Effect.sync(() => calls.push("ping"));
+          if (!ready) return yield* Effect.fail(coldRuntimeFailure("ping"));
+        }),
+        info: Effect.gen(function* () {
+          yield* Effect.sync(() => calls.push("info"));
+          if (!ready) return yield* Effect.fail(coldRuntimeFailure("info"));
+          return { host: { arch: "aarch64" } };
+        }),
+      }),
+    });
 
     expect(calls).toEqual([]);
     expect(provider.capabilities.hostProxy?.containerTargets).toEqual([{ os: "linux", arch: "arm64" }]);

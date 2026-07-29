@@ -34,7 +34,7 @@ tags: [beta, docs, compose, service]
 
   <Scenario id="allowlist" render={false} reason="The compose subset rejects unsupported keys and names the offending key in its remediation.">
     <Step name="note">
-      <Variable name="allowedKeys" value="image, command, entrypoint, user, workingDirectory, environment, ports, volumes, build, dependsOn, healthcheck, hostnames, appMount, mounts, storage, endpoints, routes, providers" display="Top-level Compose keys accepted by the subset" />
+      <Variable name="keyMatrix" value="docs/reference/compose-key-matrix.mdx" display="The generated key matrix publishes every accepted, preserved, and rejected Compose service key" />
       <Variable name="remediation" value="Move unsupported provider-specific config under providers.<id> or open an issue to grow the subset." display="Remediation for unsupported keys" />
     </Step>
   </Scenario>

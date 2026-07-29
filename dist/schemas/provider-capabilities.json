@@ -19,6 +19,62 @@
       "title": "Compose Knob Capabilities",
       "type": "object"
     },
+    "ComposePreservedPathCapabilities": {
+      "additionalProperties": false,
+      "description": "Native-tier fail-closed provider declaration of realized matrix-preserved Compose descendants; omitting it means no support.",
+      "properties": {
+        "supported": {
+          "description": "Exact matrix-preserved Compose descendant paths realized by a native-tier provider.",
+          "items": {
+            "$ref": "#/$defs/ComposePreservedPathKey"
+          },
+          "title": "Supported Compose Preserved Paths",
+          "type": "array"
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "title": "Compose Preserved Path Capabilities",
+      "type": "object"
+    },
+    "ComposePreservedPathKey": {
+      "description": "Matrix-preserved Compose service descendant requiring native composeSpec and an exact provider declaration.",
+      "enum": [
+        "depends_on.*.restart",
+        "healthcheck.start_interval"
+      ],
+      "title": "Compose Preserved Path Key",
+      "type": "string"
+    },
+    "ComposeProjectFieldCapabilities": {
+      "additionalProperties": false,
+      "description": "Native-tier fail-closed provider declaration of realized Compose project-level fields; omitting it means no support.",
+      "properties": {
+        "supported": {
+          "description": "Exact preserved Compose project-level fields realized by a native-tier provider.",
+          "items": {
+            "$ref": "#/$defs/ComposeProjectFieldKey"
+          },
+          "title": "Supported Compose Project Fields",
+          "type": "array"
+        }
+      },
+      "required": [
+        "supported"
+      ],
+      "title": "Compose Project Field Capabilities",
+      "type": "object"
+    },
+    "ComposeProjectFieldKey": {
+      "description": "Preserved Compose project-level field requiring native composeSpec and an exact provider declaration.",
+      "enum": [
+        "configs",
+        "secrets"
+      ],
+      "title": "Compose Project Field Key",
+      "type": "string"
+    },
     "ComposeServiceFieldCapabilities": {
       "additionalProperties": false,
       "description": "Native-tier fail-closed provider declaration of realized Compose service-level fields; omitting it means no support.",
@@ -210,6 +266,24 @@
       ],
       "description": "Fail-closed support declaration for preserved Compose runtime knobs.",
       "title": "Compose Knobs"
+    },
+    "composePreservedPaths": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ComposePreservedPathCapabilities"
+        }
+      ],
+      "description": "Native-tier fail-closed support declaration for matrix-preserved Compose service descendants.",
+      "title": "Compose Preserved Paths"
+    },
+    "composeProjectFields": {
+      "allOf": [
+        {
+          "$ref": "#/$defs/ComposeProjectFieldCapabilities"
+        }
+      ],
+      "description": "Native-tier fail-closed support declaration for preserved Compose project-level fields.",
+      "title": "Compose Project Fields"
     },
     "composeServiceFields": {
       "allOf": [

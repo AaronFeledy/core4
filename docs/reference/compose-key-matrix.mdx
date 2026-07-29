@@ -1,0 +1,579 @@
+---
+title: Compose Key Matrix
+description: Generated disposition matrix for every upstream Compose key path Lando classifies.
+---
+
+{/* GENERATED FILE — do not hand-edit. Regenerate via `bun run codegen:compose-key-matrix`. */}
+
+# Compose Key Matrix
+
+A `normalized` key resolves into a provider-neutral plan field. A `preserved` key is accepted and carried in the Compose plan extension; row details determine capability behavior. A `rejected` key fails closed with a tagged error and remediation.
+
+See [Compose service blocks](../guides/config/compose-service-block.mdx) and [Compose compatibility](../guides/config/compose-compatibility.mdx) for usage guidance.
+
+## Coverage summary
+
+| Scope | Normalized | Preserved | Rejected | Total |
+| --- | --- | --- | --- | --- |
+| Top-level keys | 6 | 3 | 1 | 10 |
+| Service keys | 43 | 107 | 212 | 362 |
+| YAML tags | 0 | 0 | 2 | 2 |
+
+## Top-level keys
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `configs` | preserved | Preserved losslessly in AppPlan.extensions.compose and capability-checked against composeProjectFields; planning fails with CapabilityError when the provider does not declare configs. |
+| `include` | normalized | Normalizes into Lando includes. |
+| `models` | rejected | Translate models with a Compose-to-Lando config translator. |
+| `name` | normalized | Normalizes into AppPlan.name. |
+| `networks` | normalized | Normalizes into AppPlan.networks. |
+| `secrets` | preserved | Preserved losslessly in AppPlan.extensions.compose and capability-checked against composeProjectFields; planning fails with CapabilityError when the provider does not declare secrets. |
+| `services` | normalized | Normalizes into AppPlan.services. |
+| `version` | normalized | Accepted and ignored after a deprecation notice as normalized compatibility handling. |
+| `volumes` | normalized | Normalizes into AppPlan.stores. |
+| `x-*` | preserved | Preserved losslessly in AppPlan.extensions.compose as inert metadata and never capability-gated. |
+
+## YAML tags
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `!override` | rejected | Remove !override and express the override through Landofile layer merge semantics. |
+| `!reset` | rejected | Remove !reset and express the override through Landofile layer merge semantics. |
+
+## Service keys
+
+### Key roots
+
+| Key | Disposition | Nested paths | Detail |
+| --- | --- | --- | --- |
+| [`annotations`](#annotations) | rejected | 1 | Translate annotations with a Compose-to-Lando config translator. |
+| `attach` | rejected | — | Translate attach with a Compose-to-Lando config translator. |
+| [`blkio_config`](#blkio_config) | rejected | 16 | Translate blkio_config with a Compose-to-Lando config translator. |
+| [`build`](#build) | normalized | 41 | Normalizes into `ServicePlan.artifact` |
+| `cap_add` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `cap_drop` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `cgroup` | rejected | — | Translate cgroup with a Compose-to-Lando config translator. |
+| `cgroup_parent` | rejected | — | Translate cgroup_parent with a Compose-to-Lando config translator. |
+| `command` | normalized | — | Normalizes into `ServicePlan.command` |
+| [`configs`](#configs) | preserved | 6 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `container_name` | rejected | — | Remove container_name and use the Lando service key as the container identity. |
+| `cpu_count` | rejected | — | Translate cpu_count with a Compose-to-Lando config translator. |
+| `cpu_percent` | rejected | — | Translate cpu_percent with a Compose-to-Lando config translator. |
+| `cpu_period` | rejected | — | Translate cpu_period with a Compose-to-Lando config translator. |
+| `cpu_quota` | rejected | — | Translate cpu_quota with a Compose-to-Lando config translator. |
+| `cpu_rt_period` | rejected | — | Translate cpu_rt_period with a Compose-to-Lando config translator. |
+| `cpu_rt_runtime` | rejected | — | Translate cpu_rt_runtime with a Compose-to-Lando config translator. |
+| `cpu_shares` | rejected | — | Translate cpu_shares with a Compose-to-Lando config translator. |
+| `cpus` | rejected | — | Translate cpus with a Compose-to-Lando config translator. |
+| `cpuset` | rejected | — | Translate cpuset with a Compose-to-Lando config translator. |
+| [`credential_spec`](#credential_spec) | rejected | 4 | Translate credential_spec with a Compose-to-Lando config translator. |
+| [`depends_on`](#depends_on) | normalized | 5 | Normalizes into `ServicePlan.dependsOn` |
+| [`deploy`](#deploy) | preserved | 60 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`develop`](#develop) | rejected | 17 | Translate develop with a Compose-to-Lando config translator. |
+| `device_cgroup_rules` | rejected | — | Translate device_cgroup_rules with a Compose-to-Lando config translator. |
+| [`devices`](#devices) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `dns` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `dns_opt` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `dns_search` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `domainname` | rejected | — | Translate domainname with a Compose-to-Lando config translator. |
+| `entrypoint` | normalized | — | Normalizes into `ServicePlan.entrypoint` |
+| [`env_file`](#env_file) | normalized | 3 | Normalizes into `ServicePlan.environment` |
+| [`environment`](#environment) | normalized | 1 | Normalizes into `ServicePlan.environment` |
+| `expose` | normalized | — | Normalizes into `ServicePlan.endpoints` |
+| [`extends`](#extends) | rejected | 2 | Replace extends with Lando type: inheritance. |
+| `external_links` | rejected | — | Translate external_links with a Compose-to-Lando config translator. |
+| [`extra_hosts`](#extra_hosts) | preserved | 1 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`gpus`](#gpus) | preserved | 7 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `group_add` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`healthcheck`](#healthcheck) | normalized | 8 | Normalizes into `ServicePlan.healthcheck` |
+| `hostname` | rejected | — | Translate hostname with a Compose-to-Lando config translator. |
+| `image` | normalized | — | Normalizes into `ServicePlan.artifact` |
+| `init` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `ipc` | rejected | — | Translate ipc with a Compose-to-Lando config translator. |
+| `isolation` | rejected | — | Translate isolation with a Compose-to-Lando config translator. |
+| `label_file` | rejected | — | Translate label_file with a Compose-to-Lando config translator. |
+| [`labels`](#labels) | preserved | 1 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `links` | rejected | — | Translate links to Lando networks: configuration. |
+| [`logging`](#logging) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `mac_address` | rejected | — | Translate mac_address with a Compose-to-Lando config translator. |
+| `mem_limit` | rejected | — | Translate mem_limit with a Compose-to-Lando config translator. |
+| `mem_reservation` | rejected | — | Translate mem_reservation with a Compose-to-Lando config translator. |
+| `mem_swappiness` | rejected | — | Translate mem_swappiness with a Compose-to-Lando config translator. |
+| `memswap_limit` | rejected | — | Translate memswap_limit with a Compose-to-Lando config translator. |
+| [`models`](#models) | rejected | 4 | Translate models with a Compose-to-Lando config translator. |
+| `network_mode` | rejected | — | Translate network_mode to Lando networks: configuration. |
+| [`networks`](#networks) | preserved | 12 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `oom_kill_disable` | rejected | — | Translate oom_kill_disable with a Compose-to-Lando config translator. |
+| `oom_score_adj` | rejected | — | Translate oom_score_adj with a Compose-to-Lando config translator. |
+| `pid` | rejected | — | Translate pid with a Compose-to-Lando config translator. |
+| `pids_limit` | rejected | — | Translate pids_limit with a Compose-to-Lando config translator. |
+| `platform` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`ports`](#ports) | normalized | 8 | Normalizes into `ServicePlan.endpoints` |
+| [`post_start`](#post_start) | rejected | 7 | Translate post_start with a Compose-to-Lando config translator. |
+| [`pre_start`](#pre_start) | rejected | 9 | Translate pre_start with a Compose-to-Lando config translator. |
+| [`pre_stop`](#pre_stop) | rejected | 7 | Translate pre_stop with a Compose-to-Lando config translator. |
+| `privileged` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `profiles` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| [`provider`](#provider) | rejected | 4 | Translate provider with a Compose-to-Lando config translator. |
+| `pull_policy` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `pull_refresh_after` | rejected | — | Translate pull_refresh_after with a Compose-to-Lando config translator. |
+| `read_only` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `restart` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `runtime` | rejected | — | Translate runtime with a Compose-to-Lando config translator. |
+| `scale` | rejected | — | Translate scale with a Compose-to-Lando config translator. |
+| [`secrets`](#secrets) | preserved | 6 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `security_opt` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `shm_size` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `stdin_open` | rejected | — | Translate stdin_open with a Compose-to-Lando config translator. |
+| `stop_grace_period` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `stop_signal` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `storage_opt` | rejected | — | Translate storage_opt with a Compose-to-Lando config translator. |
+| [`sysctls`](#sysctls) | preserved | 1 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `tmpfs` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `tty` | rejected | — | Translate tty with a Compose-to-Lando config translator. |
+| [`ulimits`](#ulimits) | preserved | 4 | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `use_api_socket` | rejected | — | Translate use_api_socket with a Compose-to-Lando config translator. |
+| `user` | normalized | — | Normalizes into `ServicePlan.user` |
+| `userns_mode` | rejected | — | Translate userns_mode with a Compose-to-Lando config translator. |
+| `uts` | rejected | — | Translate uts with a Compose-to-Lando config translator. |
+| [`volumes`](#volumes) | normalized | 25 | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes_from` | rejected | — | Translate volumes_from with a Compose-to-Lando config translator. |
+| `working_dir` | normalized | — | Normalizes into `ServicePlan.workingDirectory` |
+| `x-*` | preserved | — | Preserved losslessly in ServicePlan.extensions.compose; inert and not capability-gated. |
+
+### `annotations`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `annotations` | rejected | Translate annotations with a Compose-to-Lando config translator. |
+| `annotations.*` | rejected | Translate annotations.* with a Compose-to-Lando config translator. |
+
+### `blkio_config`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `blkio_config` | rejected | Translate blkio_config with a Compose-to-Lando config translator. |
+| `blkio_config.device_read_bps` | rejected | Translate blkio_config.device_read_bps with a Compose-to-Lando config translator. |
+| `blkio_config.device_read_bps.path` | rejected | Translate blkio_config.device_read_bps.path with a Compose-to-Lando config translator. |
+| `blkio_config.device_read_bps.rate` | rejected | Translate blkio_config.device_read_bps.rate with a Compose-to-Lando config translator. |
+| `blkio_config.device_read_iops` | rejected | Translate blkio_config.device_read_iops with a Compose-to-Lando config translator. |
+| `blkio_config.device_read_iops.path` | rejected | Translate blkio_config.device_read_iops.path with a Compose-to-Lando config translator. |
+| `blkio_config.device_read_iops.rate` | rejected | Translate blkio_config.device_read_iops.rate with a Compose-to-Lando config translator. |
+| `blkio_config.device_write_bps` | rejected | Translate blkio_config.device_write_bps with a Compose-to-Lando config translator. |
+| `blkio_config.device_write_bps.path` | rejected | Translate blkio_config.device_write_bps.path with a Compose-to-Lando config translator. |
+| `blkio_config.device_write_bps.rate` | rejected | Translate blkio_config.device_write_bps.rate with a Compose-to-Lando config translator. |
+| `blkio_config.device_write_iops` | rejected | Translate blkio_config.device_write_iops with a Compose-to-Lando config translator. |
+| `blkio_config.device_write_iops.path` | rejected | Translate blkio_config.device_write_iops.path with a Compose-to-Lando config translator. |
+| `blkio_config.device_write_iops.rate` | rejected | Translate blkio_config.device_write_iops.rate with a Compose-to-Lando config translator. |
+| `blkio_config.weight` | rejected | Translate blkio_config.weight with a Compose-to-Lando config translator. |
+| `blkio_config.weight_device` | rejected | Translate blkio_config.weight_device with a Compose-to-Lando config translator. |
+| `blkio_config.weight_device.path` | rejected | Translate blkio_config.weight_device.path with a Compose-to-Lando config translator. |
+| `blkio_config.weight_device.weight` | rejected | Translate blkio_config.weight_device.weight with a Compose-to-Lando config translator. |
+
+### `build`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `build` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.additional_contexts` | rejected | Translate build.additional_contexts with a Compose-to-Lando config translator. |
+| `build.additional_contexts.*` | rejected | Translate build.additional_contexts.* with a Compose-to-Lando config translator. |
+| `build.args` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.args.*` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.cache_from` | rejected | Translate build.cache_from with a Compose-to-Lando config translator. |
+| `build.cache_to` | rejected | Translate build.cache_to with a Compose-to-Lando config translator. |
+| `build.context` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.dockerfile` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.dockerfile_inline` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.entitlements` | rejected | Translate build.entitlements with a Compose-to-Lando config translator. |
+| `build.extra_hosts` | rejected | Translate build.extra_hosts with a Compose-to-Lando config translator. |
+| `build.extra_hosts.*` | rejected | Translate build.extra_hosts.* with a Compose-to-Lando config translator. |
+| `build.isolation` | rejected | Translate build.isolation with a Compose-to-Lando config translator. |
+| `build.labels` | rejected | Translate build.labels with a Compose-to-Lando config translator. |
+| `build.labels.*` | rejected | Translate build.labels.* with a Compose-to-Lando config translator. |
+| `build.network` | rejected | Translate build.network with a Compose-to-Lando config translator. |
+| `build.no_cache` | rejected | Translate build.no_cache with a Compose-to-Lando config translator. |
+| `build.no_cache_filter` | rejected | Translate build.no_cache_filter with a Compose-to-Lando config translator. |
+| `build.platforms` | rejected | Translate build.platforms with a Compose-to-Lando config translator. |
+| `build.privileged` | rejected | Translate build.privileged with a Compose-to-Lando config translator. |
+| `build.provenance` | rejected | Translate build.provenance with a Compose-to-Lando config translator. |
+| `build.pull` | rejected | Translate build.pull with a Compose-to-Lando config translator. |
+| `build.sbom` | rejected | Translate build.sbom with a Compose-to-Lando config translator. |
+| `build.secrets` | rejected | Translate build.secrets with a Compose-to-Lando config translator. |
+| `build.secrets.gid` | rejected | Translate build.secrets.gid with a Compose-to-Lando config translator. |
+| `build.secrets.mode` | rejected | Translate build.secrets.mode with a Compose-to-Lando config translator. |
+| `build.secrets.source` | rejected | Translate build.secrets.source with a Compose-to-Lando config translator. |
+| `build.secrets.target` | rejected | Translate build.secrets.target with a Compose-to-Lando config translator. |
+| `build.secrets.uid` | rejected | Translate build.secrets.uid with a Compose-to-Lando config translator. |
+| `build.secrets.x-*` | rejected | Translate build.secrets.x-* with a Compose-to-Lando config translator. |
+| `build.shm_size` | rejected | Translate build.shm_size with a Compose-to-Lando config translator. |
+| `build.ssh` | rejected | Translate build.ssh with a Compose-to-Lando config translator. |
+| `build.ssh.*` | rejected | Translate build.ssh.* with a Compose-to-Lando config translator. |
+| `build.tags` | rejected | Translate build.tags with a Compose-to-Lando config translator. |
+| `build.target` | normalized | Normalizes into `ServicePlan.artifact` |
+| `build.ulimits` | rejected | Translate build.ulimits with a Compose-to-Lando config translator. |
+| `build.ulimits.*` | rejected | Translate build.ulimits.* with a Compose-to-Lando config translator. |
+| `build.ulimits.*.hard` | rejected | Translate build.ulimits.*.hard with a Compose-to-Lando config translator. |
+| `build.ulimits.*.soft` | rejected | Translate build.ulimits.*.soft with a Compose-to-Lando config translator. |
+| `build.ulimits.*.x-*` | rejected | Translate build.ulimits.*.x-* with a Compose-to-Lando config translator. |
+| `build.x-*` | rejected | Translate build.x-* with a Compose-to-Lando config translator. |
+
+### `configs`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `configs` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs.gid` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs.mode` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs.source` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs.target` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs.uid` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `configs.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `credential_spec`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `credential_spec` | rejected | Translate credential_spec with a Compose-to-Lando config translator. |
+| `credential_spec.config` | rejected | Translate credential_spec.config with a Compose-to-Lando config translator. |
+| `credential_spec.file` | rejected | Translate credential_spec.file with a Compose-to-Lando config translator. |
+| `credential_spec.registry` | rejected | Translate credential_spec.registry with a Compose-to-Lando config translator. |
+| `credential_spec.x-*` | rejected | Translate credential_spec.x-* with a Compose-to-Lando config translator. |
+
+### `depends_on`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `depends_on` | normalized | Normalizes into `ServicePlan.dependsOn` |
+| `depends_on.*` | normalized | Normalizes into `ServicePlan.dependsOn` |
+| `depends_on.*.condition` | normalized | Normalizes into `ServicePlan.dependsOn` |
+| `depends_on.*.required` | normalized | Normalizes into `ServicePlan.dependsOn` |
+| `depends_on.*.restart` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
+| `depends_on.*.x-*` | rejected | Translate depends_on.*.x-* with a Compose-to-Lando config translator. |
+
+### `deploy`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `deploy` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.endpoint_mode` | rejected | Move deploy.endpoint_mode to a provider extension. |
+| `deploy.labels` | rejected | Move deploy.labels to a provider extension. |
+| `deploy.labels.*` | rejected | Move deploy.labels.* to a provider extension. |
+| `deploy.mode` | rejected | Move deploy.mode to a provider extension. |
+| `deploy.placement` | rejected | Move deploy.placement to a provider extension. |
+| `deploy.placement.constraints` | rejected | Move deploy.placement.constraints to a provider extension. |
+| `deploy.placement.max_replicas_per_node` | rejected | Move deploy.placement.max_replicas_per_node to a provider extension. |
+| `deploy.placement.preferences` | rejected | Move deploy.placement.preferences to a provider extension. |
+| `deploy.placement.preferences.spread` | rejected | Move deploy.placement.preferences.spread to a provider extension. |
+| `deploy.placement.preferences.x-*` | rejected | Move deploy.placement.preferences.x-* to a provider extension. |
+| `deploy.placement.x-*` | rejected | Move deploy.placement.x-* to a provider extension. |
+| `deploy.replicas` | rejected | Move deploy.replicas to a provider extension. |
+| `deploy.resources` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.limits` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.limits.cpus` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.limits.memory` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.limits.pids` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.limits.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.cpus` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.capabilities` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.count` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.device_ids` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.driver` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.options` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.options.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.devices.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources.discrete_resource_spec` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources.discrete_resource_spec.kind` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources.discrete_resource_spec.value` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources.discrete_resource_spec.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.generic_resources.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.memory` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.reservations.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.resources.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `deploy.restart_policy` | rejected | Move deploy.restart_policy to a provider extension. |
+| `deploy.restart_policy.condition` | rejected | Move deploy.restart_policy.condition to a provider extension. |
+| `deploy.restart_policy.delay` | rejected | Move deploy.restart_policy.delay to a provider extension. |
+| `deploy.restart_policy.max_attempts` | rejected | Move deploy.restart_policy.max_attempts to a provider extension. |
+| `deploy.restart_policy.window` | rejected | Move deploy.restart_policy.window to a provider extension. |
+| `deploy.restart_policy.x-*` | rejected | Move deploy.restart_policy.x-* to a provider extension. |
+| `deploy.rollback_config` | rejected | Move deploy.rollback_config to a provider extension. |
+| `deploy.rollback_config.delay` | rejected | Move deploy.rollback_config.delay to a provider extension. |
+| `deploy.rollback_config.failure_action` | rejected | Move deploy.rollback_config.failure_action to a provider extension. |
+| `deploy.rollback_config.max_failure_ratio` | rejected | Move deploy.rollback_config.max_failure_ratio to a provider extension. |
+| `deploy.rollback_config.monitor` | rejected | Move deploy.rollback_config.monitor to a provider extension. |
+| `deploy.rollback_config.order` | rejected | Move deploy.rollback_config.order to a provider extension. |
+| `deploy.rollback_config.parallelism` | rejected | Move deploy.rollback_config.parallelism to a provider extension. |
+| `deploy.rollback_config.x-*` | rejected | Move deploy.rollback_config.x-* to a provider extension. |
+| `deploy.update_config` | rejected | Move deploy.update_config to a provider extension. |
+| `deploy.update_config.delay` | rejected | Move deploy.update_config.delay to a provider extension. |
+| `deploy.update_config.failure_action` | rejected | Move deploy.update_config.failure_action to a provider extension. |
+| `deploy.update_config.max_failure_ratio` | rejected | Move deploy.update_config.max_failure_ratio to a provider extension. |
+| `deploy.update_config.monitor` | rejected | Move deploy.update_config.monitor to a provider extension. |
+| `deploy.update_config.order` | rejected | Move deploy.update_config.order to a provider extension. |
+| `deploy.update_config.parallelism` | rejected | Move deploy.update_config.parallelism to a provider extension. |
+| `deploy.update_config.x-*` | rejected | Move deploy.update_config.x-* to a provider extension. |
+| `deploy.x-*` | rejected | Move deploy.x-* to a provider extension. |
+
+### `develop`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `develop` | rejected | Translate develop with a Compose-to-Lando config translator. |
+| `develop.watch` | rejected | Translate develop.watch with a Compose-to-Lando config translator. |
+| `develop.watch.action` | rejected | Translate develop.watch.action with a Compose-to-Lando config translator. |
+| `develop.watch.exec` | rejected | Translate develop.watch.exec with a Compose-to-Lando config translator. |
+| `develop.watch.exec.command` | rejected | Translate develop.watch.exec.command with a Compose-to-Lando config translator. |
+| `develop.watch.exec.environment` | rejected | Translate develop.watch.exec.environment with a Compose-to-Lando config translator. |
+| `develop.watch.exec.environment.*` | rejected | Translate develop.watch.exec.environment.* with a Compose-to-Lando config translator. |
+| `develop.watch.exec.privileged` | rejected | Translate develop.watch.exec.privileged with a Compose-to-Lando config translator. |
+| `develop.watch.exec.user` | rejected | Translate develop.watch.exec.user with a Compose-to-Lando config translator. |
+| `develop.watch.exec.working_dir` | rejected | Translate develop.watch.exec.working_dir with a Compose-to-Lando config translator. |
+| `develop.watch.exec.x-*` | rejected | Translate develop.watch.exec.x-* with a Compose-to-Lando config translator. |
+| `develop.watch.ignore` | rejected | Translate develop.watch.ignore with a Compose-to-Lando config translator. |
+| `develop.watch.include` | rejected | Translate develop.watch.include with a Compose-to-Lando config translator. |
+| `develop.watch.initial_sync` | rejected | Translate develop.watch.initial_sync with a Compose-to-Lando config translator. |
+| `develop.watch.path` | rejected | Translate develop.watch.path with a Compose-to-Lando config translator. |
+| `develop.watch.target` | rejected | Translate develop.watch.target with a Compose-to-Lando config translator. |
+| `develop.watch.x-*` | rejected | Translate develop.watch.x-* with a Compose-to-Lando config translator. |
+| `develop.x-*` | rejected | Translate develop.x-* with a Compose-to-Lando config translator. |
+
+### `devices`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `devices` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `devices.permissions` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `devices.source` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `devices.target` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `devices.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `env_file`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `env_file` | normalized | Normalizes into `ServicePlan.environment` |
+| `env_file.format` | rejected | Translate env_file.format with a Compose-to-Lando config translator. |
+| `env_file.path` | rejected | Translate env_file.path with a Compose-to-Lando config translator. |
+| `env_file.required` | rejected | Translate env_file.required with a Compose-to-Lando config translator. |
+
+### `environment`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `environment` | normalized | Normalizes into `ServicePlan.environment` |
+| `environment.*` | normalized | Normalizes into `ServicePlan.environment` |
+
+### `extends`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `extends` | rejected | Replace extends with Lando type: inheritance. |
+| `extends.file` | rejected | Replace extends.file with Lando type: inheritance. |
+| `extends.service` | rejected | Replace extends.service with Lando type: inheritance. |
+
+### `extra_hosts`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `extra_hosts` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `extra_hosts.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `gpus`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `gpus` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.capabilities` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.count` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.device_ids` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.driver` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.options` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.options.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `gpus.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `healthcheck`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `healthcheck` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.disable` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.interval` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.retries` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.start_interval` | preserved | Preserved losslessly at its exact path in ServicePlan.extensions.compose and capability-checked against composePreservedPaths; planning fails with CapabilityError when the selected provider does not declare the exact path. |
+| `healthcheck.start_period` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.test` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.timeout` | normalized | Normalizes into `ServicePlan.healthcheck` |
+| `healthcheck.x-*` | rejected | Translate healthcheck.x-* with a Compose-to-Lando config translator. |
+
+### `labels`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `labels` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `labels.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `logging`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `logging` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `logging.driver` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `logging.options` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `logging.options.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `logging.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `models`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `models` | rejected | Translate models with a Compose-to-Lando config translator. |
+| `models.*` | rejected | Translate models.* with a Compose-to-Lando config translator. |
+| `models.*.endpoint_var` | rejected | Translate models.*.endpoint_var with a Compose-to-Lando config translator. |
+| `models.*.model_var` | rejected | Translate models.*.model_var with a Compose-to-Lando config translator. |
+| `models.*.x-*` | rejected | Translate models.*.x-* with a Compose-to-Lando config translator. |
+
+### `networks`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `networks` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.aliases` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.driver_opts` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.driver_opts.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.gw_priority` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.interface_name` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.ipv4_address` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.ipv6_address` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.link_local_ips` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.mac_address` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.priority` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `networks.*.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `ports`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `ports` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.app_protocol` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.host_ip` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.mode` | rejected | Translate ports.mode with a Compose-to-Lando config translator. |
+| `ports.name` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.protocol` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.published` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.target` | normalized | Normalizes into `ServicePlan.endpoints` |
+| `ports.x-*` | rejected | Translate ports.x-* with a Compose-to-Lando config translator. |
+
+### `post_start`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `post_start` | rejected | Translate post_start with a Compose-to-Lando config translator. |
+| `post_start.command` | rejected | Translate post_start.command with a Compose-to-Lando config translator. |
+| `post_start.environment` | rejected | Translate post_start.environment with a Compose-to-Lando config translator. |
+| `post_start.environment.*` | rejected | Translate post_start.environment.* with a Compose-to-Lando config translator. |
+| `post_start.privileged` | rejected | Translate post_start.privileged with a Compose-to-Lando config translator. |
+| `post_start.user` | rejected | Translate post_start.user with a Compose-to-Lando config translator. |
+| `post_start.working_dir` | rejected | Translate post_start.working_dir with a Compose-to-Lando config translator. |
+| `post_start.x-*` | rejected | Translate post_start.x-* with a Compose-to-Lando config translator. |
+
+### `pre_start`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `pre_start` | rejected | Translate pre_start with a Compose-to-Lando config translator. |
+| `pre_start.command` | rejected | Translate pre_start.command with a Compose-to-Lando config translator. |
+| `pre_start.environment` | rejected | Translate pre_start.environment with a Compose-to-Lando config translator. |
+| `pre_start.environment.*` | rejected | Translate pre_start.environment.* with a Compose-to-Lando config translator. |
+| `pre_start.image` | rejected | Translate pre_start.image with a Compose-to-Lando config translator. |
+| `pre_start.per_replica` | rejected | Translate pre_start.per_replica with a Compose-to-Lando config translator. |
+| `pre_start.privileged` | rejected | Translate pre_start.privileged with a Compose-to-Lando config translator. |
+| `pre_start.user` | rejected | Translate pre_start.user with a Compose-to-Lando config translator. |
+| `pre_start.working_dir` | rejected | Translate pre_start.working_dir with a Compose-to-Lando config translator. |
+| `pre_start.x-*` | rejected | Translate pre_start.x-* with a Compose-to-Lando config translator. |
+
+### `pre_stop`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `pre_stop` | rejected | Translate pre_stop with a Compose-to-Lando config translator. |
+| `pre_stop.command` | rejected | Translate pre_stop.command with a Compose-to-Lando config translator. |
+| `pre_stop.environment` | rejected | Translate pre_stop.environment with a Compose-to-Lando config translator. |
+| `pre_stop.environment.*` | rejected | Translate pre_stop.environment.* with a Compose-to-Lando config translator. |
+| `pre_stop.privileged` | rejected | Translate pre_stop.privileged with a Compose-to-Lando config translator. |
+| `pre_stop.user` | rejected | Translate pre_stop.user with a Compose-to-Lando config translator. |
+| `pre_stop.working_dir` | rejected | Translate pre_stop.working_dir with a Compose-to-Lando config translator. |
+| `pre_stop.x-*` | rejected | Translate pre_stop.x-* with a Compose-to-Lando config translator. |
+
+### `provider`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `provider` | rejected | Translate provider with a Compose-to-Lando config translator. |
+| `provider.options` | rejected | Translate provider.options with a Compose-to-Lando config translator. |
+| `provider.options.*` | rejected | Translate provider.options.* with a Compose-to-Lando config translator. |
+| `provider.type` | rejected | Translate provider.type with a Compose-to-Lando config translator. |
+| `provider.x-*` | rejected | Translate provider.x-* with a Compose-to-Lando config translator. |
+
+### `secrets`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `secrets` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `secrets.gid` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `secrets.mode` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `secrets.source` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `secrets.target` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `secrets.uid` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `secrets.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `sysctls`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `sysctls` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `sysctls.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `ulimits`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `ulimits` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `ulimits.*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `ulimits.*.hard` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `ulimits.*.soft` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `ulimits.*.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+
+### `volumes`
+
+| Key path | Disposition | Detail |
+| --- | --- | --- |
+| `volumes` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.bind` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.bind.create_host_path` | normalized | Normalizes into `ServicePlan.mounts` |
+| `volumes.bind.propagation` | rejected | Translate volumes.bind.propagation with a Compose-to-Lando config translator. |
+| `volumes.bind.recursive` | rejected | Translate volumes.bind.recursive with a Compose-to-Lando config translator. |
+| `volumes.bind.selinux` | rejected | Translate volumes.bind.selinux with a Compose-to-Lando config translator. |
+| `volumes.bind.x-*` | rejected | Translate volumes.bind.x-* with a Compose-to-Lando config translator. |
+| `volumes.consistency` | rejected | Translate volumes.consistency with a Compose-to-Lando config translator. |
+| `volumes.image` | rejected | Translate volumes.image with a Compose-to-Lando config translator. |
+| `volumes.image.subpath` | rejected | Translate volumes.image.subpath with a Compose-to-Lando config translator. |
+| `volumes.image.x-*` | rejected | Translate volumes.image.x-* with a Compose-to-Lando config translator. |
+| `volumes.read_only` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.source` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.target` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.tmpfs` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `volumes.tmpfs.mode` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `volumes.tmpfs.size` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `volumes.tmpfs.x-*` | preserved | Preserved losslessly in ServicePlan.extensions.compose and capability-checked. |
+| `volumes.type` | normalized | Normalizes into `ServicePlan.mounts`, `ServicePlan.storage`, `ServicePlan.extensions.compose.tmpfs` |
+| `volumes.volume` | normalized | Normalizes into `ServicePlan.storage` |
+| `volumes.volume.labels` | rejected | Translate volumes.volume.labels with a Compose-to-Lando config translator. |
+| `volumes.volume.labels.*` | rejected | Translate volumes.volume.labels.* with a Compose-to-Lando config translator. |
+| `volumes.volume.nocopy` | rejected | Translate volumes.volume.nocopy with a Compose-to-Lando config translator. |
+| `volumes.volume.subpath` | normalized | Normalizes into `ServicePlan.storage` |
+| `volumes.volume.x-*` | rejected | Translate volumes.volume.x-* with a Compose-to-Lando config translator. |
+| `volumes.x-*` | rejected | Translate volumes.x-* with a Compose-to-Lando config translator. |

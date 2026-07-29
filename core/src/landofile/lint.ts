@@ -18,12 +18,12 @@ import { Effect, Either, ParseResult, Schema } from "effect";
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import {
   COMPOSE_DEPRECATED_TOP_LEVEL_KEYS,
-  COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY,
   COMPOSE_TOP_LEVEL_KEYS,
   type ConfigLintResult,
   type ConfigLintViolation,
   LandofileShape,
 } from "@lando/sdk/schema";
+import { composeTopLevelDispositions } from "./compose/dispositions.ts";
 import {
   type ComposeRejectionMatch,
   analyzeComposeRejections,
@@ -43,15 +43,22 @@ export interface LintLandofileOptions {
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 
+/** Shape of one `ParseResult.ArrayFormatter` issue consumed by the suggested-fix helpers. */
+type LintIssue = {
+  readonly _tag: string;
+  readonly path: ReadonlyArray<PropertyKey>;
+  readonly message: string;
+};
+
 const lastKey = (path: ReadonlyArray<PropertyKey>): string | undefined =>
   path.length === 0 ? undefined : String(path[path.length - 1]);
 
-const REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION: Readonly<Record<string, string>> = {
+const MISPLACED_COMPOSE_SURFACE_REMEDIATION = {
   profiles:
-    "Profiles are not part of Lando's portable Compose subset. Split profile-specific config into separate Landofile fragments and select them with includes: instead.",
+    'The top-level key "profiles" is not a Compose top-level key; profiles is a service-level key. Split profile-specific config into separate Landofile fragments and select them with includes: instead.',
   extensions:
-    "Compose extensions are accepted only as x-* top-level keys. Rename this key to an x-* extension or move provider-specific data under providers.<provider-id>.",
-};
+    'The top-level key "extensions" is not a Compose key. Use an x-* top-level extension or move provider-specific data under providers.<provider-id>.',
+} as const;
 
 const isAcceptedComposeTopLevelKey = (key: string): boolean =>
   (COMPOSE_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key) || key.startsWith("x-");
@@ -59,19 +66,19 @@ const isAcceptedComposeTopLevelKey = (key: string): boolean =>
 const isDeprecatedComposeTopLevelKey = (key: string): boolean =>
   (COMPOSE_DEPRECATED_TOP_LEVEL_KEYS as ReadonlyArray<string>).includes(key);
 
-const isRejectedComposeTopLevelKey = (key: string): boolean =>
-  Object.prototype.hasOwnProperty.call(REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION, key);
+const isMisplacedComposeSurfaceKey = (
+  key: string,
+): key is keyof typeof MISPLACED_COMPOSE_SURFACE_REMEDIATION =>
+  Object.prototype.hasOwnProperty.call(MISPLACED_COMPOSE_SURFACE_REMEDIATION, key);
 
-const composeSuggestedFix = (issue: {
-  readonly _tag: string;
-  readonly path: ReadonlyArray<PropertyKey>;
-  readonly message: string;
-}): string | undefined => {
+const composeSuggestedFix = (issue: LintIssue): string | undefined => {
   // Compose matrix governs top-level keys only; nested issues keep their precise remediation.
   if (issue.path.length !== 1) return undefined;
   const key = String(issue.path[0]);
-  if (issue._tag === "Unexpected" && isRejectedComposeTopLevelKey(key)) {
-    return `Unsupported Compose top-level key "${key}". Supported top-level Compose keys are ${COMPOSE_TOP_LEVEL_ACCEPTED_DISPLAY}; version is deprecated. ${REJECTED_COMPOSE_TOP_LEVEL_REMEDIATION[key]}`;
+  if (issue._tag === "Unexpected") {
+    const disposition = composeTopLevelDispositions[key];
+    if (disposition?.disposition === "rejected") return disposition.remediation;
+    return isMisplacedComposeSurfaceKey(key) ? MISPLACED_COMPOSE_SURFACE_REMEDIATION[key] : undefined;
   }
   if (issue._tag !== "Type" || issue.message.startsWith("Expected undefined")) return undefined;
   if (isAcceptedComposeTopLevelKey(key)) {
@@ -83,21 +90,13 @@ const composeSuggestedFix = (issue: {
   return undefined;
 };
 
-const sshAgentSuggestedFix = (issue: {
-  readonly _tag: string;
-  readonly path: ReadonlyArray<PropertyKey>;
-  readonly message: string;
-}): string | undefined => {
+const sshAgentSuggestedFix = (issue: LintIssue): string | undefined => {
   if (issue._tag !== "Type" || issue.path.map(String).join(".") !== "sshAgent.sidecar") return undefined;
   if (issue.message !== "Expected true, actual false") return undefined;
   return "The `sshAgent.sidecar: false` direct host SSH-agent socket mount is reserved and rejected. Use the supported sidecar path (`sshAgent.sidecar: true`, the default) instead.";
 };
 
-const violationFromIssue = (issue: {
-  readonly _tag: string;
-  readonly path: ReadonlyArray<PropertyKey>;
-  readonly message: string;
-}): ConfigLintViolation => {
+const violationFromIssue = (issue: LintIssue): ConfigLintViolation => {
   const path = issue.path.map(String).join(".");
   const key = lastKey(issue.path);
   const suggestedFix =

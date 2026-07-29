@@ -7,6 +7,8 @@ import { Cause, Effect, Exit, Layer } from "effect";
 
 import { CapabilityError, ComposeKeyRejectedError } from "@lando/core/errors";
 import {
+  ComposePreservedPathKey,
+  ComposeProjectFieldKey,
   ComposeServiceFieldKey,
   ComposeServiceKnobKey,
   type LandofileShape,
@@ -87,6 +89,8 @@ const nativeCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,
   composeSpec: "native",
   composeKnobs: { supported: [...ComposeServiceKnobKey.literals] },
+  composePreservedPaths: { supported: [...ComposePreservedPathKey.literals] },
+  composeProjectFields: { supported: [...ComposeProjectFieldKey.literals] },
   composeServiceFields: { supported: [...ComposeServiceFieldKey.literals] },
 };
 const restrictedCapabilities: ProviderCapabilities = {
@@ -129,14 +133,12 @@ const planLandofileExit = (landofile: LandofileShape, capabilities: ProviderCapa
     Effect.runPromiseExit,
   );
 
-const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<LandofileShape> => {
-  const loaded = await loadYamlExit(dir, `name: ${fixture.id}\n${fixture.content}`);
-  if (!Exit.isSuccess(loaded.exit)) throw new ComposeFixtureInvariantError();
-  return rememberLandofileAppRoot<LandofileShape>(
+const asComposeLandofile = (landofile: LandofileShape, dir: string): LandofileShape =>
+  rememberLandofileAppRoot<LandofileShape>(
     {
-      ...loaded.exit.value,
+      ...landofile,
       services: Object.fromEntries(
-        Object.entries(loaded.exit.value.services ?? {}).map(([name, service]) => [
+        Object.entries(landofile.services ?? {}).map(([name, service]) => [
           name,
           { ...service, type: "compose" },
         ]),
@@ -144,6 +146,11 @@ const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<
     },
     dir,
   );
+
+const loadPlannableFixture = async (dir: string, fixture: FixtureCase): Promise<LandofileShape> => {
+  const loaded = await loadYamlExit(dir, `name: ${fixture.id}\n${fixture.content}`);
+  if (!Exit.isSuccess(loaded.exit)) throw new ComposeFixtureInvariantError();
+  return asComposeLandofile(loaded.exit.value, dir);
 };
 
 const serviceFieldFamily = (matrixPath: string): ComposeServiceFieldKey | undefined => {
@@ -181,7 +188,6 @@ describe("Compose conformance fixtures", () => {
         // Given
         const loaded = await loadYamlExit(dir, `name: ${fixture.id}\n${fixture.content}`);
         const firstRejection = fixture.matches.find((match) => match.disposition === "rejected");
-        let executedAssertionCount = 0;
 
         if (firstRejection !== undefined) {
           // When
@@ -193,32 +199,19 @@ describe("Compose conformance fixtures", () => {
           expect(error.keyPath).toBe(firstRejection.matrixPath);
           if (firstRejection.remediation === undefined) throw new ComposeFixtureInvariantError();
           expect(error.remediation).toBe(firstRejection.remediation);
-          executedAssertionCount += 2;
-          expect(executedAssertionCount).toBeGreaterThan(0);
           return;
         }
 
         expect(Exit.isSuccess(loaded.exit)).toBe(true);
         if (!Exit.isSuccess(loaded.exit)) return;
         await materializeFixtureEnvFiles(dir, loaded.exit.value);
-        const composeLandofile = rememberLandofileAppRoot<LandofileShape>(
-          {
-            ...loaded.exit.value,
-            services: Object.fromEntries(
-              Object.entries(loaded.exit.value.services ?? {}).map(([name, service]) => [
-                name,
-                { ...service, type: "compose" },
-              ]),
-            ),
-          },
-          dir,
-        );
+        const composeLandofile = asComposeLandofile(loaded.exit.value, dir);
 
         // When
         const plan = await planLandofile(composeLandofile);
 
         // Then
-        executedAssertionCount = assertFixtureServiceOutcomes(fixture.matches, {
+        const executedAssertionCount = assertFixtureServiceOutcomes(fixture.matches, {
           appRoot: dir,
           landofile: loaded.exit.value,
           plan,
@@ -314,11 +307,8 @@ describe("Compose conformance fixtures", () => {
 
 describe("Compose service-field capability gate", () => {
   test("exercises at least one restricted service-field fixture", () => {
-    // Given
-    const cases = capabilityGateCases;
-
-    // When
-    const caseCount = cases.length;
+    // Given / When
+    const caseCount = capabilityGateCases.length;
 
     // Then
     expect(caseCount).toBeGreaterThan(0);

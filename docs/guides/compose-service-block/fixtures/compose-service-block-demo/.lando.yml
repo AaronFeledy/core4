@@ -1,0 +1,17 @@
+name: compose-service-block-demo
+services:
+  cache:
+    type: compose
+    image: valkey/valkey:8-alpine
+  web:
+    type: compose
+    image: traefik/whoami:v1.10
+    ports:
+      - target: 80
+        published: "8080"
+        protocol: tcp
+    depends_on:
+      cache:
+        condition: service_started
+    extra_hosts:
+      - "internal.test:127.0.0.1"

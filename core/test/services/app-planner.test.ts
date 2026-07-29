@@ -73,6 +73,13 @@ const providerLandoCapabilities: ProviderCapabilities = {
   providerExtensions: ["compose", "labels", "registryCredentials"],
 };
 
+const composePreservedPathCapabilities: ProviderCapabilities = {
+  ...providerLandoCapabilities,
+  composePreservedPaths: {
+    supported: ["depends_on.*.restart", "healthcheck.start_interval"],
+  },
+};
+
 const slowBindMountCapabilities: ProviderCapabilities = {
   ...providerLandoCapabilities,
   bindMountPerformance: "slow",
@@ -1803,12 +1810,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const appPlan = await planWithCustomRegistry(landofile);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
@@ -1828,12 +1830,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const appPlan = await planWithCustomRegistry(landofile, composePreservedPathCapabilities);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.extensions.compose).toMatchObject({
@@ -2880,7 +2877,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await plan(landofile);
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
 
     // Then
     const servicePlan = appPlan.services[ServiceName.make("web")];
@@ -2909,7 +2906,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await plan(landofile);
+    const appPlan = await plan(landofile, composePreservedPathCapabilities);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.extensions).toMatchObject({
@@ -3548,12 +3545,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3588,12 +3580,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const appPlan = await Effect.runPromise(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const appPlan = await planWithCustomRegistry(landofile);
 
     // Then
     expect(appPlan.services[ServiceName.make("web")]?.dependsOn).toEqual([
@@ -3620,12 +3607,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3657,12 +3639,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3703,12 +3680,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);
@@ -3739,12 +3711,7 @@ describe("AppPlannerLive", () => {
     });
 
     // When
-    const exit = await Effect.runPromiseExit(
-      Effect.flatMap(AppPlanner, (appPlanner) => appPlanner.plan(landofile, providerLandoCapabilities)).pipe(
-        Effect.provide(AppPlannerLive),
-        Effect.provide(Layer.succeed(PluginRegistry, customPluginRegistry)),
-      ),
-    );
+    const exit = await planExitWithCustomRegistry(landofile);
 
     // Then
     const failure = expectSomeFailure(exit);

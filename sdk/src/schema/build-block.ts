@@ -105,7 +105,11 @@ const BuildBlockObjectFrom = Schema.Struct(BuildBlockObjectFields).pipe(
   ),
 );
 
+const BUILD_BLOCK_DESCRIPTION =
+  'Build configuration using either Lando build-script keys (artifact, app) or Compose image-build keys (context, dockerfile, dockerfile_inline, args, target); mixing the families is rejected. Compose accepts a bare context string and defaults an omitted object context to ".". The canonical decoded form keeps dockerfileInline and encodes it back to dockerfile_inline.';
+
 const BuildBlockFrom = Schema.Union(Schema.String, BuildBlockObjectFrom).annotations({
+  description: BUILD_BLOCK_DESCRIPTION,
   jsonSchema: buildBlockJsonSchema,
 });
 
@@ -233,4 +237,6 @@ export const BuildBlock = Schema.transformOrFail(BuildBlockFrom, BuildBlockCanon
     }
   },
   encode: (input) => ParseResult.succeed(encodeBuildBlock(input)),
+}).annotations({
+  description: BUILD_BLOCK_DESCRIPTION,
 });

@@ -274,7 +274,7 @@ const sanitizeTranscriptValue = (value: unknown, testDir: string): unknown => {
     if (typeof input === "string") {
       const withPath = input.split(testDir).join("<testDir>");
       const lowerKey = key?.toLowerCase() ?? "";
-      return lowerKey === "stdout" || lowerKey === "stderr" || lowerKey.includes("stdout")
+      return lowerKey === "stderr" || lowerKey.includes("stdout")
         ? withPath.replace(TIMESTAMP_PATTERN, "<timestamp>")
         : withPath;
     }
@@ -468,7 +468,7 @@ const createInspect =
         yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "events", value }));
         return;
       }
-      const lastRun = [...transcriptFrames].reverse().find((frame) => frame.kind === "run");
+      const lastRun = transcriptFrames.findLast((frame) => frame.kind === "run");
       const value = lastRun !== undefined && lastRun.kind === "run" ? lastRun.stdout : "";
       yield* Effect.sync(() => appendFrame({ kind: "inspect", target: "output", value }));
     });
@@ -633,7 +633,8 @@ const invokeRealCli = async (
 
   try {
     process.chdir(cwd);
-    process.exitCode = undefined;
+    // Bun ignores `undefined` after an exit code is set, so reset explicitly to success.
+    process.exitCode = 0;
     const cli = await import("../cli/index.ts");
     const runDispatch = () =>
       cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
@@ -654,7 +655,7 @@ const invokeRealCli = async (
     return errorTag === undefined ? result : { ...result, _tag: errorTag };
   } finally {
     process.chdir(previousCwd);
-    process.exitCode = previousExitCode;
+    process.exitCode = previousExitCode ?? 0;
     stdout.restore();
     stderr.restore();
   }
@@ -875,12 +876,14 @@ const withScenarioContextInternal = <A, E, R>(
       Effect.tryPromise(() =>
         mkdtemp(join(tmpdir(), `lando-scenario-${options.guideId}-${options.scenarioId}-`)),
       ),
-      (testDir) =>
-        process.env.KEEP_SCENARIO_DIRS === "1"
-          ? process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
-            ? Console.log(`Scenario temp dir: ${testDir}`)
-            : Effect.void
-          : Effect.promise(() => rm(testDir, { recursive: true, force: true })),
+      (testDir) => {
+        if (process.env.KEEP_SCENARIO_DIRS !== "1") {
+          return Effect.promise(() => rm(testDir, { recursive: true, force: true }));
+        }
+        return process.env.LANDO_DOCS_SCENARIO_KEEP === "1"
+          ? Console.log(`Scenario temp dir: ${testDir}`)
+          : Effect.void;
+      },
     ).pipe(
       Effect.flatMap((testDir) => {
         const context = makeScenarioContext(options, testDir, runnerKind);

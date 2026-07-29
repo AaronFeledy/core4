@@ -151,6 +151,7 @@ End-to-end tutorials that exercise several capabilities at once.
 |---|---|---|---|---|
 | — | — | everyday app lifecycle (start / inspect / exec / restart / destroy) | `docs/guides/tutorial/app-lifecycle.mdx` | Shipped |
 | — | — | Node + Postgres app scaffolded from a recipe | `docs/guides/node-postgres.mdx` | Shipped |
+| — | — | port a Compose service block and remediate rejected keys | `docs/guides/config/compose-service-block.mdx` | Shipped |
 
 ## Recipe stacks (executable recipe READMEs — no PRD mapping)
 

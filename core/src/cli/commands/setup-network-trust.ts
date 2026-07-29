@@ -62,6 +62,27 @@ const platformNetworkHint = (): string => {
   }
 };
 
+const proxyAuthError = (cause?: unknown): SetupNetworkTrustError =>
+  new SetupNetworkTrustError({
+    kind: "proxy-authentication",
+    message: "The configured proxy requires authentication before Lando can download setup artifacts.",
+    remediation: `Update network.proxy in the global config, or HTTP_PROXY / HTTPS_PROXY, with valid proxy credentials. Proxy credentials are redacted from diagnostics. ${platformNetworkHint()}`,
+    ...(cause === undefined ? {} : { cause }),
+  });
+
+const blockedRegistryError = (
+  input: { readonly status?: number; readonly cause?: unknown } = {},
+): SetupNetworkTrustError =>
+  new SetupNetworkTrustError({
+    kind: "blocked-registry",
+    message:
+      input.status === undefined
+        ? "The setup artifact registry could not be reached through the configured network path."
+        : `The setup artifact registry returned HTTP ${input.status} through the configured network path.`,
+    remediation: `Allow GitHub release downloads and Lando runtime bundle URLs through the corporate proxy/firewall, or update network.proxy / HTTP_PROXY / HTTPS_PROXY / NO_PROXY. ${platformNetworkHint()}`,
+    ...(input.cause === undefined ? {} : { cause: input.cause }),
+  });
+
 const loadCustomCa = (path: string): Effect.Effect<LoadedNetworkCaCert, SetupNetworkTrustError> =>
   Effect.tryPromise({
     try: async () => ({ path, pem: await readFile(path, "utf-8") }),
@@ -88,14 +109,7 @@ export const networkTrustFromResolved = (network: ResolvedSetupNetworkTrust): Re
 export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustError => {
   const text = cause instanceof Error ? `${cause.name} ${cause.message}` : String(cause);
   const lower = text.toLowerCase();
-  if (lower.includes("407") || lower.includes("proxy authentication")) {
-    return new SetupNetworkTrustError({
-      kind: "proxy-authentication",
-      message: "The configured proxy requires authentication before Lando can download setup artifacts.",
-      remediation: `Update network.proxy in the global config, or HTTP_PROXY / HTTPS_PROXY, with valid proxy credentials. Proxy credentials are redacted from diagnostics. ${platformNetworkHint()}`,
-      cause,
-    });
-  }
+  if (lower.includes("407") || lower.includes("proxy authentication")) return proxyAuthError(cause);
   if (lower.includes("certificate") || lower.includes("tls") || lower.includes("self signed")) {
     return new SetupNetworkTrustError({
       kind: "tls-interception",
@@ -104,12 +118,7 @@ export const classifySetupNetworkFailure = (cause: unknown): SetupNetworkTrustEr
       cause,
     });
   }
-  return new SetupNetworkTrustError({
-    kind: "blocked-registry",
-    message: "The setup artifact registry could not be reached through the configured network path.",
-    remediation: `Allow GitHub release downloads and Lando runtime bundle URLs through the corporate proxy/firewall, or update network.proxy / HTTP_PROXY / HTTPS_PROXY / NO_PROXY. ${platformNetworkHint()}`,
-    cause,
-  });
+  return blockedRegistryError({ cause });
 };
 
 export const resolveSetupNetworkTrust = (
@@ -154,20 +163,6 @@ export const resolveSetupNetworkTrust = (
     };
   });
 
-const blockedRegistryError = (status: number): SetupNetworkTrustError =>
-  new SetupNetworkTrustError({
-    kind: "blocked-registry",
-    message: `The setup artifact registry returned HTTP ${status} through the configured network path.`,
-    remediation: `Allow GitHub release downloads and Lando runtime bundle URLs through the corporate proxy/firewall, or update network.proxy / HTTP_PROXY / HTTPS_PROXY / NO_PROXY. ${platformNetworkHint()}`,
-  });
-
-const proxyAuthError = (): SetupNetworkTrustError =>
-  new SetupNetworkTrustError({
-    kind: "proxy-authentication",
-    message: "The configured proxy requires authentication before Lando can download setup artifacts.",
-    remediation: `Update network.proxy in the global config, or HTTP_PROXY / HTTPS_PROXY, with valid proxy credentials. Proxy credentials are redacted from diagnostics. ${platformNetworkHint()}`,
-  });
-
 export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =>
   Effect.gen(function* () {
     const hasTrustToValidate =
@@ -194,11 +189,9 @@ export const defaultSetupNetworkTrustProbe: SetupNetworkTrustProbe = (network) =
     );
     if (response.status === 407) return yield* Effect.fail(proxyAuthError());
     if (response.status < 200 || response.status >= 400) {
-      return yield* Effect.fail(blockedRegistryError(response.status));
+      return yield* Effect.fail(blockedRegistryError({ status: response.status }));
     }
   });
-
-export const makeSetupNetworkTrustProbe = (): SetupNetworkTrustProbe => defaultSetupNetworkTrustProbe;
 
 export const validateSetupNetworkTrust = (
   config: GlobalConfig,

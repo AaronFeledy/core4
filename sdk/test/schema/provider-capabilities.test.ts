@@ -39,7 +39,17 @@ const LITERAL_FIELDS = {
 
 const ARRAY_FIELDS = ["providerExtensions"] as const;
 
-const OPTIONAL_FIELDS = ["composeKnobs", "composeServiceFields", "hostProxy"] as const;
+const OPTIONAL_FIELDS = [
+  "composeKnobs",
+  "composePreservedPaths",
+  "composeProjectFields",
+  "composeServiceFields",
+  "hostProxy",
+] as const;
+
+const COMPOSE_PRESERVED_PATH_KEYS = ["depends_on.*.restart", "healthcheck.start_interval"] as const;
+
+const COMPOSE_PROJECT_FIELD_KEYS = ["configs", "secrets"] as const;
 
 const COMPOSE_SERVICE_FIELD_KEYS = ["networks", "configs", "secrets", "profiles", "labels"] as const;
 
@@ -153,7 +163,7 @@ describe("ProviderCapabilities — field set lock", () => {
   test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
-    expect(actual).toHaveLength(31);
+    expect(actual).toHaveLength(33);
   });
 
   test("every boolean capability accepts only booleans", () => {
@@ -293,6 +303,55 @@ describe("ProviderCapabilities — field set lock", () => {
     const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
       ...providerLandoFixture,
       composeServiceFields: { supported: ["x-*"] },
+    });
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("composePreservedPaths may be absent", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
+    expect(decoded.composePreservedPaths).toBeUndefined();
+  });
+
+  test("composeProjectFields accepts every published project field in contract order", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composeProjectFields: { supported: COMPOSE_PROJECT_FIELD_KEYS },
+    });
+    expect(decoded.composeProjectFields?.supported).toEqual(COMPOSE_PROJECT_FIELD_KEYS);
+  });
+
+  test("composePreservedPaths accepts every published exact path in contract order", () => {
+    const decoded = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composePreservedPaths: { supported: COMPOSE_PRESERVED_PATH_KEYS },
+    });
+    expect(decoded.composePreservedPaths?.supported).toEqual(COMPOSE_PRESERVED_PATH_KEYS);
+  });
+
+  test("absent composePreservedPaths is equivalent to an empty supported set", () => {
+    const absent = Schema.decodeUnknownSync(ProviderCapabilities)(providerLandoFixture);
+    const empty = Schema.decodeUnknownSync(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composePreservedPaths: { supported: [] },
+    });
+
+    expect(absent.composePreservedPaths?.supported ?? []).toEqual(
+      empty.composePreservedPaths?.supported ?? [],
+    );
+  });
+
+  test("rejects an unpublished compose preserved path", () => {
+    const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composePreservedPaths: { supported: ["depends_on.*.condition"] },
+    });
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("rejects x-* as a composePreservedPaths capability key", () => {
+    const decoded = Schema.decodeUnknownEither(ProviderCapabilities)({
+      ...providerLandoFixture,
+      composePreservedPaths: { supported: ["x-*"] },
     });
     expect(Either.isLeft(decoded)).toBe(true);
   });

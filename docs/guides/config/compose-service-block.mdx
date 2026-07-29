@@ -1,0 +1,44 @@
+---
+id: compose-service-block
+provider: test
+timeout: 90000
+tags: [beta, docs, config, compose]
+---
+
+Use the disposition and remediation details in the [generated Compose key matrix](../../reference/compose-key-matrix.mdx) when porting additional Compose keys.
+
+<Guide>
+  <Scenario id="paste-compose-service" layer="e2e" tags={["@smoke"]} render>
+    <Step name="load-compose-service">
+      <UseFixture name="compose-service-block-demo" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"extra_hosts\":\\s*\\{[^}]*\"internal\\.test\":\\s*\"127\\.0\\.0\\.1\"[^}]*\\}.*\"published\":\\s*8080.*\"dependsOn\":\\s*\\{.*\"condition\":\\s*\"service_started\"" } }} />
+    </Step>
+    <Step name="start-compose-services">
+      <Run command="lando start" />
+    </Step>
+    <Step name="inspect-compose-services">
+      <Run command="lando info" />
+    </Step>
+    <Step name="destroy-compose-services">
+      <Cleanup />
+      <Run command="lando destroy -y" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="rejected-key-remediation" render>
+    <Step name="load-rejected-service">
+      <UseFixture name="compose-service-block-rejected" />
+    </Step>
+    <Step name="inspect-rejected-key">
+      <Run command="lando app:config --format=json" expectExit={1} />
+      <Verify errorTag="ComposeKeyRejectedError" expect={{ regex: "Remove container_name and use the Lando service key as the container identity\\." }} />
+    </Step>
+    <Step name="apply-remediation">
+      <UseFixture name="compose-service-block-demo" />
+      <Verify command="lando app:config --format=json" expect={{ stdout: { regex: "\"ok\":\\s*true" } }} />
+    </Step>
+    <Step name="cleanup-remediation">
+      <Cleanup />
+    </Step>
+  </Scenario>
+</Guide>

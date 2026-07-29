@@ -671,6 +671,7 @@ export const SshAgentConfig = Schema.Struct({
 export type SshAgentConfig = typeof SshAgentConfig.Type;
 
 export const COMPOSE_TOP_LEVEL_KEYS = [
+  "name",
   "services",
   "volumes",
   "networks",
