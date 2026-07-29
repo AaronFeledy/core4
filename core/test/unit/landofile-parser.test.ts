@@ -339,6 +339,24 @@ describe("parseLandofile — native YAML references", () => {
     });
   });
 
+  test("keeps a hash inside an anchored quoted scalar", async () => {
+    const content = ['original: &shared "foo # bar"', "copied: *shared"].join("\n");
+
+    expect(await parse(content)).toEqual({ original: "foo # bar", copied: "foo # bar" });
+  });
+
+  test("resolves anchor names containing punctuation", async () => {
+    const content = ["base: &service.defaults value", "copy: *service.defaults"].join("\n");
+
+    expect(await parse(content)).toEqual({ base: "value", copy: "value" });
+  });
+
+  test("reports the alias column after extra sequence-item whitespace", async () => {
+    const error = await parseFailure("items:\n  -   *missing");
+
+    expect(error).toMatchObject({ _tag: "LandofileParseError", line: 2, column: 7 });
+  });
+
   test("preserves mappings that resemble the internal alias representation", async () => {
     const content = ["payload:", "  _tag: YamlAlias", "  name: user-data", "  line: 1", "  column: 1"].join(
       "\n",

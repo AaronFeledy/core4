@@ -33,6 +33,15 @@ export interface YamlReferenceState {
   readonly merges: WeakMap<Record<string, unknown>, MergeEntry[]>;
 }
 
+// YAML 1.2 anchor/alias names accept any non-space character except the flow
+// indicators. The tag detector in parser.ts MUST reuse this exact pattern: when
+// the two disagree, an anchored value is a reference to one and an opaque
+// string to the other, which is how `&a.b !reset` escaped Compose rejection.
+export const YAML_REFERENCE_NAME_PATTERN = /[^\s,[\]{}]+/;
+
+const ALIAS_PATTERN = /^\*([^\s,[\]{}]+)$/;
+const ANCHOR_PATTERN = /^&([^\s,[\]{}]+)(?:\s+(.*))?$/;
+
 const UNBOUND = Symbol("YamlAnchorUnbound");
 const REFERENCE_REMEDIATION =
   "Define each anchor once before use, avoid recursive aliases, and merge only mapping aliases.";
@@ -70,11 +79,11 @@ export const parseYamlReferenceSyntax = (
   const trimmed = value.slice(leadingWhitespace).trimEnd();
   const column = location.column + leadingWhitespace;
 
-  const alias = trimmed.match(/^\*([A-Za-z0-9_-]+)$/);
+  const alias = trimmed.match(ALIAS_PATTERN);
   const aliasName = alias?.[1];
   if (aliasName !== undefined) return { kind: "alias", name: aliasName, line: location.line, column };
 
-  const anchor = trimmed.match(/^&([A-Za-z0-9_-]+)(?:\s+(.*))?$/);
+  const anchor = trimmed.match(ANCHOR_PATTERN);
   const anchorName = anchor?.[1];
   if (anchorName === undefined) return { kind: "plain" };
   const anchoredValue = anchor?.[2] ?? "";

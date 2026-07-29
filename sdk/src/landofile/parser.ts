@@ -23,6 +23,7 @@ import { Effect } from "effect";
 import type { LandofileParseError } from "../errors/index.ts";
 import { LandofileParseError as LandofileParseErrorClass } from "../errors/index.ts";
 import {
+  YAML_REFERENCE_NAME_PATTERN,
   type YamlReferenceState,
   bindYamlAnchor,
   makeYamlAlias,
@@ -73,6 +74,8 @@ const parseError = (filePath: string, message: string, line?: number, column?: n
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_DEPTH = 64;
 
+const ANCHOR_PREFIX_PATTERN = new RegExp(`^&${YAML_REFERENCE_NAME_PATTERN.source}\\s+`);
+
 const assertContentSize = (content: string, filePath: string, maxContentBytes: number): void => {
   const actualContentBytes = Buffer.byteLength(content, "utf8");
   if (actualContentBytes > maxContentBytes) {
@@ -106,8 +109,10 @@ const stripComment = (line: string): string => {
     return line;
   }
 
-  const valuePrefix = afterColon.slice(0, valueIdx);
-  const valuePart = afterColon.slice(valueIdx);
+  const rawValue = afterColon.slice(valueIdx);
+  const anchorPrefix = rawValue.match(ANCHOR_PREFIX_PATTERN)?.[0] ?? "";
+  const valuePrefix = afterColon.slice(0, valueIdx) + anchorPrefix;
+  const valuePart = rawValue.slice(anchorPrefix.length);
 
   // A comment can start immediately after the colon, e.g. `services: # services`.
   // Once `valuePrefix` is split off the leading whitespace is gone, so the
@@ -314,7 +319,7 @@ const skipValuePrefix = (value: string): { readonly text: string; readonly offse
   const leadingWhitespace = value.search(/\S/);
   if (leadingWhitespace < 0) return { text: "", offset: 0 };
   const withoutIndent = value.slice(leadingWhitespace);
-  const anchorLength = withoutIndent.match(/^&[A-Za-z0-9_-]+\s+/)?.[0].length ?? 0;
+  const anchorLength = withoutIndent.match(ANCHOR_PREFIX_PATTERN)?.[0].length ?? 0;
   return { text: withoutIndent.slice(anchorLength), offset: leadingWhitespace + anchorLength };
 };
 
@@ -517,8 +522,9 @@ const parseList = (
     }
     if (!line.text.startsWith("- ")) break;
 
-    const value = line.text.slice(2).trim();
-    const valueColumn = line.indent + 3;
+    const rawItem = line.text.slice(2);
+    const value = rawItem.trim();
+    const valueColumn = line.indent + 3 + (rawItem.length - rawItem.trimStart().length);
     const reference = parseYamlReferenceSyntax(value, { line: line.line, column: valueColumn });
     const blockAnchor = reference.kind === "anchor" && reference.value === "" ? reference : undefined;
     if (blockAnchor !== undefined) {
