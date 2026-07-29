@@ -101,7 +101,7 @@ describe("meta:doctor command", () => {
 
     expect(output).toContain("selected-provider: pass");
     expect(output).toContain("provider: lando");
-    const optionalCapabilityFields = new Set(["composePreservedPaths", "hostProxy"]);
+    const optionalCapabilityFields = new Set(["composePreservedPaths", "composeProjectFields", "hostProxy"]);
     for (const field of Object.keys(ProviderCapabilities.fields)) {
       if (optionalCapabilityFields.has(field) && !Object.hasOwn(provider.capabilities, field)) continue;
       expect(output).toContain(`${field}:`);
@@ -230,7 +230,7 @@ describe("meta:doctor command", () => {
     expect(runtime.version).toBe("0.0.0-test");
 
     const capabilities = check.capabilities as Record<string, unknown>;
-    const optionalCapabilityFields = new Set(["composePreservedPaths", "hostProxy"]);
+    const optionalCapabilityFields = new Set(["composePreservedPaths", "composeProjectFields", "hostProxy"]);
     for (const field of Object.keys(ProviderCapabilities.fields)) {
       if (optionalCapabilityFields.has(field) && !Object.hasOwn(capabilities, field)) continue;
       expect(capabilities).toHaveProperty(field);
