@@ -1,4 +1,4 @@
-import { appendFile, copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { appendFile, copyFile, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -40,6 +40,7 @@ describe("compose coverage gate", () => {
         mkdir(join(root, "scripts"), { recursive: true }),
         mkdir(join(root, "core/src/landofile/compose"), { recursive: true }),
         mkdir(join(root, "spec/compose/vendor"), { recursive: true }),
+        symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir"),
       ]);
       await Promise.all([
         copyFile(join(repoRoot, "scripts/check-compose-coverage.ts"), copiedScript),
