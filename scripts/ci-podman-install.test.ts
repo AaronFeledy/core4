@@ -88,7 +88,7 @@ describe("generated workflows carry the Podman 6 host contract", () => {
     test(`${path} installs Podman 6 and asserts the floor before Podman-backed steps`, async () => {
       const contents = await Bun.file(join(REPO_ROOT, path)).text();
       expect(contents).not.toContain("apt-get install -y podman");
-      expect(contents).toContain("brew install podman");
+      expect(contents).toContain("brew update\n          brew install podman");
       const assertIndex = contents.indexOf("Assert Podman 6 host contract");
       expect(assertIndex).toBeGreaterThan(0);
       const podmanUseMarkers =
