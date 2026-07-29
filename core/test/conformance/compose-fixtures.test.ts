@@ -8,6 +8,7 @@ import { Cause, Effect, Exit, Layer } from "effect";
 import { CapabilityError, ComposeKeyRejectedError } from "@lando/core/errors";
 import {
   ComposePreservedPathKey,
+  ComposeProjectFieldKey,
   ComposeServiceFieldKey,
   ComposeServiceKnobKey,
   type LandofileShape,
@@ -89,6 +90,7 @@ const nativeCapabilities: ProviderCapabilities = {
   composeSpec: "native",
   composeKnobs: { supported: [...ComposeServiceKnobKey.literals] },
   composePreservedPaths: { supported: [...ComposePreservedPathKey.literals] },
+  composeProjectFields: { supported: [...ComposeProjectFieldKey.literals] },
   composeServiceFields: { supported: [...ComposeServiceFieldKey.literals] },
 };
 const restrictedCapabilities: ProviderCapabilities = {
