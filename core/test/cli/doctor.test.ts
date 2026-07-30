@@ -183,8 +183,11 @@ describe("meta:doctor command", () => {
     expect(output).not.toContain("[object Object]");
   });
 
-  test("meta:doctor bootstrap level is provider, never app", () => {
-    expect(metaDoctorSpec.bootstrap).toBe("provider");
+  test("meta:doctor bootstrap level is none so a failed bootstrap cannot block diagnostics", () => {
+    // Doctor builds the provider runtime inside its own program (doctor-bootstrap.ts)
+    // and reports a build failure as a self check, so it must not declare a level
+    // that the CLI would eagerly build before the command body runs.
+    expect(metaDoctorSpec.bootstrap).toBe("none");
   });
 
   test("ndjson output matches the meta-doctor.provider-status.ndjson fixture", async () => {

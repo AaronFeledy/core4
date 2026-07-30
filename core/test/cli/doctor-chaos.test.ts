@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import { Cause, type Context, Effect, Exit, Layer, Schema } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
@@ -7,6 +11,7 @@ import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
 
+import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema, doctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
@@ -73,6 +78,11 @@ const layersFor = (
     Layer.succeed(RuntimeProviderRegistry, registry as never),
     Layer.succeed(ConfigService, buildConfigService(configOptions)),
   );
+
+const restoreEnv = (key: string, value: string | undefined): void => {
+  if (value === undefined) Reflect.deleteProperty(process.env, key);
+  else process.env[key] = value;
+};
 
 const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>
   (report.self?.checks ?? []).map((check) => check.section);
@@ -259,6 +269,41 @@ describe("doctor chaos: whole report", () => {
     // Then
     const check = result.checks.find((entry) => entry.name === "selected-provider");
     expect(JSON.stringify(check)).not.toContain(secret);
+  });
+});
+
+describe("doctor safe mode", () => {
+  test("reports a bootstrap failure as a self check and still returns a report", async () => {
+    // Given a config file the YAML reader cannot parse, which fails the
+    // provider runtime build itself
+    const home = await mkdtemp(join(tmpdir(), "lando-doctor-safe-"));
+    await mkdir(join(home, ".config", "lando"), { recursive: true });
+    await writeFile(join(home, ".config", "lando", "config.yml"), "this: [is: not\n", "utf8");
+    const priorHome = process.env.HOME;
+    const priorXdgConfig = process.env.XDG_CONFIG_HOME;
+
+    try {
+      process.env.HOME = home;
+      process.env.XDG_CONFIG_HOME = join(home, ".config");
+
+      // When
+      const report = await Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV }));
+
+      // Then the provider section degrades but the report is intact
+      const bootstrapSelf = (report.self?.checks ?? []).find(
+        (check) => check.section === "provider-bootstrap",
+      );
+      expect(bootstrapSelf).toMatchObject({ status: "fail", severity: "error" });
+      expect(bootstrapSelf?.solutions.some((solution) => solution.command === "lando config view")).toBe(
+        true,
+      );
+      expect(report.provider.checks).toEqual([]);
+      expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
+    } finally {
+      restoreEnv("HOME", priorHome);
+      restoreEnv("XDG_CONFIG_HOME", priorXdgConfig);
+      await rm(home, { recursive: true, force: true });
+    }
   });
 });
 

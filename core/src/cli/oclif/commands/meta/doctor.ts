@@ -1,11 +1,9 @@
 import { Flags } from "@oclif/core";
 
-import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
-
+import { resilientDoctorReport } from "../../../commands/doctor-bootstrap.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
-  doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
@@ -52,19 +50,20 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
   return options.format === "json" || options.format === "yaml";
 };
 
-export const metaDoctorSpec: LandoCommandSpec<
-  DoctorReport,
-  unknown,
-  ConfigService | RuntimeProviderRegistry
-> = {
+/**
+ * Doctor bootstraps at `none` and builds the `provider` runtime inside its own
+ * program (see `doctor-bootstrap.ts`) so a bootstrap failure is reported as a
+ * self check instead of leaving the user with no diagnostics.
+ */
+export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, never> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "provider",
-  run: (input) => doctorReport(inputDoctorOptions(input)),
+  bootstrap: "none",
+  run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
   render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
   suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
 };

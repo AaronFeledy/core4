@@ -142,7 +142,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 | `apps:scratch:stop` | `scratch:stop` | `scratch` | Stop a scratch app; `<id>` selects (or stops the foreground scratch in this shell session); calls destroy (§21.10) |
 | `meta:bun` | `bun` | `minimal` | Proxy to the embedded Bun CLI via `BunSelfRunner` (§3.4); the canonical user-visible BUN_BE_BUN entry point (§8.2.4) |
 | `meta:config` | `config` | `minimal` | Read/write global Lando config (§8.2.2) |
-| `meta:doctor` | `doctor` | `provider` | Run diagnostics for app config, host/provider setup, and plugin-contributed checks (§10.9, §10.9.1) |
+| `meta:doctor` | `doctor` | `none` | Run diagnostics for app config, host/provider setup, and plugin-contributed checks; builds the `provider` runtime inside its own program so a bootstrap failure is reported, not fatal (§10.9, §10.9.1) |
 | `meta:events:follow` | `events` | `minimal` | Follow the lifecycle event trace stream for diagnostics and e2e tests |
 | `meta:global:config` | `global:config` | `minimal` | Read/write the global Landofile at `<userDataRoot>/global/.lando.yml` and the plugin enablement map (§20.3.1, §20.7) |
 | `meta:global:destroy` | `global:destroy` | `global` | Destroy the global app's resources; `--purge` also removes `service`/`app`-scoped volumes (§20.7) |

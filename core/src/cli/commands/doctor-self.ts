@@ -144,15 +144,7 @@ export const describeDoctorFailure = (
  * thrown value's message.
  */
 export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause => {
-  const failure = Cause.failureOption(cause);
-  if (Option.isSome(failure)) {
-    const tag = tagOf(failure.value);
-    return {
-      reason: "failure",
-      ...(tag === undefined ? {} : { tag }),
-      message: messageOf(failure.value),
-    };
-  }
+  // Defects outrank typed failures: a mixed cause is the more severe of the two.
   const defect = Cause.dieOption(cause);
   if (Option.isSome(defect)) {
     const tag = tagOf(defect.value);
@@ -160,6 +152,15 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
       reason: "defect",
       ...(tag === undefined ? {} : { tag }),
       message: messageOf(defect.value),
+    };
+  }
+  const failure = Cause.failureOption(cause);
+  if (Option.isSome(failure)) {
+    const tag = tagOf(failure.value);
+    return {
+      reason: "failure",
+      ...(tag === undefined ? {} : { tag }),
+      message: messageOf(failure.value),
     };
   }
   return { reason: "defect", message: Cause.pretty(cause) };
@@ -250,8 +251,9 @@ export const isolateDoctorSection = <A, E, R>(
       };
     }
 
-    // Preserve cancellation: a user interrupt is not a doctor defect.
-    if (Cause.isInterruptedOnly(outcome.cause)) {
+    // Preserve cancellation: any interrupt in the cause means the user asked to
+    // stop, even if a finalizer also died on the way out.
+    if (Cause.isInterrupted(outcome.cause)) {
       return yield* Effect.failCause(outcome.cause as Cause.Cause<never>);
     }
 

@@ -592,7 +592,7 @@ Doctor checks are read-only by default. `--fix` runs only explicitly declared au
 
 **Plugin check sandboxing.** Each `doctorChecks:` contribution (§9.5) runs under its own deadline with defect capture and plugin/check attribution. A hanging or throwing plugin check MUST become an attributed failed check; it MUST NOT take the doctor run down.
 
-**Safe mode.** If bootstrap at level `provider` itself fails (a corrupt global config, or a broken user-installed plugin), doctor MUST retry at a lower bootstrap level and report the bootstrap failure as checks with remediation, instead of leaving the user with no diagnostics at the exact moment they need them.
+**Safe mode.** `meta:doctor` MUST declare bootstrap level `none` and build the `provider` runtime inside its own program, exactly once, in a scope that stays open for the runtime-dependent sections. A failure to build that runtime (for example an unreadable `config.yml` or a conflicting plugin graph) MUST degrade to an empty provider section plus a `provider-bootstrap` self check carrying remediation, and the run MUST still report every section that does not need the provider runtime. Commands other than `meta:doctor` MUST keep failing loudly on the same bootstrap failure. Doctor MUST NOT build the runtime more than once, and the compiled binary path MUST behave identically to the source CLI path.
 
 ### 10.10 Host proxy
 

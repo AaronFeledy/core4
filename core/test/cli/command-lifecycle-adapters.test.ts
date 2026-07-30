@@ -106,16 +106,20 @@ describe("CLI lifecycle adapters", () => {
     const declarations = [
       ["meta:version", landoSpecForId("meta:version")?.bootstrap],
       ["meta:update", landoSpecForId("meta:update")?.bootstrap],
-      ["meta:doctor", landoSpecForId("meta:doctor")?.bootstrap],
+      ["meta:setup", landoSpecForId("meta:setup")?.bootstrap],
       ["app:start", landoSpecForId("app:start")?.bootstrap],
+      // meta:doctor deliberately declares `none` and builds the provider runtime
+      // itself so a bootstrap failure degrades to a self check (doctor-bootstrap.ts).
+      ["meta:doctor", landoSpecForId("meta:doctor")?.bootstrap],
     ];
 
     // Then
     expect(declarations).toEqual([
       ["meta:version", "none"],
       ["meta:update", "plugins"],
-      ["meta:doctor", "provider"],
+      ["meta:setup", "provider"],
       ["app:start", "app"],
+      ["meta:doctor", "none"],
     ]);
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:version"]?.bootstrap).toBe("none");
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");

@@ -306,7 +306,9 @@ const pluginDoctorReports = (
     const isolated = yield* Effect.forEach([...index.right.doctorChecks.entries()], ([id, check]) =>
       isolateDoctorSection({
         section: `plugin-check:${id}`,
-        effect: check.run(input),
+        // Suspended so a synchronous throw while *building* the effect is
+        // attributed to the plugin rather than escaping the isolate.
+        effect: Effect.suspend(() => check.run(input)),
         fallback: [] as ReadonlyArray<PluginDoctorReport>,
         budgetMs,
         redact,
@@ -587,9 +589,11 @@ export const doctor = (
     const stateDirEither = yield* Effect.either(resolveStateDir(configService));
     if (Either.isLeft(stateDirEither)) recordConfigFailure("provider-state-dir", stateDirEither.left);
     const stateDir = Either.isRight(stateDirEither) ? stateDirEither.right : undefined;
-    const userDataRootRaw = yield* configService
-      .get("userDataRoot")
-      .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
+    const userDataRootEither = yield* Effect.either(configService.get("userDataRoot"));
+    if (Either.isLeft(userDataRootEither)) {
+      recordConfigFailure("provider-user-data-root", userDataRootEither.left);
+    }
+    const userDataRootRaw = Either.isRight(userDataRootEither) ? userDataRootEither.right : undefined;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     const platform = options.platform ?? platformFromProcess();
