@@ -8,7 +8,7 @@ import {
   type ProviderCapabilities as ProviderCapabilitiesShape,
   ProviderId,
 } from "@lando/sdk/schema";
-import { ConfigService, type ProviderError, RuntimeProviderRegistry } from "@lando/sdk/services";
+import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
@@ -48,6 +48,7 @@ import {
   doctorSectionBudgetMs,
   doctorSelfCheck,
   isolateDoctorSection,
+  redactDoctorMessage,
 } from "./doctor-self.ts";
 import {
   type SetupReadinessRuntimeService,
@@ -252,6 +253,7 @@ interface RuntimeServiceStatusShape {
 }
 
 interface RuntimeServiceCapableProvider {
+  readonly id: string;
   readonly getRuntimeServiceStatus?: Effect.Effect<RuntimeServiceStatusShape, unknown>;
 }
 
@@ -269,15 +271,11 @@ const runtimeServiceStatusFromProviderStatus = (status: {
 });
 
 const runtimeServiceStatusFor = (
-  provider: {
-    readonly getStatus: Effect.Effect<{ readonly running: boolean }, ProviderError>;
-  },
+  provider: RuntimeServiceCapableProvider,
   status: { readonly running: boolean },
-): Effect.Effect<RuntimeServiceStatusShape> => {
-  const candidate = (provider as RuntimeServiceCapableProvider).getRuntimeServiceStatus;
-  const fallback = Effect.succeed(runtimeServiceStatusFromProviderStatus(status));
-  if (candidate !== undefined) return candidate.pipe(Effect.catchAll(() => fallback));
-  return fallback;
+): Effect.Effect<RuntimeServiceStatusShape, unknown> => {
+  const candidate = provider.getRuntimeServiceStatus;
+  return candidate ?? Effect.succeed(runtimeServiceStatusFromProviderStatus(status));
 };
 
 const containerDiedEventPayloadsFor = (
@@ -373,7 +371,7 @@ const providerUnavailableCheck = (input: {
 }): DoctorCheck => {
   const providerKind = providerKindFor(input.providerId);
   const described = describeDoctorFailure(input.cause);
-  const message = input.redact(described.message);
+  const message = redactDoctorMessage(described.message, input.redact);
   const context: Record<string, string> = {
     providerId: input.providerId,
     providerKind,
@@ -422,7 +420,7 @@ export const doctor = (
         doctorSelfCheck({
           section,
           reason: "failure",
-          message: redact(described.message),
+          message: redactDoctorMessage(described.message, redact),
           ...(described.tag === undefined ? {} : { tag: described.tag }),
           solutions: [CONFIG_REMEDIATION],
         }),
@@ -588,12 +586,20 @@ export const doctor = (
         : [buildSetupReadinessDoctorCheck(setupReadiness, provider, selection)];
 
     const runtimeServiceChecks: ReadonlyArray<DoctorCheck> =
-      providerKindFor(provider.id) === "managed"
+      statusKnown && providerKindFor(provider.id) === "managed"
         ? yield* Effect.gen(function* () {
-            const runtimeServiceStatus = yield* runtimeServiceStatusFor(provider, status);
+            const runtimeServiceStatusOutcome = yield* isolateDoctorSection({
+              section: "runtime-service-status",
+              effect: runtimeServiceStatusFor(provider, status),
+              fallback: runtimeServiceStatusFromProviderStatus(status),
+              budgetMs: probeBudget,
+              redact,
+            });
+            if (runtimeServiceStatusOutcome.self !== undefined)
+              selfChecks.push(runtimeServiceStatusOutcome.self);
             return [
               buildRuntimeServiceDoctorCheck(
-                runtimeServiceStatus,
+                runtimeServiceStatusOutcome.value,
                 provider,
                 versions?.runtime,
                 setupReadiness?.runtimeService,
