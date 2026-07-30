@@ -435,7 +435,10 @@ const commandResultEnvelope = (value: unknown): unknown =>
 
 const normalizeSetupInstallDir = (envelope: Record<string, unknown>): Record<string, unknown> => {
   const result = envelope.result;
-  return typeof result === "object" && result !== null
+  return typeof result === "object" &&
+    result !== null &&
+    "installDir" in result &&
+    typeof result.installDir === "string"
     ? { ...envelope, result: { ...result, installDir: "<INSTALL_DIR>" } }
     : envelope;
 };
@@ -1019,7 +1022,12 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(sourceEnvelope).toMatchObject({
           apiVersion: "v4",
           ok: true,
-          result: { providerId: "lando", fileSyncStatus: "satisfied", injectedCaCount: 0 },
+          result: {
+            providerId: "lando",
+            installDir: expect.any(String),
+            fileSyncStatus: "satisfied",
+            injectedCaCount: 0,
+          },
         });
       } finally {
         isolated.cleanup();
