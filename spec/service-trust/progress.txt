@@ -511,3 +511,56 @@ Spec SoT:
   - Verify and Drift Audit must not race the same worktree with bulk restores; parallel mid-edit
     checkouts leave half-applied contract changes.
 ---
+
+## 2026-07-30 12:59 CDT - US-488 Adjudication
+- Contradiction: Review required numeric `injectedCaCount`, described as the "Number of configured
+  host CAs injected into type: lando services," as proof of the source US-488 AC "When setup
+  resolves non-empty `network.ca` certs and CA inject is not disabled, setup output/report includes
+  an informational note that those CAs inject into `type: lando` services." Drift Audit rejected
+  that count because normative spec/06-services.md section 6.8 says the effective flag is selected
+  per service and "Duplicates by content digest are collapsed." Normative spec/11-subsystems.md
+  section 10.3.1 requires only: "When `network.ca.certs` is non-empty, setup SHOULD report that
+  those CAs will be injected into `type: lando` services (unless inject is disabled)." It does not
+  define a count, and setup runs before the app/service plan that determines one.
+- Decision: narrowed the US-488 AC in `spec/service-trust/prd.json` to require the exact machine
+  field `networkCaInjectionConfigured: boolean`, true only when setup resolved at least one host CA
+  file and global CA injection is enabled. The AC explicitly forbids `injectedCaCount` or any other
+  certificate count and requires non-quantified human, schema, and guide wording that distinguishes
+  global setup configuration from a particular service's planned CA set.
+---
+
+## 2026-07-30 13:15 CDT - US-488 Build
+- Implemented the adjudicated setup machine contract: `lando setup` now publishes the required boolean
+  `networkCaInjectionConfigured`, true only when setup resolved at least one host CA file and global CA
+  injection is enabled. The numeric `injectedCaCount` is gone from the result type, the command schema,
+  the renderers, and the guide, because setup runs before any app plan and cannot know content-digest
+  de-duplication, multi-certificate bundles, or per-service `security.inheritNetworkCa` opt-out.
+- The human note is now a single unquantified sentence derived from that boolean, identical for one CA
+  and for many, and the corporate-network-trust guide states plainly that setup reports host-global
+  configuration rather than any particular service's injected CA set, pointing readers at the service
+  plan or the in-container bundle for the real set.
+- Replaced two vacuous schema assertions flagged by the Drift Audit (absence of an unreleased key and
+  absence of prose that could never appear) with an exact encoded-key set plus a decode that must reject
+  a count-shaped result, and added the decorated-frame suppression case that was never asserted.
+- Verification: typecheck, lint, all boundary rules, generated output, schema snapshot regeneration with
+  no drift, schema compatibility (one compatible property-add vs origin/main, zero breaking), guide lint,
+  guide coverage, and public transcripts passed; 236 focused and adjacent tests passed across setup,
+  renderer summary surfaces, dispatch parity against a freshly compiled binary, sdk and core network
+  trust, app-planner network inject, build-key, CA build-key, and service-lando security. Sandbox CLI on
+  the compiled binary covered ten cases: machine JSON emitted true for one and two CAs and false for
+  disabled injection and no configured CA, the plain note rendered byte-identically for one and two CAs,
+  no note appeared in either suppressed case, and the decorated TTY frame carried the wrapped note when
+  configured and omitted it when not. QA temp roots and the driver were removed.
+- **Learnings for future iterations:**
+  - Setup-time state is not plan-time state. Before publishing a machine field from a setup step, ask
+    whether setup can know the value at all; anything the planner later de-duplicates, expands, or lets a
+    service opt out of must be published as the condition setup actually resolved, not as a quantity.
+  - The strongest regression proof for an unquantified surface is equality across cardinalities: assert
+    that one CA and several CAs render the same bytes, so any reintroduced count fails immediately.
+  - Sandbox CLI verification of the CA path needs real PEMs. `defaultSetupNetworkTrustProbe` runs a live
+    HTTPS probe whenever CA material is configured and builds its TLS trust from those files, so
+    placeholder certificate text fails setup with `SetupNetworkTrustError` and proves nothing; generate
+    throwaway roots with `openssl req -x509 -newkey rsa:2048 -nodes` instead.
+  - Assert an exact encoded-key set rather than the absence of a named key. A `not.toHaveProperty` check
+    on a field nobody adds passes forever and guards nothing.
+---
