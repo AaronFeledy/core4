@@ -120,14 +120,14 @@ const acceptsImportRef = (path: ReadonlyArray<string | number>): boolean =>
   path[2] === "security" &&
   ["ca", "cas", "certificate-authority", "certificate-authorities"].includes(String(path[3]));
 
-const importRefPath = (
+const invalidImportRefPath = (
   value: unknown,
   path: ReadonlyArray<string | number>,
 ): ReadonlyArray<string | number> | undefined => {
   if (typeof value !== "object" || value === null) return undefined;
-  if ("_tag" in value && value._tag === "ImportRef") return path;
+  if ("_tag" in value && value._tag === "ImportRef") return acceptsImportRef(path) ? undefined : path;
   for (const [key, entry] of Object.entries(value)) {
-    const nestedPath = importRefPath(entry, [...path, Array.isArray(value) ? Number(key) : key]);
+    const nestedPath = invalidImportRefPath(entry, [...path, Array.isArray(value) ? Number(key) : key]);
     if (nestedPath !== undefined) return nestedPath;
   }
   return undefined;
@@ -173,8 +173,8 @@ export const resolveLandofileLoadExpressions = (
           );
           if (Either.isLeft(evaluated)) throw evaluated.left;
           const result = decodeImplicitFileRef(session, evaluated.right);
-          const producedImportRefPath = importRefPath(result, path);
-          if (producedImportRefPath !== undefined && !acceptsImportRef(producedImportRefPath)) {
+          const producedImportRefPath = invalidImportRefPath(result, path);
+          if (producedImportRefPath !== undefined) {
             throw new LandofileImportRefMisuseError({
               message: `import() is not accepted at ${producedImportRefPath.join(".")}.`,
               sourcePath: options.source.sourcePath,

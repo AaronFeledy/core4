@@ -110,13 +110,23 @@ export class LandofileFileSession {
     }
     const bytes = readFileSync(absolutePath);
     const checksum = createHash("sha256").update(bytes).digest("hex");
+    let encoding: FileRef["encoding"] = "ascii";
+    if (!bytes.every((byte) => byte < 128)) {
+      try {
+        new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        encoding = "utf-8";
+      } catch (cause) {
+        if (!(cause instanceof TypeError)) throw cause;
+        encoding = "binary";
+      }
+    }
     const ref: FileRef = {
       _tag: "FileRef",
       path: absolutePath,
       size: bytes.byteLength,
       mime: Bun.file(absolutePath).type,
       checksum,
-      encoding: bytes.every((byte) => byte < 128) ? "ascii" : "utf-8",
+      encoding,
     };
     const dependency = { absolutePath, size: bytes.byteLength, mtimeMs: stat.mtimeMs, sha256: checksum };
     const loaded = { ref, bytes, dependency };

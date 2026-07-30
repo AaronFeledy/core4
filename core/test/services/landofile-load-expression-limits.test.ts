@@ -79,6 +79,36 @@ test("enforces the file-byte limit", async () => {
   });
 });
 
+test("reports binary FileRef encoding for invalid UTF-8 bytes", async () => {
+  await withApp(async (appRoot) => {
+    // Given
+    await writeFile(join(appRoot, "binary.dat"), new Uint8Array([0xff, 0xfe]));
+    const source = {
+      appRoot,
+      sourcePath: join(appRoot, ".lando.yml"),
+      sourceRoot: appRoot,
+      layer: "canonical" as const,
+    };
+
+    // When
+    const resolved = await Effect.runPromise(
+      resolveLandofileLoadExpressions({
+        value: "{{ load('./binary.dat').encoding }}",
+        source,
+        policy: {
+          allowOutsideRoot: false,
+          maxFileBytes: 1_048_576,
+          maxFilesPerExpression: 16,
+          maxRecursionDepth: 4,
+        },
+      }),
+    );
+
+    // Then
+    expect(resolved.value).toBe("binary");
+  });
+});
+
 test("enforces the per-expression file-count limit", async () => {
   await withApp(async (appRoot) => {
     // Given

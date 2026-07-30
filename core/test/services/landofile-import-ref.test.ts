@@ -122,3 +122,28 @@ test("rejects a nested ImportRef produced at a non-accepting key", async () => {
     expect(failure).toMatchObject({ configPath: "services.web.environment.BAD.nested" });
   });
 });
+
+test("rejects a nested ImportRef after an accepted CA list item", async () => {
+  await withApp(async (appRoot) => {
+    // Given
+    await writeFile(join(appRoot, "corp.pem"), PEM);
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      [
+        "name: trust-app",
+        "services:",
+        "  web:",
+        "    security:",
+        "      ca: \"{{ [import('./corp.pem'), { nested: import('./corp.pem') }] }}\"",
+        "",
+      ].join("\n"),
+    );
+
+    // When
+    const failure = await discoverFailure();
+
+    // Then
+    expect(failure).toBeInstanceOf(LandofileImportRefMisuseError);
+    expect(failure).toMatchObject({ configPath: "services.web.security.ca.1.nested" });
+  });
+});
