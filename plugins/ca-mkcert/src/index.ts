@@ -1,25 +1,28 @@
 import { Effect, Layer, Schema } from "effect";
 
-import { CaError } from "@lando/sdk/errors";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
-import { CertificateAuthority } from "@lando/sdk/services";
+import { CertificateAuthority, Downloader, PathsService, ProcessRunner } from "@lando/sdk/services";
+
+import { CA_ID, makeMkcertCertificateAuthority } from "./ca.ts";
 
 export const PLUGIN_NAME = "@lando/ca-mkcert" as const;
-export const CA_ID = "mkcert" as const;
 
-const CA_UNAVAILABLE_MESSAGE =
-  "mkcert is not installed. Run `lando setup` to download mkcert and install the local CA.";
-
-export const makeCertificateAuthority = () => ({
-  id: CA_ID,
-  setup: (_opts: { force: boolean; skipTrustInstall?: boolean }) =>
-    Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_ID })),
-  issueCert: (_spec: { cn: string; sans: ReadonlyArray<string> }) =>
-    Effect.fail(new CaError({ message: CA_UNAVAILABLE_MESSAGE, caId: CA_ID })),
-});
-
-export const engine = Layer.succeed(CertificateAuthority, makeCertificateAuthority());
+export const engine = Layer.effect(
+  CertificateAuthority,
+  Effect.gen(function* () {
+    const paths = yield* PathsService;
+    const downloader = yield* Downloader;
+    const processRunner = yield* ProcessRunner;
+    return makeMkcertCertificateAuthority({
+      binDir: paths.binDir,
+      certsDir: paths.certsDir,
+      toolDownloadsDir: paths.toolDownloadsDir(CA_ID),
+      downloader,
+      processRunner,
+    });
+  }),
+);
 
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
@@ -39,3 +42,17 @@ export const plugin = definePlugin({
   manifest,
   layer: engine,
 });
+
+export { CA_ID, makeMkcertCertificateAuthority, mkcertLeafCertificateName } from "./ca.ts";
+export type { MkcertCertificateAuthorityOptions } from "./ca.ts";
+export {
+  MKCERT_TOOL_MANIFEST,
+  MKCERT_TOOL_VERSION,
+  type InstalledMkcertStatus,
+  type ProvisionMkcertInput,
+  mkcertInstallName,
+  mkcertInstallPath,
+  mkcertInstalledVersionPath,
+  provisionMkcert,
+  readInstalledMkcertStatus,
+} from "./provision.ts";
