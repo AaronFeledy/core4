@@ -68,6 +68,7 @@ Accepted Landofile service authoring surface with canonical keys, Compose cross-
 | `routes` | No | `array` | — | — | — | — | — |
 | `healthcheck` | No | `object` | — | — | — | — | — |
 | `logs` | No | `array` | — | — | — | — | — |
+| `certs` | No | `boolean`, `string`, `object` | Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities. | — | — | — | — |
 | `hostnames` | No | `array` | — | — | — | — | — |
 | `security` | No | `object` | — | — | — | — | — |
 | `dependsOn` | No | `array`, `object` | — | — | — | — | — |

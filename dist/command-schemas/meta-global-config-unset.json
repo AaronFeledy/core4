@@ -278,6 +278,34 @@
           ],
           "description": "Linux capabilities to drop as a single Compose capability or capability list; canonicalized to a string list."
         },
+        "certs": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "cert": {
+                  "description": "Path to a custom leaf certificate for this service.",
+                  "type": "string"
+                },
+                "key": {
+                  "description": "Path to the private key matching the custom leaf certificate.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "cert"
+              ],
+              "type": "object"
+            }
+          ],
+          "description": "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities."
+        },
         "command": {
           "anyOf": [
             {

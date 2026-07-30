@@ -21,6 +21,9 @@ Spec SoT:
   every competing spelling. Keep the canonical variant first so canonical output survives a second
   decode. Annotate the `from` union so its description survives into `ServiceConfigInput` and the
   published artifact.
+- Service authoring fields that vary by *shape* rather than by *spelling* (`certs`, `MountInput`,
+  `StorageInput`) are a plain `Schema.Union` with no transform; only fields with competing spellings
+  need the alias-transform treatment. A union is idempotent under a second decode for free.
 - A nested `Schema.Struct` publishes `additionalProperties: false`, so unknown nested keys fail closed
   under both default and strict decode and surface as path-precise lint violations.
 - After any `ServiceConfig` field change, run `bun run codegen:schema-snapshot` early: it refreshes
@@ -663,4 +666,34 @@ Spec SoT:
 - Operational hazard: two audit sessions holding one worktree is what produced the compiled-binary
   contention here and the half-applied contract edit at 12:57 CDT. Confirm no sibling session is live
   before editing this branch.
+---
+
+## 2026-07-30 14:45 CDT - US-490
+- Added the `services.<name>.certs` leaf-TLS authoring surface to `ServiceConfig` /
+  `ServiceConfigInput`: `true` issues a certificate from the active certificate authority, `false`
+  disables issuance, a string supplies a custom certificate path, and `{ cert, key? }` supplies an
+  explicit pair. The published `CertsInput` schema keeps `cert` required inside the object form, so a
+  key without a certificate, a certificate list, a scalar number, and an unknown sibling key all fail
+  closed with a `services.<name>.certs` correction. `certs` and `security.ca` decode independently and
+  may both be authored on one service.
+- Refreshed the schema artifact set and generated schema reference docs, recorded the additive field
+  in `sdk/API_COMPATIBILITY.md`, and documented every accepted shape with Landofile examples plus an
+  authoring scenario in the certificates-mkcert guide.
+- Verification: typecheck, lint passed; 1,006 SDK schema assertions plus 42 core Landofile
+  lint/translate/extension-key and planner-inject tests passed by path; boundary, generated-output,
+  guide-lint, guide-coverage, public-transcript gates and the focused certificates-mkcert guide run
+  green. Real `.lando.yml` files linted through `lando app:config:lint`: all four accepted shapes and
+  a dual `certs` + `security.ca` service report no violations and exit 0, while a key-only object
+  exits 1 with `services.keyonly.certs.cert: is missing` / "Add the required "cert" field." and an
+  unknown `keyfile` sibling exits 1 with the expected `"cert" | "key"` key set. QA material removed.
+- **Learnings for future iterations:**
+  - Service authoring fields that differ by *shape* rather than by *spelling* follow `MountInput` /
+    `StorageInput`, not `security`: a plain `Schema.Union` with no transform, since there is no alias
+    to canonicalize and a union is idempotent under a second decode for free.
+  - A union member that is a `Schema.Struct` still reports its own per-key issues through
+    `app:config:lint`, so the union's failed sibling members produce extra "Expected boolean/string"
+    lines alongside the useful `certs.cert: is missing` remediation. That noise is inherent to union
+    decoding; assert on the specific path-scoped violation rather than the violation count.
+  - `bun core/src/cli/index.ts <command>` silently produces no output; the runnable host-safe CLI
+    entry for manual verification is `bun core/bin/lando.ts <command>` from inside the app directory.
 ---
