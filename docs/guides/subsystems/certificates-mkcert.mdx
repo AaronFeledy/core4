@@ -49,6 +49,19 @@ The object form requires both `cert` and `key`. Any other shape — a number, a 
 incomplete object, or an unknown field beside `cert` and `key` — fails validation with a
 `services.<name>.certs` correction before planning.
 
+## Install the certificate authority
+
+`lando setup` provisions the pinned mkcert binary through `Downloader`, so corporate `network.ca`
+and `network.proxy` settings apply to that fetch, then installs the local root CA into the host
+trust stores. When the unelevated install fails on a host that needs elevation, the install is
+retried through `PrivilegeService` with the same `CAROOT`, and a still-failing install reports the
+underlying mkcert output plus how to retry or skip.
+
+Run `lando setup --skip-install-ca` to provision mkcert without writing to any host trust store;
+embedding hosts pass `skipTrustInstall: true` to `CertificateAuthority.setup` for the same effect.
+Issuing a certificate before setup fails with remediation naming `lando setup`, and hosts with no
+published mkcert build fail with remediation instead of a partial install.
+
 <Guide>
   <Scenario id="author-service-certs" render={false} reason="Focused ServiceConfig schema tests cover every certs shape, invalid-shape rejection, and independence from security.ca without requiring an installed certificate authority">
     <Step name="declare-certs">
@@ -68,11 +81,13 @@ incomplete object, or an unknown field beside `cert` and `key` — fails validat
     </Step>
   </Scenario>
 
-  <Scenario id="ca-mkcert-download" render={false} reason="mkcert binary download is exercised by unit tests; live download requires network access and platform-specific install paths">
+  <Scenario id="ca-mkcert-download" render={false} reason="mkcert binary provisioning and trust-store install are exercised by plugins/ca-mkcert/test/ca.test.ts against a fake downloader, process runner, and privilege service; a live run downloads the pinned upstream binary and writes to host trust stores">
     <Step name="mkcert-download">
-      <Variable name="pluginName" value="@lando/ca-mkcert" display="Bundled plugin that provides the mkcert-backed CertificateAuthority Live Layer" />
-      <Variable name="setupCommand" value="lando setup" display="Downloads mkcert binary and runs mkcert -install to install the local CA" />
-      <Variable name="optOut" value="lando setup --ca=none" display="Skips CA installation; services use HTTP only" />
+      <Variable name="pluginName" value="@lando/ca-mkcert" display="Plugin that provides the mkcert-backed CertificateAuthority Live Layer" />
+      <Variable name="setupCommand" value="lando setup" display="Provisions the pinned mkcert binary and runs mkcert -install to install the local CA" />
+      <Variable name="downloadPath" value="Downloader / HttpClient" display="The pinned binary is fetched through Downloader, so network.ca and network.proxy settings are honored" />
+      <Variable name="privilegeFallback" value="PrivilegeService" display="If the unelevated trust-store install fails, the install is retried elevated with the same CAROOT" />
+      <Variable name="optOut" value="lando setup --skip-install-ca" display="Provisions mkcert but skips host trust-store installation" />
       <Variable name="skipTrustInstall" value="setup({ skipTrustInstall: true })" display="Programmatic opt-out for tests or headless environments" />
     </Step>
   </Scenario>
@@ -80,8 +95,9 @@ incomplete object, or an unknown field beside `cert` and `key` — fails validat
   <Scenario id="ca-wildcard-certs" render={false} reason="Wildcard cert issuance requires a running mkcert installation; the issued cert chain test requires the locally-installed root CA to be trusted">
     <Step name="wildcard-certs">
       <Variable name="certSpec" value="{ cn: 'myapp.lndo.site', sans: ['*.myapp.lndo.site'] }" display="CertificateSpec for a per-app wildcard cert" />
-      <Variable name="certResult" value="{ certPath, keyPath, caPath }" display="CertificateResult with paths to the issued cert, key, and CA cert" />
+      <Variable name="certResult" value="{ certPath, keyPath, caPath }" display="CertificateResult with paths to the issued cert, key, and CA cert; leaf files land in the Lando certs directory and caPath comes from mkcert -CAROOT" />
       <Variable name="verificationRef" value="sdk/test/contract/certificate-authority.test.ts" display="Unit tests verify the CA contract against TestCertificateAuthority" />
+      <Variable name="liveVerificationRef" value="plugins/ca-mkcert/test/ca.test.ts" display="Unit tests run the same contract against the mkcert Live implementation with fake host services" />
     </Step>
   </Scenario>
 
