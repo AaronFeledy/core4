@@ -16,6 +16,7 @@ import {
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract.ts";
 import { DoctorReportSchema } from "./doctor-report-contract.ts";
+import type { DoctorSelfReport } from "./doctor-self.ts";
 export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson.ts";
 import { renderGlobalAppDoctorResult } from "./doctor-global-app.ts";
 import { renderMcpDoctorResult } from "./doctor-mcp.ts";
@@ -24,7 +25,7 @@ import {
   type AppVersionConstraintDoctorResult,
   renderAppVersionConstraintResult,
 } from "./doctor-version-constraint.ts";
-import { renderDoctorResult } from "./doctor.ts";
+import { renderDoctorResult, renderSolution } from "./doctor.ts";
 
 interface DoctorCheckLike {
   readonly name: string;
@@ -97,6 +98,18 @@ const appConfigSection = (result: ConfigLintResult): SummarySection => ({
 const appVersionConstraintSection = (result: AppVersionConstraintDoctorResult): SummarySection =>
   checkSection("app version constraint", result.checks);
 
+const selfSection = (report: DoctorSelfReport): SummarySection => ({
+  title: "doctor self",
+  rows: report.checks.map((check) => ({
+    label: check.section,
+    tone: "error" as SummaryTone,
+    value: check.reason,
+    fields: Object.entries(check.context).map(([label, value]) => ({ label, value })),
+    detail: check.solutions.map((solution) => solution.description).join(" · "),
+  })),
+  notes: ["These sections could not be diagnosed; the rest of this report is unaffected."],
+});
+
 const countByStatus = (report: DoctorReport): { readonly checks: number; readonly failed: number } => {
   const checks = [
     ...report.provider.checks,
@@ -106,9 +119,13 @@ const countByStatus = (report: DoctorReport): { readonly checks: number; readonl
     ...(report.appVersionConstraints?.checks ?? []),
   ];
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
+  const selfChecks = report.self?.checks ?? [];
   return {
-    checks: checks.length + (report.appConfig === undefined ? 0 : 1),
-    failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
+    checks: checks.length + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
+    failed:
+      checks.filter((check) => check.status === "fail").length +
+      (appConfigInvalid ? 1 : 0) +
+      selfChecks.length,
   };
 };
 
@@ -123,6 +140,7 @@ export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument 
     sections.push(appVersionConstraintSection(report.appVersionConstraints));
   if (report.deprecations !== undefined) sections.push(deprecationsSection(report.deprecations));
   if (report.appConfig !== undefined) sections.push(appConfigSection(report.appConfig));
+  if (report.self !== undefined) sections.push(selfSection(report.self));
   const counts = countByStatus(report);
   const rowTones = sections.flatMap((section) => section.rows.map((row) => row.tone ?? "info"));
   return {
@@ -159,6 +177,23 @@ const renderDeprecationsSection = (report: DoctorDeprecationReport): string => {
   return lines.join("\n");
 };
 
+const renderSelfSection = (report: DoctorSelfReport): string => {
+  const lines: string[] = [];
+  for (const check of report.checks) {
+    lines.push(`${check.name}: ${check.status}`);
+    lines.push(`section: ${check.section}`);
+    lines.push(`reason: ${check.reason}`);
+    for (const [field, value] of Object.entries(check.context)) {
+      if (field === "section" || field === "reason") continue;
+      lines.push(`${field}: ${value}`);
+    }
+    for (const solution of check.solutions) {
+      lines.push(renderSolution(solution));
+    }
+  }
+  return lines.join("\n");
+};
+
 const renderAppConfigSection = (result: ConfigLintResult): string => {
   const lines = [`app-config-lint: ${result.valid ? "pass" : "fail"}`, `file: ${result.file}`];
   lines.push(...result.violations.map(renderConfigLintViolation));
@@ -179,9 +214,17 @@ export const renderDoctorReport = (report: DoctorReport, ctx?: RenderContext): s
   const deprecations =
     report.deprecations === undefined ? "" : renderDeprecationsSection(report.deprecations);
   const appConfig = report.appConfig === undefined ? "" : renderAppConfigSection(report.appConfig);
-  const parts = [provider, subsystems, globalApp, mcp, appVersionConstraints, deprecations, appConfig].filter(
-    (part) => part.length > 0,
-  );
+  const self = report.self === undefined ? "" : renderSelfSection(report.self);
+  const parts = [
+    provider,
+    subsystems,
+    globalApp,
+    mcp,
+    appVersionConstraints,
+    deprecations,
+    appConfig,
+    self,
+  ].filter((part) => part.length > 0);
   return parts.join("\n");
 };
 

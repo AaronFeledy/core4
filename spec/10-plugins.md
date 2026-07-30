@@ -369,6 +369,7 @@ There are no legacy autoload directories. All contributions go through the manif
 - Issues MUST include either an `automatic` solution command, a `manual` solution with user instructions, or enough detail to explain why no remediation is available.
 - Automatic solution commands run only when the user explicitly passes `--fix`; default doctor runs are read-only.
 - Checks MUST redact secrets and MUST NOT require provider-native commands for normal diagnosis unless the provider itself is the subject of the check.
+- Each contribution runs under its own per-check deadline with defect capture and plugin/check attribution (§10.9.1); a hanging or throwing check MUST become an attributed failed check and MUST NOT take the doctor run down.
 
 **Interaction service contribution rules:**
 

@@ -578,6 +578,22 @@ Doctor checks are read-only by default. `--fix` runs only explicitly declared au
 
 **Diagnostic transcripts.** Every shell-shaped check that `lando doctor` runs (probing PATH, testing connectivity, verifying file permissions, inspecting Podman/Docker state) goes through `ShellRunner` (§3.4) so each invocation is captured as a redacted, structured record. The renderer surfaces these records as a transcript whose lines are literal Bun Shell commands the user can copy-paste into their own terminal to reproduce. `--fix` invocations are recorded the same way, so a doctor session that auto-remediates produces a complete audit log of "what we ran, with which redacted values, and the exit code we got." Transcripts are written to `<userCacheRoot>/logs/doctor/<run-id>.transcript` alongside the structured run log; `lando doctor --transcript-only` skips the rendered diagnostic UI and prints the transcript directly to stdout for sharing in bug reports. Plugin-contributed checks that need shell access SHOULD register their commands through `ShellRunner` rather than calling `Bun.$` directly so their probes show up in the transcript with the same redaction and lifecycle-event treatment as core checks.
 
+#### 10.9.1 Self-resilience
+
+`lando doctor` MUST always emit a structured report and MUST NOT exit with a stack trace or an unhandled error, for any host state. The only thing that stops a doctor run before it reports is a user interrupt (`Ctrl-C`), which MUST still be honored.
+
+**Section isolation.** Every fallible report section — provider, subsystems, global-app, mcp, app version constraints, deprecations, and app config lint — MUST run in isolation. A typed failure, an untyped defect, or a deadline overrun in one section MUST degrade only that section to an empty/fallback result plus one added self check; it MUST NOT fail the report as a whole.
+
+**Self checks.** A section failure MUST surface as an entry in a new optional `self` report section: `self.checks[]`. Each entry has `name: "doctor-self"`, the failing `section` label, `status: "fail"`, `severity: "error"`, a `reason` of `failure | defect | timeout`, a structured `context` (`section`, `reason`, an optional `failure` tag, and a `message`), and remediation `solutions`. The `message` MUST be redacted (§3.7) before it reaches the report.
+
+**Per-section deadline.** Each section runs under a deadline, default `10000`ms, overridable via `LANDO_DOCTOR_SECTION_BUDGET_MS`, clamped to `1000`-`120000`ms; an unparsable value falls back to the default. A section program MUST stay Effect-shaped and interruptible — a section that blocks the event loop synchronously cannot be recovered by the deadline.
+
+**Provider path.** A failure to select a provider, or a failing or timing-out provider status probe, MUST degrade to a `selected-provider` check with a non-pass status and `lando setup` remediation rather than aborting the report.
+
+**Plugin check sandboxing.** Each `doctorChecks:` contribution (§9.5) runs under its own deadline with defect capture and plugin/check attribution. A hanging or throwing plugin check MUST become an attributed failed check; it MUST NOT take the doctor run down.
+
+**Safe mode.** If bootstrap at level `provider` itself fails (a corrupt global config, or a broken user-installed plugin), doctor MUST retry at a lower bootstrap level and report the bootstrap failure as checks with remediation, instead of leaving the user with no diagnostics at the exact moment they need them.
+
 ### 10.10 Host proxy
 
 The **host proxy** is a per-app container→host RPC channel that lets tools running inside a Lando service call back to the host machine for two narrow purposes: opening a URL in the user's real browser (so `drush user:login`'s call to `xdg-open` actually pops up a tab), and re-entering Lando's command runtime on the host (so `lando drush` typed inside an interactive container shell still does the right thing). It is the inverse of the existing host→container exec path: where `RuntimeProvider.exec` runs host-initiated work inside a service, `HostProxyService` runs container-initiated work on the host, with the same redaction/lifecycle/auth discipline applied in reverse.

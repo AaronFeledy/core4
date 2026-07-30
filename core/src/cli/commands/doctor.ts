@@ -1,11 +1,6 @@
-import { Effect, Either } from "effect";
+import { Effect, Either, Option } from "effect";
 
-import type {
-  ConfigError,
-  NoProviderInstalledError,
-  ProviderConfigError,
-  ProviderUnavailableError,
-} from "@lando/sdk/errors";
+import type { ConfigError } from "@lando/sdk/errors";
 import type {
   LandoPluginModule,
   PluginDoctorCheckContribution,
@@ -30,22 +25,24 @@ import {
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
+import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
 import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { collectOomDoctorChecks } from "./doctor-oom.ts";
 import {
+  type DoctorSelfCheck,
+  type DoctorSelfSolution,
+  describeDoctorFailure,
+  doctorSectionBudgetMs,
+  doctorSelfCheck,
+  isolateDoctorSection,
+} from "./doctor-self.ts";
+import {
   type SetupReadinessRuntimeService,
   type SetupReadinessSummary,
   readSetupReadiness,
 } from "./setup-readiness.ts";
-
-export type DoctorError =
-  | ConfigError
-  | NoProviderInstalledError
-  | ProviderConfigError
-  | ProviderError
-  | ProviderUnavailableError;
 
 export type DoctorStatus = "pass" | "warn" | "fail";
 export type DoctorSeverity = "info" | "warn" | "error";
@@ -101,6 +98,11 @@ export interface DoctorCheck {
 
 export interface DoctorResult {
   readonly checks: ReadonlyArray<DoctorCheck>;
+  /**
+   * Failures of doctor's own machinery while producing the provider section.
+   * Lifted into the report-level `self` section by `doctorReport`.
+   */
+  readonly selfChecks?: ReadonlyArray<DoctorSelfCheck>;
 }
 
 export interface DoctorOptions {
@@ -173,23 +175,35 @@ const buildSelectionRecord = (resolution: ProviderSelectionResolution): DoctorSe
   },
 });
 
+interface GatheredSelectionInputs {
+  readonly inputs: ProviderSelectionInputs;
+  /**
+   * Present when the configured default could not be read. Flag, Landofile,
+   * and env inputs are unaffected, so selection still resolves.
+   */
+  readonly configFailure?: unknown;
+}
+
 const gatherSelectionInputs = (
   options: DoctorOptions,
-): Effect.Effect<ProviderSelectionInputs, ConfigError, ConfigService> =>
+): Effect.Effect<GatheredSelectionInputs, never, ConfigService> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;
-    const configProvider = yield* configService.get("defaultProviderId");
+    const configProvider = yield* Effect.either(configService.get("defaultProviderId"));
 
     const flag = branded(options.flagProviderId);
     const landofile = branded(options.landofileProviderId);
     const env = readProviderEnvVar(options.env ?? process.env);
-    const config = configProvider ?? undefined;
+    const config = Either.isRight(configProvider) ? (configProvider.right ?? undefined) : undefined;
     return {
-      ...(flag === undefined ? {} : { flag }),
-      ...(landofile === undefined ? {} : { landofile }),
-      ...(env === undefined ? {} : { env }),
-      ...(config === undefined ? {} : { config }),
-      capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+      inputs: {
+        ...(flag === undefined ? {} : { flag }),
+        ...(landofile === undefined ? {} : { landofile }),
+        ...(env === undefined ? {} : { env }),
+        ...(config === undefined ? {} : { config }),
+        capabilityDefault: CAPABILITY_DEFAULT_PROVIDER_ID,
+      },
+      ...(Either.isLeft(configProvider) ? { configFailure: configProvider.left } : {}),
     };
   });
 
@@ -228,20 +242,85 @@ interface PluginDoctorContributionReport {
   readonly relevant: PluginDoctorCheckContribution["relevant"];
 }
 
+interface PluginDoctorRunOutcome {
+  readonly reports: ReadonlyArray<PluginDoctorContributionReport>;
+  readonly selfChecks: ReadonlyArray<DoctorSelfCheck>;
+}
+
+/**
+ * Provider- and plugin-shaped probes get a tighter default than a whole report
+ * section, and shrink further when the section budget is lowered.
+ */
+const PROBE_BUDGET_MS = 5_000;
+
+const probeBudgetMs = (sectionBudgetMs: number): number => Math.min(PROBE_BUDGET_MS, sectionBudgetMs);
+
+const PLUGIN_CHECK_REMEDIATION: DoctorSelfSolution = {
+  kind: "manual",
+  description:
+    "A plugin-contributed doctor check did not complete. Remove or update the owning plugin (`lando plugin remove <name>`) if it keeps failing; the rest of this report is unaffected.",
+};
+
+const CONFIG_REMEDIATION: DoctorSelfSolution = {
+  kind: "manual",
+  description:
+    "Lando configuration could not be read, so this input fell back to its default. Inspect it with `lando config view` and repair or remove the offending file.",
+  command: "lando config view",
+};
+
+const PLUGIN_INDEX_REMEDIATION: DoctorSelfSolution = {
+  kind: "manual",
+  description:
+    "Plugin doctor contributions could not be indexed, so no plugin checks ran. Inspect installed plugins with `lando plugin list` and remove the conflicting one.",
+};
+
+/**
+ * Run every plugin-contributed doctor check under its own deadline with defect
+ * capture, so a hanging or throwing contribution degrades to one attributed
+ * self check instead of taking the whole doctor run down.
+ */
 const pluginDoctorReports = (
   modules: ReadonlyArray<LandoPluginModule>,
   input: PluginDoctorInput,
-): Effect.Effect<ReadonlyArray<PluginDoctorContributionReport>, never> =>
+  redact: (value: string) => string,
+  budgetMs: number,
+): Effect.Effect<PluginDoctorRunOutcome, never> =>
   Effect.gen(function* () {
-    const index = yield* Either.match(makePluginCapabilityIndex(modules), {
-      onLeft: (error) => Effect.die(error),
-      onRight: Effect.succeed,
-    });
-    return (yield* Effect.forEach([...index.doctorChecks.values()], (check) =>
-      check
-        .run(input)
-        .pipe(Effect.map((reports) => reports.map((report) => ({ report, relevant: check.relevant })))),
-    )).flat();
+    const index = makePluginCapabilityIndex(modules);
+    if (Either.isLeft(index)) {
+      const described = describeDoctorFailure(index.left);
+      return {
+        reports: [],
+        selfChecks: [
+          doctorSelfCheck({
+            section: "plugin-doctor-checks",
+            reason: "failure",
+            message: redact(described.message),
+            ...(described.tag === undefined ? {} : { tag: described.tag }),
+            solutions: [PLUGIN_INDEX_REMEDIATION],
+          }),
+        ],
+      };
+    }
+
+    const isolated = yield* Effect.forEach([...index.right.doctorChecks.entries()], ([id, check]) =>
+      isolateDoctorSection({
+        section: `plugin-check:${id}`,
+        effect: check.run(input),
+        fallback: [] as ReadonlyArray<PluginDoctorReport>,
+        budgetMs,
+        redact,
+        context: { checkId: id },
+        solutions: [PLUGIN_CHECK_REMEDIATION],
+      }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
+    );
+
+    return {
+      reports: isolated.flatMap((entry) =>
+        entry.outcome.value.map((report) => ({ report, relevant: entry.relevant })),
+      ),
+      selfChecks: isolated.flatMap((entry) => (entry.outcome.self === undefined ? [] : [entry.outcome.self])),
+    };
   });
 
 const mapPluginDoctorCheck = ({ report, provider, selection }: PluginDoctorCheckMapping): DoctorCheck => ({
@@ -416,30 +495,122 @@ const buildRuntimeServiceDoctorCheck = (
   };
 };
 
+interface ProviderStatusShape {
+  readonly running: boolean;
+  readonly message?: string;
+}
+
+const UNKNOWN_PROVIDER_VERSION = "unknown";
+
+const providerStubFor = (providerId: string): PluginDoctorProvider => ({
+  id: providerId,
+  displayName: providerId === "podman" ? "Podman Runtime Provider" : providerId,
+  version: UNKNOWN_PROVIDER_VERSION,
+});
+
+/**
+ * Reported when the selected provider cannot be resolved at all. Doctor still
+ * answers with the selection record that produced the unusable id, because
+ * that is the evidence a user needs to correct it.
+ */
+const providerUnavailableCheck = (input: {
+  readonly providerId: string;
+  readonly platform: HostPlatform;
+  readonly selection: DoctorSelectionRecord;
+  readonly cause: unknown;
+  readonly redact: (value: string) => string;
+}): DoctorCheck => {
+  const providerKind = providerKindFor(input.providerId);
+  const described = describeDoctorFailure(input.cause);
+  const message = input.redact(described.message);
+  const context: Record<string, string> = {
+    providerId: input.providerId,
+    providerKind,
+    providerVersion: UNKNOWN_PROVIDER_VERSION,
+    runtimeStatus: "unavailable",
+    platform: input.platform,
+    selectionSource: input.selection.source,
+    message,
+  };
+  if (described.tag !== undefined) context.failure = described.tag;
+  return {
+    name: "selected-provider",
+    status: "fail",
+    severity: "error",
+    providerId: input.providerId,
+    providerName: providerStubFor(input.providerId).displayName,
+    providerVersion: UNKNOWN_PROVIDER_VERSION,
+    providerKind,
+    runtimeStatus: "unavailable",
+    runtime: { running: false, message },
+    capabilities: {},
+    context,
+    solutions: [SETUP_REMEDIATION],
+    selection: input.selection,
+  };
+};
+
 export const doctor = (
   options: DoctorOptions = {},
   modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
-): Effect.Effect<DoctorResult, DoctorError, ConfigService | RuntimeProviderRegistry> =>
+): Effect.Effect<DoctorResult, never, ConfigService | RuntimeProviderRegistry> =>
   Effect.gen(function* () {
     const configService = yield* ConfigService;
     const registry = yield* RuntimeProviderRegistry;
-    const inputs = yield* gatherSelectionInputs(options);
-    const resolution = resolveProviderSelection(inputs);
+    const sourceEnv = { ...(options.env ?? process.env) };
+    const redactionService = yield* Effect.serviceOption(RedactionService);
+    const redactor = Option.isSome(redactionService)
+      ? yield* redactionService.value.forProfile("secrets", { sourceEnv })
+      : createStandaloneRedactor("secrets", { sourceEnv });
+    const redact = (value: string): string => redactor.redactString(value);
+    const probeBudget = probeBudgetMs(doctorSectionBudgetMs(sourceEnv));
+    const selfChecks: DoctorSelfCheck[] = [];
+    const recordConfigFailure = (section: string, cause: unknown): void => {
+      const described = describeDoctorFailure(cause);
+      selfChecks.push(
+        doctorSelfCheck({
+          section,
+          reason: "failure",
+          message: redact(described.message),
+          ...(described.tag === undefined ? {} : { tag: described.tag }),
+          solutions: [CONFIG_REMEDIATION],
+        }),
+      );
+    };
+
+    const gathered = yield* gatherSelectionInputs(options);
+    if (gathered.configFailure !== undefined) {
+      recordConfigFailure("provider-selection-config", gathered.configFailure);
+    }
+    const resolution = resolveProviderSelection(gathered.inputs);
     const selection = buildSelectionRecord(resolution);
-    const stateDir = yield* resolveStateDir(configService);
+    const stateDirEither = yield* Effect.either(resolveStateDir(configService));
+    if (Either.isLeft(stateDirEither)) recordConfigFailure("provider-state-dir", stateDirEither.left);
+    const stateDir = Either.isRight(stateDirEither) ? stateDirEither.right : undefined;
     const userDataRootRaw = yield* configService
       .get("userDataRoot")
       .pipe(Effect.catchAll(() => Effect.succeed(undefined)));
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     const platform = options.platform ?? platformFromProcess();
-    const reports = yield* pluginDoctorReports(modules, {
-      providerId: String(resolution.providerId),
-      platform,
-      stateDir,
-      env: options.env ?? process.env,
-      userDataRoot,
-      binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
+    const pluginOutcome = yield* pluginDoctorReports(
+      modules,
+      {
+        providerId: String(resolution.providerId),
+        platform,
+        stateDir,
+        env: options.env ?? process.env,
+        userDataRoot,
+        binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
+      },
+      redact,
+      probeBudget,
+    );
+    const reports = pluginOutcome.reports;
+    selfChecks.push(...pluginOutcome.selfChecks);
+    const withSelfChecks = (checks: ReadonlyArray<DoctorCheck>): DoctorResult => ({
+      checks,
+      ...(selfChecks.length === 0 ? {} : { selfChecks: [...selfChecks] }),
     });
     const preemptiveReports = reports
       .map((entry) => entry.report)
@@ -447,18 +618,40 @@ export const doctor = (
     if (preemptiveReports.length > 0) {
       const providerId = String(resolution.providerId);
       const provider = {
-        id: providerId,
-        displayName: providerId === "podman" ? "Podman Runtime Provider" : providerId,
-        version: preemptiveReports[0]?.context.providerVersion ?? "unknown",
+        ...providerStubFor(providerId),
+        version: preemptiveReports[0]?.context.providerVersion ?? UNKNOWN_PROVIDER_VERSION,
       };
-      return {
-        checks: preemptiveReports.map((report) => mapPluginDoctorCheck({ report, provider, selection })),
-      };
+      return withSelfChecks(
+        preemptiveReports.map((report) => mapPluginDoctorCheck({ report, provider, selection })),
+      );
     }
-    const provider = yield* registry.select({
-      provider: resolution.providerId,
-    } as never);
-    const status = yield* provider.getStatus;
+    const selected = yield* Effect.either(
+      registry.select({
+        provider: resolution.providerId,
+      } as never),
+    );
+    if (Either.isLeft(selected)) {
+      const providerId = String(resolution.providerId);
+      const stub = providerStubFor(providerId);
+      return withSelfChecks([
+        providerUnavailableCheck({ providerId, platform, selection, cause: selected.left, redact }),
+        // Capability-gated contributions cannot be evaluated without a provider.
+        ...reports
+          .filter((entry) => entry.relevant === undefined)
+          .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider: stub, selection })),
+      ]);
+    }
+    const provider = selected.right;
+    const statusOutcome = yield* isolateDoctorSection({
+      section: "provider-status",
+      effect: provider.getStatus,
+      fallback: undefined as ProviderStatusShape | undefined,
+      budgetMs: probeBudget,
+      redact,
+    });
+    if (statusOutcome.self !== undefined) selfChecks.push(statusOutcome.self);
+    const statusProbe = statusOutcome.self?.reason;
+    const status: ProviderStatusShape = statusOutcome.value ?? { running: false };
     const versions = yield* provider.getVersions.pipe(Effect.catchAll(() => Effect.succeed(undefined)));
 
     const capabilities: Record<string, unknown> = {};
@@ -467,7 +660,12 @@ export const doctor = (
       capabilities[field] = provider.capabilities[field];
     }
 
-    const runtimeMessage = status.message ?? (status.running ? "running" : "stopped");
+    const runtimeMessage =
+      statusProbe === undefined
+        ? (status.message ?? (status.running ? "running" : "stopped"))
+        : statusProbe === "timeout"
+          ? "unreachable (status probe timed out)"
+          : "unknown (status probe failed)";
     const runtime: DoctorRuntime = {
       running: status.running,
       ...(status.message === undefined ? {} : { message: status.message }),
@@ -485,10 +683,12 @@ export const doctor = (
     };
     if (versions?.runtime !== undefined) context.runtimeVersion = versions.runtime;
     if (versions?.bundle !== undefined) context.bundleVersion = versions.bundle;
+    if (statusProbe !== undefined) context.statusProbe = statusProbe;
 
-    const checkStatus: DoctorStatus = status.running ? "pass" : "warn";
-    const severity: DoctorSeverity = status.running ? "info" : "warn";
-    const solutions: ReadonlyArray<DoctorSolution> = status.running ? [] : [SETUP_REMEDIATION];
+    const statusKnown = statusProbe === undefined;
+    const checkStatus: DoctorStatus = statusKnown ? (status.running ? "pass" : "warn") : "fail";
+    const severity: DoctorSeverity = statusKnown ? (status.running ? "info" : "warn") : "error";
+    const solutions: ReadonlyArray<DoctorSolution> = statusKnown && status.running ? [] : [SETUP_REMEDIATION];
 
     const primaryCheck: DoctorCheck = {
       name: "selected-provider",
@@ -509,7 +709,14 @@ export const doctor = (
     const pluginChecks = reports
       .filter((entry) => entry.relevant === undefined || entry.relevant(provider.capabilities))
       .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider, selection }));
-    const setupReadiness = yield* readSetupReadiness(userDataRoot);
+    const setupReadinessOutcome = yield* isolateDoctorSection({
+      section: "setup-readiness",
+      effect: readSetupReadiness(userDataRoot),
+      fallback: undefined as SetupReadinessSummary | undefined,
+      redact,
+    });
+    if (setupReadinessOutcome.self !== undefined) selfChecks.push(setupReadinessOutcome.self);
+    const setupReadiness = setupReadinessOutcome.value;
     const setupReadinessChecks: ReadonlyArray<DoctorCheck> =
       setupReadiness === undefined
         ? []
@@ -542,34 +749,39 @@ export const doctor = (
         platform: options.platform ?? provider.platform,
       },
     );
-    const hostProxyChecks = yield* hostProxyTransportDoctorChecks({
-      ...(userDataRoot === undefined ? {} : { userDataRoot }),
-      provider: {
-        id: provider.id,
-        displayName: provider.displayName,
-        version: provider.version,
-        ...(provider.capabilities.hostProxy?.tcpHostGateway === undefined
-          ? {}
-          : { tcpHostGateway: provider.capabilities.hostProxy.tcpHostGateway }),
-        exec: provider.exec,
-      },
-      providerKind,
-      runtimeStatus: runtimeMessage,
-      runtime,
-      selection,
-      sourceEnv: { ...(options.env ?? process.env) },
-    }).pipe(Effect.provide(HostProxyDoctorFileSystemLive));
+    const hostProxyOutcome = yield* isolateDoctorSection({
+      section: "host-proxy",
+      effect: hostProxyTransportDoctorChecks({
+        ...(userDataRoot === undefined ? {} : { userDataRoot }),
+        provider: {
+          id: provider.id,
+          displayName: provider.displayName,
+          version: provider.version,
+          ...(provider.capabilities.hostProxy?.tcpHostGateway === undefined
+            ? {}
+            : { tcpHostGateway: provider.capabilities.hostProxy.tcpHostGateway }),
+          exec: provider.exec,
+        },
+        providerKind,
+        runtimeStatus: runtimeMessage,
+        runtime,
+        selection,
+        sourceEnv,
+      }).pipe(Effect.provide(HostProxyDoctorFileSystemLive)),
+      fallback: [] as ReadonlyArray<DoctorCheck>,
+      redact,
+    });
+    if (hostProxyOutcome.self !== undefined) selfChecks.push(hostProxyOutcome.self);
+    const hostProxyChecks = hostProxyOutcome.value;
 
-    return {
-      checks: [
-        primaryCheck,
-        ...pluginChecks,
-        ...setupReadinessChecks,
-        ...runtimeServiceChecks,
-        ...hostProxyChecks,
-        ...oomChecks,
-      ],
-    };
+    return withSelfChecks([
+      primaryCheck,
+      ...pluginChecks,
+      ...setupReadinessChecks,
+      ...runtimeServiceChecks,
+      ...hostProxyChecks,
+      ...oomChecks,
+    ]);
   });
 
 const renderCapabilityValue = (value: unknown): string => {
