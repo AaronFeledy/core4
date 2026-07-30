@@ -40,11 +40,30 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-no-app-bootstrap" render={false} reason="Doctor bootstraps at the provider level and never loads an app; subsystem checks require only the six subsystem service tags">
+  <Scenario id="doctor-no-app-bootstrap" render={false} reason="Doctor safe mode starts without the normal runtime so provider bootstrap failures become diagnostics; focused resilience tests cover the scoped runtime build and degraded report">
     <Step name="no-app-bootstrap">
-      <Variable name="bootstrapLevel" value="provider" display="Doctor bootstraps at the provider level; it never requires app bootstrap unless --app is passed" />
+      <Variable name="bootstrapLevel" value="none" display="meta:doctor starts at bootstrap none and never requires app bootstrap unless --app is passed" />
+      <Variable name="providerRuntime" value="built once inside doctor's scope" display="Doctor safely builds one provider runtime whose scope remains open for every runtime-dependent report section" />
+      <Variable name="bootstrapFailure" value="provider-bootstrap self check" display="A provider runtime build failure produces an empty provider section and structured remediation instead of aborting the report" />
+      <Variable name="continuedSections" value="subsystems, global-app, mcp, optional app checks" display="Sections that do not require the provider runtime still run after provider bootstrap fails" />
       <Variable name="subsystemRequirements" value="ProxyService, CertificateAuthority, SshService, HealthcheckRunner, UrlScanner, HostProxyService" display="The subsystem diagnostics require only the six subsystem service tags — no AppPlanner or app context" />
       <Variable name="ndjsonFixture" value="core/test/cli/fixtures/meta-doctor.subsystems.ndjson" display="JSON renderer snapshot covering every subsystem and the failing-state remediations" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="doctor-self-resilience" render={false} reason="Focused doctor resilience and chaos tests inject section failures, defects, deadlines, plugin faults, cancellation, and scoped cleanup without requiring a live provider">
+    <Step name="section-isolation">
+      <Variable name="attribution" value="failure | defect | timeout" display="A failed section contributes its fallback plus one doctor-self check naming the section and reason while other sections continue" />
+      <Variable name="messageSafety" value="redact before length cap" display="Arbitrary failure detail is redacted before the bounded message reaches any report format" />
+      <Variable name="automation" value="self checks are report failures" display="Self checks appear in machine output and summary counts, and make the doctor command exit non-zero" />
+    </Step>
+    <Step name="plugin-isolation">
+      <Variable name="innerAttribution" value="plugin-check:&lt;id&gt;" display="Each contributed check has its own isolation and plugin/check context, including when sibling checks execute concurrently" />
+      <Variable name="pluginFailure" value="attributed failed check" display="A hanging or throwing contribution cannot abort built-in or sibling diagnostics; a throwing relevance predicate drops only that contribution" />
+    </Step>
+    <Step name="cancellation-and-finalization">
+      <Variable name="cancellation" value="caller interrupt propagates" display="Ctrl-C cancels the whole doctor run, while a section that interrupts itself is attributed as a section defect" />
+      <Variable name="finalizers" value="scoped resources finalize" display="Section and provider-runtime resources remain scoped and finalize when work times out, the report completes, or caller cancellation closes the run" />
     </Step>
   </Scenario>
 
