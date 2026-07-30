@@ -19,7 +19,7 @@ import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { ConfigServiceLive } from "../../services/config.ts";
 import type { DoctorReport } from "./doctor-report-contract.ts";
 import { collectDoctorReport, doctorDeprecations } from "./doctor-report.ts";
-import { type DoctorSelfSolution, isolateDoctorSection } from "./doctor-self.ts";
+import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
 import { type DoctorOptions, doctor } from "./doctor.ts";
 
 const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
@@ -64,6 +64,7 @@ const collectResilientDoctorReport = (options: DoctorOptions): Effect.Effect<Doc
         section: "provider-bootstrap",
         effect: Layer.build(runtime),
         fallback: undefined,
+        budgetMs: doctorSectionBudgetMs(sourceEnv),
         redact: (value) => redactor.redactString(value),
         solutions: [BOOTSTRAP_REMEDIATION],
       });
