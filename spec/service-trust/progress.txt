@@ -725,3 +725,43 @@ Spec SoT:
   guide lint/coverage, and base-aware guide drift with the recorded skip passed; 53 focused SDK and
   core Landofile tests passed with 215 assertions, and changed-file diagnostics were clean.
 ---
+## 2026-07-30 15:41 CDT - Babysit
+- PR: #659 https://github.com/AaronFeledy/core4/pull/659
+- CI outcome: pass
+- Review feedback: fixed (added Guide-Coverage-Skip on PR body for landofile.ts alpha-4-11 owner drift; certs already covered by certificates-mkcert)
+- Merge: merged (squash)
+---
+
+## 2026-07-30 16:35 CDT - US-491
+- Replaced the `@lando/ca-mkcert` fail-stub with a Live `CertificateAuthority`. `setup` provisions the
+  pinned upstream mkcert binary through `Downloader` (so `network.ca` / `network.proxy` apply to that
+  fetch) and installs the local root CA; `skipTrustInstall` provisions without touching any host trust
+  store, and a failed unelevated install retries through `PrivilegeService` with the resolved `CAROOT`
+  because elevation does not preserve the caller's environment. `issueCert` drives the installed binary
+  with explicit cert/key paths under the Lando certs directory and reports the root from `mkcert -CAROOT`.
+- Unsupported hosts, unreadable trust-store installs, and issuance before setup all fail with `CaError`
+  remediation instead of a partial install. The certificates guide now documents the real opt-out flag
+  (`--skip-install-ca`, replacing an inaccurate `--ca=none`), the Downloader/network-trust path, and the
+  privilege fallback.
+- Verification: typecheck, lint, every boundary rule, generated output, guide lint, guide coverage, and
+  base-aware guide drift passed; 17 plugin tests plus 114 adjacent tests (sdk CA contract, sdk
+  tool-provisioning and manifest schema, mutagen provisioning, core setup, doctor subsystems) passed.
+  RED was captured before implementation, and temporary guard mutations proved the skip-install and
+  privilege-retry assertions fail on the intended regressions. A driver running the real
+  `HttpClientLive`/`DownloaderLive`/`ProcessRunnerLive` against an HTTPS fixture server installed the
+  binary at mode 755, wrote the install marker, issued a real cert/key pair, suppressed the install under
+  `skipTrustInstall`, and reported remediation before provisioning; the driver, temp roots, and fixture
+  certificates were removed afterward.
+- **Learnings for future iterations:**
+  - `HttpClient` self-resolves outbound trust from `ConfigService` per request, so a private-CA fixture
+    only works when `ConfigService` is in the context where the egress effect runs — providing it into
+    the `HttpClientLive` sub-layer silently yields bare TLS. `Downloader` also rejects non-`https://`
+    sources, so local fixture servers must serve HTTPS with their CA in `LANDO_NETWORK_CA_CERTS`.
+  - `CaError` carries only message/caId/cause, so CA remediation belongs in the message rather than a new
+    SDK field.
+  - `PrivilegeService.elevate` wraps in `sudo` on Linux and drops the caller's environment; anything the
+    elevated command needs (here `CAROOT`) must be passed explicitly or the elevated run silently targets
+    root's own state.
+  - The plugin stays out of `core/build.config.ts`; wiring the CA into the shipped binary belongs to the
+    stories that consume it, not to the Live implementation.
+---
