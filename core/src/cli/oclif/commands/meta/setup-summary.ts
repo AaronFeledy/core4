@@ -38,7 +38,7 @@ export interface SetupSummaryInput {
   readonly notes: ReadonlyArray<string>;
 }
 
-/** Unquantified by contract: setup runs before any app plan, so no CA count it could print would match what a service actually trusts. */
+/** Setup runs before any app plan, so this note never includes a CA count that could mismatch what a service actually trusts. */
 export const caInjectionNote =
   "Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.";
 

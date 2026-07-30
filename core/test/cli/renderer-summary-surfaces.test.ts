@@ -7,6 +7,7 @@ import { type InfoAppResult, buildInfoSummary } from "../../src/cli/commands/inf
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { type UninstallResult, buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
+import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
@@ -304,9 +305,7 @@ describe("setup summary via spec render", () => {
     expect(out).toBeDefined();
     expectFramed(out ?? "", 72);
     const collapsed = stripAnsi(out ?? "").replace(/[\s│]+/gu, " ");
-    expect(collapsed).toContain(
-      "• Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.",
-    );
+    expect(collapsed).toContain(`• ${caInjectionNote}`);
   });
 
   test("omits the CA injection note from the decorated frame when injection is unconfigured", () => {

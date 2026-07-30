@@ -34,6 +34,7 @@ import {
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
+import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
   SetupResultSchema,
@@ -198,9 +199,6 @@ const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, 
 
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
   `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
-
-const caInjectionNoteText =
-  "Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.";
 
 describe("meta:setup command", () => {
   const originalNetworkEnv = {
@@ -1321,8 +1319,8 @@ describe("meta:setup command", () => {
 
       expect(result.networkCaInjectionConfigured).toBe(true);
       const rendered = setupSpec.render?.(result) ?? "";
-      expect(rendered).toBe(`${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNoteText}`);
-      // The rendered note itself must carry no quantity; asserting the test literal would be vacuous.
+      expect(rendered).toBe(`${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`);
+      // Assert the rendered production note, not a test-local copy of the same string.
       expect(rendered.split("\n").at(-1)).not.toMatch(/\d/u);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -1348,7 +1346,7 @@ describe("meta:setup command", () => {
 
       expect(result.networkCaInjectionConfigured).toBe(true);
       expect(setupSpec.render?.(result)).toBe(
-        `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNoteText}`,
+        `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`,
       );
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
