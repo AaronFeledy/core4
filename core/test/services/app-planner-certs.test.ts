@@ -7,7 +7,7 @@ import { Cause, Effect, Exit, Layer, Option, Schema } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import { LandofileValidationError } from "@lando/sdk/errors";
-import { LandofileShape } from "@lando/sdk/schema";
+import { LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, CertificateAuthority, PathsService } from "@lando/sdk/services";
 
 import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
@@ -115,7 +115,7 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
       "127.0.0.1",
     ]);
 
-    const web = appPlan.services.web;
+    const web = appPlan.services[ServiceName.make("web")];
     expect(web?.certs).toEqual({
       cn: "web.certs-app.internal",
       sans: [
@@ -147,7 +147,7 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
     );
 
     // l337-base services never compose lando.certs, so `certs: true` there issues nothing.
-    const edge = appPlan.services.edge;
+    const edge = appPlan.services[ServiceName.make("edge")];
     expect(edge?.certs).toBeUndefined();
     expect(edge?.environment.LANDO_SERVICE_CERT).toBeUndefined();
   } finally {
@@ -184,10 +184,13 @@ test("mounts validated custom certificate material without contacting the certif
     });
 
     expect(ca.calls).toEqual([]);
-    expect(appPlan.services.pair?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/pair.crt");
-    expect(appPlan.services.pair?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/pair.key");
-    expect(appPlan.services.pair?.certs).toBeUndefined();
-    expect(appPlan.services.pair?.mounts).toEqual(
+    const pair = appPlan.services[ServiceName.make("pair")];
+    const single = appPlan.services[ServiceName.make("single")];
+    const off = appPlan.services[ServiceName.make("off")];
+    expect(pair?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/pair.crt");
+    expect(pair?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/pair.key");
+    expect(pair?.certs).toBeUndefined();
+    expect(pair?.mounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: join(appRoot, "certs", "custom.crt"),
@@ -197,11 +200,11 @@ test("mounts validated custom certificate material without contacting the certif
       ]),
     );
 
-    expect(appPlan.services.single?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/single.crt");
-    expect(appPlan.services.single?.environment.LANDO_SERVICE_KEY).toBeUndefined();
+    expect(single?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/single.crt");
+    expect(single?.environment.LANDO_SERVICE_KEY).toBeUndefined();
 
-    expect(appPlan.services.off?.environment.LANDO_SERVICE_CERT).toBeUndefined();
-    expect(appPlan.services.off?.certs).toBeUndefined();
+    expect(off?.environment.LANDO_SERVICE_CERT).toBeUndefined();
+    expect(off?.certs).toBeUndefined();
   } finally {
     await rm(root, { recursive: true, force: true });
   }
