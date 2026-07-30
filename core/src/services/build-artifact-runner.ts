@@ -17,6 +17,7 @@ const hasTrustStoreBuild = (service: ServicePlan): boolean => {
     (step) =>
       isRecord(step) &&
       step.id === "lando.security:trust-store" &&
+      step.phase === "build" &&
       Array.isArray(step.caFiles) &&
       step.caFiles.length > 0,
   );

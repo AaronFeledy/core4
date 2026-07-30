@@ -171,6 +171,19 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     command: step.command,
     dependsOn: step.dependsOn,
     buildKeyInputs: step.buildKeyInputs,
+    caFiles: Array.isArray(step.caFiles)
+      ? step.caFiles
+          .map((descriptor) =>
+            isRecord(descriptor)
+              ? {
+                  digest: typeof descriptor.digest === "string" ? descriptor.digest : undefined,
+                  archiveName:
+                    typeof descriptor.archiveName === "string" ? descriptor.archiveName : undefined,
+                }
+              : undefined,
+          )
+          .sort((left, right) => stableHash(left).localeCompare(stableHash(right)))
+      : undefined,
   };
 };
 
