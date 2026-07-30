@@ -29,7 +29,6 @@ describe("ServiceConfig certs authoring", () => {
     ["disabled leaf certs", false],
     ["custom certificate path", "./certs/web.crt"],
     ["explicit certificate and key pair", { cert: "./certs/web.crt", key: "./certs/web.key" }],
-    ["certificate-only object", { cert: "./certs/web.crt" }],
   ] as const)("%s decodes through the Landofile boundary", (_name, certs) => {
     expect(decodeAuthored({ certs })).toEqual({ certs });
   });
@@ -38,6 +37,7 @@ describe("ServiceConfig certs authoring", () => {
     ["a number", 42],
     ["a certificate list", ["./certs/web.crt"]],
     ["a key without a certificate", { key: "./certs/web.key" }],
+    ["a certificate without a key", { cert: "./certs/web.crt" }],
     ["an unknown certificate field", { cert: "./certs/web.crt", unexpected: true }],
   ])("rejects %s with a certs-scoped failure", (_name, certs) => {
     const result = Schema.decodeUnknownEither(LandofileShape)(
@@ -92,6 +92,7 @@ describe("ServiceConfig certs authoring", () => {
       expect(certs).toContain('"boolean"');
       expect(certs).toContain('"cert"');
       expect(certs).toContain('"key"');
+      expect(certs).toContain('"required":["cert","key"]');
     },
   );
 });

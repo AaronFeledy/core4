@@ -258,7 +258,8 @@
                 }
               },
               "required": [
-                "cert"
+                "cert",
+                "key"
               ],
               "type": "object"
             }

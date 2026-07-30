@@ -471,6 +471,34 @@ describe("LandofileServiceLive", () => {
       }
     });
   });
+
+  test("reports path-scoped remediation when a certs object omits its key", async () => {
+    await withTempCwd(async (dir) => {
+      await writeFile(
+        join(dir, ".lando.yml"),
+        ["name: myapp", "services:", "  web:", "    certs:", "      cert: ./certs/web.crt", ""].join("\n"),
+      );
+      process.chdir(dir);
+
+      const exit = await discoverExit();
+
+      expect(Exit.isFailure(exit)).toBe(true);
+      if (Exit.isFailure(exit)) {
+        const failure = Cause.failureOption(exit.cause);
+        expect(failure._tag).toBe("Some");
+        if (failure._tag === "Some") {
+          const error = failure.value;
+          expect(error).toBeInstanceOf(LandofileValidationError);
+          if (error._tag === "LandofileValidationError") {
+            expect(error.issues).toContain("services.web.certs.key");
+            expect(error.message).toContain(
+              "Remove unsupported keys or update the documented Landofile service schema.",
+            );
+          }
+        }
+      }
+    });
+  });
 });
 
 describe("LandofileServiceLive — numeric/boolean environment values", () => {

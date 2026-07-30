@@ -369,19 +369,18 @@ const SERVICE_CERTS_DESCRIPTION =
   "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities.";
 
 /** Certs input — leaf TLS toggle, custom certificate path, or explicit certificate and key pair. */
-export const CertsInput = Schema.Union(
+const CertsInput = Schema.Union(
   Schema.Boolean,
   Schema.String,
   Schema.Struct({
     cert: Schema.String.annotations({
       description: "Path to a custom leaf certificate for this service.",
     }),
-    key: Schema.optional(Schema.String).annotations({
+    key: Schema.String.annotations({
       description: "Path to the private key matching the custom leaf certificate.",
     }),
   }),
 ).annotations({ description: SERVICE_CERTS_DESCRIPTION });
-export type CertsInput = typeof CertsInput.Type;
 
 const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";

@@ -697,3 +697,18 @@ Spec SoT:
   - `bun core/src/cli/index.ts <command>` silently produces no output; the runnable host-safe CLI
     entry for manual verification is `bun core/bin/lando.ts <command>` from inside the app directory.
 ---
+
+## 2026-07-30 14:49 CDT - US-490 Contract Correction
+- Aligned the explicit leaf-certificate object with the source contract by requiring both `cert` and
+  `key`, keeping the field-only schema private, and updating the compatibility note, guide, and
+  generated artifacts. Production Landofile discovery now locks the missing-key issue path and
+  remediation instead of accepting a certificate-only object.
+- Verification: typecheck and lint passed; 153 focused and adjacent tests with 525 assertions passed;
+  generated output, schema compatibility, guide lint/coverage, public transcripts, every boundary
+  rule, and the focused guide run passed. A freshly compiled CLI in `lando4-dev` accepted all four
+  forms plus dual `certs` / `security.ca`, rejected the incomplete object at
+  `services.web.certs.key`, and removed both QA roots. High-rigor review approved without blockers.
+- **Learnings for future iterations:**
+  - A public field does not require exporting its private component schema. Export only the contract
+    requested by the story, and assert required object keys structurally in the generated schema.
+---

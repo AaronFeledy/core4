@@ -45,9 +45,9 @@ services:
       key: ./certs/appserver.key
 ```
 
-The object form requires `cert` and accepts an optional `key`. Any other shape — a number, a list of
-paths, a key without a certificate, or an unknown field beside `cert` and `key` — fails validation
-with a `services.<name>.certs` correction before planning.
+The object form requires both `cert` and `key`. Any other shape — a number, a list of paths, an
+incomplete object, or an unknown field beside `cert` and `key` — fails validation with a
+`services.<name>.certs` correction before planning.
 
 <Guide>
   <Scenario id="author-service-certs" render={false} reason="Focused ServiceConfig schema tests cover every certs shape, invalid-shape rejection, and independence from security.ca without requiring an installed certificate authority">
@@ -55,7 +55,7 @@ with a `services.<name>.certs` correction before planning.
       <Variable name="generated" value="certs: true" display="Issue a leaf certificate from the active certificate authority" />
       <Variable name="disabled" value="certs: false" display="Disable leaf certificate issuance for this service" />
       <Variable name="customPath" value="certs: ./certs/appserver.crt" display="Supply a custom certificate path" />
-      <Variable name="explicitPair" value="certs.cert / certs.key" display="Supply an explicit certificate and key pair; cert is required and key is optional" />
+      <Variable name="explicitPair" value="certs.cert / certs.key" display="Supply an explicit certificate and key pair; both paths are required" />
       <Variable name="additionalCas" value="security.ca" display="Keep additional certificate authorities separate from leaf TLS" />
     </Step>
   </Scenario>
