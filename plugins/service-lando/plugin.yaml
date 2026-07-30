@@ -46,6 +46,7 @@ contributes:
     - "lando.env"
     - "lando.app-mount"
     - "lando.healthcheck"
+    - "lando.certs"
     - "lando.security"
     - "lando.user"
     - "service-lando.apache"

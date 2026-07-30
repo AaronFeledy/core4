@@ -22,6 +22,7 @@ import { solrServiceFeature } from "../services/solr.ts";
 import { staticServiceFeature } from "../services/static.ts";
 import { valkeyServiceFeature } from "../services/valkey.ts";
 import { landoAppMountFeature } from "./app-mount.ts";
+import { landoCertsFeature } from "./certs.ts";
 import { landoEnvFeature } from "./env.ts";
 import { landoHealthcheckFeature } from "./healthcheck.ts";
 import { landoHostProxyFeature } from "./host-proxy.ts";
@@ -31,6 +32,7 @@ import { landoUserIdFeature } from "./user-id.ts";
 import { landoUserFeature } from "./user.ts";
 
 export { landoAppMountFeature } from "./app-mount.ts";
+export { landoCertsFeature } from "./certs.ts";
 export { landoEnvFeature } from "./env.ts";
 export { landoHealthcheckFeature } from "./healthcheck.ts";
 export { landoHostProxyFeature } from "./host-proxy.ts";
@@ -45,6 +47,7 @@ const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   landoEnvFeature,
   landoAppMountFeature,
   landoHealthcheckFeature,
+  landoCertsFeature,
   landoSecurityFeature,
   landoHostProxyFeature,
   landoUserFeature,
