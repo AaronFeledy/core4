@@ -66,6 +66,7 @@ export const buildSetupSummary = (input: SetupSummaryInput): SummaryDocument => 
             fields: [{ label: "LANDO_INSTALL_DIR", value: input.installDir }],
           },
         ],
+        ...(input.notes.length === 0 ? {} : { notes: input.notes }),
       },
     ],
     footer: `Lando runtime ready (${input.providerId})`,

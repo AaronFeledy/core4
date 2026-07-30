@@ -285,6 +285,21 @@ describe("setup summary via spec render", () => {
     expect(stripAnsi(out ?? "")).toContain("[WAIT]");
   });
 
+  test("shows the CA injection note inside the decorated frame", () => {
+    const note =
+      "2 configured certificate authorities inject into type: lando services on the next plan or rebuild.";
+    const out = setupSpec.render?.(
+      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "satisfied", notes: [note] },
+      undefined,
+      ctx,
+    );
+    expect(out).toBeDefined();
+    expectFramed(out ?? "", 72);
+    const plain = stripAnsi(out ?? "");
+    expect(plain).toContain("• 2 configured certificate authorities inject into type: lando");
+    expect(plain).toContain("services on the next plan or rebuild.");
+  });
+
   test("stays a plain line when not decorated", () => {
     const out = setupSpec.render?.(
       { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "installed" },
