@@ -821,3 +821,27 @@ Spec SoT:
     commit.
   - When the races are on the same story, converge on whatever contract is already committed instead of
     re-asserting your own; the reconciliation is then a rename in one file rather than a revert war.
+
+## 2026-07-30 17:24 CDT - US-492 Build Verification
+- Verified the shipped leaf-certificate path against a detached worktree pinned to the branch commit,
+  which exposed two defects the in-tree run had masked: the planner asked the certificate authority to
+  sign a SAN list with the common name removed, so the issued cert no longer covered the internal alias
+  it is named for, and a directory passed as custom `certs` material was accepted as a certificate.
+  Both now fail or cover correctly, and custom material is validated through `FileSystem` rather than a
+  second direct filesystem read.
+- Verification: core typecheck and lint passed; 154 focused and adjacent tests with 681 assertions
+  passed at the branch commit inside a clean worktree, covering the certs feature, feature priority
+  table, packaged manifest, base composition, planner certs, planner network inject, app planner, and
+  feature composition. Boundary rules, generated output, guide lint, guide coverage, and base-aware
+  guide drift passed. Real CLI on `app:cache:refresh`: the cached plan carries both host cert and key
+  sources, the in-container `/etc/lando/certs/leaf/<service>.crt|.key` targets, and both service
+  variables; a directory path exits 1 with `must be a regular file`; and `certs: true` with no
+  certificate authority exits 1 naming `lando setup`. QA app, scratch roots, and the worktree were removed.
+- **Learnings for future iterations:**
+  - Several loop sessions can hold this worktree at once, and this iteration proved the failure mode is
+    worse than half-applied edits: interleaved commits landed a feature schema from one session beside a
+    planner resolver from another, so the committed tree failed its own committed tests while every
+    in-tree spot check passed. Verify a branch from a detached worktree pinned to the commit under test,
+    never from the shared tree, whenever sibling activity is possible.
+  - `bun test` in the shared tree silently verifies whatever a sibling last wrote. Treat a green run
+    there as evidence about the working tree only; evidence about what shipped requires the pinned commit.
