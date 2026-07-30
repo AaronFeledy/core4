@@ -35,7 +35,6 @@ export interface LandofileLoadSource {
 interface LoadedFile {
   readonly ref: FileRef;
   readonly bytes: Uint8Array;
-  readonly dependency: LandofileReferencedFile;
 }
 
 export class LandofileFileSession {
@@ -129,7 +128,7 @@ export class LandofileFileSession {
       encoding,
     };
     const dependency = { absolutePath, size: bytes.byteLength, mtimeMs: stat.mtimeMs, sha256: checksum };
-    const loaded = { ref, bytes, dependency };
+    const loaded = { ref, bytes };
     this.#loaded.set(absolutePath, loaded);
     this.#refs.set(ref, loaded);
     this.dependencies.push(dependency);

@@ -30,19 +30,14 @@ export const withApp = async <A>(run: (appRoot: string) => Promise<A>): Promise<
   }
 };
 
-export const discover = () =>
-  Effect.runPromise(
-    Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-      Effect.provide(LandofileServiceLive),
-    ),
-  );
+const discoverEffect = Effect.flatMap(LandofileService, (service) => service.discover).pipe(
+  Effect.provide(LandofileServiceLive),
+);
+
+export const discover = () => Effect.runPromise(discoverEffect);
 
 export const discoverFailure = async () => {
-  const exit = await Effect.runPromiseExit(
-    Effect.flatMap(LandofileService, (service) => service.discover).pipe(
-      Effect.provide(LandofileServiceLive),
-    ),
-  );
+  const exit = await Effect.runPromiseExit(discoverEffect);
   if (Exit.isSuccess(exit)) throw new Error("expected discovery failure");
   return Option.getOrThrow(Cause.failureOption(exit.cause));
 };

@@ -40,8 +40,10 @@ import {
   getLandofileReferencedFiles,
   rememberLandofileReferencedFiles,
 } from "./load-expression-provenance.ts";
-import { resolveLandofileLoadExpressions } from "./load-expression.ts";
-import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
+import {
+  type ResolveLandofileLoadExpressionError,
+  resolveLandofileLoadExpressions,
+} from "./load-expression.ts";
 import { mergeLandofiles, mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import {
