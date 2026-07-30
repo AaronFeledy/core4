@@ -564,3 +564,22 @@ Spec SoT:
   - Assert an exact encoded-key set rather than the absence of a named key. A `not.toHaveProperty` check
     on a field nobody adds passes forever and guards nothing.
 ---
+
+## 2026-07-30 13:17 CDT - US-488 Build Verification
+- Independently reverified the boolean setup injection contract at branch HEAD. No production change
+  was needed: the machine result publishes only `networkCaInjectionConfigured`, the human note stays
+  unquantified and identical across cardinalities, and both suppression paths remain silent.
+- Verification: RED was reproduced in a throwaway worktree at HEAD carrying only the new tests (five
+  setup failures for the missing field, four decorated-render failures), then GREEN on the branch;
+  169 focused and adjacent inject-path tests passed, and a binary recompiled from HEAD reproduced all
+  ten sandbox CLI cases including the wrapped decorated note and its absence. Typecheck, lint, every
+  boundary rule, and generated output passed; QA roots, certificates, and the throwaway worktree were
+  removed.
+- **Learnings for future iterations:**
+  - Prove RED for an in-flight contract change in a detached throwaway worktree (`git worktree add`
+    plus the test patch) instead of mutating the shared tree; a parallel agent editing the same files
+    otherwise destroys the failing state before it can be captured.
+  - Recompile `core/dist/lando` after the worktree settles at the commit under test. Formatting-only
+    differences are harmless, but a binary built from an uncommitted intermediate is not evidence for
+    what actually shipped.
+---
