@@ -23,6 +23,7 @@ import type {
   AppPlanner,
   BuildOrchestrator,
   CacheService,
+  CertificateAuthority,
   CommandRegistry,
   ConfigService,
   DataMover,
@@ -90,6 +91,7 @@ type MinimalRuntimeServices =
   | PathsService
   | FileSystem
   | CacheService
+  | CertificateAuthority
   | ManagedFileService
   | InteractionService
   | PluginTrustStore

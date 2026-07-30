@@ -2,12 +2,23 @@ import { describe, expect, test } from "bun:test";
 
 import { Context, Effect, Layer, Option } from "effect";
 
-import { FileSyncEngine } from "@lando/sdk/services";
+import { CertificateAuthority, FileSyncEngine } from "@lando/sdk/services";
 
 import { HostMaintenanceRegistry } from "../../src/runtime/host-maintenance.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 describe("bootstrap plugin services", () => {
+  test("app bootstrap provides the bundled certificate authority", async () => {
+    const context = await Effect.runPromise(
+      Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "app", plugins: { policy: "bundled-only" } }))),
+    );
+
+    const certificateAuthority = Context.getOption(context, CertificateAuthority);
+
+    expect(Option.isSome(certificateAuthority)).toBe(true);
+    if (Option.isSome(certificateAuthority)) expect(certificateAuthority.value.id).toBe("mkcert");
+  });
+
   test("app bootstrap provides file sync from bundled plugin descriptors", async () => {
     // Given: the real app bootstrap layer with bundled plugin descriptors.
     const context = await Effect.runPromise(

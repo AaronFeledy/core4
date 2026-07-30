@@ -23,6 +23,7 @@ import { HttpClientLive } from "../../../http-client/live.ts";
 import { InteractionServiceLive } from "../../../interaction/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
+import { BundledCertificateAuthorityLive } from "../../../plugins/certificate-authority-from-modules.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../../plugins/generated/bundled.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { RedactionServiceLive } from "../../../redaction/service.ts";
@@ -47,11 +48,18 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const httpClientLive = HttpClientLive.pipe(
     Layer.provide(Layer.mergeAll(ConfigServiceLive, eventServiceLive)),
   );
+  const pathsLive = Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides));
+  const downloaderLive = DownloaderLive.pipe(Layer.provide(httpClientLive));
+  const certificateAuthorityLive = inputs.pluginDiscovery.bundled
+    ? BundledCertificateAuthorityLive.pipe(
+        Layer.provide(Layer.mergeAll(pathsLive, downloaderLive, ProcessRunnerLive)),
+      )
+    : Layer.empty;
 
   const minimalRuntimeLive = Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
-    Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides)),
+    pathsLive,
     telemetryLive,
     ConfigServiceLive,
     eventServiceLive,
@@ -71,7 +79,8 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     ),
     Layer.suspend(() => InteractionServiceLive),
     httpClientLive,
-    DownloaderLive.pipe(Layer.provide(httpClientLive)),
+    downloaderLive,
+    certificateAuthorityLive,
   );
   return minimalRuntimeLive.pipe(
     Layer.tap((context) => inputs.lifecycle.complete("minimal", Context.get(context, EventService))),
