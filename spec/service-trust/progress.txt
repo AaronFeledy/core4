@@ -300,3 +300,22 @@ Spec SoT:
   - ImportRef acceptance must distinguish the exact scalar CA path and its direct list elements, then
     recursively reject nested refs at all other paths with the precise offending config path.
 ---
+
+## 2026-07-29 22:41 CDT - US-499 Review
+- Fixed production `FileRef` metadata so invalid UTF-8 bytes report `binary`, ensured an accepted CA
+  list item cannot mask a later nested `ImportRef` misuse, documented the widened frozen
+  `LandofileService` error channel, and preserved required outside-root audit logging for expressions
+  evaluated inside include fragments.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because its review subagent hit the
+  account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected the direct-filesystem boundary finding because the
+  synchronous eager reads are contained inside the `LandofileServiceLive` adapter required by §7.3,
+  not a command body or pure SDK evaluator.
+- Review notes (deferred/rejected): Rejected the same-user stat/read race and cumulative-budget ideas as
+  merge blockers; existing path, per-file, per-expression, and recursion limits satisfy this story,
+  and no cross-user or privilege impact was established.
+- Guide-Coverage-Skip: US-499 documents security.ca load/import in its owned corporate-network-trust guide; other touched CLI files only propagate provenance and errors, and the general expressions guide remains planned under US-142.
+- Verification: typecheck, lint passed; 128 focused and adjacent tests passed with 282 assertions;
+  focused guide execution, generated-output, base-aware guide drift with the recorded skip, diff check,
+  and changed-file diagnostics passed.
+---
