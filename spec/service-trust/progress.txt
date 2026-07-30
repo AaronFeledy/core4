@@ -614,3 +614,36 @@ Spec SoT:
   passed; 183 focused setup and renderer tests with 1,145 assertions passed, including source/compiled
   dispatch parity; all five `review-work` lanes passed.
 ---
+
+## 2026-07-30 13:55 CDT - US-488 Drift Audit
+- Trigger: 10 cycles, 580 changed lines, 21 commits
+- Escalation withheld: at this churn the tier points at adjudication, but the 12:59 CDT adjudication
+  already ruled on the only contested boundary (setup machine-field shape), and every production
+  commit after it implements that ruling rather than reopening it. No permitted reopening condition
+  with new file-level evidence exists, and a cycle-count-only escalation would re-litigate a settled
+  verdict, so the audit ran its fix cycle instead.
+- Category 2 (weakened proofs): the "no quantity in the note" guard asserted a test-local string
+  literal had no digits, which is true by construction and would keep passing if setup started
+  printing a count. Every other criterion traces to production wiring: the boolean and the plain note
+  come from a real `setupSpec.run` with only the fetch boundary faked, the decorated frame and its
+  suppression case come from `setupSpec.render`, and the machine field is locked by an exact encoded
+  key set, an excess-field decode rejection, and full source/compiled envelope equality.
+- Categories 1, 3, 4, 5, 6, 7: no findings. The production change is three files inside `meta:setup`
+  with no new SDK or schema surface beyond the adjudicated boolean; the render type guard extends the
+  guard already in that function rather than adding a second path; `buildSetupSummary`,
+  `caInjectionNote`, and `SetupSummaryInput` each have a real production consumer; the only `passes`
+  flip is this story's, the guide index row for the not-yet-shipped US-494/496 pack correctly stays
+  Planned, and the `core/AGENTS.md` line records a trap this story hit; HEAD matches the narrowed
+  acceptance criterion exactly; and none of the four recorded rejections defers a regression this
+  branch owns.
+- Fixed: repointed the quantity guard at the rendered production note instead of the test constant.
+  Nothing else was deleted or simplified because nothing else was unearned.
+- Split/excise decisions: none. The split this story needed was already recorded in
+  `spec/service-trust/prd.json` by the prior audit and settled by adjudication; `passes` stays true.
+- Verification: typecheck, lint, and generated-output passed; setup 63 tests/181 assertions, renderer
+  summary surfaces 18 tests/173 assertions, and dispatch parity 102 tests/791 assertions passed by
+  path. A first parity run failed to build the compiled binary with `ETXTBSY` because a parallel
+  session was executing `core/dist/lando` in this same worktree; it passed cleanly once that run
+  finished, so it was contention, not a branch regression. The prior Review's Bugbot lane remains
+  genuinely unverified (account usage limit), not approved.
+---
