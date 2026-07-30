@@ -82,7 +82,7 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 
 | Level | Adds | Used by |
 |---|---|---|
-| `none` | *Nothing.* No Effect runtime, no Layer construction, no `@oclif/core` import. Direct argv sniff in `bin/lando.ts`, embedded-data print, exit. | `meta:version` (alias `version`), `meta:shellenv` (alias `shellenv`), `meta:recipes:list` (alias `recipes`), top-level `--help` (no command), `--version`, `-V`, `-v` |
+| `none` | Command-base depth: do not pre-build an Effect runtime layer before the command body runs. The **pre-OCLIF fast path** (below) is a subset that also skips OCLIF/Effect entirely; other `none` commands still resolve through OCLIF and may build a runtime *inside* their program. | Fast path: `meta:version` (alias `version`), `meta:shellenv` (alias `shellenv`), `meta:recipes:list` (alias `recipes`), top-level `--help` (no command), `--version`, `-V`, `-v`. OCLIF `none` with in-program runtime: `meta:doctor` (builds `provider` itself per §10.9.1) |
 | `minimal` | Config, env, platform info, cache, logging, event service (lazy per §2.4) | `meta:config`, `meta:plugin:login`, `meta:plugin:logout`, `meta:recipes:describe`, `meta:recipes:validate`, `meta:uninstall`, `meta:events:follow`, `apps:init`, `apps:list` |
 | `plugins` | Plugin discovery, manifest validation, contribution graph | `meta:plugin:add`, `meta:plugin:remove`, `meta:update` |
 | `commands` | Lando command registry services and command-cache refresh ability | command-management and docs/reference commands |
@@ -94,13 +94,16 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 
 Levels `minimal` through `app` each emit `pre-bootstrap-<level>` and `post-bootstrap-<level>` lifecycle events through the Effect event service. After all required levels complete, core emits `post-bootstrap` and `ready`. Level `none` emits NO lifecycle events: it is below the EventService construction threshold by design.
 
-**Level `none` rules** — the pre-OCLIF fast path:
+**Level `none` has two shapes** that share the same declared bootstrap depth but different entry paths:
 
-- `bin/lando.ts` MUST sniff `process.argv` before any `import` of `@oclif/core`, the Effect runtime, or any module that builds a `Context.Service`. Argv matching uses a hand-rolled string scan, not a parser.
-- The set of level-`none` argv shapes is fixed and exhaustive: `--version`, `-V`, `-v`, `version`, top-level `--help` / `-h` (i.e. `--help` with no preceding command), `shellenv`, `recipes`, `recipes list`, plus the canonical `meta:version`, `meta:shellenv`, `meta:recipes:list` invocations and the `meta version|shellenv|recipes …` flexible-taxonomy variants.
-- Output is generated from compile-time embedded constants (version string, shellenv snippet templates, the canonical recipe registry) read via `EmbeddedAssetService` mechanism A (static JSON import; §17.3). No `Bun.file`, no `fetch`, no plugin discovery.
-- A level-`none` command MUST exit within its end-to-end budget (§2.1) without constructing any `Context.Service` instance.
-- An argv shape that *looks* like a level-`none` command but carries unrecognized flags (e.g., `lando version --json` if `meta:version` ever grows a flag) falls through to the OCLIF router phase. The fast path is an optimization, never a correctness shortcut.
+1. **Pre-OCLIF fast path** (the historical cold-start optimization):
+   - `bin/lando.ts` MUST sniff `process.argv` before any `import` of `@oclif/core`, the Effect runtime, or any module that builds a `Context.Service`. Argv matching uses a hand-rolled string scan, not a parser.
+   - The set of fast-path argv shapes is fixed and exhaustive: `--version`, `-V`, `-v`, `version`, top-level `--help` / `-h` (i.e. `--help` with no preceding command), `shellenv`, `recipes`, `recipes list`, plus the canonical `meta:version`, `meta:shellenv`, `meta:recipes:list` invocations and the `meta version|shellenv|recipes …` flexible-taxonomy variants.
+   - Output is generated from compile-time embedded constants (version string, shellenv snippet templates, the canonical recipe registry) read via `EmbeddedAssetService` mechanism A (static JSON import; §17.3). No `Bun.file`, no `fetch`, no plugin discovery.
+   - A fast-path command MUST exit within its end-to-end budget (§2.1) without constructing any `Context.Service` instance.
+   - An argv shape that *looks* like a fast-path command but carries unrecognized flags (e.g., `lando version --json` if `meta:version` ever grows a flag) falls through to the OCLIF router phase. The fast path is an optimization, never a correctness shortcut.
+
+2. **OCLIF-routed `none`** (safe-mode / deferred runtime): the command still resolves through OCLIF and may run Effect, but the command base MUST NOT pre-build a fallible bootstrap layer before the command body. `meta:doctor` is the shipped example: it declares `none`, builds the `provider` runtime inside its own program, and reports bootstrap failure as a self check (§10.9.1). OCLIF-routed `none` commands MAY emit lifecycle events only after they construct an EventService-capable runtime themselves; they MUST NOT rely on the command-base bootstrap path to emit `pre-bootstrap-*` / `post-bootstrap-*`. Because `notify.commands` promotion would otherwise force a full `commands` runtime before the body runs, OCLIF-routed `none` commands whose depth is load-bearing (today: `meta:doctor`) MUST be exempt from that promotion (§8.9.7, §10.9.1).
 
 **Intra-level concurrency.** Bootstrap levels are sequential — `plugins` runs strictly after `minimal` completes. Independent IO-bound steps *within* a level MUST run concurrently via `Effect.all({ concurrency: "unbounded" })` or `Effect.forEach({ concurrency })` per the §2.4 rule. Examples:
 
