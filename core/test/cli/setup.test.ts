@@ -250,12 +250,16 @@ describe("meta:setup command", () => {
       "providerId",
     ]);
     expect(() =>
-      Schema.decodeUnknownSync(SetupResultSchema)({
-        providerId: "lando",
-        installDir: "/opt/lando",
-        fileSyncStatus: "satisfied",
-        injectedCaCount: 2,
-      }),
+      Schema.decodeUnknownSync(SetupResultSchema)(
+        {
+          providerId: "lando",
+          installDir: "/opt/lando",
+          fileSyncStatus: "satisfied",
+          networkCaInjectionConfigured: true,
+          injectedCaCount: 2,
+        },
+        { onExcessProperty: "error" },
+      ),
     ).toThrow();
   });
 
