@@ -59,34 +59,42 @@ const REPORT_ISSUE_SOLUTION: DoctorSelfSolution = {
 };
 
 const TAG_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
-
-/**
- * Error tags land in machine-readable `context.failure`, so only accept
- * identifier-shaped values; anything else is arbitrary payload, not a tag.
- */
-const tagOf = (value: unknown): string | undefined => {
-  if (typeof value !== "object" || value === null || !("_tag" in value)) return undefined;
-  const tag = value._tag;
-  return typeof tag === "string" && TAG_PATTERN.test(tag) ? tag : undefined;
-};
+const FAILURE_INSPECTION_FALLBACK = "Failure details could not be inspected safely.";
 
 const MAX_MESSAGE_CHARS = 2_000;
+const TRUNCATION_MARKER = "… (truncated)";
 
-/** Failure messages come from arbitrary code, so cap them before they reach a report. */
+/** Failure messages are capped only after the complete raw value has been redacted. */
 const bounded = (message: string): string =>
-  message.length <= MAX_MESSAGE_CHARS ? message : `${message.slice(0, MAX_MESSAGE_CHARS)}… (truncated)`;
+  message.length <= MAX_MESSAGE_CHARS
+    ? message
+    : `${message.slice(0, MAX_MESSAGE_CHARS - TRUNCATION_MARKER.length)}${TRUNCATION_MARKER}`;
 
-const messageOf = (value: unknown): string => {
-  if (typeof value === "string") return bounded(value);
-  if (value instanceof Error && value.message.length > 0) return bounded(value.message);
-  if (typeof value === "object" && value !== null && "message" in value) {
-    const message = value.message;
-    if (typeof message === "string" && message.length > 0) return bounded(message);
+/** Only identifier-shaped tags may reach machine-readable failure context. */
+const inspectFailure = (value: unknown): { readonly tag?: string; readonly message: string } => {
+  try {
+    let tag: string | undefined;
+    if (typeof value === "object" && value !== null && "_tag" in value) {
+      const candidate = value._tag;
+      if (typeof candidate === "string" && TAG_PATTERN.test(candidate)) tag = candidate;
+    }
+
+    let message: string;
+    if (typeof value === "string") message = value;
+    else if (value instanceof Error && value.message.length > 0) message = value.message;
+    else if (typeof value === "object" && value !== null && "message" in value) {
+      const candidate = value.message;
+      message = typeof candidate === "string" && candidate.length > 0 ? candidate : (tag ?? String(value));
+    } else message = tag ?? String(value);
+
+    return { ...(tag === undefined ? {} : { tag }), message };
+  } catch {
+    return { message: FAILURE_INSPECTION_FALLBACK };
   }
-  const tag = tagOf(value);
-  if (tag !== undefined) return tag;
-  return bounded(String(value));
 };
+
+export const redactDoctorMessage = (message: string, redact: (value: string) => string): string =>
+  bounded(redact(message));
 
 interface DescribedCause {
   readonly reason: DoctorSelfFailureReason;
@@ -98,12 +106,8 @@ interface DescribedCause {
  * Describe an already-caught failure value for callers holding an `Either`
  * rather than a `Cause`. Counterpart to {@link describeDoctorCause}.
  */
-export const describeDoctorFailure = (
-  value: unknown,
-): { readonly tag?: string; readonly message: string } => {
-  const tag = tagOf(value);
-  return { ...(tag === undefined ? {} : { tag }), message: messageOf(value) };
-};
+export const describeDoctorFailure = (value: unknown): { readonly tag?: string; readonly message: string } =>
+  inspectFailure(value);
 
 /**
  * Reduce a `Cause` to the reason/tag/message a self check reports. Typed
@@ -114,23 +118,27 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
   // Defects outrank typed failures: a mixed cause is the more severe of the two.
   const defect = Cause.dieOption(cause);
   if (Option.isSome(defect)) {
-    const tag = tagOf(defect.value);
+    const described = inspectFailure(defect.value);
     return {
       reason: "defect",
-      ...(tag === undefined ? {} : { tag }),
-      message: messageOf(defect.value),
+      ...(described.tag === undefined ? {} : { tag: described.tag }),
+      message: described.message,
     };
   }
   const failure = Cause.failureOption(cause);
   if (Option.isSome(failure)) {
-    const tag = tagOf(failure.value);
+    const described = inspectFailure(failure.value);
     return {
       reason: "failure",
-      ...(tag === undefined ? {} : { tag }),
-      message: messageOf(failure.value),
+      ...(described.tag === undefined ? {} : { tag: described.tag }),
+      message: described.message,
     };
   }
-  return { reason: "defect", message: bounded(Cause.pretty(cause)) };
+  try {
+    return { reason: "defect", message: Cause.pretty(cause) };
+  } catch {
+    return { reason: "defect", message: FAILURE_INSPECTION_FALLBACK };
+  }
 };
 
 export interface IsolateDoctorSectionOptions<A, E, R> {
@@ -240,7 +248,7 @@ export const isolateDoctorSection = <A, E, R>(
       self: doctorSelfCheck({
         section: options.section,
         reason: described.reason,
-        message: redact(described.message),
+        message: redactDoctorMessage(described.message, redact),
         ...(described.tag === undefined ? {} : { tag: described.tag }),
         ...(options.context === undefined ? {} : { context: options.context }),
         ...(options.solutions === undefined ? {} : { solutions: options.solutions }),

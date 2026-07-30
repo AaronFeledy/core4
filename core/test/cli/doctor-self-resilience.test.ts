@@ -3,8 +3,20 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { Cause, Duration, Effect, Exit, Fiber, Schema } from "effect";
+import {
+  Cause,
+  Deferred,
+  Duration,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Schema,
+  TestClock,
+  TestContext,
+} from "effect";
 
+import { makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError } from "@lando/sdk/errors";
 
 import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
@@ -16,6 +28,7 @@ import {
 } from "../../src/cli/commands/doctor-report.ts";
 import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { metaDoctorSpec } from "../../src/cli/oclif/commands/meta/doctor.ts";
+import { RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 
 const SHORT_BUDGET_ENV = { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } as const;
 
@@ -215,5 +228,152 @@ describe("isolateDoctorSection", () => {
 
     // Then
     expect(outcome.self?.context.message).toBe("token=[redacted]");
+  });
+
+  test("redacts a registered secret crossing the message boundary before applying the final cap", async () => {
+    // Given a registered secret that straddles the 2,000-character boundary
+    const secret = "registered-secret-ABCDEF-987654321";
+    const failureMessage = `${"x".repeat(1_990)}${secret}${"y".repeat(2_000)}`;
+    const secretStore = makeTestSecretStore({ secrets: { DOCTOR_TOKEN: secret } });
+    const redactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+
+    // When
+    const outcome = await Effect.runPromise(
+      Effect.gen(function* () {
+        const service = yield* RedactionService;
+        const redactor = yield* service.forProfile("secrets");
+        return yield* isolateDoctorSection({
+          section: "unit",
+          effect: Effect.die(new Error(failureMessage)),
+          fallback: undefined,
+          redact: redactor.redactString,
+        });
+      }).pipe(Effect.provide(redactionLayer)),
+    );
+
+    // Then no usable fragment survives and the reported message observes the final cap
+    const message = outcome.self?.context.message ?? "";
+    for (let offset = 0; offset <= secret.length - 8; offset += 1) {
+      expect(message).not.toContain(secret.slice(offset, offset + 8));
+    }
+    expect(message.length).toBeLessThanOrEqual(2_000);
+  });
+
+  test("isolates a typed failure whose tag getter throws", async () => {
+    // Given
+    const failure = {
+      get _tag(): string {
+        throw new Error("tag getter exploded");
+      },
+    };
+
+    // When
+    const outcome = await Effect.runPromise(
+      isolateDoctorSection({ section: "unit", effect: Effect.fail(failure), fallback: "fallback" }),
+    );
+
+    // Then
+    expect(outcome.value).toBe("fallback");
+    expect(outcome.self).toMatchObject({ reason: "failure", status: "fail" });
+    expect(typeof outcome.self?.context.message).toBe("string");
+  });
+
+  test("isolates a defect whose message getter throws", async () => {
+    // Given
+    const defect = {
+      get message(): string {
+        throw new Error("message getter exploded");
+      },
+    };
+
+    // When
+    const outcome = await Effect.runPromise(
+      isolateDoctorSection({
+        section: "unit",
+        effect: Effect.sync(() => {
+          throw defect;
+        }),
+        fallback: "fallback",
+      }),
+    );
+
+    // Then
+    expect(outcome.value).toBe("fallback");
+    expect(outcome.self).toMatchObject({ reason: "defect", status: "fail" });
+    expect(typeof outcome.self?.context.message).toBe("string");
+  });
+
+  test("isolates a defect whose proxy traps throw", async () => {
+    // Given
+    const defect = new Proxy(
+      {},
+      {
+        has: (target, property) => {
+          if (property === "_tag") throw new Error("proxy trap exploded");
+          return Reflect.has(target, property);
+        },
+      },
+    );
+
+    // When
+    const outcome = await Effect.runPromise(
+      isolateDoctorSection({
+        section: "unit",
+        effect: Effect.sync(() => {
+          throw defect;
+        }),
+        fallback: "fallback",
+      }),
+    );
+
+    // Then
+    expect(outcome.value).toBe("fallback");
+    expect(outcome.self).toMatchObject({ reason: "defect", status: "fail" });
+    expect(typeof outcome.self?.context.message).toBe("string");
+  });
+
+  test("isolates a defect whose string conversion throws", async () => {
+    // Given
+    const defect = {
+      toString(): string {
+        throw new Error("string conversion exploded");
+      },
+    };
+
+    // When
+    const outcome = await Effect.runPromise(
+      isolateDoctorSection({ section: "unit", effect: Effect.die(defect), fallback: "fallback" }),
+    );
+
+    // Then
+    expect(outcome.value).toBe("fallback");
+    expect(outcome.self).toMatchObject({ reason: "defect", status: "fail" });
+    expect(typeof outcome.self?.context.message).toBe("string");
+  });
+
+  test("waits for an interrupted section finalizer before returning its timeout", async () => {
+    // Given
+    let finalized = false;
+    const program = Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const section = Effect.acquireRelease(Deferred.succeed(started, undefined), () =>
+        Effect.sync(() => {
+          finalized = true;
+        }),
+      ).pipe(Effect.zipRight(Effect.never), Effect.scoped);
+      const fiber = yield* Effect.fork(
+        isolateDoctorSection({ section: "unit", effect: section, fallback: "fallback", budgetMs: 1_000 }),
+      );
+      yield* Deferred.await(started);
+
+      // When
+      yield* TestClock.adjust("1 second");
+      return yield* Fiber.join(fiber);
+    });
+    const outcome = await Effect.runPromise(program.pipe(Effect.provide(TestContext.TestContext)));
+
+    // Then
+    expect(outcome.self?.reason).toBe("timeout");
+    expect(finalized).toBe(true);
   });
 });
