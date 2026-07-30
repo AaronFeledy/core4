@@ -27,6 +27,7 @@ const LandoSecurityFeatureConfigSchema = Schema.Struct({
   injectCa: Schema.optionalWith(Schema.Boolean, { default: () => true }),
   injectProxy: Schema.optionalWith(Schema.Boolean, { default: () => false }),
   cas: Schema.optionalWith(Schema.Array(CaDescriptor), { default: () => [] }),
+  bundlePath: Schema.optional(Schema.String),
   proxy: Schema.optional(ProxyConfig),
 });
 type LandoSecurityFeatureConfig = typeof LandoSecurityFeatureConfigSchema.Type;
@@ -39,6 +40,14 @@ const applyCaIntent = (ctx: ServiceFeatureContext, config: LandoSecurityFeatureC
       type: "bind",
       source: ca.path,
       target: PortablePath.make(`${CA_TRUST_INPUT_DIRECTORY}/lando-${ca.digest}.crt`),
+      readOnly: true,
+    });
+  }
+  if (config.bundlePath !== undefined) {
+    ctx.addMount({
+      type: "bind",
+      source: config.bundlePath,
+      target: PortablePath.make(CA_BUNDLE_PATH),
       readOnly: true,
     });
   }

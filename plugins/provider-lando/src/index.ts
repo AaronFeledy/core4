@@ -12,7 +12,7 @@ import {
 } from "@lando/container-runtime/log-file-helper-payloads";
 import { ProviderUnavailableError, type StateStoreError } from "@lando/sdk/errors";
 import type { LogFileAccess } from "@lando/sdk/log-follow";
-import { definePlugin } from "@lando/sdk/plugins";
+import { type PluginStateStore, definePlugin } from "@lando/sdk/plugins";
 import type { RetryPolicy } from "@lando/sdk/probe";
 import {
   type AppId,
@@ -319,6 +319,7 @@ export interface ProviderLayerOptions {
   readonly runtimeBundleDownloader?: RuntimeBundleDownloader;
   readonly artifactDownload?: ArtifactDownload;
   readonly stateDir?: string;
+  readonly appliedPlanState?: PluginStateStore;
   readonly runtimeBinDir?: string;
   readonly runtimeRunDir?: string;
   readonly runtimeStorageDir?: string;
@@ -471,8 +472,8 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
     if (target.plan !== undefined) return Effect.succeed(target.plan);
     const cached = plans.get(target.app);
     if (cached !== undefined) return Effect.succeed(cached);
-    if (stateDir === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(stateDir, target.app).pipe(
+    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
+    return loadAppliedPlan(options.appliedPlanState, target.app).pipe(
       Effect.tap((loaded) =>
         Effect.sync(() => {
           if (loaded !== undefined) plans.set(target.app, loaded);
@@ -484,14 +485,16 @@ export const makeRuntimeProvider = (options: ProviderLayerOptions) => {
   const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> => {
     const persistedPlan = options.sanitizeAppliedPlan(plan);
     plans.set(plan.id, persistedPlan);
-    return stateDir === undefined
+    return options.appliedPlanState === undefined
       ? Effect.void
-      : persistAppliedPlan(stateDir, persistedPlan).pipe(Effect.asVoid);
+      : persistAppliedPlan(options.appliedPlanState, persistedPlan).pipe(Effect.asVoid);
   };
 
   const forgetPlan = (appId: AppId): Effect.Effect<void> => {
     plans.delete(appId);
-    return stateDir === undefined ? Effect.void : removeAppliedPlan(stateDir, appId);
+    return options.appliedPlanState === undefined
+      ? Effect.void
+      : removeAppliedPlan(options.appliedPlanState, appId);
   };
 
   return Effect.gen(function* () {
@@ -910,6 +913,7 @@ export const plugin = definePlugin({
             const runtimeState = yield* makePluginRuntimeState(ctx, paths, manifest.name);
             return yield* makeRuntimeProvider({
               stateDir: `${paths.roots.userDataRoot}/providers`,
+              appliedPlanState: ctx.stateStore,
               runtimeBinDir: paths.runtimeBinDir,
               runtimeRunDir: paths.runtimeRunDir,
               runtimeStorageDir: paths.runtimeStorageDir,

@@ -78,11 +78,15 @@ const stableStringRecord = (
 
 const isGeneratedLandoEnv = (key: string): boolean => key === "LANDO" || key.startsWith("LANDO_");
 
+const PROXY_ENV_KEYS = new Set(["http_proxy", "https_proxy", "all_proxy", "no_proxy"]);
+
+const isProxyEnv = (key: string): boolean => PROXY_ENV_KEYS.has(key.toLowerCase());
+
 const providerEnvironment = (
   environment: Readonly<Record<string, string>>,
 ): ReadonlyArray<readonly [string, unknown]> => {
   const declared = Object.fromEntries(
-    Object.entries(environment).filter(([key]) => !isGeneratedLandoEnv(key)),
+    Object.entries(environment).filter(([key]) => !isGeneratedLandoEnv(key) && !isProxyEnv(key)),
   );
   return stableStringRecord(declared);
 };

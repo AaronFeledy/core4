@@ -23,6 +23,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
+import { makeStateStore } from "../../../core/src/state/service.ts";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 
@@ -315,6 +317,8 @@ const withStateDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => 
 };
 
 const runOnce = <A, E>(effect: Effect.Effect<A, E>) => Effect.runPromise(effect);
+const appliedPlanState = (stateDir: string) =>
+  makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
 
 describe("provider-lando cross-process state", () => {
   test("persists a host-proxy-sanitized applied plan while applying the runtime plan", async () => {
@@ -328,6 +332,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -362,6 +367,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -380,6 +386,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -411,6 +418,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -425,6 +433,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -449,6 +458,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -463,6 +473,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -479,6 +490,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),
@@ -527,6 +539,7 @@ describe("provider-lando cross-process state", () => {
               podmanApi,
               podmanService: serviceRunner,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
               ...paths,
             }),
@@ -574,6 +587,7 @@ describe("provider-lando cross-process state", () => {
               sanitizeAppliedPlan: stripHostProxyRunLando,
               podmanApi: fake.api,
               stateDir,
+              appliedPlanState: appliedPlanState(stateDir),
               platform: "linux",
             }),
           ),

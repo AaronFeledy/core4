@@ -199,6 +199,32 @@ describe("buildKeyForService", () => {
     expect(await key(otherToken)).not.toBe(await key(token));
   });
 
+  test("excludes proxy environment case-insensitively while retaining CA digests", async () => {
+    const withInputs = (proxyKey: string, proxyValue: string, caDigest: string) =>
+      service({
+        environment: { [proxyKey]: proxyValue, NODE_ENV: "production" },
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [
+              {
+                id: "lando.security:trust-store",
+                phase: "build",
+                command: ":",
+                buildKeyInputs: { caDigests: [caDigest] },
+              },
+            ],
+          },
+        },
+      });
+
+    const uppercase = await key(withInputs("HTTP_PROXY", "http://first.example", "digest-a"));
+    const lowercase = await key(withInputs("http_proxy", "http://second.example", "digest-a"));
+    const changedCa = await key(withInputs("http_proxy", "http://second.example", "digest-b"));
+
+    expect(lowercase).toBe(uppercase);
+    expect(changedCa).not.toBe(lowercase);
+  });
+
   test("hashes the realized build context instead of the host root", async () => {
     const first = await mkdtemp(join(tmpdir(), "lando-build-key-a-"));
     const second = await mkdtemp(join(tmpdir(), "lando-build-key-b-"));
