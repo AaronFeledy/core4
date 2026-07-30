@@ -490,3 +490,24 @@ Spec SoT:
   verification claims postdate no commit after 12:16 CDT and remain unverified for the two final
   parity commits.
 ---
+## 2026-07-30 13:00 CDT - US-488 Verify
+- Compiled `core/dist/lando` fresh from branch HEAD and ran setup inside `lando4-dev` with scratch
+  roots and `--provider=lando --skip-provider` (plus non-interactive skip flags). End-to-end against
+  the compiled binary: human text note renders singular/plural for 1 and 2 host CAs, is omitted for
+  no-CA and `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=false`, setup exits 0 in all cases; machine JSON
+  encodes `injectedCaCount` 0/1/2/0 matching those cases; decorated TTY framed summary carries the
+  note (line-wrapped). Adjacent smoke: `--version`, `setup --help`, `config --help`, `doctor --help`,
+  and baseline setup without CAs all succeeded.
+- Story-level defect confirmed against the Drift Audit AC: HEAD still publishes numeric
+  `injectedCaCount` (and count-based human copy). That fails the new PRD criterion requiring a boolean
+  condition only and forbidding a published count. `passes` remains false; no code fix applied here
+  (contract rewrite across schema/render/tests/guide is Build scope, as Drift Audit recorded).
+- **Learnings for future iterations:**
+  - A stale or mid-edit compiled binary can embed a result schema that disagrees with the run() return
+    shape and surface only as `CommandResultEncodeError` under `--json`; rebuild after the worktree is
+    stable and confirm the binary strings for the machine field name before trusting encode paths.
+  - Decorated setup notes wrap inside the frame; assert with whitespace-collapsed text, not a single
+    unbroken grep line.
+  - Verify and Drift Audit must not race the same worktree with bulk restores; parallel mid-edit
+    checkouts leave half-applied contract changes.
+---
