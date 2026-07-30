@@ -1284,6 +1284,7 @@ const planApp = (
               hostnames: pinnedService.hostnames ?? [],
               routes: [...(pinnedService.routes ?? []), ...(landofile.proxy?.[ServiceName.make(name)] ?? [])],
               certificateAuthority,
+              fileSystem,
             })
           : undefined;
       const plannerSeededFeatures = [securityFeature, certsFeature].filter(

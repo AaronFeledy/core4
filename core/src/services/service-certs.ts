@@ -7,14 +7,13 @@
  * material authored on the Landofile is contained to the app root and checked
  * for readability here so the feature stays a pure mount/env application.
  */
-import { access } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { Effect } from "effect";
+import { type Context, Effect } from "effect";
 
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { RouteInput, ServiceConfig } from "@lando/sdk/schema";
-import type { CertificateAuthorityShape } from "@lando/sdk/services";
+import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
 import { assertUnderRoot } from "../landofile/include-guard.ts";
 
@@ -39,6 +38,7 @@ interface ResolveCertsFeatureInput {
   readonly hostnames: ReadonlyArray<string>;
   readonly routes: ReadonlyArray<RouteInput>;
   readonly certificateAuthority?: CertificateAuthorityShape | undefined;
+  readonly fileSystem?: Context.Tag.Service<typeof FileSystem> | undefined;
 }
 
 const validationError = (input: ResolveCertsFeatureInput, message: string): LandofileValidationError =>
@@ -79,16 +79,29 @@ const resolveAuthoredPath = (
         `path ${authoredPath} must stay inside the app root. Move the certificate material into the app or issue a certificate with certs: true.`,
       ),
   }).pipe(
-    Effect.tap((containedPath) =>
-      Effect.tryPromise({
-        try: () => access(containedPath),
-        catch: () =>
+    Effect.flatMap((containedPath) => {
+      if (input.fileSystem === undefined) {
+        return Effect.fail(
+          validationError(
+            input,
+            "requires FileSystem to validate custom certificate material. Restore the standard app runtime services and retry.",
+          ),
+        );
+      }
+      return input.fileSystem.stat(containedPath).pipe(
+        Effect.mapError(() =>
           validationError(
             input,
             `path ${authoredPath} could not be read. Create the file or point certs at existing certificate material.`,
           ),
-      }),
-    ),
+        ),
+        Effect.flatMap((stat) =>
+          stat.isFile
+            ? Effect.succeed(containedPath)
+            : Effect.fail(validationError(input, `path ${authoredPath} must be a regular file.`)),
+        ),
+      );
+    }),
   );
 
 const issueCertificate = (
@@ -104,7 +117,7 @@ const issueCertificate = (
     const cn = internalAlias(input.serviceName, input.appName);
     const sans = certificateSans(input);
     const issued = yield* ca
-      .issueCert({ cn, sans: sans.filter((san) => san !== cn) })
+      .issueCert({ cn, sans })
       .pipe(
         Effect.mapError((cause) =>
           validationError(input, `could not be issued: ${cause.message}. ${CA_REMEDIATION}`),
