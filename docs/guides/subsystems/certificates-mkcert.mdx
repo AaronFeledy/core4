@@ -6,7 +6,60 @@ timeout: 60000
 tags: [beta, docs, subsystems, certs, mkcert, ca]
 ---
 
+## Author service leaf certificates
+
+A service's own leaf TLS certificate is configured with `certs:`. It is a separate surface from
+`security.ca:`, which adds trusted certificate authorities; a service may declare both.
+
+Issue a certificate from the active certificate authority:
+
+```yaml
+services:
+  appserver:
+    certs: true
+```
+
+Disable issuance for a service:
+
+```yaml
+services:
+  appserver:
+    certs: false
+```
+
+Supply a custom certificate path:
+
+```yaml
+services:
+  appserver:
+    certs: ./certs/appserver.crt
+```
+
+Supply an explicit certificate and key pair:
+
+```yaml
+services:
+  appserver:
+    certs:
+      cert: ./certs/appserver.crt
+      key: ./certs/appserver.key
+```
+
+The object form requires both `cert` and `key`. Any other shape — a number, a list of paths, an
+incomplete object, or an unknown field beside `cert` and `key` — fails validation with a
+`services.<name>.certs` correction before planning.
+
 <Guide>
+  <Scenario id="author-service-certs" render={false} reason="Focused ServiceConfig schema tests cover every certs shape, invalid-shape rejection, and independence from security.ca without requiring an installed certificate authority">
+    <Step name="declare-certs">
+      <Variable name="generated" value="certs: true" display="Issue a leaf certificate from the active certificate authority" />
+      <Variable name="disabled" value="certs: false" display="Disable leaf certificate issuance for this service" />
+      <Variable name="customPath" value="certs: ./certs/appserver.crt" display="Supply a custom certificate path" />
+      <Variable name="explicitPair" value="certs.cert / certs.key" display="Supply an explicit certificate and key pair; both paths are required" />
+      <Variable name="additionalCas" value="security.ca" display="Keep additional certificate authorities separate from leaf TLS" />
+    </Step>
+  </Scenario>
+
   <Scenario id="ca-sdk-contract" render={false} reason="CertificateAuthority SDK contract is exercised by sdk/test/contract/certificate-authority.test.ts against TestCertificateAuthority; the mkcert Live Layer requires the mkcert binary and host trust-store access">
     <Step name="ca-contract">
       <Variable name="sdkTag" value="CertificateAuthority" display="Effect Service tag published in @lando/sdk; plugins implement CertificateAuthorityShape" />

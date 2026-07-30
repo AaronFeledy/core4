@@ -68,6 +68,7 @@ Public Lando schema contract for Service Config.
 | `routes` | No | `array` | — | — | — | — | — |
 | `healthcheck` | No | `object` | Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly. | — | — | — | — |
 | `logs` | No | `array` | — | — | — | — | — |
+| `certs` | No | `boolean`, `string`, `object` | Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities. | — | — | — | — |
 | `hostnames` | No | `array` | — | — | — | — | — |
 | `security` | No | `object` | Additional CA paths and per-service overrides for inheriting host network CA and proxy settings. | — | — | — | — |
 | `dependsOn` | No | `array`, `object` | — | — | — | — | — |

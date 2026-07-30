@@ -365,6 +365,23 @@ const COMPOSE_CONFIGS_DESCRIPTION =
 const COMPOSE_SECRETS_DESCRIPTION =
   "Service secret grants as source-name strings or long entries; canonicalized to long entries, carried losslessly into ServicePlan.extensions.compose and capability-checked; no Lando-side activation.";
 
+const SERVICE_CERTS_DESCRIPTION =
+  "Leaf TLS certificate for this service: true issues one from the active certificate authority, false disables issuance, a path supplies a custom certificate, and an object supplies an explicit certificate and key. Separate from security.ca, which adds trusted certificate authorities.";
+
+/** Certs input — leaf TLS toggle, custom certificate path, or explicit certificate and key pair. */
+const CertsInput = Schema.Union(
+  Schema.Boolean,
+  Schema.String,
+  Schema.Struct({
+    cert: Schema.String.annotations({
+      description: "Path to a custom leaf certificate for this service.",
+    }),
+    key: Schema.String.annotations({
+      description: "Path to the private key matching the custom leaf certificate.",
+    }),
+  }),
+).annotations({ description: SERVICE_CERTS_DESCRIPTION });
+
 const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
 
@@ -530,6 +547,7 @@ const ServiceConfigWithExtensions = Schema.Struct(
         "Healthcheck as canonical Lando fields or Compose test, disable, and duration spellings; canonicalized to the Lando healthcheck model while preserving start_interval losslessly.",
     }),
     logs: Schema.optional(Schema.Array(LogSourceInput)),
+    certs: Schema.optional(CertsInput).annotations({ description: SERVICE_CERTS_DESCRIPTION }),
     hostnames: Schema.optional(Schema.Array(Schema.String)),
     security: Schema.optional(ServiceSecurityField).annotations({
       description: SERVICE_SECURITY_DESCRIPTION,
