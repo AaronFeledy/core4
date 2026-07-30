@@ -361,3 +361,35 @@ Spec SoT:
   be projected into the artifact key without host-local paths; filter non-artifact phases before
   parsing artifact-only metadata or applying post-artifact transitions.
 ---
+
+## 2026-07-30 02:05 CDT - Babysit
+- PR: #657 https://github.com/AaronFeledy/core4/pull/657
+- CI outcome: pass
+- Review feedback: fixed (PR body Guide-Coverage-Skip for internal ServiceBuildStepIntent.caFiles; reran failed guide/unit jobs after drift gate and unrelated 5s timeout flakes)
+- Merge: merged (squash)
+---
+
+## 2026-07-30 03:11 CDT - US-488
+- `lando setup` now reports how many configured host certificate authorities inject into
+  `type: lando` services, as a non-fatal informational note carried on the setup result and rendered
+  in the decorated summary, the plain completion output, and the machine `notes` field. The note is
+  suppressed when no host CA material resolves or when CA injection is disabled, so setup success and
+  the existing completion output are unchanged for everyone else.
+- Completed the inject-path guide: corporate network trust documents the note, its suppression rules,
+  and its machine field, and the guide is now indexed as shipped for the PRD-01 inject path.
+- Verification: typecheck, lint, all boundary rules, generated output, guide lint, and guide coverage
+  passed; 225 focused and adjacent tests across setup, network-trust, planner inject, build-key,
+  service-lando security, image-build, env overlays, and HTTP client passed; the compiled CLI in the
+  dev sandbox produced the note for one and two CAs, omitted it under
+  `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=false`, and left the no-CA output byte-identical, with the
+  temporary CA material and roots removed afterward.
+- **Learnings for future iterations:**
+  - A setup-result field addition flows straight into `dist/command-schemas/meta-setup.json`; run
+    `bun run codegen:schema-snapshot` and give the new field a schema description or the
+    public-field-description gate fails.
+  - `registry.select` constructs the provider before any setup step runs, so `--skip-provider` does
+    not avoid a socket probe; sandbox CLI verification of non-provider setup behavior should select
+    the `lando` provider, which constructs without probing a host socket.
+  - A stale `bun test <path>` filter prints a no-match note and still exits 0 through a pipeline;
+    confirm a positive test count rather than trusting the absence of failures.
+---
