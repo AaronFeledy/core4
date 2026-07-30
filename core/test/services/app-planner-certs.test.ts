@@ -105,6 +105,15 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
     const issued = ca.calls.filter((call) => call.op === "issueCert");
     expect(issued).toHaveLength(1);
     expect(issued[0]?.op === "issueCert" ? issued[0].spec.cn : undefined).toBe("web.certs-app.internal");
+    expect(issued[0]?.op === "issueCert" ? issued[0].spec.sans : undefined).toEqual([
+      "web",
+      "web.certs-app.internal",
+      "web.internal.test",
+      "certs-app.lndo.site",
+      "alias.lndo.site",
+      "localhost",
+      "127.0.0.1",
+    ]);
 
     const web = appPlan.services.web;
     expect(web?.certs).toEqual({
@@ -120,18 +129,18 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
       ],
       caId: "test",
     });
-    expect(web?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/web.crt");
-    expect(web?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/web.key");
+    expect(web?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/web.crt");
+    expect(web?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/web.key");
     expect(web?.mounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: "/tmp/test-certs/web.certs-app.internal.crt",
-          target: "/etc/lando/certs/web.crt",
+          target: "/etc/lando/certs/leaf/web.crt",
           readOnly: true,
         }),
         expect.objectContaining({
           source: "/tmp/test-certs/web.certs-app.internal.key",
-          target: "/etc/lando/certs/web.key",
+          target: "/etc/lando/certs/leaf/web.key",
           readOnly: true,
         }),
       ]),
@@ -175,20 +184,20 @@ test("mounts validated custom certificate material without contacting the certif
     });
 
     expect(ca.calls).toEqual([]);
-    expect(appPlan.services.pair?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/pair.crt");
-    expect(appPlan.services.pair?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/pair.key");
+    expect(appPlan.services.pair?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/pair.crt");
+    expect(appPlan.services.pair?.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/pair.key");
     expect(appPlan.services.pair?.certs).toBeUndefined();
     expect(appPlan.services.pair?.mounts).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           source: join(appRoot, "certs", "custom.crt"),
-          target: "/etc/lando/certs/pair.crt",
+          target: "/etc/lando/certs/leaf/pair.crt",
           readOnly: true,
         }),
       ]),
     );
 
-    expect(appPlan.services.single?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/single.crt");
+    expect(appPlan.services.single?.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/single.crt");
     expect(appPlan.services.single?.environment.LANDO_SERVICE_KEY).toBeUndefined();
 
     expect(appPlan.services.off?.environment.LANDO_SERVICE_CERT).toBeUndefined();
@@ -206,6 +215,7 @@ test("rejects custom certificate paths that escape the app root or do not exist"
   try {
     await mkdir(appRoot, { recursive: true });
     await writeFile(join(root, "outside.crt"), "cert\n", "utf-8");
+    await mkdir(join(appRoot, "certs"), { recursive: true });
     await expectCertsRejection({
       appRoot,
       cacheRoot,
@@ -217,6 +227,12 @@ test("rejects custom certificate paths that escape the app root or do not exist"
       cacheRoot,
       certs: "./certs/missing.crt",
       remediation: "could not be read",
+    });
+    await expectCertsRejection({
+      appRoot,
+      cacheRoot,
+      certs: "./certs",
+      remediation: "must be a regular file",
     });
   } finally {
     await rm(root, { recursive: true, force: true });

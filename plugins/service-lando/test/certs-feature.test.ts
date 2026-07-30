@@ -5,10 +5,7 @@ import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { composeService } from "../../../core/src/services/feature.ts";
-import {
-  LANDO_CERTS_FEATURE_ID,
-  LANDO_CERTS_FEATURE_PRIORITY,
-} from "../src/features/certs.ts";
+import { LANDO_CERTS_FEATURE_ID, LANDO_CERTS_FEATURE_PRIORITY } from "../src/features/certs.ts";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const certsFeature = (): ServiceFeatureDefinition => {

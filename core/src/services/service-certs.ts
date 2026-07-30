@@ -24,8 +24,8 @@ const CA_REMEDIATION =
   "Run `lando setup` to install a certificate authority, or set certs to false or a custom certificate path.";
 
 interface CertsFeatureConfig extends Readonly<Record<string, unknown>> {
-  readonly cert?: string;
-  readonly key?: string;
+  readonly certPath?: string;
+  readonly keyPath?: string;
   readonly cn?: string;
   readonly sans?: ReadonlyArray<string>;
   readonly caId?: string;
@@ -110,7 +110,7 @@ const issueCertificate = (
           validationError(input, `could not be issued: ${cause.message}. ${CA_REMEDIATION}`),
         ),
       );
-    return { cert: issued.certPath, key: issued.keyPath, cn, sans, caId: ca.id };
+    return { certPath: issued.certPath, keyPath: issued.keyPath, cn, sans, caId: ca.id };
   });
 
 export const resolveCertsFeature = (
@@ -126,7 +126,7 @@ export const resolveCertsFeature = (
 
     const authoredCert = typeof certs === "string" ? certs : certs.cert;
     const authoredKey = typeof certs === "string" ? undefined : certs.key;
-    const cert = yield* resolveAuthoredPath(input, authoredCert);
-    const key = authoredKey === undefined ? undefined : yield* resolveAuthoredPath(input, authoredKey);
-    return { id: CERTS_FEATURE_ID, config: { cert, ...(key === undefined ? {} : { key }) } };
+    const certPath = yield* resolveAuthoredPath(input, authoredCert);
+    const keyPath = authoredKey === undefined ? undefined : yield* resolveAuthoredPath(input, authoredKey);
+    return { id: CERTS_FEATURE_ID, config: { certPath, ...(keyPath === undefined ? {} : { keyPath }) } };
   });
