@@ -11,7 +11,7 @@
  * feature cannot choose a bind/accelerated strategy or read provider state.
  * Provider realization is the single finalization stage's job, not a feature's.
  */
-import type { Effect, Schema } from "effect";
+import { type Effect, Schema } from "effect";
 
 import type { ServiceFeatureError } from "../errors/index.ts";
 import type {
@@ -46,11 +46,12 @@ export type ServiceMountIntent = Omit<MountPlan, "realization">;
 export type ServiceAppMountIntent = Omit<AppMountPlan, "realization">;
 
 /** A host CA file injected into a derived service image after digest verification. */
-export interface ServiceCaFileDescriptor {
-  readonly path: string;
-  readonly digest: string;
-  readonly archiveName: string;
-}
+export const ServiceCaFileDescriptor = Schema.Struct({
+  path: Schema.String.pipe(Schema.minLength(1)),
+  digest: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
+  archiveName: Schema.String.pipe(Schema.maxLength(80), Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
+});
+export type ServiceCaFileDescriptor = typeof ServiceCaFileDescriptor.Type;
 
 /**
  * A build step a feature declares. `ServicePlan` carries no build-step slot;

@@ -3,7 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { ServiceFeatureError } from "@lando/sdk/errors";
-import type { ServiceFeatureContext, ServiceFeatureDefinition } from "@lando/sdk/services";
+import { PortablePath } from "@lando/sdk/schema";
+import {
+  ServiceCaFileDescriptor,
+  type ServiceFeatureContext,
+  type ServiceFeatureDefinition,
+} from "@lando/sdk/services";
 
 describe("ServiceFeature contract surface", () => {
   test("a ServiceFeatureDefinition is satisfiable with intent-only apply", () => {
@@ -14,7 +19,12 @@ describe("ServiceFeature contract surface", () => {
       apply: (ctx: ServiceFeatureContext) =>
         Effect.sync(() => {
           ctx.addEnv("LANDO_TEST", "1");
-          ctx.addMount({ type: "bind", source: "/host", target: "/app", readOnly: false });
+          ctx.addMount({
+            type: "bind",
+            source: "/host",
+            target: PortablePath.make("/app"),
+            readOnly: false,
+          });
           ctx.addBuildStep({ phase: "build", command: ["echo", "hi"] });
         }),
     };
@@ -64,5 +74,25 @@ describe("ServiceFeature contract surface", () => {
     type AppHasRealization = "realization" extends keyof AppMountIntent ? true : false;
     const appNoRealization: AppHasRealization = false;
     expect(appNoRealization).toBe(false);
+  });
+
+  test("CA file descriptors expose a runtime schema", () => {
+    // Given
+    const descriptor = {
+      path: "/host/corp.pem",
+      digest: "a".repeat(64),
+      archiveName: "corp.crt",
+    };
+
+    // When
+    const acceptsDescriptor = Schema.is(ServiceCaFileDescriptor)(descriptor);
+    const acceptsUnsafeArchiveName = Schema.is(ServiceCaFileDescriptor)({
+      ...descriptor,
+      archiveName: "../corp.crt",
+    });
+
+    // Then
+    expect(acceptsDescriptor).toBe(true);
+    expect(acceptsUnsafeArchiveName).toBe(false);
   });
 });
