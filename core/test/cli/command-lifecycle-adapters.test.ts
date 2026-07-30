@@ -106,16 +106,20 @@ describe("CLI lifecycle adapters", () => {
     const declarations = [
       ["meta:version", landoSpecForId("meta:version")?.bootstrap],
       ["meta:update", landoSpecForId("meta:update")?.bootstrap],
-      ["meta:doctor", landoSpecForId("meta:doctor")?.bootstrap],
+      ["meta:setup", landoSpecForId("meta:setup")?.bootstrap],
       ["app:start", landoSpecForId("app:start")?.bootstrap],
+      // meta:doctor deliberately declares `none` and builds the provider runtime
+      // itself so a bootstrap failure degrades to a self check (doctor-bootstrap.ts).
+      ["meta:doctor", landoSpecForId("meta:doctor")?.bootstrap],
     ];
 
     // Then
     expect(declarations).toEqual([
       ["meta:version", "none"],
       ["meta:update", "plugins"],
-      ["meta:doctor", "provider"],
+      ["meta:setup", "provider"],
       ["app:start", "app"],
+      ["meta:doctor", "none"],
     ]);
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:version"]?.bootstrap).toBe("none");
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");
@@ -132,6 +136,9 @@ describe("CLI lifecycle adapters", () => {
     expect(effectiveBootstrapForCommand("apps:list", "minimal", configured)).toBe("commands");
     expect(effectiveBootstrapForCommand("meta:mcp", "plugins", configured)).toBe("commands");
     expect(effectiveBootstrapForCommand("meta:version", "none", [])).toBe("none");
+    // meta:doctor is exempt: promoting it would eagerly build the fallible
+    // runtime it is supposed to diagnose, defeating safe mode.
+    expect(effectiveBootstrapForCommand("meta:doctor", "none", ["meta:doctor"])).toBe("none");
     expect(effectiveBootstrapForCommand("apps:list", "minimal", [])).toBe("minimal");
     expect(effectiveBootstrapForCommand("meta:mcp", "plugins", [])).toBe("plugins");
     expect(effectiveBootstrapForCommand("meta:update", "plugins", [])).toBe("commands");

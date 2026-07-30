@@ -337,6 +337,7 @@ If you are looking for…
 | Logs and diagnostics | 11 | §10.9 |
 | `lando doctor` diagnostics | 11 | §10.9 |
 | Doctor diagnostic transcripts (via `ShellRunner`) | 11 | §10.9 |
+| Doctor self-resilience (section isolation, self checks, deadlines, safe mode) | 11 | §10.9.1 |
 | Cache catalog | 12 | §12.1 |
 | `cwd-app-map` cache | 12 | §12.1 |
 | Cache encoding choices (binary on hot path) | 12 | §12.2 |

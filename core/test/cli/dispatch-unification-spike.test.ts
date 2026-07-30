@@ -16,7 +16,7 @@
  * for the target commands.
  */
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -191,6 +191,56 @@ describe.skipIf(!isLinuxX64)("CLI dispatch unification spike", () => {
       } finally {
         rmSync(confRoot, { recursive: true, force: true });
         rmSync(dataRoot, { recursive: true, force: true });
+      }
+    }, 30_000);
+
+    test("S5 meta:doctor corrupt bootstrap: equivalent redacted JSON reports", async () => {
+      // Given a malformed config containing a registered secret and an external run directory
+      const home = mkdtempSync(join(tmpdir(), "lando-spike-doctor-home-"));
+      const runRoot = mkdtempSync(join(tmpdir(), "lando-spike-doctor-run-"));
+      const configRoot = join(home, ".config");
+      const dataRoot = join(home, ".local", "share", "lando");
+      const secret = "doctor-bootstrap-secret-9f3a";
+      mkdirSync(join(configRoot, "lando"), { recursive: true });
+      writeFileSync(join(configRoot, "lando", "config.yml"), `token: ${secret}\nbroken: [value\n`, "utf8");
+      const env = {
+        HOME: home,
+        XDG_CONFIG_HOME: configRoot,
+        LANDO_USER_DATA_ROOT: dataRoot,
+        LANDO_TEST_TOKEN: secret,
+        PATH: process.env.PATH ?? "/usr/bin",
+      };
+
+      try {
+        // When
+        const args = ["meta:doctor", "--renderer=json", "--format=json"];
+        const source = await runSource(args, { cwd: runRoot, env });
+        const compiled = await runCompiled(args, { cwd: runRoot, env });
+
+        // Then
+        expect(source.exitCode).toBe(1);
+        expect(compiled.exitCode).toBe(1);
+        const sourceEnvelope = normalizeJsonEnvelope(lastJsonLine(source.stdout || source.stderr));
+        const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout || compiled.stderr));
+        expect(compiledEnvelope).toEqual(sourceEnvelope);
+        expect(sourceEnvelope).toMatchObject({
+          apiVersion: "v4",
+          command: "meta:doctor",
+          ok: true,
+          result: {
+            provider: {},
+            globalApp: {},
+            subsystems: {},
+            mcp: {},
+          },
+        });
+        const normalized = JSON.stringify(sourceEnvelope);
+        expect(normalized).toContain("provider-bootstrap");
+        expect(normalized).toContain("ConfigError");
+        expect(`${source.stdout}${source.stderr}${compiled.stdout}${compiled.stderr}`).not.toContain(secret);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+        rmSync(runRoot, { recursive: true, force: true });
       }
     }, 30_000);
   });

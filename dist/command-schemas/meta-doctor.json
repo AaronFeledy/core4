@@ -562,6 +562,96 @@
       ],
       "type": "object"
     },
+    "self": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "context": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "name": {
+                "enum": [
+                  "doctor-self"
+                ],
+                "type": "string"
+              },
+              "reason": {
+                "enum": [
+                  "failure",
+                  "defect",
+                  "timeout"
+                ],
+                "type": "string"
+              },
+              "section": {
+                "type": "string"
+              },
+              "severity": {
+                "enum": [
+                  "error"
+                ],
+                "type": "string"
+              },
+              "solutions": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "command": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "enum": [
+                        "automatic",
+                        "manual"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "description"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "status": {
+                "enum": [
+                  "fail"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "section",
+              "status",
+              "severity",
+              "reason",
+              "context",
+              "solutions"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "checks"
+      ],
+      "type": "object"
+    },
     "subsystems": {
       "additionalProperties": false,
       "properties": {

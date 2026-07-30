@@ -9,6 +9,8 @@ import {
 
 import type { GlobalAppDoctorResult } from "./doctor-global-app.ts";
 import type { McpDoctorResult } from "./doctor-mcp.ts";
+import type { DoctorSelfReport } from "./doctor-self.ts";
+import { DoctorSelfReportSchema } from "./doctor-self.ts";
 import type { SubsystemDoctorResult } from "./doctor-subsystems.ts";
 import type { AppVersionConstraintDoctorResult } from "./doctor-version-constraint.ts";
 import { AppVersionConstraintDoctorResultSchema } from "./doctor-version-constraint.ts";
@@ -23,6 +25,11 @@ export interface DoctorReport {
   readonly deprecations?: DoctorDeprecationReport;
   /** Present only under `lando doctor --app`; reuses the `app:config:lint` pass. */
   readonly appConfig?: ConfigLintResult;
+  /**
+   * Failures of doctor's own machinery. Present only when a report section
+   * could not answer; absent on a healthy run.
+   */
+  readonly self?: DoctorSelfReport;
 }
 
 export interface DoctorDeprecationEntry {
@@ -139,4 +146,5 @@ export const DoctorReportSchema = Schema.Struct({
   appVersionConstraints: Schema.optional(AppVersionConstraintDoctorResultSchema),
   deprecations: Schema.optional(DoctorDeprecationReportSchema),
   appConfig: Schema.optional(ConfigLintResult),
+  self: Schema.optional(DoctorSelfReportSchema),
 });
