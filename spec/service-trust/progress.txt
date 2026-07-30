@@ -413,3 +413,19 @@ Spec SoT:
     worktree; verify the specific hunks in the diff immediately before committing so a mutation left in
     place cannot ship inside a story commit.
 ---
+
+## 2026-07-30 02:35 CDT - US-488 CLI Verification
+- Re-verified the shipped surface end to end on a freshly compiled binary in the dev sandbox after the
+  decorated-summary fix: the note renders as a wrapped bullet inside the framed setup box, appears in
+  the plain completion output with singular and plural grammar, appears in the machine `notes` field,
+  and is absent both when CA injection is disabled and when no host CA material is configured, with
+  setup still exiting successfully in every case.
+- Verification: typecheck, lint, generated output, guide lint, and guide coverage passed; 246 focused
+  and adjacent tests with 824 assertions passed across the inject-path filters; the sandbox CA
+  material, scratch roots, and QA driver were removed afterward.
+- **Learnings for future iterations:**
+  - Real CLI proof of a decorated (TTY-only) surface needs a pty: run the compiled binary under
+    `script -qec` inside the sandbox, since redirecting stdout drops the decorated renderer entirely.
+  - Compiled-binary evidence is only valid for the commit it was built from; rebuild `core/dist/lando`
+    after any renderer or command-result change before quoting its output as verification.
+---
