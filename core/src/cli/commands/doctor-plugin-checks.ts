@@ -24,6 +24,7 @@ import {
   describeDoctorFailure,
   doctorSelfCheck,
   isolateDoctorSection,
+  redactDoctorMessage,
 } from "./doctor-self.ts";
 
 export interface PluginDoctorInput {
@@ -63,7 +64,8 @@ export interface PluginDoctorRunOutcome {
  */
 const PROBE_BUDGET_MS = 5_000;
 
-export const probeBudgetMs = (sectionBudgetMs: number): number => Math.min(PROBE_BUDGET_MS, sectionBudgetMs);
+export const probeBudgetMs = (sectionBudgetMs: number): number =>
+  Math.min(PROBE_BUDGET_MS, Math.floor(sectionBudgetMs / 3));
 
 const PLUGIN_CHECK_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
@@ -93,7 +95,7 @@ export const pluginDoctorReports = (
           doctorSelfCheck({
             section: "plugin-doctor-checks",
             reason: "failure",
-            message: redact(described.message),
+            message: redactDoctorMessage(described.message, redact),
             ...(described.tag === undefined ? {} : { tag: described.tag }),
             solutions: [PLUGIN_INDEX_REMEDIATION],
           }),
@@ -101,18 +103,21 @@ export const pluginDoctorReports = (
       };
     }
 
-    const isolated = yield* Effect.forEach(index.right.doctorChecks.entries(), ([id, check]) =>
-      isolateDoctorSection({
-        section: `plugin-check:${id}`,
-        // Suspended so a synchronous throw while *building* the effect is
-        // attributed to the plugin rather than escaping the isolate.
-        effect: Effect.suspend(() => check.run(input)),
-        fallback: [] as ReadonlyArray<PluginDoctorReport>,
-        budgetMs,
-        redact,
-        context: { checkId: id },
-        solutions: [PLUGIN_CHECK_REMEDIATION],
-      }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
+    const isolated = yield* Effect.forEach(
+      index.right.doctorChecks.entries(),
+      ([id, check]) =>
+        isolateDoctorSection({
+          section: `plugin-check:${id}`,
+          // Suspended so a synchronous throw while *building* the effect is
+          // attributed to the plugin rather than escaping the isolate.
+          effect: Effect.suspend(() => check.run(input)),
+          fallback: [] as ReadonlyArray<PluginDoctorReport>,
+          budgetMs,
+          redact,
+          context: { checkId: id },
+          solutions: [PLUGIN_CHECK_REMEDIATION],
+        }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
+      { concurrency: "unbounded" },
     );
 
     return {

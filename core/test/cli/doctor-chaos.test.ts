@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Context, Effect, Layer, Schema } from "effect";
+import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema, TestClock, TestContext } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
-import { TestRuntimeProvider } from "@lando/core/testing";
+import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
-import { DoctorReportSchema, doctorReport } from "../../src/cli/commands/doctor-report.ts";
+import { probeBudgetMs } from "../../src/cli/commands/doctor-plugin-checks.ts";
+import {
+  DoctorReportSchema,
+  collectDoctorReport,
+  doctorReport,
+} from "../../src/cli/commands/doctor-report.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
+import { RedactionServiceLive } from "../../src/redaction/service.ts";
 
 /**
  * Chaos coverage for the doctor self-resilience contract: every service doctor
@@ -30,7 +36,7 @@ const buildConfigService = (
     load,
     get: (key) =>
       options.failGet === true
-        ? Effect.fail(new ConfigError({ message: "config file is corrupt", key: String(key) }))
+        ? Effect.fail(new ConfigError({ message: `config file is corrupt: ${String(key)}` }))
         : Effect.map(load, (loadedConfig) => loadedConfig[key]),
   };
 };
@@ -149,6 +155,17 @@ describe("doctor chaos: provider path", () => {
 });
 
 describe("doctor chaos: plugin-contributed checks", () => {
+  test("keeps the plugin probe budget strictly below the report section budget", () => {
+    // Given
+    const reportBudgetMs = 1_000;
+
+    // When
+    const pluginBudgetMs = probeBudgetMs(reportBudgetMs);
+
+    // Then
+    expect(pluginBudgetMs * 2).toBeLessThan(reportBudgetMs);
+  });
+
   test("attributes a dying plugin check instead of failing the run", async () => {
     // Given
     const module = doctorModule({ id: "chaos-die", run: () => Effect.die(new Error("plugin exploded")) });
@@ -162,6 +179,66 @@ describe("doctor chaos: plugin-contributed checks", () => {
     const self = result.selfChecks?.find((entry) => entry.section === "plugin-check:chaos-die");
     expect(self).toMatchObject({ status: "fail", severity: "error", reason: "defect" });
     expect(self?.context.checkId).toBe("chaos-die");
+  });
+
+  test("isolates duplicate doctor-check descriptors without leaking registered secrets", async () => {
+    // Given two plugins with the same secret-bearing doctor-check id
+    const secret = "duplicate-doctor-secret-9f3a";
+    const duplicateId = `duplicate-${secret}`;
+    const first = doctorModule({
+      id: duplicateId,
+      run: () =>
+        Effect.succeed([
+          {
+            name: "duplicate-report-first",
+            status: "pass" as const,
+            severity: "info" as const,
+            context: {},
+            solutions: [],
+          },
+        ]),
+    });
+    const second: LandoPluginModule = {
+      ...doctorModule({
+        id: duplicateId,
+        run: () =>
+          Effect.succeed([
+            {
+              name: "duplicate-report-second",
+              status: "pass" as const,
+              severity: "info" as const,
+              context: {},
+              solutions: [],
+            },
+          ]),
+      }),
+      name: "@lando/doctor-chaos-duplicate",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@lando/doctor-chaos-duplicate",
+        version: "1.0.0",
+        api: 4,
+      }),
+    };
+    const secretStore = makeTestSecretStore({ secrets: { DUPLICATE_DOCTOR_TOKEN: secret } });
+    const redactionLayer = RedactionServiceLive.pipe(Layer.provide(secretStore.layer));
+    const layers = Layer.merge(layersFor(statusRegistry(TestRuntimeProvider.getStatus)), redactionLayer);
+
+    // When
+    const result = await Effect.runPromise(doctor({}, [first, second]).pipe(Effect.provide(layers)));
+
+    // Then index failure is isolated while built-in provider diagnostics survive
+    const selfChecks = (result.selfChecks ?? []).filter((check) => check.section === "plugin-doctor-checks");
+    expect(selfChecks).toHaveLength(1);
+    expect(selfChecks[0]).toMatchObject({
+      reason: "failure",
+      context: { failure: "PluginDescriptorMismatchError" },
+    });
+    expect(selfChecks[0]?.solutions.some((solution) => solution.description.includes("plugin list"))).toBe(
+      true,
+    );
+    expect(result.checks.some((check) => check.name.startsWith("duplicate-report-"))).toBe(false);
+    expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 
   test("bounds a hanging plugin check", async () => {
@@ -212,6 +289,185 @@ describe("doctor chaos: plugin-contributed checks", () => {
     // Then
     expect(result.checks.find((entry) => entry.name === "chaos-healthy")?.status).toBe("pass");
     expect(result.selfChecks?.map((entry) => entry.section)).toContain("plugin-check:chaos-sibling-die");
+  });
+
+  test("isolates a hanging contribution inside the report while retaining its healthy sibling", async () => {
+    // Given a hanging contribution before a healthy sibling
+    const hangStarted = Effect.runSync(Deferred.make<void>());
+    const healthyStarted = Effect.runSync(Deferred.make<void>());
+    const hanging = doctorModule({
+      id: "chaos-report-hang",
+      run: () => Deferred.succeed(hangStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+    });
+    const healthy: LandoPluginModule = {
+      ...doctorModule({
+        id: "chaos-report-healthy",
+        run: () =>
+          Deferred.succeed(healthyStarted, undefined).pipe(
+            Effect.as([
+              {
+                name: "chaos-report-healthy",
+                status: "pass" as const,
+                severity: "info" as const,
+                context: {},
+                solutions: [],
+              },
+            ]),
+          ),
+      }),
+      name: "@lando/doctor-chaos-healthy",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@lando/doctor-chaos-healthy",
+        version: "1.0.0",
+        api: 4,
+      }),
+    };
+    const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus));
+
+    // When
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const options = { env: SHORT_BUDGET_ENV };
+        const fiber = yield* Effect.fork(
+          collectDoctorReport({
+            options,
+            provider: doctor(options, [hanging, healthy]),
+            deprecations: Effect.succeed({ entries: [] }),
+          }),
+        );
+        yield* Deferred.await(hangStarted);
+        yield* Effect.yieldNow();
+        expect(Option.isSome(yield* Deferred.poll(healthyStarted))).toBe(true);
+        yield* TestClock.adjust("1 second");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(layers), Effect.provide(TestContext.TestContext)),
+    );
+
+    // Then
+    const sections = selfSections(report);
+    expect(sections.filter((section) => section.startsWith("plugin-check:"))).toEqual([
+      "plugin-check:chaos-report-hang",
+    ]);
+    expect(sections).not.toContain("provider");
+    expect(
+      report.provider.checks.find((entry) => entry.name === "selected-provider")?.selection?.providerId,
+    ).toBe("lando");
+    expect(report.provider.checks.find((entry) => entry.name === "chaos-report-healthy")?.status).toBe(
+      "pass",
+    );
+  });
+
+  test("preserves contribution input order when checks complete in reverse", async () => {
+    // Given two checks whose second completion releases the first
+    const firstStarted = Effect.runSync(Deferred.make<void>());
+    const secondFinished = Effect.runSync(Deferred.make<void>());
+    const first = doctorModule({
+      id: "chaos-order-first",
+      run: () =>
+        Deferred.succeed(firstStarted, undefined).pipe(
+          Effect.zipRight(Deferred.await(secondFinished)),
+          Effect.as([
+            {
+              name: "chaos-order-first",
+              status: "pass" as const,
+              severity: "info" as const,
+              context: {},
+              solutions: [],
+            },
+          ]),
+        ),
+    });
+    const second: LandoPluginModule = {
+      ...doctorModule({
+        id: "chaos-order-second",
+        run: () =>
+          Effect.succeed([
+            {
+              name: "chaos-order-second",
+              status: "pass" as const,
+              severity: "info" as const,
+              context: {},
+              solutions: [],
+            },
+          ]).pipe(Effect.ensuring(Deferred.succeed(secondFinished, undefined))),
+      }),
+      name: "@lando/doctor-chaos-order-second",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@lando/doctor-chaos-order-second",
+        version: "1.0.0",
+        api: 4,
+      }),
+    };
+    const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus));
+
+    // When
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const options = { env: SHORT_BUDGET_ENV };
+        const fiber = yield* Effect.fork(
+          collectDoctorReport({
+            options,
+            provider: doctor(options, [first, second]),
+            deprecations: Effect.succeed({ entries: [] }),
+          }),
+        );
+        yield* Deferred.await(firstStarted);
+        yield* Effect.yieldNow();
+        yield* TestClock.adjust("1 second");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(layers), Effect.provide(TestContext.TestContext)),
+    );
+
+    // Then
+    expect(
+      report.provider.checks
+        .filter((entry) => entry.name.startsWith("chaos-order-"))
+        .map((entry) => entry.name),
+    ).toEqual(["chaos-order-first", "chaos-order-second"]);
+  });
+
+  test("keeps inner attribution when sequential plugin and provider probes exhaust the report budget", async () => {
+    // Given a hanging plugin followed by a hanging primary provider status probe
+    const pluginStarted = Effect.runSync(Deferred.make<void>());
+    const providerStarted = Effect.runSync(Deferred.make<void>());
+    const hanging = doctorModule({
+      id: "chaos-aggregate-hang",
+      run: () => Deferred.succeed(pluginStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+    });
+    const layers = layersFor(
+      statusRegistry(
+        Deferred.succeed(providerStarted, undefined).pipe(
+          Effect.zipRight(Effect.never),
+        ) as typeof TestRuntimeProvider.getStatus,
+      ),
+    );
+
+    // When
+    const report = await Effect.runPromise(
+      Effect.gen(function* () {
+        const reportOptions = { env: SHORT_BUDGET_ENV };
+        const doctorOptions = { env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "800" } };
+        const fiber = yield* Effect.fork(
+          collectDoctorReport({
+            options: reportOptions,
+            provider: doctor(doctorOptions, [hanging]),
+            deprecations: Effect.succeed({ entries: [] }),
+          }),
+        );
+        yield* Deferred.await(pluginStarted);
+        yield* TestClock.adjust("800 millis");
+        yield* Deferred.await(providerStarted);
+        yield* TestClock.adjust("200 millis");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(layers), Effect.provide(TestContext.TestContext)),
+    );
+
+    // Then both inner timeouts remain attributed and the selected provider survives
+    const sections = selfSections(report);
+    expect(sections).toContain("plugin-check:chaos-aggregate-hang");
+    expect(sections).toContain("provider-status");
+    expect(report.provider.checks.map((check) => check.name)).toContain("selected-provider");
+    expect(sections).not.toContain("provider");
   });
 });
 
