@@ -393,3 +393,23 @@ Spec SoT:
   - A stale `bun test <path>` filter prints a no-match note and still exits 0 through a pipeline;
     confirm a positive test count rather than trusting the absence of failures.
 ---
+
+## 2026-07-30 02:32 CDT - US-488 Build Verification
+- Confirmed the setup injection note is complete at branch HEAD and added plural-count coverage so a
+  multi-CA note cannot silently regress to singular grammar. No other production change was needed.
+- Verification: typecheck, lint, all boundary rules, generated output, schema-snapshot regeneration
+  with no drift, guide lint, guide coverage, base-aware guide drift, and public transcripts passed;
+  198 focused and adjacent tests with 683 assertions passed across the inject-path filters (sdk
+  network-trust and backward-compat, paths overlay, build-key and CA build-key, app-planner network
+  inject, meta:setup, renderer summary surfaces, service-lando security feature, and the four
+  container-runtime image-build files); a direct render probe emitted the note for one and two CAs in
+  both the decorated frame and the plain completion output, kept the no-CA output byte-identical, and
+  carried the note in the machine result field, with the probe removed afterward.
+- **Learnings for future iterations:**
+  - A note on a command result is not user-visible on its own: the decorated frame only shows it when
+    the summary builder forwards it onto `SummarySection.notes`, and only a decorated-frame render test
+    catches that omission. Assert the framed surface, not just the result field.
+  - Temporary guard mutations used for RED proof are only safe while nothing else can commit the
+    worktree; verify the specific hunks in the diff immediately before committing so a mutation left in
+    place cannot ship inside a story commit.
+---
