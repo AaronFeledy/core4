@@ -712,3 +712,16 @@ Spec SoT:
   - A public field does not require exporting its private component schema. Export only the contract
     requested by the story, and assert required object keys structurally in the generated schema.
 ---
+
+## 2026-07-30 15:06 CDT - US-490 Review
+- Confirmed the two-commit story matches the source contract: all four `certs` shapes decode through
+  the Landofile boundary, the explicit object requires both `cert` and `key`, invalid shapes fail
+  closed with path-scoped remediation, and `certs` remains independent from `security.ca`. All five
+  `review-work` lanes passed without an in-scope blocker, so no production or test fix was required.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required
+  current-branch attempts hit the account usage limit; this was not treated as approval.
+- Guide-Coverage-Skip: US-490 documents ServiceConfig.certs in its owned certificates-mkcert guide; Alpha-4 library, embedding, SDK-compatibility, and release guides do not describe service leaf-TLS authoring.
+- Verification: typecheck, lint, generated output, schema compatibility, focused guide execution,
+  guide lint/coverage, and base-aware guide drift with the recorded skip passed; 53 focused SDK and
+  core Landofile tests passed with 215 assertions, and changed-file diagnostics were clean.
+---
