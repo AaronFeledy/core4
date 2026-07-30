@@ -466,5 +466,95 @@
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
     "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+  },
+  {
+    "surface": "command:app:config",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:app:config:edit",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:app:config:set",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:app:config:unset",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:app:config:validate",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:meta:global:config",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:meta:global:config:edit",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:meta:global:config:set",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:meta:global:config:unset",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "command:meta:global:config:validate",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "schema:LandofileShape",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "unsupported-construct",
+    "path": "$.security.anyOf",
+    "justification": "Service security intentionally adds CA path and expression authoring variants while preserving every previously accepted security form (US-499)."
+  },
+  {
+    "surface": "schema:ServiceConfig",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "schema:ServiceConfigInput",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "schema:TemplateRenderContext",
+    "changeKind": "ref-graph-changed",
+    "path": "$.$defs",
+    "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
   }
 ]
