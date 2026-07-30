@@ -429,3 +429,14 @@ Spec SoT:
   - Compiled-binary evidence is only valid for the commit it was built from; rebuild `core/dist/lando`
     after any renderer or command-result change before quoting its output as verification.
 ---
+
+## 2026-07-30 11:47 CDT - US-488 Build Confirmation
+- Verified the story complete on its existing branch; the setup injection note, suppression behavior,
+  machine result, decorated summary, guide completion, and inject-path gates required no new code.
+- Verification: typecheck, lint passed; 195 focused and adjacent tests with 620 assertions passed;
+  guide lint, coverage, base-aware drift, generated-output, and public-transcript gates passed; direct
+  sandbox CLI checks passed for enabled injection, disabled injection, no configured CA, and decorated output.
+- **Learnings for future iterations:**
+  - No new codebase pattern was needed; the existing fresh-binary and pseudo-TTY verification guidance
+    remained sufficient for a repeat build confirmation.
+---
