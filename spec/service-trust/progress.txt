@@ -801,3 +801,23 @@ Spec SoT:
   - `core/test/cli/start.scenario.test.ts` has a live-Podman case that runs (and fails) on a host with a
     Podman socket; it fails identically at `origin/main`, so treat it as sandbox-only, not a regression.
 ---
+
+## 2026-07-30 17:26 CDT - US-492 Build Close-out
+- Story scope shipped and committed: the `lando.certs` feature, its base-default registration, planner
+  leaf issuance with the documented SAN ordering, custom-path containment, and the guide. Every US-492
+  acceptance criterion is met, including "composition tests with fake CA", which is the contract's
+  deliberate boundary — no criterion requires a certificate authority in the shipped runtime.
+- Open seam, unowned by any story: with no `CertificateAuthority` in the app bootstrap, `certs: true`
+  fails at plan time with `lando setup` remediation rather than issuing. Bundling `@lando/ca-mkcert`
+  needs a new `cas` plugin-capability slot (`LandoPluginModule`, the capability index, the bootstrap
+  layer generator, and the ship list) — an SDK contract change of the same shape the US-486/US-499
+  adjudication split out rather than absorbing. It belongs in its own story.
+- **Learnings for future iterations:**
+  - A second loop session held this worktree for the whole of this build and independently rewrote the
+    feature module between the edit and the commit, so the first commit captured its `certPath`/`keyPath`
+    and `/etc/lando/certs/leaf` contract instead of the one under test. Check `ps` for agent-spawned
+    `bun`/`codegen` processes and compare file mtimes against the clock BEFORE staging, not only before
+    editing; `git status` reads clean in this situation because the foreign edit lands inside your own
+    commit.
+  - When the races are on the same story, converge on whatever contract is already committed instead of
+    re-asserting your own; the reconciliation is then a rename in one file rather than a revert war.
