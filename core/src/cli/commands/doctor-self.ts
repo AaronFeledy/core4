@@ -142,28 +142,21 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
 };
 
 export interface IsolateDoctorSectionOptions<A, E, R> {
-  /** Report section label recorded on the self check. */
   readonly section: string;
-  /** The section program to bound and isolate. */
   readonly effect: Effect.Effect<A, E, R>;
-  /** Value substituted into the report when the section cannot answer. */
   readonly fallback: A;
-  /** Per-section deadline. Defaults to {@link doctorSectionBudgetMs}. */
   readonly budgetMs?: number;
   /**
    * Applied to the failure message before it reaches the report. Callers pass
    * a redactor so a secret in an error string never lands in output.
    */
   readonly redact?: (value: string) => string;
-  /** Extra remediation appended after the generic report-issue solution. */
   readonly solutions?: ReadonlyArray<DoctorSelfSolution>;
-  /** Extra context merged into the self check. */
   readonly context?: Readonly<Record<string, string>>;
 }
 
 export interface IsolatedDoctorSection<A> {
   readonly value: A;
-  /** Present only when the section failed. */
   readonly self?: DoctorSelfCheck;
 }
 

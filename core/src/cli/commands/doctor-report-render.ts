@@ -21,10 +21,7 @@ export { renderDoctorReportAsNdjson } from "./doctor-report-ndjson.ts";
 import { renderGlobalAppDoctorResult } from "./doctor-global-app.ts";
 import { renderMcpDoctorResult } from "./doctor-mcp.ts";
 import { renderSubsystemDoctorResult } from "./doctor-subsystems.ts";
-import {
-  type AppVersionConstraintDoctorResult,
-  renderAppVersionConstraintResult,
-} from "./doctor-version-constraint.ts";
+import { renderAppVersionConstraintResult } from "./doctor-version-constraint.ts";
 import { renderDoctorResult, renderSolution } from "./doctor.ts";
 
 interface DoctorCheckLike {
@@ -32,7 +29,6 @@ interface DoctorCheckLike {
   readonly status: "pass" | "warn" | "fail";
   readonly context: Readonly<Record<string, string>>;
   readonly solutions: ReadonlyArray<{
-    readonly kind: string;
     readonly description: string;
     readonly command?: string;
   }>;
@@ -95,9 +91,6 @@ const appConfigSection = (result: ConfigLintResult): SummarySection => ({
   ...(result.violations.length === 0 ? {} : { notes: result.violations.map(renderConfigLintViolation) }),
 });
 
-const appVersionConstraintSection = (result: AppVersionConstraintDoctorResult): SummarySection =>
-  checkSection("app version constraint", result.checks);
-
 const selfSection = (report: DoctorSelfReport): SummarySection => ({
   title: "doctor self",
   rows: report.checks.map((check) => ({
@@ -137,7 +130,7 @@ export const buildDoctorReportSummary = (report: DoctorReport): SummaryDocument 
     checkSection("mcp", report.mcp.checks),
   ];
   if (report.appVersionConstraints !== undefined)
-    sections.push(appVersionConstraintSection(report.appVersionConstraints));
+    sections.push(checkSection("app version constraint", report.appVersionConstraints.checks));
   if (report.deprecations !== undefined) sections.push(deprecationsSection(report.deprecations));
   if (report.appConfig !== undefined) sections.push(appConfigSection(report.appConfig));
   if (report.self !== undefined) sections.push(selfSection(report.self));

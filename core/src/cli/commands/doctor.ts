@@ -70,13 +70,7 @@ export type {
 export { providerKindFor } from "./doctor-contract.ts";
 
 export interface DoctorOptions {
-  /**
-   * Explicit `--provider` value provided on the CLI.
-   */
   readonly flagProviderId?: string | undefined;
-  /**
-   * Landofile-declared `provider:` field.
-   */
   readonly landofileProviderId?: string | undefined;
   /**
    * Environment lookup used for `LANDO_PROVIDER`. Defaults to `process.env`.

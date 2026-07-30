@@ -103,9 +103,7 @@ const EMPTY_CHECKS = { checks: [] } as const;
  */
 export interface CollectDoctorReportInput<R> {
   readonly options: DoctorOptions;
-  /** Provider section, already bound to whatever runtime could be built. */
   readonly provider: Effect.Effect<DoctorResult, never, R>;
-  /** Deprecation section, bound to the same runtime as `provider`. */
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
   /** Self checks recorded before collection started (e.g. bootstrap failure). */
   readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;

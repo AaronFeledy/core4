@@ -9,10 +9,7 @@ import { DoctorNdjsonSummarySchema } from "./doctor-ndjson.ts";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract.ts";
 import type { DoctorSelfCheck } from "./doctor-self.ts";
 import { renderSubsystemDoctorResultAsNdjson } from "./doctor-subsystems.ts";
-import {
-  type AppVersionConstraintDoctorCheck,
-  appVersionConstraintCheckPayload,
-} from "./doctor-version-constraint.ts";
+import { appVersionConstraintCheckPayload } from "./doctor-version-constraint.ts";
 import { renderDoctorResultAsNdjson } from "./doctor.ts";
 
 const doctorCheckFrameLine = (payload: Record<string, unknown>): string =>
@@ -31,9 +28,6 @@ const appConfigCheckLine = (result: ConfigLintResult): string =>
     },
     violations: result.violations,
   });
-
-const appVersionConstraintCheckLine = (check: AppVersionConstraintDoctorCheck): string =>
-  doctorCheckFrameLine(appVersionConstraintCheckPayload(check));
 
 const deprecationsCheckLine = (result: DoctorDeprecationReport): string =>
   doctorCheckFrameLine({
@@ -81,7 +75,11 @@ export const renderDoctorReportAsNdjson = (
     ...checkLinesFromNdjson(renderMcpDoctorResultAsNdjson(report.mcp, { now })),
   );
   if (report.appVersionConstraints !== undefined)
-    lines.push(...report.appVersionConstraints.checks.map(appVersionConstraintCheckLine));
+    lines.push(
+      ...report.appVersionConstraints.checks.map((check) =>
+        doctorCheckFrameLine(appVersionConstraintCheckPayload(check)),
+      ),
+    );
   if (report.deprecations !== undefined) lines.push(deprecationsCheckLine(report.deprecations));
   if (report.appConfig !== undefined) lines.push(appConfigCheckLine(report.appConfig));
   const selfChecks = report.self?.checks ?? [];
