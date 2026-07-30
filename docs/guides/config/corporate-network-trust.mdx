@@ -96,8 +96,10 @@ certificate authorities inject into `type: lando` services:
 
 The note is informational and never fails setup. It is omitted when no host CA files are configured
 or when `network.ca.injectIntoServices` (or `LANDO_NETWORK_CA_INJECT_INTO_SERVICES`) disables
-injection. Machine consumers read the same note from the `notes` array in
-`lando setup --format json`.
+injection. Machine consumers read `injectedCaCount` from `lando setup --format json`; it is the
+number of configured host CAs that inject into services. The value is `0` both when no host CAs are
+configured and when injection is disabled. Human-facing setup text is renderer output and must not
+be parsed as machine state.
 
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
@@ -149,7 +151,7 @@ injection. Machine consumers read the same note from the `notes` array in
     <Step name="read-setup-injection-note">
       <Variable name="command" value="lando setup" display="Report configured certificate authorities that inject into type: lando services" />
       <Variable name="suppressed" value="network.ca.injectIntoServices=false" display="Omit the note when CA injection is disabled" />
-      <Variable name="machineField" value="notes" display="Read the same note from the setup result in --format json" />
+      <Variable name="machineField" value="injectedCaCount" display="Read the numeric injected CA count from the setup result in --format json; zero means no configured host CAs or disabled injection" />
     </Step>
   </Scenario>
 </Guide>
