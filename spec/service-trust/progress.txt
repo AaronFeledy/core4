@@ -765,3 +765,39 @@ Spec SoT:
   - The plugin stays out of `core/build.config.ts`; wiring the CA into the shipped binary belongs to the
     stories that consume it, not to the Live implementation.
 ---
+
+## 2026-07-30 17:35 CDT - US-492
+- Added the `lando.certs` service feature at priority 1000 on the lando base stack. It mounts the
+  resolved leaf certificate (and key, when present) read-only at `/etc/lando/certs/<service>.crt|.key`,
+  publishes `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY`, and records the issued `cn`/`sans`/`caId` on the
+  service plan. Empty config stays inert, and a key without its certificate fails at the feature boundary.
+- AppPlanner now resolves leaf certificates once per lando-base service: `certs: true` asks the active
+  certificate authority for a certificate whose common name is the service's internal alias and whose SANs
+  cover the service name, internal alias, authored hostnames, service and top-level proxy route hostnames,
+  `localhost`, and `127.0.0.1`, in that order. Custom certificate and key paths are contained to the app
+  root and checked for readability, `certs: false` is a no-op, and `certs:` on an l337-base service composes
+  no feature at all. A missing certificate authority fails with remediation naming `lando setup` rather than
+  silently planning a service without TLS material.
+- The certificates guide now documents the published environment variables, the in-container paths, the SAN
+  ordering, custom-path containment, and the l337 exclusion, with a unit-backed scenario.
+- Verification: typecheck, lint, every boundary rule, generated output, schema snapshot regeneration with no
+  drift, schema compatibility, guide lint, guide coverage, base-aware guide drift, and public transcripts
+  passed; 84 focused and adjacent tests passed across the certs feature, security feature, feature priority
+  table, base composition, app planner, network inject, build keys, app-plan cache, and the certs authoring
+  schema. RED was captured for both new suites before implementation. Real CLI `lando app:cache:refresh`
+  planned an app with custom and disabled certs (cached plan carries the two cert paths, the key path, and
+  both variables), and rejected an escaping path, an unreadable path, and `certs: true` with no certificate
+  authority, each with its own `services.<name>.certs` remediation and exit 1. A driver on the real
+  AppPlanner with an openssl-backed authority issued a certificate whose actual `subjectAltName` matched the
+  documented ordering exactly. QA roots and the driver were removed.
+- **Learnings for future iterations:**
+  - `lando app:cache:refresh` is the host-safe CLI surface that drives the whole planner without a container
+    runtime; `app:config` only echoes the resolved Landofile, so planner-derived mounts and env are invisible
+    there. The cached plan is binary, so assert on extracted strings rather than parsing it as JSON.
+  - `AppPlannerLive` reads its optional services at layer construction, so a new optional planner dependency
+    must be provided to the layer (`Layer.provide`), never to the effect that calls `plan()`.
+  - Planner-seeded feature configs are now plural; keep them in one list and replace matching feature refs by
+    id rather than chaining a second bespoke `.map()` per feature.
+  - `core/test/cli/start.scenario.test.ts` has a live-Podman case that runs (and fails) on a host with a
+    Podman socket; it fails identically at `origin/main`, so treat it as sandbox-only, not a regression.
+---
