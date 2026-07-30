@@ -55,8 +55,8 @@ Planning a `type: lando` service composes the `lando.certs` feature, which mount
 certificate material read-only inside the service and publishes its in-container paths:
 
 ```text
-LANDO_SERVICE_CERT=/etc/lando/certs/<service>.crt
-LANDO_SERVICE_KEY=/etc/lando/certs/<service>.key
+LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt
+LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key
 ```
 
 `LANDO_SERVICE_KEY` is set only when key material is available, so a custom certificate supplied as
@@ -105,8 +105,8 @@ published mkcert build fail with remediation instead of a partial install.
   <Scenario id="service-leaf-cert-plan" render={false} reason="Leaf certificate planning is covered by core/test/services/app-planner-certs.test.ts and plugins/service-lando/test/certs-feature.test.ts against a test certificate authority; issuing real material requires an installed mkcert root">
     <Step name="plan-service-certs">
       <Variable name="feature" value="lando.certs" display="Service feature that mounts the resolved certificate material and publishes its paths" />
-      <Variable name="certEnv" value="LANDO_SERVICE_CERT=/etc/lando/certs/<service>.crt" display="In-container path of the service leaf certificate" />
-      <Variable name="keyEnv" value="LANDO_SERVICE_KEY=/etc/lando/certs/<service>.key" display="In-container path of the leaf key; unset when no key material is available" />
+      <Variable name="certEnv" value="LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt" display="In-container path of the service leaf certificate" />
+      <Variable name="keyEnv" value="LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key" display="In-container path of the leaf key; unset when no key material is available" />
       <Variable name="sanCoverage" value="<service>, <service>.<app>.internal, hostnames, route hosts, localhost, 127.0.0.1" display="Subject alternative names requested for certs: true" />
       <Variable name="customContainment" value="services.<name>.certs" display="Custom cert and key paths must stay inside the app root and be readable" />
       <Variable name="l337" value="type: compose" display="l337-base services never compose lando.certs, so certs: is inert there" />
