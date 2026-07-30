@@ -45,6 +45,13 @@ export type ServiceMountIntent = Omit<MountPlan, "realization">;
  */
 export type ServiceAppMountIntent = Omit<AppMountPlan, "realization">;
 
+/** A host CA file injected into a derived service image after digest verification. */
+export interface ServiceCaFileDescriptor {
+  readonly path: string;
+  readonly digest: string;
+  readonly archiveName: string;
+}
+
 /**
  * A build step a feature declares. `ServicePlan` carries no build-step slot;
  * the draft retains build-step intent for the build-orchestration
@@ -59,6 +66,8 @@ export interface ServiceBuildStepIntent {
   readonly command: CommandSpec;
   /** Resolved immutable artifact identities included in the image build key but not rendered as commands. */
   readonly buildKeyInputs?: Readonly<Record<string, unknown>>;
+  /** Verified host CA files copied into the derived build context for this step. */
+  readonly caFiles?: ReadonlyArray<ServiceCaFileDescriptor>;
   /** Step ids this step depends on, if any. */
   readonly dependsOn?: ReadonlyArray<string>;
 }

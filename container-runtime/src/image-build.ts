@@ -5,6 +5,7 @@ import type { ServicePlan } from "@lando/sdk/schema";
 import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
 
 import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
+import { type PreparedBuildStep, copyInstructions, prepareDerivedBuild } from "./image-build-ca.ts";
 import { type ContainerBuildOptions, requestContainerBuild } from "./image-build-http.ts";
 
 export { buildContextContentDigest, packBuildContext } from "./build-context.ts";
@@ -17,15 +18,7 @@ export type {
 
 const INLINE_DOCKERFILE_NAME = ".lando.Dockerfile.inline";
 
-interface BuildStep {
-  readonly command: string | ReadonlyArray<string>;
-  readonly phase: string;
-}
-
 const isControlCharacterCode = (code: number): boolean => code < 32 || code === 127;
-
-const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
 
 const hasControlCharacters = (value: string): boolean =>
   Array.from(value).some((char) => isControlCharacterCode(char.charCodeAt(0)));
@@ -41,7 +34,7 @@ const validateDockerfileToken = (value: string, field: string, providerId: strin
       )
     : Effect.void;
 
-const runInstruction = (step: BuildStep, providerId: string) =>
+const runInstruction = (step: PreparedBuildStep, providerId: string) =>
   typeof step.command === "string"
     ? validateDockerfileToken(step.command, "Build step shell command", providerId).pipe(
         Effect.as(`RUN ${step.command}`),
@@ -57,26 +50,15 @@ const runInstruction = (step: BuildStep, providerId: string) =>
 const dockerfileForDerivedBuild = (
   providerId: string,
   baseRef: string,
-  steps: ReadonlyArray<BuildStep>,
+  steps: ReadonlyArray<PreparedBuildStep>,
 ): Effect.Effect<string, ProviderInternalError> =>
   Effect.gen(function* () {
     yield* validateDockerfileToken(baseRef, "Base image reference", providerId);
-    const runs = yield* Effect.forEach(steps, (step) => runInstruction(step, providerId));
-    return [`FROM ${baseRef}`, ...runs, ""].join("\n");
+    const instructions = yield* Effect.forEach(steps, (step) =>
+      runInstruction(step, providerId).pipe(Effect.map((run) => [...copyInstructions(step), run])),
+    );
+    return [`FROM ${baseRef}`, ...instructions.flat(), ""].join("\n");
   });
-
-const serviceBuildSteps = (service: ServicePlan): ReadonlyArray<BuildStep> => {
-  const extension = service.extensions["@lando/core/service-features"];
-  if (!isRecord(extension) || !Array.isArray(extension.buildSteps)) return [];
-  return extension.buildSteps.flatMap((step): ReadonlyArray<BuildStep> => {
-    if (!isRecord(step)) return [];
-    if (step.phase !== "build") return [];
-    if (typeof step.command === "string") return [{ command: step.command, phase: step.phase }];
-    if (!Array.isArray(step.command)) return [];
-    const command = step.command.filter((part): part is string => typeof part === "string");
-    return command.length === step.command.length ? [{ command, phase: step.phase }] : [];
-  });
-};
 
 const deterministicRef = (input: ArtifactBuildSpec): string =>
   `lando-build-${input.plan.provider}-${input.service}-${input.buildKey.slice(0, 24)}`.replace(
@@ -131,7 +113,7 @@ export const buildContainerArtifact = (
       );
     }
     const artifact = service.artifact;
-    const steps = serviceBuildSteps(service);
+    const { steps, caEntries } = yield* prepareDerivedBuild(service, options.providerId);
     const tag = deterministicRef(input);
     let digest: string | undefined;
     const secretValues =
@@ -172,6 +154,7 @@ export const buildContainerArtifact = (
         const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, baseTag, steps);
         const entries: ReadonlyArray<BuildContextEntry> = [
           { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
+          ...caEntries,
         ];
         digest = yield* requestContainerBuild({
           request,
@@ -190,6 +173,7 @@ export const buildContainerArtifact = (
       );
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
+        ...caEntries,
       ];
       digest = yield* requestContainerBuild({
         request,

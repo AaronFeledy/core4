@@ -200,7 +200,7 @@ describe("buildKeyForService", () => {
   });
 
   test("excludes proxy environment case-insensitively while retaining CA digests", async () => {
-    const withInputs = (proxyKey: string, proxyValue: string, caDigest: string) =>
+    const withInputs = (proxyKey: string, proxyValue: string, caDigest: string, caPath = "/host/a.pem") =>
       service({
         environment: { [proxyKey]: proxyValue, NODE_ENV: "production" },
         extensions: {
@@ -211,6 +211,7 @@ describe("buildKeyForService", () => {
                 phase: "build",
                 command: ":",
                 buildKeyInputs: { caDigests: [caDigest] },
+                caFiles: [{ path: caPath, digest: caDigest, archiveName: `lando-${caDigest}.crt` }],
               },
             ],
           },
@@ -220,9 +221,13 @@ describe("buildKeyForService", () => {
     const uppercase = await key(withInputs("HTTP_PROXY", "http://first.example", "digest-a"));
     const lowercase = await key(withInputs("http_proxy", "http://second.example", "digest-a"));
     const changedCa = await key(withInputs("http_proxy", "http://second.example", "digest-b"));
+    const movedCa = await key(
+      withInputs("http_proxy", "http://second.example", "digest-a", "/different/host/root/a.pem"),
+    );
 
     expect(lowercase).toBe(uppercase);
     expect(changedCa).not.toBe(lowercase);
+    expect(movedCa).toBe(lowercase);
   });
 
   test("hashes the realized build context instead of the host root", async () => {

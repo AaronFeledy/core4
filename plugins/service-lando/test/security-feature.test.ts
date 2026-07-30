@@ -18,6 +18,15 @@ const FeatureExtension = Schema.Struct({
         phase: Schema.String,
         command: Schema.Unknown,
         buildKeyInputs: Schema.optional(Schema.Record({ key: Schema.String, value: Schema.Unknown })),
+        caFiles: Schema.optional(
+          Schema.Array(
+            Schema.Struct({
+              path: Schema.String,
+              digest: Schema.String,
+              archiveName: Schema.String,
+            }),
+          ),
+        ),
       }),
     ),
   ),
@@ -142,8 +151,13 @@ describe("lando.security feature", () => {
       {
         id: "lando.security:trust-store",
         phase: "build",
-        command: ":",
+        command:
+          "set -e; mkdir -p /etc/lando/certs; if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; elif command -v update-ca-trust >/dev/null 2>&1; then mkdir -p /etc/pki/ca-trust/source/anchors && cp /usr/local/share/ca-certificates/lando-*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust extract; else echo 'No supported CA trust-store installer found.' >&2; exit 1; fi; cat /usr/local/share/ca-certificates/lando-*.crt > /etc/lando/certs/ca-bundle.pem",
         buildKeyInputs: { caDigests: [DIGEST_A, DIGEST_B] },
+        caFiles: [
+          { path: "/host/b.pem", digest: DIGEST_B, archiveName: `lando-${DIGEST_B}.crt` },
+          { path: "/host/a.pem", digest: DIGEST_A, archiveName: `lando-${DIGEST_A}.crt` },
+        ],
       },
     ]);
   });
