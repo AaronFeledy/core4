@@ -1716,7 +1716,15 @@
               "properties": {
                 "ca": {
                   "items": {
-                    "type": "string"
+                    "acceptsImportRef": true,
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "$ref": "#/$defs/StringImportRef"
+                      }
+                    ]
                   },
                   "type": "array"
                 },
@@ -1756,11 +1764,27 @@
                 "cas": {
                   "anyOf": [
                     {
-                      "type": "string"
+                      "acceptsImportRef": true,
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/StringImportRef"
+                        }
+                      ]
                     },
                     {
                       "items": {
-                        "type": "string"
+                        "acceptsImportRef": true,
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/$defs/StringImportRef"
+                          }
+                        ]
                       },
                       "type": "array"
                     }
@@ -1809,11 +1833,27 @@
                 "certificate-authority": {
                   "anyOf": [
                     {
-                      "type": "string"
+                      "acceptsImportRef": true,
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/StringImportRef"
+                        }
+                      ]
                     },
                     {
                       "items": {
-                        "type": "string"
+                        "acceptsImportRef": true,
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/$defs/StringImportRef"
+                          }
+                        ]
                       },
                       "type": "array"
                     }
@@ -1847,11 +1887,27 @@
                 "certificate-authorities": {
                   "anyOf": [
                     {
-                      "type": "string"
+                      "acceptsImportRef": true,
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "$ref": "#/$defs/StringImportRef"
+                        }
+                      ]
                     },
                     {
                       "items": {
-                        "type": "string"
+                        "acceptsImportRef": true,
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "$ref": "#/$defs/StringImportRef"
+                          }
+                        ]
                       },
                       "type": "array"
                     }
@@ -2335,6 +2391,56 @@
       ],
       "title": "Service Dependency Condition",
       "type": "string"
+    },
+    "StringImportRef": {
+      "additionalProperties": false,
+      "properties": {
+        "_tag": {
+          "description": "Import-reference discriminator.",
+          "enum": [
+            "ImportRef"
+          ],
+          "type": "string"
+        },
+        "basename": {
+          "description": "Basename of the authored path.",
+          "type": "string"
+        },
+        "checksum": {
+          "description": "Lowercase hexadecimal SHA-256 of the imported bytes.",
+          "type": "string"
+        },
+        "layer": {
+          "description": "Landofile layer that authored the import.",
+          "enum": [
+            "base",
+            "dist",
+            "upstream",
+            "canonical",
+            "local",
+            "user"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "Path as authored in the source Landofile.",
+          "type": "string"
+        },
+        "value": {
+          "description": "Decoded imported value.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "_tag",
+        "path",
+        "basename",
+        "checksum",
+        "layer",
+        "value"
+      ],
+      "title": "String Import Reference",
+      "type": "object"
     }
   },
   "$ref": "#/$defs/ServiceConfigInput",

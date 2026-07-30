@@ -95,6 +95,7 @@ export { PostGlobalRebuildEvent, PreGlobalRebuildEvent } from "../events/global.
 export { PostHttpCallEvent, PreHttpCallEvent } from "../events/http-call.ts";
 export * from "./json-schema.ts";
 export * from "./landofile.ts";
+export * from "./landofile-reference.ts";
 export * from "./log-source.ts";
 export * from "./machine-output.ts";
 export * from "./host-proxy.ts";

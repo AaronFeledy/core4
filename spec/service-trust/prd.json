@@ -128,7 +128,7 @@
         "Lint passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01; adjudicated split from US-486 because US-143 intentionally kept the SDK evaluator file-IO-free and deferred the production core loader seam"
     },
     {

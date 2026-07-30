@@ -70,6 +70,7 @@ import {
 import { resolveNetworkTrustPlan } from "../http-client/network-trust.ts";
 import { getLandofileAppRoot } from "../landofile/app-root-provenance.ts";
 import { parseEnvFile } from "../landofile/env-file.ts";
+import { getLandofileReferencedFiles } from "../landofile/load-expression-provenance.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
   hostProxyExtensionForCapabilities,
@@ -1141,9 +1142,10 @@ const planApp = (
     const fileSyncEngineId =
       providerCapabilities.bindMountPerformance === "slow" ? resolveFileSyncEngineId(manifests) : undefined;
     const cacheRoot = resolveUserCacheRoot();
-    const sourceFingerprint = yield* readAppPlanSourceFingerprint(appRoot).pipe(
-      Effect.catchAll(() => Effect.succeed(undefined)),
-    );
+    const sourceFingerprint = yield* readAppPlanSourceFingerprint(
+      appRoot,
+      getLandofileReferencedFiles(landofile),
+    ).pipe(Effect.catchAll(() => Effect.succeed(undefined)));
     const registeredServiceTypeIds = manifests.flatMap((manifest) =>
       (manifest.contributes?.serviceTypes ?? []).map(contributionId),
     );

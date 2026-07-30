@@ -46,6 +46,51 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for Landofile ImportRef misuse.",
+    "docsPath": "docs/reference/schemas/landofile-import-ref-misuse-error.mdx",
+    "id": "LandofileImportRefMisuseError",
+    "jsonSchemaPath": "dist/schemas/landofile-import-ref-misuse-error.json",
+    "packageExport": "@lando/sdk/schema#LandofileImportRefMisuseError",
+    "title": "Landofile Import Ref Misuse Error"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for Landofile load limits.",
+    "docsPath": "docs/reference/schemas/landofile-load-limit-error.mdx",
+    "id": "LandofileLoadLimitError",
+    "jsonSchemaPath": "dist/schemas/landofile-load-limit-error.json",
+    "packageExport": "@lando/sdk/schema#LandofileLoadLimitError",
+    "title": "Landofile Load Limit Error"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for outside-root Landofile loads.",
+    "docsPath": "docs/reference/schemas/landofile-load-outside-root-error.mdx",
+    "id": "LandofileLoadOutsideRootError",
+    "jsonSchemaPath": "dist/schemas/landofile-load-outside-root-error.json",
+    "packageExport": "@lando/sdk/schema#LandofileLoadOutsideRootError",
+    "title": "Landofile Load Outside Root Error"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for loaded-file metadata.",
+    "docsPath": "docs/reference/schemas/file-ref.mdx",
+    "id": "FileRef",
+    "jsonSchemaPath": "dist/schemas/file-ref.json",
+    "packageExport": "@lando/sdk/schema#FileRef",
+    "title": "File Reference"
+  },
+  {
+    "deprecated": false,
+    "description": "Public Lando schema contract for imported string values and provenance.",
+    "docsPath": "docs/reference/schemas/string-import-ref.mdx",
+    "id": "StringImportRef",
+    "jsonSchemaPath": "dist/schemas/string-import-ref.json",
+    "packageExport": "@lando/sdk/schema#StringImportRef",
+    "title": "String Import Reference"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Subscriber Level Mismatch Error.",
     "docsPath": "docs/reference/schemas/subscriber-level-mismatch-error.mdx",
     "id": "SubscriberLevelMismatchError",

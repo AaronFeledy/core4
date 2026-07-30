@@ -9,6 +9,7 @@ import { ComposeServiceKnobFields } from "./compose-service-knobs.ts";
 import { ComposeVolumesField } from "./compose-volumes.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { EndpointInput } from "./endpoint.ts";
+import { StringImportRef } from "./landofile-reference.ts";
 import { LogSourceInput } from "./log-source.ts";
 import { StorageScope } from "./mounts.ts";
 import { CommandSpec, PortablePath, ProviderExtensionConfig, ProviderId, ServiceName } from "./primitives.ts";
@@ -367,8 +368,12 @@ const COMPOSE_SECRETS_DESCRIPTION =
 const SERVICE_SECURITY_DESCRIPTION =
   "Additional CA paths and per-service overrides for inheriting host network CA and proxy settings.";
 
+const ServiceSecurityCaEntry = Schema.Union(Schema.String, StringImportRef).annotations({
+  jsonSchema: { acceptsImportRef: true },
+});
+
 const ServiceSecurity = Schema.Struct({
-  ca: Schema.optional(Schema.Array(Schema.String)).annotations({
+  ca: Schema.optional(Schema.Array(ServiceSecurityCaEntry)).annotations({
     description: "Additional CA certificate paths for this service.",
   }),
   inheritNetworkCa: Schema.optional(Schema.Boolean).annotations({
@@ -379,12 +384,12 @@ const ServiceSecurity = Schema.Struct({
   }),
 });
 
-const ServiceSecurityCaAlias = Schema.Union(Schema.String, Schema.Array(Schema.String));
+const ServiceSecurityCaAlias = Schema.Union(ServiceSecurityCaEntry, Schema.Array(ServiceSecurityCaEntry));
 const Forbidden = Schema.optional(Schema.Never);
 
 const ServiceSecurityInput = Schema.Union(
   Schema.Struct({
-    ca: Schema.optional(Schema.Array(Schema.String)),
+    ca: Schema.optional(Schema.Array(ServiceSecurityCaEntry)),
     cas: Forbidden,
     "certificate-authority": Forbidden,
     "certificate-authorities": Forbidden,
@@ -430,7 +435,7 @@ const ServiceSecurityField = Schema.transform(ServiceSecurityInput, ServiceSecur
     } = input;
     const authoredCa = ca ?? cas ?? certificateAuthority ?? certificateAuthorities;
     return {
-      ...(authoredCa === undefined ? {} : { ca: typeof authoredCa === "string" ? [authoredCa] : authoredCa }),
+      ...(authoredCa === undefined ? {} : { ca: Array.isArray(authoredCa) ? authoredCa : [authoredCa] }),
       ...(inheritNetworkCa === undefined ? {} : { inheritNetworkCa }),
       ...(inheritNetworkProxy === undefined ? {} : { inheritNetworkProxy }),
     };

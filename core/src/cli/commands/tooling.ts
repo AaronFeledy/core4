@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 
 import type { ToolingError, ToolingResult } from "@lando/sdk/app";
-import { type ComposeKeyRejectedError, ToolingCompileError } from "@lando/sdk/errors";
+import {
+  type ComposeKeyRejectedError,
+  type LandofileLoadExpressionError,
+  ToolingCompileError,
+} from "@lando/sdk/errors";
 import type { LandofileShape, ToolingTaskShape } from "@lando/sdk/schema";
 
 import {
@@ -36,7 +40,7 @@ export interface RunToolingOptions {
 export type RunToolingResult = ToolingResult;
 export type { ToolingResult };
 
-type RunToolingError = ToolingError | ComposeKeyRejectedError;
+type RunToolingError = ToolingError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 
 type RunToolingServices =
   | AppPlanner

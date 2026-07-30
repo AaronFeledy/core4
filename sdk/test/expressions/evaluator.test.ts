@@ -231,6 +231,26 @@ describe("evaluateExpression happy paths", () => {
 });
 
 describe("evaluateExpression forbidden helpers", () => {
+  test("uses an explicit helper override before the sandbox prohibition", () => {
+    // Given
+    const expression = interpolationExpression('{{ load("./corp.pem") }}');
+
+    // When
+    const result = evaluateExpressionEither(
+      expression,
+      {},
+      {
+        filePath,
+        helperOverrides: {
+          load: (args) => ({ path: args[0], content: "certificate" }),
+        },
+      },
+    );
+
+    // Then
+    expect(result).toEqual(Either.right({ path: "./corp.pem", content: "certificate" }));
+  });
+
   for (const [helper, source] of [
     ["load", '{{ load("./x.json") }}'],
     ["import", '{{ import("./x.ts") }}'],

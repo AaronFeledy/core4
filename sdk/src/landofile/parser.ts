@@ -36,14 +36,6 @@ import {
 
 export type LoadHint = "string" | "yaml" | "json" | "binary";
 
-export interface ImportRef {
-  readonly _tag: "ImportRef";
-  readonly path: string;
-  readonly originalFilename: string;
-  readonly content: string;
-  readonly hint: LoadHint;
-}
-
 export interface ParseOptions {
   readonly file: string;
   readonly content: string;

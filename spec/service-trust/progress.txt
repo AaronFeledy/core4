@@ -37,6 +37,9 @@ Spec SoT:
 - When a planner configures one base-default feature, keep unconfigured defaults on
   `base.defaultFeatures` and move only configured refs through `ComposeServiceFeature`; this preserves
   established base semantics while allowing schema-decoded planner payloads.
+- Provenance stored beside decoded Landofile objects in a `WeakMap` must be copied whenever an include
+  resolver or normalization step returns a replacement object; otherwise downstream cache keys silently
+  lose source dependencies.
 
 ## Status
 
@@ -274,4 +277,26 @@ Spec SoT:
 - **Learnings for future iterations:** Durable plugin plans that may contain runtime credentials must
   use the plugin-scoped StateStore contract rather than direct JSON writes; this supplies atomicity,
   advisory locking, version handling, and restrictive replacement permissions across providers.
+---
+## [2026-07-29 20:28 CDT] - Babysit
+- PR: #654 https://github.com/AaronFeledy/core4/pull/654
+- CI outcome: pass
+- Review feedback: fixed (Guide-Coverage-Skip for internal provider StateStore migration; unit shard timeout was flake)
+- Merge: merged (squash)
+---
+
+## 2026-07-29 22:10 CDT - US-499
+- Added production Landofile `load()` / `import()` evaluation with local-file containment, configurable
+  limits, fragment-relative provenance, ImportRef-aware service CA planning, and referenced-file app-plan
+  cache invalidation that ignores mtime-only drift.
+- Published the ImportRef-capable `security.ca` schema and tagged load failures, refreshed generated schema
+  artifacts, and documented local CA expressions and remediation in the corporate network trust guide.
+- Verification: typecheck, lint passed; 483 focused and adjacent tests with 1,669 assertions passed;
+  boundary, generated-output, guide lint/coverage/drift, and public-transcript gates passed; real
+  `app:config --format json` success and outside-root failure surfaces passed with clean teardown.
+- **Learnings for future iterations:**
+  - Transfer out-of-band provenance across every decode or normalization object replacement; preserving
+    values alone is insufficient when planner cache identity reads metadata from object identity.
+  - ImportRef acceptance must distinguish the exact scalar CA path and its direct list elements, then
+    recursively reject nested refs at all other paths with the precise offending config path.
 ---

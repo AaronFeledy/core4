@@ -5,10 +5,10 @@ export { emitLandofileYaml, emitLandofileYamlEither } from "./emit.ts";
 export { LandofileEmitError } from "./errors.ts";
 export {
   detectLandofileTags,
-  type ImportRef,
   type LandofileTag,
   type LandofileTagOccurrence,
   type LoadHint,
   parseLandofile,
   type ParseOptions,
 } from "./parser.ts";
+export type { ImportRefValue as ImportRef } from "../schema/landofile-reference.ts";

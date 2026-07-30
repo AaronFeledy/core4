@@ -6,7 +6,10 @@ import {
   AppIdReservedError,
   type ComposeKeyRejectedError,
   type LandofileFormConflictError,
+  type LandofileImportRefMisuseError,
   type LandofileIncludeError,
+  type LandofileLoadLimitError,
+  type LandofileLoadOutsideRootError,
   type LandofileLockMismatchError,
   type LandofileNotFoundError,
   LandofileParseError,
@@ -59,6 +62,9 @@ export type UserLandofileError =
   | NotImplementedError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileImportRefMisuseError
+  | LandofileLoadLimitError
+  | LandofileLoadOutsideRootError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | AppIdReservedError

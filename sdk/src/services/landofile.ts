@@ -3,7 +3,10 @@ import { Context, type Effect } from "effect";
 import type {
   ComposeKeyRejectedError,
   LandofileFormConflictError,
+  LandofileImportRefMisuseError,
   LandofileIncludeError,
+  LandofileLoadLimitError,
+  LandofileLoadOutsideRootError,
   LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -28,6 +31,9 @@ export class LandofileService extends Context.Tag("@lando/core/LandofileService"
       | LandofileFormConflictError
       | LandofileIncludeError
       | LandofileLockMismatchError
+      | LandofileImportRefMisuseError
+      | LandofileLoadLimitError
+      | LandofileLoadOutsideRootError
       | ToolingIncludeCycleError
       | NotImplementedError
       | ComposeKeyRejectedError

@@ -83,6 +83,10 @@
 
 ## Additive Alpha schema exports
 
+- `FileRef`
+- `ImportRef`
+- `LandofileLayer`
+- `StringImportRef`
 - `AbsolutePath`
 - `AppMountPlan`
 - `ArtifactBuildSpec`

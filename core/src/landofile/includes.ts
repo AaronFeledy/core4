@@ -35,6 +35,13 @@ import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
+import {
+  getLandofileReferencedFiles,
+  rememberLandofileReferencedFiles,
+} from "./load-expression-provenance.ts";
+import { resolveLandofileLoadExpressions } from "./load-expression.ts";
+import type { ResolveLandofileLoadExpressionError } from "./load-expression.ts";
 import { mergeLandofiles, mergeValues } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import {
@@ -73,6 +80,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly layer?: VersionConstraintEntry["layer"];
   readonly order?: VersionConstraintEntry["order"];
   readonly resolveTooling?: boolean;
+  readonly loadPolicy?: LandofileLoadPolicy;
 }
 
 interface NormalizedInclude {
@@ -99,6 +107,7 @@ interface ResolveContext {
   readonly lockEntries: ReadonlyMap<string, LockEntry>;
   readonly stagedLocks: Map<string, LockEntry>;
   readonly noNetwork: boolean;
+  readonly loadPolicy: LandofileLoadPolicy;
 }
 
 interface FragmentResult {
@@ -127,6 +136,7 @@ export type ResolveIncludesError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | LandofileParseError
+  | ResolveLandofileLoadExpressionError
   | NotImplementedError
   | ToolingIncludeCycleError;
 
@@ -530,12 +540,31 @@ const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
 
 const parseFragment = (
   fragment: FragmentResult,
+  ctx: ResolveContext,
+  layer: VersionConstraintEntry["layer"],
 ): Effect.Effect<
   Record<string, unknown>,
-  ComposeKeyRejectedError | LandofileParseError | LandofileIncludeError
+  ComposeKeyRejectedError | LandofileParseError | LandofileIncludeError | ResolveLandofileLoadExpressionError
 > =>
   rejectComposeTags(fragment.authoredSource, fragment.content).pipe(
     Effect.flatMap((content) => parseLandofile({ file: fragment.filePath, content, cwd: fragment.root })),
+    Effect.flatMap((parsed) =>
+      resolveLandofileLoadExpressions({
+        value: parsed,
+        source: {
+          appRoot: ctx.appRoot,
+          sourcePath: fragment.filePath,
+          sourceRoot: fragment.root,
+          layer,
+        },
+        policy: ctx.loadPolicy,
+      }),
+    ),
+    Effect.map(({ value, dependencies }) =>
+      typeof value === "object" && value !== null
+        ? rememberLandofileReferencedFiles(value, dependencies)
+        : value,
+    ),
     Effect.flatMap((parsed) => rejectComposeKeys(fragment.authoredSource, parsed)),
     Effect.flatMap((parsed) => {
       if (!isPlainRecord(parsed)) {
@@ -634,7 +663,10 @@ const resolveTree = (
     }
     const incompatible = assertCompatibleIncludeFields(landofile);
     if (incompatible !== undefined) return yield* Effect.fail(incompatible);
-    const sourced = resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot);
+    const sourced = rememberLandofileReferencedFiles(
+      resolveToolingIncludeSourceRoots(landofile, ctx.sourceRoot, ctx.appRoot),
+      getLandofileReferencedFiles(landofile),
+    );
     const includes = authoredIncludeEntries(sourced);
     if (includes.length === 0)
       return rememberLocalIncludePaths(
@@ -668,7 +700,7 @@ const resolveTree = (
           }),
         );
       }
-      const parsed = yield* parseFragment(fragment);
+      const parsed = yield* parseFragment(fragment, ctx, layer);
       const nested = yield* resolveTree(
         parsed as LandofileShape,
         { ...ctx, sourceRoot: fragment.root },
@@ -723,12 +755,15 @@ const resolveTree = (
       ...(toolingIncludes.length === 0 ? [] : [{ includes: toolingIncludes }]),
     ]);
     const decoded = yield* decodeMerged(merged, ctx.lockfilePath);
-    return rememberLocalIncludePaths(
-      rememberVersionConstraintEntries(decoded, [
-        ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
-        ...ownVersionConstraintEntries(sourced, source, layer, order),
-      ]),
-      [...localIncludePaths],
+    return rememberLandofileReferencedFiles(
+      rememberLocalIncludePaths(
+        rememberVersionConstraintEntries(decoded, [
+          ...fragments.flatMap((fragment) => getVersionConstraintEntries(fragment, source)),
+          ...ownVersionConstraintEntries(sourced, source, layer, order),
+        ]),
+        [...localIncludePaths],
+      ),
+      [...getLandofileReferencedFiles(sourced), ...fragments.flatMap(getLandofileReferencedFiles)],
     );
   });
 
@@ -967,6 +1002,7 @@ export const resolveLandofileIncludes = (
       lockEntries: yield* parseLockEntries(options.appRoot, lockfilePath),
       stagedLocks: new Map(),
       noNetwork: false,
+      loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
     const existingLocalIncludePaths = getLocalIncludePaths(options.landofile);
@@ -1102,6 +1138,7 @@ export const updateLandofileIncludes = (
       lockEntries: existing,
       stagedLocks: new Map(),
       noNetwork,
+      loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
     };
 
     if (includes.length > 0) {
@@ -1218,6 +1255,7 @@ export const verifyLandofileIncludes = (
       lockEntries: existing,
       stagedLocks: new Map(),
       noNetwork: false,
+      loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
     };
 
     if (includes.length > 0) {

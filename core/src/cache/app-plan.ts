@@ -21,13 +21,14 @@ import {
   isVersionConstraintSkipped,
 } from "../config/version-constraint.ts";
 import { presentLandofileLayers } from "../landofile/layers.ts";
+import type { LandofileReferencedFile } from "../landofile/load-expression-provenance.ts";
 import { CORE_VERSION } from "../version.ts";
 import { appPlanCachePath } from "./paths.ts";
 
 export const APP_PLAN_CACHE_MAGIC = Buffer.from("LCAP");
 export const APP_PLAN_CACHE_HEADER_BYTES = 44;
 // Bump for serialized-shape or planner-output semantic changes, independently of the package version.
-export const APP_PLAN_CACHE_SCHEMA_VERSION = 13n;
+export const APP_PLAN_CACHE_SCHEMA_VERSION = 14n;
 
 interface AppPlanCachePayload {
   readonly schemaVersion: number;
@@ -54,6 +55,7 @@ export interface AppPlanSourceFingerprint {
   readonly landofileContentHashes: ReadonlyArray<{ readonly source: string; readonly hash: string }>;
   readonly includeLockfileHash: string | null;
   readonly includedFragmentShas: ReadonlyArray<string>;
+  readonly referencedFiles: ReadonlyArray<LandofileReferencedFile>;
 }
 
 const sha256 = (payload: Uint8Array | string): Buffer => createHash("sha256").update(payload).digest();
@@ -106,6 +108,7 @@ const readIncludeLockChecksums = (path: string): Promise<ReadonlyArray<string>> 
 
 export const readAppPlanSourceFingerprint = (
   appRoot: string,
+  referencedFiles: ReadonlyArray<LandofileReferencedFile> = [],
 ): Effect.Effect<AppPlanSourceFingerprint, CacheError> =>
   Effect.tryPromise({
     try: async () => {
@@ -120,6 +123,7 @@ export const readAppPlanSourceFingerprint = (
         ),
         includeLockfileHash: await readOptionalHash(includeLockfilePath),
         includedFragmentShas: await readIncludeLockChecksums(includeLockfilePath),
+        referencedFiles,
       };
     },
     catch: (cause) =>
@@ -155,7 +159,17 @@ export const deriveAppPlanCacheKey = (input: AppPlanCacheKeyInput): string => {
       landoVersion: CORE_VERSION,
       appRoot: input.appRoot,
       landofile: input.landofile,
-      sourceFingerprint: input.sourceFingerprint ?? null,
+      sourceFingerprint:
+        input.sourceFingerprint === undefined
+          ? null
+          : {
+              landofileContentHashes: input.sourceFingerprint.landofileContentHashes,
+              includeLockfileHash: input.sourceFingerprint.includeLockfileHash,
+              includedFragmentShas: input.sourceFingerprint.includedFragmentShas,
+              referencedFiles: input.sourceFingerprint.referencedFiles
+                .map(({ absolutePath, size, sha256 }) => ({ absolutePath, size, sha256 }))
+                .sort((left, right) => left.absolutePath.localeCompare(right.absolutePath)),
+            },
       includedFragmentShas: [
         ...(input.sourceFingerprint?.includedFragmentShas ?? []),
         ...(input.includedFragmentShas ?? []),

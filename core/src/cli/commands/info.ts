@@ -7,7 +7,7 @@ import type {
   InfoServiceStatus,
   InfoAppError as SdkInfoAppError,
 } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
+import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape, PublishedEndpoint, ServiceName, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -23,7 +23,7 @@ import { hostProxyPlanExtension } from "../../subsystems/host-proxy/plan-extensi
 import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "../authority-url.ts";
 
-export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError;
+export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
 export { buildInfoSummary, renderInfoAppResult } from "./info-render.ts";
 

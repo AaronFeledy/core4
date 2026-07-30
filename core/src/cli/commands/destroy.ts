@@ -16,7 +16,7 @@ import type {
   DestroyAppResult,
   DestroyAppError as SdkDestroyAppError,
 } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
+import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
@@ -35,7 +35,7 @@ import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts"
 import { cleanupHostProxyRunLandoState } from "../../subsystems/host-proxy/transport.ts";
 import { terminateFileSyncSessions } from "../file-sync.ts";
 
-export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError;
+export type DestroyAppError = SdkDestroyAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { DestroyAppOptions, DestroyAppResult } from "@lando/sdk/app";
 
 export const DestroyAppResultSchema = Schema.Struct({
