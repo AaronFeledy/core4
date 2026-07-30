@@ -96,6 +96,7 @@ jobs:
           bun run --filter='@lando/sdk' build
           bun run --filter='@lando/paths' build
           bun run --filter='@lando/container-runtime' build
+          bun run --filter='@lando/ca-mkcert' build
           bun run --filter='@lando/provider-lando' build
           bun run --filter='@lando/provider-docker' build
           bun run --filter='@lando/provider-podman' build
@@ -122,6 +123,7 @@ jobs:
           npm publish --workspace @lando/paths --dry-run --access public --tag dev
           npm publish --workspace @lando/container-runtime --dry-run --access public --tag dev
           npm publish --workspace @lando/core --dry-run --access public --tag dev
+          npm publish --workspace @lando/ca-mkcert --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-docker --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-podman --dry-run --access public --tag dev
@@ -141,6 +143,7 @@ jobs:
           npm publish --workspace @lando/paths --access public --tag dev --provenance
           npm publish --workspace @lando/container-runtime --access public --tag dev --provenance
           npm publish --workspace @lando/core --access public --tag dev --provenance
+          npm publish --workspace @lando/ca-mkcert --access public --tag dev --provenance
           npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
           npm publish --workspace @lando/provider-docker --access public --tag dev --provenance
           npm publish --workspace @lando/provider-podman --access public --tag dev --provenance
