@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Layer } from "effect";
+import { Cause, type Context, Effect, Layer, Schema } from "effect";
 
 import {
   CertificateAuthority,
@@ -34,8 +34,10 @@ import {
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
+import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
+  SetupResultSchema,
   setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
@@ -225,6 +227,38 @@ describe("meta:setup command", () => {
     expect(SetupCommand.bootstrap).toBe("provider");
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.bootstrap).toBe("provider");
     expect(SetupCommand.aliases).toContain("setup");
+  });
+
+  test("publishes CA injection as a boolean condition and no certificate count", () => {
+    const machineResult = {
+      providerId: "lando",
+      installDir: "/opt/lando",
+      fileSyncStatus: "satisfied" as const,
+      networkCaInjectionConfigured: true,
+    };
+
+    const decoded = Schema.decodeUnknownSync(SetupResultSchema)(machineResult);
+    const encoded = Schema.encodeSync(SetupResultSchema)(decoded);
+
+    expect(encoded).toEqual(machineResult);
+    expect(Object.keys(encoded).sort()).toEqual([
+      "fileSyncStatus",
+      "installDir",
+      "networkCaInjectionConfigured",
+      "providerId",
+    ]);
+    expect(() =>
+      Schema.decodeUnknownSync(SetupResultSchema)(
+        {
+          providerId: "lando",
+          installDir: "/opt/lando",
+          fileSyncStatus: "satisfied",
+          networkCaInjectionConfigured: true,
+          injectedCaCount: 2,
+        },
+        { onExcessProperty: "error" },
+      ),
+    ).toThrow();
   });
 
   test("exposes provider-contributed setup.flags in metadata and compiled parsing", () => {
@@ -1266,6 +1300,90 @@ describe("meta:setup command", () => {
       else process.env.LANDO_NETWORK_CA_CERTS = previous;
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  test("reports service injection when setup resolves configured CAs", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-"));
+    const corporateCert = join(tempRoot, "corporate-root.pem");
+    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: { ca: { certs: [corporateCert], trustHost: true } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(result.networkCaInjectionConfigured).toBe(true);
+      const rendered = setupSpec.render?.(result) ?? "";
+      expect(rendered).toBe(`${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`);
+      // Assert the rendered production note, not a test-local copy of the same string.
+      expect(rendered.split("\n").at(-1)).not.toMatch(/\d/u);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("reports the same unquantified injection state for several resolved CAs", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-many-"));
+    const corporateCert = join(tempRoot, "corporate-root.pem");
+    const partnerCert = join(tempRoot, "partner-root.pem");
+    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    await Bun.write(partnerCert, "-----BEGIN CERTIFICATE-----\npartner\n-----END CERTIFICATE-----\n");
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: { ca: { certs: [corporateCert, partnerCert], trustHost: true } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(result.networkCaInjectionConfigured).toBe(true);
+      expect(setupSpec.render?.(result)).toBe(
+        `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNote}`,
+      );
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("does not report service injection when CA injection is disabled", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-off-"));
+    const corporateCert = join(tempRoot, "corporate-root.pem");
+    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: { ca: { certs: [corporateCert], trustHost: true, injectIntoServices: false } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(result.networkCaInjectionConfigured).toBe(false);
+      expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("reports injection as unconfigured when no host CAs are configured", async () => {
+    const result = await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando" })
+        .pipe(Effect.provide(buildSetupLayers(testRuntimeProviderRegistry))),
+    );
+
+    expect(result.networkCaInjectionConfigured).toBe(false);
+    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
   });
 
   test("uses proxy environment variables when network.proxy config is unset", async () => {

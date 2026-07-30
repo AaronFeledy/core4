@@ -433,6 +433,16 @@ const commandResultEnvelope = (value: unknown): unknown =>
     ? value.envelope
     : value;
 
+const normalizeSetupInstallDir = (envelope: Record<string, unknown>): Record<string, unknown> => {
+  const result = envelope.result;
+  return typeof result === "object" &&
+    result !== null &&
+    "installDir" in result &&
+    typeof result.installDir === "string"
+    ? { ...envelope, result: { ...result, installDir: "<INSTALL_DIR>" } }
+    : envelope;
+};
+
 const expectUnknownFlagParity = async (argv: ReadonlyArray<string>, flag: string): Promise<void> => {
   const source = await runSourceCli(argv);
   const compiled = await runCompiledCli(argv);
@@ -1008,15 +1018,16 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         const compiledEnvelope = normalizeJsonEnvelope(lastJsonLine(compiled.stdout));
         expect(sourceEnvelope.command).toBe("meta:setup");
         expect(compiledEnvelope.command).toBe("meta:setup");
-        expect(compiledEnvelope).toMatchObject({
-          apiVersion: "v4",
-          ok: true,
-          result: { providerId: "lando", fileSyncStatus: "satisfied" },
-        });
+        expect(normalizeSetupInstallDir(compiledEnvelope)).toEqual(normalizeSetupInstallDir(sourceEnvelope));
         expect(sourceEnvelope).toMatchObject({
           apiVersion: "v4",
           ok: true,
-          result: { providerId: "lando", fileSyncStatus: "satisfied" },
+          result: {
+            providerId: "lando",
+            installDir: expect.any(String),
+            fileSyncStatus: "satisfied",
+            networkCaInjectionConfigured: false,
+          },
         });
       } finally {
         isolated.cleanup();

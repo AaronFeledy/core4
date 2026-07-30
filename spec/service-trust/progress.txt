@@ -361,3 +361,306 @@ Spec SoT:
   be projected into the artifact key without host-local paths; filter non-artifact phases before
   parsing artifact-only metadata or applying post-artifact transitions.
 ---
+
+## 2026-07-30 02:05 CDT - Babysit
+- PR: #657 https://github.com/AaronFeledy/core4/pull/657
+- CI outcome: pass
+- Review feedback: fixed (PR body Guide-Coverage-Skip for internal ServiceBuildStepIntent.caFiles; reran failed guide/unit jobs after drift gate and unrelated 5s timeout flakes)
+- Merge: merged (squash)
+---
+
+## 2026-07-30 03:11 CDT - US-488
+- `lando setup` now reports how many configured host certificate authorities inject into
+  `type: lando` services, as a non-fatal informational note carried on the setup result and rendered
+  in the decorated summary, the plain completion output, and the machine `notes` field. The note is
+  suppressed when no host CA material resolves or when CA injection is disabled, so setup success and
+  the existing completion output are unchanged for everyone else.
+- Completed the inject-path guide: corporate network trust documents the note, its suppression rules,
+  and its machine field, and the guide is now indexed as shipped for the PRD-01 inject path.
+- Verification: typecheck, lint, all boundary rules, generated output, guide lint, and guide coverage
+  passed; 225 focused and adjacent tests across setup, network-trust, planner inject, build-key,
+  service-lando security, image-build, env overlays, and HTTP client passed; the compiled CLI in the
+  dev sandbox produced the note for one and two CAs, omitted it under
+  `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=false`, and left the no-CA output byte-identical, with the
+  temporary CA material and roots removed afterward.
+- **Learnings for future iterations:**
+  - A setup-result field addition flows straight into `dist/command-schemas/meta-setup.json`; run
+    `bun run codegen:schema-snapshot` and give the new field a schema description or the
+    public-field-description gate fails.
+  - `registry.select` constructs the provider before any setup step runs, so `--skip-provider` does
+    not avoid a socket probe; sandbox CLI verification of non-provider setup behavior should select
+    the `lando` provider, which constructs without probing a host socket.
+  - A stale `bun test <path>` filter prints a no-match note and still exits 0 through a pipeline;
+    confirm a positive test count rather than trusting the absence of failures.
+---
+
+## 2026-07-30 02:32 CDT - US-488 Build Verification
+- Confirmed the setup injection note is complete at branch HEAD and added plural-count coverage so a
+  multi-CA note cannot silently regress to singular grammar. No other production change was needed.
+- Verification: typecheck, lint, all boundary rules, generated output, schema-snapshot regeneration
+  with no drift, guide lint, guide coverage, base-aware guide drift, and public transcripts passed;
+  198 focused and adjacent tests with 683 assertions passed across the inject-path filters (sdk
+  network-trust and backward-compat, paths overlay, build-key and CA build-key, app-planner network
+  inject, meta:setup, renderer summary surfaces, service-lando security feature, and the four
+  container-runtime image-build files); a direct render probe emitted the note for one and two CAs in
+  both the decorated frame and the plain completion output, kept the no-CA output byte-identical, and
+  carried the note in the machine result field, with the probe removed afterward.
+- **Learnings for future iterations:**
+  - A note on a command result is not user-visible on its own: the decorated frame only shows it when
+    the summary builder forwards it onto `SummarySection.notes`, and only a decorated-frame render test
+    catches that omission. Assert the framed surface, not just the result field.
+  - Temporary guard mutations used for RED proof are only safe while nothing else can commit the
+    worktree; verify the specific hunks in the diff immediately before committing so a mutation left in
+    place cannot ship inside a story commit.
+---
+
+## 2026-07-30 02:35 CDT - US-488 CLI Verification
+- Re-verified the shipped surface end to end on a freshly compiled binary in the dev sandbox after the
+  decorated-summary fix: the note renders as a wrapped bullet inside the framed setup box, appears in
+  the plain completion output with singular and plural grammar, appears in the machine `notes` field,
+  and is absent both when CA injection is disabled and when no host CA material is configured, with
+  setup still exiting successfully in every case.
+- Verification: typecheck, lint, generated output, guide lint, and guide coverage passed; 246 focused
+  and adjacent tests with 824 assertions passed across the inject-path filters; the sandbox CA
+  material, scratch roots, and QA driver were removed afterward.
+- **Learnings for future iterations:**
+  - Real CLI proof of a decorated (TTY-only) surface needs a pty: run the compiled binary under
+    `script -qec` inside the sandbox, since redirecting stdout drops the decorated renderer entirely.
+  - Compiled-binary evidence is only valid for the commit it was built from; rebuild `core/dist/lando`
+    after any renderer or command-result change before quoting its output as verification.
+---
+
+## 2026-07-30 11:47 CDT - US-488 Build Confirmation
+- Verified the story complete on its existing branch; the setup injection note, suppression behavior,
+  machine result, decorated summary, guide completion, and inject-path gates required no new code.
+- Verification: typecheck, lint passed; 195 focused and adjacent tests with 620 assertions passed;
+  guide lint, coverage, base-aware drift, generated-output, and public-transcript gates passed; direct
+  sandbox CLI checks passed for enabled injection, disabled injection, no configured CA, and decorated output.
+- **Learnings for future iterations:**
+  - No new codebase pattern was needed; the existing fresh-binary and pseudo-TTY verification guidance
+    remained sufficient for a repeat build confirmation.
+---
+
+## 2026-07-30 12:16 CDT - US-488 Review
+- Fixed the machine-output contract so setup reports CA injection as the required numeric
+  `injectedCaCount` field instead of presentation prose. Human output still derives the same non-fatal
+  note in plain and decorated renderers, while disabled injection and no configured host CAs both
+  produce a structured zero and the unchanged no-note completion text. Source/compiled JSON parity now
+  locks the field.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required current-branch
+  attempts hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected preserving the branch-local `notes` array as compatibility
+  surface because it never shipped and would keep machine consumers dependent on parsing English.
+- Verification: typecheck, lint passed; 80 focused setup and renderer tests passed with 339 assertions;
+  generated output, schema compatibility, guide lint/coverage, base-aware guide drift, and public
+  transcripts passed; a freshly compiled sandbox CLI emitted numeric `injectedCaCount` in canonical
+  machine output.
+- **Learnings for future iterations:** A command-result field that only a human can interpret is not
+  agent-drivable machine output; publish the underlying typed value and derive prose only in renderers.
+---
+
+## 2026-07-30 12:57 CDT - US-488 Drift Audit
+- Trigger: 5 cycles, 319 changed lines, 11 commits
+- Category 2 (weakened proofs): the schema round-trip test asserted absence of an unreleased `notes`
+  key and absence of English prose in encoded JSON; both pass regardless of the behavior they claim
+  to guard. Decorated suppression (no note at zero) was never asserted.
+- Category 6 (contract drift): the reviewed machine field `injectedCaCount` publishes
+  `loadedCerts.length`, which counts configured PEM path entries before the planner de-duplicates by
+  content digest and before per-service `inheritNetworkCa` opt-out. Two paths with identical bytes
+  count as two at setup and one in a service plan, and a multi-certificate bundle counts as one. The
+  schema, guide, and field name all call it a count of CAs injected into services, which setup cannot
+  know before an app plan exists. `Schema.Number` also admits fractions and negatives for a count.
+- Category 1/3/4/5/7: no findings. Scope stayed inside US-488 (no mkcert, lando.boot, leaf certs, or
+  global-Dockerfile surface); the only `passes` flip is this story's; generated schema was produced by
+  its generator; `buildSetupSummary`/`caInjectionNote` remain single-purpose with real consumers; the
+  rejected retention of the unreleased `notes` array was sound.
+- Fixed: no code landed. An external process repeatedly bulk-restored this worktree mid-edit
+  (verified by identical sub-second mtimes across unrelated files and by edits reverting between two
+  commands of one shell invocation), so a six-file contract change could not be applied atomically
+  without risking a half-applied commit. The partial edit was reverted; the tree is clean at HEAD.
+- Split/excise decisions: recorded in spec/service-trust/prd.json, not only here. US-488 gains an
+  acceptance criterion requiring the boolean condition (>=1 host CA file resolved AND injection
+  enabled) and forbidding a published count, and `passes` is flipped to false so the incomplete public
+  contract does not ship frozen. Gate conflict signalled for adjudication: the 12:16 CDT Review
+  explicitly required the numeric `injectedCaCount` field this audit excises.
+- Verification: typecheck and lint passed at HEAD; setup 63 tests/179 assertions, renderer summary
+  surfaces 17 tests/160 assertions, and dispatch parity 102 tests/791 assertions passed by path. The
+  earlier 63-test run reported one failure in `compiled setup install dir`, which passed in isolation
+  and is a cross-test interference artifact, not a branch regression. Prior entries' aggregate
+  verification claims postdate no commit after 12:16 CDT and remain unverified for the two final
+  parity commits.
+---
+## 2026-07-30 13:00 CDT - US-488 Verify
+- Compiled `core/dist/lando` fresh from branch HEAD and ran setup inside `lando4-dev` with scratch
+  roots and `--provider=lando --skip-provider` (plus non-interactive skip flags). End-to-end against
+  the compiled binary: human text note renders singular/plural for 1 and 2 host CAs, is omitted for
+  no-CA and `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=false`, setup exits 0 in all cases; machine JSON
+  encodes `injectedCaCount` 0/1/2/0 matching those cases; decorated TTY framed summary carries the
+  note (line-wrapped). Adjacent smoke: `--version`, `setup --help`, `config --help`, `doctor --help`,
+  and baseline setup without CAs all succeeded.
+- Story-level defect confirmed against the Drift Audit AC: HEAD still publishes numeric
+  `injectedCaCount` (and count-based human copy). That fails the new PRD criterion requiring a boolean
+  condition only and forbidding a published count. `passes` remains false; no code fix applied here
+  (contract rewrite across schema/render/tests/guide is Build scope, as Drift Audit recorded).
+- **Learnings for future iterations:**
+  - A stale or mid-edit compiled binary can embed a result schema that disagrees with the run() return
+    shape and surface only as `CommandResultEncodeError` under `--json`; rebuild after the worktree is
+    stable and confirm the binary strings for the machine field name before trusting encode paths.
+  - Decorated setup notes wrap inside the frame; assert with whitespace-collapsed text, not a single
+    unbroken grep line.
+  - Verify and Drift Audit must not race the same worktree with bulk restores; parallel mid-edit
+    checkouts leave half-applied contract changes.
+---
+
+## 2026-07-30 12:59 CDT - US-488 Adjudication
+- Contradiction: Review required numeric `injectedCaCount`, described as the "Number of configured
+  host CAs injected into type: lando services," as proof of the source US-488 AC "When setup
+  resolves non-empty `network.ca` certs and CA inject is not disabled, setup output/report includes
+  an informational note that those CAs inject into `type: lando` services." Drift Audit rejected
+  that count because normative spec/06-services.md section 6.8 says the effective flag is selected
+  per service and "Duplicates by content digest are collapsed." Normative spec/11-subsystems.md
+  section 10.3.1 requires only: "When `network.ca.certs` is non-empty, setup SHOULD report that
+  those CAs will be injected into `type: lando` services (unless inject is disabled)." It does not
+  define a count, and setup runs before the app/service plan that determines one.
+- Decision: narrowed the US-488 AC in `spec/service-trust/prd.json` to require the exact machine
+  field `networkCaInjectionConfigured: boolean`, true only when setup resolved at least one host CA
+  file and global CA injection is enabled. The AC explicitly forbids `injectedCaCount` or any other
+  certificate count and requires non-quantified human, schema, and guide wording that distinguishes
+  global setup configuration from a particular service's planned CA set.
+---
+
+## 2026-07-30 13:15 CDT - US-488 Build
+- Implemented the adjudicated setup machine contract: `lando setup` now publishes the required boolean
+  `networkCaInjectionConfigured`, true only when setup resolved at least one host CA file and global CA
+  injection is enabled. The numeric `injectedCaCount` is gone from the result type, the command schema,
+  the renderers, and the guide, because setup runs before any app plan and cannot know content-digest
+  de-duplication, multi-certificate bundles, or per-service `security.inheritNetworkCa` opt-out.
+- The human note is now a single unquantified sentence derived from that boolean, identical for one CA
+  and for many, and the corporate-network-trust guide states plainly that setup reports host-global
+  configuration rather than any particular service's injected CA set, pointing readers at the service
+  plan or the in-container bundle for the real set.
+- Replaced two vacuous schema assertions flagged by the Drift Audit (absence of an unreleased key and
+  absence of prose that could never appear) with an exact encoded-key set plus a decode that must reject
+  a count-shaped result, and added the decorated-frame suppression case that was never asserted.
+- Verification: typecheck, lint, all boundary rules, generated output, schema snapshot regeneration with
+  no drift, schema compatibility (one compatible property-add vs origin/main, zero breaking), guide lint,
+  guide coverage, and public transcripts passed; 236 focused and adjacent tests passed across setup,
+  renderer summary surfaces, dispatch parity against a freshly compiled binary, sdk and core network
+  trust, app-planner network inject, build-key, CA build-key, and service-lando security. Sandbox CLI on
+  the compiled binary covered ten cases: machine JSON emitted true for one and two CAs and false for
+  disabled injection and no configured CA, the plain note rendered byte-identically for one and two CAs,
+  no note appeared in either suppressed case, and the decorated TTY frame carried the wrapped note when
+  configured and omitted it when not. QA temp roots and the driver were removed.
+- **Learnings for future iterations:**
+  - Setup-time state is not plan-time state. Before publishing a machine field from a setup step, ask
+    whether setup can know the value at all; anything the planner later de-duplicates, expands, or lets a
+    service opt out of must be published as the condition setup actually resolved, not as a quantity.
+  - The strongest regression proof for an unquantified surface is equality across cardinalities: assert
+    that one CA and several CAs render the same bytes, so any reintroduced count fails immediately.
+  - Sandbox CLI verification of the CA path needs real PEMs. `defaultSetupNetworkTrustProbe` runs a live
+    HTTPS probe whenever CA material is configured and builds its TLS trust from those files, so
+    placeholder certificate text fails setup with `SetupNetworkTrustError` and proves nothing; generate
+    throwaway roots with `openssl req -x509 -newkey rsa:2048 -nodes` instead.
+  - Assert an exact encoded-key set rather than the absence of a named key. A `not.toHaveProperty` check
+    on a field nobody adds passes forever and guards nothing.
+---
+
+## 2026-07-30 13:17 CDT - US-488 Build Verification
+- Independently reverified the boolean setup injection contract at branch HEAD. No production change
+  was needed: the machine result publishes only `networkCaInjectionConfigured`, the human note stays
+  unquantified and identical across cardinalities, and both suppression paths remain silent.
+- Verification: RED was reproduced in a throwaway worktree at HEAD carrying only the new tests (five
+  setup failures for the missing field, four decorated-render failures), then GREEN on the branch;
+  169 focused and adjacent inject-path tests passed, and a binary recompiled from HEAD reproduced all
+  ten sandbox CLI cases including the wrapped decorated note and its absence. Typecheck, lint, every
+  boundary rule, and generated output passed; QA roots, certificates, and the throwaway worktree were
+  removed.
+- **Learnings for future iterations:**
+  - Prove RED for an in-flight contract change in a detached throwaway worktree (`git worktree add`
+    plus the test patch) instead of mutating the shared tree; a parallel agent editing the same files
+    otherwise destroys the failing state before it can be captured.
+  - Recompile `core/dist/lando` after the worktree settles at the commit under test. Formatting-only
+    differences are harmless, but a binary built from an uncommitted intermediate is not evidence for
+    what actually shipped.
+---
+## 2026-07-30 13:21 CDT - US-488 Build Confirmation
+- Independently confirmed the adjudicated inject contract at branch HEAD; no code change was needed.
+  Setup publishes the required boolean `networkCaInjectionConfigured`, no count reaches the result
+  type, command schema, either renderer, or the guide, and the human note is unquantified.
+- Verification: typecheck, lint, every boundary rule, generated output, schema compatibility, guide
+  lint, guide coverage, and machine output passed; 185 focused and adjacent tests with 1,161
+  assertions passed across setup, renderer summary surfaces, setup scenarios, and compiled-binary
+  dispatch parity. Sandbox CLI on a binary compiled from HEAD covered ten cases: one and two CAs
+  produced byte-identical human notes and `true` machine JSON, disabled injection and no configured
+  CA produced no note and `false`, the decorated TTY frame carried and suppressed the note
+  accordingly, and setup exited 0 throughout. QA material was removed afterward.
+- **Learnings for future iterations:**
+  - Two loop sessions can hold this worktree at once: a retry may start while the prior session is
+    still mid-edit, which is what produced the earlier half-applied contract change. Before editing an
+    in-flight branch, compare file mtimes against the current time and check for agent-spawned test
+    processes; if another session is live, verify and close out rather than editing in parallel.
+---
+## 2026-07-30 13:39 CDT - US-488 Review
+- Tightened the boolean-only machine contract regression proof so the legacy certificate count is
+  rejected specifically as an excess field rather than incidentally because the required boolean was
+  absent.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required current-branch
+  attempts hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected restoring `injectedCaCount`; the recorded Drift Audit and
+  adjudication explicitly excised that setup-time count in favor of the global configuration boolean.
+- Review notes (deferred/rejected): Rejected removing the exact encoded-key assertion as merely
+  redundant; it remains a concise positive inventory beside the strict excess-field rejection.
+- Verification: typecheck, lint, generated output, focused guide execution, and base-aware guide drift
+  passed; 183 focused setup and renderer tests with 1,145 assertions passed, including source/compiled
+  dispatch parity; all five `review-work` lanes passed.
+---
+
+## 2026-07-30 13:55 CDT - US-488 Drift Audit
+- Trigger: 10 cycles, 580 changed lines, 21 commits
+- Escalation withheld: at this churn the tier points at adjudication, but the 12:59 CDT adjudication
+  already ruled on the only contested boundary (setup machine-field shape), and every production
+  commit after it implements that ruling rather than reopening it. No permitted reopening condition
+  with new file-level evidence exists, and a cycle-count-only escalation would re-litigate a settled
+  verdict, so the audit ran its fix cycle instead.
+- Category 2 (weakened proofs): the "no quantity in the note" guard asserted a test-local string
+  literal had no digits, which is true by construction and would keep passing if setup started
+  printing a count. Every other criterion traces to production wiring: the boolean and the plain note
+  come from a real `setupSpec.run` with only the fetch boundary faked, the decorated frame and its
+  suppression case come from `setupSpec.render`, and the machine field is locked by an exact encoded
+  key set, an excess-field decode rejection, and full source/compiled envelope equality.
+- Categories 1, 3, 4, 5, 6, 7: no findings. The production change is three files inside `meta:setup`
+  with no new SDK or schema surface beyond the adjudicated boolean; the render type guard extends the
+  guard already in that function rather than adding a second path; `buildSetupSummary`,
+  `caInjectionNote`, and `SetupSummaryInput` each have a real production consumer; the only `passes`
+  flip is this story's, the guide index row for the not-yet-shipped US-494/496 pack correctly stays
+  Planned, and the `core/AGENTS.md` line records a trap this story hit; HEAD matches the narrowed
+  acceptance criterion exactly; and none of the four recorded rejections defers a regression this
+  branch owns.
+- Fixed: repointed the quantity guard at the rendered production note instead of the test constant.
+  Nothing else was deleted or simplified because nothing else was unearned.
+- Split/excise decisions: none. The split this story needed was already recorded in
+  `spec/service-trust/prd.json` by the prior audit and settled by adjudication; `passes` stays true.
+- Verification: typecheck, lint, and generated-output passed; setup 63 tests/181 assertions, renderer
+  summary surfaces 18 tests/173 assertions, and dispatch parity 102 tests/791 assertions passed by
+  path. A first parity run failed to build the compiled binary with `ETXTBSY` because a parallel
+  session was executing `core/dist/lando` in this same worktree; it passed cleanly once that run
+  finished, so it was contention, not a branch regression. The prior Review's Bugbot lane remains
+  genuinely unverified (account usage limit), not approved.
+---
+
+## 2026-07-30 13:58 CDT - US-488 Drift Audit
+- Trigger: 10 cycles, 580 changed lines, 21 commits. A harness retry started this audit in parallel
+  with the 13:55 CDT one; both ran the same taxonomy against the same HEAD independently.
+- Independent corroboration, not a second audit pass: the withheld escalation, the single category-2
+  quantity-guard finding, and the no-finding verdict on the other six categories were reached here
+  separately and match. No additional finding surfaced, and nothing further was changed.
+- Verification: re-run fresh at post-fix HEAD — typecheck, lint, generated output, guide coverage,
+  and schema-snapshot regeneration with zero drift passed; setup plus renderer summary surfaces 81
+  tests/354 assertions, dispatch parity 102 tests/791 assertions, and the sdk/core network-trust,
+  app-planner inject, and CA build-key filters 38 tests/83 assertions passed by path. One combined-run
+  failure in `compiled setup install dir` reproduced the recorded contention artifact and passed in
+  isolation and on a clean re-run.
+- Operational hazard: two audit sessions holding one worktree is what produced the compiled-binary
+  contention here and the half-applied contract edit at 12:57 CDT. Confirm no sibling session is live
+  before editing this branch.
+---

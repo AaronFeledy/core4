@@ -31,23 +31,43 @@ const fileSyncTone = (status: string): SummaryTone => {
   }
 };
 
-export const buildSetupSummary = (
-  providerId: string,
-  installDir: string,
-  status: string,
-): SummaryDocument => ({
-  title: "SETUP",
-  subtitle: "complete",
-  tone: status === "unavailable" ? "warn" : "ok",
-  sections: [
-    {
-      title: "runtime",
-      rows: [
-        { label: "provider", tone: "ok", value: providerId },
-        { label: "file-sync", tone: fileSyncTone(status), value: status, detail: fileSyncStatusLine(status) },
-        { label: "install dir", tone: "info", fields: [{ label: "LANDO_INSTALL_DIR", value: installDir }] },
-      ],
-    },
-  ],
-  footer: `Lando runtime ready (${providerId})`,
-});
+export interface SetupSummaryInput {
+  readonly providerId: string;
+  readonly installDir: string;
+  readonly fileSyncStatus: string;
+  readonly notes: ReadonlyArray<string>;
+}
+
+/** Setup runs before any app plan, so this note never includes a CA count that could mismatch what a service actually trusts. */
+export const caInjectionNote =
+  "Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.";
+
+export const buildSetupSummary = (input: SetupSummaryInput): SummaryDocument => {
+  const status = input.fileSyncStatus;
+  return {
+    title: "SETUP",
+    subtitle: "complete",
+    tone: status === "unavailable" ? "warn" : "ok",
+    sections: [
+      {
+        title: "runtime",
+        rows: [
+          { label: "provider", tone: "ok", value: input.providerId },
+          {
+            label: "file-sync",
+            tone: fileSyncTone(status),
+            value: status,
+            detail: fileSyncStatusLine(status),
+          },
+          {
+            label: "install dir",
+            tone: "info",
+            fields: [{ label: "LANDO_INSTALL_DIR", value: input.installDir }],
+          },
+        ],
+        ...(input.notes.length === 0 ? {} : { notes: input.notes }),
+      },
+    ],
+    footer: `Lando runtime ready (${input.providerId})`,
+  };
+};

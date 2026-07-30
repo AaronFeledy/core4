@@ -7,6 +7,7 @@ import { type InfoAppResult, buildInfoSummary } from "../../src/cli/commands/inf
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { type UninstallResult, buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
+import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
 import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
@@ -272,11 +273,16 @@ describe("doctor summary", () => {
 });
 
 describe("setup summary via spec render", () => {
-  const ctx: RenderContext = { mode: "lando", columns: 72, isTTY: true };
+  const ctx: RenderContext = { mode: "lando", format: "text", columns: 72, isTTY: true };
 
   test("decorates setup completion in lando TTY mode", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: LONG_PATH, fileSyncStatus: "deferred" },
+      {
+        providerId: "podman",
+        installDir: LONG_PATH,
+        fileSyncStatus: "deferred",
+        networkCaInjectionConfigured: false,
+      },
       undefined,
       ctx,
     );
@@ -285,11 +291,51 @@ describe("setup summary via spec render", () => {
     expect(stripAnsi(out ?? "")).toContain("[WAIT]");
   });
 
+  test("shows the CA injection note inside the decorated frame", () => {
+    const out = setupSpec.render?.(
+      {
+        providerId: "podman",
+        installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
+        networkCaInjectionConfigured: true,
+      },
+      undefined,
+      ctx,
+    );
+    expect(out).toBeDefined();
+    expectFramed(out ?? "", 72);
+    const collapsed = stripAnsi(out ?? "").replace(/[\s│]+/gu, " ");
+    expect(collapsed).toContain(`• ${caInjectionNote}`);
+  });
+
+  test("omits the CA injection note from the decorated frame when injection is unconfigured", () => {
+    const out = setupSpec.render?.(
+      {
+        providerId: "podman",
+        installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
+        networkCaInjectionConfigured: false,
+      },
+      undefined,
+      ctx,
+    );
+    expect(out).toBeDefined();
+    expectFramed(out ?? "", 72);
+    const collapsed = stripAnsi(out ?? "").replace(/[\s│]+/gu, " ");
+    expect(collapsed).not.toContain("certificate authorities");
+    expect(collapsed).not.toContain("inject");
+  });
+
   test("stays a plain line when not decorated", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "installed" },
+      {
+        providerId: "podman",
+        installDir: "/opt/lando",
+        fileSyncStatus: "installed",
+        networkCaInjectionConfigured: false,
+      },
       undefined,
-      { mode: "plain", columns: 80, isTTY: false },
+      { mode: "plain", format: "text", columns: 80, isTTY: false },
     );
     expect(stripAnsi(out ?? "")).toContain("setup complete: Lando runtime (podman)");
     expect(out ?? "").not.toContain("╭─");

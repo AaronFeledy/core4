@@ -62,7 +62,7 @@ import {
   runFileSyncSetupStep,
   runtimeServiceReadinessFor,
 } from "./setup-steps.ts";
-import { buildSetupSummary, fileSyncStatusLine } from "./setup-summary.ts";
+import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary.ts";
 
 export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs.ts";
 export { maybeSelectSetupProvider } from "./setup-provider-selection.ts";
@@ -205,10 +205,13 @@ export const setupSpec: LandoCommandSpec<
         recorder,
       });
 
+      const networkCaInjectionConfigured = network.ca.injectIntoServices && network.ca.loadedCerts.length > 0;
+
       return {
         providerId: provider.id,
         installDir: inputInstallDir(input) ?? sourceInstallDir(),
         fileSyncStatus,
+        networkCaInjectionConfigured,
       };
     }),
   render: (result, _input, ctx) => {
@@ -216,16 +219,22 @@ export const setupSpec: LandoCommandSpec<
       typeof result !== "object" ||
       result === null ||
       !("providerId" in result) ||
-      !("installDir" in result)
+      !("installDir" in result) ||
+      !("networkCaInjectionConfigured" in result) ||
+      typeof result.networkCaInjectionConfigured !== "boolean"
     ) {
       return undefined;
     }
     const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
     const providerId = String(result.providerId);
     const installDir = String(result.installDir);
+    const notes = result.networkCaInjectionConfigured ? [caInjectionNote] : [];
     if (isDecoratedContext(ctx))
-      return formatSummary(buildSetupSummary(providerId, installDir, status), { columns: ctx?.columns });
-    return `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
+      return formatSummary(buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }), {
+        columns: ctx?.columns,
+      });
+    const completion = `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
+    return notes.length === 0 ? completion : `${completion}\n${notes.join("\n")}`;
   },
 };
 
