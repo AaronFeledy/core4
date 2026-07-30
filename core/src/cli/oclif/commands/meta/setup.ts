@@ -205,13 +205,13 @@ export const setupSpec: LandoCommandSpec<
         recorder,
       });
 
-      const injectedCaCount = network.ca.injectIntoServices ? network.ca.loadedCerts.length : 0;
+      const networkCaInjectionConfigured = network.ca.injectIntoServices && network.ca.loadedCerts.length > 0;
 
       return {
         providerId: provider.id,
         installDir: inputInstallDir(input) ?? sourceInstallDir(),
         fileSyncStatus,
-        injectedCaCount,
+        networkCaInjectionConfigured,
       };
     }),
   render: (result, _input, ctx) => {
@@ -220,15 +220,15 @@ export const setupSpec: LandoCommandSpec<
       result === null ||
       !("providerId" in result) ||
       !("installDir" in result) ||
-      !("injectedCaCount" in result) ||
-      typeof result.injectedCaCount !== "number"
+      !("networkCaInjectionConfigured" in result) ||
+      typeof result.networkCaInjectionConfigured !== "boolean"
     ) {
       return undefined;
     }
     const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
     const providerId = String(result.providerId);
     const installDir = String(result.installDir);
-    const notes = result.injectedCaCount > 0 ? [caInjectionNote(result.injectedCaCount)] : [];
+    const notes = result.networkCaInjectionConfigured ? [caInjectionNote] : [];
     if (isDecoratedContext(ctx))
       return formatSummary(buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }), {
         columns: ctx?.columns,

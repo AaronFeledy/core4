@@ -87,19 +87,26 @@ store. The bundle and directory paths do not change across that rebuild.
 
 ## Confirm injection during setup
 
-When `lando setup` resolves readable host CA files and CA injection is enabled, it reports how many
-certificate authorities inject into `type: lando` services:
+When `lando setup` resolves at least one readable host CA file and CA injection is enabled, it
+reports that configured host CAs are set to inject into eligible `type: lando` services:
 
 ```text
-1 configured certificate authority injects into type: lando services on the next plan or rebuild.
+Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.
 ```
 
 The note is informational and never fails setup. It is omitted when no host CA files are configured
 or when `network.ca.injectIntoServices` (or `LANDO_NETWORK_CA_INJECT_INTO_SERVICES`) disables
-injection. Machine consumers read `injectedCaCount` from `lando setup --format json`; it is the
-number of configured host CAs that inject into services. The value is `0` both when no host CAs are
-configured and when injection is disabled. Human-facing setup text is renderer output and must not
-be parsed as machine state.
+injection. Machine consumers read the boolean `networkCaInjectionConfigured` from
+`lando setup --format json`; it is `true` only when both conditions hold, and `false` both when no
+host CAs are configured and when injection is disabled. Human-facing setup text is renderer output
+and must not be parsed as machine state.
+
+Setup reports host-global configuration, not the CA set of any particular service, and it
+deliberately publishes no certificate count. Setup runs before any app plan, so it cannot know the
+CAs a service actually receives: the planner collapses duplicates by content digest, a single file
+may carry several certificate authorities, and `security.inheritNetworkCa: false` opts an individual
+service out. Read a service's effective trust material from its plan or from
+`/etc/lando/certs/ca-bundle.pem` inside the running service, not from setup output.
 
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
@@ -149,9 +156,9 @@ be parsed as machine state.
   </Scenario>
   <Scenario id="confirm-setup-injection-note" render={false} reason="Focused meta:setup command tests cover the informational injection note for enabled and disabled CA injection without requiring host provider setup or private CA material">
     <Step name="read-setup-injection-note">
-      <Variable name="command" value="lando setup" display="Report configured certificate authorities that inject into type: lando services" />
+      <Variable name="command" value="lando setup" display="Report that configured host certificate authorities are set to inject into eligible type: lando services" />
       <Variable name="suppressed" value="network.ca.injectIntoServices=false" display="Omit the note when CA injection is disabled" />
-      <Variable name="machineField" value="injectedCaCount" display="Read the numeric injected CA count from the setup result in --format json; zero means no configured host CAs or disabled injection" />
+      <Variable name="machineField" value="networkCaInjectionConfigured" display="Read the boolean host-global injection condition from the setup result in --format json; false means no configured host CAs or disabled injection, and setup publishes no certificate count" />
     </Step>
   </Scenario>
 </Guide>

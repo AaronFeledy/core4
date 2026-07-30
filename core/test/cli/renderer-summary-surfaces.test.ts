@@ -276,7 +276,12 @@ describe("setup summary via spec render", () => {
 
   test("decorates setup completion in lando TTY mode", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: LONG_PATH, fileSyncStatus: "deferred", injectedCaCount: 0 },
+      {
+        providerId: "podman",
+        installDir: LONG_PATH,
+        fileSyncStatus: "deferred",
+        networkCaInjectionConfigured: false,
+      },
       undefined,
       ctx,
     );
@@ -287,20 +292,49 @@ describe("setup summary via spec render", () => {
 
   test("shows the CA injection note inside the decorated frame", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "satisfied", injectedCaCount: 2 },
+      {
+        providerId: "podman",
+        installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
+        networkCaInjectionConfigured: true,
+      },
       undefined,
       ctx,
     );
     expect(out).toBeDefined();
     expectFramed(out ?? "", 72);
-    const plain = stripAnsi(out ?? "");
-    expect(plain).toContain("• 2 configured certificate authorities inject into type: lando");
-    expect(plain).toContain("services on the next plan or rebuild.");
+    const collapsed = stripAnsi(out ?? "").replace(/[\s│]+/gu, " ");
+    expect(collapsed).toContain(
+      "• Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.",
+    );
+  });
+
+  test("omits the CA injection note from the decorated frame when injection is unconfigured", () => {
+    const out = setupSpec.render?.(
+      {
+        providerId: "podman",
+        installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
+        networkCaInjectionConfigured: false,
+      },
+      undefined,
+      ctx,
+    );
+    expect(out).toBeDefined();
+    expectFramed(out ?? "", 72);
+    const collapsed = stripAnsi(out ?? "").replace(/[\s│]+/gu, " ");
+    expect(collapsed).not.toContain("certificate authorities");
+    expect(collapsed).not.toContain("inject");
   });
 
   test("stays a plain line when not decorated", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "installed", injectedCaCount: 0 },
+      {
+        providerId: "podman",
+        installDir: "/opt/lando",
+        fileSyncStatus: "installed",
+        networkCaInjectionConfigured: false,
+      },
       undefined,
       { mode: "plain", format: "text", columns: 80, isTTY: false },
     );

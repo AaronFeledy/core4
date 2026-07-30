@@ -20,16 +20,16 @@ export interface SetupResult {
   readonly providerId: string;
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
-  readonly injectedCaCount: number;
+  readonly networkCaInjectionConfigured: boolean;
 }
 
 export const SetupResultSchema = Schema.Struct({
   providerId: Schema.String,
   installDir: Schema.String,
   fileSyncStatus: Schema.Literal("deferred", "installed", "satisfied", "unavailable"),
-  injectedCaCount: Schema.Number.annotations({
+  networkCaInjectionConfigured: Schema.Boolean.annotations({
     description:
-      "Number of configured host CAs injected into type: lando services; 0 when no host CAs are configured or injection is disabled.",
+      "Host-global CA injection configuration: true when setup resolved at least one host CA file and network.ca.injectIntoServices is enabled, so configured host CAs are set to inject into eligible type: lando services. This is setup-level configuration, not the CA set of any particular service; content de-duplication and per-service security.inheritNetworkCa opt-out are resolved when an app is planned.",
   }),
 });
 

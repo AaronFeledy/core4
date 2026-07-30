@@ -38,10 +38,9 @@ export interface SetupSummaryInput {
   readonly notes: ReadonlyArray<string>;
 }
 
-export const caInjectionNote = (certCount: number): string =>
-  `${certCount} configured certificate authorit${certCount === 1 ? "y" : "ies"} ${
-    certCount === 1 ? "injects" : "inject"
-  } into type: lando services on the next plan or rebuild.`;
+/** Unquantified by contract: setup runs before any app plan, so no CA count it could print would match what a service actually trusts. */
+export const caInjectionNote =
+  "Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.";
 
 export const buildSetupSummary = (input: SetupSummaryInput): SummaryDocument => {
   const status = input.fileSyncStatus;

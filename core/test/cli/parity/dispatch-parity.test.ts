@@ -1026,7 +1026,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
             providerId: "lando",
             installDir: expect.any(String),
             fileSyncStatus: "satisfied",
-            injectedCaCount: 0,
+            networkCaInjectionConfigured: false,
           },
         });
       } finally {

@@ -199,6 +199,9 @@ const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, 
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
   `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
 
+const caInjectionNoteText =
+  "Configured host certificate authorities are set to inject into eligible type: lando services on the next plan or rebuild.";
+
 describe("meta:setup command", () => {
   const originalNetworkEnv = {
     HTTP_PROXY: process.env.HTTP_PROXY,
@@ -228,20 +231,32 @@ describe("meta:setup command", () => {
     expect(SetupCommand.aliases).toContain("setup");
   });
 
-  test("round-trips numeric CA injection state without human authority prose", () => {
+  test("publishes CA injection as a boolean condition and no certificate count", () => {
     const machineResult = {
       providerId: "lando",
       installDir: "/opt/lando",
       fileSyncStatus: "satisfied" as const,
-      injectedCaCount: 2,
+      networkCaInjectionConfigured: true,
     };
 
     const decoded = Schema.decodeUnknownSync(SetupResultSchema)(machineResult);
     const encoded = Schema.encodeSync(SetupResultSchema)(decoded);
 
     expect(encoded).toEqual(machineResult);
-    expect(encoded).not.toHaveProperty("notes");
-    expect(JSON.stringify(encoded)).not.toContain("certificate authorit");
+    expect(Object.keys(encoded).sort()).toEqual([
+      "fileSyncStatus",
+      "installDir",
+      "networkCaInjectionConfigured",
+      "providerId",
+    ]);
+    expect(() =>
+      Schema.decodeUnknownSync(SetupResultSchema)({
+        providerId: "lando",
+        installDir: "/opt/lando",
+        fileSyncStatus: "satisfied",
+        injectedCaCount: 2,
+      }),
+    ).toThrow();
   });
 
   test("exposes provider-contributed setup.flags in metadata and compiled parsing", () => {
@@ -1300,16 +1315,17 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.injectedCaCount).toBe(1);
+      expect(result.networkCaInjectionConfigured).toBe(true);
       expect(setupSpec.render?.(result)).toBe(
-        `${setupCompleteOutput(TestRuntimeProvider.id)}\n1 configured certificate authority injects into type: lando services on the next plan or rebuild.`,
+        `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNoteText}`,
       );
+      expect(caInjectionNoteText).not.toMatch(/\d/u);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
 
-  test("counts every resolved certificate authority in the service injection note", async () => {
+  test("reports the same unquantified injection state for several resolved CAs", async () => {
     const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-many-"));
     const corporateCert = join(tempRoot, "corporate-root.pem");
     const partnerCert = join(tempRoot, "partner-root.pem");
@@ -1326,7 +1342,10 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.injectedCaCount).toBe(2);
+      expect(result.networkCaInjectionConfigured).toBe(true);
+      expect(setupSpec.render?.(result)).toBe(
+        `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNoteText}`,
+      );
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -1347,21 +1366,21 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(result.injectedCaCount).toBe(0);
+      expect(result.networkCaInjectionConfigured).toBe(false);
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });
 
-  test("reports zero injected CAs when no host CAs are configured", async () => {
+  test("reports injection as unconfigured when no host CAs are configured", async () => {
     const result = await Effect.runPromise(
       setupSpec
         .run({ installDir: "/opt/lando" })
         .pipe(Effect.provide(buildSetupLayers(testRuntimeProviderRegistry))),
     );
 
-    expect(result.injectedCaCount).toBe(0);
+    expect(result.networkCaInjectionConfigured).toBe(false);
     expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
   });
 
