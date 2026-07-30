@@ -1,7 +1,7 @@
 # Ralph Progress Log — Service Trust
 
 Branch: docs/service-trust-prd
-PRDs: 00 index, 01 inject (US-483..489), 02 certs/boot/doctor/Traefik (US-490..498)
+PRDs: 00 index, 01 inject (US-483..489, US-499), 02 certs/boot/doctor/Traefik (US-490..498)
 Execution order: `priority` in spec/service-trust/prd.json (1..17, strict). US-489 precedes US-486
   because the planner consumes its env overlays; US-499 follows US-486; US-496 runs last because it
   closes the guide pack produced by US-493..US-498.
@@ -250,4 +250,28 @@ Spec SoT:
   - Post-build mount removal belongs to the story that creates the baked-artifact signal; removing the fallback before the trust-store build exists would break first-start trust.
   - A non-lando skip needs poison input to prove the planner bypasses validation rather than merely producing empty feature output.
   - Lexical outside-root and symlink-escape cases exercise different containment guards; keep both when changing path resolution.
+---
+
+## 2026-07-29 19:37 CDT - US-486 Review
+- Fixed credential-bearing proxy plans being persisted with default filesystem permissions by moving
+  provider-lando and provider-podman applied state onto plugin-scoped StateStore buckets with atomic
+  replacement, advisory locking, versioned schemas, and exact owner-only modes. Fresh provider
+  instances retain the proxy environment needed for lifecycle operations, while corrupt and
+  version-mismatched state remains a cache miss.
+- Synchronized the guide ownership matrix and progress header with the adjudicated US-499 story.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit
+  rejected the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): The code-quality lane completed without a terminal verdict and was
+  treated as inconclusive; independent source inspection and the full affected gate set found no
+  additional blocker.
+- Review notes (deferred/rejected): Rejected treating same-user app-tree symlink replacement as a new
+  privilege-boundary vulnerability; lexical and realpath escape handling remains covered.
+- Review notes (deferred/rejected): Rejected re-demanding Landofile load/import expression I/O or
+  post-build bundle-mount removal because the recorded adjudication assigns them to US-499 and US-487.
+- Verification: typecheck, lint passed; 47 focused provider/state/story tests plus the targeted
+  fresh-process provider-podman contract case passed; guide lint, guide coverage, base-aware guide
+  drift, generated output, package DAG, import cycle, all boundary rules, and diff checks passed.
+- **Learnings for future iterations:** Durable plugin plans that may contain runtime credentials must
+  use the plugin-scoped StateStore contract rather than direct JSON writes; this supplies atomicity,
+  advisory locking, version handling, and restrictive replacement permissions across providers.
 ---
