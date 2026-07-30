@@ -62,7 +62,7 @@ import {
   runFileSyncSetupStep,
   runtimeServiceReadinessFor,
 } from "./setup-steps.ts";
-import { buildSetupSummary, fileSyncStatusLine } from "./setup-summary.ts";
+import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary.ts";
 
 export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs.ts";
 export { maybeSelectSetupProvider } from "./setup-provider-selection.ts";
@@ -205,10 +205,13 @@ export const setupSpec: LandoCommandSpec<
         recorder,
       });
 
+      const injectedCaCount = network.ca.injectIntoServices ? network.ca.loadedCerts.length : 0;
+
       return {
         providerId: provider.id,
         installDir: inputInstallDir(input) ?? sourceInstallDir(),
         fileSyncStatus,
+        notes: injectedCaCount === 0 ? [] : [caInjectionNote(injectedCaCount)],
       };
     }),
   render: (result, _input, ctx) => {
@@ -223,9 +226,16 @@ export const setupSpec: LandoCommandSpec<
     const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
     const providerId = String(result.providerId);
     const installDir = String(result.installDir);
+    const notes =
+      "notes" in result && Array.isArray(result.notes)
+        ? result.notes.filter((note): note is string => typeof note === "string")
+        : [];
     if (isDecoratedContext(ctx))
-      return formatSummary(buildSetupSummary(providerId, installDir, status), { columns: ctx?.columns });
-    return `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
+      return formatSummary(buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }), {
+        columns: ctx?.columns,
+      });
+    const completion = `setup complete: Lando runtime (${providerId})\n${fileSyncStatusLine(status)}\nLANDO_INSTALL_DIR="${installDir}"`;
+    return notes.length === 0 ? completion : `${completion}\n${notes.join("\n")}`;
   },
 };
 

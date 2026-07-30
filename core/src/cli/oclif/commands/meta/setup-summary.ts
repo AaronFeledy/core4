@@ -31,23 +31,43 @@ const fileSyncTone = (status: string): SummaryTone => {
   }
 };
 
-export const buildSetupSummary = (
-  providerId: string,
-  installDir: string,
-  status: string,
-): SummaryDocument => ({
-  title: "SETUP",
-  subtitle: "complete",
-  tone: status === "unavailable" ? "warn" : "ok",
-  sections: [
-    {
-      title: "runtime",
-      rows: [
-        { label: "provider", tone: "ok", value: providerId },
-        { label: "file-sync", tone: fileSyncTone(status), value: status, detail: fileSyncStatusLine(status) },
-        { label: "install dir", tone: "info", fields: [{ label: "LANDO_INSTALL_DIR", value: installDir }] },
-      ],
-    },
-  ],
-  footer: `Lando runtime ready (${providerId})`,
-});
+export interface SetupSummaryInput {
+  readonly providerId: string;
+  readonly installDir: string;
+  readonly fileSyncStatus: string;
+  readonly notes: ReadonlyArray<string>;
+}
+
+export const caInjectionNote = (certCount: number): string =>
+  `${certCount} configured certificate authorit${certCount === 1 ? "y" : "ies"} ${
+    certCount === 1 ? "injects" : "inject"
+  } into type: lando services on the next plan or rebuild.`;
+
+export const buildSetupSummary = (input: SetupSummaryInput): SummaryDocument => {
+  const status = input.fileSyncStatus;
+  return {
+    title: "SETUP",
+    subtitle: "complete",
+    tone: status === "unavailable" ? "warn" : "ok",
+    sections: [
+      {
+        title: "runtime",
+        rows: [
+          { label: "provider", tone: "ok", value: input.providerId },
+          {
+            label: "file-sync",
+            tone: fileSyncTone(status),
+            value: status,
+            detail: fileSyncStatusLine(status),
+          },
+          {
+            label: "install dir",
+            tone: "info",
+            fields: [{ label: "LANDO_INSTALL_DIR", value: input.installDir }],
+          },
+        ],
+      },
+    ],
+    footer: `Lando runtime ready (${input.providerId})`,
+  };
+};

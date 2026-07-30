@@ -20,12 +20,16 @@ export interface SetupResult {
   readonly providerId: string;
   readonly installDir: string;
   readonly fileSyncStatus: FileSyncStatus;
+  readonly notes: ReadonlyArray<string>;
 }
 
 export const SetupResultSchema = Schema.Struct({
   providerId: Schema.String,
   installDir: Schema.String,
   fileSyncStatus: Schema.Literal("deferred", "installed", "satisfied", "unavailable"),
+  notes: Schema.Array(Schema.String).annotations({
+    description: "Informational setup notes, such as host CA material that injects into services.",
+  }),
 });
 
 export const sourceInstallDir = (): string =>

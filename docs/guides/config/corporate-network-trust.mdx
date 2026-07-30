@@ -85,6 +85,20 @@ LANDO_CA_DIR=/etc/lando/certs
 Run `lando rebuild` after CA material changes so the service artifact registers the updated trust
 store. The bundle and directory paths do not change across that rebuild.
 
+## Confirm injection during setup
+
+When `lando setup` resolves readable host CA files and CA injection is enabled, it reports how many
+certificate authorities inject into `type: lando` services:
+
+```text
+1 configured certificate authority injects into type: lando services on the next plan or rebuild.
+```
+
+The note is informational and never fails setup. It is omitted when no host CA files are configured
+or when `network.ca.injectIntoServices` (or `LANDO_NETWORK_CA_INJECT_INTO_SERVICES`) disables
+injection. Machine consumers read the same note from the `notes` array in
+`lando setup --format json`.
+
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
     <Step name="declare-security">
@@ -129,6 +143,13 @@ store. The bundle and directory paths do not change across that rebuild.
       <Variable name="runtimeEnv" value="NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR" display="Point Node and OpenSSL-family runtimes at injected CA material" />
       <Variable name="landoEnv" value="LANDO_CA_CERT, LANDO_CA_BUNDLE, LANDO_CA_DIR" display="Read the same paths through Lando's standard service environment" />
       <Variable name="rebuild" value="lando rebuild" display="Rebuild services after CA material changes" />
+    </Step>
+  </Scenario>
+  <Scenario id="confirm-setup-injection-note" render={false} reason="Focused meta:setup command tests cover the informational injection note for enabled and disabled CA injection without requiring host provider setup or private CA material">
+    <Step name="read-setup-injection-note">
+      <Variable name="command" value="lando setup" display="Report configured certificate authorities that inject into type: lando services" />
+      <Variable name="suppressed" value="network.ca.injectIntoServices=false" display="Omit the note when CA injection is disabled" />
+      <Variable name="machineField" value="notes" display="Read the same note from the setup result in --format json" />
     </Step>
   </Scenario>
 </Guide>

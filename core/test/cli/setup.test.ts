@@ -195,6 +195,11 @@ const normalizeSetupFailure = (stderr: string): string =>
 const fileSyncSatisfiedLine = "file-sync: already satisfied (native bind mounts)";
 const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, "setup", "readiness.json");
 
+const setupResultNotes = (result: unknown): ReadonlyArray<string> =>
+  typeof result === "object" && result !== null && "notes" in result && Array.isArray(result.notes)
+    ? result.notes.filter((note): note is string => typeof note === "string")
+    : [];
+
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
   `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
 
@@ -1264,6 +1269,77 @@ describe("meta:setup command", () => {
     } finally {
       if (previous === undefined) Reflect.deleteProperty(process.env, "LANDO_NETWORK_CA_CERTS");
       else process.env.LANDO_NETWORK_CA_CERTS = previous;
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("reports service injection when setup resolves configured CAs", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-"));
+    const corporateCert = join(tempRoot, "corporate-root.pem");
+    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: { ca: { certs: [corporateCert], trustHost: true } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(setupResultNotes(result)).toEqual([
+        "1 configured certificate authority injects into type: lando services on the next plan or rebuild.",
+      ]);
+      expect(setupSpec.render?.(result)).toContain("type: lando services");
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("counts every resolved certificate authority in the service injection note", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-many-"));
+    const corporateCert = join(tempRoot, "corporate-root.pem");
+    const partnerCert = join(tempRoot, "partner-root.pem");
+    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    await Bun.write(partnerCert, "-----BEGIN CERTIFICATE-----\npartner\n-----END CERTIFICATE-----\n");
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: { ca: { certs: [corporateCert, partnerCert], trustHost: true } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(setupResultNotes(result)).toEqual([
+        "2 configured certificate authorities inject into type: lando services on the next plan or rebuild.",
+      ]);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  test("does not report service injection when CA injection is disabled", async () => {
+    const tempRoot = await mkdtemp(join(tmpdir(), "lando-setup-inject-note-off-"));
+    const corporateCert = join(tempRoot, "corporate-root.pem");
+    await Bun.write(corporateCert, "-----BEGIN CERTIFICATE-----\ncorporate\n-----END CERTIFICATE-----\n");
+    try {
+      const result = await Effect.runPromise(
+        setupSpec.run({ installDir: "/opt/lando" }).pipe(
+          Effect.provide(
+            buildSetupLayers(testRuntimeProviderRegistry, {
+              network: { ca: { certs: [corporateCert], trustHost: true, injectIntoServices: false } },
+            } as Partial<GlobalConfig>),
+          ),
+        ),
+      );
+
+      expect(setupResultNotes(result)).toEqual([]);
+      expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
+    } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
   });

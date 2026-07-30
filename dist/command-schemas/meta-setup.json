@@ -14,6 +14,13 @@
     "installDir": {
       "type": "string"
     },
+    "notes": {
+      "description": "Informational setup notes, such as host CA material that injects into services.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
     "providerId": {
       "type": "string"
     }
@@ -21,7 +28,8 @@
   "required": [
     "providerId",
     "installDir",
-    "fileSyncStatus"
+    "fileSyncStatus",
+    "notes"
   ],
   "type": "object"
 }
