@@ -1320,10 +1320,10 @@ describe("meta:setup command", () => {
       );
 
       expect(result.networkCaInjectionConfigured).toBe(true);
-      expect(setupSpec.render?.(result)).toBe(
-        `${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNoteText}`,
-      );
-      expect(caInjectionNoteText).not.toMatch(/\d/u);
+      const rendered = setupSpec.render?.(result) ?? "";
+      expect(rendered).toBe(`${setupCompleteOutput(TestRuntimeProvider.id)}\n${caInjectionNoteText}`);
+      // The rendered note itself must carry no quantity; asserting the test literal would be vacuous.
+      expect(rendered.split("\n").at(-1)).not.toMatch(/\d/u);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
