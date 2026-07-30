@@ -1,168 +1,22 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { Cause, type Context, Effect, Exit, Stream } from "effect";
+import { Effect, Exit } from "effect";
 
 import { CaError } from "@lando/sdk/errors";
-import type { ToolArtifactEntry } from "@lando/sdk/schema";
-import type {
-  CertificateAuthorityShape,
-  PrivilegeService,
-  ProcessResult,
-  ProcessRunner,
-  ProcessSpawnOptions,
-} from "@lando/sdk/services";
-import { Downloader } from "@lando/sdk/services";
 import { runCaContract } from "@lando/sdk/test";
 
-import { makeFakeDownloader, sha256Hex } from "../../../sdk/test/tool-provisioning/_fixtures.ts";
-import { makeMkcertCertificateAuthority, mkcertLeafCertificateName } from "../src/ca.ts";
-import { MKCERT_TOOL_MANIFEST, mkcertInstallPath } from "../src/provision.ts";
-
-const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
-
-const MKCERT_BIN = text("#!/bin/sh\necho mkcert\n");
-const HOST_KEY = "linux-x64";
-const SOURCE_URL = "https://example.test/linux-x64/mkcert";
-
-interface RunCall {
-  readonly cmd: string;
-  readonly args: ReadonlyArray<string>;
-  readonly env?: Readonly<Record<string, string>>;
-}
-
-interface FakeProcessRunner {
-  readonly service: Context.Tag.Service<typeof ProcessRunner>;
-  readonly calls: () => ReadonlyArray<RunCall>;
-}
-
-const okResult = (stdout = ""): ProcessResult => ({ exitCode: 0, stdout, stderr: "" });
-
-/**
- * Fake `ProcessRunner` that emulates the mkcert CLI surface the CA drives:
- * `-CAROOT` prints the CA root, `-install` succeeds unless the test forces a
- * failure, and an issuance invocation writes the requested cert/key files.
- */
-const makeFakeMkcertRunner = (options: {
-  readonly caRoot: string;
-  readonly installExitCode?: number;
-  readonly installStderr?: string;
-}): FakeProcessRunner => {
-  const calls: RunCall[] = [];
-  const run = async (input: ProcessSpawnOptions): Promise<ProcessResult> => {
-    calls.push({
-      cmd: input.cmd,
-      args: [...input.args],
-      ...(input.env === undefined ? {} : { env: { ...input.env } }),
-    });
-    if (input.args[0] === "-CAROOT") return okResult(`${options.caRoot}\n`);
-    if (input.args[0] === "-install") {
-      const exitCode = options.installExitCode ?? 0;
-      return exitCode === 0
-        ? okResult("The local CA is now installed in the system trust store!\n")
-        : { exitCode, stdout: "", stderr: options.installStderr ?? "permission denied" };
-    }
-    const certFile = input.args[input.args.indexOf("-cert-file") + 1];
-    const keyFile = input.args[input.args.indexOf("-key-file") + 1];
-    if (certFile === undefined || keyFile === undefined) {
-      return { exitCode: 2, stdout: "", stderr: `unexpected mkcert invocation: ${input.args.join(" ")}` };
-    }
-    await writeFile(certFile, "-----BEGIN CERTIFICATE-----\n");
-    await writeFile(keyFile, "-----BEGIN PRIVATE KEY-----\n");
-    return okResult("");
-  };
-
-  return {
-    service: {
-      run: (input) => Effect.promise(() => run(input)),
-      stream: () => Stream.die(new Error("stream is not used by the mkcert certificate authority")),
-    },
-    calls: () => [...calls],
-  };
-};
-
-interface FakePrivilege {
-  readonly service: Context.Tag.Service<typeof PrivilegeService>;
-  readonly calls: () => ReadonlyArray<ReadonlyArray<string>>;
-}
-
-const makeFakePrivilege = (result: ProcessResult = okResult()): FakePrivilege => {
-  const calls: Array<ReadonlyArray<string>> = [];
-  return {
-    service: {
-      elevate: (command) =>
-        Effect.sync(() => {
-          calls.push([...command]);
-          return result;
-        }),
-    },
-    calls: () => [...calls],
-  };
-};
-
-interface Harness {
-  readonly binDir: string;
-  readonly certsDir: string;
-  readonly toolDownloadsDir: string;
-  readonly caRoot: string;
-  readonly cleanup: () => Promise<void>;
-}
-
-const makeHarness = async (): Promise<Harness> => {
-  const root = await mkdtemp(join(tmpdir(), "lando-mkcert-ca-"));
-  return {
-    binDir: join(root, "bin"),
-    certsDir: join(root, "certs"),
-    toolDownloadsDir: join(root, "tool-downloads", "mkcert"),
-    caRoot: join(root, "caroot"),
-    cleanup: () => rm(root, { recursive: true, force: true }),
-  };
-};
-
-const patchHostArtifact = (bytes: Uint8Array): (() => void) => {
-  const artifacts = MKCERT_TOOL_MANIFEST.artifacts as Record<string, ToolArtifactEntry>;
-  const original = artifacts[HOST_KEY];
-  artifacts[HOST_KEY] = {
-    url: SOURCE_URL,
-    sha256: sha256Hex(bytes),
-    sizeBytes: bytes.byteLength,
-    installName: "mkcert",
-  };
-  return () => {
-    if (original === undefined) delete artifacts[HOST_KEY];
-    else artifacts[HOST_KEY] = original;
-  };
-};
-
-const makeCa = (
-  harness: Harness,
-  runner: FakeProcessRunner,
-  overrides: { readonly arch?: string } = {},
-): { readonly ca: CertificateAuthorityShape; readonly downloadCalls: () => number } => {
-  const downloader = makeFakeDownloader();
-  downloader.serve(SOURCE_URL, MKCERT_BIN);
-  const downloaderService = Effect.runSync(Effect.provide(Downloader, downloader.layer));
-  return {
-    ca: makeMkcertCertificateAuthority({
-      binDir: harness.binDir,
-      certsDir: harness.certsDir,
-      toolDownloadsDir: harness.toolDownloadsDir,
-      downloader: downloaderService,
-      processRunner: runner.service,
-      platform: "linux",
-      arch: overrides.arch ?? "x64",
-    }),
-    downloadCalls: downloader.downloadCalls,
-  };
-};
-
-const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
-  if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const option = Cause.failureOption(exit.cause);
-  if (option._tag !== "Some") throw new Error("expected a tagged failure");
-  return option.value;
-};
+import { mkcertLeafCertificateName } from "../src/ca.ts";
+import { mkcertInstallPath } from "../src/provision.ts";
+import {
+  MKCERT_BIN,
+  failure,
+  makeCa,
+  makeCaHarness,
+  makeFakeMkcertRunner,
+  makeFakePrivilege,
+  patchHostArtifact,
+} from "./_fixtures.ts";
 
 describe("mkcertLeafCertificateName", () => {
   test("maps wildcard and unsafe characters to contained file names", () => {
@@ -175,7 +29,7 @@ describe("mkcertLeafCertificateName", () => {
 
 describe("mkcert CertificateAuthority", () => {
   test("provisions the binary, installs the local CA once, and issues a leaf certificate", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       const runner = makeFakeMkcertRunner({ caRoot: harness.caRoot });
@@ -219,7 +73,7 @@ describe("mkcert CertificateAuthority", () => {
   });
 
   test("skipTrustInstall provisions the binary without touching any trust store", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       const runner = makeFakeMkcertRunner({ caRoot: harness.caRoot });
@@ -240,7 +94,7 @@ describe("mkcert CertificateAuthority", () => {
   });
 
   test("retries a failed trust-store install through PrivilegeService with the same CA root", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       const runner = makeFakeMkcertRunner({ caRoot: harness.caRoot, installExitCode: 1 });
@@ -259,7 +113,7 @@ describe("mkcert CertificateAuthority", () => {
   });
 
   test("fails with actionable remediation when the trust-store install cannot be elevated", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       const runner = makeFakeMkcertRunner({
@@ -282,7 +136,7 @@ describe("mkcert CertificateAuthority", () => {
   });
 
   test("fails with remediation on an unsupported host and never downloads", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       const runner = makeFakeMkcertRunner({ caRoot: harness.caRoot });
@@ -302,7 +156,7 @@ describe("mkcert CertificateAuthority", () => {
   });
 
   test("issueCert before setup fails with the run-lando-setup remediation", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       const runner = makeFakeMkcertRunner({ caRoot: harness.caRoot });
@@ -320,7 +174,7 @@ describe("mkcert CertificateAuthority", () => {
   });
 
   test("satisfies the CertificateAuthority contract suite", async () => {
-    const harness = await makeHarness();
+    const harness = await makeCaHarness();
     const restore = patchHostArtifact(MKCERT_BIN);
     try {
       await mkdir(harness.caRoot, { recursive: true });

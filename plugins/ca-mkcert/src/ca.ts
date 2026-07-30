@@ -108,8 +108,7 @@ export const makeMkcertCertificateAuthority = (
           cause,
         );
 
-  // `CertificateAuthorityShape` has no requirement channel, so the resolved
-  // `Downloader` is supplied here rather than by `setup`'s caller.
+  // CertificateAuthorityShape has no Effect requirements channel; inject Downloader here.
   const provision = (force: boolean): Effect.Effect<void, CaError> =>
     Effect.scoped(
       provisionMkcert({

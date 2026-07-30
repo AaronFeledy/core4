@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import { Effect, Exit } from "effect";
 
 import { ToolManifestError } from "@lando/sdk/errors";
-import type { ToolArtifactEntry } from "@lando/sdk/schema";
 
-import { makeFakeDownloader, sha256Hex } from "../../../sdk/test/tool-provisioning/_fixtures.ts";
+import { makeFakeDownloader } from "../../../sdk/test/tool-provisioning/_fixtures.ts";
 import {
   MKCERT_TOOL_MANIFEST,
   MKCERT_TOOL_VERSION,
@@ -16,57 +14,7 @@ import {
   provisionMkcert,
   readInstalledMkcertStatus,
 } from "../src/provision.ts";
-
-const text = (value: string): Uint8Array<ArrayBuffer> => new TextEncoder().encode(value);
-
-const MKCERT_BIN = text("#!/bin/sh\necho mkcert\n");
-
-interface Dirs {
-  readonly binDir: string;
-  readonly toolDownloadsDir: string;
-  readonly cleanup: () => Promise<void>;
-}
-
-const makeDirs = async (): Promise<Dirs> => {
-  const root = await mkdtemp(join(tmpdir(), "lando-mkcert-provision-"));
-  return {
-    binDir: join(root, "bin"),
-    toolDownloadsDir: join(root, "tool-downloads", "mkcert"),
-    cleanup: () => rm(root, { recursive: true, force: true }),
-  };
-};
-
-const patchArtifact = (key: string, entry: ToolArtifactEntry): (() => void) => {
-  const artifacts = MKCERT_TOOL_MANIFEST.artifacts as Record<string, ToolArtifactEntry>;
-  const original = artifacts[key];
-  artifacts[key] = entry;
-  return () => {
-    if (original === undefined) delete artifacts[key];
-    else artifacts[key] = original;
-  };
-};
-
-const patchHostBinary = (
-  hostKey: string,
-  bytes: Uint8Array,
-  installName: string,
-): { readonly url: string; readonly restore: () => void } => {
-  const url = `https://example.test/${hostKey}/mkcert`;
-  const restore = patchArtifact(hostKey, {
-    url,
-    sha256: sha256Hex(bytes),
-    sizeBytes: bytes.byteLength,
-    installName,
-  });
-  return { url, restore };
-};
-
-const failure = <A, E>(exit: Exit.Exit<A, E>): E => {
-  if (!Exit.isFailure(exit)) throw new Error("expected failure");
-  const option = Cause.failureOption(exit.cause);
-  if (option._tag !== "Some") throw new Error("expected a tagged failure");
-  return option.value;
-};
+import { MKCERT_BIN, failure, makeTempDirs, patchHostBinary } from "./_fixtures.ts";
 
 describe("MKCERT_TOOL_MANIFEST", () => {
   test("pins every supported host key to a plain upstream binary", () => {
@@ -106,7 +54,7 @@ describe("mkcertInstallPath", () => {
 
 describe("provisionMkcert", () => {
   test("installs the pinned binary and records the version marker", async () => {
-    const dirs = await makeDirs();
+    const dirs = await makeTempDirs("lando-mkcert-provision-");
     const patch = patchHostBinary("linux-x64", MKCERT_BIN, "mkcert");
     try {
       const downloader = makeFakeDownloader();
@@ -137,7 +85,7 @@ describe("provisionMkcert", () => {
   });
 
   test("is a no-op on the second run and reinstalls under force", async () => {
-    const dirs = await makeDirs();
+    const dirs = await makeTempDirs("lando-mkcert-provision-");
     const patch = patchHostBinary("linux-x64", MKCERT_BIN, "mkcert");
     try {
       const downloader = makeFakeDownloader();
@@ -174,7 +122,7 @@ describe("provisionMkcert", () => {
   });
 
   test("fails closed with ToolManifestError on an unsupported host", async () => {
-    const dirs = await makeDirs();
+    const dirs = await makeTempDirs("lando-mkcert-provision-");
     try {
       const downloader = makeFakeDownloader();
       const exit = await Effect.runPromiseExit(
