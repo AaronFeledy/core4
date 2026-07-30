@@ -158,6 +158,7 @@
       "description": "As a user running lando setup, I see when CAs inject; as a maintainer inject path gates stay green.",
       "acceptanceCriteria": [
         "Setup notes type:lando inject when certs present and inject enabled.",
+        "The machine setup result publishes only what setup can know: a boolean condition (at least one host CA file resolved AND network.ca.injectIntoServices enabled). It must NOT publish a count of injected certificate authorities: loadedCerts.length counts configured PEM path entries before the planner's digest de-duplication and before per-service inheritNetworkCa opt-out, so a count disagrees with the CAs any service actually receives. Renderers derive the human note from that boolean; the guide and schema description state the same condition.",
         "Setup tests cover the note.",
         "Inject path test filters green (sdk, paths, core, service-lando security, container-runtime).",
         "Guide: corporate-network-trust complete for inject path; lint:guides, check:guide-coverage, check:guide-drift green for inject guides.",
@@ -167,8 +168,8 @@
         "Lint passes"
       ],
       "priority": 8,
-      "passes": true,
-      "notes": "PRD-01"
+      "passes": false,
+      "notes": "PRD-01; Drift Audit flipped passes=false: the reviewed numeric injectedCaCount field froze a machine contract US-488 cannot honor (pre-dedupe path-entry count presented as injected CA count). Build must replace it with the boolean condition named in the acceptance criteria."
     },
     {
       "id": "US-490",

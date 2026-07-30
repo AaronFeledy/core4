@@ -458,3 +458,35 @@ Spec SoT:
 - **Learnings for future iterations:** A command-result field that only a human can interpret is not
   agent-drivable machine output; publish the underlying typed value and derive prose only in renderers.
 ---
+
+## 2026-07-30 12:57 CDT - US-488 Drift Audit
+- Trigger: 5 cycles, 319 changed lines, 11 commits
+- Category 2 (weakened proofs): the schema round-trip test asserted absence of an unreleased `notes`
+  key and absence of English prose in encoded JSON; both pass regardless of the behavior they claim
+  to guard. Decorated suppression (no note at zero) was never asserted.
+- Category 6 (contract drift): the reviewed machine field `injectedCaCount` publishes
+  `loadedCerts.length`, which counts configured PEM path entries before the planner de-duplicates by
+  content digest and before per-service `inheritNetworkCa` opt-out. Two paths with identical bytes
+  count as two at setup and one in a service plan, and a multi-certificate bundle counts as one. The
+  schema, guide, and field name all call it a count of CAs injected into services, which setup cannot
+  know before an app plan exists. `Schema.Number` also admits fractions and negatives for a count.
+- Category 1/3/4/5/7: no findings. Scope stayed inside US-488 (no mkcert, lando.boot, leaf certs, or
+  global-Dockerfile surface); the only `passes` flip is this story's; generated schema was produced by
+  its generator; `buildSetupSummary`/`caInjectionNote` remain single-purpose with real consumers; the
+  rejected retention of the unreleased `notes` array was sound.
+- Fixed: no code landed. An external process repeatedly bulk-restored this worktree mid-edit
+  (verified by identical sub-second mtimes across unrelated files and by edits reverting between two
+  commands of one shell invocation), so a six-file contract change could not be applied atomically
+  without risking a half-applied commit. The partial edit was reverted; the tree is clean at HEAD.
+- Split/excise decisions: recorded in spec/service-trust/prd.json, not only here. US-488 gains an
+  acceptance criterion requiring the boolean condition (>=1 host CA file resolved AND injection
+  enabled) and forbidding a published count, and `passes` is flipped to false so the incomplete public
+  contract does not ship frozen. Gate conflict signalled for adjudication: the 12:16 CDT Review
+  explicitly required the numeric `injectedCaCount` field this audit excises.
+- Verification: typecheck and lint passed at HEAD; setup 63 tests/179 assertions, renderer summary
+  surfaces 17 tests/160 assertions, and dispatch parity 102 tests/791 assertions passed by path. The
+  earlier 63-test run reported one failure in `compiled setup install dir`, which passed in isolation
+  and is a cross-test interference artifact, not a branch regression. Prior entries' aggregate
+  verification claims postdate no commit after 12:16 CDT and remain unverified for the two final
+  parity commits.
+---
