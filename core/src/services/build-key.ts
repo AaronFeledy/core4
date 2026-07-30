@@ -31,11 +31,6 @@ interface StableBuildInput {
   };
 }
 
-interface StableArtifactBuildInput {
-  readonly artifact: unknown;
-  readonly contentDigest: string | undefined;
-}
-
 interface AppBuildKeyInput {
   readonly command: unknown;
   readonly service: ServicePlan;
@@ -107,13 +102,10 @@ const artifactBuildInput = (
   };
 };
 
-const stableArtifactBuildInput = (
-  service: ServicePlan,
-  provider: RuntimeProviderShape,
-): Effect.Effect<StableArtifactBuildInput, ProviderInternalError> => {
+const stableArtifactBuildInput = (service: ServicePlan, provider: RuntimeProviderShape) => {
   const artifact = service.artifact;
   if (artifact?.kind !== "build") {
-    return Effect.succeed({ artifact: artifactBuildInput(artifact, undefined), contentDigest: undefined });
+    return Effect.succeed(artifactBuildInput(artifact, undefined));
   }
   return Effect.tryPromise({
     try: () => buildContextContentDigest(artifact.context),
@@ -124,9 +116,7 @@ const stableArtifactBuildInput = (
         message: "Unable to hash the artifact build context.",
         cause,
       }),
-  }).pipe(
-    Effect.map((contentDigest) => ({ artifact: artifactBuildInput(artifact, contentDigest), contentDigest })),
-  );
+  }).pipe(Effect.map((contentDigest) => artifactBuildInput(artifact, contentDigest)));
 };
 
 const mountBuildInput = (mount: ServicePlan["mounts"][number]): unknown => ({
@@ -197,7 +187,7 @@ const stableBuildInput = (
   service: ServicePlan,
 ): Effect.Effect<StableBuildInput, ProviderInternalError> =>
   stableArtifactBuildInput(service, provider).pipe(
-    Effect.map(({ artifact }) => ({
+    Effect.map((artifact) => ({
       landoVersion: CORE_VERSION,
       provider: { id: provider.id, version: provider.version, platform: provider.platform },
       service: {
