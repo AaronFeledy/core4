@@ -647,3 +647,20 @@ Spec SoT:
   finished, so it was contention, not a branch regression. The prior Review's Bugbot lane remains
   genuinely unverified (account usage limit), not approved.
 ---
+
+## 2026-07-30 13:58 CDT - US-488 Drift Audit
+- Trigger: 10 cycles, 580 changed lines, 21 commits. A harness retry started this audit in parallel
+  with the 13:55 CDT one; both ran the same taxonomy against the same HEAD independently.
+- Independent corroboration, not a second audit pass: the withheld escalation, the single category-2
+  quantity-guard finding, and the no-finding verdict on the other six categories were reached here
+  separately and match. No additional finding surfaced, and nothing further was changed.
+- Verification: re-run fresh at post-fix HEAD — typecheck, lint, generated output, guide coverage,
+  and schema-snapshot regeneration with zero drift passed; setup plus renderer summary surfaces 81
+  tests/354 assertions, dispatch parity 102 tests/791 assertions, and the sdk/core network-trust,
+  app-planner inject, and CA build-key filters 38 tests/83 assertions passed by path. One combined-run
+  failure in `compiled setup install dir` reproduced the recorded contention artifact and passed in
+  isolation and on a clean re-run.
+- Operational hazard: two audit sessions holding one worktree is what produced the compiled-binary
+  contention here and the half-applied contract edit at 12:57 CDT. Confirm no sibling session is live
+  before editing this branch.
+---
