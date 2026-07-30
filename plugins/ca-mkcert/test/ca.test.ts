@@ -46,7 +46,10 @@ describe("mkcert CertificateAuthority", () => {
       expect(installCalls[0]?.env?.CAROOT).toBe(harness.caRoot);
 
       const result = await Effect.runPromise(
-        ca.issueCert({ cn: "myapp.lndo.site", sans: ["*.myapp.lndo.site", "localhost", "127.0.0.1"] }),
+        ca.issueCert({
+          cn: "myapp.lndo.site",
+          sans: ["myapp.lndo.site", "*.myapp.lndo.site", "localhost", "127.0.0.1"],
+        }),
       );
 
       expect(result.certPath).toBe(join(harness.certsDir, "myapp.lndo.site.pem"));
