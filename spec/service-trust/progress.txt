@@ -583,3 +583,20 @@ Spec SoT:
     differences are harmless, but a binary built from an uncommitted intermediate is not evidence for
     what actually shipped.
 ---
+## 2026-07-30 13:21 CDT - US-488 Build Confirmation
+- Independently confirmed the adjudicated inject contract at branch HEAD; no code change was needed.
+  Setup publishes the required boolean `networkCaInjectionConfigured`, no count reaches the result
+  type, command schema, either renderer, or the guide, and the human note is unquantified.
+- Verification: typecheck, lint, every boundary rule, generated output, schema compatibility, guide
+  lint, guide coverage, and machine output passed; 185 focused and adjacent tests with 1,161
+  assertions passed across setup, renderer summary surfaces, setup scenarios, and compiled-binary
+  dispatch parity. Sandbox CLI on a binary compiled from HEAD covered ten cases: one and two CAs
+  produced byte-identical human notes and `true` machine JSON, disabled injection and no configured
+  CA produced no note and `false`, the decorated TTY frame carried and suppressed the note
+  accordingly, and setup exited 0 throughout. QA material was removed afterward.
+- **Learnings for future iterations:**
+  - Two loop sessions can hold this worktree at once: a retry may start while the prior session is
+    still mid-edit, which is what produced the earlier half-applied contract change. Before editing an
+    in-flight branch, compare file mtimes against the current time and check for agent-spawned test
+    processes; if another session is live, verify and close out rather than editing in parallel.
+---
