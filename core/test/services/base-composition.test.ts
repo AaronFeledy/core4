@@ -61,13 +61,14 @@ const compose = (input: ComposeServiceInput): Promise<ServicePlan> =>
   Effect.runPromise(composeService(input));
 
 describe("lando base composition", () => {
-  test("seeds lando.security between healthcheck and host-proxy", () => {
+  test("seeds lando.certs and lando.security between healthcheck and host-proxy", () => {
     expect(LANDO_BASE_DEFAULT_FEATURE_IDS).toEqual([
       "lando.user-id",
       "lando.storage",
       "lando.env",
       "lando.app-mount",
       "lando.healthcheck",
+      "lando.certs",
       "lando.security",
       "lando.host-proxy",
       "lando.user",
