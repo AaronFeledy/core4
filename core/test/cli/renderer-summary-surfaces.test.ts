@@ -272,11 +272,11 @@ describe("doctor summary", () => {
 });
 
 describe("setup summary via spec render", () => {
-  const ctx: RenderContext = { mode: "lando", columns: 72, isTTY: true };
+  const ctx: RenderContext = { mode: "lando", format: "text", columns: 72, isTTY: true };
 
   test("decorates setup completion in lando TTY mode", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: LONG_PATH, fileSyncStatus: "deferred" },
+      { providerId: "podman", installDir: LONG_PATH, fileSyncStatus: "deferred", injectedCaCount: 0 },
       undefined,
       ctx,
     );
@@ -286,10 +286,8 @@ describe("setup summary via spec render", () => {
   });
 
   test("shows the CA injection note inside the decorated frame", () => {
-    const note =
-      "2 configured certificate authorities inject into type: lando services on the next plan or rebuild.";
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "satisfied", notes: [note] },
+      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "satisfied", injectedCaCount: 2 },
       undefined,
       ctx,
     );
@@ -302,9 +300,9 @@ describe("setup summary via spec render", () => {
 
   test("stays a plain line when not decorated", () => {
     const out = setupSpec.render?.(
-      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "installed" },
+      { providerId: "podman", installDir: "/opt/lando", fileSyncStatus: "installed", injectedCaCount: 0 },
       undefined,
-      { mode: "plain", columns: 80, isTTY: false },
+      { mode: "plain", format: "text", columns: 80, isTTY: false },
     );
     expect(stripAnsi(out ?? "")).toContain("setup complete: Lando runtime (podman)");
     expect(out ?? "").not.toContain("╭─");

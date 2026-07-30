@@ -211,7 +211,7 @@ export const setupSpec: LandoCommandSpec<
         providerId: provider.id,
         installDir: inputInstallDir(input) ?? sourceInstallDir(),
         fileSyncStatus,
-        notes: injectedCaCount === 0 ? [] : [caInjectionNote(injectedCaCount)],
+        injectedCaCount,
       };
     }),
   render: (result, _input, ctx) => {
@@ -219,17 +219,16 @@ export const setupSpec: LandoCommandSpec<
       typeof result !== "object" ||
       result === null ||
       !("providerId" in result) ||
-      !("installDir" in result)
+      !("installDir" in result) ||
+      !("injectedCaCount" in result) ||
+      typeof result.injectedCaCount !== "number"
     ) {
       return undefined;
     }
     const status = "fileSyncStatus" in result ? String(result.fileSyncStatus) : "satisfied";
     const providerId = String(result.providerId);
     const installDir = String(result.installDir);
-    const notes =
-      "notes" in result && Array.isArray(result.notes)
-        ? result.notes.filter((note): note is string => typeof note === "string")
-        : [];
+    const notes = result.injectedCaCount > 0 ? [caInjectionNote(result.injectedCaCount)] : [];
     if (isDecoratedContext(ctx))
       return formatSummary(buildSetupSummary({ providerId, installDir, fileSyncStatus: status, notes }), {
         columns: ctx?.columns,

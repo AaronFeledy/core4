@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { Cause, type Context, Effect, Layer } from "effect";
+import { Cause, type Context, Effect, Layer, Schema } from "effect";
 
 import {
   CertificateAuthority,
@@ -36,6 +36,7 @@ import {
 } from "../../src/cli/commands/setup-network-trust.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
+  SetupResultSchema,
   setupDeferredFileSyncPath,
   setupSpec,
   shouldDisableHostProxyForSetup,
@@ -195,11 +196,6 @@ const normalizeSetupFailure = (stderr: string): string =>
 const fileSyncSatisfiedLine = "file-sync: already satisfied (native bind mounts)";
 const setupReadinessPath = (userDataRoot: string): string => join(userDataRoot, "setup", "readiness.json");
 
-const setupResultNotes = (result: unknown): ReadonlyArray<string> =>
-  typeof result === "object" && result !== null && "notes" in result && Array.isArray(result.notes)
-    ? result.notes.filter((note): note is string => typeof note === "string")
-    : [];
-
 const setupCompleteOutput = (providerId: string, installDir = "/opt/lando"): string =>
   `setup complete: Lando runtime (${providerId})\n${fileSyncSatisfiedLine}\nLANDO_INSTALL_DIR="${installDir}"`;
 
@@ -230,6 +226,22 @@ describe("meta:setup command", () => {
     expect(SetupCommand.bootstrap).toBe("provider");
     expect(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.bootstrap).toBe("provider");
     expect(SetupCommand.aliases).toContain("setup");
+  });
+
+  test("round-trips numeric CA injection state without human authority prose", () => {
+    const machineResult = {
+      providerId: "lando",
+      installDir: "/opt/lando",
+      fileSyncStatus: "satisfied" as const,
+      injectedCaCount: 2,
+    };
+
+    const decoded = Schema.decodeUnknownSync(SetupResultSchema)(machineResult);
+    const encoded = Schema.encodeSync(SetupResultSchema)(decoded);
+
+    expect(encoded).toEqual(machineResult);
+    expect(encoded).not.toHaveProperty("notes");
+    expect(JSON.stringify(encoded)).not.toContain("certificate authorit");
   });
 
   test("exposes provider-contributed setup.flags in metadata and compiled parsing", () => {
@@ -1288,10 +1300,10 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(setupResultNotes(result)).toEqual([
-        "1 configured certificate authority injects into type: lando services on the next plan or rebuild.",
-      ]);
-      expect(setupSpec.render?.(result)).toContain("type: lando services");
+      expect(result.injectedCaCount).toBe(1);
+      expect(setupSpec.render?.(result)).toBe(
+        `${setupCompleteOutput(TestRuntimeProvider.id)}\n1 configured certificate authority injects into type: lando services on the next plan or rebuild.`,
+      );
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -1314,9 +1326,7 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(setupResultNotes(result)).toEqual([
-        "2 configured certificate authorities inject into type: lando services on the next plan or rebuild.",
-      ]);
+      expect(result.injectedCaCount).toBe(2);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -1337,11 +1347,22 @@ describe("meta:setup command", () => {
         ),
       );
 
-      expect(setupResultNotes(result)).toEqual([]);
+      expect(result.injectedCaCount).toBe(0);
       expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
+  });
+
+  test("reports zero injected CAs when no host CAs are configured", async () => {
+    const result = await Effect.runPromise(
+      setupSpec
+        .run({ installDir: "/opt/lando" })
+        .pipe(Effect.provide(buildSetupLayers(testRuntimeProviderRegistry))),
+    );
+
+    expect(result.injectedCaCount).toBe(0);
+    expect(setupSpec.render?.(result)).toBe(setupCompleteOutput(TestRuntimeProvider.id));
   });
 
   test("uses proxy environment variables when network.proxy config is unset", async () => {

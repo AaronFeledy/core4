@@ -11,15 +11,12 @@
       ],
       "type": "string"
     },
+    "injectedCaCount": {
+      "description": "Number of configured host CAs injected into type: lando services; 0 when no host CAs are configured or injection is disabled.",
+      "type": "number"
+    },
     "installDir": {
       "type": "string"
-    },
-    "notes": {
-      "description": "Informational setup notes, such as host CA material that injects into services.",
-      "items": {
-        "type": "string"
-      },
-      "type": "array"
     },
     "providerId": {
       "type": "string"
@@ -29,7 +26,7 @@
     "providerId",
     "installDir",
     "fileSyncStatus",
-    "notes"
+    "injectedCaCount"
   ],
   "type": "object"
 }

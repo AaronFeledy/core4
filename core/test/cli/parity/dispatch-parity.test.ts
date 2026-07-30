@@ -1011,12 +1011,12 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
         expect(compiledEnvelope).toMatchObject({
           apiVersion: "v4",
           ok: true,
-          result: { providerId: "lando", fileSyncStatus: "satisfied" },
+          result: { providerId: "lando", fileSyncStatus: "satisfied", injectedCaCount: 0 },
         });
         expect(sourceEnvelope).toMatchObject({
           apiVersion: "v4",
           ok: true,
-          result: { providerId: "lando", fileSyncStatus: "satisfied" },
+          result: { providerId: "lando", fileSyncStatus: "satisfied", injectedCaCount: 0 },
         });
       } finally {
         isolated.cleanup();
