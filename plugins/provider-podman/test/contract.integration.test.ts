@@ -24,6 +24,8 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
+import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
+import { makeStateStore } from "../../../core/src/state/service.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");
@@ -607,26 +609,42 @@ describe("provider-podman RuntimeProvider contract", () => {
     const stateDir = await mkdtemp(join(tmpdir(), "lando-provider-podman-state-"));
     try {
       const firstFake = makeFakeApi();
+      const firstState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
       const firstProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
-            makeProviderLayer({ podmanApi: firstFake.api, platform: "linux", env: {}, stateDir }),
+            makeProviderLayer({
+              podmanApi: firstFake.api,
+              platform: "linux",
+              env: {},
+              stateDir,
+              appliedPlanState: firstState,
+            }),
           ),
         ),
       );
       await Effect.runPromise(firstProvider.apply(plan, { reconcile: true }));
 
       const secondFake = makeFakeApi();
+      const secondState = makePluginStateStore(makeStateStore(), AbsolutePath.make(stateDir));
       const secondProvider = await Effect.runPromise(
         RuntimeProvider.pipe(
           Effect.provide(
-            makeProviderLayer({ podmanApi: secondFake.api, platform: "linux", env: {}, stateDir }),
+            makeProviderLayer({
+              podmanApi: secondFake.api,
+              platform: "linux",
+              env: {},
+              stateDir,
+              appliedPlanState: secondState,
+            }),
           ),
         ),
       );
       const snapshot = await Effect.runPromise(secondProvider.inspect({ app: appId, service: serviceName }));
+      const listed = await Effect.runPromise(secondProvider.list({}));
 
       expect(snapshot.providerId).toBe("podman");
+      expect(listed.map((entry) => entry.app)).toEqual([appId]);
       expect(secondFake.calls.some((call) => call.path.endsWith("/json"))).toBe(true);
     } finally {
       await rm(stateDir, { recursive: true, force: true });

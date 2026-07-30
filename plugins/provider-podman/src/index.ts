@@ -11,7 +11,7 @@
  * same Podman API). Provider-podman overrides provider identity at the public
  * provider surface and shared helper seams it exposes directly.
  */
-import { mkdir, readFile, readdir, unlink, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 
 import { buildProviderCapabilities } from "@lando/container-runtime/capabilities";
 import { makeProviderDataPlane } from "@lando/container-runtime/data-plane";
@@ -46,11 +46,12 @@ import type { LogFileAccess } from "@lando/sdk/log-follow";
 import {
   type PluginDoctorCheckContribution,
   type PluginDoctorReport,
+  type PluginStateStore,
   definePlugin,
 } from "@lando/sdk/plugins";
 import {
-  AppId,
-  AppPlan,
+  type AppId,
+  type AppPlan,
   type HostPlatform,
   PluginManifest,
   type ProviderCapabilities,
@@ -64,6 +65,7 @@ import {
   type RuntimeProviderShape,
 } from "@lando/sdk/services";
 
+import { listAppliedPlans, loadAppliedPlan, persistAppliedPlan, removeAppliedPlan } from "./applied-state.ts";
 import { makeNamedPipePodmanApiClient } from "./named-pipe.ts";
 import { redactDetails, redactString } from "./redact.ts";
 
@@ -476,79 +478,6 @@ export const makePodmanApiClient = (socketPath: string): PodmanApiClient =>
     ? makeNamedPipePodmanApiClient(socketPath)
     : makeUnixPodmanApiClient(socketPath);
 
-const trimTrailingSlashes = (value: string): string => value.replace(/\/+$/u, "");
-
-const APPLIED_STATE_VERSION = 1;
-
-const appliedPlansDir = (stateDir: string): string => `${trimTrailingSlashes(stateDir)}/provider-podman/apps`;
-const appliedPlanPath = (stateDir: string, appId: AppId): string =>
-  `${appliedPlansDir(stateDir)}/${appId}.json`;
-
-const persistAppliedPlan = (stateDir: string, plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> =>
-  Effect.tryPromise({
-    try: async () => {
-      const dir = appliedPlansDir(stateDir);
-      await mkdir(dir, { recursive: true });
-      await writeFile(
-        appliedPlanPath(stateDir, plan.id),
-        `${JSON.stringify(
-          {
-            version: APPLIED_STATE_VERSION,
-            providerId: PROVIDER_ID,
-            appId: plan.id,
-            plan: Schema.encodeSync(AppPlan)(plan),
-          },
-          null,
-          2,
-        )}\n`,
-      );
-    },
-    catch: (cause) =>
-      new ProviderUnavailableError({
-        providerId: PROVIDER_ID,
-        operation: "applied-state.persist",
-        message: "Unable to write provider-podman applied plan state.",
-        remediation: `Check permissions for ${stateDir} and rerun the failing lifecycle command.`,
-        cause,
-      }),
-  });
-
-const loadAppliedPlan = (stateDir: string, appId: AppId): Effect.Effect<AppPlan | undefined, never> =>
-  Effect.tryPromise({
-    try: () => readFile(appliedPlanPath(stateDir, appId), "utf8"),
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.catchAll(() => Effect.succeed(undefined)),
-    Effect.map((content) => {
-      if (content === undefined) return undefined;
-      try {
-        const envelope = JSON.parse(content) as unknown;
-        if (
-          typeof envelope !== "object" ||
-          envelope === null ||
-          !("version" in envelope) ||
-          envelope.version !== APPLIED_STATE_VERSION ||
-          !("plan" in envelope)
-        ) {
-          return undefined;
-        }
-        const decoded = Schema.decodeUnknownEither(AppPlan)(envelope.plan);
-        return decoded._tag === "Right" ? decoded.right : undefined;
-      } catch {
-        return undefined;
-      }
-    }),
-  );
-
-const removeAppliedPlan = (stateDir: string, appId: AppId): Effect.Effect<void, never> =>
-  Effect.tryPromise({
-    try: () => unlink(appliedPlanPath(stateDir, appId)),
-    catch: (cause) => cause,
-  }).pipe(
-    Effect.asVoid,
-    Effect.catchAll(() => Effect.void),
-  );
-
 export interface ProviderLayerOptions {
   readonly podmanApi?: PodmanApiClient;
   readonly podmanApiFactory?: (socketPath: string) => PodmanApiClient;
@@ -561,6 +490,7 @@ export interface ProviderLayerOptions {
    * conflict detection. Typically `<userDataRoot>/providers`.
    */
   readonly stateDir?: string;
+  readonly appliedPlanState?: PluginStateStore;
   /**
    * Overrides the default file-based conflict detector. Tests use this seam
    * to assert that the conflict-detection branch can be bypassed safely.
@@ -736,8 +666,8 @@ export const makeRuntimeProvider = (
     if (target.plan !== undefined) return Effect.succeed(target.plan);
     const cached = plans.get(target.app);
     if (cached !== undefined) return Effect.succeed(cached);
-    if (options.stateDir === undefined) return Effect.succeed(undefined);
-    return loadAppliedPlan(options.stateDir, target.app).pipe(
+    if (options.appliedPlanState === undefined) return Effect.succeed(undefined);
+    return loadAppliedPlan(options.appliedPlanState, target.app).pipe(
       Effect.tap((loaded) =>
         Effect.sync(() => {
           if (loaded !== undefined) plans.set(target.app, loaded);
@@ -747,14 +677,16 @@ export const makeRuntimeProvider = (
   };
 
   const rememberPlan = (plan: AppPlan): Effect.Effect<void, ProviderUnavailableError> =>
-    (options.stateDir === undefined ? Effect.void : persistAppliedPlan(options.stateDir, plan)).pipe(
-      Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))),
-    );
+    (options.appliedPlanState === undefined
+      ? Effect.void
+      : persistAppliedPlan(options.appliedPlanState, plan).pipe(Effect.asVoid)
+    ).pipe(Effect.tap(() => Effect.sync(() => plans.set(plan.id, plan))));
 
   const forgetPlan = (appId: AppId): Effect.Effect<void> =>
-    (options.stateDir === undefined ? Effect.void : removeAppliedPlan(options.stateDir, appId)).pipe(
-      Effect.tap(() => Effect.sync(() => plans.delete(appId))),
-    );
+    (options.appliedPlanState === undefined
+      ? Effect.void
+      : removeAppliedPlan(options.appliedPlanState, appId)
+    ).pipe(Effect.tap(() => Effect.sync(() => plans.delete(appId))));
 
   return conflictCheck.pipe(
     Effect.flatMap(() => gatedRuntime),
@@ -876,29 +808,11 @@ export const makeRuntimeProvider = (
           }),
         list: (filter) =>
           Effect.gen(function* () {
-            const inMemoryIds = Array.from(plans.keys());
-            const stateDir = options.stateDir;
-            const persistedIds: string[] =
-              stateDir === undefined
-                ? []
-                : yield* Effect.tryPromise({
-                    try: () => readdir(appliedPlansDir(stateDir)),
-                    catch: (cause) => cause,
-                  }).pipe(
-                    Effect.catchAll(() => Effect.succeed([] as string[])),
-                    Effect.map((files) =>
-                      files.filter((f) => f.endsWith(".json")).map((f) => f.slice(0, -".json".length)),
-                    ),
-                  );
+            const persistedPlans =
+              options.appliedPlanState === undefined ? [] : yield* listAppliedPlans(options.appliedPlanState);
+            const allPlans = [...plans.values(), ...persistedPlans.filter((plan) => !plans.has(plan.id))];
 
-            const allIds = [
-              ...inMemoryIds,
-              ...persistedIds.map((id) => AppId.make(id)).filter((id) => !plans.has(id)),
-            ] as AppId[];
-            const resolved = yield* Effect.forEach(allIds, (id) => resolvePlan({ app: id }));
-            const validPlans = resolved.filter((p): p is AppPlan => p !== undefined);
-
-            const snapshots = yield* Effect.forEach(validPlans, (plan) =>
+            const snapshots = yield* Effect.forEach(allPlans, (plan) =>
               Effect.forEach(Object.values(plan.services), (service) =>
                 inspect(plan, { app: plan.id, service: service.name }, { podmanApi }).pipe(
                   Effect.map((snapshot) => ({ ...snapshot, providerId: providerIdBranded })),
@@ -1003,13 +917,14 @@ export const plugin = definePlugin({
       runtimeProviderId,
       {
         id: runtimeProviderId,
-        make: () =>
+        make: (ctx) =>
           Effect.gen(function* () {
             const paths = yield* PathsService;
             const assets = yield* LogFileHelperAssets;
             const logFileHelperPayloads = yield* assets.payloads;
             return yield* makeRuntimeProvider({
               stateDir: `${paths.roots.userDataRoot}/providers`,
+              appliedPlanState: ctx.stateStore,
               logFileHelperPayloads,
             });
           }),
