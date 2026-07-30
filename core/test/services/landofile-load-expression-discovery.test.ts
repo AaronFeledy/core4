@@ -240,3 +240,58 @@ test("allows and logs an opted-in outside-root load", async () => {
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("logs an opted-in outside-root load from an include fragment", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-load-include-outside-opt-in-"));
+  const appRoot = join(root, "app");
+  const cwd = process.cwd();
+  const messages: string[] = [];
+  try {
+    // Given
+    await mkdir(join(appRoot, "fragments"), { recursive: true });
+    await writeFile(join(root, "corp.pem"), PEM);
+    await writeFile(
+      join(appRoot, "fragments", "service.yml"),
+      [
+        "services:",
+        "  web:",
+        "    type: node:22",
+        "    security:",
+        "      ca:",
+        "        - \"{{ load('../../corp.pem') }}\"",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      join(appRoot, ".lando.yml"),
+      ["name: trust-app", "includes:", "  - ./fragments/service.yml", ""].join("\n"),
+    );
+    process.chdir(appRoot);
+    const config = Schema.decodeUnknownSync(GlobalConfig)({ allowLoadOutsideRoot: true });
+    const layer = Layer.mergeAll(
+      LandofileServiceLive,
+      Layer.succeed(ConfigService, {
+        load: Effect.succeed(config),
+        get: <K extends keyof GlobalConfig>(key: K) => Effect.succeed(config[key]),
+      }),
+      Layer.succeed(Logger, {
+        debug: () => Effect.void,
+        info: (message) => Effect.sync(() => messages.push(message)),
+        warn: () => Effect.void,
+        error: () => Effect.void,
+      }),
+    );
+
+    // When
+    const landofile = await Effect.runPromise(
+      Effect.flatMap(LandofileService, (service) => service.discover).pipe(Effect.provide(layer)),
+    );
+
+    // Then
+    expect(landofile.services?.[ServiceName.make("web")]?.security?.ca).toEqual([PEM]);
+    expect(messages).toEqual(["Landofile load used outside-root policy override"]);
+  } finally {
+    process.chdir(cwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});

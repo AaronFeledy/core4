@@ -28,7 +28,7 @@ import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
-import { resolveLandofileIncludes } from "./includes.ts";
+import { type LandofileRelaxedRead, resolveLandofileIncludes } from "./includes.ts";
 import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
 import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
 import {
@@ -388,6 +388,19 @@ export const loadLandofileLayers = (
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   Effect.gen(function* () {
     const runtime = yield* loadContext(appRoot);
+    const logger = runtime.logger;
+    const onRelaxedRead =
+      logger === undefined
+        ? undefined
+        : (read: LandofileRelaxedRead) =>
+            logger
+              .info("Landofile load used outside-root policy override", {
+                sourcePath: read.sourcePath,
+                authoredPath: read.authoredPath,
+                absolutePath: read.absolutePath,
+                appRoot: read.appRoot,
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
     return yield* Effect.tryPromise({
       try: () => presentLandofileLayers(appRoot),
       catch: (cause) =>
@@ -413,6 +426,7 @@ export const loadLandofileLayers = (
                 order: layer.order,
                 resolveTooling: false,
                 loadPolicy: runtime.policy,
+                ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
             Effect.map((landofile) => ({ layer, landofile })),
@@ -448,6 +462,7 @@ export const loadLandofileLayers = (
                 appRoot,
                 sourcePath: canonicalPath,
                 loadPolicy: runtime.policy,
+                ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
           )

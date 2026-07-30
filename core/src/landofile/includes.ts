@@ -68,6 +68,13 @@ export interface LandofileIncludeDeps {
   readonly npmExtractor?: NpmIncludeExtractor;
 }
 
+export interface LandofileRelaxedRead {
+  readonly sourcePath: string;
+  readonly authoredPath: string;
+  readonly absolutePath: string;
+  readonly appRoot: string;
+}
+
 export interface ResolveLandofileIncludesOptions {
   readonly landofile: LandofileShape;
   readonly appRoot: string;
@@ -81,6 +88,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly order?: VersionConstraintEntry["order"];
   readonly resolveTooling?: boolean;
   readonly loadPolicy?: LandofileLoadPolicy;
+  readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
 }
 
 interface NormalizedInclude {
@@ -108,6 +116,7 @@ interface ResolveContext {
   readonly stagedLocks: Map<string, LockEntry>;
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
+  readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
 
 interface FragmentResult {
@@ -560,6 +569,19 @@ const parseFragment = (
         policy: ctx.loadPolicy,
       }),
     ),
+    Effect.tap(({ relaxedReads }) => {
+      const onRelaxedRead = ctx.onRelaxedRead;
+      return onRelaxedRead === undefined
+        ? Effect.void
+        : Effect.forEach(relaxedReads, (read) =>
+            onRelaxedRead({
+              sourcePath: fragment.filePath,
+              authoredPath: read.authoredPath,
+              absolutePath: read.absolutePath,
+              appRoot: ctx.appRoot,
+            }),
+          ).pipe(Effect.asVoid);
+    }),
     Effect.map(({ value, dependencies }) =>
       typeof value === "object" && value !== null
         ? rememberLandofileReferencedFiles(value, dependencies)
@@ -1003,6 +1025,7 @@ export const resolveLandofileIncludes = (
       stagedLocks: new Map(),
       noNetwork: false,
       loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
+      ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
     const existingLocalIncludePaths = getLocalIncludePaths(options.landofile);
