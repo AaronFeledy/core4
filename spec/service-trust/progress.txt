@@ -40,6 +40,8 @@ Spec SoT:
 - Provenance stored beside decoded Landofile objects in a `WeakMap` must be copied whenever an include
   resolver or normalization step returns a replacement object; otherwise downstream cache keys silently
   lose source dependencies.
+- Keep host-path-bearing build descriptors outside artifact-key projection: key immutable content through
+  `buildKeyInputs`, then re-read and verify those bytes before the first provider build request.
 
 ## Status
 
@@ -318,4 +320,44 @@ Spec SoT:
 - Verification: typecheck, lint passed; 128 focused and adjacent tests passed with 282 assertions;
   focused guide execution, generated-output, base-aware guide drift with the recorded skip, diff check,
   and changed-file diagnostics passed.
+---
+## 2026-07-29 23:37 CDT - Babysit
+- PR: #656 https://github.com/AaronFeledy/core4/pull/656
+- CI outcome: pass
+- Review feedback: fixed (schema compatibility exceptions for US-499 graph changes; refreshed app-plan v14 cache fixture; Guide-Coverage-Skip on PR body)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-07-30 00:23 CDT - US-487
+- Derived artifact builds now verify injected CA files by content digest before contacting the
+  container API, pack them into the derived context, install them across Debian/Ubuntu, Alpine, and
+  RHEL-family trust stores, and bake the stable `/etc/lando/certs/ca-bundle.pem` path.
+- Successful and cached trust-store builds drop only the temporary app-cache bundle mount while
+  preserving per-PEM mounts and the pre/post-rebuild `LANDO_CA_BUNDLE` and `LANDO_CA_DIR` contract.
+- Verification: typecheck, lint, all boundary rules, generated output, package DAG, import cycle,
+  guide lint/coverage, 99 focused tests with 371 assertions, and a direct derived-build surface probe
+  passed; high-rigor review approved unconditionally.
+- **Learnings for future iterations:**
+  - Host-path-bearing build intent belongs outside artifact-key projection; immutable CA digests stay
+    in `buildKeyInputs`, while the container boundary re-hashes bytes before its first build request.
+  - The successful artifact-stamping boundary is the reliable point to remove temporary runtime
+    materialization without changing fixed in-container environment paths.
+---
+
+## 2026-07-30 01:06 CDT - US-487 Review
+- Fixed stale artifact-cache identity for public CA descriptors by keying digest and archive name
+  while excluding host paths, made the SDK descriptor a schema-derived runtime contract, and kept
+  non-build steps from validating CA metadata or removing the temporary CA bundle mount.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit
+  rejected both required current-branch attempts; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected CA count and byte limits as an in-scope blocker; inputs
+  remain same-user local configuration, and this story introduces no untrusted remote source or
+  normative resource-limit contract.
+- Guide-Coverage-Skip: US-487 extends SDK CA build descriptors; rebuild behavior is already covered by corporate-network-trust, not Alpha-4 library guides.
+- Verification: typecheck, lint, all boundary rules, generated output, and base-aware guide drift
+  passed; 78 focused and adjacent tests passed with 284 assertions.
+- **Learnings for future iterations:** Any service-feature field that changes derived image bytes must
+  be projected into the artifact key without host-local paths; filter non-artifact phases before
+  parsing artifact-only metadata or applying post-artifact transitions.
 ---

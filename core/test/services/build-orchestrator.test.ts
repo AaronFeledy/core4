@@ -20,6 +20,7 @@ import {
   AbsolutePath,
   AppId,
   type AppPlan,
+  PortablePath,
   ProviderId,
   ServiceName,
   type ServicePlan,
@@ -166,6 +167,97 @@ const serviceFeatureExtension = (service: ServicePlan) =>
     | undefined;
 
 describe("BuildOrchestratorLive", () => {
+  test("drops only the temporary CA bundle mount after successful and cached trust-store builds", async () => {
+    await withTempUserRoots(async () => {
+      // Given
+      const digest = "a".repeat(64);
+      const caEnvironment = {
+        LANDO_CA_BUNDLE: "/etc/lando/certs/ca-bundle.pem",
+        LANDO_CA_DIR: "/etc/lando/certs",
+      };
+      const trustService: ServicePlan = {
+        ...web,
+        artifact: { kind: "ref", ref: "debian:12" },
+        environment: caEnvironment,
+        mounts: [
+          {
+            type: "bind",
+            source: "/host/corp.pem",
+            target: PortablePath.make(`/usr/local/share/ca-certificates/lando-${digest}.crt`),
+            readOnly: true,
+            realization: "passthrough",
+          },
+          {
+            type: "bind",
+            source: "/host/ca-bundle.pem",
+            target: PortablePath.make("/etc/lando/certs/ca-bundle.pem"),
+            readOnly: true,
+            realization: "passthrough",
+          },
+        ],
+        extensions: {
+          "@lando/core/service-features": {
+            buildSteps: [
+              {
+                id: "lando.security:trust-store",
+                phase: "build",
+                command: "install-trust",
+                buildKeyInputs: { caDigests: [digest] },
+                caFiles: [{ path: "/host/corp.pem", digest, archiveName: `lando-${digest}.crt` }],
+              },
+            ],
+          },
+        },
+      };
+      const firstPlan: AppPlan = {
+        ...plan,
+        id: AppId.make("scratch-ca-first"),
+        slug: "scratch-ca-first",
+        services: { [web.name]: trustService },
+      };
+      const repeatPlan: AppPlan = {
+        ...firstPlan,
+        id: AppId.make("scratch-ca-second"),
+        slug: "scratch-ca-second",
+      };
+      let builds = 0;
+      const provider = {
+        ...TestRuntimeProvider,
+        capabilities: { ...TestRuntimeProvider.capabilities, artifactPull: true },
+        pullArtifact: () => Effect.succeed({ providerId, ref: "debian:12", digest: "sha256:base" }),
+        buildArtifact: () =>
+          Effect.sync(() => {
+            builds += 1;
+            return { providerId, ref: "debian:12-lando-ca" };
+          }),
+      };
+
+      // When
+      const [built, cached] = await Effect.runPromise(
+        Effect.flatMap(BuildOrchestrator, (orchestrator) =>
+          Effect.gen(function* () {
+            const first = yield* orchestrator.build(firstPlan);
+            const repeat = yield* orchestrator.build(repeatPlan);
+            return [first, repeat] as const;
+          }),
+        ).pipe(Effect.provide(layer(provider))),
+      );
+
+      // Then
+      const builtService = built.services[web.name];
+      const cachedService = cached.services[web.name];
+      expect(builds).toBe(1);
+      expect(builtService?.mounts.map((mount) => String(mount.target))).toEqual([
+        `/usr/local/share/ca-certificates/lando-${digest}.crt`,
+      ]);
+      expect(cachedService?.mounts).toEqual(builtService?.mounts);
+      expect(builtService?.environment.LANDO_CA_BUNDLE).toBe(caEnvironment.LANDO_CA_BUNDLE);
+      expect(builtService?.environment.LANDO_CA_DIR).toBe(caEnvironment.LANDO_CA_DIR);
+      expect(cachedService?.environment).toEqual(builtService?.environment);
+      expect(cachedService?.extensions).toEqual(trustService.extensions);
+    });
+  });
+
   test("builds three artifact services with the default bounded concurrency", async () => {
     // Given
     const cache = { ...db, name: ServiceName.make("cache") } satisfies ServicePlan;

@@ -166,8 +166,25 @@ test("injects global, project, and inline CAs into lando-base services", async (
     expect(serviceFeatureBuildSteps(web.extensions)).toContainEqual({
       id: "lando.security:trust-store",
       phase: "build",
-      command: ":",
+      command:
+        "set -e; mkdir -p /etc/lando/certs; if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; elif command -v update-ca-trust >/dev/null 2>&1; then mkdir -p /etc/pki/ca-trust/source/anchors && cp /usr/local/share/ca-certificates/lando-*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust extract; else echo 'No supported CA trust-store installer found.' >&2; exit 1; fi; cat /usr/local/share/ca-certificates/lando-*.crt > /etc/lando/certs/ca-bundle.pem",
       buildKeyInputs: { caDigests: [digest(globalPem), digest(projectPem), digest(inlinePem)].sort() },
+      caFiles: expect.arrayContaining([
+        expect.objectContaining({
+          path: globalPath,
+          digest: digest(globalPem),
+          archiveName: `lando-${digest(globalPem)}.crt`,
+        }),
+        expect.objectContaining({
+          path: projectPath,
+          digest: digest(projectPem),
+          archiveName: `lando-${digest(projectPem)}.crt`,
+        }),
+        expect.objectContaining({
+          digest: digest(inlinePem),
+          archiveName: `lando-${digest(inlinePem)}.crt`,
+        }),
+      ]),
     });
   } finally {
     await rm(root, { recursive: true, force: true });

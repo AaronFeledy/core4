@@ -149,7 +149,7 @@
         "Lint passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {

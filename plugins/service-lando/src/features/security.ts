@@ -9,6 +9,8 @@ export const LANDO_SECURITY_FEATURE_PRIORITY = 1100;
 const CA_BUNDLE_PATH = "/etc/lando/certs/ca-bundle.pem" as const;
 const CA_DIRECTORY_PATH = "/etc/lando/certs" as const;
 const CA_TRUST_INPUT_DIRECTORY = "/usr/local/share/ca-certificates" as const;
+const TRUST_STORE_COMMAND =
+  "set -e; mkdir -p /etc/lando/certs; if command -v update-ca-certificates >/dev/null 2>&1; then update-ca-certificates; elif command -v update-ca-trust >/dev/null 2>&1; then mkdir -p /etc/pki/ca-trust/source/anchors && cp /usr/local/share/ca-certificates/lando-*.crt /etc/pki/ca-trust/source/anchors/ && update-ca-trust extract; else echo 'No supported CA trust-store installer found.' >&2; exit 1; fi; cat /usr/local/share/ca-certificates/lando-*.crt > /etc/lando/certs/ca-bundle.pem";
 
 const CaDescriptor = Schema.Struct({
   path: Schema.String,
@@ -61,8 +63,13 @@ const applyCaIntent = (ctx: ServiceFeatureContext, config: LandoSecurityFeatureC
   ctx.addBuildStep({
     id: "lando.security:trust-store",
     phase: "build",
-    command: ":",
+    command: TRUST_STORE_COMMAND,
     buildKeyInputs: { caDigests: config.cas.map((ca) => ca.digest).sort() },
+    caFiles: config.cas.map((ca) => ({
+      path: ca.path,
+      digest: ca.digest,
+      archiveName: `lando-${ca.digest}.crt`,
+    })),
   });
 };
 
