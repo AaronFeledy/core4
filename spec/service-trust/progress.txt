@@ -440,3 +440,21 @@ Spec SoT:
   - No new codebase pattern was needed; the existing fresh-binary and pseudo-TTY verification guidance
     remained sufficient for a repeat build confirmation.
 ---
+
+## 2026-07-30 12:16 CDT - US-488 Review
+- Fixed the machine-output contract so setup reports CA injection as the required numeric
+  `injectedCaCount` field instead of presentation prose. Human output still derives the same non-fatal
+  note in plain and decorated renderers, while disabled injection and no configured host CAs both
+  produce a structured zero and the unchanged no-note completion text. Source/compiled JSON parity now
+  locks the field.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required current-branch
+  attempts hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected preserving the branch-local `notes` array as compatibility
+  surface because it never shipped and would keep machine consumers dependent on parsing English.
+- Verification: typecheck, lint passed; 80 focused setup and renderer tests passed with 339 assertions;
+  generated output, schema compatibility, guide lint/coverage, base-aware guide drift, and public
+  transcripts passed; a freshly compiled sandbox CLI emitted numeric `injectedCaCount` in canonical
+  machine output.
+- **Learnings for future iterations:** A command-result field that only a human can interpret is not
+  agent-drivable machine output; publish the underlying typed value and derive prose only in renderers.
+---
