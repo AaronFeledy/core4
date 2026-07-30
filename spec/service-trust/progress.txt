@@ -45,6 +45,9 @@ Spec SoT:
   lose source dependencies.
 - Keep host-path-bearing build descriptors outside artifact-key projection: key immutable content through
   `buildKeyInputs`, then re-read and verify those bytes before the first provider build request.
+- A bundled service contribution needs one typed path from manifest id to runtime service: publish the
+  descriptor map, index it in `makePluginCapabilityIndex`, add it to the ship list, and provide the selected
+  Layer's dependencies directly in the bootstrap generator rather than relying on sibling Layer visibility.
 
 ## Status
 
@@ -845,3 +848,25 @@ Spec SoT:
     never from the shared tree, whenever sibling activity is possible.
   - `bun test` in the shared tree silently verifies whatever a sibling last wrote. Treat a green run
     there as evidence about the working tree only; evidence about what shipped requires the pinned commit.
+
+## 2026-07-30 17:31 CDT - US-492 Runtime Closure
+- Closed the remaining user-path seam by publishing typed certificate-authority plugin contributions,
+  bundling `@lando/ca-mkcert`, and providing the selected authority from the generated minimal bootstrap
+  layer. The shipped app runtime can now satisfy `certs: true` after `lando setup`, rather than only when a
+  test or embedding host injects a fake authority.
+- Preserved the full planner SAN contract while de-duplicating mkcert argv at the provider boundary, and
+  kept custom cert/key validation on the `FileSystem` service with regular-file enforcement.
+- Verification: typecheck, lint, every boundary rule, generated output, schema compatibility, guide lint,
+  guide coverage, base-aware guide drift with the internal descriptor skip, and public transcripts passed;
+  277 focused and adjacent tests passed with 1,752 assertions. In `lando4-dev`, a freshly compiled binary
+  provisioned bundled mkcert with `lando setup --skip-install-ca`, planned `certs: true` through
+  `app:cache:refresh`, and produced a leaf whose OpenSSL SAN extension contained the service name, internal
+  alias, authored hostname, both route hosts, localhost, and 127.0.0.1 exactly once. A directory-valued
+  custom cert failed with `LandofileValidationError`; host and sandbox QA artifacts were removed.
+- **Learnings for future iterations:**
+  - `CertificateAuthority` belongs in the same typed descriptor/index/runtime-selection path as other
+    bundled plugin capabilities; a Live package alone is not a usable CLI service.
+  - Pass the complete SAN intent through `CertificateAuthority.issueCert`; provider implementations that
+    implicitly include the common name should de-duplicate their native argv without weakening the public
+    request contract.
+---
