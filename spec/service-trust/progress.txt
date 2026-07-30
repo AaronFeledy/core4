@@ -600,3 +600,17 @@ Spec SoT:
     in-flight branch, compare file mtimes against the current time and check for agent-spawned test
     processes; if another session is live, verify and close out rather than editing in parallel.
 ---
+## 2026-07-30 13:39 CDT - US-488 Review
+- Tightened the boolean-only machine contract regression proof so the legacy certificate count is
+  rejected specifically as an excess field rather than incidentally because the required boolean was
+  absent.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required current-branch
+  attempts hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected restoring `injectedCaCount`; the recorded Drift Audit and
+  adjudication explicitly excised that setup-time count in favor of the global configuration boolean.
+- Review notes (deferred/rejected): Rejected removing the exact encoded-key assertion as merely
+  redundant; it remains a concise positive inventory beside the strict excess-field rejection.
+- Verification: typecheck, lint, generated output, focused guide execution, and base-aware guide drift
+  passed; 183 focused setup and renderer tests with 1,145 assertions passed, including source/compiled
+  dispatch parity; all five `review-work` lanes passed.
+---
