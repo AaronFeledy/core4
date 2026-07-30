@@ -5,20 +5,14 @@ import { Effect, Either, Schema } from "effect";
 
 import { ProviderInternalError } from "@lando/sdk/errors";
 import type { ServicePlan } from "@lando/sdk/schema";
+import { ServiceCaFileDescriptor } from "@lando/sdk/services";
 
 import type { BuildContextEntry } from "./build-context.ts";
-
-const CaFileDescriptor = Schema.Struct({
-  path: Schema.String.pipe(Schema.minLength(1)),
-  digest: Schema.String.pipe(Schema.pattern(/^[0-9a-f]{64}$/u)),
-  archiveName: Schema.String.pipe(Schema.maxLength(80), Schema.pattern(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u)),
-});
-type CaFileDescriptor = typeof CaFileDescriptor.Type;
 
 export interface PreparedBuildStep {
   readonly command: string | ReadonlyArray<string>;
   readonly phase: string;
-  readonly caFiles: ReadonlyArray<CaFileDescriptor>;
+  readonly caFiles: ReadonlyArray<ServiceCaFileDescriptor>;
 }
 
 export interface PreparedDerivedBuild {
@@ -40,8 +34,8 @@ const internalError = (providerId: string, message: string, cause?: unknown): Pr
 const parseCaFiles = (
   value: unknown,
   providerId: string,
-): Effect.Effect<ReadonlyArray<CaFileDescriptor>, ProviderInternalError> => {
-  const decoded = Schema.decodeUnknownEither(Schema.Array(CaFileDescriptor))(value);
+): Effect.Effect<ReadonlyArray<ServiceCaFileDescriptor>, ProviderInternalError> => {
+  const decoded = Schema.decodeUnknownEither(Schema.Array(ServiceCaFileDescriptor))(value);
   return Either.isRight(decoded)
     ? Effect.succeed(decoded.right)
     : Effect.fail(
@@ -54,16 +48,16 @@ const parseStep = (
   providerId: string,
 ): Effect.Effect<PreparedBuildStep | undefined, ProviderInternalError> => {
   if (!isRecord(value)) return Effect.succeed(undefined);
+  if (value.phase !== "build") return Effect.succeed(undefined);
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
   return caFiles.pipe(
     Effect.map((files) => {
-      if (value.phase !== "build") return undefined;
       if (typeof value.command === "string")
-        return { command: value.command, phase: value.phase, caFiles: files };
+        return { command: value.command, phase: "build", caFiles: files };
       if (!Array.isArray(value.command)) return undefined;
       const command = value.command.filter((part): part is string => typeof part === "string");
       return command.length === value.command.length
-        ? { command, phase: value.phase, caFiles: files }
+        ? { command, phase: "build", caFiles: files }
         : undefined;
     }),
   );
@@ -72,8 +66,8 @@ const parseStep = (
 const uniqueDescriptors = (
   steps: ReadonlyArray<PreparedBuildStep>,
   providerId: string,
-): Effect.Effect<ReadonlyArray<CaFileDescriptor>, ProviderInternalError> => {
-  const byArchiveName = new Map<string, CaFileDescriptor>();
+): Effect.Effect<ReadonlyArray<ServiceCaFileDescriptor>, ProviderInternalError> => {
+  const byArchiveName = new Map<string, ServiceCaFileDescriptor>();
   for (const descriptor of steps.flatMap((step) => step.caFiles)) {
     const existing = byArchiveName.get(descriptor.archiveName);
     if (existing === undefined) {
@@ -92,7 +86,7 @@ const uniqueDescriptors = (
 };
 
 const readCaEntry = (
-  descriptor: CaFileDescriptor,
+  descriptor: ServiceCaFileDescriptor,
   providerId: string,
 ): Effect.Effect<BuildContextEntry, ProviderInternalError> =>
   Effect.tryPromise({

@@ -16,6 +16,7 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { prepareDerivedBuild } from "../src/image-build-ca.ts";
 
 const providerId = ProviderId.make("docker");
 const appId = AppId.make("ca-build-app");
@@ -99,6 +100,32 @@ const descriptor = (path: string, content: Uint8Array) => {
   const digest = createHash("sha256").update(content).digest("hex");
   return { path, digest, archiveName: `lando-${digest}.crt` };
 };
+
+test("ignores malformed CA descriptors outside the build phase", async () => {
+  // Given
+  const servicePlan = service({ kind: "ref", ref: "debian:12" }, []);
+  const withMalformedAppStep: ServicePlan = {
+    ...servicePlan,
+    extensions: {
+      "@lando/core/service-features": {
+        buildSteps: [
+          {
+            id: "lando.security:trust-store",
+            phase: "app",
+            command: "install-trust",
+            caFiles: [{ path: "" }],
+          },
+        ],
+      },
+    },
+  };
+
+  // When
+  const prepared = await Effect.runPromise(prepareDerivedBuild(withMalformedAppStep, providerId));
+
+  // Then
+  expect(prepared).toEqual({ steps: [], caEntries: [] });
+});
 
 test("packs verified CAs and renders COPY before the owning trust-store RUN", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-image-ca-ref-"));
