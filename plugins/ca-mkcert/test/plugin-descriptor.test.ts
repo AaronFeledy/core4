@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { CA_ID, PLUGIN_NAME, engine, manifest, plugin } from "../src/index.ts";
+import { CA_ID, PLUGIN_NAME, certificateAuthorities, engine, manifest, plugin } from "../src/index.ts";
 
 const contributionIds = (
   entries: ReadonlyArray<string | { readonly id: string }> | undefined,
@@ -15,14 +15,12 @@ describe("@lando/ca-mkcert plugin descriptor", () => {
   });
 
   test("manifest.contributes.cas is declared and descriptor exposes the CA layer", () => {
-    // Given — LandoPluginModule has no `cas` map slot (SDK gap)
+    // Given
     const caIds = contributionIds(manifest.contributes?.cas);
 
-    // When / Then — contribution is declared on the manifest
+    // When / Then
     expect(caIds).toContain(CA_ID);
-    // Descriptor can only carry the CA via `layer` until a `cas` slot exists
-    expect(plugin.layer).toBeDefined();
-    expect("cas" in plugin).toBe(false);
+    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(engine);
   });
 
   test("descriptor values are reference-identical to existing exports", () => {
@@ -30,5 +28,6 @@ describe("@lando/ca-mkcert plugin descriptor", () => {
     // Then
     expect(plugin.manifest).toBe(manifest);
     expect(plugin.layer).toBe(engine);
+    expect(plugin.certificateAuthorities).toBe(certificateAuthorities);
   });
 });

@@ -8,6 +8,7 @@ type MapSlot =
   | "runtimeProviders"
   | "renderers"
   | "fileSyncEngines"
+  | "certificateAuthorities"
   | "templateEngines"
   | "proxyServices"
   | "globalServices"
@@ -27,6 +28,7 @@ export interface PluginCapabilityIndex {
   readonly runtimeProviders: SlotMap<"runtimeProviders">;
   readonly renderers: SlotMap<"renderers">;
   readonly fileSyncEngines: SlotMap<"fileSyncEngines">;
+  readonly certificateAuthorities: SlotMap<"certificateAuthorities">;
   readonly templateEngines: SlotMap<"templateEngines">;
   readonly proxyServices: SlotMap<"proxyServices">;
   readonly globalServices: SlotMap<"globalServices">;
@@ -102,6 +104,7 @@ const descriptorMismatch = (module: LandoPluginModule): PluginDescriptorMismatch
       idsOf(contributes?.fileSyncEngines),
       keysOf(module.fileSyncEngines),
     ),
+    validateDescriptorIds(module, "cas", idsOf(contributes?.cas), keysOf(module.certificateAuthorities)),
     validateDescriptorIds(
       module,
       "templateEngines",
@@ -183,6 +186,7 @@ const computePluginCapabilityIndex = (
   const runtimeProviders = mutableMapFor<"runtimeProviders">();
   const renderers = mutableMapFor<"renderers">();
   const fileSyncEngines = mutableMapFor<"fileSyncEngines">();
+  const certificateAuthorities = mutableMapFor<"certificateAuthorities">();
   const templateEngines = mutableMapFor<"templateEngines">();
   const proxyServices = mutableMapFor<"proxyServices">();
   const globalServices = mutableMapFor<"globalServices">();
@@ -208,6 +212,7 @@ const computePluginCapabilityIndex = (
       add(runtimeProviders, module.runtimeProviders ?? [], "providers"),
       add(renderers, module.renderers ?? [], "renderers"),
       add(fileSyncEngines, module.fileSyncEngines ?? [], "fileSyncEngines"),
+      add(certificateAuthorities, module.certificateAuthorities ?? [], "cas"),
       add(templateEngines, module.templateEngines ?? [], "templateEngines"),
       add(proxyServices, module.proxyServices ?? [], "proxyServices"),
       add(globalServices, module.globalServices ?? [], "globalServices"),
@@ -235,6 +240,7 @@ const computePluginCapabilityIndex = (
     runtimeProviders,
     renderers,
     fileSyncEngines,
+    certificateAuthorities,
     templateEngines,
     proxyServices,
     globalServices,
