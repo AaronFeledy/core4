@@ -16,11 +16,20 @@ export interface CliTelemetryState {
 
 const DEFAULT_LOWER_TIER_NOTIFY_COMMANDS = new Set(["meta:update"]);
 
+/**
+ * Commands whose declared bootstrap level is load-bearing and must never be
+ * promoted. `meta:doctor` declares `none` and builds its own runtime so a
+ * bootstrap failure is reported rather than fatal; promoting it would rebuild
+ * that fallible runtime eagerly and defeat the guarantee.
+ */
+const BOOTSTRAP_PROMOTION_EXEMPT_COMMANDS = new Set(["meta:doctor"]);
+
 export const effectiveBootstrapForCommand = (
   commandId: string,
   declared: BootstrapLevel,
   configuredCommands: ReadonlyArray<string>,
 ): BootstrapLevel => {
+  if (BOOTSTRAP_PROMOTION_EXEMPT_COMMANDS.has(commandId)) return declared;
   if (
     declared === "commands" ||
     declared === "tooling" ||

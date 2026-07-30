@@ -12,72 +12,25 @@
  * cannot answer degrades to its fallback plus one self check naming the
  * section, never a propagated error or a stack trace.
  *
- * User interruption is deliberately *not* absorbed: an interrupt-only cause is
- * re-raised so `Ctrl-C` still cancels the run.
+ * Cancellation by the user is deliberately *not* absorbed: sections run in a
+ * child fiber, so interrupting the parent still cancels the whole run, while a
+ * section that interrupts itself is recorded as a section defect.
  */
-import { Cause, Duration, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Duration, Effect, Exit, Fiber, Option } from "effect";
 
-/** Why a doctor section failed to produce its own result. */
-export type DoctorSelfFailureReason = "failure" | "defect" | "timeout";
+import {
+  DOCTOR_SELF_CHECK_NAME,
+  type DoctorSelfCheck,
+  type DoctorSelfFailureReason,
+  type DoctorSelfSolution,
+} from "./doctor-self-contract.ts";
 
-/**
- * Remediation attached to a self check. Structurally identical to
- * `DoctorSolution`, declared locally so this module stays a leaf that
- * `doctor.ts` can depend on without an import cycle.
- */
-export interface DoctorSelfSolution {
-  readonly kind: "automatic" | "manual";
-  readonly description: string;
-  readonly command?: string;
-}
-
-/**
- * A failure of doctor's own machinery rather than of the host being
- * diagnosed. Reported alongside the sections that did answer.
- */
-export interface DoctorSelfCheck {
-  readonly name: string;
-  /** The report section that failed (e.g. `subsystems`, `mcp`). */
-  readonly section: string;
-  readonly status: "fail";
-  readonly severity: "error";
-  readonly reason: DoctorSelfFailureReason;
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<DoctorSelfSolution>;
-}
-
-export interface DoctorSelfReport {
-  readonly checks: ReadonlyArray<DoctorSelfCheck>;
-}
-
-const DoctorSelfSolutionSchema = Schema.Struct({
-  kind: Schema.Literal("automatic", "manual"),
-  description: Schema.String,
-  command: Schema.optional(Schema.String),
-});
-
-export const DoctorSelfCheckSchema = Schema.Struct({
-  name: Schema.String,
-  section: Schema.String,
-  status: Schema.Literal("fail"),
-  severity: Schema.Literal("error"),
-  reason: Schema.Literal("failure", "defect", "timeout"),
-  context: Schema.Record({ key: Schema.String, value: Schema.String }),
-  solutions: Schema.Array(DoctorSelfSolutionSchema),
-});
-
-export const DoctorSelfReportSchema = Schema.Struct({
-  checks: Schema.Array(DoctorSelfCheckSchema),
-});
-
-/** Check name shared by every self check so consumers can filter on it. */
-export const DOCTOR_SELF_CHECK_NAME = "doctor-self";
+export * from "./doctor-self-contract.ts";
 
 const DEFAULT_SECTION_BUDGET_MS = 10_000;
 const MIN_SECTION_BUDGET_MS = 1_000;
 const MAX_SECTION_BUDGET_MS = 120_000;
 
-/** Env var that overrides the per-section deadline. */
 export const DOCTOR_SECTION_BUDGET_ENV = "LANDO_DOCTOR_SECTION_BUDGET_MS";
 
 /**
@@ -90,7 +43,9 @@ export const doctorSectionBudgetMs = (
 ): number => {
   const raw = env[DOCTOR_SECTION_BUDGET_ENV];
   if (raw === undefined) return DEFAULT_SECTION_BUDGET_MS;
-  const parsed = Number.parseInt(raw.trim(), 10);
+  const trimmed = raw.trim();
+  if (!/^-?\d+$/.test(trimmed)) return DEFAULT_SECTION_BUDGET_MS;
+  const parsed = Number.parseInt(trimmed, 10);
   if (!Number.isFinite(parsed)) return DEFAULT_SECTION_BUDGET_MS;
   if (parsed < MIN_SECTION_BUDGET_MS) return MIN_SECTION_BUDGET_MS;
   if (parsed > MAX_SECTION_BUDGET_MS) return MAX_SECTION_BUDGET_MS;
@@ -103,22 +58,34 @@ const REPORT_ISSUE_SOLUTION: DoctorSelfSolution = {
     "A `lando doctor` section failed to run. Re-run with `--format=json` for the full record, then report it at https://github.com/lando/core/issues.",
 };
 
+const TAG_PATTERN = /^[A-Za-z0-9_.:-]{1,64}$/;
+
+/**
+ * Error tags land in machine-readable `context.failure`, so only accept
+ * identifier-shaped values; anything else is arbitrary payload, not a tag.
+ */
 const tagOf = (value: unknown): string | undefined => {
   if (typeof value !== "object" || value === null || !("_tag" in value)) return undefined;
-  const tag = (value as { readonly _tag?: unknown })._tag;
-  return typeof tag === "string" && tag.length > 0 ? tag : undefined;
+  const tag = value._tag;
+  return typeof tag === "string" && TAG_PATTERN.test(tag) ? tag : undefined;
 };
 
+const MAX_MESSAGE_CHARS = 2_000;
+
+/** Failure messages come from arbitrary code, so cap them before they reach a report. */
+const bounded = (message: string): string =>
+  message.length <= MAX_MESSAGE_CHARS ? message : `${message.slice(0, MAX_MESSAGE_CHARS)}… (truncated)`;
+
 const messageOf = (value: unknown): string => {
-  if (typeof value === "string") return value;
-  if (value instanceof Error && value.message.length > 0) return value.message;
+  if (typeof value === "string") return bounded(value);
+  if (value instanceof Error && value.message.length > 0) return bounded(value.message);
   if (typeof value === "object" && value !== null && "message" in value) {
-    const message = (value as { readonly message?: unknown }).message;
-    if (typeof message === "string" && message.length > 0) return message;
+    const message = value.message;
+    if (typeof message === "string" && message.length > 0) return bounded(message);
   }
   const tag = tagOf(value);
   if (tag !== undefined) return tag;
-  return String(value);
+  return bounded(String(value));
 };
 
 interface DescribedCause {
@@ -163,7 +130,7 @@ export const describeDoctorCause = (cause: Cause.Cause<unknown>): DescribedCause
       message: messageOf(failure.value),
     };
   }
-  return { reason: "defect", message: Cause.pretty(cause) };
+  return { reason: "defect", message: bounded(Cause.pretty(cause)) };
 };
 
 export interface IsolateDoctorSectionOptions<A, E, R> {
@@ -192,9 +159,6 @@ export interface IsolatedDoctorSection<A> {
   readonly self?: DoctorSelfCheck;
 }
 
-/**
- * Build a self check for a section that could not answer.
- */
 export const doctorSelfCheck = (input: {
   readonly section: string;
   readonly reason: DoctorSelfFailureReason;
@@ -209,11 +173,11 @@ export const doctorSelfCheck = (input: {
   severity: "error",
   reason: input.reason,
   context: {
+    ...input.context,
     section: input.section,
     reason: input.reason,
     ...(input.tag === undefined ? {} : { failure: input.tag }),
     message: input.message,
-    ...input.context,
   },
   solutions: [REPORT_ISSUE_SOLUTION, ...(input.solutions ?? [])],
 });
@@ -235,7 +199,11 @@ export const isolateDoctorSection = <A, E, R>(
   Effect.gen(function* () {
     const budgetMs = options.budgetMs ?? doctorSectionBudgetMs();
     const redact = options.redact ?? ((value: string) => value);
-    const outcome = yield* options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs)), Effect.exit);
+    // Forked so a section that interrupts *itself* cannot masquerade as user
+    // cancellation: if the parent were interrupted, `Fiber.await` would itself be
+    // interrupted and never reach the classification below.
+    const fiber = yield* Effect.fork(options.effect.pipe(Effect.timeoutOption(Duration.millis(budgetMs))));
+    const outcome = yield* Fiber.await(fiber);
 
     if (Exit.isSuccess(outcome)) {
       if (Option.isSome(outcome.value)) return { value: outcome.value.value };
@@ -251,10 +219,19 @@ export const isolateDoctorSection = <A, E, R>(
       };
     }
 
-    // Preserve cancellation: any interrupt in the cause means the user asked to
-    // stop, even if a finalizer also died on the way out.
-    if (Cause.isInterrupted(outcome.cause)) {
-      return yield* Effect.failCause(outcome.cause as Cause.Cause<never>);
+    // Reaching here with an interrupt means the section aborted itself, which is
+    // a section defect rather than the user asking to stop.
+    if (Cause.isInterruptedOnly(outcome.cause)) {
+      return {
+        value: options.fallback,
+        self: doctorSelfCheck({
+          section: options.section,
+          reason: "defect",
+          message: "Section interrupted itself before producing a result.",
+          ...(options.context === undefined ? {} : { context: options.context }),
+          ...(options.solutions === undefined ? {} : { solutions: options.solutions }),
+        }),
+      };
     }
 
     const described = describeDoctorCause(outcome.cause);

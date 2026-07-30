@@ -511,20 +511,24 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const deprecations = argv.some((arg) => arg === "--deprecations");
   const format = activeTextJsonYamlFormat();
   // Doctor provisions its own runtime so a bootstrap failure is reported rather
-  // than fatal; the compiled path therefore runs at `none` like the OCLIF spec.
-  await runCompiledCommand(
-    resilientDoctorReport({
-      ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
-      ...(fix ? { fix: true } : {}),
-      ...(app ? { app: true } : {}),
-      ...(deprecations ? { deprecations: true } : {}),
-      format,
-    }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "none", plugins: { policy: "discovery" } })),
-    renderCompiledDoctorReport,
-    {
-      suppressDeprecationDiagnostics: format === "json" || format === "yaml",
-    },
+  // than fatal; the compiled path therefore runs at `none` like the OCLIF spec,
+  // and threads the process abort signal so Ctrl-C cancels here too.
+  await runWithProcessAbortSignal((signal) =>
+    runCompiledCommand(
+      resilientDoctorReport({
+        ...(flagProvider === undefined ? {} : { flagProviderId: flagProvider }),
+        ...(fix ? { fix: true } : {}),
+        ...(app ? { app: true } : {}),
+        ...(deprecations ? { deprecations: true } : {}),
+        format,
+        signal,
+      }),
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "none", plugins: { policy: "discovery" } })),
+      renderCompiledDoctorReport,
+      {
+        suppressDeprecationDiagnostics: format === "json" || format === "yaml",
+      },
+    ),
   );
 };
 

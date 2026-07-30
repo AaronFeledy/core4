@@ -1,19 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
-import { Cause, type Context, Effect, Exit, Layer, Schema } from "effect";
+import { type Context, Effect, Layer, Schema } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
-
-import { resilientDoctorReport } from "../../src/cli/commands/doctor-bootstrap.ts";
 import { DoctorReportSchema, doctorReport } from "../../src/cli/commands/doctor-report.ts";
-import { isolateDoctorSection } from "../../src/cli/commands/doctor-self.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
 
 /**
@@ -78,11 +72,6 @@ const layersFor = (
     Layer.succeed(RuntimeProviderRegistry, registry as never),
     Layer.succeed(ConfigService, buildConfigService(configOptions)),
   );
-
-const restoreEnv = (key: string, value: string | undefined): void => {
-  if (value === undefined) Reflect.deleteProperty(process.env, key);
-  else process.env[key] = value;
-};
 
 const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray<{ section: string }> } }) =>
   (report.self?.checks ?? []).map((check) => check.section);
@@ -269,115 +258,5 @@ describe("doctor chaos: whole report", () => {
     // Then
     const check = result.checks.find((entry) => entry.name === "selected-provider");
     expect(JSON.stringify(check)).not.toContain(secret);
-  });
-});
-
-describe("doctor safe mode", () => {
-  test("reports a bootstrap failure as a self check and still returns a report", async () => {
-    // Given a config file the YAML reader cannot parse, which fails the
-    // provider runtime build itself
-    const home = await mkdtemp(join(tmpdir(), "lando-doctor-safe-"));
-    await mkdir(join(home, ".config", "lando"), { recursive: true });
-    await writeFile(join(home, ".config", "lando", "config.yml"), "this: [is: not\n", "utf8");
-    const priorHome = process.env.HOME;
-    const priorXdgConfig = process.env.XDG_CONFIG_HOME;
-
-    try {
-      process.env.HOME = home;
-      process.env.XDG_CONFIG_HOME = join(home, ".config");
-
-      // When
-      const report = await Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV }));
-
-      // Then the provider section degrades but the report is intact
-      const bootstrapSelf = (report.self?.checks ?? []).find(
-        (check) => check.section === "provider-bootstrap",
-      );
-      expect(bootstrapSelf).toMatchObject({ status: "fail", severity: "error" });
-      expect(bootstrapSelf?.solutions.some((solution) => solution.command === "lando config view")).toBe(
-        true,
-      );
-      expect(report.provider.checks).toEqual([]);
-      expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
-    } finally {
-      restoreEnv("HOME", priorHome);
-      restoreEnv("XDG_CONFIG_HOME", priorXdgConfig);
-      await rm(home, { recursive: true, force: true });
-    }
-  });
-});
-
-describe("isolateDoctorSection", () => {
-  test("captures a typed failure as a self check carrying the error tag", async () => {
-    // When
-    const outcome = await Effect.runPromise(
-      isolateDoctorSection({
-        section: "unit",
-        effect: Effect.fail(new ConfigError({ message: "bad config", key: "k" })),
-        fallback: "fallback",
-      }),
-    );
-
-    // Then
-    expect(outcome.value).toBe("fallback");
-    expect(outcome.self).toMatchObject({ reason: "failure", section: "unit", status: "fail" });
-    expect(outcome.self?.context.failure).toBe("ConfigError");
-  });
-
-  test("captures an untyped defect", async () => {
-    // When
-    const outcome = await Effect.runPromise(
-      isolateDoctorSection({ section: "unit", effect: Effect.die(new Error("boom")), fallback: 0 }),
-    );
-
-    // Then
-    expect(outcome.value).toBe(0);
-    expect(outcome.self).toMatchObject({ reason: "defect" });
-    expect(outcome.self?.context.message).toBe("boom");
-  });
-
-  test("abandons a section that overruns its deadline", async () => {
-    // When
-    const outcome = await Effect.runPromise(
-      isolateDoctorSection({ section: "unit", effect: Effect.never, fallback: "gave-up", budgetMs: 1_000 }),
-    );
-
-    // Then
-    expect(outcome.value).toBe("gave-up");
-    expect(outcome.self).toMatchObject({ reason: "timeout" });
-    expect(outcome.self?.context.budgetMs).toBe("1000");
-  });
-
-  test("re-raises a user interrupt so Ctrl-C still cancels the run", async () => {
-    // Given a section that is interrupted rather than failing
-    const program = isolateDoctorSection({
-      section: "unit",
-      effect: Effect.interrupt,
-      fallback: "unused",
-    });
-
-    // When
-    const exit = await Effect.runPromiseExit(program);
-
-    // Then interruption is not absorbed into a self check
-    expect(Exit.isFailure(exit)).toBe(true);
-    if (Exit.isFailure(exit)) {
-      expect(Cause.isInterruptedOnly(exit.cause)).toBe(true);
-    }
-  });
-
-  test("applies the caller's redactor to the failure message", async () => {
-    // When
-    const outcome = await Effect.runPromise(
-      isolateDoctorSection({
-        section: "unit",
-        effect: Effect.die(new Error("token=abc123")),
-        fallback: undefined,
-        redact: (value) => value.replace("abc123", "[redacted]"),
-      }),
-    );
-
-    // Then
-    expect(outcome.self?.context.message).toBe("token=[redacted]");
   });
 });

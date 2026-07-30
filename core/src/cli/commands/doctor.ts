@@ -1,11 +1,7 @@
 import { Effect, Either, Option } from "effect";
 
 import type { ConfigError } from "@lando/sdk/errors";
-import type {
-  LandoPluginModule,
-  PluginDoctorCheckContribution,
-  PluginDoctorReport,
-} from "@lando/sdk/plugins";
+import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
   type HostPlatform,
   ProviderCapabilities,
@@ -16,20 +12,35 @@ import { ConfigService, type ProviderError, RuntimeProviderRegistry } from "@lan
 
 import { makeLandoPaths } from "@lando/paths";
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
-import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   type ProviderSelectionInputs,
   type ProviderSelectionResolution,
-  type ProviderSelectionSource,
   readProviderEnvVar,
   resolveProviderSelection,
 } from "../../providers/precedence.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import type {
+  DoctorCheck,
+  DoctorResult,
+  DoctorRuntime,
+  DoctorSelectionRecord,
+  DoctorSeverity,
+  DoctorSolution,
+  DoctorStatus,
+} from "./doctor-contract.ts";
+import { providerKindFor } from "./doctor-contract.ts";
 import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy.ts";
 import { orderKnownKeys, renderDoctorChecksAsNdjson } from "./doctor-ndjson.ts";
 import { collectOomDoctorChecks } from "./doctor-oom.ts";
+import {
+  type PluginDoctorProvider,
+  isRelevantContribution,
+  mapPluginDoctorCheck,
+  pluginDoctorReports,
+  probeBudgetMs,
+} from "./doctor-plugin-checks.ts";
 import {
   type DoctorSelfCheck,
   type DoctorSelfSolution,
@@ -44,66 +55,18 @@ import {
   readSetupReadiness,
 } from "./setup-readiness.ts";
 
-export type DoctorStatus = "pass" | "warn" | "fail";
-export type DoctorSeverity = "info" | "warn" | "error";
-export type DoctorSolutionKind = "automatic" | "manual";
-export type DoctorProviderKind = "managed" | "user-installed";
-
-const MANAGED_PROVIDER_IDS: ReadonlySet<string> = new Set(["lando"]);
-
-export const providerKindFor = (providerId: string): DoctorProviderKind =>
-  MANAGED_PROVIDER_IDS.has(providerId) ? "managed" : "user-installed";
-
-export interface DoctorSolution {
-  readonly kind: DoctorSolutionKind;
-  readonly description: string;
-  readonly command?: string;
-}
-
-export interface DoctorRuntime {
-  readonly running: boolean;
-  readonly message?: string;
-  readonly version?: string;
-  // Present only when a container died event reported the OOMKilled attribute.
-  readonly oomKilled?: boolean;
-}
-
-export interface DoctorSelectionRecord {
-  readonly providerId: string;
-  readonly source: ProviderSelectionSource;
-  readonly inputs: {
-    readonly flag?: string;
-    readonly landofile?: string;
-    readonly env?: string;
-    readonly config?: string;
-    readonly capabilityDefault: string;
-  };
-}
-
-export interface DoctorCheck {
-  readonly name: string;
-  readonly status: DoctorStatus;
-  readonly severity: DoctorSeverity;
-  readonly providerId: string;
-  readonly providerName: string;
-  readonly providerVersion: string;
-  readonly providerKind: DoctorProviderKind;
-  readonly runtimeStatus: string;
-  readonly runtime: DoctorRuntime;
-  readonly capabilities: Readonly<Record<string, unknown>>;
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<DoctorSolution>;
-  readonly selection?: DoctorSelectionRecord;
-}
-
-export interface DoctorResult {
-  readonly checks: ReadonlyArray<DoctorCheck>;
-  /**
-   * Failures of doctor's own machinery while producing the provider section.
-   * Lifted into the report-level `self` section by `doctorReport`.
-   */
-  readonly selfChecks?: ReadonlyArray<DoctorSelfCheck>;
-}
+export type {
+  DoctorCheck,
+  DoctorProviderKind,
+  DoctorResult,
+  DoctorRuntime,
+  DoctorSelectionRecord,
+  DoctorSeverity,
+  DoctorSolution,
+  DoctorSolutionKind,
+  DoctorStatus,
+} from "./doctor-contract.ts";
+export { providerKindFor } from "./doctor-contract.ts";
 
 export interface DoctorOptions {
   /**
@@ -137,6 +100,11 @@ export interface DoctorOptions {
   readonly deprecations?: boolean | undefined;
   readonly diedEventPayloads?: ReadonlyArray<unknown> | undefined;
   readonly format?: "text" | "json" | "yaml" | undefined;
+  /**
+   * Cancels the run when aborted. Without it a `Ctrl-C` is swallowed by the
+   * CLI's own SIGINT handler and doctor runs to completion.
+   */
+  readonly signal?: AbortSignal | undefined;
 }
 
 const CAPABILITY_FIELDS = Object.keys(ProviderCapabilities.fields) as ReadonlyArray<
@@ -216,131 +184,12 @@ const resolveStateDir = (
     return `${userDataRoot}/providers`;
   });
 
-interface PluginDoctorInput {
-  readonly providerId: string;
-  readonly platform: HostPlatform;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly userDataRoot: string | undefined;
-  readonly binDir: string | undefined;
-  readonly stateDir: string | undefined;
-}
-
-interface PluginDoctorProvider {
-  readonly id: string;
-  readonly displayName: string;
-  readonly version: string;
-}
-
-interface PluginDoctorCheckMapping {
-  readonly report: PluginDoctorReport;
-  readonly provider: PluginDoctorProvider;
-  readonly selection: DoctorSelectionRecord;
-}
-
-interface PluginDoctorContributionReport {
-  readonly report: PluginDoctorReport;
-  readonly relevant: PluginDoctorCheckContribution["relevant"];
-}
-
-interface PluginDoctorRunOutcome {
-  readonly reports: ReadonlyArray<PluginDoctorContributionReport>;
-  readonly selfChecks: ReadonlyArray<DoctorSelfCheck>;
-}
-
-/**
- * Provider- and plugin-shaped probes get a tighter default than a whole report
- * section, and shrink further when the section budget is lowered.
- */
-const PROBE_BUDGET_MS = 5_000;
-
-const probeBudgetMs = (sectionBudgetMs: number): number => Math.min(PROBE_BUDGET_MS, sectionBudgetMs);
-
-const PLUGIN_CHECK_REMEDIATION: DoctorSelfSolution = {
-  kind: "manual",
-  description:
-    "A plugin-contributed doctor check did not complete. Remove or update the owning plugin (`lando plugin remove <name>`) if it keeps failing; the rest of this report is unaffected.",
-};
-
 const CONFIG_REMEDIATION: DoctorSelfSolution = {
   kind: "manual",
   description:
     "Lando configuration could not be read, so this input fell back to its default. Inspect it with `lando config view` and repair or remove the offending file.",
   command: "lando config view",
 };
-
-const PLUGIN_INDEX_REMEDIATION: DoctorSelfSolution = {
-  kind: "manual",
-  description:
-    "Plugin doctor contributions could not be indexed, so no plugin checks ran. Inspect installed plugins with `lando plugin list` and remove the conflicting one.",
-};
-
-/**
- * Run every plugin-contributed doctor check under its own deadline with defect
- * capture, so a hanging or throwing contribution degrades to one attributed
- * self check instead of taking the whole doctor run down.
- */
-const pluginDoctorReports = (
-  modules: ReadonlyArray<LandoPluginModule>,
-  input: PluginDoctorInput,
-  redact: (value: string) => string,
-  budgetMs: number,
-): Effect.Effect<PluginDoctorRunOutcome, never> =>
-  Effect.gen(function* () {
-    const index = makePluginCapabilityIndex(modules);
-    if (Either.isLeft(index)) {
-      const described = describeDoctorFailure(index.left);
-      return {
-        reports: [],
-        selfChecks: [
-          doctorSelfCheck({
-            section: "plugin-doctor-checks",
-            reason: "failure",
-            message: redact(described.message),
-            ...(described.tag === undefined ? {} : { tag: described.tag }),
-            solutions: [PLUGIN_INDEX_REMEDIATION],
-          }),
-        ],
-      };
-    }
-
-    const isolated = yield* Effect.forEach([...index.right.doctorChecks.entries()], ([id, check]) =>
-      isolateDoctorSection({
-        section: `plugin-check:${id}`,
-        // Suspended so a synchronous throw while *building* the effect is
-        // attributed to the plugin rather than escaping the isolate.
-        effect: Effect.suspend(() => check.run(input)),
-        fallback: [] as ReadonlyArray<PluginDoctorReport>,
-        budgetMs,
-        redact,
-        context: { checkId: id },
-        solutions: [PLUGIN_CHECK_REMEDIATION],
-      }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
-    );
-
-    return {
-      reports: isolated.flatMap((entry) =>
-        entry.outcome.value.map((report) => ({ report, relevant: entry.relevant })),
-      ),
-      selfChecks: isolated.flatMap((entry) => (entry.outcome.self === undefined ? [] : [entry.outcome.self])),
-    };
-  });
-
-const mapPluginDoctorCheck = ({ report, provider, selection }: PluginDoctorCheckMapping): DoctorCheck => ({
-  name: report.name,
-  status: report.status,
-  severity: report.severity,
-  providerId: provider.id,
-  providerName: provider.displayName,
-  providerVersion: provider.version,
-  providerKind: providerKindFor(provider.id),
-  runtimeStatus: report.runtimeStatus ?? "unknown",
-  runtime: report.runtime ?? { running: report.status === "pass" },
-  capabilities: {},
-  context: report.context,
-  solutions: report.solutions,
-  selection,
-});
-
 const setupReadinessStepContextKey = (id: string): string =>
   `step${id
     .split("-")
@@ -664,12 +513,14 @@ export const doctor = (
       capabilities[field] = provider.capabilities[field];
     }
 
-    const runtimeMessage =
-      statusProbe === undefined
-        ? (status.message ?? (status.running ? "running" : "stopped"))
-        : statusProbe === "timeout"
-          ? "unreachable (status probe timed out)"
-          : "unknown (status probe failed)";
+    let runtimeMessage: string;
+    if (statusProbe === undefined) {
+      runtimeMessage = status.message ?? (status.running ? "running" : "stopped");
+    } else if (statusProbe === "timeout") {
+      runtimeMessage = "unreachable (status probe timed out)";
+    } else {
+      runtimeMessage = "unknown (status probe failed)";
+    }
     const runtime: DoctorRuntime = {
       running: status.running,
       ...(status.message === undefined ? {} : { message: status.message }),
@@ -690,8 +541,18 @@ export const doctor = (
     if (statusProbe !== undefined) context.statusProbe = statusProbe;
 
     const statusKnown = statusProbe === undefined;
-    const checkStatus: DoctorStatus = statusKnown ? (status.running ? "pass" : "warn") : "fail";
-    const severity: DoctorSeverity = statusKnown ? (status.running ? "info" : "warn") : "error";
+    let checkStatus: DoctorStatus;
+    let severity: DoctorSeverity;
+    if (!statusKnown) {
+      checkStatus = "fail";
+      severity = "error";
+    } else if (status.running) {
+      checkStatus = "pass";
+      severity = "info";
+    } else {
+      checkStatus = "warn";
+      severity = "warn";
+    }
     const solutions: ReadonlyArray<DoctorSolution> = statusKnown && status.running ? [] : [SETUP_REMEDIATION];
 
     const primaryCheck: DoctorCheck = {
@@ -711,7 +572,7 @@ export const doctor = (
     };
 
     const pluginChecks = reports
-      .filter((entry) => entry.relevant === undefined || entry.relevant(provider.capabilities))
+      .filter((entry) => isRelevantContribution(entry, provider.capabilities))
       .map((entry) => mapPluginDoctorCheck({ report: entry.report, provider, selection }));
     const setupReadinessOutcome = yield* isolateDoctorSection({
       section: "setup-readiness",

@@ -15,6 +15,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
+  const signal = (input as { readonly signal?: unknown }).signal;
   const flags = (
     input as {
       flags?: { provider?: unknown; fix?: unknown; app?: unknown; deprecations?: unknown; format?: unknown };
@@ -34,6 +35,7 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions => {
     ...(app ? { app: true } : {}),
     ...(deprecations ? { deprecations: true } : {}),
     ...(format === undefined ? {} : { format }),
+    ...(signal instanceof AbortSignal ? { signal } : {}),
   };
 };
 
@@ -65,6 +67,9 @@ export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, never> = {
   bootstrap: "none",
   run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
   render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
+  // A `self` check means doctor could not complete a section, which must not
+  // look like a clean run to a script or agent reading the exit code.
+  successExitCode: (result) => ((result as DoctorReport).self === undefined ? undefined : 1),
   suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
 };
 

@@ -29,15 +29,26 @@ const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   command: "lando config view",
 };
 
-/**
- * Run `lando doctor` without requiring a working bootstrap.
- *
- * Requires no services: it provisions its own runtime and degrades to an
- * empty provider section when that runtime cannot be built.
- */
+const interruptOnAbort = (signal: AbortSignal | undefined) =>
+  Effect.async<never>((resume) => {
+    if (signal === undefined) return;
+    if (signal.aborted) {
+      resume(Effect.interrupt);
+      return;
+    }
+    const abort = () => resume(Effect.interrupt);
+    signal.addEventListener("abort", abort, { once: true });
+    return Effect.sync(() => signal.removeEventListener("abort", abort));
+  });
+
 export const resilientDoctorReport = (
   options: DoctorOptions = {},
 ): Effect.Effect<DoctorReport, never, never> =>
+  collectResilientDoctorReport(options).pipe((report) =>
+    options.signal === undefined ? report : Effect.raceFirst(report, interruptOnAbort(options.signal)),
+  );
+
+const collectResilientDoctorReport = (options: DoctorOptions): Effect.Effect<DoctorReport, never, never> =>
   Effect.scoped(
     Effect.gen(function* () {
       const sourceEnv = { ...(options.env ?? process.env) };

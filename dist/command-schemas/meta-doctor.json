@@ -578,6 +578,9 @@
                 "type": "object"
               },
               "name": {
+                "enum": [
+                  "doctor-self"
+                ],
                 "type": "string"
               },
               "reason": {

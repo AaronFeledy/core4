@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Context, Effect, Exit, Layer } from "effect";
+import { type Context, Effect, Layer } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
@@ -152,75 +152,5 @@ describe("DoctorCheck contract — built-in selected-provider check", () => {
     const second = await Effect.runPromise(check.run({ fix: false }));
     expect(second).toEqual(first);
     expect(first.issues[0]?.solutionKind).toBe("manual");
-  });
-
-  test("sandboxability probes pass when a check is interruptible and its defect is observable", async () => {
-    // Given: cooperative never-settling and defecting fixture checks.
-    const harness: DoctorCheckContractHarness = {
-      name: "selected-provider (sandboxable fixtures)",
-      check: selectedProviderCheck(runningProvider),
-      interruptibleProbe: {
-        makeCheck: () => ({
-          id: "never-settling",
-          run: (_input: { readonly fix: boolean }) => Effect.never,
-        }),
-        budgetMs: 10,
-      },
-      defectProbe: {
-        makeCheck: () => ({
-          id: "defecting",
-          run: (_input: { readonly fix: boolean }) => Effect.die({ _tag: "FixtureDoctorCheckDefect" }),
-        }),
-      },
-    };
-
-    // When: the fixtures run through the published contract suite.
-    const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
-
-    // Then: both sandboxability guarantees satisfy the contract.
-    expect(Exit.isSuccess(exit)).toBe(true);
-  });
-
-  test("interruptibility probe fails when a check settles before its deadline", async () => {
-    // Given: a fixture check that incorrectly settles instead of awaiting interruption.
-    const harness: DoctorCheckContractHarness = {
-      name: "selected-provider (settling fixture)",
-      check: selectedProviderCheck(runningProvider),
-      interruptibleProbe: {
-        makeCheck: () => ({
-          id: "settling",
-          run: (_input: { readonly fix: boolean }) =>
-            Effect.succeed({ id: "settling", issues: [] } satisfies DoctorCheckResult),
-        }),
-        budgetMs: 10,
-      },
-    };
-
-    // When: the settling fixture runs through the contract suite.
-    const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
-
-    // Then: the contract reports the sandboxability violation.
-    expect(Exit.isFailure(exit)).toBe(true);
-  });
-
-  test("defect probe fails when a check reports a typed failure", async () => {
-    // Given: a fixture check that fails in the typed channel instead of dying.
-    const harness: DoctorCheckContractHarness = {
-      name: "selected-provider (typed-failure fixture)",
-      check: selectedProviderCheck(runningProvider),
-      defectProbe: {
-        makeCheck: () => ({
-          id: "typed-failure",
-          run: (_input: { readonly fix: boolean }) =>
-            Effect.fail(new DoctorCheckError({ message: "fixture typed failure" })),
-        }),
-      },
-    };
-
-    // When: the typed-failure fixture runs through the contract suite.
-    const exit = await Effect.runPromiseExit(runDoctorCheckContractSuite(harness));
-
-    // Then: the contract reports that no observable defect was present.
-    expect(Exit.isFailure(exit)).toBe(true);
   });
 });

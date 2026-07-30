@@ -7,6 +7,7 @@ import { renderGlobalAppDoctorResultAsNdjson } from "./doctor-global-app.ts";
 import { renderMcpDoctorResultAsNdjson } from "./doctor-mcp.ts";
 import { DoctorNdjsonSummarySchema } from "./doctor-ndjson.ts";
 import type { DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract.ts";
+import type { DoctorSelfCheck } from "./doctor-self.ts";
 import { renderSubsystemDoctorResultAsNdjson } from "./doctor-subsystems.ts";
 import {
   type AppVersionConstraintDoctorCheck,
@@ -44,6 +45,18 @@ const deprecationsCheckLine = (result: DoctorDeprecationReport): string =>
     entries: result.entries,
   });
 
+const selfCheckLine = (check: DoctorSelfCheck): string =>
+  doctorCheckFrameLine({
+    _tag: "doctor.check",
+    name: check.name,
+    status: check.status,
+    severity: check.severity,
+    section: check.section,
+    reason: check.reason,
+    context: check.context,
+    solutions: check.solutions,
+  });
+
 export interface DoctorReportNdjsonOptions {
   readonly now?: Date;
 }
@@ -71,6 +84,8 @@ export const renderDoctorReportAsNdjson = (
     lines.push(...report.appVersionConstraints.checks.map(appVersionConstraintCheckLine));
   if (report.deprecations !== undefined) lines.push(deprecationsCheckLine(report.deprecations));
   if (report.appConfig !== undefined) lines.push(appConfigCheckLine(report.appConfig));
+  const selfChecks = report.self?.checks ?? [];
+  lines.push(...selfChecks.map(selfCheckLine));
   const checks = [
     ...report.provider.checks,
     ...report.subsystems.checks,
@@ -82,8 +97,12 @@ export const renderDoctorReportAsNdjson = (
   const appConfigInvalid = report.appConfig !== undefined && !report.appConfig.valid;
   const summary = {
     timestamp,
-    checks: checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1),
-    failed: checks.filter((check) => check.status === "fail").length + (appConfigInvalid ? 1 : 0),
+    checks:
+      checks.length + deprecationsCheckCount + (report.appConfig === undefined ? 0 : 1) + selfChecks.length,
+    failed:
+      checks.filter((check) => check.status === "fail").length +
+      (appConfigInvalid ? 1 : 0) +
+      selfChecks.length,
     warned: checks.filter((check) => check.status === "warn").length,
   };
   lines.push(

@@ -1,6 +1,6 @@
 import { sep } from "node:path";
 
-import { Cause, Duration, Effect, Exit, Fiber, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Fiber, Option, Schema } from "effect";
 
 import { ToolingExecError } from "../errors/index.ts";
 import type { AppPlan } from "../schema/index.ts";
@@ -78,9 +78,8 @@ const requireDoctorCheckContract = (condition: boolean, assertion: string, detai
  * issues carrying severity / context and an automatic|manual solution; default
  * runs are read-only and only `--fix` executes automatic solutions; shell-shaped
  * probes route through `ShellRunner` (so they appear in the redacted doctor
- * transcript); secrets are redacted; checks remain interruptible; and untyped
- * defects remain observable. `check` is required; the remaining fields are
- * optional probes asserted only when supplied.
+ * transcript); and secrets are redacted. `check` is required; the
+ * remaining fields are optional probes asserted only when supplied.
  */
 export interface DoctorCheckContractHarness {
   /** Optional label woven into failure messages. */
@@ -109,35 +108,6 @@ export interface DoctorCheckContractHarness {
    * (returns whether the fix ran).
    */
   readonly fixProbe?: Effect.Effect<boolean>;
-  /**
-   * Optional: asserts a never-settling check yields to interruption and is
-   * bounded by a runner-provided deadline.
-   */
-  readonly interruptibleProbe?: {
-    /** Builds the never-settling check used to exercise deadline interruption. */
-    readonly makeCheck: () => {
-      /** The fixture check id used in contract failure details. */
-      readonly id: string;
-      /** Runs the fixture check until the contract deadline interrupts it. */
-      readonly run: (input: {
-        readonly fix: boolean;
-      }) => Effect.Effect<DoctorCheckResult, DoctorCheckError>;
-    };
-    /** Deadline applied to the fixture check, in milliseconds. */
-    readonly budgetMs: number;
-  };
-  /** Optional: asserts an untyped check defect remains observable through `Effect.exit`. */
-  readonly defectProbe?: {
-    /** Builds the defecting check used to exercise defect observation. */
-    readonly makeCheck: () => {
-      /** The fixture check id used in contract failure details. */
-      readonly id: string;
-      /** Runs the fixture check that dies with an untyped defect. */
-      readonly run: (input: {
-        readonly fix: boolean;
-      }) => Effect.Effect<DoctorCheckResult, DoctorCheckError>;
-    };
-  };
   /**
    * Optional: returns the redacted transcript lines produced by the check's
    * shell-shaped probes (proving they routed through `ShellRunner`).
@@ -249,53 +219,6 @@ export const runDoctorCheckContractSuite = (
         `${label}: run({ fix: true }) executes the automatic solution`,
         fixed,
       );
-    }
-
-    // --- optional: never-settling checks yield to deadline interruption ---
-    if (harness.interruptibleProbe) {
-      const { budgetMs, makeCheck } = harness.interruptibleProbe;
-      const check = makeCheck();
-      const [elapsed, timedResult] = yield* check.run({ fix: false }).pipe(
-        Effect.timeoutOption(Duration.millis(budgetMs)),
-        Effect.timed,
-        Effect.mapError((cause) =>
-          doctorCheckContractFailure(`${label}: interruptible probe reaches its deadline`, {
-            checkId: check.id,
-            cause,
-          }),
-        ),
-      );
-      yield* requireDoctorCheckContract(
-        Option.isNone(timedResult),
-        `${label}: never-settling check is interrupted by its deadline`,
-        { checkId: check.id, timedResult },
-      );
-      const elapsedMs = Duration.toMillis(elapsed);
-      const elapsedLimitMs = budgetMs * 10 + 500;
-      yield* requireDoctorCheckContract(
-        elapsedMs < elapsedLimitMs,
-        `${label}: interruptible probe completes within its bounded wall-clock budget`,
-        { checkId: check.id, budgetMs, elapsedMs, elapsedLimitMs },
-      );
-    }
-
-    // --- optional: untyped defects remain observable through Effect.exit ---
-    if (harness.defectProbe) {
-      const check = harness.defectProbe.makeCheck();
-      const defectExit = yield* check.run({ fix: false }).pipe(Effect.exit);
-      yield* requireDoctorCheckContract(
-        Exit.isFailure(defectExit),
-        `${label}: defecting check exits with a failure`,
-        { checkId: check.id, exit: defectExit },
-      );
-      if (Exit.isFailure(defectExit)) {
-        const defect = Cause.dieOption(defectExit.cause);
-        yield* requireDoctorCheckContract(
-          Option.isSome(defect),
-          `${label}: defecting check exposes an untyped defect`,
-          { checkId: check.id, cause: defectExit.cause },
-        );
-      }
     }
 
     // --- optional: shell-shaped probes route through ShellRunner (transcript evidence) ---

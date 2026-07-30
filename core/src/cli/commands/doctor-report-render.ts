@@ -102,7 +102,7 @@ const selfSection = (report: DoctorSelfReport): SummarySection => ({
   title: "doctor self",
   rows: report.checks.map((check) => ({
     label: check.section,
-    tone: "error" as SummaryTone,
+    tone: "error",
     value: check.reason,
     fields: Object.entries(check.context).map(([label, value]) => ({ label, value })),
     detail: check.solutions.map((solution) => solution.description).join(" · "),
