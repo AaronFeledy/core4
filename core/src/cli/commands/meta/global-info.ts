@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 
 import type { InfoAppError, InfoAppResult } from "@lando/sdk/app";
-import { type ComposeKeyRejectedError, ToolingExecError } from "@lando/sdk/errors";
+import {
+  type ComposeKeyRejectedError,
+  type LandofileLoadExpressionError,
+  ToolingExecError,
+} from "@lando/sdk/errors";
 import type { AppPlan } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
@@ -16,7 +20,12 @@ export interface GlobalInfoOptions {
 export type GlobalInfoResult = InfoAppResult;
 export const GlobalInfoResultSchema = AppInfoResultSchema;
 
-export type GlobalInfoError = ComposeKeyRejectedError | InfoAppError | LoadGlobalPlanError | ToolingExecError;
+export type GlobalInfoError =
+  | ComposeKeyRejectedError
+  | InfoAppError
+  | LoadGlobalPlanError
+  | ToolingExecError
+  | LandofileLoadExpressionError;
 export type GlobalInfoServices = LoadGlobalPlanServices | RuntimeProviderRegistry;
 
 export const renderGlobalInfoResult = (result: GlobalInfoResult, ctx?: RenderContext): string =>

@@ -14,6 +14,7 @@ import type {
   LandoCommandError,
   LandofileFormConflictError,
   LandofileIncludeError,
+  LandofileLoadExpressionError,
   LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,
@@ -80,6 +81,7 @@ type AppCacheRefreshError =
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NotImplementedError
+  | LandofileLoadExpressionError
   | PluginManifestError
   | CapabilityError
   | PublicationUnsupportedError

@@ -1,16 +1,29 @@
 import { Effect, Either } from "effect";
 
-import { LandofileExpressionEvalError, LandofileExpressionForbiddenError } from "../errors/index.ts";
+import {
+  LandofileExpressionEvalError,
+  LandofileExpressionForbiddenError,
+  LandofileLoadLimitError,
+  LandofileLoadOutsideRootError,
+} from "../errors/index.ts";
 import type { ExpressionNode, ExpressionTemplate, PathSegment, ShellParamSegment } from "./ast.ts";
 import type { ExpressionContext } from "./context.ts";
 
 export interface EvaluateExpressionOptions {
   readonly filePath?: string | undefined;
+  readonly helperOverrides?: Readonly<Record<string, ExpressionHelperOverride>> | undefined;
 }
+
+export type ExpressionHelperOverride = (
+  args: ReadonlyArray<unknown>,
+  options: EvaluateExpressionOptions,
+) => unknown;
 
 export type LandofileExpressionEvaluationError =
   | LandofileExpressionForbiddenError
-  | LandofileExpressionEvalError;
+  | LandofileExpressionEvalError
+  | LandofileLoadLimitError
+  | LandofileLoadOutsideRootError;
 
 type MissingValue = typeof MISSING;
 type ResolvedValue = unknown | MissingValue;
@@ -82,7 +95,10 @@ const unsupportedDecoderError = (
   evalError(`Decoder "${helper}" is not supported in the sandboxed evaluator.`, options);
 
 const isEvaluationError = (cause: unknown): cause is LandofileExpressionEvaluationError =>
-  cause instanceof LandofileExpressionForbiddenError || cause instanceof LandofileExpressionEvalError;
+  cause instanceof LandofileExpressionForbiddenError ||
+  cause instanceof LandofileExpressionEvalError ||
+  cause instanceof LandofileLoadLimitError ||
+  cause instanceof LandofileLoadOutsideRootError;
 
 const wrapUnknownEvaluationError = (
   options: EvaluateExpressionOptions,
@@ -268,6 +284,14 @@ const evaluateCall = (
   nodes: ReadonlyArray<ExpressionNode>,
   state: EvaluationState,
 ): ResolvedValue => {
+  const overrides = state.options.helperOverrides;
+  const override = overrides?.[callee];
+  if (override !== undefined && overrides !== undefined && Object.hasOwn(overrides, callee)) {
+    return override(
+      nodes.map((node) => requireResolved(resolveNode(node, state), state)),
+      state.options,
+    );
+  }
   if (callee === "fs" || callee.startsWith("fs.")) {
     throw forbiddenError(callee, state.options);
   }
@@ -314,6 +338,14 @@ const callHelperByName = (
   args: ReadonlyArray<ResolvedValue>,
   state: EvaluationState,
 ): ResolvedValue => {
+  const overrides = state.options.helperOverrides;
+  const override = overrides?.[helperName];
+  if (override !== undefined && overrides !== undefined && Object.hasOwn(overrides, helperName)) {
+    return override(
+      args.map((arg) => requireResolved(arg, state)),
+      state.options,
+    );
+  }
   if (helperName === "fs" || helperName.startsWith("fs.") || FORBIDDEN_HELPERS.has(helperName)) {
     throw forbiddenError(helperName, state.options);
   }

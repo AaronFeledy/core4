@@ -394,6 +394,48 @@ describe("CacheServiceLive", () => {
     ).not.toBe(deriveAppPlanCacheKey({ ...base, landofile: { name: "cache-plan", services: {} } }));
   });
 
+  test("keys referenced files by path size and content but not mtime", () => {
+    // Given
+    const referencedFile = {
+      absolutePath: "/workspace/load-cache/corp.pem",
+      size: 4,
+      mtimeMs: 1,
+      sha256: "a",
+    };
+    const base = {
+      appRoot: "/workspace/load-cache",
+      landofile: { name: "load-cache", runtime: 4 as const },
+      pluginManifests: [],
+      sourceFingerprint: {
+        landofileContentHashes: [],
+        includeLockfileHash: null,
+        includedFragmentShas: [],
+        referencedFiles: [referencedFile],
+      },
+    };
+
+    // When
+    const original = deriveAppPlanCacheKey(base);
+    const touched = deriveAppPlanCacheKey({
+      ...base,
+      sourceFingerprint: {
+        ...base.sourceFingerprint,
+        referencedFiles: [{ ...referencedFile, mtimeMs: 2 }],
+      },
+    });
+    const changed = deriveAppPlanCacheKey({
+      ...base,
+      sourceFingerprint: {
+        ...base.sourceFingerprint,
+        referencedFiles: [{ ...referencedFile, sha256: "b" }],
+      },
+    });
+
+    // Then
+    expect(touched).toBe(original);
+    expect(changed).not.toBe(original);
+  });
+
   test("writes and reads app-plan caches through CacheService.writeAtomic", async () => {
     const cacheRoot = await mkdtemp(join(tmpdir(), "lando-app-plan-cache-"));
     const appRoot = "/workspace/cache-plan";

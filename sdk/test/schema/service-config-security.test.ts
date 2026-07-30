@@ -40,6 +40,24 @@ describe("ServiceConfig security authoring", () => {
     });
   });
 
+  test("canonical CA accepts a provenance-preserving ImportRef string", () => {
+    // Given
+    const imported = {
+      _tag: "ImportRef",
+      value: "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n",
+      path: "./certs/corp.pem",
+      basename: "corp.pem",
+      checksum: "a".repeat(64),
+      layer: "canonical",
+    };
+
+    // When
+    const service = decodeAuthored({ security: { ca: [imported] } });
+
+    // Then
+    expect(service.security?.ca).toEqual([imported]);
+  });
+
   test.each([
     ["cas", "./corp-ca.pem", ["./corp-ca.pem"]],
     ["cas", ["./corp-ca.pem", "./team-ca.pem"], ["./corp-ca.pem", "./team-ca.pem"]],
@@ -129,6 +147,7 @@ describe("ServiceConfig security authoring", () => {
       expect(security).toContain('"certificate-authorities"');
       expect(security).toContain('"inheritNetworkCa"');
       expect(security).toContain('"inheritNetworkProxy"');
+      expect(security).toContain('"acceptsImportRef":true');
     },
   );
 });

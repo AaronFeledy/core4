@@ -6,6 +6,7 @@ import { type Context, Effect } from "effect";
 import { LandofileValidationError } from "@lando/sdk/errors";
 import type { NetworkTrustPlan } from "@lando/sdk/network-trust";
 import type { NetworkConfig, ServiceConfig } from "@lando/sdk/schema";
+import type { StringImportRef } from "@lando/sdk/schema";
 import type { FileSystem, LandoPaths } from "@lando/sdk/services";
 
 import { type LoadedCaPem, loadCaPems, resolveServiceNetworkInject } from "../http-client/network-trust.ts";
@@ -97,9 +98,23 @@ const isInlinePemInput = (value: string): boolean =>
 const loadProjectCas = (
   input: ResolveSecurityFeatureInput,
   cacheDirectory: string,
-  paths: ReadonlyArray<string>,
+  paths: ReadonlyArray<string | StringImportRef>,
 ): Effect.Effect<ReadonlyArray<LoadedCaPem>, LandofileValidationError> =>
-  Effect.forEach(paths, (authoredPath) => {
+  Effect.forEach(paths, (entry) => {
+    if (typeof entry !== "string") {
+      const digest = createNodeHash("sha256").update(entry.value, "utf-8").digest("hex");
+      if (digest !== entry.checksum) {
+        return Effect.fail(
+          validationError(input, `import checksum for ${entry.path} did not match its PEM content.`),
+        );
+      }
+      return validatePem(input, {
+        path: join(cacheDirectory, `import-${digest}-${entry.basename.replace(/[^A-Za-z0-9._-]/gu, "-")}`),
+        pem: entry.value,
+        digest,
+      });
+    }
+    const authoredPath = entry;
     if (isInlinePemInput(authoredPath)) {
       const digest = createNodeHash("sha256").update(authoredPath, "utf-8").digest("hex");
       return validatePem(input, {
@@ -149,7 +164,8 @@ export const resolveSecurityFeature = (
       security: input.security,
       plan: input.networkPlan,
     });
-    const hasCaInputs = resolved.caPaths.length > 0 || resolved.landofileCaPaths.length > 0;
+    const landofileCaPaths = resolved.landofileCaPaths ?? [];
+    const hasCaInputs = resolved.caPaths.length > 0 || landofileCaPaths.length > 0;
     if (!hasCaInputs) {
       return {
         id: SECURITY_FEATURE_ID,
@@ -172,7 +188,7 @@ export const resolveSecurityFeature = (
 
     const cacheDirectory = join(input.paths.appCacheDir(input.appName, input.appRoot), "security");
     const globalCas = resolved.injectCa ? input.globalCas : [];
-    const projectCas = yield* loadProjectCas(input, cacheDirectory, resolved.landofileCaPaths);
+    const projectCas = yield* loadProjectCas(input, cacheDirectory, landofileCaPaths);
     const cas = dedupeCas([...globalCas, ...projectCas]);
     yield* input.fileSystem
       .mkdir(cacheDirectory)
@@ -181,9 +197,7 @@ export const resolveSecurityFeature = (
           validationError(input, `could not create its app cache: ${cause.message}`),
         ),
       );
-    for (const ca of projectCas.filter((candidate) =>
-      candidate.path.startsWith(join(cacheDirectory, "inline-")),
-    )) {
+    for (const ca of projectCas.filter((candidate) => candidate.path.startsWith(cacheDirectory))) {
       yield* input.fileSystem
         .writeAtomic(ca.path, ca.pem)
         .pipe(

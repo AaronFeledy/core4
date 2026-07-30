@@ -4,6 +4,7 @@ import { Effect, Schema } from "effect";
 
 import {
   LandofileFormConflictError,
+  type LandofileLoadExpressionError,
   LandofileNotFoundError,
   LandofileParseError,
   type LandofileSandboxError,
@@ -72,7 +73,8 @@ export type AppIncludesUpdateError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
-  | ComposeKeyRejectedError;
+  | ComposeKeyRejectedError
+  | LandofileLoadExpressionError;
 
 /**
  * Refresh every `includes:` and Compose `include:` lockfile entry for the current app's Landofile.

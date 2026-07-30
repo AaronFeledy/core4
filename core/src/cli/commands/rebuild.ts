@@ -10,7 +10,7 @@ import type {
   RebuildAppResult,
   RebuildAppError as SdkRebuildAppError,
 } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError } from "@lando/sdk/errors";
+import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
 import type {
   AppPlanner,
   BuildOrchestrator,
@@ -31,7 +31,7 @@ import type { ResolvedAppTarget } from "../app-resolution.ts";
 import { type StartManagedScope, StartedServiceResultSchema, startApp } from "./start.ts";
 import { stopAppWithPlan } from "./stop.ts";
 
-export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError;
+export type RebuildAppError = SdkRebuildAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { RebuildAppOptions, RebuildAppResult } from "@lando/sdk/app";
 
 export const RebuildAppResultSchema = Schema.Struct({

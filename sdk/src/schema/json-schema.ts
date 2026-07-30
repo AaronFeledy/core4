@@ -24,6 +24,9 @@ import {
   LandofileExpressionEvalError,
   LandofileExpressionForbiddenError,
   LandofileExpressionParseError,
+  LandofileImportRefMisuseError,
+  LandofileLoadLimitError,
+  LandofileLoadOutsideRootError,
   SubscriberLevelMismatchError,
 } from "../errors/index.ts";
 import { KeymapConflictError } from "../errors/keymap.ts";
@@ -199,6 +202,7 @@ import {
   RendererKeyChord,
   RendererKeyName,
 } from "./keymap.ts";
+import { FileRef, StringImportRef } from "./landofile-reference.ts";
 import {
   EndpointInput,
   HealthcheckInput,
@@ -361,6 +365,11 @@ const rawPublicSchemaRegistry = {
   LandofileExpressionParseError,
   LandofileExpressionForbiddenError,
   LandofileExpressionEvalError,
+  LandofileImportRefMisuseError,
+  LandofileLoadLimitError,
+  LandofileLoadOutsideRootError,
+  FileRef,
+  StringImportRef,
   SubscriberLevelMismatchError,
   GuideFrontmatter,
   GuideProps,
@@ -674,6 +683,11 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   LandofileExpressionParseError: "Public Lando schema contract for Landofile Expression Parse Error.",
   LandofileExpressionForbiddenError: "Public Lando schema contract for Landofile Expression Forbidden Error.",
   LandofileExpressionEvalError: "Public Lando schema contract for Landofile Expression Eval Error.",
+  LandofileImportRefMisuseError: "Public Lando schema contract for Landofile ImportRef misuse.",
+  LandofileLoadLimitError: "Public Lando schema contract for Landofile load limits.",
+  LandofileLoadOutsideRootError: "Public Lando schema contract for outside-root Landofile loads.",
+  FileRef: "Public Lando schema contract for loaded-file metadata.",
+  StringImportRef: "Public Lando schema contract for imported string values and provenance.",
   SubscriberLevelMismatchError: "Public Lando schema contract for Subscriber Level Mismatch Error.",
   GuideFrontmatter: "Public Lando schema contract for Guide Frontmatter.",
   GuideProps: "Public Lando schema contract for Guide Props.",
@@ -1511,6 +1525,9 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "InteractionServiceContribution.module",
   "InteractionServiceContribution.summary",
   "LandoEvent._tag",
+  "LandofileImportRefMisuseError._tag",
+  "LandofileLoadLimitError._tag",
+  "LandofileLoadOutsideRootError._tag",
   "LandofileExpressionEvalError._tag",
   "LandofileExpressionEvalError.cause",
   "LandofileExpressionEvalError.expression",

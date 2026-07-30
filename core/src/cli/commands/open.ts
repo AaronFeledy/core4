@@ -1,7 +1,12 @@
 import { DateTime, Effect, Exit, Schema } from "effect";
 
 import type { InfoAppError } from "@lando/sdk/app";
-import type { ComposeKeyRejectedError, EventError, ShellExecError } from "@lando/sdk/errors";
+import type {
+  ComposeKeyRejectedError,
+  EventError,
+  LandofileLoadExpressionError,
+  ShellExecError,
+} from "@lando/sdk/errors";
 import { HostProxyOpenUrlSchemeError, OpenTargetUnresolvedError } from "@lando/sdk/errors";
 import { PostOpenUrlEvent, PreOpenUrlEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef, PublishedEndpoint, RoutePlan, ServicePlan } from "@lando/sdk/schema";
@@ -167,7 +172,8 @@ export type OpenAppError =
   | OpenTargetUnresolvedError
   | HostProxyOpenUrlSchemeError
   | ShellExecError
-  | EventError;
+  | EventError
+  | LandofileLoadExpressionError;
 
 const HEADLESS_NOTE = "No display server detected; printing the URL instead of opening a browser.";
 

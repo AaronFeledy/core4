@@ -14,6 +14,7 @@ import {
   type DeprecatedSurfaceError,
   type LandofileFormConflictError,
   type LandofileIncludeError,
+  type LandofileLoadExpressionError,
   type LandofileLockMismatchError,
   type LandofileNotFoundError,
   type LandofileParseError,
@@ -134,6 +135,7 @@ export type ShellAppError =
   | LandofileValidationError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | LandofileLoadExpressionError
   | ToolingIncludeCycleError
   | LandofileVersionConstraintError
   | NoProviderInstalledError

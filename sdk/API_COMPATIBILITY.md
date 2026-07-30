@@ -4,6 +4,9 @@
 
 ## Compatibility notes
 
+- `LandofileService.discover`'s error channel additively gains `LandofileImportRefMisuseError`,
+  `LandofileLoadLimitError`, and `LandofileLoadOutsideRootError` for production `load()` / `import()`
+  evaluation; the frozen service-surface fixture is updated to match.
 - `LandofileParseError` additively gains optional `remediation` for malformed YAML reference graphs. The canonical Landofile parser now resolves native anchors, aliases, and merge keys before schema decoding while retaining the existing dependency-free YAML subset.
 - `ComposeServiceFieldKey` changes pre-ship from `networks | configs | secrets | profiles | x-*` to `networks | configs | secrets | profiles | labels`. `composeServiceFields` is now a native-tier fail-closed refinement matching `composeKnobs`: non-empty declarations require `composeSpec: "native"`. Service-level `x-*` values remain losslessly preserved inert metadata outside the capability surface.
 - `@lando/sdk/schema` additively exports `ComposePreservedPathKey` and `ComposePreservedPathCapabilities`, and `ProviderCapabilities` additively gains optional `composePreservedPaths`. This fail-closed exact-path refinement covers matrix-preserved Compose service descendants outside the `composeKnobs` and `composeServiceFields` families (`depends_on.*.restart` and `healthcheck.start_interval`). Omitting it is equivalent to `{ supported: [] }`; `composeSpec: "native"` alone never implies support. No internal field map or base struct is exported.
@@ -83,6 +86,10 @@
 
 ## Additive Alpha schema exports
 
+- `FileRef`
+- `ImportRef`
+- `LandofileLayer`
+- `StringImportRef`
 - `AbsolutePath`
 - `AppMountPlan`
 - `ArtifactBuildSpec`

@@ -131,6 +131,18 @@ export const GlobalConfig = Schema.Struct({
   }),
   telemetry: Schema.optionalWith(TelemetryConfig, { default: () => ({ enabled: true }) }),
   renderer: Schema.optional(Schema.String),
+  allowLoadOutsideRoot: Schema.optionalWith(Schema.Boolean, { default: () => false }).annotations({
+    description: "Allow Landofile load/import paths outside the app root (default false).",
+  }),
+  loadMaxFileBytes: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
+    default: () => 1_048_576,
+  }).annotations({ description: "Maximum bytes read by one Landofile load/import call." }),
+  loadMaxFilesPerExpression: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
+    default: () => 16,
+  }).annotations({ description: "Maximum distinct files read by one Landofile expression." }),
+  loadMaxRecursionDepth: Schema.optionalWith(Schema.Number.pipe(Schema.int(), Schema.positive()), {
+    default: () => 4,
+  }).annotations({ description: "Maximum nested Landofile load/import call depth." }),
   network: Schema.optional(NetworkConfig),
   mcp: Schema.optional(McpConfig).annotations({
     description: "Global MCP command exposure policy (global mcp).",

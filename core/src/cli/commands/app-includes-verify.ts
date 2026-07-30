@@ -2,7 +2,12 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
-import { LandofileNotFoundError, LandofileParseError, type NotImplementedError } from "@lando/sdk/errors";
+import {
+  type LandofileLoadExpressionError,
+  LandofileNotFoundError,
+  LandofileParseError,
+  type NotImplementedError,
+} from "@lando/sdk/errors";
 import type {
   ComposeKeyRejectedError,
   LandofileIncludeError,
@@ -74,7 +79,8 @@ export type AppIncludesVerifyError =
   | LandofileIncludeError
   | LandofileLockMismatchError
   | ToolingIncludeCycleError
-  | ComposeKeyRejectedError;
+  | ComposeKeyRejectedError
+  | LandofileLoadExpressionError;
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
 

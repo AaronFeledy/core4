@@ -26,6 +26,26 @@ For compatibility, `cas`, `certificate-authority`, and `certificate-authorities`
 `security`. Each alias accepts one path or a list and canonicalizes to `security.ca`. The top-level
 `certs` field configures a service's leaf TLS certificate and is not an alias for additional CAs.
 
+## Load local CA files
+
+Use `load()` when `security.ca` only needs the decoded PEM text. Use `import()` when the CA should
+also retain its authored path, basename, checksum, and Landofile layer for later image packing:
+
+```yaml
+services:
+  appserver:
+    security:
+      ca:
+        - "{{ load('./certs/corporate-root.pem') }}"
+        - "{{ import('./certs/team-root.pem') }}"
+```
+
+Both helpers resolve relative to the Landofile or include fragment where the expression appears. The
+resolved file must stay inside the app root, including after symlink resolution. An outside-root read
+fails with remediation to move the file under the app root or enable the global
+`allowLoadOutsideRoot` policy; opted-in outside-root reads are logged. Unreadable files and values
+without a complete PEM `CERTIFICATE` block fail before planning with a path-specific correction.
+
 ## Resolve host CA paths
 
 Host-global CA paths come from `network.ca.certs` or the JSON array in
@@ -72,6 +92,13 @@ store. The bundle and directory paths do not change across that rebuild.
       <Variable name="aliases" value="cas, certificate-authority, certificate-authorities" display="Use a scalar or list; each form normalizes to security.ca" />
       <Variable name="inheritFlags" value="inheritNetworkCa, inheritNetworkProxy" display="Override host network injection for this service only" />
       <Variable name="leafTls" value="certs" display="Keep service leaf TLS separate from additional certificate authorities" />
+    </Step>
+  </Scenario>
+  <Scenario id="load-service-security-ca" render={false} reason="Focused production Landofile discovery and AppPlanner tests cover load/import decoding, provenance, containment, PEM remediation, and referenced-file cache invalidation">
+    <Step name="load-project-ca-files">
+      <Variable name="plainValue" value="load('./certs/corporate-root.pem')" display="Decode local PEM text for security.ca" />
+      <Variable name="provenance" value="import('./certs/team-root.pem')" display="Preserve the authored path, basename, checksum, and Landofile layer" />
+      <Variable name="containment" value="allowLoadOutsideRoot" display="Keep reads inside the app root unless the global policy explicitly opts out" />
     </Step>
   </Scenario>
   <Scenario id="resolve-corporate-ca-paths" render={false} reason="Focused core network-trust tests cover host path loading, stable digests, and unreadable-path remediation without requiring private CA material">

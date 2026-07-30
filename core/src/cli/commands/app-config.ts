@@ -7,6 +7,7 @@ import type {
   ComposeKeyRejectedError,
   LandofileFormConflictError,
   LandofileIncludeError,
+  LandofileLoadExpressionError,
   LandofileLockMismatchError,
   LandofileSandboxError,
   LandofileTimeoutError,
@@ -94,7 +95,8 @@ type AppConfigError =
   | LandofileVersionConstraintError
   | ConfigError
   | NotImplementedError
-  | ComposeKeyRejectedError;
+  | ComposeKeyRejectedError
+  | LandofileLoadExpressionError;
 
 type AppConfigServices = LandofileService;
 

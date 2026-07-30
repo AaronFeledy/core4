@@ -91,7 +91,7 @@ interface ResolvedServiceNetworkInject {
   readonly injectCa: boolean;
   readonly injectProxy: boolean;
   readonly caPaths: ReadonlyArray<string>;
-  readonly landofileCaPaths: ReadonlyArray<string>;
+  readonly landofileCaPaths: NonNullable<ServiceConfig["security"]>["ca"];
   readonly proxy: NetworkTrustPlan["proxy"];
 }
 

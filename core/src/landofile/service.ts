@@ -15,8 +15,8 @@ import {
   NotImplementedError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
-import { LandofileShape, ServiceConfig } from "@lando/sdk/schema";
-import { LandofileService } from "@lando/sdk/services";
+import { type LandofileLayer, LandofileShape, ServiceConfig } from "@lando/sdk/schema";
+import { ConfigService, LandofileService, Logger } from "@lando/sdk/services";
 
 import {
   getVersionConstraintEntries,
@@ -28,8 +28,17 @@ import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { LANDOFILE_NAME } from "./discovery.ts";
 import { getLocalIncludePaths, rememberLocalIncludePaths } from "./include-provenance.ts";
-import { resolveLandofileIncludes } from "./includes.ts";
+import { type LandofileRelaxedRead, resolveLandofileIncludes } from "./includes.ts";
 import { landofileLayerPaths, presentLandofileLayers, representativeLandofileLayer } from "./layers.ts";
+import { DEFAULT_LANDOFILE_LOAD_POLICY, type LandofileLoadPolicy } from "./load-expression-file.ts";
+import {
+  getLandofileReferencedFiles,
+  rememberLandofileReferencedFiles,
+} from "./load-expression-provenance.ts";
+import {
+  type ResolveLandofileLoadExpressionError,
+  resolveLandofileLoadExpressions,
+} from "./load-expression.ts";
 import { mergeLandofiles } from "./merge.ts";
 import { parseLandofile } from "./parser.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
@@ -215,6 +224,7 @@ const scanContentForBetaExpressions = (
 ): Effect.Effect<string, NotImplementedError> => {
   const match = scanForConfigExpression(content);
   if (match === undefined) return Effect.succeed(content);
+  if (content.includes("load(") || content.includes("import(")) return Effect.succeed(content);
   return Effect.fail(
     new NotImplementedError({
       message: `${match.description} are not supported in Alpha Landofiles at ${filePath}.`,
@@ -249,16 +259,87 @@ type LandofileLoadError =
   | LandofileFormConflictError
   | LandofileIncludeError
   | LandofileLockMismatchError
+  | ResolveLandofileLoadExpressionError
   | NotImplementedError
   | ToolingIncludeCycleError;
 
+interface LandofileLoadContext {
+  readonly appRoot: string;
+  readonly layer: LandofileLayer;
+  readonly policy: LandofileLoadPolicy;
+  readonly logger?: Context.Tag.Service<typeof Logger> | undefined;
+}
+
+const loadContext = (
+  appRoot: string,
+): Effect.Effect<Omit<LandofileLoadContext, "layer">, LandofileParseError> =>
+  Effect.gen(function* () {
+    const config = yield* Effect.serviceOption(ConfigService);
+    const logger = yield* Effect.serviceOption(Logger);
+    const policy =
+      config._tag === "None"
+        ? DEFAULT_LANDOFILE_LOAD_POLICY
+        : yield* config.value.load.pipe(
+            Effect.map((value) => ({
+              allowOutsideRoot: value.allowLoadOutsideRoot,
+              maxFileBytes: value.loadMaxFileBytes,
+              maxFilesPerExpression: value.loadMaxFilesPerExpression,
+              maxRecursionDepth: value.loadMaxRecursionDepth,
+            })),
+            Effect.mapError(
+              (cause) =>
+                new LandofileParseError({
+                  message: "Global configuration could not be loaded for Landofile expressions.",
+                  filePath: appRoot,
+                  line: undefined,
+                  column: undefined,
+                  cause,
+                }),
+            ),
+          );
+    return { appRoot, policy, ...(logger._tag === "Some" ? { logger: logger.value } : {}) };
+  });
+
 export const loadLandofileFile = (
   filePath: string,
+  context?: LandofileLoadContext,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
-  (filePath.endsWith(".ts") ? loadTsLandofile(filePath) : loadYamlLandofile(filePath)).pipe(
-    Effect.flatMap((parsed) => validateLandofile(filePath, parsed)),
-    Effect.map((landofile) => rememberLandofileAppRoot(landofile, dirname(filePath))),
-  );
+  Effect.gen(function* () {
+    const resolvedContext = context ?? {
+      appRoot: dirname(filePath),
+      layer: "canonical" as const,
+      policy: DEFAULT_LANDOFILE_LOAD_POLICY,
+    };
+    const parsed = yield* filePath.endsWith(".ts") ? loadTsLandofile(filePath) : loadYamlLandofile(filePath);
+    const resolved = yield* resolveLandofileLoadExpressions({
+      value: parsed,
+      source: {
+        appRoot: resolvedContext.appRoot,
+        sourcePath: filePath,
+        sourceRoot: dirname(filePath),
+        layer: resolvedContext.layer,
+      },
+      policy: resolvedContext.policy,
+    });
+    if (resolvedContext.logger !== undefined) {
+      const logger = resolvedContext.logger;
+      yield* Effect.forEach(resolved.relaxedReads, (read) =>
+        logger
+          .info("Landofile load used outside-root policy override", {
+            sourcePath: filePath,
+            authoredPath: read.authoredPath,
+            absolutePath: read.absolutePath,
+            appRoot: resolvedContext.appRoot,
+          })
+          .pipe(Effect.catchAll(() => Effect.void)),
+      );
+    }
+    const landofile = yield* validateLandofile(filePath, resolved.value);
+    return rememberLandofileAppRoot(
+      rememberLandofileReferencedFiles(landofile, resolved.dependencies),
+      resolvedContext.appRoot,
+    );
+  });
 
 const readFileContent = (filePath: string): Effect.Effect<string, LandofileParseError> =>
   Effect.tryPromise({
@@ -307,64 +388,99 @@ export const loadLandofileLayers = (
   appRoot: string,
   canonicalPath: string,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
-  Effect.tryPromise({
-    try: () => presentLandofileLayers(appRoot),
-    catch: (cause) =>
-      cause instanceof LandofileFormConflictError
-        ? cause
-        : new LandofileParseError({
-            message: cause instanceof Error ? cause.message : "Failed to enumerate Landofile layers.",
-            filePath: canonicalPath,
-            line: undefined,
-            column: undefined,
-            cause,
-          }),
-  }).pipe(
-    Effect.flatMap((layers) =>
-      Effect.forEach(layers, (layer) =>
-        loadLandofileFile(layer.filePath).pipe(
-          Effect.flatMap((landofile) =>
-            resolveLandofileIncludes({
-              landofile,
-              appRoot,
-              sourcePath: layer.filePath,
-              layer: layer.layer,
-              order: layer.order,
-              resolveTooling: false,
+  Effect.gen(function* () {
+    const runtime = yield* loadContext(appRoot);
+    const logger = runtime.logger;
+    const onRelaxedRead =
+      logger === undefined
+        ? undefined
+        : (read: LandofileRelaxedRead) =>
+            logger
+              .info("Landofile load used outside-root policy override", {
+                sourcePath: read.sourcePath,
+                authoredPath: read.authoredPath,
+                absolutePath: read.absolutePath,
+                appRoot: read.appRoot,
+              })
+              .pipe(Effect.catchAll(() => Effect.void));
+    return yield* Effect.tryPromise({
+      try: () => presentLandofileLayers(appRoot),
+      catch: (cause) =>
+        cause instanceof LandofileFormConflictError
+          ? cause
+          : new LandofileParseError({
+              message: cause instanceof Error ? cause.message : "Failed to enumerate Landofile layers.",
+              filePath: canonicalPath,
+              line: undefined,
+              column: undefined,
+              cause,
             }),
+    }).pipe(
+      Effect.flatMap((layers) =>
+        Effect.forEach(layers, (layer) =>
+          loadLandofileFile(layer.filePath, { ...runtime, layer: layer.layer }).pipe(
+            Effect.flatMap((landofile) =>
+              resolveLandofileIncludes({
+                landofile,
+                appRoot,
+                sourcePath: layer.filePath,
+                layer: layer.layer,
+                order: layer.order,
+                resolveTooling: false,
+                loadPolicy: runtime.policy,
+                ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
+              }),
+            ),
+            Effect.map((landofile) => ({ layer, landofile })),
           ),
-          Effect.map((landofile) => ({ layer, landofile })),
         ),
       ),
-    ),
-    Effect.flatMap((loaded) => {
-      const composedTooling = composeToolingIncludeEntries(loaded.map(({ landofile }) => landofile));
-      const merged = {
-        ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
-        ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
-      };
-      return rejectComposeKeys(canonicalPath, merged).pipe(
-        Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
-        Effect.map((landofile) =>
-          rememberLandofileAppRoot(
-            rememberLocalIncludePaths(
-              rememberVersionConstraintEntries(
+      Effect.flatMap((loaded) => {
+        const composedTooling = composeToolingIncludeEntries(loaded.map(({ landofile }) => landofile));
+        const merged = {
+          ...mergeLandofiles(loaded.map(({ landofile }) => landofile as Record<string, unknown>)),
+          ...(composedTooling.length === 0 ? {} : { includes: composedTooling }),
+        };
+        return rejectComposeKeys(canonicalPath, merged)
+          .pipe(
+            Effect.flatMap((parsed) => validateLandofile(canonicalPath, parsed)),
+            Effect.map((landofile) =>
+              rememberLandofileAppRoot(
+                rememberLocalIncludePaths(
+                  rememberVersionConstraintEntries(
+                    landofile,
+                    loaded.flatMap(({ landofile, layer }) =>
+                      getVersionConstraintEntries(landofile, layer.filePath),
+                    ),
+                  ),
+                  loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
+                ),
+                appRoot,
+              ),
+            ),
+            Effect.flatMap((landofile) =>
+              resolveLandofileIncludes({
                 landofile,
-                loaded.flatMap(({ landofile, layer }) =>
-                  getVersionConstraintEntries(landofile, layer.filePath),
+                appRoot,
+                sourcePath: canonicalPath,
+                loadPolicy: runtime.policy,
+                ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
+              }),
+            ),
+          )
+          .pipe(
+            Effect.map((landofile) =>
+              rememberLandofileReferencedFiles(
+                landofile,
+                loaded.flatMap(({ landofile: layerLandofile }) =>
+                  getLandofileReferencedFiles(layerLandofile),
                 ),
               ),
-              loaded.flatMap(({ landofile }) => getLocalIncludePaths(landofile)),
             ),
-            appRoot,
-          ),
-        ),
-        Effect.flatMap((landofile) =>
-          resolveLandofileIncludes({ landofile, appRoot, sourcePath: canonicalPath }),
-        ),
-      );
-    }),
-  );
+          );
+      }),
+    );
+  });
 
 const discoverLandofile: Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> = Effect.tryPromise({
   try: async () => findLandofile(process.cwd()),

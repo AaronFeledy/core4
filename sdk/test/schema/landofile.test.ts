@@ -524,6 +524,10 @@ describe("GlobalConfig (MVP)", () => {
   test("decodes an empty object (every field is optional at MVP)", () => {
     const decoded = Schema.decodeUnknownSync(GlobalConfig)({});
     expect(decoded.telemetry.enabled).toBe(true);
+    expect(decoded.allowLoadOutsideRoot).toBe(false);
+    expect(decoded.loadMaxFileBytes).toBe(1_048_576);
+    expect(decoded.loadMaxFilesPerExpression).toBe(16);
+    expect(decoded.loadMaxRecursionDepth).toBe(4);
   });
 
   test("defaultProviderId accepts an explicit null (opt-out signal)", () => {

@@ -1,7 +1,11 @@
 import { Effect } from "effect";
 
 import type { ExecAppOptions, ExecAppResult, ExecAppError as SdkExecAppError } from "@lando/sdk/app";
-import { type ComposeKeyRejectedError, ToolingExecError } from "@lando/sdk/errors";
+import {
+  type ComposeKeyRejectedError,
+  type LandofileLoadExpressionError,
+  ToolingExecError,
+} from "@lando/sdk/errors";
 import type { AppPlan, LandofileShape, ServicePlan } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -17,7 +21,7 @@ import { withAgentContextEnv } from "../../config/agent-env.ts";
 import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
 import { emitOptionalStderr } from "../renderer-boundary.ts";
 
-export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError;
+export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
 
 export type ExecAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;

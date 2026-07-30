@@ -1,7 +1,12 @@
 import { Effect, Stream } from "effect";
 
 import type { LogsAppOptions, LogsAppError as SdkLogsAppError } from "@lando/sdk/app";
-import { CapabilityError, type ComposeKeyRejectedError, ToolingExecError } from "@lando/sdk/errors";
+import {
+  CapabilityError,
+  type ComposeKeyRejectedError,
+  type LandofileLoadExpressionError,
+  ToolingExecError,
+} from "@lando/sdk/errors";
 import {
   type AppPlan,
   LogSourceId,
@@ -21,7 +26,7 @@ import {
 import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
 import { StreamFrameSink } from "../stream-frame-sink.ts";
 
-export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError;
+export type LogsAppError = SdkLogsAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { LogsAppOptions } from "@lando/sdk/app";
 export { StreamFrameSink } from "../stream-frame-sink.ts";
 export type { StreamFrameSinkFrame, StreamFrameSinkShape } from "../stream-frame-sink.ts";
