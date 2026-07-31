@@ -986,3 +986,20 @@ Spec SoT:
   - When a branch carries unmerged work whose PRD entry already passes, the Build step's job is a
     verification sweep plus a progress note; adding code to look productive would reopen a closed contract.
 ---
+## 2026-07-31 13:52 CDT - US-492 Build CLI Verification
+- Confirmed the story complete on its existing branch with no new production code, and closed the one gap
+  the earlier confirmation sweeps left open: end-to-end CLI proof of leaf-certificate planning after the
+  mkcert argv fix. No excised surface was rebuilt; active authority selection stays with US-500.
+- Verification: typecheck, lint/deprecations, guide lint, and guide coverage passed; 39 focused and
+  adjacent certificate tests plus all 6 certificates guide scenarios passed. In `lando4-dev`, a real
+  `app:cache:refresh` on a two-service Landofile bound custom cert/key material read-only to
+  `/etc/lando/certs/leaf/web.crt` and `.key` with matching `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY`
+  env, while the sibling `certs: false` service produced no leaf mount or env at all. `certs: true`
+  without an installed authority and a cert path escaping the app root each failed with
+  `LandofileValidationError`, the `services.web.certs` issue path, and actionable remediation. All QA
+  apps and their plan caches were removed from the sandbox.
+- **Learnings for future iterations:**
+  - A confirmation-only Build pass still owes the real-surface run when the last code change (here, mkcert
+    argv handling) landed after the previous CLI verification; unit and guide coverage alone would not have
+    exercised the shipped binary's planning path.
+---
