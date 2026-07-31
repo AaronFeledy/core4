@@ -237,7 +237,11 @@ export const runCli = async (options: RunCliOptions): Promise<void> => {
   }
 
   await execute({
-    dir: options.rootUrl,
     args,
+    loadOptions: {
+      root: entryPath,
+      // Lando owns external plugin discovery; OCLIF's user-plugin store is not used.
+      userPlugins: false,
+    },
   });
 };
