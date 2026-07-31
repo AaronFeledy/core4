@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
+import packageJson from "../package.json";
 import { CA_ID, PLUGIN_NAME, certificateAuthorities, engine, manifest, plugin } from "../src/index.ts";
 
 const contributionIds = (
@@ -29,5 +30,9 @@ describe("@lando/ca-mkcert plugin descriptor", () => {
     expect(plugin.manifest).toBe(manifest);
     expect(plugin.layer).toBe(engine);
     expect(plugin.certificateAuthorities).toBe(certificateAuthorities);
+  });
+
+  test("published package includes the pinned mkcert manifest", () => {
+    expect(packageJson.files).toContain("./mkcert-versions.json");
   });
 });

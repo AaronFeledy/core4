@@ -85,6 +85,16 @@ describe("lando.certs feature", () => {
     expect(plan.environment.LANDO_SERVICE_KEY).toBeUndefined();
   });
 
+  test("rejects a key without a certificate", async () => {
+    const exit = await Effect.runPromiseExit(composeCerts({ keyPath: "/host/certs/web.key" }));
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
+      expect(exit.cause.error._tag).toBe("ServiceFeatureError");
+      expect(String(exit.cause.error)).toContain("keyPath requires certPath");
+    }
+  });
+
   test("records the certificate plan when cn and caId are present", async () => {
     const plan = await composeCertsPlan({
       cn: "web.certs-test.internal",

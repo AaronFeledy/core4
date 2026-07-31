@@ -88,4 +88,16 @@ describe("generated bootstrap layers", () => {
     // Then: file-sync resolution stays behind the core plugin-module seam.
     expect(importsMutagenPackage).toBe(false);
   });
+
+  test("minimal bootstrap filters disabled bundled certificate authorities", async () => {
+    // Given: the generated minimal bootstrap source.
+    const minimal = await readFile(resolve(generatedLayersDir, "minimal.ts"), "utf8");
+
+    // When: certificate-authority composition is inspected.
+    // Then: the filtered module set drives CA selection without removing the bundled-discovery gate.
+    expect(minimal).toContain("const bundledPluginModules = BUNDLED_PLUGIN_MODULES.filter(");
+    expect(minimal).toContain("!inputs.pluginDiscovery.disable.includes(module.manifest.name)");
+    expect(minimal).toContain("makeBundledCertificateAuthorityLive(bundledPluginModules)");
+    expect(minimal).toContain("inputs.pluginDiscovery.bundled");
+  });
 });

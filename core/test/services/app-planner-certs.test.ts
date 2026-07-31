@@ -155,6 +155,33 @@ test("issues a leaf certificate with the documented SAN coverage for certs: true
   }
 });
 
+test("covers the generated default proxy hostname", async () => {
+  const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-default-route-"));
+  const appRoot = join(root, "app");
+  const cacheRoot = join(root, "cache");
+
+  try {
+    await mkdir(appRoot, { recursive: true });
+    const ca = makeTestCertificateAuthority();
+    const appPlan = await plan({
+      appRoot,
+      cacheRoot,
+      ca,
+      landofile: Schema.decodeUnknownSync(LandofileShape)({
+        name: "certs-default-route",
+        runtime: 4,
+        services: { web: { type: "node:22", certs: true } },
+      }),
+    });
+
+    const issued = ca.calls.find((call) => call.op === "issueCert");
+    expect(issued?.op === "issueCert" ? issued.spec.sans : []).toContain("web.certs-default-route.lndo.site");
+    expect(appPlan.routes.map((route) => route.hostname)).toContain("web.certs-default-route.lndo.site");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("mounts validated custom certificate material without contacting the certificate authority", async () => {
   const root = await mkdtemp(join(tmpdir(), "lando-planner-certs-custom-"));
   const appRoot = join(root, "app");

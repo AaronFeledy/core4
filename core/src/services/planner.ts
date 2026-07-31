@@ -1274,6 +1274,10 @@ const planApp = (
               paths: pathsService,
             })
           : undefined;
+      const authoredRoutes = [
+        ...(pinnedService.routes ?? []),
+        ...(landofile.proxy?.[ServiceName.make(name)] ?? []),
+      ];
       const certsFeature =
         resolution.base === "lando"
           ? yield* resolveCertsFeature({
@@ -1282,7 +1286,9 @@ const planApp = (
               serviceName: name,
               certs: pinnedService.certs,
               hostnames: pinnedService.hostnames ?? [],
-              routes: [...(pinnedService.routes ?? []), ...(landofile.proxy?.[ServiceName.make(name)] ?? [])],
+              routes: authoredRoutes,
+              defaultRouteHostname:
+                authoredRoutes.length === 0 ? `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}` : undefined,
               certificateAuthority,
               fileSystem,
             })

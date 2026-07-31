@@ -37,8 +37,9 @@ interface ResolveCertsFeatureInput {
   readonly certs: ServiceConfig["certs"];
   readonly hostnames: ReadonlyArray<string>;
   readonly routes: ReadonlyArray<RouteInput>;
+  readonly defaultRouteHostname?: string | undefined;
   readonly certificateAuthority?: CertificateAuthorityShape | undefined;
-  readonly fileSystem?: Context.Tag.Service<typeof FileSystem> | undefined;
+  readonly fileSystem?: Pick<Context.Tag.Service<typeof FileSystem>, "stat" | "readFile"> | undefined;
 }
 
 const validationError = (input: ResolveCertsFeatureInput, message: string): LandofileValidationError =>
@@ -61,6 +62,7 @@ const certificateSans = (input: ResolveCertsFeatureInput): ReadonlyArray<string>
     internalAlias(input.serviceName, input.appName),
     ...input.hostnames,
     ...input.routes.map((route) => route.hostname),
+    ...(input.defaultRouteHostname === undefined ? [] : [input.defaultRouteHostname]),
     "localhost",
     "127.0.0.1",
   ];
@@ -80,7 +82,8 @@ const resolveAuthoredPath = (
       ),
   }).pipe(
     Effect.flatMap((containedPath) => {
-      if (input.fileSystem === undefined) {
+      const fileSystem = input.fileSystem;
+      if (fileSystem === undefined) {
         return Effect.fail(
           validationError(
             input,
@@ -88,16 +91,18 @@ const resolveAuthoredPath = (
           ),
         );
       }
-      return input.fileSystem.stat(containedPath).pipe(
-        Effect.mapError(() =>
-          validationError(
-            input,
-            `path ${authoredPath} could not be read. Create the file or point certs at existing certificate material.`,
-          ),
-        ),
+      const unreadable = validationError(
+        input,
+        `path ${authoredPath} could not be read. Create the file or point certs at existing certificate material.`,
+      );
+      return fileSystem.stat(containedPath).pipe(
+        Effect.mapError(() => unreadable),
         Effect.flatMap((stat) =>
           stat.isFile
-            ? Effect.succeed(containedPath)
+            ? fileSystem.readFile(containedPath).pipe(
+                Effect.as(containedPath),
+                Effect.mapError(() => unreadable),
+              )
             : Effect.fail(validationError(input, `path ${authoredPath} must be a regular file.`)),
         ),
       );

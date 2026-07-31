@@ -18,7 +18,11 @@ const LandoCertsFeatureConfigSchema = Schema.Struct({
   cn: Schema.optional(Schema.String),
   sans: Schema.optionalWith(Schema.Array(Schema.String), { default: () => [] }),
   caId: Schema.optional(Schema.String),
-});
+}).pipe(
+  Schema.filter((config) => config.keyPath === undefined || config.certPath !== undefined, {
+    message: () => "lando.certs keyPath requires certPath.",
+  }),
+);
 type LandoCertsFeatureConfig = typeof LandoCertsFeatureConfigSchema.Type;
 
 export const landoCertsFeature: ServiceFeatureDefinition = {
