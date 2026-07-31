@@ -20,7 +20,6 @@ import type {
   DoctorReport,
 } from "./doctor-report-contract.ts";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
-import { interruptOnAbort } from "./doctor-abort.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems.ts";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint.ts";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor.ts";
