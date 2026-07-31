@@ -17,6 +17,7 @@ import { RedactionService, createStandaloneRedactor } from "../../redaction/serv
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { ConfigServiceLive } from "../../services/config.ts";
+import { interruptOnAbort } from "./doctor-abort.ts";
 import type { DoctorReport } from "./doctor-report-contract.ts";
 import { collectDoctorReport, doctorDeprecations } from "./doctor-report.ts";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
@@ -29,24 +30,10 @@ const BOOTSTRAP_REMEDIATION: DoctorSelfSolution = {
   command: "lando config view",
 };
 
-const interruptOnAbort = (signal: AbortSignal | undefined) =>
-  Effect.async<never>((resume) => {
-    if (signal === undefined) return;
-    if (signal.aborted) {
-      resume(Effect.interrupt);
-      return;
-    }
-    const abort = () => resume(Effect.interrupt);
-    signal.addEventListener("abort", abort, { once: true });
-    return Effect.sync(() => signal.removeEventListener("abort", abort));
-  });
-
 export const resilientDoctorReport = (
   options: DoctorOptions = {},
 ): Effect.Effect<DoctorReport, never, never> =>
-  collectResilientDoctorReport(options).pipe((report) =>
-    options.signal === undefined ? report : Effect.raceFirst(report, interruptOnAbort(options.signal)),
-  );
+  interruptOnAbort(collectResilientDoctorReport(options), options.signal);
 
 const collectResilientDoctorReport = (options: DoctorOptions): Effect.Effect<DoctorReport, never, never> =>
   Effect.scoped(

@@ -7,6 +7,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
 import { resolveProviderSelection } from "../../providers/precedence.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import { interruptOnAbort } from "./doctor-abort.ts";
 import type { DoctorCheck, DoctorResult } from "./doctor-contract.ts";
 import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem.ts";
 import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy.ts";
@@ -258,4 +259,4 @@ export const doctor = (
       ...hostProxyOutcome.value,
       ...oomChecks,
     ]);
-  });
+  }).pipe((effect) => interruptOnAbort(effect, options.signal));

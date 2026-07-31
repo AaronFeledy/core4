@@ -11,6 +11,7 @@ import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } 
 
 import { lintLandofile } from "../../landofile/lint.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import { interruptOnAbort } from "./doctor-abort.ts";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app.ts";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp.ts";
 import type {
@@ -169,7 +170,7 @@ export const collectDoctorReport = <R>(
       ...(appConfig === undefined ? {} : { appConfig }),
       ...(selfChecks.length === 0 ? {} : { self: { checks: selfChecks } }),
     };
-  });
+  }).pipe((effect) => interruptOnAbort(effect, input.options.signal));
 
 /**
  * Build the combined report against an already-provided runtime.
