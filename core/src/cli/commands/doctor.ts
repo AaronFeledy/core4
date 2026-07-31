@@ -439,7 +439,15 @@ export const doctor = (
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
     if (userDataRoot !== undefined) {
-      selfChecks.push(...(yield* installedPluginMetadataSelfChecks(userDataRoot, redact)));
+      const metadataOutcome = yield* isolateDoctorSection({
+        section: "plugin-metadata",
+        effect: installedPluginMetadataSelfChecks(userDataRoot, redact),
+        fallback: [],
+        budgetMs: probeBudget,
+        redact,
+      });
+      selfChecks.push(...metadataOutcome.value);
+      if (metadataOutcome.self !== undefined) selfChecks.push(metadataOutcome.self);
     }
     const platform = options.platform ?? platformFromProcess();
     const pluginOutcome = yield* pluginDoctorReports(
