@@ -49,13 +49,8 @@ const validationError = (input: ResolveCertsFeatureInput, message: string): Land
     issues: [`services.${input.serviceName}.certs`],
   });
 
-/** Internal alias every `type: lando` service answers to on the app network. */
 const internalAlias = (serviceName: string, appName: string): string => `${serviceName}.${appName}.internal`;
 
-/**
- * SAN coverage: the service name, its internal alias, authored hostnames,
- * proxied route hostnames, then loopback.
- */
 const certificateSans = (input: ResolveCertsFeatureInput): ReadonlyArray<string> => {
   const candidates = [
     input.serviceName,
