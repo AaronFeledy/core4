@@ -41,6 +41,7 @@ import {
   pluginDoctorReports,
   probeBudgetMs,
 } from "./doctor-plugin-checks.ts";
+import { installedPluginMetadataSelfChecks } from "./doctor-plugin-metadata.ts";
 import {
   type DoctorSelfCheck,
   type DoctorSelfSolution,
@@ -437,6 +438,9 @@ export const doctor = (
     const userDataRootRaw = Either.isRight(userDataRootEither) ? userDataRootEither.right : undefined;
     const userDataRoot =
       typeof userDataRootRaw === "string" && userDataRootRaw.length > 0 ? userDataRootRaw : undefined;
+    if (userDataRoot !== undefined) {
+      selfChecks.push(...(yield* installedPluginMetadataSelfChecks(userDataRoot, redact)));
+    }
     const platform = options.platform ?? platformFromProcess();
     const pluginOutcome = yield* pluginDoctorReports(
       modules,
