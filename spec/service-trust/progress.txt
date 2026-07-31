@@ -909,3 +909,35 @@ Spec SoT:
 - Verification: typecheck and lint passed from the pinned detached commit; 41 focused tests and the six-test
   certificates guide run passed.
 ---
+
+## 2026-07-31 01:30 CDT - US-492 Adjudication
+- Contradiction: the source US-492 AC says "Composition tests with fake CA; l337 does not get
+  lando.certs by default," while Review asserted "US-492 requires the active bundled CA path and
+  fake-CA composition proof." Drift Audit excised that bundled path because it selected only bundled
+  modules and therefore violated spec/09-embedding.md section 16.4's requirement that `layers`,
+  `manifests`, and discovery-found plugins form one contribution graph, plus
+  spec/04-pluggability.md section 4.3's precedence and tagged no-selection contract. Normative
+  spec/06-services.md section 6.8 requires the active CertificateAuthority for the eventual user path,
+  but it does not assign the complete registry/selection/bootstrap implementation to US-492.
+- Decision: split into a follow-up story. In spec/service-trust/prd.json, US-492 now states that its
+  composition proof injects a fake CA directly at AppPlanner's service seam and explicitly excludes
+  plugin publication, section 4.3 selection, bundled shipping, and bootstrap integration. Priorities
+  after US-492 were shifted by one so the guide-pack story remains last.
+- Follow-up story: US-500 - publish and index CertificateAuthority contributions, select across the
+  complete CLI/embedding/discovery graph with tagged failures, and wire bundled mkcert into the
+  production runtime.
+---
+
+## 2026-07-31 12:12 CDT - US-492 Build Confirmation
+- Verified the story complete on its existing branch with no new production code. The retained
+  `lando.certs` feature, fake-CA planner composition, SAN ordering, custom-material validation,
+  `certs: false` no-op, l337 exclusion, and guide coverage satisfy the adjudicated story boundary;
+  active authority selection and bootstrap remain assigned to US-500.
+- Verification: typecheck and lint passed from a detached worktree pinned to branch HEAD; 30 focused
+  and adjacent tests plus all 6 certificates guide scenarios passed; guide lint and coverage passed.
+  Real `app:cache:refresh` completed for custom and disabled certs, and its plan cache contained both
+  custom host paths plus `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY`.
+- **Learnings for future iterations:**
+  - Once Drift Audit excises a runtime surface and adjudication assigns it to a follow-up story,
+    repeat Build passes should verify the retained seam rather than rebuilding the excised surface.
+---
