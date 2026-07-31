@@ -1003,22 +1003,18 @@ Spec SoT:
     argv handling) landed after the previous CLI verification; unit and guide coverage alone would not have
     exercised the shipped binary's planning path.
 ---
-## 2026-07-31 13:45 CDT - US-492 Build CLI Verification
-- Confirmed the story complete on its branch with no new production code, and closed the one gap the
-  concurrent confirmation left open by driving the real CLI rather than tests alone. `app:cache:refresh`
-  on a throwaway app planned custom `cert`/`key` material into host-source bind mounts targeting
-  `/etc/lando/certs/leaf/<service>.crt|.key` with `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY` in the
-  cached plan, treated `certs: false` as a no-op, rejected a path escaping the app root and `certs: true`
-  with no authority (each exit 1 with its own `services.<name>.certs` remediation), and planned an l337
-  service carrying `certs: true` without composing the feature at all.
+## 2026-07-31 13:45 CDT - US-492 Build CLI Addendum
+- Host-side repeat of the same confirmation sweep, adding one case the sandbox run did not cover: an
+  l337-base service authored with `certs: true` plans cleanly with no certificate authority present,
+  which is itself the proof that `lando.certs` is composed on the lando base only.
 - Verification: typecheck, lint/deprecations, guide lint, guide coverage, and the drift gate passed;
   58 focused and adjacent tests across the certs feature, planner certs, base composition, feature
-  priority table, mkcert CA, planner network inject, feature composition, CA build keys, and the security
-  feature passed, plus all 6 certificates guide scenarios. QA app and isolated roots were removed.
+  priority table, mkcert CA, planner network inject, feature composition, CA build keys, and the
+  security feature passed, plus all 6 certificates guide scenarios. QA roots were removed.
 - **Learnings for future iterations:**
-  - Host-safe planner QA needs `bun core/bin/lando.ts` from inside the app directory with isolated
+  - Host-safe planner QA runs `bun core/bin/lando.ts` from inside the app directory with isolated
     `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT`; the resulting `plan.bin`
     is binary, so assert on extracted strings.
-  - An l337-base service authored with `certs: true` planning cleanly with no certificate authority
-    present is itself the proof that `lando.certs` is lando-base-only.
+  - Two loop sessions verified this story in parallel and both logged it; when that happens, keep the
+    later entry to the delta instead of restating the shared evidence.
 ---
