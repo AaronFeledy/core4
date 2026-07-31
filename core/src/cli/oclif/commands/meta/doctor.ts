@@ -1,11 +1,9 @@
 import { Flags } from "@oclif/core";
 
-import type { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
-
+import { resilientDoctorReport } from "../../../commands/doctor-bootstrap.ts";
 import {
   type DoctorReport,
   DoctorReportSchema,
-  doctorReport,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
@@ -17,6 +15,7 @@ import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from 
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};
+  const signal = (input as { readonly signal?: unknown }).signal;
   const flags = (
     input as {
       flags?: { provider?: unknown; fix?: unknown; app?: unknown; deprecations?: unknown; format?: unknown };
@@ -36,6 +35,7 @@ export const inputDoctorOptions = (input: unknown): DoctorOptions => {
     ...(app ? { app: true } : {}),
     ...(deprecations ? { deprecations: true } : {}),
     ...(format === undefined ? {} : { format }),
+    ...(signal instanceof AbortSignal ? { signal } : {}),
   };
 };
 
@@ -52,20 +52,24 @@ const suppressDeprecationDiagnosticsForInput = (input: unknown): boolean => {
   return options.format === "json" || options.format === "yaml";
 };
 
-export const metaDoctorSpec: LandoCommandSpec<
-  DoctorReport,
-  unknown,
-  ConfigService | RuntimeProviderRegistry
-> = {
+/**
+ * Doctor bootstraps at `none` and builds the `provider` runtime inside its own
+ * program (see `doctor-bootstrap.ts`) so a bootstrap failure is reported as a
+ * self check instead of leaving the user with no diagnostics.
+ */
+export const metaDoctorSpec: LandoCommandSpec<DoctorReport, unknown, never> = {
   resultSchema: DoctorReportSchema,
   id: "meta:doctor",
   mcpAllowed: true,
   summary: "Run diagnostics for app config, host/provider setup, and plugin-contributed checks.",
   namespace: "meta",
   topLevelAlias: true,
-  bootstrap: "provider",
-  run: (input) => doctorReport(inputDoctorOptions(input)),
+  bootstrap: "none",
+  run: (input) => resilientDoctorReport(inputDoctorOptions(input)),
   render: (result, input, ctx) => renderDoctorReportForInput(result as DoctorReport, input, ctx),
+  // A `self` check means doctor could not complete a section, which must not
+  // look like a clean run to a script or agent reading the exit code.
+  successExitCode: (result) => ((result as DoctorReport).self === undefined ? undefined : 1),
   suppressDeprecationDiagnostics: suppressDeprecationDiagnosticsForInput,
 };
 

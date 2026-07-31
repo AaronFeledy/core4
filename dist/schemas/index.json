@@ -1504,6 +1504,15 @@
   },
   {
     "deprecated": false,
+    "description": "Public Lando schema contract for plugin-contributed doctor results.",
+    "docsPath": "docs/reference/schemas/plugin-doctor-report.mdx",
+    "id": "PluginDoctorReport",
+    "jsonSchemaPath": "dist/schemas/plugin-doctor-report.json",
+    "packageExport": "@lando/sdk/schema#PluginDoctorReport",
+    "title": "Plugin Doctor Report"
+  },
+  {
+    "deprecated": false,
     "description": "Public Lando schema contract for Plugin Manifest.",
     "docsPath": "docs/reference/schemas/plugin-manifest.mdx",
     "id": "PluginManifest",

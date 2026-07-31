@@ -108,4 +108,139 @@ describe("doctor() contributed checks", () => {
     expect(result.checks.map((check) => check.name)).toEqual(["test-preemptive"]);
     expect(result.checks[0]?.selection?.providerId).toBe("lando");
   });
+
+  test("redacts every plugin-authored string before including the report", async () => {
+    // Given
+    const secret = "plugin-doctor-secret-9f3a7c2e";
+    const module = doctorModule({
+      id: "test-redaction",
+      run: () =>
+        Effect.succeed([
+          {
+            name: "test-redaction",
+            status: "warn",
+            severity: "warn",
+            runtimeStatus: `Authorization: Bearer ${secret}`,
+            runtime: { running: false, version: secret },
+            context: { [secret]: secret, password: "hunter2" },
+            solutions: [
+              {
+                kind: "manual",
+                description: `Replace ${secret}`,
+                command: `example --token=${secret}`,
+              },
+            ],
+          },
+        ]),
+    });
+
+    // When
+    const result = await Effect.runPromise(
+      doctor({ env: { PLUGIN_API_TOKEN: secret } }, [module]).pipe(Effect.provide(doctorLayer())),
+    );
+
+    // Then
+    const report = result.checks.find((check) => check.name === "test-redaction");
+    expect(report).toBeDefined();
+    expect(JSON.stringify(report)).not.toContain(secret);
+    expect(JSON.stringify(report)).not.toContain("hunter2");
+    expect(JSON.stringify(report)).toContain("[redacted]");
+  });
+
+  test("drops an oversized plugin context with an attributed self check", async () => {
+    // Given
+    const module = doctorModule({
+      id: "test-oversized-context",
+      run: () =>
+        Effect.succeed([
+          {
+            name: "test-oversized-context",
+            status: "warn",
+            severity: "warn",
+            context: { evidence: "x".repeat(2_001) },
+            solutions: [],
+          },
+        ]),
+    });
+
+    // When
+    const result = await Effect.runPromise(doctor({}, [module]).pipe(Effect.provide(doctorLayer())));
+
+    // Then
+    expect(result.checks.some((check) => check.name === "test-oversized-context")).toBe(false);
+    expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
+    expect(result.selfChecks).toContainEqual(
+      expect.objectContaining({
+        section: "plugin-check:test-oversized-context",
+        reason: "failure",
+        context: expect.objectContaining({
+          checkId: "test-oversized-context",
+          failure: "PluginDoctorReportInvalidError",
+        }),
+      }),
+    );
+  });
+
+  test("drops more than 32 reports from one plugin check", async () => {
+    // Given
+    const module = doctorModule({
+      id: "test-excess-reports",
+      run: () =>
+        Effect.succeed(
+          Array.from({ length: 33 }, (_, index) => ({
+            name: `test-excess-report-${index}`,
+            status: "warn" as const,
+            severity: "warn" as const,
+            context: {},
+            solutions: [],
+          })),
+        ),
+    });
+
+    // When
+    const result = await Effect.runPromise(doctor({}, [module]).pipe(Effect.provide(doctorLayer())));
+
+    // Then
+    expect(result.checks.some((check) => check.name.startsWith("test-excess-report-"))).toBe(false);
+    expect(result.selfChecks).toContainEqual(
+      expect.objectContaining({
+        section: "plugin-check:test-excess-reports",
+        reason: "failure",
+        context: expect.objectContaining({
+          checkId: "test-excess-reports",
+          failure: "PluginDoctorReportInvalidError",
+        }),
+      }),
+    );
+  });
+
+  test("fails closed on an invalid plugin report shape without killing doctor", async () => {
+    // Given: JSON mirrors an untyped JavaScript plugin crossing the runtime boundary.
+    const module = doctorModule({
+      id: "test-invalid-shape",
+      run: () =>
+        Effect.sync(() =>
+          JSON.parse(
+            '[{"name":"test-invalid-shape","status":"unknown","severity":"warn","context":{},"solutions":[]}]',
+          ),
+        ),
+    });
+
+    // When
+    const result = await Effect.runPromise(doctor({}, [module]).pipe(Effect.provide(doctorLayer())));
+
+    // Then
+    expect(result.checks.some((check) => check.name === "test-invalid-shape")).toBe(false);
+    expect(result.checks.some((check) => check.name === "selected-provider")).toBe(true);
+    expect(result.selfChecks).toContainEqual(
+      expect.objectContaining({
+        section: "plugin-check:test-invalid-shape",
+        reason: "failure",
+        context: expect.objectContaining({
+          checkId: "test-invalid-shape",
+          failure: "PluginDoctorReportInvalidError",
+        }),
+      }),
+    );
+  });
 });

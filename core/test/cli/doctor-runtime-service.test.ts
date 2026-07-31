@@ -3,11 +3,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { type Context, Effect, Layer } from "effect";
+import { type Context, Deferred, Effect, Fiber, Layer, TestClock, TestContext } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import type { RuntimeServiceStatus } from "@lando/provider-lando";
+import { ProviderUnavailableError } from "@lando/sdk/errors";
 import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
 
@@ -124,6 +125,83 @@ describe("meta:doctor runtime-service check", () => {
     expect(check.context.runtimeRunning).toBe("true");
     expect(check.context.socketReachable).toBe("true");
     expect(check.context.ownedServiceProcess).toBe("false");
+  });
+
+  test("skips detailed managed status after the primary status probe fails", async () => {
+    // Given
+    let detailedStatusReads = 0;
+    const provider: RuntimeServiceTestProvider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      getStatus: Effect.fail(
+        new ProviderUnavailableError({
+          providerId: "lando",
+          operation: "getStatus",
+          message: "primary status unavailable",
+        }),
+      ),
+      getRuntimeServiceStatus: Effect.sync(() => {
+        detailedStatusReads += 1;
+        return { running: true, socketReachable: true, ownedServiceProcess: true };
+      }),
+    };
+
+    // When
+    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+
+    // Then
+    expect(detailedStatusReads).toBe(0);
+    expect((result.selfChecks ?? []).map((entry) => entry.section)).toContain("provider-status");
+  });
+
+  test("skips detailed managed status after the primary status probe times out", async () => {
+    // Given
+    let detailedStatusReads = 0;
+    const primaryStarted = Effect.runSync(Deferred.make<void>());
+    const provider: RuntimeServiceTestProvider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      getStatus: Deferred.succeed(primaryStarted, undefined).pipe(Effect.zipRight(Effect.never)),
+      getRuntimeServiceStatus: Effect.sync(() => {
+        detailedStatusReads += 1;
+        return { running: true, socketReachable: true, ownedServiceProcess: true };
+      }),
+    };
+
+    // When
+    const result = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          doctor({ env: { LANDO_DOCTOR_SECTION_BUDGET_MS: "1000" } }).pipe(
+            Effect.provide(buildLayers(provider)),
+          ),
+        );
+        yield* Deferred.await(primaryStarted);
+        yield* TestClock.adjust("1 second");
+        return yield* Fiber.join(fiber);
+      }).pipe(Effect.provide(TestContext.TestContext)),
+    );
+
+    // Then
+    expect(detailedStatusReads).toBe(0);
+    expect((result.selfChecks ?? []).map((entry) => entry.section)).toContain("provider-status");
+  });
+
+  test("records detailed managed status failure while falling back after primary success", async () => {
+    // Given
+    const provider: RuntimeServiceTestProvider = {
+      ...TestRuntimeProvider,
+      id: "lando",
+      getStatus: Effect.succeed({ running: true, message: "provider running" }),
+      getRuntimeServiceStatus: Effect.fail(new Error("detailed status unavailable")),
+    };
+
+    // When
+    const result = await Effect.runPromise(doctor().pipe(Effect.provide(buildLayers(provider))));
+
+    // Then
+    expect(result.checks.find((entry) => entry.name === "runtime-service")?.runtime.running).toBe(true);
+    expect((result.selfChecks ?? []).map((entry) => entry.section)).toContain("runtime-service-status");
   });
 
   test("warns with remediation on orphan pid", async () => {
