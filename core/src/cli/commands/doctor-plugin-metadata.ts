@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
-import { loadInstalledPlugin } from "../../plugins/installed-plugin-loader.ts";
+import { loadInstalledPluginManifest } from "../../plugins/installed-plugin-loader.ts";
 import {
   type InstalledPluginRegistryFailure,
   inspectInstalledPluginRegistry,
@@ -33,7 +33,7 @@ export const installedPluginMetadataSelfChecks = (
     const failures: InstalledPluginRegistryFailure[] = [...inspection.failures];
     for (const entry of Object.values(inspection.registry)) {
       try {
-        await loadInstalledPlugin(entry.path);
+        await loadInstalledPluginManifest(entry.path);
       } catch (cause) {
         failures.push({
           pluginId: entry.name,

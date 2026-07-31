@@ -22,6 +22,44 @@ const withUserDataRoot = async <A>(userDataRoot: string, run: () => Promise<A>):
 };
 
 describe("doctor installed-plugin metadata health", () => {
+  test("validates package metadata without importing the plugin entry", async () => {
+    // Given a valid plugin manifest whose entry would fail if imported
+    const userDataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-plugin-valid-metadata-"));
+    const pluginsRoot = join(userDataRoot, "plugins");
+    const pluginName = "@example/valid-metadata";
+    const packageRoot = join(pluginsRoot, pluginName, "1.0.0");
+    await mkdir(packageRoot, { recursive: true });
+    await writeFile(
+      join(pluginsRoot, "registry.json"),
+      `${JSON.stringify({
+        [pluginName]: { name: pluginName, version: "1.0.0", path: packageRoot },
+      })}\n`,
+    );
+    await writeFile(
+      join(packageRoot, "package.json"),
+      `${JSON.stringify({
+        landoPlugin: { name: pluginName, version: "1.0.0", api: 4, entry: "index.js" },
+      })}\n`,
+    );
+    await writeFile(
+      join(packageRoot, "index.js"),
+      'throw new Error("entry must not be imported by doctor");\n',
+    );
+
+    try {
+      // When
+      const report = await withUserDataRoot(userDataRoot, () =>
+        Effect.runPromise(resilientDoctorReport({ env: SHORT_BUDGET_ENV })),
+      );
+
+      // Then valid metadata produces no metadata-health failure
+      expect((report.self?.checks ?? []).some((check) => check.section === "plugin-metadata")).toBe(false);
+      expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
+    } finally {
+      await rm(userDataRoot, { recursive: true, force: true });
+    }
+  });
+
   test("reports missing package metadata without aborting the doctor report", async () => {
     // Given an installed plugin whose package metadata cannot be read
     const userDataRoot = await mkdtemp(join(tmpdir(), "lando-doctor-plugin-metadata-"));
