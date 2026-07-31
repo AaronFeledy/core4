@@ -122,38 +122,17 @@ export const pluginDoctorReports = (
             Effect.flatMap((reports) =>
               Schema.decodeUnknown(PluginDoctorReports, { onExcessProperty: "error" })(reports).pipe(
                 Effect.map((decoded) =>
-                  decoded.map((report) => ({
-                    name: redactor.redactString(report.name),
-                    status: report.status,
-                    severity: report.severity,
-                    ...(report.runtimeStatus === undefined
-                      ? {}
-                      : { runtimeStatus: redactor.redactString(report.runtimeStatus) }),
-                    ...(report.runtime === undefined
-                      ? {}
-                      : {
-                          runtime: {
-                            running: report.runtime.running,
-                            ...(report.runtime.version === undefined
-                              ? {}
-                              : { version: redactor.redactString(report.runtime.version) }),
-                          },
-                        }),
-                    context: Object.fromEntries(
-                      Object.entries(report.context).map(([key, value]) => [
-                        redactor.redactString(key),
-                        redactor.redactString(value),
-                      ]),
-                    ),
-                    solutions: report.solutions.map((solution) => ({
-                      kind: solution.kind,
-                      description: redactor.redactString(solution.description),
-                      ...(solution.command === undefined
-                        ? {}
-                        : { command: redactor.redactString(solution.command) }),
-                    })),
-                    ...(report.preempts === undefined ? {} : { preempts: report.preempts }),
-                  })),
+                  decoded.map((report) =>
+                    redactor.redactValue({
+                      ...report,
+                      context: Object.fromEntries(
+                        Object.entries(report.context).map(([key, value]) => [
+                          redactor.redactString(key),
+                          value,
+                        ]),
+                      ),
+                    }),
+                  ),
                 ),
                 Effect.flatMap(Schema.decodeUnknown(PluginDoctorReports)),
                 Effect.mapError(

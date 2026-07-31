@@ -122,7 +122,7 @@ describe("doctor() contributed checks", () => {
             severity: "warn",
             runtimeStatus: `Authorization: Bearer ${secret}`,
             runtime: { running: false, version: secret },
-            context: { [secret]: secret },
+            context: { [secret]: secret, password: "hunter2" },
             solutions: [
               {
                 kind: "manual",
@@ -143,6 +143,7 @@ describe("doctor() contributed checks", () => {
     const report = result.checks.find((check) => check.name === "test-redaction");
     expect(report).toBeDefined();
     expect(JSON.stringify(report)).not.toContain(secret);
+    expect(JSON.stringify(report)).not.toContain("hunter2");
     expect(JSON.stringify(report)).toContain("[redacted]");
   });
 
@@ -174,6 +175,39 @@ describe("doctor() contributed checks", () => {
         reason: "failure",
         context: expect.objectContaining({
           checkId: "test-oversized-context",
+          failure: "PluginDoctorReportInvalidError",
+        }),
+      }),
+    );
+  });
+
+  test("drops more than 32 reports from one plugin check", async () => {
+    // Given
+    const module = doctorModule({
+      id: "test-excess-reports",
+      run: () =>
+        Effect.succeed(
+          Array.from({ length: 33 }, (_, index) => ({
+            name: `test-excess-report-${index}`,
+            status: "warn" as const,
+            severity: "warn" as const,
+            context: {},
+            solutions: [],
+          })),
+        ),
+    });
+
+    // When
+    const result = await Effect.runPromise(doctor({}, [module]).pipe(Effect.provide(doctorLayer())));
+
+    // Then
+    expect(result.checks.some((check) => check.name.startsWith("test-excess-report-"))).toBe(false);
+    expect(result.selfChecks).toContainEqual(
+      expect.objectContaining({
+        section: "plugin-check:test-excess-reports",
+        reason: "failure",
+        context: expect.objectContaining({
+          checkId: "test-excess-reports",
           failure: "PluginDoctorReportInvalidError",
         }),
       }),
