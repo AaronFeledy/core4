@@ -892,3 +892,20 @@ Spec SoT:
 - **Learnings for future iterations:** Provider adapters should preserve ordered public intent while
   de-duplicating native argv, and user-authored identifiers must be encoded before becoming path segments.
 ---
+
+## 2026-07-31 01:27 CDT - US-492 Drift Audit
+- Trigger: 5 cycles, 1,125 changed lines, 22 commits.
+- Category 1 (scope absorption): excised the post-close-out public certificate-authority contribution,
+  bundled selection, bootstrap, and publication surface; it was not required by US-492's fake-CA
+  composition criterion and was incomplete for host-contributed and multiple authorities.
+- Category 4 (ceremony modules): removed the single-purpose bundled-authority selector and test-only
+  feature constant exports.
+- Category 6 (contract drift): restored the source contract after Runtime Closure and the final Review
+  reclassified bundled CA wiring as required despite the source criterion and Build Close-out saying otherwise.
+- Fixed: deleted the incomplete adjacent runtime contract and its dedicated proofs while retaining leaf
+  planning, feature composition, SAN ordering, path containment, and custom-material validation.
+- Split/excise decisions: active CA registry/selection and bundled runtime integration remain follow-up work;
+  this was a clean excision, so no PRD-index split or AC narrowing was needed and US-492 remains passing.
+- Verification: typecheck and lint passed from the pinned detached commit; 41 focused tests and the six-test
+  certificates guide run passed.
+---
