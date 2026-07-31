@@ -226,9 +226,7 @@ const normalizeExternalContributionModules = async (
   };
 };
 
-export const loadInstalledPlugin = async (
-  packageRootInput: string,
-): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
+export const loadInstalledPluginManifest = async (packageRootInput: string): Promise<PluginManifest> => {
   const packageRoot = packageRootPath(packageRootInput);
   const packageJsonPath = join(packageRoot, "package.json");
   let parsed: unknown;
@@ -242,7 +240,14 @@ export const loadInstalledPlugin = async (
   if (Either.isLeft(decoded)) {
     throw pluginManifestError(`Plugin manifest validation failed: ${packageJsonPath}`, decoded.left);
   }
-  const manifest = await normalizeExternalContributionModules(packageRoot, decoded.right);
+  return normalizeExternalContributionModules(packageRoot, decoded.right);
+};
+
+export const loadInstalledPlugin = async (
+  packageRootInput: string,
+): Promise<{ readonly manifest: PluginManifest; readonly module?: ExternalPluginModule }> => {
+  const packageRoot = packageRootPath(packageRootInput);
+  const manifest = await loadInstalledPluginManifest(packageRoot);
   const module = await loadExternalPluginEntry(packageRoot, manifest);
   return { manifest, ...(module === undefined ? {} : { module }) };
 };

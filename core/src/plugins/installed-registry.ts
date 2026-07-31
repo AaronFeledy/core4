@@ -14,6 +14,18 @@ export interface InstalledPluginRegistryEntry {
 
 export type InstalledPluginRegistry = Readonly<Record<string, InstalledPluginRegistryEntry>>;
 
+export interface InstalledPluginRegistryFailure {
+  readonly pluginId: string;
+  readonly pluginPath: string;
+  readonly metadataPath: string;
+  readonly cause: unknown;
+}
+
+export interface InstalledPluginRegistryInspection {
+  readonly registry: InstalledPluginRegistry;
+  readonly failures: ReadonlyArray<InstalledPluginRegistryFailure>;
+}
+
 type RawInstalledPluginRegistry = Record<string, unknown>;
 
 const InstalledPluginRegistryEntryShape = Schema.Struct({
@@ -46,15 +58,41 @@ const readRawInstalledPluginRegistry = async (pluginsRoot: string): Promise<RawI
 };
 
 export const readInstalledPluginRegistry = async (pluginsRoot: string): Promise<InstalledPluginRegistry> => {
-  const raw = await readRawInstalledPluginRegistry(pluginsRoot).catch(() => ({}));
+  const inspection = await inspectInstalledPluginRegistry(pluginsRoot);
+  return inspection.registry;
+};
+
+export const inspectInstalledPluginRegistry = async (
+  pluginsRoot: string,
+): Promise<InstalledPluginRegistryInspection> => {
+  const metadataPath = installedPluginRegistryPath(pluginsRoot);
+  let raw: RawInstalledPluginRegistry;
+  try {
+    raw = await readRawInstalledPluginRegistry(pluginsRoot);
+  } catch (cause) {
+    return {
+      registry: {},
+      failures: [{ pluginId: "registry", pluginPath: pluginsRoot, metadataPath, cause }],
+    };
+  }
   const registry: Record<string, InstalledPluginRegistryEntry> = {};
+  const failures: InstalledPluginRegistryFailure[] = [];
   for (const [name, entry] of Object.entries(raw)) {
     const decoded = Schema.decodeUnknownEither(InstalledPluginRegistryEntryShape)(entry, {
       onExcessProperty: "error",
     });
-    if (Either.isRight(decoded)) registry[name] = decoded.right;
+    if (Either.isRight(decoded)) {
+      registry[name] = decoded.right;
+    } else {
+      failures.push({
+        pluginId: name,
+        pluginPath: isRecord(entry) && typeof entry.path === "string" ? entry.path : pluginsRoot,
+        metadataPath,
+        cause: decoded.left,
+      });
+    }
   }
-  return registry;
+  return { registry, failures };
 };
 
 const writeInstalledPluginRegistry = async (

@@ -571,6 +571,7 @@ Core doctor coverage MUST include:
 
 - Landofile discovery and clear remediation when no app config is in scope.
 - Detection of removed v3/v4-forbidden top-level wrapper keys such as `compose:`, `recipe:`, and `recipes:`.
+- Validation of user-installed plugin registry entries and package manifests. Missing, corrupt, or invalid metadata MUST become an attributed `plugin-metadata` self check with redacted, length-bounded id/path/message context and `lando plugin list` plus reinstall guidance; it MUST NOT abort the rest of the report.
 - Selected Podman provider availability and machine readiness, with an automatic `podman machine start` remediation when applicable.
 - Detection of a pre-§20 out-of-band proxy container left behind by an upgrade (`LegacyProxyContainerDetected`, §20.10.3) — read-only doctor diagnostic. The same condition is independently checked at `meta:setup` and at first `meta:global:start`, where it raises `LegacyProxyContainerConflictError` (§20.13) and refuses to start the global-app proxy service to prevent two proxies competing for the same ports; remediation is plugin-supplied via `meta:setup --migrate-proxy`.
 
