@@ -64,8 +64,8 @@ a bare path publishes `LANDO_SERVICE_CERT` alone. `certs: false` — and any ser
 author `certs` — leaves both variables unset and adds no mounts. Services on the `l337` base never
 compose `lando.certs`, so `certs:` on a raw Compose service is inert.
 
-With `certs: true` the planner asks the active certificate authority for a leaf certificate whose
-common name is the service's internal alias, and whose subject alternative names cover, in order:
+With `certs: true` the planner asks the active certificate authority to issue a leaf for the
+service's internal alias. The certificate's subject alternative names cover, in order:
 
 - the service name (`<service>`)
 - the internal alias (`<service>.<app>.internal`)
