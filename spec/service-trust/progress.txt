@@ -45,6 +45,9 @@ Spec SoT:
   lose source dependencies.
 - Keep host-path-bearing build descriptors outside artifact-key projection: key immutable content through
   `buildKeyInputs`, then re-read and verify those bytes before the first provider build request.
+- A bundled service contribution needs one typed path from manifest id to runtime service: publish the
+  descriptor map, index it in `makePluginCapabilityIndex`, add it to the ship list, and provide the selected
+  Layer's dependencies directly in the bootstrap generator rather than relying on sibling Layer visibility.
 
 ## Status
 
@@ -764,4 +767,328 @@ Spec SoT:
     root's own state.
   - The plugin stays out of `core/build.config.ts`; wiring the CA into the shipped binary belongs to the
     stories that consume it, not to the Live implementation.
+---
+
+## 2026-07-30 17:35 CDT - US-492
+- Added the `lando.certs` service feature at priority 1000 on the lando base stack. It mounts the
+  resolved leaf certificate (and key, when present) read-only at `/etc/lando/certs/<service>.crt|.key`,
+  publishes `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY`, and records the issued `cn`/`sans`/`caId` on the
+  service plan. Empty config stays inert, and a key without its certificate fails at the feature boundary.
+- AppPlanner now resolves leaf certificates once per lando-base service: `certs: true` asks the active
+  certificate authority for a certificate whose common name is the service's internal alias and whose SANs
+  cover the service name, internal alias, authored hostnames, service and top-level proxy route hostnames,
+  `localhost`, and `127.0.0.1`, in that order. Custom certificate and key paths are contained to the app
+  root and checked for readability, `certs: false` is a no-op, and `certs:` on an l337-base service composes
+  no feature at all. A missing certificate authority fails with remediation naming `lando setup` rather than
+  silently planning a service without TLS material.
+- The certificates guide now documents the published environment variables, the in-container paths, the SAN
+  ordering, custom-path containment, and the l337 exclusion, with a unit-backed scenario.
+- Verification: typecheck, lint, every boundary rule, generated output, schema snapshot regeneration with no
+  drift, schema compatibility, guide lint, guide coverage, base-aware guide drift, and public transcripts
+  passed; 84 focused and adjacent tests passed across the certs feature, security feature, feature priority
+  table, base composition, app planner, network inject, build keys, app-plan cache, and the certs authoring
+  schema. RED was captured for both new suites before implementation. Real CLI `lando app:cache:refresh`
+  planned an app with custom and disabled certs (cached plan carries the two cert paths, the key path, and
+  both variables), and rejected an escaping path, an unreadable path, and `certs: true` with no certificate
+  authority, each with its own `services.<name>.certs` remediation and exit 1. A driver on the real
+  AppPlanner with an openssl-backed authority issued a certificate whose actual `subjectAltName` matched the
+  documented ordering exactly. QA roots and the driver were removed.
+- **Learnings for future iterations:**
+  - `lando app:cache:refresh` is the host-safe CLI surface that drives the whole planner without a container
+    runtime; `app:config` only echoes the resolved Landofile, so planner-derived mounts and env are invisible
+    there. The cached plan is binary, so assert on extracted strings rather than parsing it as JSON.
+  - `AppPlannerLive` reads its optional services at layer construction, so a new optional planner dependency
+    must be provided to the layer (`Layer.provide`), never to the effect that calls `plan()`.
+  - Planner-seeded feature configs are now plural; keep them in one list and replace matching feature refs by
+    id rather than chaining a second bespoke `.map()` per feature.
+  - `core/test/cli/start.scenario.test.ts` has a live-Podman case that runs (and fails) on a host with a
+    Podman socket; it fails identically at `origin/main`, so treat it as sandbox-only, not a regression.
+---
+
+## 2026-07-30 17:26 CDT - US-492 Build Close-out
+- Story scope shipped and committed: the `lando.certs` feature, its base-default registration, planner
+  leaf issuance with the documented SAN ordering, custom-path containment, and the guide. Every US-492
+  acceptance criterion is met, including "composition tests with fake CA", which is the contract's
+  deliberate boundary — no criterion requires a certificate authority in the shipped runtime.
+- Open seam, unowned by any story: with no `CertificateAuthority` in the app bootstrap, `certs: true`
+  fails at plan time with `lando setup` remediation rather than issuing. Bundling `@lando/ca-mkcert`
+  needs a new `cas` plugin-capability slot (`LandoPluginModule`, the capability index, the bootstrap
+  layer generator, and the ship list) — an SDK contract change of the same shape the US-486/US-499
+  adjudication split out rather than absorbing. It belongs in its own story.
+- **Learnings for future iterations:**
+  - A second loop session held this worktree for the whole of this build and independently rewrote the
+    feature module between the edit and the commit, so the first commit captured its `certPath`/`keyPath`
+    and `/etc/lando/certs/leaf` contract instead of the one under test. Check `ps` for agent-spawned
+    `bun`/`codegen` processes and compare file mtimes against the clock BEFORE staging, not only before
+    editing; `git status` reads clean in this situation because the foreign edit lands inside your own
+    commit.
+  - When the races are on the same story, converge on whatever contract is already committed instead of
+    re-asserting your own; the reconciliation is then a rename in one file rather than a revert war.
+
+## 2026-07-30 17:24 CDT - US-492 Build Verification
+- Verified the shipped leaf-certificate path against a detached worktree pinned to the branch commit,
+  which exposed two defects the in-tree run had masked: the planner asked the certificate authority to
+  sign a SAN list with the common name removed, so the issued cert no longer covered the internal alias
+  it is named for, and a directory passed as custom `certs` material was accepted as a certificate.
+  Both now fail or cover correctly, and custom material is validated through `FileSystem` rather than a
+  second direct filesystem read.
+- Verification: core typecheck and lint passed; 154 focused and adjacent tests with 681 assertions
+  passed at the branch commit inside a clean worktree, covering the certs feature, feature priority
+  table, packaged manifest, base composition, planner certs, planner network inject, app planner, and
+  feature composition. Boundary rules, generated output, guide lint, guide coverage, and base-aware
+  guide drift passed. Real CLI on `app:cache:refresh`: the cached plan carries both host cert and key
+  sources, the in-container `/etc/lando/certs/leaf/<service>.crt|.key` targets, and both service
+  variables; a directory path exits 1 with `must be a regular file`; and `certs: true` with no
+  certificate authority exits 1 naming `lando setup`. QA app, scratch roots, and the worktree were removed.
+- **Learnings for future iterations:**
+  - Several loop sessions can hold this worktree at once, and this iteration proved the failure mode is
+    worse than half-applied edits: interleaved commits landed a feature schema from one session beside a
+    planner resolver from another, so the committed tree failed its own committed tests while every
+    in-tree spot check passed. Verify a branch from a detached worktree pinned to the commit under test,
+    never from the shared tree, whenever sibling activity is possible.
+  - `bun test` in the shared tree silently verifies whatever a sibling last wrote. Treat a green run
+    there as evidence about the working tree only; evidence about what shipped requires the pinned commit.
+
+## 2026-07-30 17:31 CDT - US-492 Runtime Closure
+- Closed the remaining user-path seam by publishing typed certificate-authority plugin contributions,
+  bundling `@lando/ca-mkcert`, and providing the selected authority from the generated minimal bootstrap
+  layer. The shipped app runtime can now satisfy `certs: true` after `lando setup`, rather than only when a
+  test or embedding host injects a fake authority.
+- Preserved the full planner SAN contract while de-duplicating mkcert argv at the provider boundary, and
+  kept custom cert/key validation on the `FileSystem` service with regular-file enforcement.
+- Verification: typecheck, lint, every boundary rule, generated output, schema compatibility, guide lint,
+  guide coverage, base-aware guide drift with the internal descriptor skip, and public transcripts passed;
+  277 focused and adjacent tests passed with 1,752 assertions. In `lando4-dev`, a freshly compiled binary
+  provisioned bundled mkcert with `lando setup --skip-install-ca`, planned `certs: true` through
+  `app:cache:refresh`, and produced a leaf whose OpenSSL SAN extension contained the service name, internal
+  alias, authored hostname, both route hosts, localhost, and 127.0.0.1 exactly once. A directory-valued
+  custom cert failed with `LandofileValidationError`; host and sandbox QA artifacts were removed.
+- **Learnings for future iterations:**
+  - `CertificateAuthority` belongs in the same typed descriptor/index/runtime-selection path as other
+    bundled plugin capabilities; a Live package alone is not a usable CLI service.
+  - Pass the complete SAN intent through `CertificateAuthority.issueCert`; provider implementations that
+    implicitly include the common name should de-duplicate their native argv without weakening the public
+    request contract.
+---
+
+## 2026-07-31 01:11 CDT - US-492 Review
+- Fixed the bundled runtime omitting mkcert's pinned version manifest, honoring an explicit mkcert plugin
+  disable, and validating custom cert/key readability. Leaf issuance now covers the planner-generated
+  default proxy hostname, preserves the planner's SAN order through mkcert, rejects key-only feature
+  config, and contains arbitrary service names within the leaf mount directory.
+- Review notes (deferred/rejected): `review-work` is not installed in this environment and Cursor Bugbot
+  remained unavailable because `cursor-agent` requires authentication; three independent committed-diff
+  review lanes were used, and neither unavailable tool was treated as approval.
+- Review notes (deferred/rejected): Rejected moving issuance around the app-plan cache or redesigning host
+  layer and non-bundled CA selection as out-of-scope runtime/plugin architecture; US-492 requires the
+  active bundled CA path and fake-CA composition proof, both of which are covered without that expansion.
+- Review notes (deferred/rejected): Rejected the custom-path parent-symlink replacement finding as a new
+  privilege-boundary blocker; it is a same-user bind-source race shared by persisted mount plans, while
+  lexical/realpath containment and actual readability are enforced during this story's planning boundary.
+- Guide-Coverage-Skip: US-492 documents CA descriptors and leaf SAN behavior in certificates-mkcert; Alpha-4 library guides do not own service TLS.
+- Verification: typecheck, lint, generated output, package DAG, focused guide execution, and base-aware
+  guide drift with the recorded skip passed from a detached checkout of the final commit; 37 focused and
+  adjacent tests passed with 153 assertions.
+- **Learnings for future iterations:** Provider adapters should preserve ordered public intent while
+  de-duplicating native argv, and user-authored identifiers must be encoded before becoming path segments.
+---
+
+## 2026-07-31 01:27 CDT - US-492 Drift Audit
+- Trigger: 5 cycles, 1,125 changed lines, 22 commits.
+- Category 1 (scope absorption): excised the post-close-out public certificate-authority contribution,
+  bundled selection, bootstrap, and publication surface; it was not required by US-492's fake-CA
+  composition criterion and was incomplete for host-contributed and multiple authorities.
+- Category 4 (ceremony modules): removed the single-purpose bundled-authority selector and test-only
+  feature constant exports.
+- Category 6 (contract drift): restored the source contract after Runtime Closure and the final Review
+  reclassified bundled CA wiring as required despite the source criterion and Build Close-out saying otherwise.
+- Fixed: deleted the incomplete adjacent runtime contract and its dedicated proofs while retaining leaf
+  planning, feature composition, SAN ordering, path containment, and custom-material validation.
+- Split/excise decisions: active CA registry/selection and bundled runtime integration remain follow-up work;
+  this was a clean excision, so no PRD-index split or AC narrowing was needed and US-492 remains passing.
+- Verification: typecheck and lint passed from the pinned detached commit; 41 focused tests and the six-test
+  certificates guide run passed.
+---
+
+## 2026-07-31 01:30 CDT - US-492 Adjudication
+- Contradiction: the source US-492 AC says "Composition tests with fake CA; l337 does not get
+  lando.certs by default," while Review asserted "US-492 requires the active bundled CA path and
+  fake-CA composition proof." Drift Audit excised that bundled path because it selected only bundled
+  modules and therefore violated spec/09-embedding.md section 16.4's requirement that `layers`,
+  `manifests`, and discovery-found plugins form one contribution graph, plus
+  spec/04-pluggability.md section 4.3's precedence and tagged no-selection contract. Normative
+  spec/06-services.md section 6.8 requires the active CertificateAuthority for the eventual user path,
+  but it does not assign the complete registry/selection/bootstrap implementation to US-492.
+- Decision: split into a follow-up story. In spec/service-trust/prd.json, US-492 now states that its
+  composition proof injects a fake CA directly at AppPlanner's service seam and explicitly excludes
+  plugin publication, section 4.3 selection, bundled shipping, and bootstrap integration. Priorities
+  after US-492 were shifted by one so the guide-pack story remains last.
+- Follow-up story: US-500 - publish and index CertificateAuthority contributions, select across the
+  complete CLI/embedding/discovery graph with tagged failures, and wire bundled mkcert into the
+  production runtime.
+---
+
+## 2026-07-31 12:12 CDT - US-492 Build Confirmation
+- Verified the story complete on its existing branch with no new production code. The retained
+  `lando.certs` feature, fake-CA planner composition, SAN ordering, custom-material validation,
+  `certs: false` no-op, l337 exclusion, and guide coverage satisfy the adjudicated story boundary;
+  active authority selection and bootstrap remain assigned to US-500.
+- Verification: typecheck and lint passed from a detached worktree pinned to branch HEAD; 30 focused
+  and adjacent tests plus all 6 certificates guide scenarios passed; guide lint and coverage passed.
+  Real `app:cache:refresh` completed for custom and disabled certs, and its plan cache contained both
+  custom host paths plus `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY`.
+- **Learnings for future iterations:**
+  - Once Drift Audit excises a runtime surface and adjudication assigns it to a follow-up story,
+    repeat Build passes should verify the retained seam rather than rebuilding the excised surface.
+---
+
+## 2026-07-31 12:54 CDT - US-492 Review
+- Fixed mkcert argv option injection by terminating option parsing before Landofile-derived certificate
+  names; option-shaped SANs can no longer override output paths or trigger trust-store flags. Added a
+  regression that covers `-cert-file`, `-key-file`, and `-uninstall`, and synchronized the human PRD
+  index/source with the adjudicated US-500 ownership and 18-story execution order.
+- Review notes (deferred/rejected): Cursor Bugbot remained inconclusive because every initial and post-fix
+  attempt hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Warm-cache issuance semantics remain a US-500 production-wiring
+  decision, not a US-492 blocker; issuing before cache lookup currently ensures referenced leaf files
+  exist, and no acceptance criterion defines rotation or cache-hit behavior.
+- Review notes (deferred/rejected): Rejected story-local fixes for control-byte error sanitization,
+  certificate-material size limits, and the shared realpath/FileSystem split. The findings are
+  low-severity same-user concerns or established cross-cutting boundaries with no new privilege impact;
+  solving them locally would duplicate policy rather than close this story's contract.
+- Review notes (deferred/rejected): Rejected tightening the planner-only feature schema and splitting the
+  composition test as non-blocking internal-contract/style work; current production callers generate a
+  coherent config and the behavioral scenarios remain explicit.
+- Guide-Coverage-Skip: Review changed mkcert argv safety and source PRD ownership only; the existing certificates-mkcert guide already covers the unchanged user TLS behavior.
+- Verification: clean detached HEAD passed typecheck, lint/deprecations, 70 focused and adjacent tests with
+  306 assertions, six certificates guide scenarios, guide lint/coverage, base-aware guide drift, diff
+  check, and changed-file diagnostics; the focused security re-review passed with no remaining blocker.
+- **Learnings for future iterations:** External CLI adapters must place `--` between trusted options and
+  user-derived positional arguments, even when using argv-precise process execution rather than a shell.
+---
+## 2026-07-31 13:29 CDT - Babysit
+- PR: none (no open PR for branch us-492-lando-certs-leaf-issuance)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR; push step should create/refresh it)
+---
+## 2026-07-31 13:41 CDT - US-492 Build Confirmation
+- Re-verified the story complete on its existing branch with no new production code. The adjudicated
+  boundary is fully satisfied: `lando.certs` at priority 1000 on the lando base defaults, planner leaf
+  issuance with the full SAN set through a fake authority injected at AppPlanner's `CertificateAuthority`
+  seam, custom cert/key validation and mounting, `certs: false` as a no-op, l337 excluded by default, and
+  mkcert argv option-parsing termination from the last review. Active authority selection, bundled
+  shipping, and bootstrap wiring remain assigned to US-500 and were deliberately not rebuilt.
+- Verification: typecheck, lint/deprecations, and the generated-output boundary passed; 39 focused and
+  adjacent tests with 229 assertions plus all 6 certificates guide scenarios passed; the working tree
+  showed no generator drift.
+- **Learnings for future iterations:**
+  - When a branch carries unmerged work whose PRD entry already passes, the Build step's job is a
+    verification sweep plus a progress note; adding code to look productive would reopen a closed contract.
+---
+## 2026-07-31 13:52 CDT - US-492 Build CLI Verification
+- Confirmed the story complete on its existing branch with no new production code, and closed the one gap
+  the earlier confirmation sweeps left open: end-to-end CLI proof of leaf-certificate planning after the
+  mkcert argv fix. No excised surface was rebuilt; active authority selection stays with US-500.
+- Verification: typecheck, lint/deprecations, guide lint, and guide coverage passed; 39 focused and
+  adjacent certificate tests plus all 6 certificates guide scenarios passed. In `lando4-dev`, a real
+  `app:cache:refresh` on a two-service Landofile bound custom cert/key material read-only to
+  `/etc/lando/certs/leaf/web.crt` and `.key` with matching `LANDO_SERVICE_CERT` / `LANDO_SERVICE_KEY`
+  env, while the sibling `certs: false` service produced no leaf mount or env at all. `certs: true`
+  without an installed authority and a cert path escaping the app root each failed with
+  `LandofileValidationError`, the `services.web.certs` issue path, and actionable remediation. All QA
+  apps and their plan caches were removed from the sandbox.
+- **Learnings for future iterations:**
+  - A confirmation-only Build pass still owes the real-surface run when the last code change (here, mkcert
+    argv handling) landed after the previous CLI verification; unit and guide coverage alone would not have
+    exercised the shipped binary's planning path.
+---
+## 2026-07-31 13:45 CDT - US-492 Build CLI Addendum
+- Host-side repeat of the same confirmation sweep, adding one case the sandbox run did not cover: an
+  l337-base service authored with `certs: true` plans cleanly with no certificate authority present,
+  which is itself the proof that `lando.certs` is composed on the lando base only.
+- Verification: typecheck, lint/deprecations, guide lint, guide coverage, and the drift gate passed;
+  58 focused and adjacent tests across the certs feature, planner certs, base composition, feature
+  priority table, mkcert CA, planner network inject, feature composition, CA build keys, and the
+  security feature passed, plus all 6 certificates guide scenarios. QA roots were removed.
+- **Learnings for future iterations:**
+  - Host-safe planner QA runs `bun core/bin/lando.ts` from inside the app directory with isolated
+    `LANDO_USER_CONF_ROOT` / `LANDO_USER_CACHE_ROOT` / `LANDO_USER_DATA_ROOT`; the resulting `plan.bin`
+    is binary, so assert on extracted strings.
+  - Two loop sessions verified this story in parallel and both logged it; when that happens, keep the
+    later entry to the delta instead of restating the shared evidence.
+---
+
+## 2026-07-31 14:06 CDT - US-492 Build Confirmation
+- Verified the adjudicated story complete on its existing branch with no new production code. The retained
+  `lando.certs` feature, fake-authority planner issuance, SAN ordering, custom-material validation,
+  `certs: false` no-op, l337 exclusion, guide coverage, and mkcert option termination remain complete;
+  active authority selection and runtime integration remain assigned to US-500.
+- Verification: typecheck, lint/deprecations, all boundary rules, package DAG, generated output, guide lint,
+  guide coverage, and base-aware guide drift passed; 39 focused and adjacent tests with 229 assertions plus
+  all 6 certificate guide scenarios passed, and changed-file diagnostics were clean. Sandbox
+  `app:cache:refresh` proved custom cert/key mounts and environment, disabled-service inertness, outside-root
+  rejection, and compose/l337-base exclusion; all QA roots and caches were removed.
+- **Learnings for future iterations:**
+  - The authorable raw l337-base service type is `compose`; `l337` is the internal base id and is not a
+    registered Landofile service type, so real-surface exclusion probes should use `type: compose`.
+---
+
+## 2026-07-31 15:28 CDT - US-492 Drift Audit
+- Trigger: 11 cycles, 1,166 changed lines, 34 commits.
+- Category 2 (weakened proofs): two feature-failure tests could silently skip their tagged-error assertions
+  when the exit cause had an unexpected shape; both now fail hard before inspecting the required failure.
+- Category 4 (ceremony modules): the branch-owned planner certificate test had grown to 272 pure LOC; its
+  custom-material scenarios are split out and both files share one two-consumer planner harness.
+- Fixed: restored non-vacuous failure proofs and reduced the planner certificate tests to focused files
+  without changing production behavior or test assertions.
+- Split/excise decisions: none; the adjudicated US-492/US-500 boundary remains intact and `passes` stays true.
+- Verification: typecheck, lint/deprecations, generated output, guide lint, and guide coverage passed; 39
+  focused tests passed across seven certificate files. Guide drift was unverified because the local gate
+  skipped without pull-request context.
+---
+
+## 2026-07-31 15:40 CDT - Push
+- PR: none — skipped: uncommitted product change in `plugins/service-lando/test/certs-feature.test.ts` (cleanup left a working-tree diff that drops hard-fail guards from drift-audit hardening). Commit or restore before push.
+---
+
+## 2026-07-31 15:41 CDT - Babysit
+- PR: none — branch `us-492-lando-certs-leaf-issuance` has no PR and no upstream (Push skipped: uncommitted product change in `plugins/service-lando/test/certs-feature.test.ts`)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR)
+---
+
+## 2026-07-31 15:45 CDT - US-492 Build Confirmation
+- Verified the adjudicated leaf-certificate story complete on its existing branch with no new production
+  code. Removed the uncommitted cleanup regression that had weakened the Drift Audit hard-fail proofs and
+  restored all affected test files to the committed hardened state.
+- Verification: typecheck, lint/deprecations, and generated output passed; 35 focused certificate and
+  planner tests plus all 6 certificates guide scenarios passed; guide lint and coverage passed. Guide
+  drift skipped locally because no pull-request context was available, matching the recorded gate behavior.
+- **Learnings for future iterations:**
+  - Test cleanup must not replace explicit narrowing guards with non-null assertions or remove fail-hard
+    branches after an expectation; those guards keep later tagged-failure inspection non-vacuous.
+---
+
+## 2026-07-31 16:27 CDT - US-492 Review
+- Corrected the certificate guide so it describes the planner's internal-alias issuance request and the
+  resulting SAN coverage without claiming pinned mkcert writes that alias into the PEM certificate's empty
+  X.509 common-name field.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
+  the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected preserving the source `CaError` tag through the Landofile
+  validation boundary, replacing the shared realpath containment seam, and tightening planner-only feature
+  metadata as non-blocking cross-cutting or internal-contract work already considered by prior review.
+- Review notes (deferred/rejected): Rejected a story-local fix for lone-surrogate programmatic service names;
+  normal Landofile keys cannot express them and total service-name validation belongs at the shared schema.
+- Review notes (deferred/rejected): Deferred the US-500 identifier collision with open architecture PR #666
+  to cross-PR coordination; service-trust allocated the id first, and the numeric follow-up id does not affect
+  any US-492 acceptance criterion or justify rewriting the recorded adjudication in this review.
+- Verification: typecheck, lint/deprecations, guide lint, focused guide execution, and base-aware guide drift
+  passed; 83 focused and adjacent tests passed across schema, planner, feature, composition, mkcert, and guide
+  coverage files, with all five `review-work` lanes terminal and no story blocker confirmed.
+- **Learnings for future iterations:** mkcert v1.4.4 PEM certificates carry requested names in SANs and leave
+  Subject.CommonName empty; documentation must distinguish the authority request's `cn` field from the
+  emitted X.509 subject.
 ---

@@ -49,6 +49,35 @@ The object form requires both `cert` and `key`. Any other shape — a number, a 
 incomplete object, or an unknown field beside `cert` and `key` — fails validation with a
 `services.<name>.certs` correction before planning.
 
+## Service certificate environment and SAN coverage
+
+Planning a `type: lando` service composes the `lando.certs` feature, which mounts the resolved
+certificate material read-only inside the service and publishes its in-container paths:
+
+```text
+LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt
+LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key
+```
+
+`LANDO_SERVICE_KEY` is set only when key material is available, so a custom certificate supplied as
+a bare path publishes `LANDO_SERVICE_CERT` alone. `certs: false` — and any service that does not
+author `certs` — leaves both variables unset and adds no mounts. Services on the `l337` base never
+compose `lando.certs`, so `certs:` on a raw Compose service is inert.
+
+With `certs: true` the planner asks the active certificate authority to issue a leaf for the
+service's internal alias. The certificate's subject alternative names cover, in order:
+
+- the service name (`<service>`)
+- the internal alias (`<service>.<app>.internal`)
+- every entry in the service's `hostnames:`
+- every proxied hostname from the service's `routes:` and from the top-level `proxy:` block
+- `localhost` and `127.0.0.1`
+
+Custom certificate and key paths are resolved against the app root, must stay inside it, and must be
+readable; an escaping or missing path fails with a `services.<name>.certs` correction before any
+container work starts. Requesting `certs: true` with no certificate authority available fails with
+remediation naming `lando setup`.
+
 ## Install the certificate authority
 
 `lando setup` provisions the pinned mkcert binary through `Downloader`, so corporate `network.ca`
@@ -70,6 +99,17 @@ published mkcert build fail with remediation instead of a partial install.
       <Variable name="customPath" value="certs: ./certs/appserver.crt" display="Supply a custom certificate path" />
       <Variable name="explicitPair" value="certs.cert / certs.key" display="Supply an explicit certificate and key pair; both paths are required" />
       <Variable name="additionalCas" value="security.ca" display="Keep additional certificate authorities separate from leaf TLS" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="service-leaf-cert-plan" render={false} reason="Leaf certificate planning is covered by core/test/services/app-planner-certs.test.ts and plugins/service-lando/test/certs-feature.test.ts against a test certificate authority; issuing real material requires an installed mkcert root">
+    <Step name="plan-service-certs">
+      <Variable name="feature" value="lando.certs" display="Service feature that mounts the resolved certificate material and publishes its paths" />
+      <Variable name="certEnv" value="LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt" display="In-container path of the service leaf certificate" />
+      <Variable name="keyEnv" value="LANDO_SERVICE_KEY=/etc/lando/certs/leaf/<service>.key" display="In-container path of the leaf key; unset when no key material is available" />
+      <Variable name="sanCoverage" value="<service>, <service>.<app>.internal, hostnames, route hosts, localhost, 127.0.0.1" display="Subject alternative names requested for certs: true" />
+      <Variable name="customContainment" value="services.<name>.certs" display="Custom cert and key paths must stay inside the app root and be readable" />
+      <Variable name="l337" value="type: compose" display="l337-base services never compose lando.certs, so certs: is inert there" />
     </Step>
   </Scenario>
 

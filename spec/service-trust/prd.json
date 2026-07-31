@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Service Trust (corporate inject, leaf certs, boot, doctor, Traefik TLS, guides)",
   "branchName": "docs/service-trust-prd",
-  "description": "PRD-01 (US-483..US-489 plus US-499): host-global corporate CA/proxy inject into type: lando services and the production Landofile load/import seam consumed by security.ca. PRD-02 (US-490..US-498): leaf certs + mkcert Live, lando.boot scaffolding, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..17, strict): US-489 precedes US-486, US-499 follows US-486, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
+  "description": "PRD-01 (US-483..US-489 plus US-499): host-global corporate CA/proxy inject into type: lando services and the production Landofile load/import seam consumed by security.ca. PRD-02 (US-490..US-498 plus US-500): leaf certs + mkcert Live, CertificateAuthority runtime selection, lando.boot scaffolding, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..18, strict): US-489 precedes US-486, US-499 follows US-486, US-500 follows US-492, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
   "userStories": [
     {
       "id": "US-483",
@@ -217,7 +217,7 @@
       "acceptanceCriteria": [
         "lando.certs priority 1000 on lando base defaults.",
         "certs true issues SANs per section 6.8; custom paths validated; certs false no-op.",
-        "Composition tests with fake CA; l337 skipped.",
+        "Composition tests inject a fake CA directly at AppPlanner's CertificateAuthority service seam; l337 skipped. US-500 owns plugin-module contribution publication, spec section 4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration; those are not US-492 acceptance.",
         "Guide: certificates-mkcert documents service env and SAN coverage.",
         "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
         "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
@@ -226,8 +226,30 @@
         "Lint passes"
       ],
       "priority": 11,
+      "passes": true,
+      "notes": "PRD-02; adjudicated 2026-07-31: fake-CA planner composition remains this story, while active CertificateAuthority registry/selection and bundled runtime integration moved to US-500"
+    },
+    {
+      "id": "US-500",
+      "title": "Active CertificateAuthority plugin selection and runtime integration",
+      "description": "As a CLI user or embedding host, certificate issuance uses the active CertificateAuthority selected from the complete plugin contribution graph, with bundled mkcert available by default in the CLI.",
+      "acceptanceCriteria": [
+        "Publish a typed LandoPluginModule certificateAuthorities contribution matching provides.certificateAuthorities, index it with manifest/module id validation, and record any additive SDK surface in sdk/API_COMPATIBILITY.md.",
+        "CLI and library runtimes treat embedding layers, pre-resolved manifests, and bundled/system/user/app discovery contributions as one eligible CertificateAuthority graph, honoring discovery policy and disable entries per spec section 16.4; selection must not inspect bundled modules alone.",
+        "CertificateAuthority selection follows spec section 4.3 across every applicable precedence tier. Multiple or absent unresolved implementations fail with a tagged error that preserves candidate context and actionable remediation, never Layer.die with a generic Error.",
+        "@lando/ca-mkcert is present in the generated bundled ship list and bootstrap, with its pinned runtime manifest available, and is selected for the default CLI path when no higher-precedence authority replaces it.",
+        "Production-path tests prove certs: true can issue through the selected bundled authority after setup, an explicitly disabled bundled mkcert is not used, an embedding-host authority remains usable, a discovered non-bundled authority can win by section 4.3 precedence, and ambiguous multiple authorities produce the tagged selection failure.",
+        "Schema/generated bootstrap artifacts and packaged-plugin fixtures are refreshed from their generators where the contribution surface requires them.",
+        "Guide: certificates-mkcert documents the bundled CLI default, replacement/selection behavior, and remediation when no authority is selected.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
+        "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 12,
       "passes": false,
-      "notes": "PRD-02"
+      "notes": "PRD-02; adjudicated split from US-492 because active runtime wiring must satisfy the complete section 4.3 and embedding contribution graph rather than a bundled-only selector"
     },
     {
       "id": "US-493",
@@ -245,7 +267,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -263,7 +285,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -282,7 +304,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -302,7 +324,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 15,
+      "priority": 16,
       "passes": false,
       "notes": "PRD-02. Origin: plugins/proxy-traefik tls: {} gap; spec/18-global-app.md section 20.10 + spec/11-subsystems.md sections 10.2-10.3"
     },
@@ -320,7 +342,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -342,7 +364,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": "PRD-02; includes Traefik guide"
     }

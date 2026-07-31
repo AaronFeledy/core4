@@ -13,7 +13,7 @@ PRD-01 closes corporate CA/proxy **inject** into services. This PRD completes th
 
 **SSH note:** `SshService` / `lando.ssh-agent` forward SSH agent sockets. They do **not** consume `CertificateAuthority` leaf TLS certs. Out of scope for this PRD.
 
-Execution order is defined by `priority` in [`prd.json`](./prd.json); US-496 closes the guide pack and therefore runs last.
+Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 follows US-492, and US-496 closes the guide pack and therefore runs last.
 
 ## Source References
 
@@ -79,9 +79,27 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-496 clo
 - [ ] `lando.certs` registered on lando base default feature ids at priority 1000.
 - [ ] `certs: true` → CA.issueCert with SANs: service name, `<service>.<app>.internal`, hostnames, route hosts, localhost, 127.0.0.1.
 - [ ] Custom cert/key paths validated and mounted; `certs: false` no-op.
-- [ ] Composition tests with fake CA; l337 does not get lando.certs by default.
+- [ ] Composition tests inject a fake CA directly at AppPlanner's `CertificateAuthority` seam; l337 does not get `lando.certs` by default. US-500 owns plugin contribution publication, §4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration.
 - [ ] **Guide:** certificates-mkcert documents service env vars and SAN coverage; links from nginx/php TLS mentions if those guides claim certs.
 - [ ] Guide gates green for touched guides.
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-500: Active CertificateAuthority plugin selection and runtime integration
+
+**Description:** As a CLI user or embedding host, certificate issuance uses the active `CertificateAuthority` selected from the complete plugin contribution graph, with bundled mkcert available by default in the CLI.
+
+**Acceptance Criteria:**
+
+- [ ] Publish a typed `LandoPluginModule` certificate-authority contribution matching `provides.certificateAuthorities`, index it with manifest/module id validation, and record any additive SDK surface in `sdk/API_COMPATIBILITY.md`.
+- [ ] CLI and library runtimes treat embedding layers, pre-resolved manifests, and bundled/system/user/app discovery contributions as one eligible `CertificateAuthority` graph, honoring discovery policy and disable entries per §16.4; selection must not inspect bundled modules alone.
+- [ ] Selection follows §4.3 across every applicable precedence tier. Multiple or absent unresolved implementations fail with a tagged error that preserves candidate context and actionable remediation, never `Layer.die` with a generic `Error`.
+- [ ] `@lando/ca-mkcert` is present in the generated bundled ship list and bootstrap, with its pinned runtime manifest available, and is selected for the default CLI path when no higher-precedence authority replaces it.
+- [ ] Production-path tests prove `certs: true` can issue through the selected bundled authority after setup, an explicitly disabled bundled mkcert is not used, an embedding-host authority remains usable, a discovered non-bundled authority can win by §4.3 precedence, and ambiguous multiple authorities produce the tagged selection failure.
+- [ ] Schema/generated bootstrap artifacts and packaged-plugin fixtures are refreshed from their generators where the contribution surface requires them.
+- [ ] **Guide:** certificates-mkcert documents the bundled CLI default, replacement/selection behavior, and remediation when no authority is selected.
+- [ ] Guide gates green for touched MDX.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -231,6 +249,7 @@ Every path below is a concrete guide file so `bun run check:guide-coverage` can 
 | US-490 | `certs:` authoring shapes | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
 | US-491 | mkcert Live setup / opt-out | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
 | US-492 | `lando.certs` service env and SAN coverage | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
+| US-500 | active CA selection and bundled runtime integration | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
 | US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Required at story acceptance |
 | US-494 | language-runtime CA env table | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-495 | doctor certs + network-trust checks | `docs/guides/subsystems/doctor-walkthrough.mdx` | Required at story acceptance |

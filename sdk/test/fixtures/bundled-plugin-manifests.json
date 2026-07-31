@@ -209,6 +209,7 @@
           "lando.env",
           "lando.app-mount",
           "lando.healthcheck",
+          "lando.certs",
           "lando.security",
           "lando.host-proxy",
           "lando.user",

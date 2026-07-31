@@ -40,6 +40,7 @@ import {
 import {
   AppPlanner,
   CacheService,
+  CertificateAuthority,
   ConfigService,
   FileSystem,
   PathsService,
@@ -94,6 +95,7 @@ import { type ComposeServiceFeature, composeService } from "./feature.ts";
 import { mergeLogSources } from "./log-sources.ts";
 import { loadGlobalSecurityCas, resolveSecurityFeature } from "./network-inject.ts";
 import { redirectLogSourceBuildSteps, runtimeFollowLogSources } from "./redirect-log-sources.ts";
+import { resolveCertsFeature } from "./service-certs.ts";
 
 export { AppPlanner } from "@lando/sdk/services";
 
@@ -1042,6 +1044,7 @@ const planApp = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   fileSystem: Context.Tag.Service<typeof FileSystem> | undefined,
   pathsService: Context.Tag.Service<typeof PathsService> | undefined,
+  certificateAuthority: Context.Tag.Service<typeof CertificateAuthority> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<
@@ -1271,6 +1274,28 @@ const planApp = (
               paths: pathsService,
             })
           : undefined;
+      const authoredRoutes = [
+        ...(pinnedService.routes ?? []),
+        ...(landofile.proxy?.[ServiceName.make(name)] ?? []),
+      ];
+      const certsFeature =
+        resolution.base === "lando"
+          ? yield* resolveCertsFeature({
+              appName,
+              appRoot,
+              serviceName: name,
+              certs: pinnedService.certs,
+              hostnames: pinnedService.hostnames ?? [],
+              routes: authoredRoutes,
+              defaultRouteHostname:
+                authoredRoutes.length === 0 ? `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}` : undefined,
+              certificateAuthority,
+              fileSystem,
+            })
+          : undefined;
+      const plannerSeededFeatures = [securityFeature, certsFeature].filter(
+        (feature): feature is NonNullable<typeof feature> => feature !== undefined,
+      );
       const featureRefs: ReadonlyArray<{
         readonly id: string;
         readonly config?: Readonly<Record<string, unknown>>;
@@ -1280,8 +1305,8 @@ const planApp = (
           id: featureRef.id,
           ...(featureRef.config === undefined ? {} : { config: featureRef.config }),
         })),
-      ].map((featureRef) =>
-        securityFeature !== undefined && featureRef.id === securityFeature.id ? securityFeature : featureRef,
+      ].map(
+        (featureRef) => plannerSeededFeatures.find((seeded) => seeded.id === featureRef.id) ?? featureRef,
       );
 
       resolvedServices.push({
@@ -1794,6 +1819,7 @@ export const AppPlannerLive = Layer.effect(
     const configService = yield* Effect.serviceOption(ConfigService);
     const fileSystem = yield* Effect.serviceOption(FileSystem);
     const pathsService = yield* Effect.serviceOption(PathsService);
+    const certificateAuthority = yield* Effect.serviceOption(CertificateAuthority);
     return {
       plan: (landofile, providerCapabilities) =>
         planApp(
@@ -1802,6 +1828,7 @@ export const AppPlannerLive = Layer.effect(
           Option.getOrUndefined(configService),
           Option.getOrUndefined(fileSystem),
           Option.getOrUndefined(pathsService),
+          Option.getOrUndefined(certificateAuthority),
           landofile,
           providerCapabilities,
         ),
