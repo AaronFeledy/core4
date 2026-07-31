@@ -48,7 +48,7 @@ describe("mkcert CertificateAuthority", () => {
       const result = await Effect.runPromise(
         ca.issueCert({
           cn: "myapp.lndo.site",
-          sans: ["myapp.lndo.site", "*.myapp.lndo.site", "localhost", "127.0.0.1"],
+          sans: ["service", "myapp.lndo.site", "*.myapp.lndo.site", "localhost", "127.0.0.1"],
         }),
       );
 
@@ -64,6 +64,7 @@ describe("mkcert CertificateAuthority", () => {
         result.certPath,
         "-key-file",
         result.keyPath,
+        "service",
         "myapp.lndo.site",
         "*.myapp.lndo.site",
         "localhost",
