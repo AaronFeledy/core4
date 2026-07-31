@@ -19,7 +19,7 @@ This set is two PRDs:
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.3 load/import, §7.5–§7.6 network + env
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.2 proxy and routing, §10.3 CertificateAuthority + corporate proxies
 - [`spec/18-global-app.md`](../18-global-app.md) §20.10 proxy and CA realization through the global app (cite this file by name plus §20.10; "§18" is `spec/16-deprecation-and-surface-evolution.md` and is unrelated)
-- Execution order: [`prd.json`](./prd.json) `priority` (1..17, strict)
+- Execution order: [`prd.json`](./prd.json) `priority` (1..18, strict)
 - Existing guide seed: [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
 
 ## Goals
@@ -45,7 +45,7 @@ This set is two PRDs:
 | #  | PRD | Subsystem | US range | Depends on |
 | -- | --- | --------- | -------- | ---------- |
 | 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | security schema, env overlays, PEM load, `lando.security`, planner, production CA expressions, derived-build, setup note, corporate guide | US-483..US-489, US-499 | Spec inject contract landed |
-| 02 | [Leaf certs, boot, doctor, Traefik TLS](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + `lando.boot` + language CA env + doctor + **Traefik edge TLS** + guide pack | US-490..US-498 | PRD-01; US-491 before Traefik TLS |
+| 02 | [Leaf certs, boot, doctor, Traefik TLS](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + active CA selection + `lando.boot` + language CA env + doctor + **Traefik edge TLS** + guide pack | US-490..US-500 | PRD-01; US-491 before Traefik TLS |
 
 ## Verification contract
 
