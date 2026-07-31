@@ -870,3 +870,25 @@ Spec SoT:
     implicitly include the common name should de-duplicate their native argv without weakening the public
     request contract.
 ---
+
+## 2026-07-31 01:11 CDT - US-492 Review
+- Fixed the bundled runtime omitting mkcert's pinned version manifest, honoring an explicit mkcert plugin
+  disable, and validating custom cert/key readability. Leaf issuance now covers the planner-generated
+  default proxy hostname, preserves the planner's SAN order through mkcert, rejects key-only feature
+  config, and contains arbitrary service names within the leaf mount directory.
+- Review notes (deferred/rejected): `review-work` is not installed in this environment and Cursor Bugbot
+  remained unavailable because `cursor-agent` requires authentication; three independent committed-diff
+  review lanes were used, and neither unavailable tool was treated as approval.
+- Review notes (deferred/rejected): Rejected moving issuance around the app-plan cache or redesigning host
+  layer and non-bundled CA selection as out-of-scope runtime/plugin architecture; US-492 requires the
+  active bundled CA path and fake-CA composition proof, both of which are covered without that expansion.
+- Review notes (deferred/rejected): Rejected the custom-path parent-symlink replacement finding as a new
+  privilege-boundary blocker; it is a same-user bind-source race shared by persisted mount plans, while
+  lexical/realpath containment and actual readability are enforced during this story's planning boundary.
+- Guide-Coverage-Skip: US-492 documents CA descriptors and leaf SAN behavior in certificates-mkcert; Alpha-4 library guides do not own service TLS.
+- Verification: typecheck, lint, generated output, package DAG, focused guide execution, and base-aware
+  guide drift with the recorded skip passed from a detached checkout of the final commit; 37 focused and
+  adjacent tests passed with 153 assertions.
+- **Learnings for future iterations:** Provider adapters should preserve ordered public intent while
+  de-duplicating native argv, and user-authored identifiers must be encoded before becoming path segments.
+---
