@@ -204,7 +204,9 @@ Source mode routes through `@oclif/core`'s `execute()`; the compiled `$bunfs` bi
 
 This spike ran both arms (`core/test/cli/dispatch-unification-spike.test.ts`; probe `core/test/cli/parity/oclif-static-probe.ts`; shared normalizer `core/test/cli/parity/normalize.ts`).
 
-**Conclusion: option (b).** This outcome is now applied: §8.4.1's parity rules are normative, the compiled-binary dispatch parity test layer ships in §13.1 (`core/test/cli/parity/`), and the §14.2 "Compiled-binary CLI dispatch unification" decision is closed (see §14.2 "Resolved since this draft").
+**Historical conclusion: option (b).** At the time of the spike, option (b) was applied: §8.4.1's parity rules were promoted and a dual-path parity layer shipped in §13.1.
+
+**Supersession (architecture-simplicity, US-500+):** option (b) dual dispatch is **no longer** the normative architecture. The spike's Arm A finding still stands — OCLIF cannot dispatch inside `$bunfs` through any supported public API — and that finding now **motivates removing OCLIF from the shipping CLI** and keeping a **single native dispatcher** for source and compiled modes (§8.4.1 rewrite; §14.2 row superseded). Dual-path parity tests are replaced by registry completeness + machine-output + relocated-binary smoke (§13.1). See `spec/architecture-simplicity/`.
 
 **Arm A — can `execute()` dispatch in the compiled binary?** No, not through any supported public API. A probe importing only `@oclif/core` and calling `execute()` was compiled with `bun build --compile` to its own outfile and run from a directory outside the source tree (a faithful relocated-deployment reproduction). It fails before any command runs:
 

@@ -2,7 +2,7 @@
 
 ## Introduction
 
-Alpha 3 closes two interlocking debts: the renderer must reach the §8.9 full first-paint contract (`task.detail` streaming, expand/collapse, `verbose` mode), and the CLI command boundary must finally route through a `Renderer` Live Layer instead of `console.log`/`console.error`. The CLI dispatch unification spike (§14.2) also lands here — if it succeeds, `runCompiledCli` is deleted; if it fails, the parity rules in §8.4.1 become normative and a compiled-binary parity test layer is added to §13.1.
+Alpha 3 closes two interlocking debts: the renderer must reach the §8.9 full first-paint contract (`task.detail` streaming, expand/collapse, `verbose` mode), and the CLI command boundary must finally route through a `Renderer` Live Layer instead of `console.log`/`console.error`. The CLI dispatch unification spike (§14.2) also landed here — historically option (b) dual dispatch. **Supersession:** `spec/architecture-simplicity/` (US-500+) reopens that outcome and collapses to a single native dispatcher; do not treat Alpha 3 option (b) as permanent.
 
 Depends on: **—** (entry point for the renderer/CLI half of Alpha 3).
 
@@ -82,6 +82,8 @@ Depends on: **—** (entry point for the renderer/CLI half of Alpha 3).
 - [ ] Tests pass; typecheck passes; lint passes.
 
 ### US-156: apply spike outcome — unify or harden dual dispatch
+
+> **Superseded by architecture-simplicity (US-500+):** option (b) dual dispatch is no longer the long-term architecture. Historical AC below remain the Alpha 3 record; new work follows `spec/architecture-simplicity/`.
 
 **Description:** As a maintainer, the spike outcome from US-155 is applied: either delete `runCompiledCli` and drop §8.4.1's relaxed-import rule, or promote §8.4.1 to normative and add a compiled-binary parity test layer.
 

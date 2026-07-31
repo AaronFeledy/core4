@@ -304,7 +304,13 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
 
 ### 2.7 Package surface
 
-`@lando/core` is a single Bun-loadable package with multiple ESM entry points. Splitting `core` into a runtime package + a CLI package is rejected (see §15.D for the OCLIF rationale and §16 for the embedding rationale). The CLI binary, the OCLIF adapter, the Effect runtime, the public schemas, and the tagged-error catalog all ship from the same package version.
+`@lando/core` is a single Bun-loadable **public** package with multiple ESM entry points. Splitting the **public** surface into a separate runtime package + CLI package is rejected (see §16 for the embedding rationale). The CLI binary entry, the native command dispatcher, the Effect runtime, the public schemas, and the tagged-error catalog all ship from the same public package version.
+
+**Private internal workspace packages are allowed** for ownership seams that would otherwise be enforced only by AST lint (architecture-simplicity US-502/US-516+). Examples: `@lando/paths` (already extracted), `@lando/state-store` (this wave), and other seams promoted when package-dag can carry the constraint. Private packages:
+
+- MUST NOT become a second public runtime/CLI split; embedding hosts continue to depend on `@lando/core` / `@lando/sdk` entry points.
+- MAY be depended on by `@lando/core` and by plugins; plugins still MUST NOT depend on `@lando/core` (`check:package-dag`).
+- Prefer Effect-free pure modules plus thin Effect service facades where that pattern already works (`@lando/paths`).
 
 **Required `package.json#exports` (illustrative):**
 
@@ -333,8 +339,8 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
 
 **Required entry-point policies:**
 
-- The default entry (`@lando/core`) MUST NOT pull `@oclif/core` into the import graph. An embedding host that never invokes the CLI must not pay for OCLIF in its bundle. This is enforced by an import-boundary test in `core/test/library/`.
-- `@lando/core/cli` MAY pull OCLIF; it is the programmatic-CLI entry.
+- The default entry (`@lando/core`) MUST NOT pull `@oclif/core` or a heavy CLI framework into the import graph. An embedding host that never invokes the CLI must not pay for CLI dispatch in its bundle. This is enforced by an import-boundary test in `core/test/library/`.
+- `@lando/core/cli` is the programmatic-CLI entry (native dispatcher). It MUST NOT require `@oclif/core` after architecture-simplicity US-524.
 - `@lando/core/schema` MUST be tree-shakeable per-schema. Importing one schema must not pull every schema in the package.
 - `@lando/core/paths` MUST be Effect-free and OCLIF-free. It exposes the pure root/path resolver (`resolveLandoRoots`, `makeLandoPaths`, `normalizeHostPlatform`) so cold-start code (the level-`none` fast path, §3.2), embedding hosts, `scripts/`, and plugin utilities can resolve Lando's roots and every derived path without constructing `ConfigService` or the Effect runtime (§7.5.1). The matching `PathsService` DI tag — for runtime code already inside the Layer graph — re-exports from `@lando/core/services`. An import-boundary test in `core/test/library/` enforces that `@lando/core/paths` pulls neither `effect` nor `@oclif/core` into its graph.
 - `@lando/core/landofile` MUST be Effect-light and OCLIF-free. It re-exports the pure `@lando/sdk/landofile` serializer (`emitLandofileYaml`, `emitLandofileYamlEither`, `parseLandofile`, `LandofileEmitError`; §7.8.1) so cold-path writers, config-translator plugins, recipe/scaffold tooling, `scripts/`, and embedding hosts can serialize a `LandofileShape`/fragment to the canonical block-style subset without constructing `ConfigService` or planning an app. `parseLandofile` returns an `Effect` (it consumes `LandofileParseError`), but the emitter and its `Either` variant are pure; the subpath pulls neither `@oclif/core` nor the full runtime, enforced by the `core/test/library/` import-boundary test.
@@ -343,6 +349,6 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
 - Every entry point ships its own `.d.ts` file. Type-only re-exports use `export type { ... }`.
 - ESM only at every entry. No CommonJS dual-publish.
 
-**Compiled-binary entry.** `bin/lando.ts` imports `@lando/core/cli` to wire OCLIF and run the binary. The `bun build --compile` step is configured to statically import bundled plugins (§2.1) and to embed the OCLIF manifest as an asset (§17.3). The compiled binary is *one* consumer of `@lando/core/cli`; an embedding host can be another (§16.4).
+**Compiled-binary entry.** `bin/lando.ts` imports `@lando/core/cli` to run the native dispatcher. The `bun build --compile` step is configured to statically import bundled plugins (§2.1) and to embed the **command registry** manifest as an asset (§17.3). The compiled binary is *one* consumer of `@lando/core/cli`; an embedding host can be another (§16.4).
 
 ---

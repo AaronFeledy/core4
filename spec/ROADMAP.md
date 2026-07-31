@@ -395,9 +395,9 @@ Complete the breadth surface — every canonical service type, both providers on
 - Import-boundary test enforces no OCLIF in default entry
 - Library mode defaults: silent logger, json renderer, no auto-discovery, no telemetry
 
-**CLI dispatch unification (resolved — §14.2 closed as option (b)):**
+**CLI dispatch unification (Alpha 3 closed as option (b); superseded by architecture-simplicity):**
 - ~~Spike: can `@oclif/core`'s `execute()` dispatch reliably inside `bun build --compile`?~~ **Done.** The spike (§14 Appendix D.1) proved it cannot through any supported public API (`Config.load` → `findRoot` and the `module-loader` runtime `import()` both break inside `$bunfs`).
-- **Outcome — option (b): dual dispatch is permanent.** §8.4.1's parity rules are now normative; the compiled-binary dispatch parity test layer ships in §13.1 (`core/test/cli/parity/`), covering every canonical command id in `MVP_COMMAND_IDS` plus the §17.1 stage-7 deferred-command set; §14.2 "Compiled-binary CLI dispatch unification" is closed; AGENTS.md's three dual-dispatch notes are promoted from interim to permanent.
+- ~~**Outcome — option (b): dual dispatch is permanent.**~~ **Superseded.** Architecture-simplicity (US-500+, `spec/architecture-simplicity/`) keeps a **single native dispatcher** for source and compiled modes and removes OCLIF from the shipping path. The spike remains historical proof that OCLIF-in-`$bunfs` is impossible — which now motivates deleting the OCLIF engine, not keeping two.
 
 **Renderer wiring at the CLI command boundary (closes §14.2 row + §2.4 lint-gate prohibition):**
 - Wire the `Renderer` Live Layer at the CLI command boundary per §8.9; commands stop writing through `console.log`/`console.error` in `core/src/cli/run.ts` and per-command `render` helpers.
@@ -582,6 +582,8 @@ Beta 1 additionally lands a bounded **feature wave** — the last new feature su
 - **Landofile version constraint** (`lando: <semver-range>`, §7.4) — team-workflow version pinning with fail-closed remediation.
 - **Disposable tool runner** (`lando run`, `apps:scratch:run`, §21.10.3) — one-shot cwd-mounted toolbox containers as a thin layer over `ScratchAppService` plus the bundled `toolbox` recipe.
 - **Renderer substrate + notifications** (§8.9.3, §8.9.7) — the bundled renderer's TTY implementation moves onto its specified OpenTUI 0.4.x substrate (split-footer live region, degradation contract, headless frame-snapshot tests), and desktop notifications land as the `notify.desktop` render event + `RendererCapabilities.notifications` + the bundled `@lando/notify-lando` policy plugin. The 4.1 renderer surfaces — rich render events (§8.9.4), renderer panel slots (§8.9.5), keymap remapping (§8.9.6), and the interactive log viewer (§8.9.8) — are **frozen here, contract-only**, following the `TunnelService`/`RemoteSource` precedent: schemas + manifest surface + contract suites ship now; implementations land in 4.1.
+
+**Concurrent meta/infra wave (not a feature-surface expansion):** **Architecture simplicity** (`spec/architecture-simplicity/`, US-500..US-532) may land during Beta 1. It collapses dual CLI dispatch to one native engine, stops committing pure derived artifacts, promotes private package seams (`@lando/state-store` + DAG), and strengthens `codegen:check` as the single pure-drift gate. It does **not** add end-user commands or Landofile keys and does **not** license reopening feature freeze for product surface. Private internal workspace packages are allowed under §2.7 without splitting public `@lando/core` into runtime+CLI publish packages. Further extractions (network, managed-file, planner splits) remain deferred.
 
 ### Concrete deliverables
 
