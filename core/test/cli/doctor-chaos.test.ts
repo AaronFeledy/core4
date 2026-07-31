@@ -511,6 +511,62 @@ describe("doctor chaos: plugin-contributed checks", () => {
 });
 
 describe("doctor chaos: whole report", () => {
+  test("interrupts collectDoctorReport when its AbortSignal aborts mid-flight", async () => {
+    // Given a provider section that has started and will never settle
+    const started = Effect.runSync(Deferred.make<void>());
+    const controller = new AbortController();
+    const layers = layersFor(statusRegistry(TestRuntimeProvider.getStatus));
+
+    // When the caller aborts the report collector
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          collectDoctorReport({
+            options: { signal: controller.signal },
+            provider: Deferred.succeed(started, undefined).pipe(Effect.zipRight(Effect.never)),
+            deprecations: Effect.succeed({ entries: [] }),
+          }).pipe(Effect.provide(layers)),
+        );
+        yield* Deferred.await(started);
+        yield* Effect.sync(() => controller.abort());
+        return yield* Fiber.await(fiber);
+      }),
+    );
+
+    // Then cancellation interrupts collection instead of becoming a provider self check
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+  });
+
+  test("interrupts doctorReport when its AbortSignal aborts mid-flight", async () => {
+    // Given a provider section that has started and will never settle
+    const started = Effect.runSync(Deferred.make<void>());
+    const controller = new AbortController();
+    const layers = layersFor(
+      statusRegistry(
+        Deferred.succeed(started, undefined).pipe(
+          Effect.zipRight(Effect.never),
+        ) as typeof TestRuntimeProvider.getStatus,
+      ),
+    );
+
+    // When the caller aborts the report
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(
+          doctorReport({ signal: controller.signal }).pipe(Effect.provide(layers)),
+        );
+        yield* Deferred.await(started);
+        yield* Effect.sync(() => controller.abort());
+        return yield* Fiber.await(fiber);
+      }),
+    );
+
+    // Then cancellation interrupts the report instead of becoming a provider self check
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+  });
+
   test("emits a schema-valid report when the provider section is fully broken", async () => {
     // Given provider selection failure and a corrupt config at the same time
     const layers = layersFor(failingSelectRegistry(), { failGet: true });

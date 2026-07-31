@@ -11,6 +11,7 @@ import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } 
 
 import { lintLandofile } from "../../landofile/lint.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import { interruptOnAbort } from "./doctor-abort.ts";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app.ts";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp.ts";
 import type {
