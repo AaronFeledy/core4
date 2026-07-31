@@ -7,8 +7,8 @@ import { Effect, Schema } from "effect";
 import { PortablePath } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
-export const LANDO_CERTS_FEATURE_ID = "lando.certs" as const;
-export const LANDO_CERTS_FEATURE_PRIORITY = 1000;
+const LANDO_CERTS_FEATURE_ID = "lando.certs" as const;
+const LANDO_CERTS_FEATURE_PRIORITY = 1000;
 
 const LEAF_CERT_DIRECTORY = "/etc/lando/certs/leaf" as const;
 

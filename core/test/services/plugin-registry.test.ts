@@ -18,7 +18,6 @@ import {
 } from "../../src/services/global-services.ts";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
-  "@lando/ca-mkcert",
   "@lando/provider-lando",
   "@lando/provider-docker",
   "@lando/provider-podman",

@@ -23,7 +23,6 @@ import { HttpClientLive } from "../../../http-client/live.ts";
 import { InteractionServiceLive } from "../../../interaction/service.ts";
 import { LoggerLive } from "../../../logging/service.ts";
 import { ManagedFileServiceLive } from "../../../managed-file/service.ts";
-import { makeBundledCertificateAuthorityLive } from "../../../plugins/certificate-authority-from-modules.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../../plugins/generated/bundled.ts";
 import { PluginTrustStoreLive } from "../../../plugins/trust-store.ts";
 import { RedactionServiceLive } from "../../../redaction/service.ts";
@@ -48,21 +47,11 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
   const httpClientLive = HttpClientLive.pipe(
     Layer.provide(Layer.mergeAll(ConfigServiceLive, eventServiceLive)),
   );
-  const pathsLive = Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides));
-  const downloaderLive = DownloaderLive.pipe(Layer.provide(httpClientLive));
-  const bundledPluginModules = BUNDLED_PLUGIN_MODULES.filter(
-    (module) => !inputs.pluginDiscovery.disable.includes(module.manifest.name),
-  );
-  const certificateAuthorityLive = inputs.pluginDiscovery.bundled
-    ? makeBundledCertificateAuthorityLive(bundledPluginModules).pipe(
-        Layer.provide(Layer.mergeAll(pathsLive, downloaderLive, ProcessRunnerLive)),
-      )
-    : Layer.empty;
 
   const minimalRuntimeLive = Layer.mergeAll(
     LoggerLive({ mode: inputs.loggerMode }),
     Layer.succeed(Renderer, makeLibraryRenderer(inputs.rendererMode)),
-    pathsLive,
+    Layer.succeed(PathsService, makeLandoPaths(inputs.rootOverrides)),
     telemetryLive,
     ConfigServiceLive,
     eventServiceLive,
@@ -82,8 +71,7 @@ export const makeMinimalBootstrapLayer = (inputs: BootstrapLayerInputs) => {
     ),
     Layer.suspend(() => InteractionServiceLive),
     httpClientLive,
-    downloaderLive,
-    certificateAuthorityLive,
+    DownloaderLive.pipe(Layer.provide(httpClientLive)),
   );
   return minimalRuntimeLive.pipe(
     Layer.tap((context) => inputs.lifecycle.complete("minimal", Context.get(context, EventService))),

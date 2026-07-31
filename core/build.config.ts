@@ -24,7 +24,6 @@ export interface BundledPluginEntry {
     readonly loggers?: ReadonlyArray<string>;
     readonly renderers?: ReadonlyArray<string>;
     readonly fileSyncEngines?: ReadonlyArray<string>;
-    readonly cas?: ReadonlyArray<string>;
     readonly proxyServices?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
     readonly templateEngines?: ReadonlyArray<string>;
@@ -53,7 +52,6 @@ export interface BuildConfig {
 
 export const buildConfig: BuildConfig = {
   bundledPlugins: [
-    { name: "@lando/ca-mkcert", path: "plugins/ca-mkcert", contributes: { cas: ["mkcert"] } },
     { name: "@lando/provider-lando", path: "plugins/provider-lando", contributes: { providers: ["lando"] } },
     {
       name: "@lando/provider-docker",

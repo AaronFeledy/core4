@@ -5,8 +5,9 @@ import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
 import { composeService } from "../../../core/src/services/feature.ts";
-import { LANDO_CERTS_FEATURE_ID, LANDO_CERTS_FEATURE_PRIORITY } from "../src/features/certs.ts";
 import { serviceFeatures } from "../src/features/index.ts";
+
+const LANDO_CERTS_FEATURE_ID = "lando.certs";
 
 const certsFeature = (): ServiceFeatureDefinition => {
   const definition = serviceFeatures.get(LANDO_CERTS_FEATURE_ID);
@@ -39,7 +40,6 @@ describe("lando.certs feature", () => {
     const definition = certsFeature();
 
     expect(definition.id).toBe(LANDO_CERTS_FEATURE_ID);
-    expect(definition.priority).toBe(LANDO_CERTS_FEATURE_PRIORITY);
     expect(definition.priority).toBe(1000);
   });
 

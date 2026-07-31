@@ -24,8 +24,6 @@ export const engine = Layer.effect(
   }),
 );
 
-export const certificateAuthorities = new Map([[CA_ID, engine]] as const);
-
 export const manifest = Schema.decodeSync(PluginManifest)({
   name: PLUGIN_NAME,
   version: "0.0.0",
@@ -43,7 +41,6 @@ export const plugin = definePlugin({
   name: manifest.name,
   manifest,
   layer: engine,
-  certificateAuthorities,
 });
 
 export { CA_ID, makeMkcertCertificateAuthority, mkcertLeafCertificateName } from "./ca.ts";

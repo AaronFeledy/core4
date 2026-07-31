@@ -7,7 +7,6 @@ import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../src/plugins/generated/renderers.ts";
 
 const EXPECTED_PLUGIN_NAMES = [
-  "@lando/ca-mkcert",
   "@lando/provider-lando",
   "@lando/provider-docker",
   "@lando/provider-podman",
