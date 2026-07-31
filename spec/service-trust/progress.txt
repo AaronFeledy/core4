@@ -1047,3 +1047,26 @@ Spec SoT:
   focused tests passed across seven certificate files. Guide drift was unverified because the local gate
   skipped without pull-request context.
 ---
+
+## 2026-07-31 15:40 CDT - Push
+- PR: none — skipped: uncommitted product change in `plugins/service-lando/test/certs-feature.test.ts` (cleanup left a working-tree diff that drops hard-fail guards from drift-audit hardening). Commit or restore before push.
+---
+
+## 2026-07-31 15:41 CDT - Babysit
+- PR: none — branch `us-492-lando-certs-leaf-issuance` has no PR and no upstream (Push skipped: uncommitted product change in `plugins/service-lando/test/certs-feature.test.ts`)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR)
+---
+
+## 2026-07-31 15:45 CDT - US-492 Build Confirmation
+- Verified the adjudicated leaf-certificate story complete on its existing branch with no new production
+  code. Removed the uncommitted cleanup regression that had weakened the Drift Audit hard-fail proofs and
+  restored all affected test files to the committed hardened state.
+- Verification: typecheck, lint/deprecations, and generated output passed; 35 focused certificate and
+  planner tests plus all 6 certificates guide scenarios passed; guide lint and coverage passed. Guide
+  drift skipped locally because no pull-request context was available, matching the recorded gate behavior.
+- **Learnings for future iterations:**
+  - Test cleanup must not replace explicit narrowing guards with non-null assertions or remove fail-hard
+    branches after an expectation; those guards keep later tagged-failure inspection non-vacuous.
+---
