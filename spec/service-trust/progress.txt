@@ -1033,3 +1033,17 @@ Spec SoT:
   - The authorable raw l337-base service type is `compose`; `l337` is the internal base id and is not a
     registered Landofile service type, so real-surface exclusion probes should use `type: compose`.
 ---
+
+## 2026-07-31 15:28 CDT - US-492 Drift Audit
+- Trigger: 11 cycles, 1,166 changed lines, 34 commits.
+- Category 2 (weakened proofs): two feature-failure tests could silently skip their tagged-error assertions
+  when the exit cause had an unexpected shape; both now fail hard before inspecting the required failure.
+- Category 4 (ceremony modules): the branch-owned planner certificate test had grown to 272 pure LOC; its
+  custom-material scenarios are split out and both files share one two-consumer planner harness.
+- Fixed: restored non-vacuous failure proofs and reduced the planner certificate tests to focused files
+  without changing production behavior or test assertions.
+- Split/excise decisions: none; the adjudicated US-492/US-500 boundary remains intact and `passes` stays true.
+- Verification: typecheck, lint/deprecations, generated output, guide lint, and guide coverage passed; 39
+  focused tests passed across seven certificate files. Guide drift was unverified because the local gate
+  skipped without pull-request context.
+---
