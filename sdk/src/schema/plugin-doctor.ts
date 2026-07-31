@@ -19,6 +19,7 @@ const PluginDoctorContext = Schema.Record({
         "PluginDoctorReport.context must contain at most 32 entries and 16000 total value characters",
     },
   ),
+  Schema.annotations({ jsonSchema: { maxProperties: 32 } }),
 );
 
 const PluginDoctorSolution = Schema.Struct({

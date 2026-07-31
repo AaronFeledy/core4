@@ -3,6 +3,8 @@
   "additionalProperties": false,
   "properties": {
     "context": {
+      "description": "Diagnostic context with at most 32 entries, 128-character keys, 2,000-character values, and 16,000 total value characters.",
+      "maxProperties": 32,
       "patternProperties": {
         "": {
           "description": "a string at most 2000 character(s) long",
