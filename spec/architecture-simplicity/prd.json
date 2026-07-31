@@ -1,0 +1,442 @@
+{
+  "project": "Lando v4 Architecture Simplicity",
+  "branchName": "docs/architecture-simplicity-prd",
+  "description": "Concurrent meta/infra wave (US-500..US-532): collapse dual CLI dispatch to one native engine, stop committing pure derived artifacts, promote boundary seams to private packages (state-store + DAG), and strengthen codegen:check as the single pure-drift gate. Does not expand user-facing feature surface. Spec is source of truth; implementation stories follow US-505+.",
+  "userStories": [
+    {
+      "id": "US-500",
+      "title": "Spec: reopen dual-dispatch as single engine",
+      "description": "As a maintainer, the normative spec supersedes option (b) dual dispatch with one native command registry and dispatcher for source and compiled modes.",
+      "acceptanceCriteria": [
+        "§1.2 tenet no longer says OCLIF parses/discovers/packs the shipping CLI.",
+        "§14.2 dual-dispatch row and ROADMAP Alpha 3 outcome state option (b) is superseded by architecture-simplicity single dispatcher.",
+        "Appendix D.1 remains as historical spike evidence and ends with the supersession note.",
+        "§8.4.1 describes single native dispatch, not permanent dual parity rules.",
+        "alpha-3 PRD-09 US-155/156 carry a supersession note without rewriting historical AC checkmarks.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "PRD-00/01 contract"
+    },
+    {
+      "id": "US-501",
+      "title": "Spec: derived vs persisted artifact policy",
+      "description": "As a maintainer, the spec distinguishes git sources of truth from regen-only build outputs, modeled on §19.6 transcripts.",
+      "acceptanceCriteria": [
+        "§13.2 and §17.2 classify pin manifests vs derived outputs (schemas, command-schemas, bootstrap layers, compiled command manifest, docs schema refs).",
+        "Derived outputs are not required to be git-committed; publish/binary embed still ships them as build products.",
+        "Guide scenarios/transcripts remain the gitignore model for derived data.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "PRD-00/02 contract"
+    },
+    {
+      "id": "US-502",
+      "title": "Spec: internal package seams without public core split",
+      "description": "As a maintainer, §2.7 keeps public @lando/core as one package while allowing private internal workspace packages for seams.",
+      "acceptanceCriteria": [
+        "§2.7 explicitly allows private workspace packages (paths, state-store, …) and still rejects splitting public core into runtime+CLI packages.",
+        "§13.8 states package-dag is primary for seam ownership; AST boundary rules remain for residual behavioral bans.",
+        "ROADMAP notes concurrent architecture-simplicity wave and private packages.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "PRD-00/03 contract"
+    },
+    {
+      "id": "US-503",
+      "title": "Spec: single codegen drift gate",
+      "description": "As a maintainer, codegen:check is the one pure-drift gate (full codegen then git diff --exit-code on catalog outputs).",
+      "acceptanceCriteria": [
+        "§17.2 defines codegen:check as regenerate-then-git-diff on the codegen catalog, not merely typecheck.",
+        "Semantic gates (guide-coverage, schema-compatibility, public-transcripts, package-dag, behavioral boundaries) stay separate from pure drift.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "PRD-00/04 contract"
+    },
+    {
+      "id": "US-504",
+      "title": "Wave PRD set + prd.json + progress scaffolding",
+      "description": "As a maintainer, the architecture-simplicity wave folder, prd.json US-500..US-532, progress log, and guide-coverage allowlist exist.",
+      "acceptanceCriteria": [
+        "spec/architecture-simplicity/ contains 00-index, 01-cli-dispatch, 02-derived-artifacts, 03-package-seams, 04-codegen-drift-gate, prd.json, progress.txt.",
+        "prd.json has exactly US-500..US-532 with passes false until implementation closes them (US-500..504 true when scaffolding lands).",
+        "check-guide-coverage registers the wave; all PRDs declare Guide Coverage None internal/infra.",
+        "root/core/sdk AGENTS.md point at the new contract.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "PRD-00"
+    },
+    {
+      "id": "US-505",
+      "title": "Strengthen codegen:check to assert zero drift",
+      "description": "As CI, bun run codegen:check regenerates the full catalog and fails if any catalog output path is dirty vs git.",
+      "acceptanceCriteria": [
+        "package.json codegen:check runs full codegen then fails on git diff for catalog outputs (documented path set).",
+        "Non-catalog dirty files do not false-fail the drift half (or are documented as require-clean-tree).",
+        "Unit/script test covers dirty-generated detection.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-506",
+      "title": "Inventory generators into single catalog ownership",
+      "description": "As a maintainer, scripts/codegen.ts order and §17.2 table name the same generators with no orphan drift checkers.",
+      "acceptanceCriteria": [
+        "§17.2 table matches scripts/codegen.ts dependency order.",
+        "Every generator has exactly one ownership row (committed pin vs untracked derived).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-507",
+      "title": "Retire redundant per-domain regen-and-compare scripts",
+      "description": "As a maintainer, duplicate regenerate-and-compare checkers are removed or become thin aliases of codegen:check.",
+      "acceptanceCriteria": [
+        "No second full-catalog drift implementation remains under scripts/check-*.ts beyond documented aliases.",
+        "Public script names kept only if referenced by CI/docs, implemented as wrappers.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-508",
+      "title": "CI: one drift job",
+      "description": "As CI, static-checks invoke the strengthened codegen:check once per PR matrix entry that needs it.",
+      "acceptanceCriteria": [
+        "Generated CI workflow calls codegen:check once for drift; no parallel duplicate full regen jobs for the same catalog.",
+        "codegen:ci workflows regenerated via existing generator.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-509",
+      "title": "Document semantic-vs-drift gate matrix",
+      "description": "As an agent, AGENTS.md and §13.4 list which gates are pure drift vs semantic correctness.",
+      "acceptanceCriteria": [
+        "Root AGENTS.md matrix: codegen:check = drift; guide-coverage, schema-compatibility, public-transcripts, package-dag, behavioral boundaries = semantic.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-510",
+      "title": "Gitignore and untrack schema artifact trees",
+      "description": "As a maintainer, dist/schemas, dist/command-schemas, and generated docs schema refs are gitignored and removed from the index.",
+      "acceptanceCriteria": [
+        ".gitignore covers the untracked derived schema trees.",
+        "git rm --cached applied for previously committed paths without deleting local regen ability.",
+        "codegen:schema-snapshot still writes the trees.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-511",
+      "title": "Gitignore and untrack core bake-time generated TS",
+      "description": "As a maintainer, bootstrap layers, bundled plugin/recipe tables, compiled command manifest, and opentui stub catalog are untracked derived outputs where the catalog allows.",
+      "acceptanceCriteria": [
+        "Catalog marks which core generated TS paths are untracked.",
+        "CI workflows remain committed (human-reviewed exception).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-512",
+      "title": "Clean-checkout bootstrap",
+      "description": "As a new contributor, git clone && bun install && bun run codegen is enough before typecheck/test.",
+      "acceptanceCriteria": [
+        "README or AGENTS documents the bootstrap order.",
+        "Optional prepare/postinstall does not force network beyond bun install; codegen is explicit or documented.",
+        "Clean CI job proves clone→install→codegen→typecheck.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-513",
+      "title": "Publish and pack embed regenerated schemas",
+      "description": "As a releaser, npm pack and the compiled binary embed schemas/manifests produced at build time without reading them from git history.",
+      "acceptanceCriteria": [
+        "Release/build pipeline runs codegen before pack/compile.",
+        "Published tarball contains required schema artifacts.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-514",
+      "title": "Keep pin manifests committed with offline invariants",
+      "description": "As a releaser, runtime-bundle and mutagen version JSON stay committed with existing offline invariant checks.",
+      "acceptanceCriteria": [
+        "Pin manifests remain tracked.",
+        "Offline invariant checks still run in codegen/staleness path.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-515",
+      "title": "sdk/AGENTS: no commit-dist workflow",
+      "description": "As an SDK author, docs say run codegen; CI catches drift; committing dist is not required.",
+      "acceptanceCriteria": [
+        "sdk/AGENTS.md schema-snapshot bullet matches untracked policy.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-516",
+      "title": "Scaffold @lando/state-store workspace package",
+      "description": "As a maintainer, StateStore moves behind a private @lando/state-store package modeled on @lando/paths.",
+      "acceptanceCriteria": [
+        "Workspace package exists; core depends on it; plugins may depend on it; plugins still cannot depend on @lando/core.",
+        "Public types that must stay stable remain on sdk or documented core re-exports.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-517",
+      "title": "package-dag allowlists private seam packages",
+      "description": "As CI, check:package-dag knows paths, state-store, and sdk seams; still forbids plugins→core.",
+      "acceptanceCriteria": [
+        "package-dag rule updated and tested.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-518",
+      "title": "Migrate core/plugins imports to @lando/state-store",
+      "description": "As a maintainer, no deep imports into the old core/src/state ownership path remain outside the package.",
+      "acceptanceCriteria": [
+        "Import graph uses @lando/state-store.",
+        "Focused tests for lock/atomic write still green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-519",
+      "title": "Retire or thin check:state-store-boundary",
+      "description": "As a maintainer, package edges carry seam ownership; AST rule is removed or reduced to residual forbidden patterns.",
+      "acceptanceCriteria": [
+        "Boundary rule inventory documents keep vs thin vs delete.",
+        "check:state-store-boundary either deleted with alias note or thinned.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-520",
+      "title": "Thin paths/probe/redaction/renderer rules to import seams",
+      "description": "As a maintainer, where a package already owns the API, duplicate architecture-by-lint is thinned to import-edge checks.",
+      "acceptanceCriteria": [
+        "paths, probe, redaction, renderer rules reviewed; behavioral bans (console.*, hand-rolled retry) kept.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-521",
+      "title": "ROADMAP defer list for further extractions",
+      "description": "As a planner, network/managed-file and further god-package splits are explicitly deferred post-wave.",
+      "acceptanceCriteria": [
+        "ROADMAP or PRD-03 Non-Goals lists deferred extractions.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-522",
+      "title": "Single command registry module is source of truth",
+      "description": "As a maintainer, one registry holds canonical ids, flags, bootstrap level, run, help, and resultSchema.",
+      "acceptanceCriteria": [
+        "No second SoT for implemented vs deferred ids across OCLIF classes and runCompiledCli switches.",
+        "Registry drives help, dispatch, schema snapshot command list, and MCP projections.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-523",
+      "title": "Unify source entry on native dispatcher",
+      "description": "As a user, bun core/bin/lando.ts and the compiled binary call the same runCli/native dispatcher engine.",
+      "acceptanceCriteria": [
+        "Source path does not call @oclif/core execute() for shipping command dispatch.",
+        "core/bin/lando.ts and compiled entry share the engine.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-524",
+      "title": "Delete OCLIF runtime dependency from shipping CLI",
+      "description": "As a maintainer, @oclif/core is removed from the shipping CLI hot path and OCLIF command class tree is deleted or inert.",
+      "acceptanceCriteria": [
+        "package.json dependency graph for shipping CLI has no required @oclif/core runtime load.",
+        "Cold-start import graph excludes OCLIF.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-525",
+      "title": "Help and deferred-command UX from registry",
+      "description": "As a user, --help, unknown command, and deferred plans work without OCLIF help classes.",
+      "acceptanceCriteria": [
+        "Root and per-command help render from registry metadata.",
+        "Deferred ids emit NotImplementedError with phase-tagged remediation.",
+        "Flexible taxonomy policy documented for the native parser (colon canonical; space forms if supported).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-526",
+      "title": "Drop @lando/core/oclif public export",
+      "description": "As an embedding host, @lando/core/oclif is removed (or empty deprecated) per §9.",
+      "acceptanceCriteria": [
+        "package.json exports no longer advertise a required oclif adapter for shipping.",
+        "Embedding docs updated; boundary tests updated.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-527",
+      "title": "Replace dual parity layer with single-path suite",
+      "description": "As CI, source-vs-compiled OCLIF parity tests are deleted; relocated binary smoke + registry completeness + machine-output remain.",
+      "acceptanceCriteria": [
+        "core/test/cli/parity dual-path suite removed or reduced to single-engine registry completeness.",
+        "Machine-output and relocated binary tests still green.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-528",
+      "title": "Codegen: command registry manifest for embed",
+      "description": "As a releaser, the binary embeds a registry-derived command manifest; oclif-manifest generator is removed or repurposed.",
+      "acceptanceCriteria": [
+        "§17.2 catalog row updated; build embeds registry manifest.",
+        "No oclif.manifest.json required for shipping dispatch.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-529",
+      "title": "Cold-start gate: no OCLIF on level-none",
+      "description": "As CI, level-none fast path remains free of OCLIF and heavy Effect imports per §1.2.",
+      "acceptanceCriteria": [
+        "Import-boundary / cold-start tests updated for native dispatcher.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-530",
+      "title": "Migrate plugin setup flag merge off OCLIF metadata",
+      "description": "As a maintainer, setup.flags and topics merge through the native registry generators.",
+      "acceptanceCriteria": [
+        "codegen:setup-plugin-flags (or successor) feeds the native registry.",
+        "meta:setup still merges bundled plugin flags without importing bundled plugin graph into cold path.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-531",
+      "title": "Sweep dual-dispatch references in AGENTS and beta-1 notes",
+      "description": "As a maintainer, remaining OCLIF/runCompiledCli parity instructions are rewritten to native dispatcher.",
+      "acceptanceCriteria": [
+        "core/AGENTS.md CLI section describes single dispatcher.",
+        "rg for 'dual dispatch is permanent' returns only historical/superseded notes.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-532",
+      "title": "Wave closure",
+      "description": "As a maintainer, all architecture-simplicity stories pass with verification contracts green.",
+      "acceptanceCriteria": [
+        "prd.json all US-500..US-532 passes true.",
+        "codegen:check, typecheck, lint, boundary suite, focused CLI tests green.",
+        "progress.txt records closure.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": "PRD-00"
+    }
+  ]
+}

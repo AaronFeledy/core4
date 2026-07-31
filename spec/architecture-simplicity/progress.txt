@@ -1,0 +1,18 @@
+Branch: docs/architecture-simplicity-prd
+Source PRDs: spec/architecture-simplicity/prd-architecture-simplicity-*.md
+Spec source of truth: spec/01,02,08,09,13,14,15 + ROADMAP (dual-dispatch supersession)
+Origin: architecture review — dual CLI, committed derived artifacts, boundary-as-lint, drift checker sprawl
+
+## Conventions
+
+- Story IDs US-500..US-532; priority order is execution order.
+- Internal/infra only — Guide Coverage None on every PRD.
+- Do not touch unrelated dirty working-tree files from other waves.
+
+## Log
+
+## [2026-07-30] - US-500..US-504
+- Created wave folder, PRDs, prd.json, progress.txt.
+- Applied normative spec supersession for single dispatcher, artifact policy, internal packages, codegen:check drift.
+- Updated root/core/sdk AGENTS.md and check-guide-coverage allowlist.
+- Marked US-500..US-504 passes true (contract/scaffolding landed). Implementation stories US-505..US-532 remain open.

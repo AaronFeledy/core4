@@ -16,12 +16,22 @@ const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
 const SERVICE_TRUST_PRD_NUMBER_PATTERN = /prd-service-trust-(\d{2})-/;
 const SERVICE_TRUST_USER_FACING_PRD_NUMBERS = new Set(["01", "02"]);
 
+/** All numbered PRDs in this wave are internal/infra (Guide Coverage: None). */
+const ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN = /prd-architecture-simplicity-(\d{2})-/;
+const ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS = new Set(["01", "02", "03", "04"]);
+
 export type PrdClassification = "user-facing" | "internal" | "exempt";
 
 export const classifyPrd = (name: string): PrdClassification => {
   const serviceTrustNumber = name.match(SERVICE_TRUST_PRD_NUMBER_PATTERN)?.[1];
   if (serviceTrustNumber !== undefined) {
     return SERVICE_TRUST_USER_FACING_PRD_NUMBERS.has(serviceTrustNumber) ? "user-facing" : "exempt";
+  }
+  const architectureSimplicityNumber = name.match(ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN)?.[1];
+  if (architectureSimplicityNumber !== undefined) {
+    return ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS.has(architectureSimplicityNumber)
+      ? "internal"
+      : "exempt";
   }
   const number = name.match(PRD_NUMBER_PATTERN)?.[1];
   if (number === undefined) return "exempt";
@@ -213,6 +223,7 @@ export const checkGuideCoverageOnDisk = async (
     "prd/alpha-3",
     [internalSpecRoot, "alpha-3"].join("/"),
     [internalSpecRoot, "service-trust"].join("/"),
+    [internalSpecRoot, "architecture-simplicity"].join("/"),
   ];
   const specDirs =
     options.specDir !== undefined
