@@ -966,3 +966,23 @@ Spec SoT:
 - **Learnings for future iterations:** External CLI adapters must place `--` between trusted options and
   user-derived positional arguments, even when using argv-precise process execution rather than a shell.
 ---
+## 2026-07-31 13:29 CDT - Babysit
+- PR: none (no open PR for branch us-492-lando-certs-leaf-issuance)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (missing PR; push step should create/refresh it)
+---
+## 2026-07-31 13:41 CDT - US-492 Build Confirmation
+- Re-verified the story complete on its existing branch with no new production code. The adjudicated
+  boundary is fully satisfied: `lando.certs` at priority 1000 on the lando base defaults, planner leaf
+  issuance with the full SAN set through a fake authority injected at AppPlanner's `CertificateAuthority`
+  seam, custom cert/key validation and mounting, `certs: false` as a no-op, l337 excluded by default, and
+  mkcert argv option-parsing termination from the last review. Active authority selection, bundled
+  shipping, and bootstrap wiring remain assigned to US-500 and were deliberately not rebuilt.
+- Verification: typecheck, lint/deprecations, and the generated-output boundary passed; 39 focused and
+  adjacent tests with 229 assertions plus all 6 certificates guide scenarios passed; the working tree
+  showed no generator drift.
+- **Learnings for future iterations:**
+  - When a branch carries unmerged work whose PRD entry already passes, the Build step's job is a
+    verification sweep plus a progress note; adding code to look productive would reopen a closed contract.
+---
