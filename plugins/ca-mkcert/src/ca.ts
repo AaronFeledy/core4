@@ -157,7 +157,7 @@ export const makeMkcertCertificateAuthority = (
       const certPath = join(options.certsDir, `${name}.pem`);
       const keyPath = join(options.certsDir, `${name}-key.pem`);
       const names = [...new Set([...spec.sans, spec.cn])];
-      const result = yield* runMkcert(["-cert-file", certPath, "-key-file", keyPath, ...names], {
+      const result = yield* runMkcert(["-cert-file", certPath, "-key-file", keyPath, "--", ...names], {
         CAROOT: root,
       });
       if (result.exitCode !== 0) {
