@@ -941,3 +941,28 @@ Spec SoT:
   - Once Drift Audit excises a runtime surface and adjudication assigns it to a follow-up story,
     repeat Build passes should verify the retained seam rather than rebuilding the excised surface.
 ---
+
+## 2026-07-31 12:54 CDT - US-492 Review
+- Fixed mkcert argv option injection by terminating option parsing before Landofile-derived certificate
+  names; option-shaped SANs can no longer override output paths or trigger trust-store flags. Added a
+  regression that covers `-cert-file`, `-key-file`, and `-uninstall`, and synchronized the human PRD
+  index/source with the adjudicated US-500 ownership and 18-story execution order.
+- Review notes (deferred/rejected): Cursor Bugbot remained inconclusive because every initial and post-fix
+  attempt hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Warm-cache issuance semantics remain a US-500 production-wiring
+  decision, not a US-492 blocker; issuing before cache lookup currently ensures referenced leaf files
+  exist, and no acceptance criterion defines rotation or cache-hit behavior.
+- Review notes (deferred/rejected): Rejected story-local fixes for control-byte error sanitization,
+  certificate-material size limits, and the shared realpath/FileSystem split. The findings are
+  low-severity same-user concerns or established cross-cutting boundaries with no new privilege impact;
+  solving them locally would duplicate policy rather than close this story's contract.
+- Review notes (deferred/rejected): Rejected tightening the planner-only feature schema and splitting the
+  composition test as non-blocking internal-contract/style work; current production callers generate a
+  coherent config and the behavioral scenarios remain explicit.
+- Guide-Coverage-Skip: Review changed mkcert argv safety and source PRD ownership only; the existing certificates-mkcert guide already covers the unchanged user TLS behavior.
+- Verification: clean detached HEAD passed typecheck, lint/deprecations, 70 focused and adjacent tests with
+  306 assertions, six certificates guide scenarios, guide lint/coverage, base-aware guide drift, diff
+  check, and changed-file diagnostics; the focused security re-review passed with no remaining blocker.
+- **Learnings for future iterations:** External CLI adapters must place `--` between trusted options and
+  user-derived positional arguments, even when using argv-precise process execution rather than a shell.
+---
