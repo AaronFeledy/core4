@@ -1070,3 +1070,25 @@ Spec SoT:
   - Test cleanup must not replace explicit narrowing guards with non-null assertions or remove fail-hard
     branches after an expectation; those guards keep later tagged-failure inspection non-vacuous.
 ---
+
+## 2026-07-31 16:27 CDT - US-492 Review
+- Corrected the certificate guide so it describes the planner's internal-alias issuance request and the
+  resulting SAN coverage without claiming pinned mkcert writes that alias into the PEM certificate's empty
+  X.509 common-name field.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
+  the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected preserving the source `CaError` tag through the Landofile
+  validation boundary, replacing the shared realpath containment seam, and tightening planner-only feature
+  metadata as non-blocking cross-cutting or internal-contract work already considered by prior review.
+- Review notes (deferred/rejected): Rejected a story-local fix for lone-surrogate programmatic service names;
+  normal Landofile keys cannot express them and total service-name validation belongs at the shared schema.
+- Review notes (deferred/rejected): Deferred the US-500 identifier collision with open architecture PR #666
+  to cross-PR coordination; service-trust allocated the id first, and the numeric follow-up id does not affect
+  any US-492 acceptance criterion or justify rewriting the recorded adjudication in this review.
+- Verification: typecheck, lint/deprecations, guide lint, focused guide execution, and base-aware guide drift
+  passed; 83 focused and adjacent tests passed across schema, planner, feature, composition, mkcert, and guide
+  coverage files, with all five `review-work` lanes terminal and no story blocker confirmed.
+- **Learnings for future iterations:** mkcert v1.4.4 PEM certificates carry requested names in SANs and leave
+  Subject.CommonName empty; documentation must distinguish the authority request's `cn` field from the
+  emitted X.509 subject.
+---
