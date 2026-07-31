@@ -15,10 +15,10 @@ const certsFeature = (): ServiceFeatureDefinition => {
   return definition;
 };
 
-const composeCerts = (config: Readonly<Record<string, unknown>> = {}) =>
+const composeCerts = (config: Readonly<Record<string, unknown>> = {}, serviceName = "web") =>
   composeService({
     base: {
-      name: ServiceName.make("web"),
+      name: ServiceName.make(serviceName),
       type: "node:22",
       provider: ProviderId.make("lando"),
       primary: true,
@@ -93,6 +93,15 @@ describe("lando.certs feature", () => {
       expect(exit.cause.error._tag).toBe("ServiceFeatureError");
       expect(String(exit.cause.error)).toContain("keyPath requires certPath");
     }
+  });
+
+  test("contains service names within the leaf directory", async () => {
+    const plan = await Effect.runPromise(
+      composeCerts({ certPath: "/host/certs/web.crt", keyPath: "/host/certs/web.key" }, "../outside"),
+    );
+
+    expect(plan.environment.LANDO_SERVICE_CERT).toBe("/etc/lando/certs/leaf/%2E%2E%2Foutside.crt");
+    expect(plan.environment.LANDO_SERVICE_KEY).toBe("/etc/lando/certs/leaf/%2E%2E%2Foutside.key");
   });
 
   test("records the certificate plan when cn and caId are present", async () => {

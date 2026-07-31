@@ -12,6 +12,8 @@ export const LANDO_CERTS_FEATURE_PRIORITY = 1000;
 
 const LEAF_CERT_DIRECTORY = "/etc/lando/certs/leaf" as const;
 
+const leafFileName = (serviceName: string): string => encodeURIComponent(serviceName).replaceAll(".", "%2E");
+
 const LandoCertsFeatureConfigSchema = Schema.Struct({
   certPath: Schema.optional(Schema.String),
   keyPath: Schema.optional(Schema.String),
@@ -32,9 +34,10 @@ export const landoCertsFeature: ServiceFeatureDefinition = {
   apply: (ctx) =>
     Effect.sync(() => {
       const config = ctx.config as LandoCertsFeatureConfig;
+      const serviceFileName = leafFileName(ctx.serviceName);
 
       if (config.certPath !== undefined) {
-        const target = `${LEAF_CERT_DIRECTORY}/${ctx.serviceName}.crt`;
+        const target = `${LEAF_CERT_DIRECTORY}/${serviceFileName}.crt`;
         ctx.addMount({
           type: "bind",
           source: config.certPath,
@@ -45,7 +48,7 @@ export const landoCertsFeature: ServiceFeatureDefinition = {
       }
 
       if (config.keyPath !== undefined) {
-        const target = `${LEAF_CERT_DIRECTORY}/${ctx.serviceName}.key`;
+        const target = `${LEAF_CERT_DIRECTORY}/${serviceFileName}.key`;
         ctx.addMount({
           type: "bind",
           source: config.keyPath,
