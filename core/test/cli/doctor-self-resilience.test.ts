@@ -38,6 +38,19 @@ const restoreEnv = (key: string, value: string | undefined): void => {
 };
 
 describe("doctor safe mode", () => {
+  test("keeps AbortSignal cancellation on the resilient path", async () => {
+    // Given an already-cancelled doctor run
+    const controller = new AbortController();
+    controller.abort();
+
+    // When
+    const exit = await Effect.runPromiseExit(resilientDoctorReport({ signal: controller.signal }));
+
+    // Then
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+  });
+
   test("reports a bootstrap failure as a self check and still returns a report", async () => {
     // Given a config file the YAML reader cannot parse, which fails the
     // provider runtime build itself
