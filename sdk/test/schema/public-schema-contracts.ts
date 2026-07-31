@@ -186,6 +186,7 @@ export const PUBLIC_SCHEMA_CONTRACT_FIXTURES = {
   PluginSetupFlagContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PluginSetupContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PluginContribution: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
+  PluginDoctorReport: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   PluginManifest: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,
   ProxyServiceContribution: "sdk/test/contract/proxy-service.test.ts",
   PluginTrustState: PUBLIC_SCHEMA_CONTRACT_TEST_FILE,

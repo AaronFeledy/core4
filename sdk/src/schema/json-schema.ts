@@ -239,6 +239,7 @@ import {
   SharedNetworkMembershipPlan,
 } from "./networking.ts";
 import { NotifyConfig } from "./notify-config.ts";
+import { PluginDoctorReport } from "./plugin-doctor.ts";
 import { PluginTrustState } from "./plugin-trust.ts";
 import {
   ContributionRef,
@@ -527,6 +528,7 @@ const rawPublicSchemaRegistry = {
   PluginSetupFlagContribution,
   PluginSetupContribution,
   PluginContribution,
+  PluginDoctorReport,
   PluginManifest,
   ProxyServiceContribution,
   PluginTrustState,
@@ -845,6 +847,7 @@ const PUBLIC_SCHEMA_DESCRIPTIONS = {
   PluginSetupContribution: "Public Lando schema contract for Plugin Setup Contribution.",
   PluginContribution: "Public Lando schema contract for Plugin Contribution.",
   PluginManifest: "Public Lando schema contract for Plugin Manifest.",
+  PluginDoctorReport: "Public Lando schema contract for plugin-contributed doctor results.",
   PluginTrustState: "Public Lando schema contract for Plugin Trust State.",
   GlobalServiceContribution: "Public Lando schema contract for Global Service Contribution.",
   ProxyServiceContribution: "Public Lando schema contract for Proxy Service Contribution.",

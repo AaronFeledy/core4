@@ -114,6 +114,7 @@ describe("@lando/sdk package exports", () => {
     expect(schema.ProviderId).toBeDefined();
     expect(schema.HostPlatform).toBeDefined();
     expect(schema.ServiceInfo).toBeDefined();
+    expect(schema.PluginDoctorReport).toBeDefined();
     expect(schema.PluginManifest).toBeDefined();
     expect(schema.EmbeddingPluginPolicy).toBeDefined();
     expect(schema.RecipeRegistryResolution).toBeDefined();
@@ -171,6 +172,7 @@ describe("@lando/sdk package exports", () => {
       "ProviderId",
       "HostPlatform",
       "ServiceInfo",
+      "PluginDoctorReport",
       "PluginManifest",
       "Transcript",
       "ServiceConfig",
