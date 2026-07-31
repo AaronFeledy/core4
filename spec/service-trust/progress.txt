@@ -1018,3 +1018,18 @@ Spec SoT:
   - Two loop sessions verified this story in parallel and both logged it; when that happens, keep the
     later entry to the delta instead of restating the shared evidence.
 ---
+
+## 2026-07-31 14:06 CDT - US-492 Build Confirmation
+- Verified the adjudicated story complete on its existing branch with no new production code. The retained
+  `lando.certs` feature, fake-authority planner issuance, SAN ordering, custom-material validation,
+  `certs: false` no-op, l337 exclusion, guide coverage, and mkcert option termination remain complete;
+  active authority selection and runtime integration remain assigned to US-500.
+- Verification: typecheck, lint/deprecations, all boundary rules, package DAG, generated output, guide lint,
+  guide coverage, and base-aware guide drift passed; 39 focused and adjacent tests with 229 assertions plus
+  all 6 certificate guide scenarios passed, and changed-file diagnostics were clean. Sandbox
+  `app:cache:refresh` proved custom cert/key mounts and environment, disabled-service inertness, outside-root
+  rejection, and compose/l337-base exclusion; all QA roots and caches were removed.
+- **Learnings for future iterations:**
+  - The authorable raw l337-base service type is `compose`; `l337` is the internal base id and is not a
+    registered Landofile service type, so real-surface exclusion probes should use `type: compose`.
+---
