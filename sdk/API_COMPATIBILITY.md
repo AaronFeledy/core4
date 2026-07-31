@@ -90,6 +90,7 @@
 
 ## Additive Alpha schema exports
 
+- `PluginDoctorReport`
 - `FileRef`
 - `ImportRef`
 - `LandofileLayer`

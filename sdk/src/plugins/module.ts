@@ -9,6 +9,7 @@ import type {
   ProviderId,
   ServiceConfig,
 } from "../schema/index.ts";
+import type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
@@ -78,23 +79,7 @@ export interface PluginDoctorCheckContribution {
   }) => Effect.Effect<ReadonlyArray<PluginDoctorReport>, never>;
 }
 
-export interface PluginDoctorReport {
-  readonly name: string;
-  readonly status: "pass" | "warn" | "fail";
-  readonly severity: "info" | "warn" | "error";
-  readonly runtimeStatus?: string;
-  readonly runtime?: {
-    readonly running: boolean;
-    readonly version?: string;
-  };
-  readonly context: Readonly<Record<string, string>>;
-  readonly solutions: ReadonlyArray<{
-    readonly kind: "automatic" | "manual";
-    readonly description: string;
-    readonly command?: string;
-  }>;
-  readonly preempts?: boolean;
-}
+export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
 
 export type FileSyncEngineContribution = Layer.Layer<FileSyncEngine, unknown, unknown>;
 export type ProxyServiceContributionLayer = Layer.Layer<

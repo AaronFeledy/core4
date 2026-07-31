@@ -460,7 +460,7 @@ export const doctor = (
         userDataRoot,
         binDir: userDataRoot === undefined ? undefined : makeLandoPaths({ userDataRoot }).binDir,
       },
-      redact,
+      redactor,
       probeBudget,
     );
     const reports = pluginOutcome.reports;

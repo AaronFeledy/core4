@@ -105,6 +105,7 @@ export * from "./mounts.ts";
 export * from "./networking.ts";
 export * from "./notify-config.ts";
 export * from "./plugin.ts";
+export * from "./plugin-doctor.ts";
 export * from "./plugin-trust.ts";
 export * from "./provider-setup.ts";
 export * from "./proxy.ts";

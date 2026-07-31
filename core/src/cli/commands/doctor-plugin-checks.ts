@@ -6,14 +6,15 @@
  * hanging or throwing contribution degrades to one attributed self check and
  * cannot take the doctor run down.
  */
-import { Effect, Either } from "effect";
+import { Effect, Either, Schema } from "effect";
 
-import type {
-  LandoPluginModule,
-  PluginDoctorCheckContribution,
+import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
+import {
+  type HostPlatform,
   PluginDoctorReport,
-} from "@lando/sdk/plugins";
-import type { HostPlatform, ProviderCapabilities as ProviderCapabilitiesShape } from "@lando/sdk/schema";
+  type ProviderCapabilities as ProviderCapabilitiesShape,
+} from "@lando/sdk/schema";
+import type { Redactor } from "@lando/sdk/secrets";
 
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import type { DoctorCheck, DoctorSelectionRecord } from "./doctor-contract.ts";
@@ -63,6 +64,13 @@ export interface PluginDoctorRunOutcome {
  * section, and shrink further when the section budget is lowered.
  */
 const PROBE_BUDGET_MS = 5_000;
+const MAX_REPORTS_PER_CHECK = 32;
+const PluginDoctorReports = Schema.Array(PluginDoctorReport).pipe(Schema.maxItems(MAX_REPORTS_PER_CHECK));
+
+class PluginDoctorReportInvalidError extends Schema.TaggedError<PluginDoctorReportInvalidError>()(
+  "PluginDoctorReportInvalidError",
+  { message: Schema.String },
+) {}
 
 export const probeBudgetMs = (sectionBudgetMs: number): number =>
   Math.min(PROBE_BUDGET_MS, Math.floor(sectionBudgetMs / 3));
@@ -82,7 +90,7 @@ const PLUGIN_INDEX_REMEDIATION: DoctorSelfSolution = {
 export const pluginDoctorReports = (
   modules: ReadonlyArray<LandoPluginModule>,
   input: PluginDoctorInput,
-  redact: (value: string) => string,
+  redactor: Redactor,
   budgetMs: number,
 ): Effect.Effect<PluginDoctorRunOutcome, never> =>
   Effect.gen(function* () {
@@ -95,7 +103,7 @@ export const pluginDoctorReports = (
           doctorSelfCheck({
             section: "plugin-doctor-checks",
             reason: "failure",
-            message: redactDoctorMessage(described.message, redact),
+            message: redactDoctorMessage(described.message, redactor.redactString),
             ...(described.tag === undefined ? {} : { tag: described.tag }),
             solutions: [PLUGIN_INDEX_REMEDIATION],
           }),
@@ -110,10 +118,35 @@ export const pluginDoctorReports = (
           section: `plugin-check:${id}`,
           // Suspended so a synchronous throw while *building* the effect is
           // attributed to the plugin rather than escaping the isolate.
-          effect: Effect.suspend(() => check.run(input)),
+          effect: Effect.suspend(() => check.run(input)).pipe(
+            Effect.flatMap((reports) =>
+              Schema.decodeUnknown(PluginDoctorReports, { onExcessProperty: "error" })(reports).pipe(
+                Effect.map((decoded) =>
+                  decoded.map((report) =>
+                    redactor.redactValue({
+                      ...report,
+                      context: Object.fromEntries(
+                        Object.entries(report.context).map(([key, value]) => [
+                          redactor.redactString(key),
+                          value,
+                        ]),
+                      ),
+                    }),
+                  ),
+                ),
+                Effect.flatMap(Schema.decodeUnknown(PluginDoctorReports)),
+                Effect.mapError(
+                  () =>
+                    new PluginDoctorReportInvalidError({
+                      message: `Plugin doctor check returned an invalid payload. Reports are limited to ${MAX_REPORTS_PER_CHECK} entries; update the owning plugin to satisfy PluginDoctorReport.`,
+                    }),
+                ),
+              ),
+            ),
+          ),
           fallback: [] as ReadonlyArray<PluginDoctorReport>,
           budgetMs,
-          redact,
+          redact: redactor.redactString,
           context: { checkId: id },
           solutions: [PLUGIN_CHECK_REMEDIATION],
         }).pipe(Effect.map((outcome) => ({ outcome, relevant: check.relevant }))),
@@ -158,9 +191,19 @@ export const mapPluginDoctorCheck = ({
   providerVersion: provider.version,
   providerKind: providerKindFor(provider.id),
   runtimeStatus: report.runtimeStatus ?? "unknown",
-  runtime: report.runtime ?? { running: report.status === "pass" },
+  runtime:
+    report.runtime === undefined
+      ? { running: report.status === "pass" }
+      : {
+          running: report.runtime.running,
+          ...(report.runtime.version === undefined ? {} : { version: report.runtime.version }),
+        },
   capabilities: {},
   context: report.context,
-  solutions: report.solutions,
+  solutions: report.solutions.map((solution) => ({
+    kind: solution.kind,
+    description: solution.description,
+    ...(solution.command === undefined ? {} : { command: solution.command }),
+  })),
   selection,
 });
