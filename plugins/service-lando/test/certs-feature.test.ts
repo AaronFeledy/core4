@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect, Option } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
@@ -89,10 +89,10 @@ describe("lando.certs feature", () => {
     const exit = await Effect.runPromiseExit(composeCerts({ keyPath: "/host/certs/web.key" }));
 
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("ServiceFeatureError");
-      expect(String(exit.cause.error)).toContain("keyPath requires certPath");
-    }
+    if (exit._tag !== "Failure") throw new Error("expected feature failure");
+    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    expect(failure._tag).toBe("ServiceFeatureError");
+    expect(String(failure)).toContain("keyPath requires certPath");
   });
 
   test("contains service names within the leaf directory", async () => {
@@ -131,9 +131,9 @@ describe("lando.certs feature", () => {
     const exit = await Effect.runPromiseExit(composeCerts({ certPath: 42 }));
 
     expect(exit._tag).toBe("Failure");
-    if (exit._tag === "Failure" && exit.cause._tag === "Fail") {
-      expect(exit.cause.error._tag).toBe("ServiceFeatureError");
-      expect(exit.cause.error.feature).toBe(LANDO_CERTS_FEATURE_ID);
-    }
+    if (exit._tag !== "Failure") throw new Error("expected feature failure");
+    const failure = Option.getOrThrow(Cause.failureOption(exit.cause));
+    expect(failure._tag).toBe("ServiceFeatureError");
+    expect(failure.feature).toBe(LANDO_CERTS_FEATURE_ID);
   });
 });
