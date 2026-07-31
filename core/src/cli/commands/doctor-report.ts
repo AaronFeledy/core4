@@ -19,6 +19,7 @@ import type {
   DoctorReport,
 } from "./doctor-report-contract.ts";
 import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
+import { interruptOnAbort } from "./doctor-abort.ts";
 import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems.ts";
 import { appVersionConstraintsForReport } from "./doctor-version-constraint.ts";
 import { type DoctorOptions, type DoctorResult, doctor } from "./doctor.ts";
@@ -169,7 +170,7 @@ export const collectDoctorReport = <R>(
       ...(appConfig === undefined ? {} : { appConfig }),
       ...(selfChecks.length === 0 ? {} : { self: { checks: selfChecks } }),
     };
-  });
+  }).pipe((effect) => interruptOnAbort(effect, input.options.signal));
 
 /**
  * Build the combined report against an already-provided runtime.

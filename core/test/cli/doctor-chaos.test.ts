@@ -1,6 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
-import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema, TestClock, TestContext } from "effect";
+import {
+  Cause,
+  type Context,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  Option,
+  Schema,
+  TestClock,
+  TestContext,
+} from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
@@ -83,6 +95,33 @@ const selfSections = (report: { readonly self?: { readonly checks: ReadonlyArray
   (report.self?.checks ?? []).map((check) => check.section);
 
 describe("doctor chaos: provider path", () => {
+  test("interrupts doctor when its AbortSignal aborts mid-flight", async () => {
+    // Given a provider status probe that has started and will never settle
+    const started = Effect.runSync(Deferred.make<void>());
+    const controller = new AbortController();
+    const layers = layersFor(
+      statusRegistry(
+        Deferred.succeed(started, undefined).pipe(
+          Effect.zipRight(Effect.never),
+        ) as typeof TestRuntimeProvider.getStatus,
+      ),
+    );
+
+    // When the caller aborts the run
+    const exit = await Effect.runPromise(
+      Effect.gen(function* () {
+        const fiber = yield* Effect.fork(doctor({ signal: controller.signal }).pipe(Effect.provide(layers)));
+        yield* Deferred.await(started);
+        yield* Effect.sync(() => controller.abort());
+        return yield* Fiber.await(fiber);
+      }),
+    );
+
+    // Then cancellation interrupts the run instead of becoming a self check
+    expect(Exit.isFailure(exit)).toBe(true);
+    if (Exit.isFailure(exit)) expect(Cause.isInterrupted(exit.cause)).toBe(true);
+  });
+
   test("reports a failed selected-provider check when provider selection fails", async () => {
     // Given a registry whose select always fails
     const layers = layersFor(failingSelectRegistry());
