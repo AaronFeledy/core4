@@ -19,7 +19,6 @@ export type AppPlannerCertsPlanInput = {
   readonly ca?: AppPlannerCertsTestCa | undefined;
 };
 
-/** Plan an app through AppPlannerLive with an optional fake CA at the CertificateAuthority seam. */
 export const planAppPlannerCertsEffect = (input: AppPlannerCertsPlanInput) => {
   const dependencies = Layer.mergeAll(
     PluginRegistryLive,
