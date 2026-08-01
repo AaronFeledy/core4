@@ -37,6 +37,7 @@ export interface GraphCertificateAuthorityCandidate {
 export interface PluginContributionGraphShape {
   readonly plugins: ReadonlyArray<LoadedPluginContribution>;
   readonly certificateAuthorities: ReadonlyArray<GraphCertificateAuthorityCandidate>;
+  readonly hostContext: Context.Context<never>;
 }
 
 export class PluginContributionGraph extends Context.Tag("@lando/core/private/PluginContributionGraph")<
@@ -173,7 +174,17 @@ export const makePluginContributionGraphLive = (policy: PluginContributionGraphP
       const graph: PluginContributionGraphShape = {
         plugins: merged,
         certificateAuthorities: [...rawCandidates, ...manifestCandidates(merged)],
+        hostContext: rawContext,
       };
       return Context.add(rawContext, PluginContributionGraph, graph);
     }),
   );
+
+export const withPluginLayerOverrides = <A, E, R>(
+  runtimeLayer: Layer.Layer<A | PluginContributionGraph, E, R>,
+): Layer.Layer<A | PluginContributionGraph, E, R> => {
+  const hostOverrides = Layer.scopedContext(
+    Effect.map(PluginContributionGraph, (graph) => graph.hostContext),
+  ).pipe(Layer.provide(runtimeLayer));
+  return Layer.merge(runtimeLayer, hostOverrides);
+};
