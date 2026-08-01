@@ -16,7 +16,6 @@ const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
 const SERVICE_TRUST_PRD_NUMBER_PATTERN = /prd-service-trust-(\d{2})-/;
 const SERVICE_TRUST_USER_FACING_PRD_NUMBERS = new Set(["01", "02"]);
 
-/** All numbered PRDs in this wave are internal/infra (Guide Coverage: None). */
 const ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN = /prd-architecture-simplicity-(\d{2})-/;
 const ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS = new Set(["01", "02", "03", "04"]);
 

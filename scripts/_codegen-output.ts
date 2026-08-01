@@ -7,7 +7,7 @@ type CodegenOutputPathErrorReason = "empty" | "outside-repository" | "repository
 const codegenOutputPathErrorMessage = {
   empty: () => "At least one non-empty generated path is required for Biome formatting.",
   "outside-repository": (path: string | undefined) =>
-    `Generated path resolves outside the repository: ${String(path)}`,
+    `Generated path resolves outside the repository: ${path}`,
   "repository-root": () => "The repository root is not a generated output path.",
 } satisfies Record<CodegenOutputPathErrorReason, (path: string | undefined) => string>;
 

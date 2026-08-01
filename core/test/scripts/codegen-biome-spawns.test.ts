@@ -18,9 +18,7 @@ const hasDirectBiomeSpawn = (path: string, source: string): boolean => {
       ts.isCallExpression(node) &&
       ((ts.isPropertyAccessExpression(node.expression) && node.expression.name.text === "spawn") ||
         (ts.isIdentifier(node.expression) && node.expression.text === "spawn")) &&
-      node.arguments.some((argument) =>
-        [...argument.getText(sourceFile).matchAll(/["']biome["']/gu)].some(() => true),
-      )
+      node.arguments.some((argument) => /["']biome["']/u.test(argument.getText(sourceFile)))
     ) {
       found = true;
       return;
