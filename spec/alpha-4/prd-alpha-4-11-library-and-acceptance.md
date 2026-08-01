@@ -124,6 +124,8 @@ Depends on: **ALPHA4-01 through ALPHA4-10**.
 
 **Description:** As a release engineer, I can verify external compiled-plugin loading and the codegen, bundled-plugin-removal, and recipe-codegen gates on linux-x64, completing the full §17.9 acceptance set in the last feature-adding phase.
 
+> **Historical acceptance record:** criteria 25–27 below describe the Alpha 4 generator and artifact model. Architecture-simplicity later supersedes their forward-looking effect: US-505 makes pure drift a dedicated `codegen:check` target; today's bundled-plugin generator emits `core/src/plugins/generated/bundled.ts` and `renderers.ts` without changing the OCLIF command manifest; and today's bundled-recipe generator requires the `core/build.config.ts` ship-list entry plus `core/src/recipes/builtin/<id>/manifest.ts`. The criteria remain unchanged as the Alpha 4 record; current work follows §17.2 and §17.9.
+
 **Acceptance Criteria:**
 - [ ] Criteria 20–24 pass on linux-x64: the compiled binary loads an external ESM plugin by absolute `file://` URL from a Lando-managed plugin store, loads an external TypeScript plugin where Bun supports the file type directly, resolves dependencies installed under an external plugin package root, rejects plugin contribution module paths that resolve outside the plugin package root, and marks a failed external plugin import unhealthy with a tagged `PluginLoadError` without preventing unrelated plugins from loading.
 - [ ] Criterion 25 passes: `bun run codegen:check` succeeds on a clean checkout with no uncommitted changes.

@@ -4,7 +4,7 @@
 
 Alpha 4 closes the remaining §14.2 decisions that affect runtime trust, CLI dispatch assumptions, setup behavior, Compose compatibility, and SSH agent realization. This PRD records those decisions as implementation stories so the final answer is not just prose: package metadata, schemas, CLI behavior, generated docs, tests, and user-facing guides must all reflect the chosen direction.
 
-Compiled-binary CLI dispatch unification is already resolved as permanent dual dispatch per §8.4.1 and Appendix D.1. This PRD treats that as fixed context, not a decision to reopen.
+At Alpha 4, compiled-binary CLI dispatch unification was resolved as permanent dual dispatch under the then-current §8.4.1 and Appendix D.1. This PRD records that historical context; architecture-simplicity (US-522..US-531) later supersedes it with one native dispatcher for source and compiled modes.
 
 Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), because provider auto-setup defaults and trust prompts must align with the finished setup surface.
 
@@ -14,12 +14,12 @@ Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), beca
 - [`spec/10-plugins.md`](../10-plugins.md) §9 plugin discovery, install, and postinstall trust policy.
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7 Compose subset and schema publication.
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.4 SSH and host identity.
-- [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.4.1 dual-dispatch parity.
+- [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.4.1 single native dispatcher, which supersedes the Alpha 4 dual-dispatch decision.
 
 ## Goals
 
 - Close every remaining §14.2 decision that blocks the Beta 1 feature-freeze boundary.
-- Keep current hard facts explicit: Bun floor is `>=1.3.14`, OCLIF is v4 today, and compiled dispatch remains permanently dual path.
+- Keep current hard facts explicit: Bun floor is `>=1.3.14`, and OCLIF v4 remains the dependency lock for as long as the OCLIF source-mode path exists. Alpha 4's "permanent dual dispatch" decision is historical only; it is superseded by §8.4.1 and architecture-simplicity (US-522..US-531), which collapse to one native dispatcher.
 - Publish schema-backed compatibility and trust surfaces instead of relying on narrative docs alone.
 - Make untrusted plugin postinstall behavior safe by default while preserving a deliberate trust path for users and authoring workflows.
 
@@ -39,7 +39,9 @@ Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), beca
 
 ### US-209: OCLIF major lock decision
 
-**Description:** As a CLI maintainer, I need the OCLIF v4 versus v5 decision closed so source-mode CLI behavior, manifest generation, and dual-dispatch parity tests have a stable target.
+> **Two decisions, one story:** the OCLIF v4 vs. v5 lock below remains an accurate, current dependency fact for as long as the OCLIF source-mode path exists. The "dual-dispatch parity tests" framing was Alpha 4's authoritative context at the time; that permanence is superseded by normative §8.4.1 and architecture-simplicity (US-522..US-531), which collapse to one native dispatcher and remove OCLIF from the shipping CLI path. Historical AC below remain the Alpha 4 record.
+
+**Description:** As a CLI maintainer, I needed the OCLIF v4 versus v5 decision closed so source-mode CLI behavior and manifest generation had a stable target; at Alpha 4 this decision also fed dual-dispatch parity tests, an authoritative-at-the-time framing now superseded by architecture-simplicity.
 
 **Acceptance Criteria:**
 - [ ] A Alpha 4 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.
@@ -115,7 +117,7 @@ Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), beca
 ## Functional Requirements
 
 - FR-1: The Bun version floor must be one value across package metadata, docs, installers, and release validation.
-- FR-2: The OCLIF major decision must preserve the permanent dual-dispatch model and keep source CLI and compiled `$bunfs` parity tests authoritative.
+- FR-2: The OCLIF major-version lock (v4) must remain an accurate current dependency fact for source-mode CLI as long as the OCLIF path exists; it no longer mandates a permanent dual-dispatch model. Compiled-binary dispatch is governed by normative §8.4.1 and architecture-simplicity (US-522..US-531), not by this decision.
 - FR-3: Provider auto-setup must have one default UX across `lando setup`, first-run prompts, non-interactive mode, and docs.
 - FR-4: Compose top-level key handling must be schema-backed and must include remediation for accepted, deprecated, and rejected keys.
 - FR-5: `sshAgent.sidecar: false` must be either implemented safely or rejected explicitly; silent partial support is forbidden.
@@ -124,7 +126,7 @@ Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), beca
 
 ## Non-Goals
 
-- Reopening compiled-binary CLI dispatch unification.
+- Reopening compiled-binary CLI dispatch unification within this PRD's scope; that reopening is architecture-simplicity's (US-522..US-531), not Alpha 4's.
 - Adding plugin-owned `meta:plugin:*` commands.
 - Shipping a web UI for trust management.
 - Supporting arbitrary Compose behavior beyond the frozen top-level key subset.
@@ -132,9 +134,9 @@ Depends on: **ALPHA4-01** (`lando setup` and `lando uninstall` completion), beca
 
 ## Technical Considerations
 
-- The compiled binary dispatch decision is already permanent: OCLIF remains source-mode only, and `runCompiledCli` remains the compiled dispatcher.
+- At Alpha 4, the compiled-binary dispatch decision was treated as permanent: OCLIF stayed source-mode only, and `runCompiledCli` was the compiled dispatcher. That permanence is superseded by architecture-simplicity's single native dispatcher (§8.4.1, US-522..US-531), which removes OCLIF from the shipping CLI path.
 - Trust storage belongs under `<userConfRoot>`, while plugin install state and authoring links remain under the existing plugin roots.
-- Cache invalidation for trust changes must cover plugin command cache, OCLIF shim cache where applicable, and plugin discovery cache.
+- Cache invalidation for trust changes must cover plugin command cache, the OCLIF shim cache for as long as the OCLIF source-mode dispatch path exists, and plugin discovery cache.
 - The Compose key matrix should be generated from, or mechanically checked against, the schema layer so docs cannot drift.
 - Non-interactive plugin installation should fail safe by treating untrusted postinstall scripts as disabled, not by prompting or running scripts.
 
