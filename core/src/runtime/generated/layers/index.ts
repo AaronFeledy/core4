@@ -15,6 +15,7 @@ import { Effect, Layer, Option } from "effect";
 
 import type { BootstrapLevel } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
+import { withPluginLayerOverrides } from "../../../plugins/contribution-graph.ts";
 import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";
 import { superviseBootstrapLayer } from "../../bootstrap-lifecycle.ts";
 import { makeAppBootstrapLayer } from "./app.ts";
@@ -34,19 +35,19 @@ export const makeGeneratedBootstrapLayer = (bootstrap: BootstrapLevel, inputs: B
     case "minimal":
       return makeMinimalBootstrapLayer(inputs);
     case "plugins":
-      return makePluginsBootstrapBaseLayer(inputs);
+      return withPluginLayerOverrides(makePluginsBootstrapBaseLayer(inputs));
     case "commands":
-      return makeCommandsBootstrapLayer(inputs);
+      return withPluginLayerOverrides(makeCommandsBootstrapLayer(inputs));
     case "tooling":
-      return makeToolingBootstrapLayer(inputs);
+      return withPluginLayerOverrides(makeToolingBootstrapLayer(inputs));
     case "provider":
-      return makeProviderBootstrapLayer(inputs);
+      return withPluginLayerOverrides(makeProviderBootstrapLayer(inputs));
     case "global":
-      return makeGlobalBootstrapLayer(inputs);
+      return withPluginLayerOverrides(makeGlobalBootstrapLayer(inputs));
     case "scratch":
-      return makeScratchBootstrapLayer(inputs);
+      return withPluginLayerOverrides(makeScratchBootstrapLayer(inputs));
     case "app":
-      return makeAppBootstrapLayer(inputs);
+      return withPluginLayerOverrides(makeAppBootstrapLayer(inputs));
   }
 };
 

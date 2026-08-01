@@ -24,7 +24,7 @@ type ContributionKind =
   | "renderers"
   | "templateEngines"
   | "fileSyncEngines"
-  | "cas"
+  | "certificateAuthorities"
   | "commands";
 
 const CONTRIBUTION_KIND_TO_DEPRECATION_KIND = {
@@ -35,7 +35,7 @@ const CONTRIBUTION_KIND_TO_DEPRECATION_KIND = {
   renderers: "render-event",
   templateEngines: "manifest-contribution",
   fileSyncEngines: "manifest-contribution",
-  cas: "manifest-contribution",
+  certificateAuthorities: "manifest-contribution",
   commands: "command",
 } as const;
 
@@ -47,7 +47,7 @@ const CONTRIBUTION_KINDS: ReadonlyArray<ContributionKind> = [
   "renderers",
   "templateEngines",
   "fileSyncEngines",
-  "cas",
+  "certificateAuthorities",
   "commands",
 ];
 

@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 
+import * as caMkcert from "@lando/ca-mkcert";
 import * as fileSyncMutagen from "@lando/file-sync-mutagen";
 import * as loggerPretty from "@lando/logger-pretty";
 import * as notifyLando from "@lando/notify-lando";
@@ -32,6 +33,7 @@ const EXPECTED_BUNDLED_PLUGIN_MODULES = [
   rendererLando.plugin,
   notifyLando.plugin,
   fileSyncMutagen.plugin,
+  caMkcert.plugin,
   proxyTraefik.plugin,
   templateHandlebars.plugin,
   templateMustache.plugin,
@@ -44,12 +46,17 @@ const rendererIndexPath = resolve(import.meta.dirname, "../../../plugins/rendere
 
 describe("bundled plugin descriptor tables", () => {
   test("exports every bundled plugin descriptor in ship-list order", () => {
-    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(11);
+    expect(BUNDLED_PLUGIN_MODULES).toHaveLength(12);
     expect(BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name)).toEqual(
       EXPECTED_BUNDLED_PLUGIN_MODULES.map((plugin) => plugin.name),
     );
     expect(BUNDLED_PLUGIN_MODULES).toEqual(EXPECTED_BUNDLED_PLUGIN_MODULES);
     expect(BUNDLED_RENDERER_MODULES).toEqual([rendererLando.plugin]);
+
+    const mkcertEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/ca-mkcert");
+    expect(mkcertEntry?.certificateAuthorities?.get("mkcert")).toBe(
+      caMkcert.plugin.certificateAuthorities?.get("mkcert"),
+    );
 
     const serviceLandoEntry = BUNDLED_PLUGIN_MODULES.find((plugin) => plugin.name === "@lando/service-lando");
     expect(serviceLandoEntry?.globalServices?.get("mailpit")).toBe(

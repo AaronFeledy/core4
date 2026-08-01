@@ -84,6 +84,14 @@
 - `@lando/sdk/plugins` additively exports the `LandoPluginModule` descriptor types and `definePlugin` helper for packaging a plugin module (manifest, optional contribution maps, optional host-service factories). `PluginStateStore` additively gains `withLock(key, body)` so plugin durable state can take an exclusive lock around a critical section; existing `open` callers are unchanged.
 - `RendererContribution` additively gains optional `loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>` and the type-only `InteractivePromptDriver` (`readRaw`) so a renderer plugin can supply a lazy interactive prompt driver without widening the required contribution shape. `@lando/sdk/renderer` re-exports the shared plain/json/verbose formatters (`formatDurationSuffix`, `formatPlainEvent`, `renderPlainLine`, `renderJsonLine`, `renderVerboseLine`, and the `isRenderable*` guards) from `format.ts`; prior import paths on `@lando/sdk/renderer` continue to resolve.
 - `@lando/sdk/errors` additively exports `PluginDescriptorMismatchError` for load-time rejection when a plugin module descriptor disagrees with its declared manifest identity.
+- US-500 replaces the unreleased `PluginContribution.cas` key with the normative typed
+  `certificateAuthorities` manifest entries, adds typed pre-resolved `ResolvedPluginInput` values,
+  and adds `LandoPluginModule.certificateAuthorities` for already-loaded CA Layers. The removed
+  `cas` spelling has no alias or compatibility path.
+- `@lando/sdk/errors` additively exports `NoCertificateAuthorityError` and
+  `AmbiguousCertificateAuthoritiesError`; both carry machine-readable `{ id, pluginName, source }`
+  candidates and remediation. `LandoPaths.systemPluginsDir` exposes
+  `<systemPluginRoot>/plugins` for canonical system discovery.
 - `LandofileService.discover`'s error channel additively gains `ComposeKeyRejectedError`; the frozen surface fixture is updated to match. `@lando/sdk/errors` additively exports `ComposeKeyRejectedError`, carrying `{ source, service?, keyPath, remediation }`; it registers no JSON Schema and widens no frozen schema list. `@lando/sdk/landofile` additively exports the pure helper `detectLandofileTags` plus the type-only `LandofileTag` / `LandofileTagOccurrence`. `IncludeEntry.kind` additively accepts `"compose"`, and the top-level Compose `include:` key normalizes to `kind: compose` entries appended after authored `includes:` entries.
 - The Compose service-key vocabulary wave's additive SDK surface, consolidated: `@lando/sdk/schema` accepts Compose spellings and alternate scalar/list forms on `ServiceConfig` (`environment` as a map or `KEY=value` list, `labels` as a map or Compose list, `dependsOn` canonicalized to `ServiceDependency[]` with the `ServiceDependencyCondition` vocabulary, `envFile`, and the authoring cross-key spellings `working_dir` / `env_file` / `depends_on`); canonical `ports` / `expose` / `volumes` entry lists (`ComposePortEntry`, `ComposeVolumeEntry`); the Compose `healthcheck` authoring shape; the per-container runtime-knob field schemas (`ComposeDeploy`, `ComposeLogging`, and the rest of the `Compose*Field` family); `ComposeKeyRejectedError`; `IncludeEntry.kind: "compose"`; `ServiceDependency` / `ServiceDependencyCondition`; and `ComposeServiceFieldKey` / `ComposeServiceFieldCapabilities` / `ComposeProjectFieldKey` / `ComposeProjectFieldCapabilities` / `ComposeServiceKnobKey` / `ComposeKnobCapabilities`. In the same wave, `ServiceConfig.composeBuild` is removed pre-release with no compatibility shim, replaced by a shape-discriminated `ServiceConfig.build` that rejects mixing the Lando build-script family (`artifact` / `app`) with the Compose image-build family (`context` / `dockerfile` / `dockerfile_inline` / `args` / `target`); it accepts a bare-string short form, defaults an omitted `context` to `"."`, and its canonical `dockerfileInline` field encodes back to `dockerfile_inline`, with `ArtifactBuildSpec.specInline` carrying the inlined Dockerfile into the provider-neutral artifact model. `COMPOSE_TOP_LEVEL_KEYS` gains `name` per the committed disposition matrix; top-level `configs`, `secrets`, and `x-*` preserve under `AppPlan.extensions.compose`; `ServiceConfig.build` now publishes a `description` in the JSON Schema artifact instead of sitting in the `PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS` list.
 - Unified tooling-fragment includes (§8.5.8): `IncludeEntry.kind` additively accepts `"tooling"`, and the `IncludeEntry` object form additively accepts the tooling-include fields `namespace`, `flatten`, `internal`, `optional`, `aliases`, `excludes`, and `vars` (rejected at load time on non-tooling includes). `LandofileShape` additively accepts the `toolingIncludes:` shorthand map, whose entries are the new `ToolingIncludeShape` export (`file`, `optional`, `flatten`, `internal`, `aliases`, `excludes`, `vars`; deliberately no `dir` or `checksum` because tooling fragments are local-file only). `@lando/sdk/errors` additively exports `ToolingIncludeCycleError` (`{ message, source, remediation }`), and `LandofileService.discover`'s error channel additively gains it; the frozen surface fixture is updated to match. `ToolingIncludeShape` registers a JSON Schema and is included in the schema artifact set.
@@ -156,6 +164,8 @@
 - `EmbeddingPluginDiscoveryPolicy`
 - `EmbeddingPluginPolicy`
 - `EmbeddingPluginPolicyMode`
+- `CertificateAuthorityContribution`
+- `ResolvedPluginInput`
 - `FileSyncEngineCapabilities`
 - `FileSyncEventChunk`
 - `FileSyncMode`
@@ -486,6 +496,7 @@
 - `LandoPaths.tunnelRunDir`
 - `LandoPaths.managedFileLedger`
 - `LandoPaths.shellHistoryFile`
+- `LandoPaths.systemPluginsDir`
 
 ## Additive Beta schema fields
 
@@ -558,6 +569,8 @@
 ## Additive Alpha errors
 
 - `PluginDescriptorMismatchError`
+- `NoCertificateAuthorityError`
+- `AmbiguousCertificateAuthoritiesError`
 - `SubscriberLevelMismatchError`
 - `KeymapConflictError`
 - `AppResolveError`

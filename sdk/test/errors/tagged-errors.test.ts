@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Either, Exit, Schema } from "effect";
 
 import {
+  AmbiguousCertificateAuthoritiesError,
   AppResolveError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
@@ -10,6 +11,7 @@ import {
   GlobalServiceMissingError,
   LandoRuntimeBootstrapError,
   LandofileParseError,
+  NoCertificateAuthorityError,
   NoProviderInstalledError,
   PluginLoadError,
   ProviderCapabilityError,
@@ -352,6 +354,37 @@ describe("NoProviderInstalledError", () => {
         expect(failure.value).toBeInstanceOf(NoProviderInstalledError);
       }
     }
+  });
+});
+
+describe("certificate authority selection errors", () => {
+  const candidates = [
+    { id: "mkcert", pluginName: "@lando/ca-mkcert", source: "bundled" },
+    { id: "corp", pluginName: "@example/ca-corp", source: "user" },
+  ];
+
+  test("no-authority failure carries candidate context and remediation", () => {
+    const error = new NoCertificateAuthorityError({
+      message: "No certificate authority is available.",
+      candidates: [],
+      remediation: "Enable or install a certificate authority plugin.",
+    });
+
+    expect(error._tag).toBe("NoCertificateAuthorityError");
+    expect(error.candidates).toEqual([]);
+    expect(error.remediation.length).toBeGreaterThan(0);
+  });
+
+  test("ambiguous-authority failure carries every candidate", () => {
+    const error = new AmbiguousCertificateAuthoritiesError({
+      message: "Multiple certificate authorities match.",
+      candidates,
+      remediation: "Select one certificate authority explicitly.",
+    });
+
+    expect(error._tag).toBe("AmbiguousCertificateAuthoritiesError");
+    expect(error.candidates).toEqual(candidates);
+    expect(error.remediation.length).toBeGreaterThan(0);
   });
 });
 

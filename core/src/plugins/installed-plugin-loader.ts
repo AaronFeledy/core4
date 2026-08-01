@@ -49,6 +49,7 @@ const normalizeExternalContributionModules = async (
   const downloaders = manifest.contributes?.downloaders;
   const httpClients = manifest.contributes?.httpClients;
   const interactionServices = manifest.contributes?.interactionServices;
+  const certificateAuthorities = manifest.contributes?.certificateAuthorities;
   const proxyServices = manifest.contributes?.proxyServices;
   const remoteSources = manifest.contributes?.remoteSources;
   const datasets = manifest.contributes?.datasets;
@@ -60,6 +61,7 @@ const normalizeExternalContributionModules = async (
     downloaders === undefined &&
     httpClients === undefined &&
     interactionServices === undefined &&
+    certificateAuthorities === undefined &&
     proxyServices === undefined &&
     remoteSources === undefined &&
     datasets === undefined &&
@@ -151,6 +153,15 @@ const normalizeExternalContributionModules = async (
             module: await normalizeContributionModulePath(contribution.module),
           })),
         );
+  const normalizedCertificateAuthorities =
+    certificateAuthorities === undefined
+      ? undefined
+      : await Promise.all(
+          certificateAuthorities.map(async (contribution) => ({
+            ...contribution,
+            module: await normalizeManifestModulePath(contribution.module, "certificateAuthorities"),
+          })),
+        );
   const normalizedProxyServices =
     proxyServices === undefined
       ? undefined
@@ -217,6 +228,9 @@ const normalizeExternalContributionModules = async (
       ...(normalizedInteractionServices === undefined
         ? {}
         : { interactionServices: normalizedInteractionServices }),
+      ...(normalizedCertificateAuthorities === undefined
+        ? {}
+        : { certificateAuthorities: normalizedCertificateAuthorities }),
       ...(normalizedProxyServices === undefined ? {} : { proxyServices: normalizedProxyServices }),
       ...(normalizedRemoteSources === undefined ? {} : { remoteSources: normalizedRemoteSources }),
       ...(normalizedDatasets === undefined ? {} : { datasets: normalizedDatasets }),

@@ -15,6 +15,7 @@ const EXPECTED_PLUGIN_NAMES = [
   "@lando/renderer-lando",
   "@lando/notify-lando",
   "@lando/file-sync-mutagen",
+  "@lando/ca-mkcert",
   "@lando/proxy-traefik",
   "@lando/template-handlebars",
   "@lando/template-mustache",

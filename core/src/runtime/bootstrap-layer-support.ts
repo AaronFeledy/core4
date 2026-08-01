@@ -1,7 +1,7 @@
-import { type Context, Effect, Schema, Stream } from "effect";
+import { type Context, Effect, type Layer, Schema, Stream } from "effect";
 
 import { ProviderUnavailableError } from "@lando/sdk/errors";
-import { ProviderCapabilities, ProviderId } from "@lando/sdk/schema";
+import { ProviderCapabilities, ProviderId, type ResolvedPluginInput } from "@lando/sdk/schema";
 import type { Renderer, RootOverrides, RuntimeProvider, Telemetry } from "@lando/sdk/services";
 
 import type { LoggerMode } from "../logging/service.ts";
@@ -11,6 +11,7 @@ export type LibraryRendererMode = "json" | "plain" | "verbose" | "lando";
 
 export interface BootstrapLayerPluginDiscovery {
   readonly bundled: boolean;
+  readonly system: boolean;
   readonly user: boolean;
   readonly app: boolean;
   readonly disable: ReadonlyArray<string>;
@@ -22,6 +23,10 @@ export interface BootstrapLayerInputs {
   readonly rendererMode: LibraryRendererMode;
   readonly telemetryEnabled: boolean;
   readonly pluginDiscovery: BootstrapLayerPluginDiscovery;
+  readonly pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>;
+  readonly pluginManifests: ReadonlyArray<ResolvedPluginInput>;
+  readonly externalImports: boolean;
+  readonly cwd: string;
   readonly rootOverrides: RootOverrides;
 }
 

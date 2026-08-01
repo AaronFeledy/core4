@@ -59,6 +59,8 @@ import { InteractionService as InteractionServiceTag } from "@lando/sdk/services
 
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../interaction/service.ts";
 import type { LoggerMode } from "../logging/service.ts";
+import type { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
+import type { PluginContributionGraph } from "../plugins/contribution-graph.ts";
 import type { RedactionService } from "../redaction/service.ts";
 import type { EventDeliveryMetrics } from "../services/event-service.ts";
 import { type BootstrapLifecycleTracker, makeBootstrapLifecycleTracker } from "./bootstrap-lifecycle.ts";
@@ -101,13 +103,14 @@ type MinimalRuntimeServices =
   | HttpClient
   | Downloader
   | HostMaintenanceRegistry;
-type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry;
+type PluginRuntimeServices = MinimalRuntimeServices | PluginRegistry | PluginContributionGraph;
 type CommandRuntimeServices = PluginRuntimeServices | LandofileService | CommandRegistry;
 type ToolingRuntimeServices = CommandRuntimeServices;
 type ProviderRuntimeServices =
   | CommandRuntimeServices
   | RuntimeProvider
   | RuntimeProviderRegistry
+  | CertificateAuthorityResolver
   | DataMover
   | AppPlanSanitizer
   | LogFileHelperAssets
@@ -158,6 +161,8 @@ const runtimeLayerFor = (
   pluginPolicy: NormalizedPluginPolicy,
   rootOverrides: RootOverrides,
   lifecycle: BootstrapLifecycleTracker,
+  pluginLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>>,
+  cwd: string,
 ): RuntimeLayer =>
   makeGeneratedBootstrapLayer(bootstrap, {
     lifecycle,
@@ -165,6 +170,10 @@ const runtimeLayerFor = (
     rendererMode,
     telemetryEnabled,
     pluginDiscovery: pluginPolicy.discovery,
+    pluginLayers,
+    pluginManifests: pluginPolicy.manifests,
+    externalImports: pluginPolicy.externalImports,
+    cwd,
     rootOverrides,
   }) as RuntimeLayer;
 
@@ -217,20 +226,23 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const pluginPolicy = normalizePluginPolicy(decoded.right.plugins);
   const capturedCwd = decoded.right.cwd ?? process.cwd();
   const lifecycle = makeBootstrapLifecycleTracker();
+  const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);
+
+  if (Either.isLeft(hostLayersResult)) {
+    return Layer.fail(hostLayersResult.left);
+  }
+  const bootstrap = decoded.right.bootstrap ?? "app";
   const baseLayer = runtimeLayerFor(
-    decoded.right.bootstrap ?? "app",
+    bootstrap,
     decoded.right.logger === "pretty" ? "pretty" : "silent",
     normalizeLibraryRendererMode(decoded.right.renderer ?? decoded.right.config?.renderer),
     decoded.right.telemetry ?? decoded.right.config?.telemetry?.enabled ?? false,
     pluginPolicy,
     rootOverridesFromConfig(decoded.right.config),
     lifecycle,
+    hostLayersResult.right,
+    capturedCwd,
   );
-  const hostLayersResult = collectEmbeddingPluginLayers(pluginPolicy.layers);
-
-  if (Either.isLeft(hostLayersResult)) {
-    return Layer.fail(hostLayersResult.left);
-  }
 
   // Library mode defaults prompts to non-interactive; the option overrides the
   // bootstrap default mode and is itself overridden by an explicit host
@@ -247,7 +259,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   const baseHostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> = [
     Layer.succeed(RuntimeCwd, capturedCwd) as unknown as Layer.Layer<unknown, unknown, unknown>,
     interactionOverride,
-    ...hostLayersResult.right,
+    ...(bootstrap === "none" || bootstrap === "minimal" ? hostLayersResult.right : []),
   ];
   const hostLayers: ReadonlyArray<Layer.Layer<unknown, unknown, unknown>> =
     decoded.right.installSignalHandlers === true
@@ -256,7 +268,7 @@ export function makeLandoRuntime(options: unknown): RuntimeLayer {
   return mergeRuntimeWithHostLayers(
     baseLayer as unknown as Layer.Layer<unknown, unknown, unknown>,
     hostLayers,
-    decoded.right.bootstrap ?? "app",
+    bootstrap,
     lifecycle,
   ) as RuntimeLayer;
 }

@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
-import { Either, Schema } from "effect";
+import { Either, Layer, Schema } from "effect";
 
-import { PluginManifest, getJsonSchema } from "@lando/sdk/schema";
+import { definePlugin } from "@lando/sdk/plugins";
+import { EmbeddingPluginPolicy, PluginManifest, getJsonSchema } from "@lando/sdk/schema";
 
 describe("PluginManifest", () => {
   const notice = {
@@ -184,6 +185,81 @@ describe("PluginManifest", () => {
     const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
 
     // Then: invalid declarations cannot reach subscriber registration.
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+
+  test("decodes typed certificate authority contributions", () => {
+    const encoded = {
+      name: "@lando/ca-test",
+      version: "1.0.0",
+      api: 4,
+      contributes: {
+        certificateAuthorities: [
+          {
+            id: "test-ca",
+            module: "./src/ca.ts",
+            defaultFor: { platform: ["linux"] },
+            enabledByDefault: true,
+            summary: "Test certificate authority",
+            deprecated: notice,
+          },
+        ],
+      },
+    };
+
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(encoded, { onExcessProperty: "error" });
+
+    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    if (Either.isRight(decoded)) {
+      expect(decoded.right.contributes?.certificateAuthorities?.[0]).toEqual(
+        encoded.contributes.certificateAuthorities[0],
+      );
+    }
+  });
+
+  test("strict decoding rejects the unreleased legacy cas contribution", () => {
+    const decoded = Schema.decodeUnknownEither(PluginManifest)(
+      {
+        name: "@lando/legacy-ca",
+        version: "1.0.0",
+        api: 4,
+        contributes: { cas: ["mkcert"] },
+      },
+      { onExcessProperty: "error" },
+    );
+
+    expect(Either.isLeft(decoded)).toBe(true);
+  });
+});
+
+describe("EmbeddingPluginPolicy", () => {
+  test("accepts a pre-resolved manifest with an already-loaded plugin module entry", () => {
+    const manifest = Schema.decodeSync(PluginManifest)({
+      name: "@lando/embedded",
+      version: "1.0.0",
+      api: 4,
+    });
+    const entry = definePlugin({ name: manifest.name, manifest, layer: Layer.empty });
+
+    const decoded = Schema.decodeUnknownEither(EmbeddingPluginPolicy)({ manifests: [{ manifest, entry }] });
+
+    expect(Either.isRight(decoded), String(Either.getLeft(decoded))).toBe(true);
+    if (Either.isRight(decoded) && typeof decoded.right !== "string") {
+      expect(decoded.right.manifests?.[0]?.entry).toBe(entry);
+    }
+  });
+
+  test("rejects malformed pre-resolved plugin entries", () => {
+    const manifest = Schema.decodeSync(PluginManifest)({
+      name: "@lando/embedded",
+      version: "1.0.0",
+      api: 4,
+    });
+
+    const decoded = Schema.decodeUnknownEither(EmbeddingPluginPolicy)({
+      manifests: [{ manifest, entry: "./src/index.ts" }],
+    });
+
     expect(Either.isLeft(decoded)).toBe(true);
   });
 });

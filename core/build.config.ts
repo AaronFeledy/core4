@@ -24,6 +24,7 @@ export interface BundledPluginEntry {
     readonly loggers?: ReadonlyArray<string>;
     readonly renderers?: ReadonlyArray<string>;
     readonly fileSyncEngines?: ReadonlyArray<string>;
+    readonly certificateAuthorities?: ReadonlyArray<string>;
     readonly proxyServices?: ReadonlyArray<string>;
     readonly globalServices?: ReadonlyArray<string>;
     readonly templateEngines?: ReadonlyArray<string>;
@@ -81,6 +82,11 @@ export const buildConfig: BuildConfig = {
       name: "@lando/file-sync-mutagen",
       path: "plugins/file-sync-mutagen",
       contributes: { fileSyncEngines: ["mutagen"] },
+    },
+    {
+      name: "@lando/ca-mkcert",
+      path: "plugins/ca-mkcert",
+      contributes: { certificateAuthorities: ["mkcert"] },
     },
     {
       name: "@lando/proxy-traefik",
