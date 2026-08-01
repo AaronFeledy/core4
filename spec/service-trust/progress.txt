@@ -1100,3 +1100,23 @@ Spec SoT:
 - Drift check: clean
 - Merge: merged (squash)
 ---
+
+## 2026-07-31 22:54 CDT - US-500
+- Published typed certificate-authority plugin contributions with manifest/module identity validation and
+  one eligible graph spanning embedding layers, pre-resolved manifests, and bundled/system/user/app
+  discovery. Selection honors discovery policy, disable entries, platform defaults, and sole-implementation
+  fallback while tagged absence and ambiguity failures preserve candidate context and remediation.
+- Bundled mkcert now ships through the generated plugin table and provider/app bootstrap, drives both setup
+  and planner certificate issuance by default, and remains replaceable by an eligible higher-precedence
+  authority without special-casing bundled modules.
+- Verification: typecheck, lint passed; 193 focused certificate-authority, plugin, runtime, CLI, schema, and
+  descriptor tests plus 83 adjacent certificate/planner tests passed; all boundary, generated-output,
+  package-DAG, import-cycle, schema-compatibility, guide, and transcript gates passed. Generator outputs
+  reproduced byte-identically, and a freshly compiled sandbox CLI provisioned mkcert and planned
+  `certs: true` through it with all temporary roots removed.
+- **Learnings for future iterations:**
+  - Pluggable runtime selection needs one graph before choosing an implementation; selecting directly from
+    bundled modules silently excludes embedding and discovery sources.
+  - Build selected contribution Layers inside the runtime Scope and provide their declared service
+    dependencies directly; sibling Layers are not visible through `Layer.mergeAll` construction.
+---

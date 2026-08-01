@@ -248,7 +248,7 @@
         "Lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02; adjudicated split from US-492 because active runtime wiring must satisfy the complete section 4.3 and embedding contribution graph rather than a bundled-only selector"
     },
     {
