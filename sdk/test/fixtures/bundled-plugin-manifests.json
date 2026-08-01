@@ -232,6 +232,7 @@
           }
         ],
         "serviceFeatures": [
+          "lando.boot",
           "lando.user-id",
           "lando.storage",
           "lando.env",
