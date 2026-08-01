@@ -17,7 +17,7 @@ tags: [beta, docs, landofile, config, lint]
     </Step>
   </Scenario>
 
-  <Scenario id="json-output" render={false} reason="The --format=json shape is a stable LSP contract covered by the §13.2 schema artifact set and the app-config-lint scenario tests">
+  <Scenario id="json-output" render={false} reason="The --format=json shape is a stable LSP contract covered by the published schema artifact set (dist/schemas, dist/command-schemas) and the app-config-lint scenario tests">
     <Step name="json">
       <Variable name="command" value="lando app:config:lint --format=json" display="Emit a stable JSON ConfigLintResult for editor / LSP integrations" />
       <Variable name="shape" value="{ app, file, valid, violations: [{ path, message, suggestedFix?, line?, column? }] }" display="The ConfigLintResult JSON shape (frozen by the schema artifact-set gate)" />

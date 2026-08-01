@@ -8,7 +8,7 @@ tags: [beta, docs, tooling, includes]
 Tooling fragments load through the canonical `includes:` surface with `kind: tooling`. The
 `toolingIncludes:` shorthand resolves through the same machinery, so both spellings produce the
 same commands wherever both are accepted. Inside a tooling fragment only the `toolingIncludes:`
-spelling nests further fragments; a bare `includes:` key in a fragment fails closed (§8.5.8).
+spelling nests further fragments; a bare `includes:` key in a fragment fails closed with a tagged `LandofileIncludeError`.
 
 <Guide>
   <Scenario id="namespaced-tooling-fragments" render>

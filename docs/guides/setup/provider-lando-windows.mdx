@@ -29,7 +29,7 @@ tags: [beta, docs, provider-lando, setup, windows]
       <Variable name="bundleManifest" value="plugins/provider-lando/runtime-bundle-versions.json" display="Pinned manifest carries the URL and SHA-256 for every supported host" />
       <Variable name="bundleCachePath" value="$LANDO_DATA_DIR/provider-lando/runtime-bundle/lando-runtime-win32-x64.zip" display="Idempotent cache path under the per-user state directory" />
       <Variable name="machineHelpers" value="gvproxy.exe + win-sshproxy.exe" display="The managed Windows bundle includes both Podman machine API forwarding helpers" />
-      <Variable name="checksumError" value="ProviderBundleChecksumError" display="Tagged failure raised on a SHA-256 mismatch; remediation cites spec §5.8.1" />
+      <Variable name="checksumError" value="ProviderBundleChecksumError" display="Tagged failure raised on a SHA-256 mismatch against the pinned checksum manifest; remediation is to retry `lando setup` and, if it fails again, report the release artifact URL and the observed checksum" />
     </Step>
   </Scenario>
 

@@ -72,7 +72,7 @@ Beta 1 promotes the Effect-free paths primitive to its own private workspace pac
 
 **Promoted:** `core/src/config/{paths,paths-platform,overlay,yaml-min}.ts` (621 LOC) move to `paths/src/`. The seam qualifies because it imports only Node builtins plus type-only `@lando/sdk` types, imports zero `effect` and zero other core modules, and already has 61 first-party consumers including plugins reaching in by deep relative path.
 
-**`@lando/core/paths` survives unchanged.** It is a semver-stable public subpath (§16.2, spec/09-embedding.md). `core/src/config/paths.ts` becomes `export * from "@lando/paths";`, mirroring `core/src/landofile/index.ts`. The core exports map is untouched, and packed installs resolve the subpath through the shim.
+**`@lando/core/paths` survives unchanged.** It is a semver-stable public subpath, part of the package's published `exports` map and its additive-export compatibility guarantee. `core/src/config/paths.ts` becomes `export * from "@lando/paths";`, mirroring `core/src/landofile/index.ts`. The core exports map is untouched, and packed installs resolve the subpath through the shim.
 
 **`@lando/paths` is `private: true`**, like every other workspace package here. If `@lando/core` is ever published, `@lando/paths` publishes alongside it, because the public `@lando/core/paths` subpath re-exports it.
 

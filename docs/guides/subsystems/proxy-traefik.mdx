@@ -26,7 +26,7 @@ tags: [beta, docs, subsystems, proxy, traefik]
   <Scenario id="proxy-unavailable-layer" render={false} reason="The fail-closed ProxyServiceUnavailableLive stub is exercised by unit tests; the Traefik Live Layer requires the global app and running containers">
     <Step name="unavailable-layer">
       <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="ProxyServiceRegistry's fallback layer when zero ProxyService plugins are registered; fails closed with remediation to install/select a plugin and rerun setup" />
-      <Variable name="liveLayer" value="SelectedProxyServiceLive" display="Resolved from ProxyServiceRegistry (built from each installed plugin's proxyServices: manifest contribution, §4.3 explicit/default/sole-installed precedence); the bundled Traefik implementation additionally depends on the global app for actual ingress via GlobalAppService.ensureRunning" />
+      <Variable name="liveLayer" value="SelectedProxyServiceLive" display="Resolved from ProxyServiceRegistry (built from each installed plugin's proxyServices: manifest contribution, using explicit-selection / default / sole-installed-implementation precedence); the bundled Traefik implementation additionally depends on the global app for actual ingress via GlobalAppService.ensureRunning" />
     </Step>
   </Scenario>
 
