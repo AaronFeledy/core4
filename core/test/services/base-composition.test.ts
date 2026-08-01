@@ -2,8 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-import type { ServiceTypeHostFacts } from "@lando/sdk/services";
+import type { ServiceFeatureDefinition, ServiceTypeHostFacts } from "@lando/sdk/services";
 import { serviceFeatures } from "@lando/service-lando";
 
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/l337.ts";

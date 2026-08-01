@@ -98,7 +98,6 @@ export const serviceTypes: ReadonlyMap<string, ServiceType> = new Map<string, Se
 
 export const services = Layer.empty;
 
-/** Static global-service contributions, keyed by contribution id. */
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["mailpit", mailpitGlobalService],
 ]);

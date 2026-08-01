@@ -6,9 +6,9 @@ timeout: 60000
 tags: [beta, docs, service, lando, boot]
 ---
 
-Every `type: lando` service includes the `lando.boot` feature. `lando.boot` (priority 100) emits one
-provider-neutral, artifact-phase scaffold intent: an idempotent `mkdir -p` step compiled into the
-service's build plan, not a mount:
+Every `type: lando` service includes `lando.boot`. At priority 100, it adds a provider-neutral,
+artifact-phase scaffold intent to the service's build plan: an idempotent `mkdir -p` step, not a
+mount:
 
 ```text
 /etc/lando
@@ -16,21 +16,19 @@ service's build plan, not a mount:
 /etc/lando/certs
 ```
 
-The scaffold step is not a mount, so it does not hide files that higher-priority features add
-beneath these directories. It currently runs as whichever effective user the parent artifact has
-already inherited at that point in the build. Temporarily elevating privilege to create these
-directories on a parent artifact that has inherited a non-root effective user, and then restoring
-that exact non-root user afterward, is not yet implemented; today the scaffold step depends on the
-inherited user already being able to create these paths.
+Because the scaffold is not a mount, it does not hide files that higher-priority features add under
+these directories. The step runs as the parent artifact's inherited effective user. It cannot yet
+temporarily elevate privileges to create the directories and then restore a non-root inherited
+user, so that user must already be able to create these paths.
 
-`lando.certs` mounts the certificate directory for service leaf material, while `lando.security`
-creates its own `/etc/lando/certs` trust-store directory when it writes the injected CA bundle
-described in [Corporate network trust](../config/corporate-network-trust.mdx).
+`lando.certs` mounts service leaf material under the certificate directory. `lando.security`
+creates `/etc/lando/certs` itself when it writes the injected CA bundle described in
+[Corporate network trust](../config/corporate-network-trust.mdx).
 
 `lando.boot` owns directories only. The higher-priority `lando.env` feature owns
-`/etc/lando/environment`, `env.d/` content and per-exec sourcing, and the `LANDO_LINUX_*` distro
-exports. See [Certificates with mkcert](../subsystems/certificates-mkcert.mdx) for the separate leaf
-certificate paths and environment contract.
+`/etc/lando/environment`, `/etc/lando/env.d` content and per-exec sourcing, and the `LANDO_LINUX_*`
+distro exports. See [Certificates with mkcert](../subsystems/certificates-mkcert.mdx) for the
+separate leaf certificate paths and environment contract.
 
 <Guide>
   <Scenario id="lando-boot-scaffold" render={false} reason="Focused service-feature and base-composition tests verify the compiled artifact-phase scaffold intent, lando-only default, feature order, and CA bundle preservation without building a container image or a non-root privileged realization">

@@ -32,16 +32,18 @@ import { landoStorageFeature } from "./storage.ts";
 import { landoUserIdFeature } from "./user-id.ts";
 import { landoUserFeature } from "./user.ts";
 
-export { landoAppMountFeature } from "./app-mount.ts";
-export { landoBootFeature } from "./boot.ts";
-export { landoCertsFeature } from "./certs.ts";
-export { landoEnvFeature } from "./env.ts";
-export { landoHealthcheckFeature } from "./healthcheck.ts";
-export { landoHostProxyFeature } from "./host-proxy.ts";
-export { landoSecurityFeature } from "./security.ts";
-export { landoStorageFeature } from "./storage.ts";
-export { landoUserFeature } from "./user.ts";
-export { landoUserIdFeature } from "./user-id.ts";
+export {
+  landoAppMountFeature,
+  landoBootFeature,
+  landoCertsFeature,
+  landoEnvFeature,
+  landoHealthcheckFeature,
+  landoHostProxyFeature,
+  landoSecurityFeature,
+  landoStorageFeature,
+  landoUserFeature,
+  landoUserIdFeature,
+};
 
 const definitions: ReadonlyArray<ServiceFeatureDefinition> = [
   landoBootFeature,
