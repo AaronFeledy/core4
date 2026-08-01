@@ -38,3 +38,27 @@ export class PluginDescriptorMismatchError extends Schema.TaggedError<PluginDesc
     remediation: Schema.String,
   },
 ) {}
+
+export const CertificateAuthorityCandidate = Schema.Struct({
+  id: Schema.String,
+  pluginName: Schema.String,
+  source: Schema.String,
+});
+
+export class NoCertificateAuthorityError extends Schema.TaggedError<NoCertificateAuthorityError>()(
+  "NoCertificateAuthorityError",
+  {
+    message: Schema.String,
+    candidates: Schema.Array(CertificateAuthorityCandidate),
+    remediation: Schema.String,
+  },
+) {}
+
+export class AmbiguousCertificateAuthoritiesError extends Schema.TaggedError<AmbiguousCertificateAuthoritiesError>()(
+  "AmbiguousCertificateAuthoritiesError",
+  {
+    message: Schema.String,
+    candidates: Schema.Array(CertificateAuthorityCandidate),
+    remediation: Schema.String,
+  },
+) {}
