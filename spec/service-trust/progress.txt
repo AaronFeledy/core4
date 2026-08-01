@@ -1092,3 +1092,11 @@ Spec SoT:
   Subject.CommonName empty; documentation must distinguish the authority request's `cn` field from the
   emitted X.509 subject.
 ---
+
+## [2026-07-31 18:00 CDT] - Babysit
+- PR: #667 https://github.com/AaronFeledy/core4/pull/667
+- CI outcome: pass
+- Review feedback: fixed (merged main for guide-drift; restored process.exitCode in init.git-source test so shard exit stayed 0)
+- Drift check: clean
+- Merge: merged (squash)
+---
