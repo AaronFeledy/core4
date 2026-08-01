@@ -445,7 +445,7 @@ Land the last feature surface — release engineering, governance, the plugin au
 - `lando setup` is idempotent and re-entrant (safe to re-run; reports already-satisfied steps), and reports a complete readiness summary consumable by `lando doctor`.
 - `lando uninstall` ships as a first-class command: removes managed provider runtimes/machines, downloaded Mutagen binaries, the CA root (with trust-store removal), global app state, caches, and the installed binary + shell-env entries — gated behind explicit confirmation (`--yes`) with a dry-run (`--dry-run`) preview.
 - `uninstall` honors a `--keep-data` / `--purge` split so users can remove the toolchain while preserving (or deliberately destroying) per-app and global data; every destructive step is enumerated before execution.
-- Both commands work identically across the OCLIF source path and the compiled `$bunfs` dispatcher, with parity tests.
+- At Alpha 4, both commands were kept behaviorally identical across the OCLIF source path and the compiled `$bunfs` dispatcher with parity tests; the architecture-simplicity wave later supersedes that dual-path acceptance target with one native dispatcher.
 
 **Open decisions resolved (§14.2) — all GA-blocking:**
 - Bun version floor decided (currently `>=1.3.0` per `package.json` — confirm or bump)
