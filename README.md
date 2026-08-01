@@ -24,26 +24,25 @@ and template engines all ship as separate packages.
 
 ## Status & roadmap
 
-Development follows the phase ladder in [`spec/ROADMAP.md`](./spec/ROADMAP.md):
+Development follows this phase ladder:
 **MVP → Alpha 1 → Alpha 2 → Alpha 3 → Alpha 4 → Beta 1 → Beta 2 → RC → 4.0 GA**.
 
 - **Done:** MVP through **Alpha 4** ("governance + the last feature surface") —
   Alpha 4 closed the feature surface: release machinery, signing, supply chain,
   telemetry, schema publication, the plugin authoring toolkit, and the
   `lando setup` / `lando uninstall` lifecycle. Alphas publish `4.0.0-alpha.N`
-  on the `dev` channel. PRD sets live under `spec/mvp/` and `spec/alpha-{1..4}/`.
+  on the `dev` channel.
 - **Current: Beta 1** ("contract-completion remediation") — an audit-driven
   remediation pass (US-372..US-395) plus a bounded feature wave, runtime/Podman/
   log-source waves, a closure wave, a residual-hardening wave, and the
   renderer-substrate wave (US-455..US-460: the bundled renderer's specified
   OpenTUI `^0.4.3` substrate, desktop notifications, and the contract-only
-  freeze of the 4.1 renderer surfaces) in [`spec/beta-1/`](./spec/beta-1/prd-beta-1-00-index.md).
+  freeze of the 4.1 renderer surfaces).
   The first signed `4.0.0-beta.N` ships on the `next` channel at the end of
   Beta 1, and **feature freeze is entered**.
-- **After:** Beta 2 (bug burn-down), RC (all-platform §17.9 acceptance), GA.
-
-The spec in [`spec/`](./spec/README.md) is the compatibility contract — when
-code and spec disagree, the spec wins.
+- **After:** Beta 2 (bug burn-down), RC (binary-shipping acceptance — signing,
+  notarization, SBOM, provenance, and self-update all verified across every
+  release platform), GA.
 
 ## Layout
 
@@ -65,7 +64,7 @@ code and spec disagree, the spec wins.
 │   ├── logger-pretty/        # pretty-printed Logger
 │   └── renderer-lando/       # bundled default Lando Renderer plugin
 ├── recipes/           # Bundled recipes (drupal, drupal-cms, lamp, lemp, wordpress)
-├── spec/              # The v4 specification (compatibility contract) + ROADMAP + per-phase PRD sets
+├── spec/              # Authored planning material (PRDs, ROADMAP); not a shipped artifact — may be deleted
 ├── scripts/           # Codegen, release orchestrator, guide/scenario + CI workflow tooling
 ├── docs/              # CI runbook, install guide, embedding guide, executable guides (MDX)
 ├── test/              # Cross-package and generated scenario tests
@@ -105,7 +104,7 @@ code and spec disagree, the spec wins.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
 - **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
-- **CLI framework:** target architecture is one native command registry and dispatcher shared by source and compiled modes (spec §8.4.1); the source path still dispatches through OCLIF today, consumed only inside `core/src/cli/oclif/`, while that removal (US-522..US-531) is in flight.
+- **CLI framework:** target architecture is one native command registry and dispatcher shared by source and compiled modes; the source path still dispatches through OCLIF today, consumed only inside `core/src/cli/oclif/`, while that removal (US-522..US-531) is in flight.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
 
@@ -150,7 +149,7 @@ bun test
 ### Executable guides vs integration tests
 
 Both run in CI, but they guard different contracts. **Executable guides**
-(MDX under `docs/guides/**` and `recipes/<id>/README.mdx`, spec §19) are
+(MDX under `docs/guides/**` and `recipes/<id>/README.mdx`) are
 documentation first: each guide compiles into generated scenario tests that
 prove every command, output, and verification shown to readers actually works,
 and failures source-map back to the MDX line. A failing guide means *a promise
@@ -193,13 +192,18 @@ The compiled binary is produced with `bun build --compile --bytecode` targeting
 platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and
 `windows-x64`. Today the source CLI still dispatches through OCLIF while the compiled `$bunfs`
 binary uses a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`),
-because `@oclif/core`'s `execute()` cannot dispatch inside a compiled Bun binary
-(historical spike, spec/14-appendices.md Appendix D.1). That evidence no longer justifies
-keeping two engines: the spec now supersedes dual dispatch and adopts **one**
-native command registry and dispatcher for both source and compiled modes
-(spec §8.4.1). This codebase is mid-migration (US-522..US-531) — the dual-path
-parity layer and the OCLIF adapter are still present and are not the target
-architecture.
+because `@oclif/core`'s `execute()` cannot dispatch inside a compiled Bun binary:
+a probe importing only `@oclif/core` and calling `execute()` was compiled with
+`bun build --compile` and run outside the source tree, and it failed before any
+command ran — `Config.load`'s `findRoot()` walk expects an adjacent `package.json`
+that a relocated single-file binary doesn't have, and even with a static manifest,
+command dispatch still resolves a runtime `import(pathToFileURL(filePath))` that
+`bun build --compile` never embeds (a runtime-computed path isn't statically
+analyzable). That finding no longer justifies keeping two engines: the target
+architecture adopts **one** native command registry and dispatcher for both
+source and compiled modes. This codebase is mid-migration (US-522..US-531) — the
+dual-path parity layer and the OCLIF adapter are still present and are not the
+target architecture.
 
 ## Contributing
 

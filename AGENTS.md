@@ -5,26 +5,27 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 ## Source of Truth
 
 - Lando v4 is a pre-release Bun monorepo for `@lando/core`, `@lando/sdk`, `@lando/container-runtime`, and bundled plugins under `plugins/*`.
-- The spec in `spec/` is the compatibility contract. If code and spec conflict, conform to the spec; do not preserve unreleased behavior for its own sake.
-- Gut-and-replace is allowed before first ship. Do not add compatibility shims, legacy adapters, or dual paths unless the spec or a persisted artifact requires them.
+- Lando v4 has not shipped yet. Conform code to the intended design; do not preserve unreleased behavior for its own sake.
+- The specification tree is authored planning material, not a shipped part of this repository, and may be deleted at any time. Only files inside it may cite or read it; every other file must state the durable detail itself. Enforced by `check:spec-reference`.
+- Gut-and-replace is allowed before first ship. Do not add compatibility shims, legacy adapters, or dual paths unless a persisted artifact requires them.
 - Read nested instructions before editing package code: `core/AGENTS.md` for CLI/runtime details and `sdk/AGENTS.md` for SDK contract rules.
 
 ## Core Code Tenets
 
-- Keep business logic in pure Effect; filesystem, process, network, and terminal side effects belong behind services, not command bodies (spec §1.2).
-- Public contracts come from Effect Schema with inferred TypeScript types; do not maintain parallel hand-written public types (spec §1.2).
-- Core failures are `Schema.TaggedError` values with machine `_tag` and human remediation, not thrown generic exceptions (spec §1.2).
-- Acquire handles, locks, files, ports, networks, and subprocesses in `Scope` so cancellation cleans them up (spec §1.2).
-- Validate provider capabilities before planning, and plan before provider action; do not let providers discover unsupported intent at execution time (spec §1.2).
-- Prefer interfaces/plugins over config flags when implementations can differ; flags should tune one implementation, not choose architecture (spec §1.2).
-- Use Bun primitives first. Node compatibility APIs need a narrow adapter; use `ProcessRunner` for argv-precise spawn and `ShellRunner` for shell-shaped pipelines (spec §1.1-§1.2).
-- User-facing surfaces must be agent-drivable: structured output, tagged failures, remediation, and preserved context across boundaries beat prose scraping (spec §1.1-§1.2).
+- Keep business logic in pure Effect; filesystem, process, network, and terminal side effects belong behind services, not command bodies.
+- Public contracts come from Effect Schema with inferred TypeScript types; do not maintain parallel hand-written public types.
+- Core failures are `Schema.TaggedError` values with machine `_tag` and human remediation, not thrown generic exceptions.
+- Acquire handles, locks, files, ports, networks, and subprocesses in `Scope` so cancellation cleans them up.
+- Validate provider capabilities before planning, and plan before provider action; do not let providers discover unsupported intent at execution time.
+- Prefer interfaces/plugins over config flags when implementations can differ; flags should tune one implementation, not choose architecture.
+- Use Bun primitives first. Node compatibility APIs need a narrow adapter; use `ProcessRunner` for argv-precise spawn and `ShellRunner` for shell-shaped pipelines.
+- User-facing surfaces must be agent-drivable: structured output, tagged failures, remediation, and preserved context across boundaries beat prose scraping.
 
 ## Commands
 
 - Use Bun only: `bun install`, `bun run ...`, `bun test`. Do not introduce Node/npm/yarn/pnpm workflows.
 - Standard gate after code changes is `bun run typecheck` plus `bun test`; root `tsc -b` does not typecheck `sdk/test/`.
-- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:generated-output`, `check:guide-coverage`, `check:guide-drift`, `check:import-cycle`, `check:managed-file-boundary`, `check:package-dag`, `check:probe-boundary`, `check:public-transcripts`, `check:redaction-boundary`, `check:renderer-boundary`, `check:state-store-boundary`, `check:telemetry-inventory`, or `lint:guides`.
+- Also run `bun run lint` and any touched boundary/codegen/guide gate: `check:generated-output`, `check:guide-coverage`, `check:guide-drift`, `check:import-cycle`, `check:managed-file-boundary`, `check:package-dag`, `check:probe-boundary`, `check:public-transcripts`, `check:redaction-boundary`, `check:renderer-boundary`, `check:spec-reference`, `check:state-store-boundary`, `check:telemetry-inventory`, or `lint:guides`.
 - Focused tests run by path, e.g. `bun test core/test/unit/bootstrap.test.ts`. Single-package scripts use Bun filters, e.g. `bun run --filter='@lando/core' typecheck`.
 - That path is a filter, not a path: a stale or misspelled one emits a `did not match any test files` diagnostic and exits nonzero. Scripted spot-check loops must require both command success and a positive test count; never infer a pass only from the absence of failures.
 - `bun run test:unit` skips `*.integration.test.ts`; provider/live integration requires explicit env such as `LANDO_TEST_PODMAN_SOCKET` and is intentionally serial.
@@ -32,9 +33,9 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 ## Generated Files
 
-- Do not hand-edit generated CI workflows, pin manifests, or `spec/compose/vendor/compose-spec.json`. Edit the generator, run the matching `bun run codegen:*`. The Compose vendor generator writes checksum-pinned upstream bytes verbatim and must not format that file.
-- **Pins vs derived (architecture-simplicity):** pin manifests (runtime-bundle, mutagen, compose vendor) and human-reviewed CI workflows stay committed. Pure build products (`dist/schemas/**`, `dist/command-schemas/**`, bake-time generated TS tables, command registry embed manifest, generated schema docs) are **derived** — produce them with codegen; they are not required as git SoT once US-510+ lands. Model: guide transcripts (§19.6).
-- `bun run codegen` runs generators in dependency order (see `scripts/codegen.ts` / §17.2).
+- Do not hand-edit generated CI workflows, pin manifests, or the vendored Compose spec JSON. Edit the generator, run the matching `bun run codegen:*`. The Compose vendor generator writes checksum-pinned upstream bytes verbatim and must not format that file.
+- **Pins vs derived (architecture-simplicity):** pin manifests (runtime-bundle, mutagen, compose vendor) and human-reviewed CI workflows stay committed. Pure build products (`dist/schemas/**`, `dist/command-schemas/**`, bake-time generated TS tables, command registry embed manifest, generated schema docs) are **derived** — produce them with codegen; they are not required as git SoT once US-510+ lands. Model: treat them like guide transcripts, which are regenerated every test run, gitignored, and never committed.
+- `bun run codegen` runs generators in dependency order (see `scripts/codegen.ts`, which lists every generator with its inputs, outputs, and staleness gate).
 - **Pure-drift `codegen:check` gate is a target (architecture-simplicity US-505):** it's meant to regenerate the catalog and fail on drift. Today `codegen:check` runs exactly `bun run codegen && bun run check:deprecations && bun run typecheck`; it does not yet assert drift. Until US-505 lands, use `git diff --exit-code` for tracked generated paths and the catalog's generator/test checks for untracked derived outputs. Semantic gates stay separate: `check:guide-coverage`, `check:schema-compatibility`, `check:public-transcripts`, `check:package-dag`, behavioral `check:*-boundary`.
 - Codegen scripts are expected to finish with `biome check --write` on emitted files; do not replace that with formatting-only steps.
 - Clean checkout bootstrap (target): `git clone && bun install && bun run codegen` before typecheck/test.
@@ -42,13 +43,13 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 ## Architecture Boundaries
 
 - `@lando/sdk` is the public contract surface. Additive exports and schema changes must follow `sdk/AGENTS.md`, update `sdk/API_COMPATIBILITY.md` where required, and refresh the schema artifact set with `bun run codegen:schema-snapshot`.
-- Each §4.2 plugin-abstraction contract suite from `@lando/sdk/test` must stay listed in `core/test/contract/plugin-abstraction-coverage.test.ts` and exercised by its documented core built-in invocation unless §4.2 says no built-in ships.
+- Each plugin-abstraction contract suite from `@lando/sdk/test` must stay listed in `core/test/contract/plugin-abstraction-coverage.test.ts` and exercised by its documented core built-in invocation unless the abstraction's pluggability-catalog entry documents that no built-in ships (e.g. `InitSource`, `ServiceFeature`, `AppFeature`, and `ConfigTranslator` are plugin-only or have no bundled default).
 - `@lando/core` owns runtime, planner, CLI, library API, generated bootstrap layers, and bundled-plugin wiring. CLI/runtime quirks live in `core/AGENTS.md`.
 - Plugins may not depend on `@lando/core`; core imports plugin packages only via the generated composition root (`core/src/plugins/generated/**`), enforced by `check:package-dag`.
 - RemoteSource/Dataset contract freeze: keep the `Dataset` x `RemoteSource` split contract-only for Beta 1; it never syncs application code, and implementation belongs to the 4.1 feature wave.
-- **Single native CLI dispatcher** (architecture-simplicity): source and compiled `$bunfs` entries share one command registry/engine (`core/src/cli/run.ts` shape). Do not add a second OCLIF shipping path. Today, source mode still dispatches through OCLIF (`core/src/cli/oclif/`) while the compiled `$bunfs` binary dispatches via `runCompiledCli`; the two paths are not yet unified. Prefer registry completeness + machine-output + relocated-binary smoke over dual-path parity tests. See `spec/architecture-simplicity/` and `core/AGENTS.md`.
+- **Single native CLI dispatcher** (architecture-simplicity): source and compiled `$bunfs` entries share one command registry/engine (`core/src/cli/run.ts` shape). Do not add a second OCLIF shipping path. Today, source mode still dispatches through OCLIF (`core/src/cli/oclif/`) while the compiled `$bunfs` binary dispatches via `runCompiledCli`; the two paths are not yet unified. Prefer registry completeness + machine-output + relocated-binary smoke over dual-path parity tests. See `core/AGENTS.md`.
 - The compiled binary target is `core/bin/lando.ts`, not `core/src/cli/index.ts`. Compiled-mode code must avoid top-level `await` and must not rely on `import.meta.url` for package/install metadata.
-- Cold-start files must not statically import Effect, OCLIF, `@lando/sdk`, renderers, or plugins; startup regressions are release-blocking performance bugs (spec §1.2).
+- Cold-start files must not statically import Effect, OCLIF, `@lando/sdk`, renderers, or plugins; startup regressions are release-blocking performance bugs.
 - Command output goes through the `Renderer` service. Direct `console.*` or `process.std*.write` under `core/src/**` or `plugins/**` fails the renderer-boundary gate except documented fast-path carve-outs.
 - In Effect layers, `Effect.serviceOption(X)` sees services provided to that sub-layer, not sibling layers in `Layer.mergeAll`; provide dependencies directly to the layer that needs them.
 - Use the Effect-free paths primitive in `@lando/paths` (`paths/src/paths.ts`; re-exported through the semver-stable `@lando/core/paths` subpath via the `core/src/config/paths.ts` shim) for Lando roots and derived paths; do not re-spell `$HOME`, XDG, `%APPDATA%`, or platform separators. Hand-rolled `join(<userDataRoot>, "plugins"|"bin")` / `join(<userCacheRoot>, "scratch")` is blocked by package-dag/paths rules; route through `makeLandoPaths` (pure) or `PathsService` (Effect). A genuinely host-bound path that must ignore a faked `process.platform` (e.g. mutagen install dirs) should pin `makeLandoPaths({ platform: sep === "\\" ? "win32" : "linux" })` from `node:path.sep`, not read `process.platform`.
@@ -64,7 +65,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 - The committed `@lando/provider-lando` runtime-bundle manifest points at real published assets. To test a local unpublished bundle, build it locally and point `LANDO_RUNTIME_BUNDLE_MANIFEST` at it; verification is never disabled.
 - Managed Podman's `--config <dir>` does not load `<dir>/containers.conf`; the service launcher must also set `CONTAINERS_CONF=<dir>/containers.conf` so bundled helper paths are honored.
 - Podman 6 volume-prune safety requires one ownership-complete selector per `label` value because values are ORed; keep named-volume intent in the top-level `all=true` query parameter, not inside the encoded `filters` map, or it broadens deletion.
-- OpenTUI prompt support belongs behind the renderer plugin and dynamic import boundary described in `core/AGENTS.md`; never add `@opentui/core` to `@lando/core` or import it statically. Production code loads it only via a Bun-traceable literal `import("@opentui/core")`, lazy and TTY/default-renderer-only (spec §8.9.3 "Import discipline"); a constructed or aliased specifier (e.g. string concatenation) is not a substitute and is treated as a boundary violation.
+- OpenTUI prompt support belongs behind the renderer plugin and dynamic import boundary described in `core/AGENTS.md`; never add `@opentui/core` to `@lando/core` or import it statically. Production code loads it only via a Bun-traceable literal `import("@opentui/core")`, lazy and TTY/default-renderer-only; a constructed or aliased specifier (e.g. string concatenation) is not a substitute and is treated as a boundary violation.
 
 ## Guides and Docs-as-Tests
 
