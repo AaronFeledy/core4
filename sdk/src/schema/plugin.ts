@@ -1,5 +1,6 @@
 import { Schema } from "effect";
 
+import { CertificateAuthorityContribution } from "./certificate-authority-contribution.ts";
 import { DeprecationNotice } from "./deprecation.ts";
 import { DownloaderCapabilities } from "./downloader.ts";
 import { HttpClientCapabilities } from "./http-client.ts";
@@ -10,30 +11,6 @@ import { DatasetContribution, RemoteSourceContribution } from "./remote-sync.ts"
 import { RendererPanelManifestEntry } from "./renderer-panel.ts";
 import { SubscriberManifestEntry } from "./subscriber.ts";
 import { TunnelServiceContribution } from "./tunnel.ts";
-
-export const EmbeddingPluginPolicyMode = Schema.Literal("none", "bundled-only", "explicit", "discovery");
-export type EmbeddingPluginPolicyMode = typeof EmbeddingPluginPolicyMode.Type;
-
-export const EmbeddingPluginDiscoveryPolicy = Schema.Struct({
-  bundled: Schema.optional(Schema.Boolean),
-  system: Schema.optional(Schema.Boolean),
-  user: Schema.optional(Schema.Boolean),
-  app: Schema.optional(Schema.Boolean),
-});
-export type EmbeddingPluginDiscoveryPolicy = typeof EmbeddingPluginDiscoveryPolicy.Type;
-
-export const EmbeddingPluginPolicy = Schema.Union(
-  EmbeddingPluginPolicyMode,
-  Schema.Struct({
-    mode: Schema.optional(EmbeddingPluginPolicyMode),
-    layers: Schema.optional(Schema.Array(Schema.Unknown)),
-    manifests: Schema.optional(Schema.Array(Schema.Unknown)),
-    discovery: Schema.optional(EmbeddingPluginDiscoveryPolicy),
-    externalImports: Schema.optional(Schema.Boolean),
-    disable: Schema.optional(Schema.Array(Schema.String)),
-  }),
-);
-export type EmbeddingPluginPolicy = typeof EmbeddingPluginPolicy.Type;
 
 export const DeprecatedContributionRef = Schema.Struct({
   id: Schema.String,
@@ -215,8 +192,9 @@ export const PluginContribution = Schema.Struct({
   templateEngines: Schema.optional(Schema.Array(ContributionRef)),
   /** File-sync engine ids registered. */
   fileSyncEngines: Schema.optional(Schema.Array(ContributionRef)),
-  /** CA ids registered. */
-  cas: Schema.optional(Schema.Array(ContributionRef)),
+  certificateAuthorities: Schema.optional(Schema.Array(CertificateAuthorityContribution)).annotations({
+    description: "CertificateAuthority implementations registered by this plugin.",
+  }),
   /** Built-in commands registered. */
   commands: Schema.optional(Schema.Array(ContributionRef)),
   /** Global-app service contributions added by plugins. */
