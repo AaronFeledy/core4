@@ -14,6 +14,7 @@ const FeatureExtension = Schema.Struct({
         id: Schema.optional(Schema.String),
         phase: Schema.String,
         command: Schema.Unknown,
+        privileged: Schema.optional(Schema.Boolean),
       }),
     ),
   ),
@@ -57,6 +58,7 @@ describe("lando.boot feature", () => {
         id: "lando.boot:scaffold",
         phase: "build",
         command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
+        privileged: true,
       },
     ]);
     expect(plan.mounts).toEqual([]);

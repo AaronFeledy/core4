@@ -7,6 +7,7 @@ import type { ArtifactBuildSpec, ArtifactRef } from "@lando/sdk/services";
 import { type BuildContextEntry, packBuildContext, tarStream, tarText } from "./build-context.ts";
 import { type PreparedBuildStep, copyInstructions, prepareDerivedBuild } from "./image-build-ca.ts";
 import { type ContainerBuildOptions, requestContainerBuild } from "./image-build-http.ts";
+import { inspectInheritedImageUser } from "./image-build-user.ts";
 
 export { buildContextContentDigest, packBuildContext } from "./build-context.ts";
 export type {
@@ -47,17 +48,32 @@ const runInstruction = (step: PreparedBuildStep, providerId: string) =>
         },
       ).pipe(Effect.as(`RUN ${JSON.stringify(step.command)}`));
 
+type DerivedDockerfileInput = {
+  readonly providerId: string;
+  readonly baseRef: string;
+  readonly steps: ReadonlyArray<PreparedBuildStep>;
+  readonly inheritedUser: string | undefined;
+};
+
 const dockerfileForDerivedBuild = (
-  providerId: string,
-  baseRef: string,
-  steps: ReadonlyArray<PreparedBuildStep>,
+  input: DerivedDockerfileInput,
 ): Effect.Effect<string, ProviderInternalError> =>
   Effect.gen(function* () {
-    yield* validateDockerfileToken(baseRef, "Base image reference", providerId);
-    const instructions = yield* Effect.forEach(steps, (step) =>
-      runInstruction(step, providerId).pipe(Effect.map((run) => [...copyInstructions(step), run])),
+    yield* validateDockerfileToken(input.baseRef, "Base image reference", input.providerId);
+    if (input.inheritedUser !== undefined) {
+      yield* validateDockerfileToken(input.inheritedUser, "Inherited image user", input.providerId);
+    }
+    const instructions = yield* Effect.forEach(input.steps, (step) =>
+      runInstruction(step, input.providerId).pipe(
+        Effect.map((run) => {
+          const stepInstructions = [...copyInstructions(step), run];
+          return step.privileged && input.inheritedUser !== undefined
+            ? ["USER root", ...stepInstructions, `USER ${input.inheritedUser}`]
+            : stepInstructions;
+        }),
+      ),
     );
-    return [`FROM ${baseRef}`, ...instructions.flat(), ""].join("\n");
+    return [`FROM ${input.baseRef}`, ...instructions.flat(), ""].join("\n");
   });
 
 const deterministicRef = (input: ArtifactBuildSpec): string =>
@@ -151,7 +167,15 @@ export const buildContainerArtifact = (
         secretValues,
       });
       if (steps.length > 0) {
-        const dockerfile = yield* dockerfileForDerivedBuild(options.providerId, baseTag, steps);
+        const inheritedUser = steps.some((step) => step.privileged)
+          ? yield* inspectInheritedImageUser({ baseRef: baseTag, providerId: options.providerId, request })
+          : undefined;
+        const dockerfile = yield* dockerfileForDerivedBuild({
+          providerId: options.providerId,
+          baseRef: baseTag,
+          steps,
+          inheritedUser,
+        });
         const entries: ReadonlyArray<BuildContextEntry> = [
           { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
           ...caEntries,
@@ -166,11 +190,16 @@ export const buildContainerArtifact = (
         });
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
-      const dockerfile = yield* dockerfileForDerivedBuild(
-        options.providerId,
-        resolvedBaseRef(artifact),
+      const baseRef = resolvedBaseRef(artifact);
+      const inheritedUser = steps.some((step) => step.privileged)
+        ? yield* inspectInheritedImageUser({ baseRef, providerId: options.providerId, request })
+        : undefined;
+      const dockerfile = yield* dockerfileForDerivedBuild({
+        providerId: options.providerId,
+        baseRef,
         steps,
-      );
+        inheritedUser,
+      });
       const entries: ReadonlyArray<BuildContextEntry> = [
         { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(dockerfile) },
         ...caEntries,

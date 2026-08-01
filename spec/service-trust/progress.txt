@@ -50,6 +50,9 @@ Spec SoT:
   Layer's dependencies directly in the bootstrap generator rather than relying on sibling Layer visibility.
 - Shared in-container directory scaffolds that higher-priority features populate belong in artifact-phase
   build steps, not mounts; mounts can shadow files baked by those later features.
+- System-owned artifact steps request provider-neutral temporary privilege; the artifact realizer inspects
+  the parent image's effective user, wraps only those steps with root, and restores the exact inherited
+  user before later steps. A service `user` override is runtime intent and must not be baked into the image.
 
 ## Status
 
@@ -1205,4 +1208,34 @@ Spec SoT:
 - **Learnings for future iterations:** Adding a base-default feature requires auditing exact build-step
   assertions outside the owning plugin. An adjudication that narrows story ownership must update the
   machine-readable PRD, normative Markdown PRDs, and user guides as one contract-sync unit.
+---
+
+## 2026-08-01 15:20 CDT - Babysit
+- PR: #669 https://github.com/AaronFeledy/core4/pull/669
+- CI outcome: fail (schema-snapshot, unit-tests-linux-x64-shard 1; guide/provider linux gates skipped upstream)
+- Review feedback: fixed (refreshed bundled-plugin manifest snapshot for lando.boot; aligned scratch-run tests and fake provider with intentional artifact-phase builds)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-01 16:57 CDT - US-501
+- Added provider-neutral temporary privilege to artifact build-step intent and made `lando.boot` request it.
+  Derived builds inspect the parent artifact's effective user only when privilege is needed, run the system
+  scaffold as root, and restore the exact inherited non-root identity before later build groups and in the
+  final image; an authored service `user` remains a runtime-only override.
+- Included privilege in artifact identity, failed closed on unavailable or malformed image-user inspection,
+  and documented the root/non-root guarantee and effective-user preservation in the shipped boot guide.
+- Verification: typecheck, lint/deprecations, every boundary rule, generated output, package build, guide
+  lint/coverage, and base-aware guide drift passed; 76 focused and adjacent tests passed with 350 assertions.
+  Detached `origin/main` reproduced the intended RED failures before the implementation. A real Podman build
+  in `lando4-dev` created all three directories for root and UID/GID 101 parents, restored UID/GID 101 before
+  the later step and in the final image, and kept a `1000:1000` runtime override out of the artifact. All QA
+  images, policy, files, and the wrapper tmux session were removed.
+- Guide-Coverage-Skip: US-501 changes an internal service build-step contract documented by
+  lando-boot-scaffold; the legacy Alpha-4 library guides do not own artifact privilege realization.
+- **Learnings for future iterations:**
+  - For a user-authored parent build, inspect the intermediate base artifact after it is built rather than
+    the original Dockerfile source; that intermediate image is the only source of truth for inherited USER.
+  - Preserve the complete inherited USER token (name or numeric id, with optional group) and distinguish it
+    from `ServicePlan.user`, which providers apply when creating the runtime container.
 ---

@@ -289,7 +289,7 @@
         "Lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02; adjudicated split from US-493 because the existing feature-step intent cannot express temporary privilege or restore an inherited non-root artifact user"
     },
     {

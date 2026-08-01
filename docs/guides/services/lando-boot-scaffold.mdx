@@ -17,9 +17,10 @@ mount:
 ```
 
 Because the scaffold is not a mount, it does not hide files that higher-priority features add under
-these directories. The step runs as the parent artifact's inherited effective user. It cannot yet
-temporarily elevate privileges to create the directories and then restore a non-root inherited
-user, so that user must already be able to create these paths.
+these directories. When the parent artifact inherits a non-root effective user, the artifact
+realizer grants the scaffold step temporary build-time privilege and restores that exact inherited
+user before later artifact steps and in the final image. A separate service `user:` override still
+controls the runtime process and is not baked into the derived image.
 
 `lando.certs` mounts service leaf material under the certificate directory. `lando.security`
 creates `/etc/lando/certs` itself when it writes the injected CA bundle described in
@@ -31,11 +32,11 @@ distro exports. See [Certificates with mkcert](../subsystems/certificates-mkcert
 separate leaf certificate paths and environment contract.
 
 <Guide>
-  <Scenario id="lando-boot-scaffold" render={false} reason="Focused service-feature and base-composition tests verify the compiled artifact-phase scaffold intent, lando-only default, feature order, and CA bundle preservation without building a container image or a non-root privileged realization">
+  <Scenario id="lando-boot-scaffold" render={false} reason="Focused service-feature, artifact-rendering, and base-composition tests verify the privileged scaffold, exact inherited-user restoration, lando-only default, feature order, and CA bundle preservation">
     <Step name="compose-scaffold">
       <Variable name="feature" value="lando.boot" display="Emit one provider-neutral artifact-phase scaffold intent at feature priority 100" />
       <Variable name="directories" value="/etc/lando, /etc/lando/env.d, /etc/lando/certs" display="Compile the idempotent mkdir -p step for the three shared directories into the build plan" />
-      <Variable name="inheritedUser" value="inherited effective user" display="Run the scaffold step as whatever effective user the parent artifact has already inherited; privileged realization and restoration for a non-root inherited user are not yet implemented" />
+      <Variable name="inheritedUser" value="inherited effective user" display="Temporarily privilege the scaffold step, then restore the parent artifact's exact inherited effective user before later steps and in the final image" />
       <Variable name="envOwner" value="lando.env" display="Keep environment content, env.d sourcing, and LANDO_LINUX_* exports under lando.env" />
       <Variable name="excludedBase" value="type: compose" display="Raw Compose services use the l337 base and do not include lando.boot" />
     </Step>
