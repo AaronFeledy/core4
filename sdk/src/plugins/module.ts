@@ -13,11 +13,13 @@ import type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
 import type { LogFileHelperAssets } from "../services/host-assets.ts";
 import type {
   AppFeatureDefinition,
+  CertificateAuthority,
   Downloader,
   FileSyncEngine,
   FileSystem,
   GlobalAppService,
   PathsService,
+  ProcessRunner,
   ProxyService,
   RuntimeProviderShape,
   ServiceFeatureDefinition,
@@ -82,6 +84,11 @@ export interface PluginDoctorCheckContribution {
 export type { PluginDoctorReport } from "../schema/plugin-doctor.ts";
 
 export type FileSyncEngineContribution = Layer.Layer<FileSyncEngine, unknown, unknown>;
+export type CertificateAuthorityContributionLayer = Layer.Layer<
+  CertificateAuthority,
+  never,
+  PathsService | Downloader | ProcessRunner
+>;
 export type ProxyServiceContributionLayer = Layer.Layer<
   ProxyService,
   ProxyError,
@@ -97,6 +104,7 @@ export interface LandoPluginModule {
   readonly runtimeProviders?: ReadonlyMap<ProviderId, RuntimeProviderContribution>;
   readonly renderers?: ReadonlyMap<string, RendererContribution>;
   readonly fileSyncEngines?: ReadonlyMap<string, FileSyncEngineContribution>;
+  readonly certificateAuthorities?: ReadonlyMap<string, CertificateAuthorityContributionLayer>;
   readonly templateEngines?: ReadonlyMap<string, TemplateEngine>;
   readonly proxyServices?: ReadonlyMap<string, ProxyServiceContributionLayer>;
   readonly globalServices?: ReadonlyMap<string, GlobalServiceContributionEffect>;
