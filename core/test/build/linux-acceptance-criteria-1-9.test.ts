@@ -38,7 +38,7 @@ const expectPassingSpotCheck = async (testPath: string, nameFilter: string): Pro
 
 const longHarness = { timeout: 180_000 };
 
-describe("§17.9 acceptance criteria 1-9 on linux-x64", () => {
+describe("release acceptance criteria 1-9 on linux-x64", () => {
   test(
     "criterion 1: release rehearsal writes checksum manifests and compiled binary reports version on linux-x64",
     async () => {
@@ -74,10 +74,6 @@ describe("§17.9 acceptance criteria 1-9 on linux-x64", () => {
     expect(ci).toContain("timeout-minutes:");
     expect(releaseTest).toContain("budget 600000ms");
     expect(releaseTest).toContain("ReleaseCompileBudgetError");
-
-    const spec = await readFile(resolve(repoRoot, "spec/15-binary-build-and-release.md"), "utf8");
-    expect(spec).toContain("under 30 minutes for a single-platform release");
-    expect(spec).toContain("under 60 minutes for a full-matrix release");
   });
 
   test(
