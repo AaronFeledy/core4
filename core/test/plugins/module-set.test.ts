@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Either, Schema } from "effect";
 
+import { plugin as mkcertPlugin } from "@lando/ca-mkcert";
 import { PluginDescriptorMismatchError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
@@ -92,6 +93,68 @@ describe("makePluginCapabilityIndex", () => {
       expect(result.left.declared).toEqual(["declared-engine"]);
       expect(result.left.provided).toEqual(["provided-engine"]);
       expect(result.left.remediation.length).toBeGreaterThan(0);
+    }
+  });
+
+  test("indexes certificate authority contribution layers", () => {
+    const result = makePluginCapabilityIndex([mkcertPlugin]);
+
+    expect(Either.isRight(result)).toBe(true);
+    if (Either.isRight(result)) {
+      expect(result.right.certificateAuthorities.get("mkcert")).toBe(
+        mkcertPlugin.certificateAuthorities?.get("mkcert"),
+      );
+    }
+  });
+
+  test("returns a typed mismatch when certificate authority ids disagree", () => {
+    const caLayer = mkcertPlugin.certificateAuthorities?.get("mkcert");
+    if (caLayer === undefined) throw new Error("mkcert descriptor has no certificate authority layer.");
+    const module: LandoPluginModule = {
+      name: "@lando/ca-mismatch",
+      manifest: Schema.decodeSync(PluginManifest)({
+        name: "@lando/ca-mismatch",
+        version: "1.0.0",
+        api: 4,
+        contributes: {
+          certificateAuthorities: [{ id: "declared-ca", module: "./src/ca.ts" }],
+        },
+      }),
+      certificateAuthorities: new Map([["provided-ca", caLayer]]),
+    };
+
+    const result = makePluginCapabilityIndex([module]);
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
+      expect(result.left.kind).toBe("certificateAuthorities");
+      expect(result.left.declared).toEqual(["declared-ca"]);
+      expect(result.left.provided).toEqual(["provided-ca"]);
+    }
+  });
+
+  test("returns a typed mismatch for duplicate certificate authority ids", () => {
+    const caLayer = mkcertPlugin.certificateAuthorities?.get("mkcert");
+    if (caLayer === undefined) throw new Error("mkcert descriptor has no certificate authority layer.");
+    const makeModule = (name: string): LandoPluginModule => ({
+      name,
+      manifest: Schema.decodeSync(PluginManifest)({
+        name,
+        version: "1.0.0",
+        api: 4,
+        contributes: { certificateAuthorities: [{ id: "shared-ca", module: "./src/ca.ts" }] },
+      }),
+      certificateAuthorities: new Map([["shared-ca", caLayer]]),
+    });
+
+    const result = makePluginCapabilityIndex([makeModule("@lando/ca-first"), makeModule("@lando/ca-second")]);
+
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left).toBeInstanceOf(PluginDescriptorMismatchError);
+      expect(result.left.kind).toBe("certificateAuthorities");
+      expect(result.left.pluginName).toBe("@lando/ca-second");
     }
   });
 });
