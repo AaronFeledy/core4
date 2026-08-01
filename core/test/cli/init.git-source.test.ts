@@ -82,7 +82,7 @@ describe("lando init git source dispatch parity", () => {
       expect(writes.join("")).toContain("lando init --source=git requires --url=<git-url>.");
     } finally {
       (process.stderr as unknown as { write: typeof process.stderr.write }).write = originalWrite;
-      process.exitCode = previousExitCode;
+      process.exitCode = previousExitCode ?? 0;
     }
   });
 
