@@ -1,9 +1,15 @@
 #!/usr/bin/env bun
-import { existsSync } from "node:fs";
 import { appendFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 
-import { extractGuideCoverageSection, parseGuideCoveragePaths } from "./check-guide-coverage.ts";
+import {
+  extractGuideCoverageSection,
+  parseGuideCoveragePaths,
+  parsePrdSourceArgs,
+  resolvePrdSources,
+} from "./check-guide-coverage.ts";
+
+export { parsePrdSourceArgs } from "./check-guide-coverage.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -41,7 +47,8 @@ export interface CheckGuideDriftInput {
 }
 
 export interface CheckGuideDriftOptions {
-  readonly specDir?: string;
+  readonly prdSources?: ReadonlyArray<string>;
+  readonly env?: NodeJS.ProcessEnv;
   readonly changedFiles?: ReadonlyArray<string>;
   readonly prBody?: string;
 }
@@ -136,16 +143,7 @@ export const checkGuideDriftOnDisk = async (
   root = REPO_ROOT,
   options: CheckGuideDriftOptions = {},
 ): Promise<DriftResult> => {
-  const defaultSpecDirs = ["prd/alpha-3", [["s", "pec"].join(""), "alpha-3"].join("/")];
-  const defaultSpecFiles = ["spec/alpha-4/prd-alpha-4-11-library-and-acceptance.md"];
-  const specDirs =
-    options.specDir !== undefined
-      ? [options.specDir]
-      : uniqueInOrder(defaultSpecDirs).filter((specDir) => existsSync(resolve(root, specDir)));
-  const specFiles =
-    options.specDir !== undefined
-      ? []
-      : uniqueInOrder(defaultSpecFiles).filter((specFile) => existsSync(resolve(root, specFile)));
+  const prdSources = await resolvePrdSources(root, options);
 
   const declarations: Array<GuideDriftDeclaration> = [];
   const pushDeclaration = async (source: string, absolutePath: string): Promise<void> => {
@@ -158,19 +156,19 @@ export const checkGuideDriftOnDisk = async (
       guidePaths: parseGuideCoveragePaths(content),
     });
   };
-  for (const specDir of specDirs) {
-    let specEntries: ReadonlyArray<string> = [];
+  for (const prdDir of prdSources.directories) {
+    let prdEntries: ReadonlyArray<string> = [];
     try {
-      specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
+      prdEntries = (await readdir(resolve(root, prdDir))).filter((name) => name.endsWith(".md")).sort();
     } catch {
-      specEntries = [];
+      prdEntries = [];
     }
-    for (const name of specEntries) {
-      await pushDeclaration(`${specDir}/${name}`, resolve(root, specDir, name));
+    for (const name of prdEntries) {
+      await pushDeclaration(`${prdDir}/${name}`, resolve(root, prdDir, name));
     }
   }
-  for (const specFile of specFiles) {
-    await pushDeclaration(specFile, resolve(root, specFile));
+  for (const prdFile of prdSources.files) {
+    await pushDeclaration(prdFile, resolve(root, prdFile));
   }
 
   return checkGuideDrift({
@@ -261,10 +259,15 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  const result = await checkGuideDriftOnDisk(REPO_ROOT, {
+  const cliSources = parsePrdSourceArgs(process.argv.slice(2));
+  const baseOptions = {
     changedFiles: context.changedFiles,
     prBody: context.prBody,
-  });
+  };
+  const result = await checkGuideDriftOnDisk(
+    REPO_ROOT,
+    cliSources.length === 0 ? baseOptions : { ...baseOptions, prdSources: cliSources },
+  );
 
   await appendStepSummary(formatGuideDriftSummary(result, context));
 
