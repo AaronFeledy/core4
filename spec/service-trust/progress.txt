@@ -1120,3 +1120,20 @@ Spec SoT:
   - Build selected contribution Layers inside the runtime Scope and provide their declared service
     dependencies directly; sibling Layers are not visible through `Layer.mergeAll` construction.
 ---
+
+## 2026-07-31 23:47 CDT - US-500 Drift Audit
+- Trigger: 1 cycle, 3,048 changed lines, 21 commits
+- Category 3 (review scar tissue): selection stripped graph candidates to a synthetic shape, re-found the
+  same candidate, and guarded an impossible disappearance; the selected candidate now flows directly.
+- Category 6 (contract drift): prior-story seam wording still named the replaced direct authority service,
+  and generated release jobs omitted the newly bundled mkcert package; both now match production wiring.
+- Fixed: removed the synthetic selector state and unreachable recovery path, aligned the preserved fake-CA
+  composition proof with the resolver seam, and regenerated mkcert release build/publish entries.
+- Split/excise decisions: none; US-500 remains the adjudicated complete contribution-graph/runtime story and
+  `passes` stays true.
+- Verification: typecheck and lint passed; 193 focused tests passed; guide lint/coverage, generated output,
+  and all boundary gates passed.
+  Base-aware guide drift requires this PR-body skip: Guide-Coverage-Skip: US-500 changes internal plugin graph
+  and SDK selection contracts already covered by certificates-mkcert; legacy install/library guides do not
+  describe active CertificateAuthority selection.
+---
