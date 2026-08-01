@@ -556,5 +556,23 @@
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "schema:EmbeddingPluginPolicy",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Embedding plugin policy now types pre-resolved manifest entries as ResolvedPluginInput while preserving the existing policy modes and discovery variants (US-500)."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "property-removed",
+    "path": "$.cas",
+    "justification": "The unreleased cas contribution key is replaced before Beta by the normative typed certificateAuthorities surface; no shipped consumer contract exists (US-500)."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "property-removed",
+    "path": "$.contributes.cas",
+    "justification": "The unreleased cas manifest key is replaced before Beta by the normative typed certificateAuthorities contribution; no shipped consumer contract exists (US-500)."
   }
 ]

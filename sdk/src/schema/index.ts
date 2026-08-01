@@ -1,6 +1,7 @@
 export * from "./app-plan.ts";
 export * from "./artifacts.ts";
 export * from "./build-plan.ts";
+export * from "./certificate-authority-contribution.ts";
 export {
   ComposeProjectFieldCapabilities,
   ComposeProjectFieldKey,
@@ -87,6 +88,7 @@ export {
   structuralDeprecationKey,
 } from "./deprecation.ts";
 export * from "./docs.ts";
+export * from "./embedding-plugin-policy.ts";
 export * from "./file-sync.ts";
 export * from "./file-sync-engine.ts";
 export * from "./http-client.ts";
