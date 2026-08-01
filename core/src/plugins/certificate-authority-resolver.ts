@@ -15,7 +15,6 @@ export interface CertificateAuthorityCandidateDefinition {
   readonly pluginName: string;
   readonly source: string;
   readonly defaultFor?: { readonly platform?: ReadonlyArray<string> | undefined } | undefined;
-  readonly acquire: undefined;
 }
 
 type SelectionError = NoCertificateAuthorityError | AmbiguousCertificateAuthoritiesError;
@@ -125,31 +124,14 @@ export const CertificateAuthorityResolverLive = Layer.scoped(
     const downloader = yield* Downloader;
     const processRunner = yield* ProcessRunner;
     const scope = yield* Scope.Scope;
-    const selected = selectCertificateAuthorityCandidate(
-      graph.certificateAuthorities.map((candidate) => ({ ...candidate, acquire: undefined })),
-      process.platform,
-    );
+    const selected = selectCertificateAuthorityCandidate(graph.certificateAuthorities, process.platform);
     const acquire: Effect.Effect<
       Context.Tag.Service<typeof CertificateAuthority>,
       SelectionError | PluginLoadError
     > = Either.match(selected, {
       onLeft: Effect.fail,
-      onRight: (selection) => {
-        const original = graph.certificateAuthorities.find(
-          (candidate) =>
-            candidate.id === selection.id &&
-            candidate.pluginName === selection.pluginName &&
-            candidate.source === selection.source,
-        );
-        if (original === undefined) {
-          return Effect.fail(
-            new PluginLoadError({
-              message: `Selected certificate authority ${selection.id} disappeared from the contribution graph.`,
-              pluginName: selection.pluginName,
-            }),
-          );
-        }
-        return loadContributionLayer(original).pipe(
+      onRight: (selection) =>
+        loadContributionLayer(selection).pipe(
           Effect.flatMap((layer) =>
             Layer.buildWithScope(
               layer.pipe(
@@ -165,8 +147,7 @@ export const CertificateAuthorityResolverLive = Layer.scoped(
             ),
           ),
           Effect.map((context) => Context.get(context, CertificateAuthority)),
-        );
-      },
+        ),
     });
     const cached = yield* Effect.cached(acquire);
     return { resolve: cached };
