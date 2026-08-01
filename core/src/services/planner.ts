@@ -40,7 +40,6 @@ import {
 import {
   AppPlanner,
   CacheService,
-  CertificateAuthority,
   ConfigService,
   FileSystem,
   PathsService,
@@ -72,6 +71,7 @@ import { resolveNetworkTrustPlan } from "../http-client/network-trust.ts";
 import { getLandofileAppRoot } from "../landofile/app-root-provenance.ts";
 import { parseEnvFile } from "../landofile/env-file.ts";
 import { getLandofileReferencedFiles } from "../landofile/load-expression-provenance.ts";
+import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,
   hostProxyExtensionForCapabilities,
@@ -1044,7 +1044,7 @@ const planApp = (
   configService: Context.Tag.Service<typeof ConfigService> | undefined,
   fileSystem: Context.Tag.Service<typeof FileSystem> | undefined,
   pathsService: Context.Tag.Service<typeof PathsService> | undefined,
-  certificateAuthority: Context.Tag.Service<typeof CertificateAuthority> | undefined,
+  certificateAuthorityResolver: Context.Tag.Service<typeof CertificateAuthorityResolver> | undefined,
   landofile: LandofileShape,
   providerCapabilities: ProviderCapabilities,
 ): Effect.Effect<
@@ -1289,7 +1289,7 @@ const planApp = (
               routes: authoredRoutes,
               defaultRouteHostname:
                 authoredRoutes.length === 0 ? `${name}.${appName}.${DEFAULT_PROXY_DOMAIN}` : undefined,
-              certificateAuthority,
+              resolveCertificateAuthority: certificateAuthorityResolver?.resolve,
               fileSystem,
             })
           : undefined;
@@ -1819,7 +1819,7 @@ export const AppPlannerLive = Layer.effect(
     const configService = yield* Effect.serviceOption(ConfigService);
     const fileSystem = yield* Effect.serviceOption(FileSystem);
     const pathsService = yield* Effect.serviceOption(PathsService);
-    const certificateAuthority = yield* Effect.serviceOption(CertificateAuthority);
+    const certificateAuthorityResolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
     return {
       plan: (landofile, providerCapabilities) =>
         planApp(
@@ -1828,7 +1828,7 @@ export const AppPlannerLive = Layer.effect(
           Option.getOrUndefined(configService),
           Option.getOrUndefined(fileSystem),
           Option.getOrUndefined(pathsService),
-          Option.getOrUndefined(certificateAuthority),
+          Option.getOrUndefined(certificateAuthorityResolver),
           landofile,
           providerCapabilities,
         ),

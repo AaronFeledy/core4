@@ -2,10 +2,11 @@ import { Effect, Layer } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
 import type { LandofileShape } from "@lando/sdk/schema";
-import { AppPlanner, CertificateAuthority, PathsService } from "@lando/sdk/services";
+import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider, type makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
+import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
@@ -32,7 +33,9 @@ export const planAppPlannerCertsEffect = (input: AppPlannerCertsPlanInput) => {
         userCacheRoot: input.cacheRoot,
       }),
     ),
-    ...(input.ca === undefined ? [] : [Layer.succeed(CertificateAuthority, input.ca)]),
+    ...(input.ca === undefined
+      ? []
+      : [Layer.succeed(CertificateAuthorityResolver, { resolve: Effect.succeed(input.ca) })]),
   );
   const planner = AppPlannerLive.pipe(Layer.provide(dependencies));
   return Effect.flatMap(AppPlanner, (service) =>
