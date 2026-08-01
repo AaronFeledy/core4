@@ -1239,3 +1239,32 @@ Spec SoT:
   - Preserve the complete inherited USER token (name or numeric id, with optional group) and distinguish it
     from `ServicePlan.user`, which providers apply when creating the runtime container.
 ---
+
+## 2026-08-01 18:35 CDT - US-501 Review
+- Fixed fresh Docker hosts failing before an uncached referenced parent could be inspected by first
+  materializing a deterministic local base artifact, then inspecting that artifact before the privileged
+  derived build. Inherited-user inspection now rejects whitespace, control characters, and backslashes,
+  preserves provider-unavailable failures, and reserves internal errors for malformed or unsafe metadata.
+- Canonicalized artifact identity so omitted `privileged` and explicit `privileged: false` hash identically,
+  matching the realizer's `=== true` normalization. Production-path tests now drive the artifact build
+  function with the exact `lando.boot` scaffold command and cover root/non-root parents, exact restoration,
+  later-step ordering, deterministic materialization, and runtime `user:` separation.
+- Corrected the guide's real-provider over-claim and documented uncached referenced-parent materialization.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
+  the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): The first security lane was unavailable because team mode is disabled;
+  a narrow security rerun on the final privilege delta passed without findings.
+- Review notes (deferred/rejected): Rejected requiring a real-provider integration test as an additional
+  story blocker because the source criterion requires production-path artifact rendering/build tests, which
+  now exercise the production build function and exact emitted build contexts. A sandbox rerun was attempted
+  but Podman could not build because `libgpgme.so.11` is missing; no package was installed and no workaround
+  was used. The earlier real-Podman evidence predates local base materialization and does not cover that path.
+- Guide-Coverage-Skip: US-501 documents artifact privilege in lando-boot-scaffold; legacy Alpha-4 library guides do not own internal image-build realization.
+- Verification: typecheck, lint/deprecations, every boundary rule, generated output, focused guide execution,
+  guide lint/coverage, and base-aware guide drift passed; 109 focused and adjacent tests passed with 305
+  assertions. The full `bun test` suite was intentionally not run; executed Bun tests cover the new
+  `container-runtime/test/**` files that root TypeScript project references do not typecheck.
+- **Learnings for future iterations:** Build-key inputs must use the same canonicalization as their consumer,
+  or an optional boolean creates spurious cache misses. When a code-path change supersedes prior host QA,
+  record that boundary explicitly rather than carrying the earlier evidence forward.
+---
