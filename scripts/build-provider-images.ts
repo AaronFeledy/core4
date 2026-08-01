@@ -13,6 +13,8 @@
  */
 import { resolve } from "node:path";
 
+import { formatGeneratedPaths } from "./_codegen-output.ts";
+
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "core/src/data-mover/generated/provider-images.ts");
 
@@ -85,12 +87,7 @@ export const providerImages = ${JSON.stringify(sorted, null, 2)} as const satisf
 const main = async (): Promise<void> => {
   const contents = renderProviderImages(PROVIDER_IMAGES);
   await Bun.write(OUTPUT, contents);
-  const proc = Bun.spawn(["bun", "run", "biome", "check", "--write", OUTPUT], {
-    cwd: REPO_ROOT,
-    stdout: "ignore",
-    stderr: "ignore",
-  });
-  await proc.exited;
+  await formatGeneratedPaths([OUTPUT]);
   console.log(
     `[build-provider-images] wrote ${OUTPUT} (${Object.keys(PROVIDER_IMAGES.images).length} images)`,
   );
