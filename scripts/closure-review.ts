@@ -47,10 +47,10 @@ const parseCliOptions = (args: readonly string[]): ClosureReviewCliOptions => {
   const input = valueAfter(args, "--input");
   const report = valueAfter(args, "--report");
   const note = valueAfter(args, "--note");
-  const prd = valueAfter(args, "--prd") ?? "spec/beta-1/prd.json";
-  if (input === undefined || report === undefined || note === undefined) {
+  const prd = valueAfter(args, "--prd");
+  if (input === undefined || report === undefined || note === undefined || prd === undefined) {
     throw new ClosureReviewCliArgumentError(
-      "Usage: closure-review.ts --input <input.json> --report <report.json> --note <note.md> [--prd <prd.json>]",
+      "Usage: closure-review.ts --input <input.json> --report <report.json> --note <note.md> --prd <prd.json>\nProvide the authoritative PRD JSON path with --prd; no fallback source is assumed.",
     );
   }
   return { input, report, note, prd };

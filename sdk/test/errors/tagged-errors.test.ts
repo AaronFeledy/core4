@@ -24,7 +24,7 @@ const deprecationNoticeFixture = {
 };
 
 describe("DeprecatedSurfaceError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(DeprecatedSurfaceError.fields);
     expect(fields).toContain("kind");
     expect(fields).toContain("id");
@@ -64,7 +64,7 @@ describe("DeprecatedSurfaceError", () => {
 });
 
 describe("DeprecationContradictionError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(DeprecationContradictionError.fields);
     expect(fields).toContain("canonicalId");
     expect(fields).toContain("aliasId");
@@ -103,7 +103,7 @@ describe("DeprecationContradictionError", () => {
 });
 
 describe("LandofileParseError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(LandofileParseError.fields);
     expect(fields).toContain("filePath");
     expect(fields).toContain("message");
@@ -172,7 +172,7 @@ describe("LandofileParseError", () => {
 });
 
 describe("ProviderCapabilityError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(ProviderCapabilityError.fields);
     expect(fields).toContain("providerId");
     expect(fields).toContain("capability");
@@ -180,7 +180,7 @@ describe("ProviderCapabilityError", () => {
     expect(fields).toContain("actualValue");
   });
 
-  test("constructs with the spec-mandated payload (boolean-shaped capability)", () => {
+  test("constructs with the documented payload (boolean-shaped capability)", () => {
     const error = new ProviderCapabilityError({
       providerId: "provider-docker",
       operation: "checkCapability",
@@ -472,7 +472,7 @@ describe("GlobalAutoStartError", () => {
 });
 
 describe("AppResolveError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(AppResolveError.fields);
     expect(fields).toContain("message");
     expect(fields).toContain("reason");

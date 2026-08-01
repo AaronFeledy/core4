@@ -1,10 +1,10 @@
 /**
  * Generated/loaded OCLIF manifest helpers.
  *
- * OCLIF manifests must be precomputed. `oclif.manifest.json` is generated
- * at build time and embedded as an asset import. The user's installed
- * plugin manifests are cached at `<userConfRoot>/cache/oclif-manifest.json`
- * and refreshed on `plugin:add` / `plugin:remove`.
+ * OCLIF manifests must be precomputed. `oclif.manifest.json` and this module's
+ * `compiled-manifest.ts` dependency are generated together at build time.
+ * Installed plugin command metadata lives in the separate plugin-command cache,
+ * which plugin mutations invalidate rather than rewriting this manifest.
  */
 import type { Interfaces } from "@oclif/core";
 

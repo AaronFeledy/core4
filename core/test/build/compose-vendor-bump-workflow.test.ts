@@ -51,7 +51,7 @@ describe("compose-go bump workflow", () => {
   test("reports the vendored key path diff and opens or updates a single rolling PR", () => {
     const workflow = renderComposeVendorBumpWorkflow();
 
-    expect(workflow).toContain("git show origin/main:spec/compose/vendor/compose-spec.json");
+    expect(workflow).toContain("git show origin/main:vendor/compose/compose-spec.json");
     expect(workflow).toContain("bun run scripts/report-compose-schema-diff.ts");
     expect(workflow).toContain("automation/compose-go-bump");
     expect(workflow).toContain("gh pr list --state open --head automation/compose-go-bump");
@@ -77,8 +77,8 @@ describe("compose-go bump workflow", () => {
 
     expect(workflow).toContain("BRANCH_EXISTS=true");
     expect(workflow).toContain('if [ -z "$TARGET_TAG" ]; then');
-    expect(workflow).toContain("git diff --quiet origin/main...HEAD -- spec/compose/vendor/pin.json");
-    expect(workflow).toContain("if ! git diff --quiet -- spec/compose/vendor/pin.json");
+    expect(workflow).toContain("git diff --quiet origin/main...HEAD -- vendor/compose/pin.json");
+    expect(workflow).toContain("if ! git diff --quiet -- vendor/compose/pin.json");
   });
 
   test("comments on one exact-title failure issue or creates it without labels", () => {

@@ -3,6 +3,7 @@ import { Effect } from "effect";
 
 import { analyzeComposeDispositions } from "../core/src/landofile/compose/rejections.ts";
 import { parseLandofile } from "../core/src/landofile/parser.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { listComposeFixtures } from "./compose-fixtures.ts";
 import { writeFixtureFileSafely } from "./fixture-safe-write.ts";
 
@@ -14,14 +15,6 @@ export interface ComposeFixtureManifestPaths {
   readonly trustedRoot: string;
   readonly fixturesRoot: string;
   readonly manifestPath: string;
-}
-
-class ComposeFixtureManifestFormatError extends Error {
-  override readonly name = "ComposeFixtureManifestFormatError";
-
-  constructor(readonly exitCode: number) {
-    super(`Biome failed to format the Compose fixture manifest with exit code ${exitCode}.`);
-  }
 }
 
 export const generateComposeFixtureManifest = async ({
@@ -62,13 +55,7 @@ export const buildComposeFixtureManifest = async (): Promise<void> => {
     fixturesRoot: FIXTURES_ROOT,
     manifestPath: MANIFEST_PATH,
   });
-  const formatter = Bun.spawn(["bun", "run", "biome", "check", "--write", MANIFEST_PATH], {
-    cwd: REPO_ROOT,
-    stdout: "ignore",
-    stderr: "inherit",
-  });
-  const formatterExitCode = await formatter.exited;
-  if (formatterExitCode !== 0) throw new ComposeFixtureManifestFormatError(formatterExitCode);
+  await formatGeneratedPaths([MANIFEST_PATH]);
   process.stdout.write(`[build-compose-fixture-manifest] wrote ${fixtureCount} fixtures\n`);
 };
 

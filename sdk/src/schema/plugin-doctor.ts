@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 // ====
-// Plugin-contributed doctor report payloads (SPEC: §10.9.1).
+// Plugin-contributed doctor report payloads.
 
 const PluginDoctorName = Schema.String.pipe(Schema.minLength(1), Schema.maxLength(128));
 const PluginDoctorMessage = Schema.String.pipe(Schema.maxLength(2_000));

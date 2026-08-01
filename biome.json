@@ -19,7 +19,7 @@
       "oclif.manifest.json",
       "**/oclif.manifest.json",
       "bun.lock",
-      "spec/compose/vendor/compose-spec.json"
+      "vendor/compose/compose-spec.json"
     ]
   },
   "formatter": {

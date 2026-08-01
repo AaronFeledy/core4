@@ -5,7 +5,7 @@
 
 This part is reference material, not workflow. Keep it open while reading the other parts.
 
-Covered here: the provider-neutral language reference (which Docker-flavored terms to avoid in core docs and what to use instead), the explicit list of forbidden core dependencies (in source and in `package.json`), the source-derived acceptance checklist that the v4 implementation must satisfy, the full rationale for choosing OCLIF over `@effect/cli` as the default `CommandFramework`, and the glossary of terms.
+Covered here: the provider-neutral language reference (which Docker-flavored terms to avoid in core docs and what to use instead), the explicit list of forbidden core dependencies (in source and in `package.json`), the source-derived acceptance checklist that the v4 implementation must satisfy, the historical rationale for choosing OCLIF over `@effect/cli` as the default `CommandFramework` (superseded by the native single-dispatcher target; §8.4.1, Appendix D), and the glossary of terms.
 
 ---
 
@@ -119,11 +119,11 @@ The v4 implementation must satisfy:
 - A user can run `lando` with no provider installed and receive guidance to install one.
 - The compiled binary meets the §2.1 end-to-end budgets at p95 for level-`none` (`meta:version`, `meta:shellenv`, `meta:recipes:list`), level-`minimal` (`apps:list`), and level-`tooling` (Landofile-defined tooling) commands on a warm filesystem; the perf-budget suite (§13.1) gates this on per-PR CI.
 - Level-`none` commands print from compile-time embedded data without importing `@oclif/core` or constructing any `Context.Service`, verified by the `LANDO_PERF_TRACE` allowlist snapshot.
-- `bin/lando.ts` short-circuits the level-`none` argv shapes (§3.2) before any heavyweight import resolves; an unknown flag attached to a level-`none` shape falls through to OCLIF.
+- `bin/lando.ts` short-circuits the level-`none` argv shapes (§3.2) before any heavyweight import resolves; an unknown flag attached to a level-`none` shape falls through to the native command dispatcher (today, transitionally, to OCLIF; §3.2).
 - The compiled binary embeds Bun bytecode (§2.1 `--bytecode`) so cold start does not pay JavaScript parse cost on every invocation.
 - AOT-composed bootstrap layers (§17.2 codegen, "Bootstrap layers") are loaded as static imports per `BootstrapLevel`; runtime `Layer.merge` / `Layer.provide` chains in core are forbidden outside the codegen output.
 - The `cwd-app-map` cache (§12.1) returns a resolved app root via O(1) lookup + one stat on the warm path; a deep-cwd `lando` invocation does not perform a directory walk after the first successful resolve.
-- Hot-path caches (`core-command`, `plugin-command`, `app-command`, `cwd-app-map`, `oclif-manifest`, `app-plan`) use the §12.2 binary encoding with a versioned magic header; a header mismatch triggers automatic regeneration with no user-visible error.
+- Hot-path runtime caches (`core-command`, `plugin-command`, `app-command`, `cwd-app-map`, `app-plan`) use the §12.2 binary encoding with a versioned magic header; a header mismatch triggers automatic regeneration with no user-visible error. The separately build-embedded command-registry manifest is generated at build time and is not a `CacheService`-managed runtime cache (current implementation: `core/oclif.manifest.json` plus `core/src/cli/oclif/compiled-manifest.ts`; §12.1, §17.2).
 - The Renderer first-paint contract (§8.9.1) is honored: pre-bootstrap banner within 50 ms cold for any command at level ≥ `plugins`; spinner appears for tasks exceeding 100 ms; tables emit headers within 80 ms cold.
 - Telemetry events do not block command exit, do not change exit code on endpoint failure, and do not leave the process hanging on shutdown (§2.4, §3.4).
 - `EventService.publish` is a no-op when the event has zero subscribers in the current runtime; subscriber lists are pre-sorted by priority at registration time (§11.1).
@@ -170,7 +170,7 @@ The v4 implementation must satisfy:
 - A scratch Lando app acquired through `apps:scratch:start --from <recipe-ref>` renders the recipe pipeline against the scratch root, skips the recipe's `postInit:` actions by default, defaults isolation to `--isolate=baked` (no appMount), and switches to `--isolate=cwd` when `--mount-cwd` is set; the host cwd at start time is bind-mounted at the appMount destination in cwd mode (§21.4.2, §21.7).
 - A scratch's `scope: global` storage entries are rewritten to `scope: app` at plan time so a scratch start does NOT touch user-app `scope: global` volumes; `--share-global-storage` opts back into the original semantics, and the resulting volumes carry the `dev.lando.scratch-id: <id>` label so cleanup is deterministic (§21.8).
 - A scratch's routes are auto-suffixed by the planner-applied `ScratchHostnameSuffix` filter so a fork-mode scratch's hostnames (`<host>--<scratch-id>.<domain>`) do not collide with the source app's; `--no-hostname-suffix` and per-host `--hostname <host>` opt out (§21.9.2).
-- A foreground `apps:scratch:start` (no `--detach`) acquires the scratch under the OCLIF command's `Scope`; SIGINT propagates through `Effect.interrupt` into the scope finalizer, which destroys the scratch — containers, volumes (per §21.8 rules), proxy routes, host-proxy socket, build transcripts, materialized root, registry entry — before the process exits (§21.5, §21.6).
+- A foreground `apps:scratch:start` (no `--detach`) acquires the scratch under the native command dispatcher's command `Scope` (today, transitionally, the OCLIF command's `Scope`); SIGINT propagates through `Effect.interrupt` into the scope finalizer, which destroys the scratch — containers, volumes (per §21.8 rules), proxy routes, host-proxy socket, build transcripts, materialized root, registry entry — before the process exits (§21.5, §21.6).
 - A detached `apps:scratch:start --detach` registers the scratch in `<userCacheRoot>/scratch/registry.bin`; `apps:scratch:stop <id>` and `apps:scratch:destroy <id>` end its lifetime, and `apps:scratch:gc --prune` reaps orphans found via the registry walk plus the provider-label scan (§21.10, §21.11).
 - `apps:poweroff` destroys every running scratch app by default; `--keep-scratch` opts out and reports the kept count in the renderer's final summary; `--keep-scratch` and `--keep-global` compose (§21.6.3, §21.10).
 - Scratch ids and user-app slugs live in separate identifier namespaces: a user app named `scratch-foo` and a scratch app whose id begins with `scratch-foo-` coexist without collision because caches key by `(kind, id)` and provider labels carry both `dev.lando.storage-project` and `dev.lando.scratch-id` (§21.2, §7.4).
@@ -180,9 +180,9 @@ The v4 implementation must satisfy:
 
 Binary-shipping criteria — items the v4.0.0 release pipeline (rather than the source) must satisfy — are catalogued separately in §17.9 (signing, notarization, SBOM, provenance, self-update, installer, codegen drift gates).
 
-### D. Why OCLIF (and not @effect/cli)
+### D. Why OCLIF (and not @effect/cli) — historical decision
 
-OCLIF was kept as the default `CommandFramework` after consideration. The tradeoffs:
+**Historical.** At the time of this decision, OCLIF was kept as the default `CommandFramework` after consideration. The native command registry and dispatcher (§8.4.1) has since superseded OCLIF as the target CommandFramework default (see the D.1 Supersession note below); the tradeoffs recorded at the time of the original decision:
 
 | Capability | OCLIF | @effect/cli |
 |---|---|---|
@@ -194,9 +194,9 @@ OCLIF was kept as the default `CommandFramework` after consideration. The tradeo
 | Schema-typed flags/args | Adapter shim | Native |
 | CommandFramework abstraction cleanliness | Sufficient — only `src/cli/oclif/` imports OCLIF | Same applies in reverse |
 
-The decisive factor is the plugin ecosystem maturity: Lando v4 *is* a plugin platform, and OCLIF's plugin model maps directly onto Lando's needs. Building Lando's plugin system on top of `@effect/cli` would mean reimplementing manifest caching, lazy loading, and friendly-name install — exactly the layers OCLIF gives us for free.
+The decisive factor at the time was the plugin ecosystem maturity: Lando v4 *is* a plugin platform, and OCLIF's plugin model mapped directly onto Lando's needs then. Building Lando's plugin system on top of `@effect/cli` would have meant reimplementing manifest caching, lazy loading, and friendly-name install — exactly the layers OCLIF gave us for free at that stage.
 
-The `CommandFramework` abstraction exists so that if `@effect/cli` reaches feature parity for plugin platforms, a Lando distribution can swap in an alternate adapter without touching core domain logic.
+At the time, the `CommandFramework` abstraction existed so that if `@effect/cli` reached feature parity for plugin platforms, a Lando distribution could swap in an alternate adapter without touching core domain logic. The native dispatcher (§8.4.1) is now the target `CommandFramework` implementation; see D.1 below for the supersession evidence.
 
 #### D.1 Compiled-binary dispatch spike
 
@@ -204,7 +204,9 @@ Source mode routes through `@oclif/core`'s `execute()`; the compiled `$bunfs` bi
 
 This spike ran both arms (`core/test/cli/dispatch-unification-spike.test.ts`; probe `core/test/cli/parity/oclif-static-probe.ts`; shared normalizer `core/test/cli/parity/normalize.ts`).
 
-**Conclusion: option (b).** This outcome is now applied: §8.4.1's parity rules are normative, the compiled-binary dispatch parity test layer ships in §13.1 (`core/test/cli/parity/`), and the §14.2 "Compiled-binary CLI dispatch unification" decision is closed (see §14.2 "Resolved since this draft").
+**Historical conclusion: option (b).** At the time of the spike, option (b) was applied: §8.4.1's parity rules were promoted and a dual-path parity layer shipped in §13.1.
+
+**Supersession (architecture-simplicity, US-500+):** option (b) dual dispatch is **no longer** the normative architecture. The spike's Arm A finding still stands — OCLIF cannot dispatch inside `$bunfs` through any supported public API — and that finding now **motivates removing OCLIF from the shipping CLI** and keeping a **single native dispatcher** for source and compiled modes (§8.4.1 rewrite; §14.2 row superseded). Dual-path parity tests are replaced by registry completeness + machine-output + relocated-binary smoke (§13.1). See `spec/architecture-simplicity/`.
 
 **Arm A — can `execute()` dispatch in the compiled binary?** No, not through any supported public API. A probe importing only `@oclif/core` and calling `execute()` was compiled with `bun build --compile` to its own outfile and run from a directory outside the source tree (a faithful relocated-deployment reproduction). It fails before any command runs:
 
@@ -232,7 +234,7 @@ OCLIF v4's `explicit`/`single` command-discovery strategies read an in-memory co
 | S3 error | `app:start` (no Landofile) `--renderer=json` | 1 | JSON envelope byte-identical (modulo `timestamp`/temp path); `code = LandofileNotFoundError` |
 | S4 setup | `meta:setup --provider=podman` (`PATH=/no-such-path`, temp roots) | 1 | exit + tagged `code = ProviderUnavailableError` + `commandId` equal |
 
-The headline finding answers §8.4.1's open question on parity granularity: **the `json` renderer's event envelope is byte-identical across both paths**, while plain/`lando` stderr differs only in presentation — source-mode OCLIF prefixes `Error:` and wraps at terminal width, the compiled path prints the raw block and appends `logsDir`/`cacheDir`. The parity contract is therefore byte-identical on the JSON envelope and identical tagged-error fields (`code`, `commandId`, `remediation`, `specSection`) on plain output — not byte-for-byte on plain stderr. Green parity here is the evidence that promoting §8.4.1 to a normative, test-enforced contract (option b) is safe; that promotion and the compiled-binary parity test layer (§13.1, `core/test/cli/parity/`) are now in force.
+The headline finding answered the then-open question on parity granularity: **the `json` renderer's event envelope was byte-identical across both paths**, while plain/`lando` stderr differed only in presentation — source-mode OCLIF prefixed `Error:` and wrapped at terminal width, while the compiled path printed the raw block and appended `logsDir`/`cacheDir`. The historical parity contract was therefore byte-identical on the JSON envelope and identical tagged-error fields (`code`, `commandId`, `remediation`, `specSection`) on plain output — not byte-for-byte on plain stderr. Green parity was the evidence used to promote option (b) at that time; that contract and its compiled-binary parity layer are superseded by the single-dispatcher rules in §8.4.1 and §13.1, as noted above.
 
 ### E. Glossary
 
@@ -242,8 +244,8 @@ The headline finding answers §8.4.1's open question on parity granularity: **th
 - **BootstrapLevel** — Declared by each command, indicates how much of the runtime to load.
 - **Canonical command id** — The fully-qualified namespaced identifier of a command, of the form `<namespace>:<segments…>` (e.g., `app:start`, `meta:plugin:add`, `app:db:wait`). Every command has exactly one canonical id; lifecycle events, cache keys, and library API function names are derived from it. Top-level aliases (§8.1.2) are alternate invocation paths, not alternate ids.
 - **Command alias override** — A `commandAliases.custom.<alias>: <canonical-id>` entry in the Landofile (§7.4) or global config (§7.5) that re-binds a top-level alias to a canonical id, possibly shadowing a built-in. Landofile-level overrides take effect inside the app context only; the targeted canonical id remains callable directly. The built-in mechanism for "redefine what `lando start` does in this project."
-- **Command framework** — The pluggable `CommandFramework` abstraction (§4.2) that handles argv parsing, manifest, help, namespace-to-topic mapping, and top-level alias registration. Default implementation is OCLIF.
-- **Command namespace** — One of the three core namespaces (`app`, `apps`, `meta`) or a plugin-owned topic. Each namespace is a top-level OCLIF topic and the prefix segment of every canonical id within it.
+- **Command framework** — The pluggable `CommandFramework` abstraction (§4.2) that handles argv parsing, manifest, help, namespace-to-topic mapping, and top-level alias registration. Target default implementation is the native command registry and dispatcher (§8.4.1); OCLIF was the historical default (§14 Appendix D) and remains the current source-mode implementation pending the architecture-simplicity migration (§8.4).
+- **Command namespace** — One of the three core namespaces (`app`, `apps`, `meta`) or a plugin-owned topic. Each namespace is a top-level registry topic (today also an OCLIF topic; §8.4) and the prefix segment of every canonical id within it.
 - **Command step** — A `cmds[].command:` entry in a tooling task (§8.5.2.1) that invokes another canonical command (built-in, plugin, or tooling) by id. The structured way to wrap or compose around a built-in. Inputs are validated against the target's `LandoCommandSpec`; lifecycle events for the target still publish; bootstrap level auto-escalates to the target's requirement.
 - **Config translator** — A plugin contribution that detects external configuration files and returns a partial Landofile fragment plus diagnostics. Translators are invoked explicitly by `lando app config translate` or embedding hosts; they never run during normal app startup.
 - **DeprecationNotice** — The canonical Effect Schema (§18.2) attached to a public surface to declare its deprecation. Carries `since`, `removeIn`, `severity`, `replacement`, `note`, optional `docsUrl` and `ticket`. Expressed across surfaces through schema annotations, contract fields, manifest fields, or TSDoc tags per the surface deprecation matrix in §18.5.

@@ -11,7 +11,6 @@
 import { resolve } from "node:path";
 
 import { COMPILED_OCLIF_MANIFEST } from "../core/src/cli/oclif/compiled-manifest.ts";
-import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "docs/reference/commands.mdx");
@@ -159,7 +158,7 @@ const renderPage = (): string => {
 };
 
 const main = async (): Promise<void> => {
-  await writeFormattedOutput(OUTPUT, renderPage());
+  await Bun.write(OUTPUT, renderPage());
   console.log(`[build-command-reference] wrote ${OUTPUT}`);
 };
 

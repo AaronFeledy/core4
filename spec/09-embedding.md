@@ -55,7 +55,7 @@ Public API surfaces (all exported from `@lando/core` per §2.7):
 | Testing | `@lando/core/testing` | Test-Layer fixtures, in-memory `FileSystem` and `ProcessRunner`, `TestRuntimeProvider`, `TestManagedFileStore`, the `ScenarioContext` test runtime for executable guides and generated scenarios (§19.4), helpers for asserting against `Stream`s and `EventService` (§16.8) |
 | Docs components | `@lando/core/docs/components` | JSX/Astro runtime + AST helpers for the executable-guide/scenario component vocabulary (`Guide`, `Scenario`, `Step`, `Run`, `Verify`, `Inspect`, `Hidden`, `Cleanup`, `Variable`, `Skip`, `Inline`, `UseFixture`, `Tabs`, `Tab`); contracts (prop schemas, frontmatter, `MatcherSchema`, `Transcript`, `TranscriptFrame`, `TabAxis`, `TabAxisValue`) live in `@lando/sdk/docs/components` (§19.3). |
 | Docs redactions | `@lando/core/docs/redactions` | Re-export of the canonical transcript redaction list owned by `@lando/sdk/docs/redactions` (§19.6); consumed by both the docs build and the test-time transcript writer. |
-| OCLIF adapter | `@lando/core/oclif` | The OCLIF-specific glue. Hosts MUST NOT import this unless they are building an alternate CLI distribution. |
+| ~~OCLIF adapter~~ | ~~`@lando/core/oclif`~~ | **Target: removed by US-526; current metadata may retain interim export until then; hosts MUST NOT adopt it.** Use `@lando/core/cli` or library APIs. |
 
 **Renderer-substrate and notifications additive compatibility inventory.** This is the authoritative public inventory for the Beta-1 feature wave. Every symbol below is additive, receives JSDoc/TSDoc, is recorded in `sdk/API_COMPATIBILITY.md`, and is covered by SDK backward-compatibility import tests. Every schema-backed symbol is also registered in the generated schema snapshot; `bun run codegen:schema-snapshot` followed by a clean snapshot diff is mandatory.
 
@@ -77,7 +77,7 @@ Stability rules:
 - `@lando/core/testing` is API-stable and supported on the `next` channel for Beta 1; it is also published on `dev`, and it still follows §13.7 channel promotion, so it is not published on the `stable` release channel until v4.0.0 GA. After GA it follows the standard semver rule.
 - `@lando/core/docs/components` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
 - `@lando/core/docs/redactions` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
-- `@lando/core/oclif` is **internal**. It is exported only because the OCLIF compiled-binary build needs it; embedding hosts MUST NOT import it. Tests enforce the boundary.
+- `@lando/core/oclif`: target: removed by US-526; current metadata may retain interim export until then; hosts MUST NOT adopt it. Tests enforce the boundary. The native dispatcher and `@lando/core/cli` replace any prior OCLIF-adapter need.
 - Any symbol not listed above is internal and may change between patch versions.
 
 ### 16.3 The `LandoRuntime` factory
@@ -410,7 +410,7 @@ const program = Effect.gen(function* () {
 
 The stable app-lifecycle embedding primitive is the `App` handle in §16.3. Embedding hosts that want to "run what `lando app start` runs" SHOULD call `app.start()`, `app.info()`, `app.stop()`, and sibling handle methods rather than naming command-operation functions directly.
 
-`@lando/core/cli` remains the programmatic CLI entry point for hosts that need command-shaped behavior: argv parsing policy, canonical command ids, renderer-independent typed results, and the same dispatch surface used by the source and compiled CLIs. It does not require OCLIF for command effects. Lower-level operation modules such as `@lando/core/cli/operations` are building blocks for `@lando/core/cli`, `runCompiledCli`, and the `App` handle; they are not the preferred stable app-lifecycle API.
+`@lando/core/cli` remains the programmatic CLI entry point for hosts that need command-shaped behavior: argv parsing policy, canonical command ids, renderer-independent typed results, and the same dispatch surface used by the source and compiled CLIs. It does not require OCLIF for command effects. The target architecture is a single native dispatcher shared by source and compiled modes (§8.4.1). Lower-level modules such as `@lando/core/cli/operations` remain shared building blocks for the registry, the `App` handle, and today's transitional OCLIF/`runCompiledCli` routing paths; they are not the preferred stable app-lifecycle API.
 
 ```ts
 import { Effect } from "effect";

@@ -95,6 +95,9 @@ ${setupBunSteps}
       - name: Renderer boundary lint
         run: bun run check:renderer-boundary
 
+      - name: Spec reference boundary lint
+        run: bun run check:spec-reference
+
       - name: Managed-file boundary lint
         run: bun run check:managed-file-boundary
 

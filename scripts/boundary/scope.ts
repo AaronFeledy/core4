@@ -15,18 +15,27 @@ const segmentsMatch = (pathSegments: readonly string[], patternSegments: readonl
     return pattern === undefined || pattern === "*" || pattern === segment;
   });
 
+/**
+ * Segments of a scope root. The repository root is spelled `""` or `"."` and
+ * yields no segments, so every walked file lives under it.
+ */
+const rootSegments = (root: string): readonly string[] => {
+  const normalized = normalizeRoot(root);
+  return normalized === "" || normalized === "." ? [] : normalized.split("/");
+};
+
 const canReachRoot = (directory: string, root: string): boolean => {
   const directorySegments = directory === "" ? [] : directory.split("/");
-  const rootSegments = normalizeRoot(root).split("/");
-  const sharedLength = Math.min(directorySegments.length, rootSegments.length);
-  return segmentsMatch(directorySegments.slice(0, sharedLength), rootSegments.slice(0, sharedLength));
+  const segments = rootSegments(root);
+  const sharedLength = Math.min(directorySegments.length, segments.length);
+  return segmentsMatch(directorySegments.slice(0, sharedLength), segments.slice(0, sharedLength));
 };
 
 const isUnderRoot = (path: string, root: string): boolean => {
   const pathSegments = path.split("/");
-  const rootSegments = normalizeRoot(root).split("/");
-  if (pathSegments.length <= rootSegments.length) return false;
-  return segmentsMatch(pathSegments.slice(0, rootSegments.length), rootSegments);
+  const segments = rootSegments(root);
+  if (pathSegments.length <= segments.length) return false;
+  return segmentsMatch(pathSegments.slice(0, segments.length), segments);
 };
 
 const directoryIsExcluded = (directory: string, scope: RuleScope): boolean => {

@@ -26,7 +26,7 @@ tags: [beta, docs, recipes, typescript, programmatic]
 
   <Scenario id="mutually-exclusive" render={false} reason="Mutual exclusivity is covered by ts-source resolution tests with fixture directories">
     <Step name="one-form-per-dir">
-      <Variable name="rule" value="recipe.ts XOR recipe.yml" display="A recipe directory ships recipe.ts or recipe.yml, never both (spec §8.8.14, mirroring .lando.ts vs .lando.yml)" />
+      <Variable name="rule" value="recipe.ts XOR recipe.yml" display="A recipe directory ships recipe.ts or recipe.yml, never both, mirroring .lando.ts vs .lando.yml" />
       <Variable name="both" value="RecipeManifestValidationError" display="A directory carrying both forms is rejected at resolution: one or the other, never both" />
       <Variable name="id" value="id must equal directory basename" display="As with recipe.yml, a recipe.ts manifest id must match the recipe directory name" />
     </Step>

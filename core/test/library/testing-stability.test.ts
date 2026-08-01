@@ -1,19 +1,30 @@
-import { readFile } from "node:fs/promises";
-
 import { describe, expect, test } from "bun:test";
 
-describe("@lando/core/testing stability policy", () => {
-  test("source comment declares testing stable on the next channel", async () => {
-    const source = await readFile(new URL("../../src/testing/index.ts", import.meta.url), "utf8");
+/**
+ * Test doubles and helpers the `@lando/core/testing` subpath publishes to
+ * embedding hosts. Removing one is a breaking change for that surface.
+ */
+const TESTING_EXPORTS = [
+  "ScenarioContext",
+  "TestDataMover",
+  "TestDataset",
+  "TestRemoteSource",
+  "TestRuntimeProvider",
+  "TestSecretStore",
+  "TestTunnelService",
+  "makeTestRuntime",
+  "makeTestStateStore",
+  "provideTestRuntime",
+  "withScenarioContext",
+] as const;
 
-    expect(source).toMatch(/@lando\/core\/testing[\s\S]{0,240}stable[\s\S]{0,80}next/i);
-  });
+describe("@lando/core/testing surface", () => {
+  test("publishes the documented test doubles and runtime helpers", async () => {
+    // Given/When: the testing subpath is loaded through its entry point.
+    const testing: Readonly<Record<string, unknown>> = await import("../../src/testing/index.ts");
 
-  test("embedding spec separates testing stability from unstable docs surfaces", async () => {
-    const spec = await readFile(new URL("../../../spec/09-embedding.md", import.meta.url), "utf8");
-
-    expect(spec).toMatch(/@lando\/core\/testing[\s\S]{0,240}stable[\s\S]{0,80}`next` channel/i);
-    expect(spec).toMatch(/@lando\/core\/docs\/components[\s\S]{0,160}unstable until v4\.0\.0 GA/i);
-    expect(spec).toMatch(/@lando\/core\/docs\/redactions[\s\S]{0,160}unstable until v4\.0\.0 GA/i);
+    // Then: every advertised export is present.
+    const missing = TESTING_EXPORTS.filter((name) => testing[name] === undefined);
+    expect(missing).toEqual([]);
   });
 });

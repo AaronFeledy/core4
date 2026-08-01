@@ -2,6 +2,7 @@
 import { readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 import { CI_PLATFORMS } from "./ci-platforms.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -160,15 +161,7 @@ const main = async (): Promise<void> => {
     }
   }
 
-  const formatter = Bun.spawn(["bun", "run", "biome", "check", "--write", ...generatedPaths], {
-    cwd: REPO_ROOT,
-    stdout: "ignore",
-    stderr: "inherit",
-  });
-  const formatterExitCode = await formatter.exited;
-  if (formatterExitCode !== 0) {
-    throw new Error(`Biome failed with exit code ${formatterExitCode}.`);
-  }
+  await formatGeneratedPaths(generatedPaths);
   console.log(`[build-opentui-native-stubs] wrote 1 catalog and ${generatedPaths.length - 1} stubs`);
 };
 

@@ -29,6 +29,7 @@ import {
   schemaArtifactFilename,
 } from "../sdk/src/schema/index.ts";
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const BUNDLED_PLUGIN_MANIFESTS_OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/bundled-plugin-manifests.json");
@@ -181,26 +182,12 @@ const main = async (): Promise<void> => {
 
   // Format by directory roots so Windows command-line length stays bounded as
   // the public schema corpus grows (listing every artifact path can ENAMETOOLONG).
-  const check = Bun.spawn({
-    cmd: [
-      process.execPath,
-      "x",
-      "biome",
-      "check",
-      "--write",
-      BUNDLED_PLUGIN_MANIFESTS_OUTPUT,
-      SCHEMA_ARTIFACT_DIR,
-      COMMAND_SCHEMA_ARTIFACT_DIR,
-      SCHEMA_REFERENCE_DIR,
-    ],
-    cwd: REPO_ROOT,
-    stdout: "ignore",
-    stderr: "inherit",
-  });
-  const exitCode = await check.exited;
-  if (exitCode !== 0) {
-    throw new Error(`biome check exited with code ${exitCode} for generated schema artifacts`);
-  }
+  await formatGeneratedPaths([
+    BUNDLED_PLUGIN_MANIFESTS_OUTPUT,
+    SCHEMA_ARTIFACT_DIR,
+    COMMAND_SCHEMA_ARTIFACT_DIR,
+    SCHEMA_REFERENCE_DIR,
+  ]);
 
   console.log(
     `[build-schema-snapshot] wrote ${sdkSchemas.length} SDK schemas and ${commandResultSchemas.length} command schemas`,

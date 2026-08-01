@@ -33,13 +33,13 @@ describe("compose coverage gate", () => {
   test("exits with a checksum error when the vendored schema bytes drift", async () => {
     const root = await mkdtemp(join(tmpdir(), "lando-compose-coverage-"));
     const copiedScript = join(root, "scripts/check-compose-coverage.ts");
-    const copiedSchema = join(root, "spec/compose/vendor/compose-spec.json");
+    const copiedSchema = join(root, "vendor/compose/compose-spec.json");
 
     try {
       await Promise.all([
         mkdir(join(root, "scripts"), { recursive: true }),
         mkdir(join(root, "core/src/landofile/compose"), { recursive: true }),
-        mkdir(join(root, "spec/compose/vendor"), { recursive: true }),
+        mkdir(join(root, "vendor/compose"), { recursive: true }),
         symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir"),
       ]);
       await Promise.all([
@@ -50,8 +50,8 @@ describe("compose coverage gate", () => {
           join(repoRoot, "core/src/landofile/compose/dispositions.ts"),
           join(root, "core/src/landofile/compose/dispositions.ts"),
         ),
-        copyFile(join(repoRoot, "spec/compose/vendor/pin.json"), join(root, "spec/compose/vendor/pin.json")),
-        copyFile(join(repoRoot, "spec/compose/vendor/compose-spec.json"), copiedSchema),
+        copyFile(join(repoRoot, "vendor/compose/pin.json"), join(root, "vendor/compose/pin.json")),
+        copyFile(join(repoRoot, "vendor/compose/compose-spec.json"), copiedSchema),
       ]);
       await appendFile(copiedSchema, "\n", "utf8");
 

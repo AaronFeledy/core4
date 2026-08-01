@@ -4,7 +4,7 @@ import { ProviderId } from "./primitives.ts";
 
 // ============================================================================
 // Provider setup planning — inspectable host changes authorized before apply.
-// SPEC: §10.8 Setup and host integration.
+// Setup and host integration schemas.
 // ============================================================================
 
 export const InstallUidmapHostChange = Schema.TaggedStruct("install-uidmap", {

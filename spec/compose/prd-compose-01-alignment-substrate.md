@@ -27,7 +27,7 @@ Design constraints from the repo tenets: the Effect Schema in `@lando/sdk` remai
 
 **Acceptance Criteria:**
 
-- [ ] `spec/compose/vendor/compose-spec.json` is committed, byte-identical to `schema/compose-spec.json` at the pinned compose-go tag; `spec/compose/vendor/pin.json` records `{ tag, sourceUrl, sha256 }` and the vendored file's checksum matches.
+- [ ] `vendor/compose/compose-spec.json` is committed, byte-identical to `schema/compose-spec.json` at the pinned compose-go tag; `vendor/compose/pin.json` records `{ tag, sourceUrl, sha256 }` and the vendored file's checksum matches.
 - [ ] `bun run codegen:compose-vendor` fetches the schema for the pinned tag, verifies the checksum, and rewrites the vendored file; it is the only path that touches the network, and it is not invoked by tests or `bun run codegen`'s offline gates.
 - [ ] A unit test (offline) verifies vendored-file checksum against `pin.json` so manual edits to the vendored schema fail CI.
 - [ ] A committed matrix module (e.g. `core/src/landofile/compose/dispositions.ts`) maps every service-subtree key path of the vendored schema to `normalized | preserved | rejected`, each entry carrying a short rationale and, for `rejected`, the remediation pointer (Lando key / provider extension / translator) used by PRD-04 error text.

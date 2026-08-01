@@ -98,14 +98,14 @@ afterEach(async () => {
 const lane = (id: LaneId, overrides: Partial<LaneInput> = {}): LaneInput => ({
   id,
   scope: `${id} lane scope for US-431`,
-  inputs: [`${id} transcript`, "spec/beta-1/prd-beta-1-13-beta-closure.md"],
-  commandsOrTools: [`${id} reviewer`, "grep US-431 spec/beta-1/prd-beta-1-13-beta-closure.md"],
+  inputs: [`${id} transcript`, "prd/release/prd-release-13-closure.md"],
+  commandsOrTools: [`${id} reviewer`, "grep US-431 prd/release/prd-release-13-closure.md"],
   evidence: [`${id} retained evidence line one`, `${id} retained evidence line two`],
   findings: [
     {
       title: `${id} no blocker`,
       severity: "note",
-      sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:46"],
+      sources: ["prd/release/prd-release-13-closure.md:46"],
     },
   ],
   disposition: "approved",
@@ -145,9 +145,7 @@ describe("US-431 closure review reporting", () => {
     expect(note).toContain("security: approved");
     expect(note).toContain("context-history: approved");
     expect(note).toContain("security retained evidence line two");
-    expect(note).toContain(
-      "note: security no blocker; sources: spec/beta-1/prd-beta-1-13-beta-closure.md:46",
-    );
+    expect(note).toContain("note: security no blocker; sources: prd/release/prd-release-13-closure.md:46");
     expect(await readJson(reportPath)).toMatchObject({ schemaVersion: 1, approved: true });
     expect(await readFile(notePath, "utf8")).toContain("context-history: approved");
   });
@@ -200,12 +198,12 @@ describe("US-431 closure review reporting", () => {
     const blocker: FindingInput = {
       title: "runtime bundle remains remote-only",
       severity: "blocker",
-      sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:49"],
+      sources: ["prd/release/prd-release-13-closure.md:49"],
       resolution: {
         kind: "linked-beta-story",
         storyId: "US-430",
         rationale: "US-430 is already green, so it cannot carry this blocker.",
-        sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:49"],
+        sources: ["prd/release/prd-release-13-closure.md:49"],
       },
     };
     const input = conclusiveInput();
@@ -227,12 +225,12 @@ describe("US-431 closure review reporting", () => {
       storyId: "US-430",
       currentlyFailing: true,
       rationale: "Reviewer claims US-430 is still failing.",
-      sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:49"],
+      sources: ["prd/release/prd-release-13-closure.md:49"],
     } as const;
     const blocker: FindingInput = {
       title: "runtime bundle remains remote-only",
       severity: "blocker",
-      sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:49"],
+      sources: ["prd/release/prd-release-13-closure.md:49"],
       resolution: forgedResolution,
     };
     const input = conclusiveInput();
@@ -252,12 +250,12 @@ describe("US-431 closure review reporting", () => {
     const blocker: FindingInput = {
       title: "host proxy transport remains unwired",
       severity: "blocker",
-      sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:85"],
+      sources: ["prd/release/prd-release-13-closure.md:85"],
       resolution: {
         kind: "linked-beta-story",
         storyId: "US-433",
         rationale: "The production transport gap is tracked by US-433.",
-        sources: ["spec/beta-1/prd-beta-1-13-beta-closure.md:85"],
+        sources: ["prd/release/prd-release-13-closure.md:85"],
       },
     };
     const input = conclusiveInput();
@@ -310,5 +308,28 @@ describe("US-431 closure review reporting", () => {
     expect(stdout).toContain(reportPath);
     expect(await readJson(reportPath)).toMatchObject({ approved: false });
     expect(await readFile(notePath, "utf8")).toContain("missing required lane: qa");
+  });
+
+  test("CLI requires an explicit PRD input with usage remediation", async () => {
+    const proc = Bun.spawn({
+      cmd: [
+        "bun",
+        "run",
+        "scripts/closure-review.ts",
+        "--input",
+        join(tempDir, "input.json"),
+        "--report",
+        join(tempDir, "report.json"),
+        "--note",
+        join(tempDir, "note.md"),
+      ],
+      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [exitCode, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("--prd <prd.json>");
+    expect(stderr).toContain("Provide the authoritative PRD JSON path");
   });
 });
