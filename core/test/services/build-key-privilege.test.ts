@@ -9,7 +9,7 @@ import { buildKeyForService } from "../../src/services/build-key.ts";
 const providerId = ProviderId.make("test");
 const provider = { ...TestRuntimeProvider, id: providerId, version: "1.0.0", platform: "linux" as const };
 
-const serviceWithPrivilege = (privileged: boolean): ServicePlan => ({
+const serviceWithPrivilege = (privileged?: boolean): ServicePlan => ({
   name: ServiceName.make("web"),
   type: "node",
   provider: providerId,
@@ -29,12 +29,19 @@ const serviceWithPrivilege = (privileged: boolean): ServicePlan => ({
   },
   extensions: {
     "@lando/core/service-features": {
-      buildSteps: [{ id: "scaffold", phase: "build", command: "mkdir -p /etc/lando", privileged }],
+      buildSteps: [
+        {
+          id: "scaffold",
+          phase: "build",
+          command: "mkdir -p /etc/lando",
+          ...(privileged === undefined ? {} : { privileged }),
+        },
+      ],
     },
   },
 });
 
-const keyForPrivilege = (privileged: boolean): Promise<string> =>
+const keyForPrivilege = (privileged?: boolean): Promise<string> =>
   Effect.runPromise(buildKeyForService(provider, serviceWithPrivilege(privileged)));
 
 describe("build step privilege identity", () => {
@@ -54,5 +61,14 @@ describe("build step privilege identity", () => {
 
     // Then
     expect(repeated).toBe(first);
+  });
+
+  test("treats omitted privilege the same as explicit false", async () => {
+    // Given / When
+    const omitted = await keyForPrivilege(undefined);
+    const explicitFalse = await keyForPrivilege(false);
+
+    // Then
+    expect(omitted).toBe(explicitFalse);
   });
 });
