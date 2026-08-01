@@ -10,8 +10,13 @@
 import { Either, Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { AbsolutePath, EmbeddingPluginPolicy, ProviderId, ResolvedPluginInput } from "@lando/sdk/schema";
-import type { ResolvedPluginInput as ResolvedPluginInputType } from "@lando/sdk/schema";
+import {
+  AbsolutePath,
+  EmbeddingPluginPolicy,
+  ProviderId,
+  ResolvedPluginInput,
+  type ResolvedPluginInput as ResolvedPluginInputType,
+} from "@lando/sdk/schema";
 import type { RootOverrides } from "@lando/sdk/services";
 
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";

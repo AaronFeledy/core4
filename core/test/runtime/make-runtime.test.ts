@@ -87,6 +87,7 @@ describe("makeLandoRuntime", () => {
     });
     expect(policy.externalImports).toBe(true);
   });
+
   test("applies library-mode defaults at runtime construction", async () => {
     const context = await Effect.runPromise(
       Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling" }))),

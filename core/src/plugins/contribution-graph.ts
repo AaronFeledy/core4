@@ -97,19 +97,17 @@ const manifestCandidates = (
   plugins: ReadonlyArray<LoadedPluginContribution>,
 ): ReadonlyArray<GraphCertificateAuthorityCandidate> =>
   plugins.flatMap((plugin) =>
-    (plugin.manifest.contributes?.certificateAuthorities ?? []).flatMap((contribution) => {
+    (plugin.manifest.contributes?.certificateAuthorities ?? []).map((contribution) => {
       const layer = plugin.entry?.certificateAuthorities?.get(contribution.id);
       const acquisition: CertificateAuthorityAcquisition =
         layer === undefined ? { kind: "module", module: contribution.module } : { kind: "layer", layer };
-      return [
-        {
-          id: contribution.id,
-          pluginName: plugin.manifest.name,
-          source: plugin.source,
-          ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
-          acquisition,
-        },
-      ];
+      return {
+        id: contribution.id,
+        pluginName: plugin.manifest.name,
+        source: plugin.source,
+        ...(contribution.defaultFor === undefined ? {} : { defaultFor: contribution.defaultFor }),
+        acquisition,
+      };
     }),
   );
 

@@ -170,7 +170,6 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     platform,
     // userData-scoped
     pluginsDir: j(userDataRoot, "plugins"),
-    systemPluginsDir: j(systemPluginRoot, "plugins"),
     pluginStateDir: (pluginId: string) => j(userDataRoot, "plugins", pluginId),
     appPluginsDir: (appId: string) => j(userDataRoot, "apps", appId, "plugins"),
     pluginAuthFile: j(userDataRoot, "plugin-auth.json"),
@@ -204,6 +203,8 @@ export const makeLandoPaths = (overrides: RootOverrides = {}): LandoPaths => {
     shellHistoryFile: (appName: string, appRoot: string) =>
       j(userCacheRoot, "shell", `${sanitizeAppName(appName)}-${appRootFingerprint(appRoot)}`, "history"),
     fileSyncSessionsDir: j(userCacheRoot, "file-sync", "sessions"),
+    // systemPluginRoot-scoped
+    systemPluginsDir: j(systemPluginRoot, "plugins"),
     // userConf-scoped
     configFile: j(userConfRoot, "config.yml"),
     configDir: userConfRoot,

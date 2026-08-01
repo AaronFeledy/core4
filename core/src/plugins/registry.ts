@@ -182,14 +182,18 @@ export const makePluginRegistryLive = (
       const logger = yield* Effect.serviceOption(Logger);
       const graph = yield* Effect.serviceOption(PluginContributionGraph);
       const staticPlugins = graph._tag === "Some" ? graph.value.plugins : undefined;
-      const enabledModules =
-        staticPlugins === undefined
-          ? discovery.bundled === false
-            ? []
-            : modules.filter((module) => !(discovery.disable ?? []).includes(module.manifest.name))
-          : staticPlugins.flatMap((plugin) =>
-              plugin.source === "bundled" && plugin.entry !== undefined ? [plugin.entry] : [],
-            );
+      let enabledModules: ReadonlyArray<LandoPluginModule>;
+      if (staticPlugins !== undefined) {
+        enabledModules = staticPlugins.flatMap((plugin) =>
+          plugin.source === "bundled" && plugin.entry !== undefined ? [plugin.entry] : [],
+        );
+      } else if (discovery.bundled === false) {
+        enabledModules = [];
+      } else {
+        enabledModules = modules.filter(
+          (module) => !(discovery.disable ?? []).includes(module.manifest.name),
+        );
+      }
       const capabilities = yield* Either.match(makePluginCapabilityIndex(enabledModules), {
         onLeft: (error) => Effect.fail(error),
         onRight: (index) => Effect.succeed(index),
