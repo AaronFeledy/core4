@@ -350,7 +350,7 @@
     {
       "id": "US-526",
       "title": "Drop @lando/core/oclif public export",
-      "description": "As an embedding host, @lando/core/oclif is removed (or empty deprecated) per §9.",
+      "description": "As an embedding host, @lando/core/oclif is removed per §16.2.",
       "acceptanceCriteria": [
         "package.json exports no longer advertise a required oclif adapter for shipping.",
         "Embedding docs updated; boundary tests updated.",

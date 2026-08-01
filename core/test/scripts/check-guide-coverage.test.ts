@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
@@ -155,6 +155,24 @@ describe("check:guide-coverage parsers", () => {
     expect(classifyPrd("prd-alpha-3-09-renderer.md")).toBe("internal");
     expect(classifyPrd("prd-alpha-3-13-build.md")).toBe("internal");
     expect(classifyPrd("prd-alpha-3-12-executable-guides.md")).toBe("exempt");
+  });
+
+  test("classifyPrd recognizes every architecture-simplicity PRD filename on disk", async () => {
+    const expected = [
+      ["prd-architecture-simplicity-00-index.md", "exempt"],
+      ["prd-architecture-simplicity-01-cli-dispatch.md", "internal"],
+      ["prd-architecture-simplicity-02-derived-artifacts.md", "internal"],
+      ["prd-architecture-simplicity-03-package-seams.md", "internal"],
+      ["prd-architecture-simplicity-04-codegen-drift-gate.md", "internal"],
+    ] as const;
+    const prdFiles = (await readdir(resolve(repoRoot, "spec/architecture-simplicity")))
+      .filter((filename) => filename.endsWith(".md"))
+      .sort();
+    expect(prdFiles).toEqual(expected.map(([filename]) => filename));
+    for (const [filename, classification] of expected) {
+      expect(classifyPrd(filename)).toBe(classification);
+    }
+    expect(classifyPrd("prd-architecture-simplicity-99-unknown.md")).toBe("exempt");
   });
 
   test("parseGuideCoverageSection does not treat a None marker as a declaration when paths are listed", () => {
@@ -436,6 +454,23 @@ describe("check:guide-coverage", () => {
       const result = await checkGuideCoverageOnDisk(root);
       expect(codesFor(result.diagnostics)).toContain("coverage.missing-section");
       expect(result.diagnostics.some((d) => d.message.includes("prd-service-trust-02-certs.md"))).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("an architecture-simplicity internal PRD without a Guide Coverage section fails", async () => {
+    const root = await scaffold({
+      "spec/architecture-simplicity/prd-architecture-simplicity-01-cli-dispatch.md":
+        "# CLI Dispatch\n\n## User Stories\n\nNo coverage section.\n",
+      "docs/guides/INDEX.md": indexDoc([]),
+    });
+    try {
+      const result = await checkGuideCoverageOnDisk(root);
+      expect(codesFor(result.diagnostics)).toContain("coverage.missing-section");
+      expect(
+        result.diagnostics.some((d) => d.message.includes("prd-architecture-simplicity-01-cli-dispatch.md")),
+      ).toBe(true);
     } finally {
       await rm(root, { force: true, recursive: true });
     }

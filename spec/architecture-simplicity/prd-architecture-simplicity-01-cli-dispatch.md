@@ -20,7 +20,7 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 - Source and compiled entries call the same native dispatcher.
 - No shipping runtime dependency on `@oclif/core`.
 - Drop dual-path parity suite; keep registry completeness, machine-output, and relocated-binary smoke.
-- Remove or empty `@lando/core/oclif` export.
+- Remove `@lando/core/oclif` export.
 
 ## User Stories
 
@@ -63,7 +63,7 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 
 ### US-526: Drop @lando/core/oclif public export
 
-**Description:** As an embedding host, @lando/core/oclif is removed (or empty deprecated) per §9.
+**Description:** As an embedding host, @lando/core/oclif is removed per §16.2.
 
 **Acceptance Criteria:**
 - [ ] package.json exports no longer advertise a required oclif adapter for shipping.
