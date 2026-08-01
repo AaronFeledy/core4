@@ -78,6 +78,23 @@ readable; an escaping or missing path fails with a `services.<name>.certs` corre
 container work starts. Requesting `certs: true` with no certificate authority available fails with
 remediation naming `lando setup`.
 
+## Select the active certificate authority
+
+The CLI combines bundled, system, user, and app plugin contributions into one selection graph. The
+bundled `@lando/ca-mkcert` contribution declares itself the default on macOS, Linux, and Windows, so
+it is selected when no higher selection tier replaces it. `lando setup` and `certs: true` resolve
+through that same selected authority.
+
+Library runtimes start without bundled or discovered plugins. An embedding host may contribute an
+authority through `plugins.layers` or `plugins.manifests`, or opt into selected discovery sources.
+To replace mkcert with another platform default, enable the replacement and disable
+`@lando/ca-mkcert` in the runtime plugin policy; `disable` is applied after all sources are merged.
+
+If no authority remains, setup reports that an authority plugin must be enabled or installed, and
+`certs: true` fails before container work with the same remediation. If multiple authorities match
+the platform default, selection fails with the candidate plugin names and asks the operator to
+disable all but one instead of choosing silently.
+
 ## Install the certificate authority
 
 `lando setup` provisions the pinned mkcert binary through `Downloader`, so corporate `network.ca`
@@ -129,6 +146,16 @@ published mkcert build fail with remediation instead of a partial install.
       <Variable name="privilegeFallback" value="PrivilegeService" display="If the unelevated trust-store install fails, the install is retried elevated with the same CAROOT" />
       <Variable name="optOut" value="lando setup --skip-install-ca" display="Provisions mkcert but skips host trust-store installation" />
       <Variable name="skipTrustInstall" value="setup({ skipTrustInstall: true })" display="Programmatic opt-out for tests or headless environments" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="ca-selection" render={false} reason="The complete contribution graph, source policy, platform-default selection, disable-last behavior, and tagged ambiguity/absence failures are covered by core/test/plugins/certificate-authority-selection.test.ts, core/test/plugins/contribution-graph-sources.test.ts, and core/test/runtime/certificate-authority-runtime.test.ts">
+    <Step name="select-authority">
+      <Variable name="cliDefault" value="@lando/ca-mkcert" display="Bundled platform default used by the CLI when no higher selection tier replaces it" />
+      <Variable name="embedding" value="plugins.layers / plugins.manifests / plugins.discovery" display="Library hosts explicitly choose which contribution sources participate" />
+      <Variable name="replacement" value="plugins.disable: ['@lando/ca-mkcert']" display="Disable bundled mkcert after merging sources when another authority should be the sole platform default" />
+      <Variable name="noSelection" value="NoCertificateAuthorityError" display="Tagged failure with enable-or-install remediation when no authority remains" />
+      <Variable name="ambiguousSelection" value="AmbiguousCertificateAuthoritiesError" display="Tagged failure with candidate context when more than one authority is a platform default" />
     </Step>
   </Scenario>
 
