@@ -3,7 +3,7 @@
 > **Part 2 of 18** · [Index](./README.md)
 > **Read next:** [03 Architecture](./03-architecture.md)
 
-This part defines the technology stack and the rules each piece imposes. Bun is the runtime, package manager, test runner, subprocess driver, file IO layer, and bundler. TypeScript runs natively under Bun with strict settings. OCLIF is the bundled CLI framework. Effect is the runtime model for every meaningful operation in core. Effect Schema is the single source of truth for every external contract. The section also lists the runtime dependencies that are forbidden in core source.
+This part defines the technology stack and the rules each piece imposes. Bun is the runtime, package manager, test runner, subprocess driver, file IO layer, and bundler. TypeScript runs natively under Bun with strict settings. The target CLI architecture is one native command registry and dispatcher shared by source and compiled modes (§8.4.1); OCLIF is today’s source-path CLI framework and is being removed from the shipping path (architecture-simplicity US-522..US-531; §2.3). Effect is the runtime model for every meaningful operation in core. Effect Schema is the single source of truth for every external contract. The section also lists the runtime dependencies that are forbidden in core source.
 
 ---
 
@@ -54,9 +54,9 @@ The build invocation above is one stage of the larger release pipeline (codegen,
 
 **Compiled-binary constraints.** Bun-compiled binaries only embed modules and assets that are visible to the build graph. Build-known code and data therefore must be statically imported or explicitly embedded. Runtime-installed plugin code is different: it intentionally lives outside the binary and is loaded from Lando-managed disk locations through absolute `file://` dynamic imports after validation and lockfile checks (§9.7). This forces two architectural choices:
 
-1. **Bundled plugins are statically imported.** The build emits a generated `src/plugins/bundled.ts` that imports each bundled plugin's entry point. These plugins are part of the binary's build graph and never require runtime filesystem discovery.
+1. **Bundled plugins are statically imported.** The build emits `core/src/plugins/generated/bundled.ts`, which imports each bundled plugin's entry point. These plugins are part of the binary's build graph and never require runtime filesystem discovery.
 2. **External plugins are loaded from locked stores.** User, system, and app-scoped plugins are resolved to concrete package roots under Lando-controlled plugin stores (or trusted local `pluginDirs:`), validated, compatibility-checked, root-contained, and then imported by absolute `file://` URL. They are not embedded in the binary.
-3. **OCLIF manifests must be precomputed.** `oclif.manifest.json` is generated at build time and embedded as an asset import. Lazy command discovery from installed plugins happens from Lando's validated command cache, not via a directory walk inside the binary.
+3. **The command manifest must be precomputed.** The target build embeds a registry-derived command manifest as an asset import (§8.4.1, §17.2–§17.3); today's build generates `core/oclif.manifest.json` for OCLIF tooling and statically imports `core/src/cli/oclif/compiled-manifest.ts` at runtime while the native registry migration (US-528) lands. Lazy command discovery from installed plugins happens from Lando's validated command cache, not via a directory walk inside the binary.
 
 The asset-embedding policy (which mechanism core uses for which kind of data, and the unifying `EmbeddedAssetService` API) is specified in §17.3.
 
@@ -124,11 +124,13 @@ The implementation language is TypeScript with the strictest reasonable settings
 - Barrel files (`index.ts`) only at package boundaries, never inside packages.
 - Side-effect imports are forbidden in core. Every module must be tree-shakeable.
 
-### 2.3 OCLIF
+### 2.3 OCLIF (superseded default; migration in progress)
 
-OCLIF is the bundled CLI framework. We considered `@effect/cli` and decided against making it the default. The reasoning is documented in §15.D.
+**Normative target (architecture-simplicity, §8.4.1):** the shipping CLI framework is one native command registry and dispatcher, not OCLIF. This section records why OCLIF was originally adopted and what today's implementation still does while US-522..US-531 remove it from the shipping path; it is historical/current-state context, not the target contract.
 
-**Why OCLIF stays the default:**
+OCLIF is today's bundled CLI framework, pending removal. We considered `@effect/cli` and decided against making it the default. The reasoning is documented in §15.D.
+
+**Why OCLIF was the default:**
 
 - The plugin manifest model (`oclif.manifest.json`) gives Lando the fast-startup behavior it needs without re-inventing it.
 - Plugin discovery, install, update, and friendly-name registries are battle-tested across Heroku and Salesforce.
@@ -138,13 +140,13 @@ OCLIF is the bundled CLI framework. We considered `@effect/cli` and decided agai
 **Required OCLIF policies:**
 
 - Every plugin contributes its commands through the Lando manifest. The OCLIF adapter compiles that cached command metadata into OCLIF command shims; Lando does not use OCLIF's user plugin loader as the source of truth. Plugins may also define richer Lando-specific contributions (service types, features, providers, proxies, renderers, etc.) through the same manifest. Recipes are not a plugin contribution surface in v4 — they are init-time scaffolds (§8.8) consumed once and never referenced again.
-- `oclif.manifest.json` is generated at build time for built-ins and bundled command shims. Plugin install regenerates Lando's plugin command index and the OCLIF adapter shim cache.
+- `oclif.manifest.json` and `core/src/cli/oclif/compiled-manifest.ts` are generated together at build time for built-ins. Plugin install invalidates Lando's separate plugin command cache; it does not rewrite either build artifact.
 - Lazy command loading is mandatory. A command's `run()` is the only place its module body executes.
 - Hooks: `init` runs router bootstrap only. After command resolution, the command base builds the Effect runtime at the command's declared/effective `BootstrapLevel`. `postrun` raises success lifecycle events. `command_not_found` consults cached command indexes before falling through to OCLIF's default.
 - Flexible taxonomy is enabled. `lando app logs --service web` and `lando app:logs --service web` are both legal; top-level aliases (§8.1.2) like `lando logs --service web` resolve to the same command.
 - Topics map to namespaces (§8.1.1): `app:`, `apps:`, `meta:` are the three core topics; plugins MAY register their own top-level topics under their `cspace:`. Topic separators (`:` and ` `) are interchangeable in input.
 
-**OCLIF-as-pluggable.** The `CommandFramework` abstraction (§4) wraps OCLIF behind an interface. A plugin author who wants to ship a Lando distribution backed by `@effect/cli` may do so. Core does not promise it will be easy. Core *does* promise the abstraction exists and that no core module imports from `@oclif/core` outside `src/cli/oclif/`.
+**CommandFramework as pluggable.** The `CommandFramework` abstraction (§4) is implemented by the native dispatcher by default (§8.4.1); today's code still routes through the OCLIF adapter while that migration is in flight. A plugin author who wants to ship a Lando distribution backed by `@effect/cli` may build an alternate `CommandFramework` implementation. Core does not promise it will be easy. Core *does* promise the abstraction exists and that no core module imports from `@oclif/core` outside `src/cli/oclif/`.
 
 ### 2.4 Effect
 
@@ -163,7 +165,7 @@ Effect is the runtime model. Every meaningful operation in core returns an `Effe
 - Long-running output (logs, progress, build streams) is `Stream<Chunk, E, R>`. Plain async iterators are forbidden in core public API.
 - Concurrency uses Effect primitives (`Effect.all` with `concurrency: N`, `Effect.forEach`, `Stream.merge`, `Semaphore`, `RateLimiter`). Manual `Promise.all` with concurrency control is forbidden in core.
 - **Intra-level work is parallel by default.** `BootstrapLevel`s (§3.2) are sequential — `plugins` runs after `minimal` completes — but independent IO-bound steps *within* a level (provider availability check + cache read + cert pre-warm, plugin manifest validation across plugins, app-plan cache decode + lockfile stat) MUST use `Effect.all({ concurrency: "unbounded" })` or `Effect.forEach({ concurrency })`. Sequential intra-level chains are a perf bug unless data dependencies require them.
-- Cancellation propagates from OCLIF's `SIGINT` handler through to provider operations. `Effect.uninterruptible` is allowed only in narrowly-bounded critical sections (e.g., a single artifact-tag commit).
+- Cancellation propagates from the active CLI signal handler through to provider operations. Today's source path installs that handler through OCLIF; the native dispatcher owns it after US-522..US-531. `Effect.uninterruptible` is allowed only in narrowly-bounded critical sections (e.g., a single artifact-tag commit).
 - **Telemetry MUST be fire-and-forget.** The `Telemetry` service (§3.4) never blocks command exit. Telemetry events are queued during the run and flushed either by a detached child process spawned via `Bun.spawn({ stdio: "ignore", detached: true })` or by a fiber forked at `before-exit` whose lifetime is independent of the main `Scope`. A failing telemetry endpoint MUST NOT change exit code, MUST NOT delay the user-perceived completion line, and MUST NOT leave the process hanging on shutdown. The same rule applies to update-check pings.
 - **`Logger` and `Renderer` services are lazy.** Level-`none` and `minimal` invocations that print only static output MUST NOT construct the full structured logger pipeline; a tiny direct-write fallback is acceptable for those levels and is the default. The full `Logger` and `Renderer` Layers are constructed when level `plugins` or higher is reached, or earlier on first `yield* Logger`/`yield* Renderer` access (via `Layer.suspend`).
 
@@ -213,25 +215,17 @@ export const LandoRuntimeLive = Layer.mergeAll(
   RuntimeProviderRegistryLive,
 );
 
-// 5. Imperative shell (inside an OCLIF command)
-export default class StartCommand extends OclifCommand {
-  static description = "Start a Lando app";
-  async run(): Promise<void> {
-    const program = Effect.gen(function* () {
-      const planner = yield* AppPlanner;
-      const provider = yield* RuntimeProviderRegistry;
-      const plan = yield* planner.plan(yield* discoverApp());
-      const adapter = yield* provider.select(plan);
-      yield* adapter.apply(plan, { reconcile: false });
-    });
-    await Effect.runPromise(
-      program.pipe(
-        Effect.provide(LandoRuntimeLive),
-        Effect.scoped,
-      ),
-    );
-  }
-}
+// 5. Imperative shell (invoked by the native command dispatcher)
+export const runStart = async (): Promise<void> => {
+  const program = Effect.gen(function* () {
+    const planner = yield* AppPlanner;
+    const provider = yield* RuntimeProviderRegistry;
+    const plan = yield* planner.plan(yield* discoverApp());
+    const adapter = yield* provider.select(plan);
+    yield* adapter.apply(plan, { reconcile: false });
+  });
+  await Effect.runPromise(program.pipe(Effect.provide(LandoRuntimeLive), Effect.scoped));
+};
 ```
 
 **Top-level module work budget.** Bun-compiled binaries execute every reachable module's top-level statements during process start. Heavy top-level work (large `Schema.Struct({...})` constructions, table literals built by reducing arrays, eager singletons) shows up directly in cold-start latency before `bin/lando.ts`'s `main()` runs. The rules:
@@ -256,7 +250,7 @@ Public schemas and their public fields MUST carry useful Effect Schema annotatio
 
 - Effect Schema annotations + AST traversal generate schema reference MDX and JSON Schema artifacts.
 - TypeDoc (or an equivalent TypeScript API extractor) generates public API reference for `@lando/core` and `@lando/sdk` entry points.
-- OCLIF/Lando command metadata generates CLI command reference pages.
+- Command-registry metadata generates CLI command reference pages.
 - Tagged error classes and lifecycle event schemas generate error and event catalog pages.
 
 `@effect/docgen` is not the primary documentation system. It may be evaluated for Effect-style API reference pages, but the site shell and authored documentation live in Starlight so Lando can document user workflows, plugin authoring, schemas, commands, and embedding in one coherent place.
@@ -266,7 +260,7 @@ Public schemas and their public fields MUST carry useful Effect Schema annotatio
 **Two narrow direct-write carve-outs** exist for the first-paint contract (§8.9.1) and the level-`none` fast path (§3.2):
 
 1. `bin/lando.ts` MAY write directly to `process.stdout` / `process.stderr` for level-`none` argv shapes — at that point no `Renderer` exists.
-2. `src/cli/oclif/pre-renderer.ts` MAY write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner — its purpose is to emit the first-paint line before the `Renderer` Layer is forced. It MUST NOT import Effect, `@oclif/core`, the `Renderer` service, or any plugin code.
+2. The pre-renderer module under `src/cli/` MAY write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner — its purpose is to emit the first-paint line before the `Renderer` Layer is forced. Today's transitional module is `src/cli/oclif/pre-renderer.ts`; US-522..US-531 moves it out of the OCLIF adapter. It MUST NOT import Effect, `@oclif/core`, the `Renderer` service, or any plugin code.
 
 These are the only two modules in core that touch raw stdio. Anywhere else, direct `process.stdout.write` / `console.*` calls are forbidden and are caught by the lint gate in §13.4 (`scripts/check-renderer-boundary.ts`, run in CI via `bun run check:renderer-boundary`), which scans `core/src/**` and `plugins/**` with only the two carve-out files above allowlisted. The gate is a declarative rule on the shared boundary-gate substrate (§13.8): the carve-out allowlist above is the rule's own scope data, not an inline conditional in a bespoke scanner.
 
@@ -291,8 +285,8 @@ Core's `package.json` `dependencies` (excluding `devDependencies` and `peerDepen
 - `dockerode`, `docker-modem`, anything Docker-specific.
 - `dockerfile-generator`, `mkcert`, `node-forge` — these belong in plugins.
 - `js-yaml` — replaced by an Effect-Schema-aware YAML parser (see §7.3); if a low-level YAML parser is needed it lives behind the `LandofileParser` abstraction.
-- `inquirer`, `prompts` — replaced by `@oclif/core`'s prompt utilities or a Lando-owned prompt service.
-- `yargs`, `commander` — OCLIF subsumes these.
+- `inquirer`, `prompts` — replaced by the `InteractionService` (a Lando-owned prompt service; §3.4), not by `@oclif/core`'s prompt utilities.
+- `yargs`, `commander` — the native command dispatcher/registry subsumes these.
 - `listr2` — replaced by the `Renderer` abstraction (a renderer plugin may pull listr2 internally).
 - `chalk`, `kleur` — Bun has built-in ANSI color and terminal detection.
 - `pacote`, `@npmcli/arborist` — replaced by `BunSelfRunner` (§3.4) self-spawning the compiled binary with `BUN_BE_BUN=1` for plugin installs, app-scoped `plugins:` resolution, and `includes:` materialization. Spawning a system `bun` from `$PATH` is forbidden; the compiled binary is itself Bun (§2.1).
@@ -300,7 +294,7 @@ Core's `package.json` `dependencies` (excluding `devDependencies` and `peerDepen
 - `slugify` — write a small internal helper; this isn't a vendor concern.
 - `object-hash` — `Bun.hash` and `crypto.subtle.digest` are sufficient.
 
-Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. The plugin SDK (`@lando/sdk`) is published separately and exports the canonical Effect Schema instances, service tags, and tagged-error classes that plugins consume at runtime; it is the contract layer between core and plugin authors, not a type-only `.d.ts` package.
+Effect and a small set of YAML/CA primitives are the only target runtime deps; the native command dispatcher/registry (§3.2, §8.4.1) owns dispatch. OCLIF remains a temporary migration dependency during the source-path transition (see §2.7, §3.4) and is not a target runtime dependency; it is retired once the native dispatcher lands (US-522..US-531). The plugin SDK (`@lando/sdk`) is published separately and exports the canonical Effect Schema instances, service tags, and tagged-error classes that plugins consume at runtime; it is the contract layer between core and plugin authors, not a type-only `.d.ts` package.
 
 ### 2.7 Package surface
 
@@ -330,12 +324,13 @@ Effect, OCLIF, and a small set of YAML/CA primitives are the only runtime deps. 
     "./landofile":        "./dist/landofile/index.js",        // re-export of @lando/sdk/landofile: canonical serializer (§7.8.1)
     "./testing":          "./dist/testing/index.js",          // test helpers (TestServices wiring, fixtures)
     "./cli":              "./dist/cli/index.js",              // programmatic CLI invocation
-    "./oclif":            "./dist/cli/oclif/index.js",        // OCLIF adapter; do not import outside src/cli/oclif/
     "./docs/components":  "./dist/docs/components/index.js",  // Astro/JSX component runtime + AST helpers for executable guides (§19.3)
     "./docs/redactions":  "./dist/docs/redactions/index.js"   // transcript redaction list shared with @lando/sdk/docs/redactions (§19.6)
   }
 }
 ```
+
+Today's package metadata may still expose the interim `./oclif` adapter while the migration is in progress. It is not part of the required target surface and is removed by US-526.
 
 **Required entry-point policies:**
 
