@@ -67,6 +67,14 @@ larger Effect application. `makeLandoRuntime()` is scoped, option-validated,
 idempotent, and CLI-bootstrap-equivalent; repeated runtimes stay isolated from each
 other.
 
+Pass Effect service overrides through `plugins.layers`; each layer is built once and
+its services take precedence over matching services from the generated bootstrap.
+Pass already-loaded plugin descriptors through `plugins.manifests` when the runtime
+must register contributions such as providers or certificate authorities without
+enabling filesystem discovery or external imports. Each resolved entry pairs one
+validated manifest with its matching plugin module, and bootstrap rejects identity or
+capability mismatches instead of silently loading a partial plugin.
+
 Hosts that only need Lando's root and derived-path catalog before constructing a
 runtime can import `resolveLandoRoots()`, `makeLandoPaths()`, and
 `normalizeHostPlatform()` from `@lando/core/paths`. That subpath is the stable,
