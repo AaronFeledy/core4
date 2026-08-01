@@ -37,6 +37,7 @@
     "dev:guides": "bun run scripts/dev-guides.ts",
     "lint:guides": "bun run scripts/lint-guides.ts",
     "check:renderer-boundary": "bun run scripts/check-renderer-boundary.ts",
+    "check:spec-reference": "bun run scripts/check-spec-reference.ts",
     "check:managed-file-boundary": "bun run scripts/check-managed-file-boundary.ts",
     "check:redaction-boundary": "bun run scripts/check-redaction-boundary.ts",
     "check:env-helper-boundary": "bun run scripts/check-env-helper-boundary.ts",
