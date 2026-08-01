@@ -11,7 +11,6 @@ import {
   composeTagDispositions,
   composeTopLevelDispositions,
 } from "../core/src/landofile/compose/dispositions.ts";
-import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "docs/reference/compose-key-matrix.mdx");
@@ -212,7 +211,7 @@ const renderComposeKeyMatrixPage = (): string => {
 };
 
 const main = async (): Promise<void> => {
-  await writeFormattedOutput(OUTPUT, renderComposeKeyMatrixPage());
+  await Bun.write(OUTPUT, renderComposeKeyMatrixPage());
   console.log(`[build-compose-key-matrix] wrote ${OUTPUT}`);
 };
 
