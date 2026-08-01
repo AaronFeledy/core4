@@ -10,6 +10,7 @@ import { type Context, Effect } from "effect";
 
 import { CertificateAuthority, type PrivilegeService, ProxyService, SshService } from "@lando/sdk/services";
 
+import { CertificateAuthorityResolver } from "../../../../plugins/certificate-authority-resolver.ts";
 import { inputBooleanFlag } from "./setup-inputs.ts";
 import type { SetupReadinessRecorder } from "./setup-steps.ts";
 
@@ -23,30 +24,72 @@ export const runCaSetupStep = (
   recorder: SetupReadinessRecorder,
 ) =>
   Effect.gen(function* () {
-    const ca = yield* Effect.serviceOption(CertificateAuthority);
-    if (ca._tag === "Some") {
-      yield* ca.value
+    const skipTrustInstall = inputBooleanFlag(input, "skip-install-ca");
+    const resolver = yield* Effect.serviceOption(CertificateAuthorityResolver);
+    const authority = yield* Effect.serviceOption(CertificateAuthority);
+    if (resolver._tag === "None" && authority._tag === "None") {
+      if (skipTrustInstall) {
+        yield* recorder.record({
+          id: "ca",
+          status: "skipped",
+          evidence: "Certificate authority trust installation skipped by --skip-install-ca.",
+        });
+      } else {
+        yield* recorder.recordUnavailable("ca", "Certificate authority");
+      }
+      return;
+    }
+    const ca =
+      resolver._tag === "Some"
+        ? yield* resolver.value.resolve.pipe(
+            Effect.catchTag("NoCertificateAuthorityError", (cause) =>
+              Effect.as(
+                skipTrustInstall
+                  ? recorder.record({
+                      id: "ca",
+                      status: "skipped",
+                      evidence: "Certificate authority trust installation skipped by --skip-install-ca.",
+                    })
+                  : recorder.record({
+                      id: "ca",
+                      status: "unavailable",
+                      evidence: cause.message,
+                      remediation: cause.remediation,
+                    }),
+                undefined,
+              ),
+            ),
+            Effect.catchTag("AmbiguousCertificateAuthoritiesError", (cause) =>
+              Effect.as(
+                recorder.record({
+                  id: "ca",
+                  status: "failed",
+                  evidence: cause.message,
+                  remediation: cause.remediation,
+                }),
+                undefined,
+              ),
+            ),
+            Effect.tapError((cause) => recorder.recordFailure("ca", cause)),
+          )
+        : authority._tag === "Some"
+          ? authority.value
+          : undefined;
+    if (ca !== undefined) {
+      yield* ca
         .setup({
           force: false,
           ...privilegeOptions,
-          ...(inputBooleanFlag(input, "skip-install-ca") ? { skipTrustInstall: true } : {}),
+          ...(skipTrustInstall ? { skipTrustInstall: true } : {}),
         })
         .pipe(Effect.tapError((cause) => recorder.recordFailure("ca", cause)));
       yield* recorder.record({
         id: "ca",
-        status: inputBooleanFlag(input, "skip-install-ca") ? "skipped" : "satisfied",
-        evidence: inputBooleanFlag(input, "skip-install-ca")
+        status: skipTrustInstall ? "skipped" : "satisfied",
+        evidence: skipTrustInstall
           ? "Certificate authority trust installation skipped by --skip-install-ca."
           : "Certificate authority setup completed.",
       });
-    } else if (inputBooleanFlag(input, "skip-install-ca")) {
-      yield* recorder.record({
-        id: "ca",
-        status: "skipped",
-        evidence: "Certificate authority trust installation skipped by --skip-install-ca.",
-      });
-    } else {
-      yield* recorder.recordUnavailable("ca", "Certificate authority");
     }
   });
 
