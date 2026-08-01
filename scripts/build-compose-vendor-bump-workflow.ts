@@ -10,14 +10,14 @@ const GENERATED_HEADER =
 
 const selectNewerTagScript = [
   'const { selectNewerComposeGoTag, readComposeVendorPin } = await import("./scripts/compose-vendor.ts");',
-  'const pin = await readComposeVendorPin("spec/compose/vendor/pin.json");',
+  'const pin = await readComposeVendorPin("vendor/compose/pin.json");',
   'const candidates = (await new Response(Bun.stdin.stream()).text()).split("\\n").map((line) => line.trim()).filter(Boolean);',
   "const newer = selectNewerComposeGoTag(pin.tag, candidates);",
   "if (newer !== undefined) process.stdout.write(newer);",
 ].join(" ");
 const readPinnedTagScript = [
   'const { readComposeVendorPin } = await import("./scripts/compose-vendor.ts");',
-  'const pin = await readComposeVendorPin("spec/compose/vendor/pin.json");',
+  'const pin = await readComposeVendorPin("vendor/compose/pin.json");',
   "process.stdout.write(pin.tag);",
 ].join(" ");
 
@@ -86,7 +86,7 @@ jobs:
 
           TARGET_TAG="$(gh api --paginate repos/compose-spec/compose-go/tags --jq '.[].name' | bun -e '${selectNewerTagScript}')"
           if [ -z "$TARGET_TAG" ]; then
-            if [ "$BRANCH_EXISTS" = false ] || git diff --quiet origin/main...HEAD -- spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json; then
+            if [ "$BRANCH_EXISTS" = false ] || git diff --quiet origin/main...HEAD -- vendor/compose/pin.json vendor/compose/compose-spec.json; then
               echo "::notice title=compose-vendor-bump::compose-go pin is already current; nothing to bump."
               exit 0
             fi
@@ -96,12 +96,12 @@ jobs:
             echo "::notice title=compose-vendor-bump::bumping compose-go pin to $TARGET_TAG"
           fi
 
-          git show origin/main:spec/compose/vendor/compose-spec.json > "$RUNNER_TEMP/old-compose-spec.json"
+          git show origin/main:vendor/compose/compose-spec.json > "$RUNNER_TEMP/old-compose-spec.json"
           bun run codegen:compose-vendor --tag "$TARGET_TAG"
-          bun run scripts/report-compose-schema-diff.ts "$RUNNER_TEMP/old-compose-spec.json" spec/compose/vendor/compose-spec.json > "$RUNNER_TEMP/pr-body.md"
+          bun run scripts/report-compose-schema-diff.ts "$RUNNER_TEMP/old-compose-spec.json" vendor/compose/compose-spec.json > "$RUNNER_TEMP/pr-body.md"
 
-          if ! git diff --quiet -- spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json; then
-            git add spec/compose/vendor/pin.json spec/compose/vendor/compose-spec.json
+          if ! git diff --quiet -- vendor/compose/pin.json vendor/compose/compose-spec.json; then
+            git add vendor/compose/pin.json vendor/compose/compose-spec.json
             git commit -m "bump compose-go vendored schema to $TARGET_TAG"
           fi
           git push origin HEAD:automation/compose-go-bump

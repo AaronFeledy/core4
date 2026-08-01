@@ -14,8 +14,8 @@ import {
 } from "../../../scripts/compose-vendor.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const pinPath = resolve(repoRoot, "spec/compose/vendor/pin.json");
-const schemaPath = resolve(repoRoot, "spec/compose/vendor/compose-spec.json");
+const pinPath = resolve(repoRoot, "vendor/compose/pin.json");
+const schemaPath = resolve(repoRoot, "vendor/compose/compose-spec.json");
 
 describe("compose vendor checksum", () => {
   test("matches the committed compose-go pin", async () => {

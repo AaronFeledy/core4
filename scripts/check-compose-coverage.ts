@@ -34,8 +34,8 @@ export interface ComposeCoverageResult {
 export const checkComposeCoverage = async (
   options: CheckComposeCoverageOptions = {},
 ): Promise<ComposeCoverageResult> => {
-  const pinPath = options.pinPath ?? resolve(REPO_ROOT, "spec/compose/vendor/pin.json");
-  const schemaPath = options.schemaPath ?? resolve(REPO_ROOT, "spec/compose/vendor/compose-spec.json");
+  const pinPath = options.pinPath ?? resolve(REPO_ROOT, "vendor/compose/pin.json");
+  const schemaPath = options.schemaPath ?? resolve(REPO_ROOT, "vendor/compose/compose-spec.json");
   const serviceDispositions = options.serviceDispositions ?? composeServiceDispositions;
   const topLevelDispositions = options.topLevelDispositions ?? composeTopLevelDispositions;
   const schema: unknown = JSON.parse(await Bun.file(schemaPath).text());

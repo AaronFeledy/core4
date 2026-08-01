@@ -9,8 +9,8 @@ import {
 } from "./compose-vendor.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const PIN_PATH = resolve(REPO_ROOT, "spec/compose/vendor/pin.json");
-const SCHEMA_PATH = resolve(REPO_ROOT, "spec/compose/vendor/compose-spec.json");
+const PIN_PATH = resolve(REPO_ROOT, "vendor/compose/pin.json");
+const SCHEMA_PATH = resolve(REPO_ROOT, "vendor/compose/compose-spec.json");
 
 export class ComposeVendorFetchError extends Error {
   readonly sourceUrl: string;
