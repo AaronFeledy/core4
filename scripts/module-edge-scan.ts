@@ -77,6 +77,23 @@ export const resolveStaticString = (
     if (initializer === undefined || seen.has(initializer)) return undefined;
     return resolveStaticString(initializer, resolveBinding, new Set([...seen, initializer]));
   }
+  // `["s", "pec"].join("")` is a statically known string; resolving it keeps
+  // literal-based boundary rules from being evaded by array composition.
+  if (
+    ts.isCallExpression(expression) &&
+    ts.isPropertyAccessExpression(expression.expression) &&
+    expression.expression.name.text === "join" &&
+    ts.isArrayLiteralExpression(expression.expression.expression)
+  ) {
+    const [separatorArgument] = expression.arguments;
+    const separator =
+      separatorArgument === undefined ? "," : resolveStaticString(separatorArgument, resolveBinding, seen);
+    if (separator === undefined) return undefined;
+    const parts = expression.expression.expression.elements.map((element) =>
+      resolveStaticString(element, resolveBinding, seen),
+    );
+    return parts.some((part) => part === undefined) ? undefined : parts.join(separator);
+  }
   return undefined;
 };
 
