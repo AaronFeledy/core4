@@ -10,7 +10,8 @@
 import { Either, Layer, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
-import { AbsolutePath, EmbeddingPluginPolicy, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, EmbeddingPluginPolicy, ProviderId, ResolvedPluginInput } from "@lando/sdk/schema";
+import type { ResolvedPluginInput as ResolvedPluginInputType } from "@lando/sdk/schema";
 import type { RootOverrides } from "@lando/sdk/services";
 
 import type { BootstrapLayerPluginDiscovery } from "./bootstrap-layer-support.ts";
@@ -34,7 +35,7 @@ const RuntimePluginDiscoveryOptions = Schema.Struct({
 const RuntimePluginOptions = Schema.Struct({
   policy: Schema.optional(EmbeddingPluginPolicy),
   layers: Schema.optional(Schema.Array(Schema.Unknown)),
-  manifests: Schema.optional(Schema.Array(Schema.Unknown)),
+  manifests: Schema.optional(Schema.Array(ResolvedPluginInput)),
   discovery: Schema.optional(RuntimePluginDiscoveryOptions),
   externalImports: Schema.optional(Schema.Boolean),
   disable: Schema.optional(Schema.Array(Schema.String)),
@@ -116,7 +117,9 @@ export const collectEmbeddingPluginLayers = (
 
 export interface NormalizedPluginPolicy {
   readonly layers: ReadonlyArray<unknown>;
+  readonly manifests: ReadonlyArray<ResolvedPluginInputType>;
   readonly discovery: BootstrapLayerPluginDiscovery;
+  readonly externalImports: boolean;
 }
 
 export const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined): NormalizedPluginPolicy => {
@@ -128,15 +131,22 @@ export const normalizePluginPolicy = (plugins: RuntimePluginOptions | undefined)
     (policy?.discovery === undefined && plugins?.discovery === undefined ? "explicit" : "discovery");
   const discovery = policy?.discovery ?? plugins?.discovery;
   const disables = [...(plugins?.disable ?? []), ...(policy?.disable ?? [])];
+  const system = mode === "discovery" ? (discovery?.system ?? true) : false;
+  const user = mode === "discovery" ? (discovery?.user ?? true) : false;
+  const app = mode === "discovery" ? (discovery?.app ?? true) : false;
+  const externalImports = plugins?.externalImports ?? policy?.externalImports ?? (system || user || app);
 
   return {
     layers: policy?.layers ?? plugins?.layers ?? [],
+    manifests: [...(plugins?.manifests ?? []), ...(policy?.manifests ?? [])],
     discovery: {
       bundled: mode === "bundled-only" || mode === "discovery" ? (discovery?.bundled ?? true) : false,
-      user: mode === "discovery" ? (discovery?.user ?? true) : false,
-      app: mode === "discovery" ? (discovery?.app ?? true) : false,
+      system,
+      user,
+      app,
       disable: disables,
     },
+    externalImports,
   };
 };
 

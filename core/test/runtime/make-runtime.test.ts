@@ -5,6 +5,8 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Context, Effect, Either, Exit, Layer, Option, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
+import { definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 import {
   AppPlanner,
   CacheService,
@@ -25,6 +27,7 @@ import {
 
 import { installSignalHandlers } from "../../src/runtime/interrupt.ts";
 import { LandoRuntimeOptions, makeLandoRuntime } from "../../src/runtime/layer.ts";
+import { normalizePluginPolicy } from "../../src/runtime/runtime-options.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 
@@ -58,6 +61,32 @@ const expectRuntimeBootstrapError = (exit: Exit.Exit<unknown, unknown>): LandoRu
 };
 
 describe("makeLandoRuntime", () => {
+  test("normalizes complete source discovery and external import policy", () => {
+    // Given
+    const manifest = Schema.decodeSync(PluginManifest)({
+      name: "@example/explicit",
+      version: "1.0.0",
+      api: 4,
+    });
+    const entry = definePlugin({ name: manifest.name, manifest });
+
+    // When
+    const policy = normalizePluginPolicy({
+      manifests: [{ manifest, entry }],
+      discovery: { bundled: false, system: true, user: false, app: true },
+    });
+
+    // Then
+    expect(policy.manifests).toEqual([{ manifest, entry }]);
+    expect(policy.discovery).toEqual({
+      bundled: false,
+      system: true,
+      user: false,
+      app: true,
+      disable: [],
+    });
+    expect(policy.externalImports).toBe(true);
+  });
   test("applies library-mode defaults at runtime construction", async () => {
     const context = await Effect.runPromise(
       Effect.scoped(Layer.build(makeLandoRuntime({ bootstrap: "tooling" }))),
