@@ -57,22 +57,23 @@ describe("stock PHP prerequisite plan", () => {
     const steps = buildStepsFor(await composePhpPlan());
 
     expect(steps.map(({ id }) => id)).toEqual([
+      "lando.boot:scaffold",
       "service-lando.php:prerequisites",
       "service-lando.php:composer",
     ]);
-    expect(steps[0]?.buildKeyInputs).toEqual({
+    expect(steps[1]?.buildKeyInputs).toEqual({
       aptPackages: PHP_APT_PACKAGE_PINS,
       extensions: PHP_COMMON_EXTENSIONS,
     });
-    expect(steps[0]?.command).toBe(PHP_PREREQUISITES_COMMAND);
-    expect(steps[1]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
-    expect(steps[1]?.command).toBe(PHP_COMPOSER_COMMAND);
+    expect(steps[1]?.command).toBe(PHP_PREREQUISITES_COMMAND);
+    expect(steps[2]?.buildKeyInputs).toEqual({ composer: PHP_COMPOSER });
+    expect(steps[2]?.command).toBe(PHP_COMPOSER_COMMAND);
   });
 
   test("treats a custom image as the prerequisite opt-out", async () => {
     const plan = await composePhpPlan("registry.example.com/php:8.2-custom");
 
     expect(plan.artifact).toEqual({ kind: "ref", ref: "registry.example.com/php:8.2-custom" });
-    expect(buildStepsFor(plan)).toEqual([]);
+    expect(buildStepsFor(plan).map(({ id }) => id)).toEqual(["lando.boot:scaffold"]);
   });
 });

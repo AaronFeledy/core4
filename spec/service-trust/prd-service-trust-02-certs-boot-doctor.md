@@ -5,7 +5,7 @@
 PRD-01 closes corporate CA/proxy **inject** into services. This PRD completes the rest of the §6.8–§6.9 / §10.3 trust surface users hit day-to-day:
 
 1. **Leaf TLS** — `certs: true|false|custom` + `@lando/ca-mkcert` Live + `lando.certs` feature.
-2. **Boot scaffolding** — `lando.boot` creates the `/etc/lando/*` directory layout that `lando.env`, `lando.certs`, and `lando.security` write into.
+2. **Boot scaffolding** — `lando.boot` emits the provider-neutral `/etc/lando/*` directory-scaffold intent that `lando.env`, `lando.certs`, and `lando.security` write into (US-493); a privileged artifact-step realizes that scaffold inside the built artifact for root and non-root parent artifacts and restores the parent's inherited effective user afterward (US-501).
 3. **Language CA env** — Python/Ruby/etc. beyond Node/OpenSSL defaults when corporate CAs inject.
 4. **Doctor** — certs + network-trust diagnostics with remediation.
 5. **Traefik edge TLS** — global proxy presents CA-issued certs for HTTPS routes (today: bare `tls: {}`).
@@ -13,11 +13,11 @@ PRD-01 closes corporate CA/proxy **inject** into services. This PRD completes th
 
 **SSH note:** `SshService` / `lando.ssh-agent` forward SSH agent sockets. They do **not** consume `CertificateAuthority` leaf TLS certs. Out of scope for this PRD.
 
-Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 follows US-492, and US-496 closes the guide pack and therefore runs last.
+Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 follows US-492, US-501 follows US-493, and US-496 closes the guide pack and therefore runs last.
 
 ## Source References
 
-- [`spec/06-services.md`](../06-services.md) §6.8 `certs:`, feature priorities `lando.boot` (100), `lando.certs` (1000), §6.9 env sourcing
+- [`spec/06-services.md`](../06-services.md) §6.8 `certs:`, feature priorities `lando.boot` (100), `lando.certs` (1000), §6.9 env sourcing, §6.3 user-scoped artifact groups, §6.13.1 artifact/app build phases
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.3 CertificateAuthority
 - [`plugins/ca-mkcert/`](../../plugins/ca-mkcert/) — currently stub Live
 - [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
@@ -31,7 +31,8 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 ## Goals
 
 - After `lando setup`, `certs: true` yields working leaf certs and `LANDO_SERVICE_CERT`/`KEY` in lando-base services.
-- `lando.boot` provides the `/etc/lando` directory scaffold used by the `lando.env`, `lando.certs`, and `lando.security` features.
+- `lando.boot` provides the provider-neutral `/etc/lando` directory-scaffold intent used by the `lando.env`, `lando.certs`, and `lando.security` features.
+- A privileged artifact-step realizes that scaffold inside the built artifact for root and non-root parent artifacts and restores the parent's inherited effective user (US-501).
 - Language runtimes get appropriate CA env when corporate CAs inject.
 - Doctor surfaces CA plugin and network-trust config problems.
 - Guides cover leaf certs, boot contract, language env table, and doctor checks; gates green.
@@ -106,7 +107,7 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 
 ### US-493: lando.boot scaffolding feature
 
-**Description:** As a user of `type: lando` services, `lando.boot` (priority 100) creates the `/etc/lando/*` directory scaffold so the higher-priority features that write into it share a stable layout.
+**Description:** As a user of `type: lando` services, `lando.boot` (priority 100) emits the provider-neutral `/etc/lando/*` scaffold intent so the higher-priority features that write into it share a stable layout.
 
 **Scope boundary (normative).** The §6.11 built-in feature table splits these responsibilities and this story must not merge them:
 
@@ -115,20 +116,35 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 | `lando.boot` | 100 | `/etc/lando/*` **scaffolding** (the directory layout) |
 | `lando.env` | 700 | `/etc/lando/environment` **content** + `env.d/`, the §6.9 per-exec sourcing, and the `LANDO_LINUX_*` distro exports |
 
-`lando.env` already ships (`plugins/service-lando/src/features/env.ts`). US-493 creates directories only; it must not author `/etc/lando/environment`, add `env.d/*.sh` sourcing, or emit distro-detection exports — those are `lando.env`'s and are out of scope for this story.
+`lando.env` already ships (`plugins/service-lando/src/features/env.ts`). US-493 declares directory scaffold intent only; it must not author `/etc/lando/environment`, add `env.d/*.sh` sourcing, or emit distro-detection exports — those are `lando.env`'s and are out of scope for this story. `lando.boot` (US-493) owns the provider-neutral scaffold intent; privileged realization for root and non-root parent artifacts and restoration of the inherited effective user is owned by `US-501`, not by this story.
 
 **Acceptance Criteria:**
 
 - [ ] `lando.boot` on `LANDO_BASE_DEFAULT_FEATURE_IDS`; priority 100.
-- [ ] Realized as **artifact-phase build steps**, not mounts: §6.13.1 states "the `lando.boot` scaffolding lives inside the built artifact". A mount-based scaffold would also shadow files that higher-priority features baked into the same directories, so mounts are rejected for this feature.
-- [ ] Creates `/etc/lando`, `/etc/lando/env.d`, and `/etc/lando/certs` idempotently (`mkdir -p`), so replanning and rebuilds are no-ops.
-- [ ] Does **not** write `/etc/lando/environment`, does not add `env.d/*.sh` sourcing, and does not export `LANDO_LINUX_DISTRO` / `_LIKE` / `_NAME` / `_PACKAGE_MANAGER`; a test asserts `lando.env` remains the only producer of those.
-- [ ] Compatible with `lando.env` (700), `lando.certs` (1000), and `lando.security` (1100) writing into those paths (integration composition test asserting priority order boot → env → certs → security).
-- [ ] Composition test asserts the PRD-01 bundle survives: after `lando.boot` + `lando.security` compose, `/etc/lando/certs/ca-bundle.pem` is still the value of `LANDO_CA_BUNDLE` and is readable — i.e. boot does not shadow or clobber it.
+- [ ] US-493 owns the provider-neutral plan seam: `lando.boot` emits one **ARTIFACT-PHASE** scaffold intent, not mounts (spec 6.13.1), whose idempotent command is `mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs`. Composition and compiled-plan proof of that exact intent satisfy this story. US-501 owns privileged realization when a parent artifact inherits a non-root effective user and restoration of that inherited user afterward.
+- [ ] Does **not** write `/etc/lando/environment`, add `env.d/*.sh` sourcing, or export `LANDO_LINUX_*` — spec 6.11 assigns those to `lando.env` (priority 700), which already ships; a test asserts `lando.env` stays their only producer. Composition test asserts boot(100) → env(700) → certs(1000) → security(1100) order and that `/etc/lando/certs/ca-bundle.pem` from PRD-01 is not shadowed or clobbered.
 - [ ] l337 does not include boot.
-- [ ] **Guide:** document the boot contract in `docs/guides/services/lando-boot-scaffold.mdx` (the primary guide, per this PRD's Guide Coverage table), covering which directories exist, that they are baked into the artifact, and the `lando.boot` / `lando.env` ownership split; link to it from corporate-network-trust and certificates-mkcert. Scenario `render={false}` OK if unit-backed.
-- [ ] `docs/guides/INDEX.md` row for `docs/guides/services/lando-boot-scaffold.mdx` flips from `Planned` to `Shipped` in this story.
-- [ ] Guide gates green.
+- [ ] **Guide:** `docs/guides/services/lando-boot-scaffold.mdx` documents the boot contract and the `lando.boot` / `lando.env` ownership split (the primary guide, per this PRD's Guide Coverage table); link to it from corporate-network-trust and certificates-mkcert. Scenario `render={false}` OK if unit-backed. Its `docs/guides/INDEX.md` row flips `Planned` → `Shipped` in this story.
+- [ ] Executable guide coverage updated for this user-facing behavior (`render={false}` OK if unit-backed).
+- [ ] `bun run lint:guides` and `bun run check:guide-coverage` pass for touched guides (final pack may complete in US-496).
+- [ ] Tests pass
+- [ ] Typecheck passes
+- [ ] Lint passes
+
+### US-501: Artifact-step privilege and inherited-user preservation
+
+**Description:** As the artifact builder, I can run `lando.boot`'s system scaffold with sufficient privilege without changing the parent artifact's inherited effective user for later steps or runtime.
+
+**Acceptance Criteria:**
+
+- [ ] Define a provider-neutral artifact-step privilege/effective-user contract sufficient for system-owned feature steps such as `lando.boot`; the feature must not embed provider-specific user-switch syntax.
+- [ ] `lando.boot` creates `/etc/lando`, `/etc/lando/env.d`, and `/etc/lando/certs` inside the built artifact for supported `type: lando` parent artifacts whose inherited effective user is either root or non-root.
+- [ ] A temporary privileged scaffold step restores the parent artifact's exact inherited effective user before later artifact groups and in the final artifact; it must not leave a non-root image running as root or override an explicitly authored final user.
+- [ ] Production-path artifact rendering/build tests cover root and non-root inherited-user parents, directory creation, exact user restoration, repeated planning/build-key stability, and later user-group ordering.
+- [ ] The existing l337 exclusion, `lando.env` ownership boundary, and `lando.security` CA-bundle path remain unchanged.
+- [ ] **Guide:** `docs/guides/services/lando-boot-scaffold.mdx` documents the non-root parent-image guarantee and effective-user preservation.
+- [ ] Executable guide coverage updated for this user-facing behavior (`render={false}` OK if production-path artifact tests carry the privileged-build proof).
+- [ ] `bun run lint:guides` and `bun run check:guide-coverage` pass for the touched guide.
 - [ ] Tests pass
 - [ ] Typecheck passes
 - [ ] Lint passes
@@ -170,7 +186,7 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 
 - [ ] `docs/guides/config/corporate-network-trust.mdx` exists and covers: global `network.ca`/`proxy`, inject flags + env vars, Landofile `security.*`, rebuild, runtime env table, links to setup/doctor/certs guides.
 - [ ] `certificates-mkcert.mdx` covers leaf certs user path end-to-end at contract level.
-- [ ] Boot + doctor + language + **proxy HTTPS** links as required by US-493..495 and US-497..498.
+- [ ] Boot + doctor + language + **proxy HTTPS** links as required by US-493..495, US-497..498, and US-501.
 - [ ] `docs/guides/INDEX.md` carries a row for **every** guide path declared in the `## Guide Coverage` table of PRD-01 and PRD-02, and no service-trust row is left at `Status: Planned` — every one reads `Shipped` and resolves to a file on disk. This is the criterion that gives the per-story `check:guide-coverage` ACs teeth: `Planned` rows are deliberately exempt from the on-disk existence check, so the gate only proves the guides exist once the rows are flipped.
 - [ ] `bun run lint:guides` passes.
 - [ ] `bun run check:guide-coverage` passes **with `spec/service-trust/` in its scanned spec directories**, so a declared-but-unindexed guide fails the gate (`coverage.missing-index-row`) and a user-facing service-trust PRD with an empty `## Guide Coverage` section fails it (`coverage.empty-user-facing-section`).
@@ -217,12 +233,13 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 
 - **FR-1** `certs: true` issues leaf certs via active CertificateAuthority with §6.8 SANs.
 - **FR-2** mkcert Live downloads and installs with network-trust-aware egress and privilege-aware trust-store install.
-- **FR-3** `lando.boot` creates the `/etc/lando` directory scaffold for lando-base services only, as artifact build steps; `/etc/lando/environment` and `env.d/` content remain owned by `lando.env` (§6.11 feature table).
+- **FR-3** `lando.boot` emits the provider-neutral `/etc/lando` directory-scaffold intent for lando-base services only, as one artifact-phase build step; `/etc/lando/environment` and `env.d/` content remain owned by `lando.env` (§6.11 feature table).
 - **FR-4** Language features export additional CA env when corporate inject is active.
 - **FR-5** Doctor reports CA and network-trust problems with remediation.
 - **FR-6** Every user-facing FR has guide coverage and guide gates pass.
 - **FR-7** Traefik HTTPS termination uses CA-issued cert files mounted into the global Traefik service.
 - **FR-8** SSH agent is out of scope (not a CertificateAuthority consumer).
+- **FR-9** A privileged artifact-step realizes the `lando.boot` scaffold inside the built artifact for root and non-root parent artifacts, and restores the parent artifact's exact inherited effective user before later artifact groups and in the final artifact.
 
 ## Non-Goals
 
@@ -251,6 +268,7 @@ Every path below is a concrete guide file so `bun run check:guide-coverage` can 
 | US-492 | `lando.certs` service env and SAN coverage | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
 | US-500 | active CA selection and bundled runtime integration | `docs/guides/subsystems/certificates-mkcert.mdx` | Required at story acceptance |
 | US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Required at story acceptance |
+| US-501 | artifact-step privilege + inherited-user restoration | `docs/guides/services/lando-boot-scaffold.mdx` | Required at story acceptance |
 | US-494 | language-runtime CA env table | `docs/guides/config/corporate-network-trust.mdx` | Required at story acceptance |
 | US-495 | doctor certs + network-trust checks | `docs/guides/subsystems/doctor-walkthrough.mdx` | Required at story acceptance |
 | US-495 | global-app doctor certs surface | `docs/guides/global/doctor-walkthrough.mdx` | Required at story acceptance |

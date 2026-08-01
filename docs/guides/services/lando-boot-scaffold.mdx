@@ -1,0 +1,43 @@
+---
+id: lando-boot-scaffold
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, service, lando, boot]
+---
+
+Every `type: lando` service includes `lando.boot`. At priority 100, it adds a provider-neutral,
+artifact-phase scaffold intent to the service's build plan: an idempotent `mkdir -p` step, not a
+mount:
+
+```text
+/etc/lando
+/etc/lando/env.d
+/etc/lando/certs
+```
+
+Because the scaffold is not a mount, it does not hide files that higher-priority features add under
+these directories. The step runs as the parent artifact's inherited effective user. It cannot yet
+temporarily elevate privileges to create the directories and then restore a non-root inherited
+user, so that user must already be able to create these paths.
+
+`lando.certs` mounts service leaf material under the certificate directory. `lando.security`
+creates `/etc/lando/certs` itself when it writes the injected CA bundle described in
+[Corporate network trust](../config/corporate-network-trust.mdx).
+
+`lando.boot` owns directories only. The higher-priority `lando.env` feature owns
+`/etc/lando/environment`, `/etc/lando/env.d` content and per-exec sourcing, and the `LANDO_LINUX_*`
+distro exports. See [Certificates with mkcert](../subsystems/certificates-mkcert.mdx) for the
+separate leaf certificate paths and environment contract.
+
+<Guide>
+  <Scenario id="lando-boot-scaffold" render={false} reason="Focused service-feature and base-composition tests verify the compiled artifact-phase scaffold intent, lando-only default, feature order, and CA bundle preservation without building a container image or a non-root privileged realization">
+    <Step name="compose-scaffold">
+      <Variable name="feature" value="lando.boot" display="Emit one provider-neutral artifact-phase scaffold intent at feature priority 100" />
+      <Variable name="directories" value="/etc/lando, /etc/lando/env.d, /etc/lando/certs" display="Compile the idempotent mkdir -p step for the three shared directories into the build plan" />
+      <Variable name="inheritedUser" value="inherited effective user" display="Run the scaffold step as whatever effective user the parent artifact has already inherited; privileged realization and restoration for a non-root inherited user are not yet implemented" />
+      <Variable name="envOwner" value="lando.env" display="Keep environment content, env.d sourcing, and LANDO_LINUX_* exports under lando.env" />
+      <Variable name="excludedBase" value="type: compose" display="Raw Compose services use the l337 base and do not include lando.boot" />
+    </Step>
+  </Scenario>
+</Guide>

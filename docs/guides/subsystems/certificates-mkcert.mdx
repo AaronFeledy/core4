@@ -52,7 +52,10 @@ incomplete object, or an unknown field beside `cert` and `key` — fails validat
 ## Service certificate environment and SAN coverage
 
 Planning a `type: lando` service composes the `lando.certs` feature, which mounts the resolved
-certificate material read-only inside the service and publishes its in-container paths:
+certificate material read-only inside the service and publishes its in-container paths. The
+[`lando.boot` scaffold](../services/lando-boot-scaffold.mdx) emits the provider-neutral,
+artifact-phase intent for the shared `/etc/lando/certs` directory; `lando.certs` does not own that
+directory and only mounts leaf files beneath it:
 
 ```text
 LANDO_SERVICE_CERT=/etc/lando/certs/leaf/<service>.crt

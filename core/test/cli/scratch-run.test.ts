@@ -112,6 +112,7 @@ interface Recorded {
 interface HarnessOptions {
   readonly buildCalls?: string[];
   readonly artifactBuild?: boolean;
+  readonly artifactPull?: boolean;
   readonly execExitCode?: number;
   readonly execStdout?: string;
   readonly execStderr?: string;
@@ -128,20 +129,26 @@ const makeHarnessLayer = (recorded: Recorded, options: HarnessOptions = {}) => {
     displayName: "Scratch Run Test Provider",
     version: "0.0.0",
     platform: "linux",
-    capabilities: { ...capabilities, artifactBuild: options.artifactBuild ?? capabilities.artifactBuild },
+    capabilities: {
+      ...capabilities,
+      artifactBuild: options.artifactBuild ?? capabilities.artifactBuild,
+      artifactPull: options.artifactPull ?? capabilities.artifactPull,
+    },
     isAvailable: Effect.succeed(true),
+    planSetup: () => Effect.succeed({ providerId, changes: [] }),
     setup: () => Effect.void,
     getStatus: Effect.succeed({ running: true, message: "ready" }),
     getVersions: Effect.succeed({ provider: "0.0.0" }),
     buildArtifact: (spec) =>
       Effect.sync(() => {
         options.buildCalls?.push(String(spec.service));
-        return { providerId, ref: `${spec.service}:built` };
+        return options.artifactPull
+          ? { providerId, ref: `${spec.service}:built`, digest: "sha256:built" }
+          : { providerId, ref: `${spec.service}:built` };
       }),
     pullArtifact: (spec) =>
       Effect.sync(() => {
-        options.buildCalls?.push(spec.ref);
-        return { providerId, ref: spec.ref };
+        return { providerId, ref: spec.ref, digest: "sha256:source" };
       }),
     removeArtifact: () => Effect.void,
     apply: (plan) =>
@@ -830,7 +837,7 @@ describe("scratch run cleanup and warm repeats", () => {
   test("repeated toolbox runs acquire and destroy a fresh scratch with content-addressed build inputs and no warm pool", async () => {
     await withTempProject(async () => {
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
-      const layer = makeHarnessLayer(recorded, { execStdout: "ok\n" });
+      const layer = makeHarnessLayer(recorded, { artifactBuild: true, execStdout: "ok\n" });
       const options = {
         command: ["echo", "ok"],
         mount: true,
@@ -859,7 +866,7 @@ describe("scratch run cleanup and warm repeats", () => {
       // Identical resolved image build inputs across runs — content-addressed recipe render.
       const firstInputs = serviceBuildInputs(firstPlan);
       expect(serviceBuildInputs(secondPlan)).toEqual(firstInputs);
-      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "debian:12.11-slim" });
+      expect(firstInputs.artifact).toEqual({ kind: "ref", ref: "toolbox:built" });
 
       const afterRuns = await Effect.runPromise(
         scratchList().pipe(Effect.provide(layer), Effect.provide(testSupportLayer())),
@@ -887,7 +894,12 @@ describe("scratch run cleanup and warm repeats", () => {
     await withTempProject(async () => {
       const buildCalls: string[] = [];
       const recorded: Recorded = { appliedPlans: [], destroyCalls: [], execCalls: [] };
-      const layer = makeHarnessLayer(recorded, { buildCalls, execStdout: "ok\n" });
+      const layer = makeHarnessLayer(recorded, {
+        artifactBuild: true,
+        artifactPull: true,
+        buildCalls,
+        execStdout: "ok\n",
+      });
       const supportLayer = layer.pipe(Layer.provide(testSupportLayer()));
       await Effect.runPromise(
         Effect.gen(function* () {
@@ -898,7 +910,7 @@ describe("scratch run cleanup and warm repeats", () => {
         }).pipe(Effect.provide(supportLayer)),
       );
 
-      expect(buildCalls).toEqual([]);
+      expect(buildCalls).toEqual(["toolbox"]);
       expect(recorded.appliedPlans).toHaveLength(2);
       expect(String(recorded.appliedPlans[0]?.id)).not.toBe(String(recorded.appliedPlans[1]?.id));
       expect(recorded.appliedPlans[0]?.root).not.toBe(recorded.appliedPlans[1]?.root);

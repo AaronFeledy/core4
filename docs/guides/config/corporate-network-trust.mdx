@@ -71,7 +71,10 @@ not replace either injection flag.
 
 When a `type: lando` service receives one or more injected CAs, each host PEM is mounted read-only
 under `/usr/local/share/ca-certificates`. The runtime trust paths stay fixed before and after the
-service image is rebuilt:
+service image is rebuilt. The [`lando.boot` scaffold](../services/lando-boot-scaffold.mdx) emits a
+provider-neutral, artifact-phase intent for the shared `/etc/lando/certs` directory; `lando.security`
+also creates that directory itself before it writes its CA bundle there, so the bundle path below is
+independent of `lando.boot`'s realization state:
 
 ```text
 NODE_EXTRA_CA_CERTS=/etc/lando/certs/ca-bundle.pem

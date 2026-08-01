@@ -118,7 +118,8 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | BETA1-PRD-15 | US-457 | Frame-snapshot / visual-QA coverage for the renderer substrate | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
 | ST-PRD-01 | US-483, US-484, US-485, US-486, US-487, US-488, US-489, US-499 | host-global corporate CA / proxy inject into `type: lando` services | `docs/guides/config/corporate-network-trust.mdx` | Shipped |
 | ST-PRD-02 | US-490, US-491, US-492 | `certs:` authoring, mkcert Live, and `lando.certs` leaf issuance | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
-| ST-PRD-02 | US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Planned |
+| ST-PRD-02 | US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Shipped |
+| ST-PRD-02 | US-501 | non-root parent-artifact privileged realization and inherited-user preservation for `lando.boot` | `docs/guides/services/lando-boot-scaffold.mdx` | Planned |
 | ST-PRD-02 | US-494, US-496 | language-runtime CA env table and guide-pack closure | `docs/guides/config/corporate-network-trust.mdx` | Planned |
 | ST-PRD-02 | US-495, US-498 | doctor CA, network-trust, and proxy TLS readiness checks | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | ST-PRD-02 | US-495 | global-app doctor certs surface | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |

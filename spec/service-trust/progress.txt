@@ -48,6 +48,8 @@ Spec SoT:
 - A bundled service contribution needs one typed path from manifest id to runtime service: publish the
   descriptor map, index it in `makePluginCapabilityIndex`, add it to the ship list, and provide the selected
   Layer's dependencies directly in the bootstrap generator rather than relying on sibling Layer visibility.
+- Shared in-container directory scaffolds that higher-priority features populate belong in artifact-phase
+  build steps, not mounts; mounts can shadow files baked by those later features.
 
 ## Status
 
@@ -1136,4 +1138,71 @@ Spec SoT:
   Base-aware guide drift requires this PR-body skip: Guide-Coverage-Skip: US-500 changes internal plugin graph
   and SDK selection contracts already covered by certificates-mkcert; legacy install/library guides do not
   describe active CertificateAuthority selection.
+---
+
+## 2026-08-01 02:12 CDT - Babysit
+- PR: #668 https://github.com/AaronFeledy/core4/pull/668
+- CI outcome: pass
+- Review feedback: fixed (restored host plugin layer precedence for TestRuntimeProvider; updated owned embedding guides for guide-drift)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-01 13:08 CDT - US-493
+- Added the priority-100 `lando.boot` default for `type: lando` services. It bakes the shared
+  `/etc/lando`, `/etc/lando/env.d`, and `/etc/lando/certs` directory scaffold through one idempotent
+  artifact build step, while raw Compose/l337 services remain unchanged and `lando.env` retains all
+  environment-content, sourcing, and distro-export ownership.
+- Published the feature through the service-lando registry and packaged manifest, locked the
+  boot-to-env-to-certs-to-security composition order and CA-bundle preservation, and shipped the primary
+  boot scaffold guide with the required trust-guide links.
+- Verification: typecheck, lint, every boundary rule, generated output, guide lint/coverage/drift, and 84
+  focused and adjacent tests passed; the unit-backed guide scenario passed. A freshly compiled binary in
+  `lando4-dev` planned the scaffold identically across repeated refreshes, preserved
+  `LANDO_CA_BUNDLE=/etc/lando/certs/ca-bundle.pem` with security enabled, and omitted boot from a raw
+  Compose-only plan. QA roots and tmux were removed; high-rigor review approved without blockers.
+- **Learnings for future iterations:**
+  - Directory ownership and content ownership should remain separate features: artifact-phase scaffolding
+    avoids mount shadowing while allowing later features to populate stable paths.
+  - A planner cache surface is sufficient manual proof for a pure feature that emits build intent; inspect
+    the compiled plan for feature ids, step ordering, and absence on the excluded base without starting a
+    container runtime.
+---
+
+## 2026-08-01 13:31 CDT - US-493 Adjudication
+- Contradiction: Build treated the indexed criterion "Realized as ARTIFACT-PHASE BUILD STEPS ... idempotent mkdir -p of /etc/lando, /etc/lando/env.d, /etc/lando/certs" as satisfied by compiled-plan intent. Review applied the source AC "Creates `/etc/lando`, `/etc/lando/env.d`, and `/etc/lando/certs` idempotently (`mkdir -p`), so replanning and rebuilds are no-ops" together with spec/06-services.md section 6.13.1's requirement that "the `lando.boot` scaffolding lives inside the built artifact." For an arbitrary supported parent artifact with an inherited non-root `USER`, the emitted command lacks permission to create `/etc/lando`; spec section 6.3's user-scoped artifact groups provide the architectural seam, but US-493 did not own a temporary-privilege contract or restoration of the inherited effective user.
+- Decision: split into a follow-up story. In `spec/service-trust/prd.json`, US-493 is narrowed to provider-neutral artifact scaffold intent proven through composition and the compiled plan. Actual privileged realization for non-root parent artifacts and exact inherited-user restoration are assigned to US-501; later priorities shift by one and US-496 remains last.
+- Follow-up story: US-501 — provider-neutral artifact-step privilege plus exact inherited effective-user preservation for root and non-root parent artifacts.
+---
+
+## 2026-08-01 13:43 CDT - US-493 Build Confirmation
+- Verified the adjudicated story complete on its existing branch with no new production code. The retained
+  `lando.boot` feature emits the exact provider-neutral artifact scaffold intent, remains lando-only, preserves
+  the `lando.env` ownership boundary and CA-bundle path, and leaves non-root privileged realization to US-501.
+- Verification: typecheck, lint/deprecations, every boundary rule, generated output, guide lint/coverage/drift,
+  37 focused tests with 240 assertions, and the focused guide scenario passed. A freshly compiled binary in
+  `lando4-dev` produced identical plan hashes across repeated refreshes, carried the scaffold and CA-bundle
+  intent, omitted boot from a Compose-only plan, and removed its temporary QA root. The repository-wide public
+  transcript gate remains inapplicable to this render-false guide and reported only unrelated missing artifacts.
+- **Learnings for future iterations:**
+  - After adjudication splits realization from provider-neutral intent, confirmation builds should verify the
+    retained plan seam and leave the newly assigned realization contract to its follow-up story.
+---
+
+## 2026-08-01 14:30 CDT - US-493 Review
+- Fixed six adjacent exact build-step assertions that predated the `lando.boot` default. The repaired
+  expectations pin the scaffold step by id and position while retaining the full owned PHP, redirect,
+  and authored-app step checks; temporarily removing the default reproduced all six failures.
+- Synchronized the normative PRD prose and shipped guides with the recorded US-493/US-501 adjudication:
+  US-493 now consistently promises provider-neutral scaffold intent, while privileged realization for a
+  non-root inherited artifact user and exact user restoration remain assigned to US-501.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
+  the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected re-demanding non-root privilege realization in US-493 because
+  the 13:31 adjudication explicitly excised that surface into US-501; no test was weakened or deleted.
+- Verification: typecheck, lint/deprecations, every boundary rule, focused guide execution, guide lint and
+  coverage, and base-aware guide drift passed; 135 focused and adjacent tests passed with 595 assertions.
+- **Learnings for future iterations:** Adding a base-default feature requires auditing exact build-step
+  assertions outside the owning plugin. An adjudication that narrows story ownership must update the
+  machine-readable PRD, normative Markdown PRDs, and user guides as one contract-sync unit.
 ---

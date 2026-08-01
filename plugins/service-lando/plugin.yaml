@@ -41,6 +41,7 @@ contributes:
     - "static:caddy"
     - "valkey"
   serviceFeatures:
+    - "lando.boot"
     - "lando.user-id"
     - "lando.storage"
     - "lando.env"
