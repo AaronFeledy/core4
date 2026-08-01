@@ -190,8 +190,28 @@ export const buildContainerArtifact = (
         });
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
-      const baseRef = resolvedBaseRef(artifact);
-      const inheritedUser = steps.some((step) => step.privileged)
+      const resolvedRef = resolvedBaseRef(artifact);
+      const hasPrivilegedStep = steps.some((step) => step.privileged);
+      const baseRef = hasPrivilegedStep ? `${tag}-base` : resolvedRef;
+      if (hasPrivilegedStep) {
+        const baseDockerfile = yield* dockerfileForDerivedBuild({
+          providerId: options.providerId,
+          baseRef: resolvedRef,
+          steps: [],
+          inheritedUser: undefined,
+        });
+        yield* requestContainerBuild({
+          request,
+          options,
+          path: buildPath(input, baseRef, true),
+          tag: baseRef,
+          stdin: tarStream([
+            { kind: "file", name: "Dockerfile", mode: 0o644, content: tarText(baseDockerfile) },
+          ]),
+          secretValues,
+        });
+      }
+      const inheritedUser = hasPrivilegedStep
         ? yield* inspectInheritedImageUser({ baseRef, providerId: options.providerId, request })
         : undefined;
       const dockerfile = yield* dockerfileForDerivedBuild({

@@ -1,6 +1,6 @@
 import { Effect, Either, Schema } from "effect";
 
-import { ProviderInternalError } from "@lando/sdk/errors";
+import { ProviderInternalError, ProviderUnavailableError } from "@lando/sdk/errors";
 
 import type { ContainerBuildHttpApi } from "./image-build-http.ts";
 
@@ -14,6 +14,11 @@ const ImageInspect = Schema.Struct({
   Config: Schema.Struct({ User: Schema.optional(Schema.String) }),
 });
 
+const unsafeInheritedUserPattern = /[\p{White_Space}\p{Cc}\\]/u;
+
+const inspectionRemediation = (input: InspectInheritedImageUserInput): string =>
+  `Verify that ${input.baseRef} is available and returns valid image configuration through the container API.`;
+
 const inspectionError = (
   input: InspectInheritedImageUserInput,
   message: string,
@@ -23,22 +28,29 @@ const inspectionError = (
     providerId: input.providerId,
     operation: "buildArtifact",
     message,
-    remediation: `Verify that ${input.baseRef} is available and returns valid image configuration through the container API.`,
+    remediation: inspectionRemediation(input),
     ...(cause === undefined ? {} : { cause }),
   });
 
 export const inspectInheritedImageUser = (
   input: InspectInheritedImageUserInput,
-): Effect.Effect<string | undefined, ProviderInternalError> =>
+): Effect.Effect<string | undefined, ProviderUnavailableError | ProviderInternalError> =>
   input.request({ method: "GET", path: `/images/${encodeURIComponent(input.baseRef)}/json` }).pipe(
     Effect.mapError((cause) =>
-      inspectionError(input, `Unable to inspect inherited image user for ${input.baseRef}.`, cause),
+      cause instanceof ProviderUnavailableError
+        ? cause
+        : inspectionError(input, `Unable to inspect inherited image user for ${input.baseRef}.`, cause),
     ),
     Effect.flatMap((response) =>
       response.status >= 200 && response.status < 300
         ? Effect.succeed(response.body)
         : Effect.fail(
-            inspectionError(input, `Inherited image user inspection failed with HTTP ${response.status}.`),
+            new ProviderUnavailableError({
+              providerId: input.providerId,
+              operation: "buildArtifact",
+              message: `Inherited image user inspection failed with HTTP ${response.status}.`,
+              remediation: inspectionRemediation(input),
+            }),
           ),
     ),
     Effect.flatMap((body) =>
@@ -60,6 +72,16 @@ export const inspectInheritedImageUser = (
             ),
           );
     }),
+    Effect.flatMap((user) =>
+      user !== undefined && user !== "" && unsafeInheritedUserPattern.test(user)
+        ? Effect.fail(
+            inspectionError(
+              input,
+              "Invalid inherited image user: whitespace, control characters, and backslashes are not allowed.",
+            ),
+          )
+        : Effect.succeed(user),
+    ),
     Effect.map((user) => {
       const identity = user?.split(":", 1)[0];
       return user === undefined || user === "" || identity === "root" || identity === "0" ? undefined : user;

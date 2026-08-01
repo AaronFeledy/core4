@@ -34,6 +34,13 @@ type BuildStep = {
   readonly privileged?: boolean;
 };
 
+const privilegedScaffoldStep = {
+  id: "lando.boot",
+  phase: "build",
+  command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
+  privileged: true,
+} as const satisfies BuildStep;
+
 type RunBuildInput = {
   readonly artifact: NonNullable<ServicePlan["artifact"]>;
   readonly steps: ReadonlyArray<BuildStep>;
@@ -101,9 +108,7 @@ describe("privileged artifact build steps", () => {
       return Effect.succeed({
         status: 200,
         body:
-          entry.method === "GET" && entry.path.includes("debian%3A12")
-            ? '{"Config":{"User":"app:staff"}}'
-            : "{}",
+          entry.method === "GET" && entry.path.includes("-base") ? '{"Config":{"User":"app:staff"}}' : "{}",
       });
     };
 
@@ -112,23 +117,20 @@ describe("privileged artifact build steps", () => {
       runBuild({
         artifact: { kind: "ref", ref: "debian:12" },
         user: "runtime-only",
-        steps: [
-          { id: "privileged", phase: "build", command: "install-system-package", privileged: true },
-          { id: "later", phase: "build", command: "compile-as-app" },
-        ],
+        steps: [privilegedScaffoldStep, { id: "later", phase: "build", command: "compile-as-app" }],
         request,
       }),
     );
 
     // Then
     const dockerfile = await dockerfileFrom(
-      posts[0] ??
+      posts[1] ??
         (() => {
           throw new Error("missing derived build");
         })(),
     );
     expect(dockerfile).toBe(
-      "FROM debian:12\nUSER root\nRUN install-system-package\nUSER app:staff\nRUN compile-as-app\n",
+      "FROM lando-build-docker-web-privilege-key-base\nUSER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER app:staff\nRUN compile-as-app\n",
     );
     expect(dockerfile).not.toContain("runtime-only");
   });
@@ -145,7 +147,7 @@ describe("privileged artifact build steps", () => {
     await Effect.runPromise(
       runBuild({
         artifact: { kind: "ref", ref: "debian:12" },
-        steps: [{ id: "privileged", phase: "build", command: "install-system-package", privileged: true }],
+        steps: [privilegedScaffoldStep],
         request,
       }),
     );
@@ -153,12 +155,14 @@ describe("privileged artifact build steps", () => {
     // Then
     expect(
       await dockerfileFrom(
-        posts[0] ??
+        posts[1] ??
           (() => {
             throw new Error("missing derived build");
           })(),
       ),
-    ).toBe("FROM debian:12\nRUN install-system-package\n");
+    ).toBe(
+      "FROM lando-build-docker-web-privilege-key-base\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\n",
+    );
   });
 
   test("inspects a build artifact's intermediate parent before the privileged derived build", async () => {
@@ -176,7 +180,7 @@ describe("privileged artifact build steps", () => {
     await Effect.runPromise(
       runBuild({
         artifact: { kind: "build", context: AbsolutePath.make(context) },
-        steps: [{ id: "privileged", phase: "build", command: "install-system-package", privileged: true }],
+        steps: [privilegedScaffoldStep],
         request,
       }),
     );
@@ -187,7 +191,7 @@ describe("privileged artifact build steps", () => {
     expect(baseInspects).toHaveLength(2);
     if (derivedPost === undefined) throw new Error("missing derived build");
     expect(await dockerfileFrom(derivedPost)).toContain(
-      "USER root\nRUN install-system-package\nUSER 1001:1002",
+      "USER root\nRUN mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs\nUSER 1001:1002",
     );
   });
 
@@ -233,19 +237,32 @@ describe("privileged artifact build steps", () => {
   });
 
   test("fails closed when inherited-user inspection is non-successful", async () => {
-    // Given / When
+    // Given
+    let baseInspectCount = 0;
+    const request = (entry: ContainerBuildHttpRequest) => {
+      if (entry.method === "POST") return Effect.succeed({ status: 200, body: "" });
+      if (entry.path.includes("-base")) {
+        baseInspectCount += 1;
+        return Effect.succeed(
+          baseInspectCount === 1 ? { status: 200, body: "{}" } : { status: 503, body: "unavailable" },
+        );
+      }
+      return Effect.succeed({ status: 200, body: "{}" });
+    };
+
+    // When
     const failure = await Effect.runPromise(
       Effect.flip(
         runBuild({
           artifact: { kind: "ref", ref: "debian:12" },
           steps: [{ id: "privileged", phase: "build", command: "install", privileged: true }],
-          request: () => Effect.succeed({ status: 503, body: "unavailable" }),
+          request,
         }),
       ),
     );
 
     // Then
-    expect(failure._tag).toBe("ProviderInternalError");
+    expect(failure._tag).toBe("ProviderUnavailableError");
     expect(failure.remediation).toBeDefined();
   });
 
