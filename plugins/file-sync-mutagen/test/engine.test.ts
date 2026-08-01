@@ -48,7 +48,7 @@ const runScopedExit = <A, E>(effect: Effect.Effect<A, E, never>) =>
   Effect.runPromiseExit(Effect.scoped(effect));
 
 describe("@lando/file-sync-mutagen engine identity", () => {
-  test("declares the spec-mandated engine id, display name, and capability matrix", () => {
+  test("declares the required engine id, display name, and capability matrix", () => {
     const { engine } = fakeEngine();
     expect(engine.id).toBe(ENGINE_ID);
     expect(engine.displayName).toBe(ENGINE_DISPLAY_NAME);
