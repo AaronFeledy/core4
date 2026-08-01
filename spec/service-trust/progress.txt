@@ -1188,3 +1188,21 @@ Spec SoT:
   - After adjudication splits realization from provider-neutral intent, confirmation builds should verify the
     retained plan seam and leave the newly assigned realization contract to its follow-up story.
 ---
+
+## 2026-08-01 14:30 CDT - US-493 Review
+- Fixed six adjacent exact build-step assertions that predated the `lando.boot` default. The repaired
+  expectations pin the scaffold step by id and position while retaining the full owned PHP, redirect,
+  and authored-app step checks; temporarily removing the default reproduced all six failures.
+- Synchronized the normative PRD prose and shipped guides with the recorded US-493/US-501 adjudication:
+  US-493 now consistently promises provider-neutral scaffold intent, while privileged realization for a
+  non-root inherited artifact user and exact user restoration remain assigned to US-501.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
+  the required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected re-demanding non-root privilege realization in US-493 because
+  the 13:31 adjudication explicitly excised that surface into US-501; no test was weakened or deleted.
+- Verification: typecheck, lint/deprecations, every boundary rule, focused guide execution, guide lint and
+  coverage, and base-aware guide drift passed; 135 focused and adjacent tests passed with 595 assertions.
+- **Learnings for future iterations:** Adding a base-default feature requires auditing exact build-step
+  assertions outside the owning plugin. An adjudication that narrows story ownership must update the
+  machine-readable PRD, normative Markdown PRDs, and user guides as one contract-sync unit.
+---
