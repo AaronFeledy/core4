@@ -1,0 +1,37 @@
+---
+id: lando-boot-scaffold
+provider: test
+platforms: [darwin, linux, win32, wsl]
+timeout: 60000
+tags: [beta, docs, service, lando, boot]
+---
+
+Every `type: lando` service includes the `lando.boot` feature. During the artifact build it creates
+the shared Lando directory scaffold with an idempotent `mkdir -p` step:
+
+```text
+/etc/lando
+/etc/lando/env.d
+/etc/lando/certs
+```
+
+The scaffold is baked into the service artifact. It is not a mount, so it does not hide files that
+higher-priority features add beneath these directories. `lando.certs` uses the certificate directory
+for service leaf material, while `lando.security` uses it for the injected CA bundle described in
+[Corporate network trust](../config/corporate-network-trust.mdx).
+
+`lando.boot` owns directories only. The higher-priority `lando.env` feature owns
+`/etc/lando/environment`, `env.d/` content and per-exec sourcing, and the `LANDO_LINUX_*` distro
+exports. See [Certificates with mkcert](../subsystems/certificates-mkcert.mdx) for the separate leaf
+certificate paths and environment contract.
+
+<Guide>
+  <Scenario id="lando-boot-scaffold" render={false} reason="Focused service-feature and base-composition tests verify the artifact build step, lando-only default, feature order, and CA bundle preservation without building a container image">
+    <Step name="compose-scaffold">
+      <Variable name="feature" value="lando.boot" display="Create the shared Lando directory scaffold at feature priority 100" />
+      <Variable name="directories" value="/etc/lando, /etc/lando/env.d, /etc/lando/certs" display="Bake the three shared directories into the service artifact with mkdir -p" />
+      <Variable name="envOwner" value="lando.env" display="Keep environment content, env.d sourcing, and LANDO_LINUX_* exports under lando.env" />
+      <Variable name="excludedBase" value="type: compose" display="Raw Compose services use the l337 base and do not include lando.boot" />
+    </Step>
+  </Scenario>
+</Guide>

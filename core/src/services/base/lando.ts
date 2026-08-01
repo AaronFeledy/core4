@@ -13,6 +13,7 @@
 export const LANDO_BASE_ID = "lando" as const;
 
 export const LANDO_BASE_DEFAULT_FEATURE_IDS: ReadonlyArray<string> = [
+  "lando.boot",
   "lando.user-id",
   "lando.storage",
   "lando.env",

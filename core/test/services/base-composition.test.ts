@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 
-import { ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
+import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 import type { ServiceTypeHostFacts } from "@lando/sdk/services";
 import { serviceFeatures } from "@lando/service-lando";
@@ -9,6 +9,8 @@ import { serviceFeatures } from "@lando/service-lando";
 import { L337_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/l337.ts";
 import { LANDO_BASE_DEFAULT_FEATURE_IDS } from "../../src/services/base/lando.ts";
 import { type BaseSeed, type ComposeServiceInput, composeService } from "../../src/services/feature.ts";
+
+const DIGEST = "a".repeat(64);
 
 const host: ServiceTypeHostFacts = {
   os: "linux",
@@ -61,8 +63,9 @@ const compose = (input: ComposeServiceInput): Promise<ServicePlan> =>
   Effect.runPromise(composeService(input));
 
 describe("lando base composition", () => {
-  test("seeds lando.certs and lando.security between healthcheck and host-proxy", () => {
+  test("seeds boot before env, certs, and security in canonical priority order", () => {
     expect(LANDO_BASE_DEFAULT_FEATURE_IDS).toEqual([
+      "lando.boot",
       "lando.user-id",
       "lando.storage",
       "lando.env",
@@ -87,6 +90,61 @@ describe("lando base composition", () => {
         }),
       )(plan.extensions["@lando/core/service-features"]).buildSteps ?? [],
     ).not.toContainEqual({ id: "lando.security:trust-store" });
+  });
+
+  test("preserves the configured CA bundle after boot and security compose", async () => {
+    const input = inputFor("lando");
+    const security = serviceFeatures.get("lando.security");
+    if (security === undefined) throw new Error("lando.security feature missing");
+    const plan = await compose({
+      ...input,
+      base: {
+        ...input.base,
+        defaultFeatures: input.base.defaultFeatures.filter((feature) => feature.id !== "lando.security"),
+      },
+      features: [
+        {
+          id: "lando.security",
+          definition: security,
+          config: {
+            injectCa: true,
+            cas: [{ path: "/host/corp.pem", digest: DIGEST }],
+            bundlePath: "/host/ca-bundle.pem",
+          },
+        },
+      ],
+    });
+
+    expect(plan.extensions["@lando/core/service-features"]).toMatchObject({
+      featureIds: [
+        "lando.boot",
+        "lando.user-id",
+        "lando.storage",
+        "lando.env",
+        "lando.app-mount",
+        "lando.healthcheck",
+        "lando.certs",
+        "lando.security",
+        "lando.host-proxy",
+        "lando.user",
+      ],
+      buildSteps: [
+        {
+          id: "lando.boot:scaffold",
+          phase: "build",
+          command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
+        },
+        { id: "lando.security:trust-store", phase: "build" },
+      ],
+    });
+    expect(plan.environment.LANDO_CA_BUNDLE).toBe("/etc/lando/certs/ca-bundle.pem");
+    expect(plan.mounts).toContainEqual({
+      type: "bind",
+      source: "/host/ca-bundle.pem",
+      target: PortablePath.make("/etc/lando/certs/ca-bundle.pem"),
+      readOnly: true,
+      realization: "passthrough",
+    });
   });
 
   test("carries the LANDO_* identity env via lando.env", async () => {
@@ -154,7 +212,8 @@ describe("lando base composition", () => {
 });
 
 describe("l337 base composition", () => {
-  test("does not seed lando.security", () => {
+  test("does not seed lando.boot or lando.security", () => {
+    expect(L337_BASE_DEFAULT_FEATURE_IDS).not.toContain("lando.boot");
     expect(L337_BASE_DEFAULT_FEATURE_IDS).not.toContain("lando.security");
   });
 

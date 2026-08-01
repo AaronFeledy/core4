@@ -109,6 +109,7 @@ export { SERVICE_FEATURE_IDS } from "./features/index.ts";
 
 export {
   landoAppMountFeature,
+  landoBootFeature,
   landoCertsFeature,
   landoEnvFeature,
   landoHealthcheckFeature,
