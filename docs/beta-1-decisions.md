@@ -8,13 +8,15 @@ Rationale: Bun's executable and bytecode documentation supports `bun build --com
 
 Known constraints: bytecode is tied to the Bun version that produced the executable, and x64 targets may need Bun's baseline/modern target split on older CPUs. Neither constraint requires raising the Beta 1 floor today.
 
-## OCLIF major lock decision
+## OCLIF major lock decision (superseded by architecture-simplicity)
 
-Beta 1 will stay on OCLIF v4. The current package metadata remains authoritative: `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies.
+Original Beta 1 decision, kept here as historical context: Beta 1 would stay on OCLIF v4. The current package metadata remains authoritative: `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies.
 
-Rationale: source mode depends on OCLIF v4 command loading, manifest generation, hooks, help, and parser behavior, while the compiled `$bunfs` binary deliberately does not route through OCLIF. The permanent compiled path is the hand-rolled `runCompiledCli` router, and the compatibility contract is the existing dual dispatch model: shared command implementations, shared renderers, and the compiled-binary dispatch parity tests that compare source and compiled behavior for representative commands and failure cases.
+Original rationale: source mode depends on OCLIF v4 command loading, manifest generation, hooks, help, and parser behavior, while the compiled `$bunfs` binary deliberately does not route through OCLIF. The compiled path used the hand-rolled `runCompiledCli` router, and the compatibility contract was a dual dispatch model: shared command implementations, shared renderers, and compiled-binary dispatch parity tests that compare source and compiled behavior for representative commands and failure cases.
 
-Compatibility notes: OCLIF remains isolated to the OCLIF adapter surface and source-mode command execution. New command work must preserve the existing dependency ranges unless an explicit migration story updates source-mode loading, manifest generation, hooks, and parity coverage together. A future OCLIF v5 migration must not attempt to remove dual dispatch or make the compiled binary depend on OCLIF runtime discovery.
+Superseding decision: architecture-simplicity supersedes this entry. Dual dispatch and the OCLIF integration surface are not permanent. US-522 through US-531 remove dual dispatch and the public OCLIF surface, replacing both the OCLIF-based source dispatcher and the hand-rolled `runCompiledCli` router with one native command registry and dispatcher shared by source and compiled entries. As of this writing that migration is pending: source mode still depends on OCLIF today, and `runCompiledCli` still exists. This section records the target, not a completed change; do not treat OCLIF removal as shipped until US-522..US-531 land and the compatibility notes below are updated to match.
+
+Compatibility notes: until the migration lands, OCLIF remains isolated to the OCLIF adapter surface and source-mode command execution, and new command work should preserve the existing dependency ranges unless it is part of the US-522..US-531 migration itself, which is expected to update source-mode loading, manifest generation, hooks, and parity coverage together as it converges both paths on the native registry/dispatcher.
 
 ## Provider auto-setup default decision
 

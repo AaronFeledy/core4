@@ -49,7 +49,7 @@ code and spec disagree, the spec wins.
 
 ```text
 .
-├── core/              # @lando/core — runtime, planner, OCLIF adapter, library API, CLI
+├── core/              # @lando/core — runtime, planner, native CLI dispatcher (OCLIF removal in flight), library API
 ├── sdk/               # @lando/sdk — schemas, tags, types only (plugin authors import this)
 ├── container-runtime/ # @lando/container-runtime — private provider-agnostic runtime helpers
 ├── plugins/           # Bundled reference plugins (separate packages, optional at runtime)
@@ -105,7 +105,7 @@ code and spec disagree, the spec wins.
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
 - **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
-- **CLI framework:** OCLIF — consumed only inside `core/src/cli/oclif/`.
+- **CLI framework:** target architecture is one native command registry and dispatcher shared by source and compiled modes (spec §8.4.1); the source path still dispatches through OCLIF today, consumed only inside `core/src/cli/oclif/`, while that removal (US-522..US-531) is in flight.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
 
@@ -191,12 +191,15 @@ All command output flows through the `Renderer` service; pick a mode with
 The compiled binary is produced with `bun build --compile --bytecode` targeting
 `core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for five
 platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and
-`windows-x64`. The source CLI dispatches through OCLIF; the compiled `$bunfs`
-binary uses a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`)
-because `@oclif/core`'s `execute()` cannot dispatch inside a compiled Bun binary.
-Both paths share one source of truth per behavior and are kept in lockstep by the
-dispatch parity test layer — this dual dispatch is **permanent by design**, not
-an interim workaround.
+`windows-x64`. Today the source CLI still dispatches through OCLIF while the compiled `$bunfs`
+binary uses a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`),
+because `@oclif/core`'s `execute()` cannot dispatch inside a compiled Bun binary
+(historical spike, spec/14-appendices.md Appendix D.1). That evidence no longer justifies
+keeping two engines: the spec now supersedes dual dispatch and adopts **one**
+native command registry and dispatcher for both source and compiled modes
+(spec §8.4.1). This codebase is mid-migration (US-522..US-531) — the dual-path
+parity layer and the OCLIF adapter are still present and are not the target
+architecture.
 
 ## Contributing
 
