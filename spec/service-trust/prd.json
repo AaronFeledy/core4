@@ -217,7 +217,7 @@
       "acceptanceCriteria": [
         "lando.certs priority 1000 on lando base defaults.",
         "certs true issues SANs per section 6.8; custom paths validated; certs false no-op.",
-        "Composition tests inject a fake CA directly at AppPlanner's CertificateAuthority service seam; l337 skipped. US-500 owns plugin-module contribution publication, spec section 4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration; those are not US-492 acceptance.",
+        "Composition tests inject a fake CA through AppPlanner's CertificateAuthorityResolver seam; l337 skipped. US-500 owns plugin-module contribution publication, spec section 4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration; those are not US-492 acceptance.",
         "Guide: certificates-mkcert documents service env and SAN coverage.",
         "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
         "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",

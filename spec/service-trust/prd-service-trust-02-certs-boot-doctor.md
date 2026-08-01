@@ -79,7 +79,7 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 - [ ] `lando.certs` registered on lando base default feature ids at priority 1000.
 - [ ] `certs: true` → CA.issueCert with SANs: service name, `<service>.<app>.internal`, hostnames, route hosts, localhost, 127.0.0.1.
 - [ ] Custom cert/key paths validated and mounted; `certs: false` no-op.
-- [ ] Composition tests inject a fake CA directly at AppPlanner's `CertificateAuthority` seam; l337 does not get `lando.certs` by default. US-500 owns plugin contribution publication, §4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration.
+- [ ] Composition tests inject a fake CA through AppPlanner's `CertificateAuthorityResolver` seam; l337 does not get `lando.certs` by default. US-500 owns plugin contribution publication, §4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration.
 - [ ] **Guide:** certificates-mkcert documents service env vars and SAN coverage; links from nginx/php TLS mentions if those guides claim certs.
 - [ ] Guide gates green for touched guides.
 - [ ] Tests pass
