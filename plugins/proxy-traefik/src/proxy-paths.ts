@@ -26,10 +26,13 @@ export const defaultTlsFile = (paths: ProxyPaths): string =>
 
 export const certificateDir = (paths: ProxyPaths): string => joinFor(paths)(dynamicConfigDir(paths), "certs");
 
-export const defaultCertificateNames = (defaultDomain: string) => ({
-  cert: `default-${encodeURIComponent(defaultDomain)}.crt`,
-  key: `default-${encodeURIComponent(defaultDomain)}.key`,
-});
+export const defaultCertificateNames = (defaultDomain: string) => {
+  const encoded = encodeURIComponent(defaultDomain);
+  return {
+    cert: `default-${encoded}.crt`,
+    key: `default-${encoded}.key`,
+  };
+};
 
 export const defaultCertificateFiles = (paths: ProxyPaths, defaultDomain: string) => {
   const names = defaultCertificateNames(defaultDomain);

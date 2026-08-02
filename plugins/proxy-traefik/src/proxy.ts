@@ -96,13 +96,14 @@ export const makeTraefikProxyService = (
       }).pipe(Effect.mapError(setupError)),
     applyRoutes: (nextRoutes, app) =>
       Effect.gen(function* () {
+        const appKey = String(app);
         if (nextRoutes.length === 0) {
           yield* dependencies.fileSystem.remove(routeFile(dependencies.paths, app));
           yield* removeAppCertificates(dependencies, app);
-          routes.delete(String(app));
+          routes.delete(appKey);
         } else {
           const hostnames = httpsHostnames(nextRoutes);
-          const previousHostnames = httpsHostnames(routes.get(String(app)) ?? []);
+          const previousHostnames = httpsHostnames(routes.get(appKey) ?? []);
           if (hostnames.length === 0) yield* removeAppCertificates(dependencies, app);
           const tlsFiles =
             hostnames.length === 0
@@ -117,7 +118,7 @@ export const makeTraefikProxyService = (
             routeFile(dependencies.paths, app),
             renderTraefikDynamicConfig(nextRoutes, app, tlsFiles),
           );
-          routes.set(String(app), nextRoutes);
+          routes.set(appKey, nextRoutes);
         }
         return {
           app,
