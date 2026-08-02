@@ -54,6 +54,11 @@ export const makeHarness = (issueFailure?: CaError) => {
           operations.push(`write:${path}`);
           files.set(path, String(content));
         }),
+      writeSecretAtomic: (path, content) =>
+        Effect.sync(() => {
+          operations.push(`write-secret:${path}`);
+          files.set(path, String(content));
+        }),
       remove: (path) =>
         Effect.sync(() => {
           operations.push(`remove:${path}`);

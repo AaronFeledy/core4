@@ -38,6 +38,7 @@ const makeHarness = (
         failAtomic
           ? Effect.fail(new Error("injected atomic replacement failure"))
           : Effect.sync(() => void files.set(path, String(content))),
+      writeSecretAtomic: (path, content) => Effect.sync(() => void files.set(path, String(content))),
       remove: (path) => Effect.sync(() => void files.delete(path)),
       exists: (path) =>
         Effect.succeed(files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
@@ -120,6 +121,8 @@ describe("Traefik ProxyService", () => {
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: (path, content) => Effect.sync(() => void harness.files.set(path, String(content))),
+        writeSecretAtomic: (path, content) =>
+          Effect.sync(() => void harness.files.set(path, String(content))),
         remove: (path) => Effect.sync(() => void harness.files.delete(path)),
         exists: (path) =>
           Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
@@ -153,6 +156,8 @@ describe("Traefik ProxyService", () => {
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: (path, content) => Effect.sync(() => void harness.files.set(path, String(content))),
+        writeSecretAtomic: (path, content) =>
+          Effect.sync(() => void harness.files.set(path, String(content))),
         remove: (path) => Effect.sync(() => void harness.files.delete(path)),
         exists: (path) =>
           Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
@@ -181,6 +186,7 @@ describe("Traefik ProxyService", () => {
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: () => Effect.void,
+        writeSecretAtomic: () => Effect.void,
         remove: () => Effect.void,
         exists: (path) => Effect.succeed(path.endsWith("/dynamic")),
         readDir: () => Effect.succeed(["routes-removed.yml"]),

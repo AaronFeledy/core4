@@ -27,6 +27,7 @@ import {
   authorityPortsFrom,
   renderTraefikDynamicConfig,
 } from "./routing.ts";
+import { writeSecretAtomic } from "./secret-file.ts";
 import { persistedStatus } from "./status.ts";
 import {
   ensureTlsFiles,
@@ -162,7 +163,15 @@ export const proxy = Layer.effect(
     const paths = yield* PathsService;
     const globalApp = yield* GlobalAppService;
     const certificateAuthority = yield* CertificateAuthority;
-    return makeTraefikProxyService({ certificateAuthority, fileSystem, paths, globalApp });
+    return makeTraefikProxyService({
+      certificateAuthority,
+      fileSystem: {
+        ...fileSystem,
+        writeSecretAtomic: (path, content) => Effect.tryPromise(() => writeSecretAtomic(path, content)),
+      },
+      paths,
+      globalApp,
+    });
   }),
 );
 

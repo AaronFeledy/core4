@@ -8,6 +8,7 @@ export interface ProxyFileSystem {
   readonly readDir: (path: string) => Effect.Effect<ReadonlyArray<string>, unknown>;
   readonly readText: (path: string) => Effect.Effect<string, unknown>;
   readonly writeAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, unknown>;
+  readonly writeSecretAtomic: (path: string, content: string | Uint8Array) => Effect.Effect<void, unknown>;
   readonly remove: (path: string) => Effect.Effect<void, unknown>;
 }
 

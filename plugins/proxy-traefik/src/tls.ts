@@ -26,6 +26,11 @@ const copyCertificate = (dependencies: TraefikProxyDependencies, source: string,
     .readText(source)
     .pipe(Effect.flatMap((content) => dependencies.fileSystem.writeAtomic(destination, content)));
 
+const copyPrivateKey = (dependencies: TraefikProxyDependencies, source: string, destination: string) =>
+  dependencies.fileSystem
+    .readText(source)
+    .pipe(Effect.flatMap((content) => dependencies.fileSystem.writeSecretAtomic(destination, content)));
+
 export const removeAppCertificates = (dependencies: TraefikProxyDependencies, app: AppId) => {
   const files = appCertificateFiles(dependencies.paths, app);
   return Effect.all([dependencies.fileSystem.remove(files.cert), dependencies.fileSystem.remove(files.key)], {
@@ -56,7 +61,7 @@ export const ensureTlsFiles = (
         sans: [`*.${input.defaultDomain}`, input.defaultDomain, "traefik.lndo.site"],
       });
       yield* copyCertificate(dependencies, issued.certPath, defaultFiles.cert);
-      yield* copyCertificate(dependencies, issued.keyPath, defaultFiles.key);
+      yield* copyPrivateKey(dependencies, issued.keyPath, defaultFiles.key);
     }
 
     const defaultNames = defaultCertificateNames(input.defaultDomain);
@@ -77,7 +82,7 @@ export const ensureTlsFiles = (
         sans: input.hostnames,
       });
       yield* copyCertificate(dependencies, issued.certPath, appFiles.cert);
-      yield* copyCertificate(dependencies, issued.keyPath, appFiles.key);
+      yield* copyPrivateKey(dependencies, issued.keyPath, appFiles.key);
     }
 
     const encodedApp = encodeURIComponent(String(input.app));

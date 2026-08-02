@@ -66,8 +66,14 @@ describe("Traefik ProxyService TLS", () => {
     });
     expect(harness.files.get("/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.crt")).toBe("app cert");
     expect(harness.operations.indexOf(`write:${routePath}`)).toBeGreaterThan(
-      harness.operations.indexOf("write:/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key"),
+      harness.operations.indexOf("write-secret:/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key"),
     );
+    expect(
+      harness.operations.filter((operation) => operation.includes("/certs/") && operation.endsWith(".key")),
+    ).toEqual([
+      "write-secret:/lando/global/proxy-traefik/dynamic/certs/default-lndo.site.key",
+      "write-secret:/lando/global/proxy-traefik/dynamic/certs/demo%2Fapp.key",
+    ]);
     expect(harness.operations.indexOf(`write:${routePath}`)).toBeGreaterThan(
       harness.operations.indexOf(`write:${defaultPath}`),
     );
