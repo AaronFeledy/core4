@@ -55,7 +55,9 @@ Spec SoT:
   user before later steps. A service `user` override is runtime intent and must not be baked into the image.
 - Language-specific trust variables that depend on resolved CA injection belong in `lando.security`, which
   owns the injected-material condition and runs after runtime features; keep language features free of
-  unconditional CA paths so services without injected material remain unchanged.
+  unconditional CA paths so services without injected material remain unchanged. When the runtime contract
+  says a value is a default, inspect the normalized authored environment before writing it, and enumerate
+  bundled service ids when the behavior must not extend to external service types with similar names.
 
 ## Status
 
@@ -1285,4 +1287,19 @@ Spec SoT:
   - Runtime features run before `lando.security` and cannot know whether the planner resolved CA material;
     apply condition-dependent language trust variables at the security feature seam instead of setting
     unconditional paths in each language feature.
+---
+
+## 2026-08-01 20:37 CDT - US-494 Review
+- Fixed two source-PRD blockers: bundled Python CA injection now preserves an authored `SSL_CERT_FILE`, and
+  `REQUESTS_CA_BUNDLE` is limited to the existing bundled Python service id instead of matching external or
+  unregistered `python:*` types. Regression tests lock both boundaries and the runtime table states the
+  preservation rule.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
+  the required current-branch review and its retry; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected adding links to the Node, PHP, Python, Ruby, or Go service guides
+  because none discusses outbound HTTPS clients, so the source PRD's conditional link requirement does not
+  apply.
+- Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware
+  guide drift passed; 14 focused security-feature tests passed with 44 assertions and both changed TypeScript
+  files had clean diagnostics. The full `bun test` suite was intentionally not run.
 ---
