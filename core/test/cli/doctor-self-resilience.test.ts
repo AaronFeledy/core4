@@ -76,6 +76,9 @@ describe("doctor safe mode", () => {
         true,
       );
       expect(report.provider.checks).toEqual([]);
+      const certs = report.subsystems.checks.find((check) => check.name === "certs");
+      expect(certs?.context).toMatchObject({ subsystemId: "unavailable", ready: "false" });
+      expect(certs?.context.certsReason).toBeUndefined();
       expect(() => Schema.encodeSync(DoctorReportSchema)(report)).not.toThrow();
     } finally {
       restoreEnv("HOME", priorHome);

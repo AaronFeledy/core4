@@ -58,6 +58,9 @@ Spec SoT:
   unconditional CA paths so services without injected material remain unchanged. When the runtime contract
   says a value is a default, inspect the normalized authored environment before writing it, and enumerate
   bundled service ids when the behavior must not extend to external service types with similar names.
+- Runtime-dependent doctor checks should resolve optional plugin/runtime state inside their own isolated
+  report section, then pass a typed status into the self-contained subsystem aggregate; do not make the
+  default subsystem layer depend on an optional resolver just to report its absence.
 
 ## Status
 
@@ -1303,4 +1306,40 @@ Spec SoT:
 - Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware
   guide drift passed; 14 focused security-feature tests passed with 44 assertions and both changed TypeScript
   files had clean diagnostics. The full `bun test` suite was intentionally not run.
+---
+## 2026-08-01 22:41 CDT - US-495
+- Added certificate-authority and network-trust diagnostics to the combined doctor report. The certs check
+  now reflects selected, absent, ambiguous, and failed CA plugin resolution with `lando setup` remediation,
+  while network trust reports safe CA/proxy status and turns unreadable or malformed CA configuration into
+  a redacted warning without aborting the rest of the report.
+- Preserved doctor self-resilience and deterministic output across text, YAML, NDJSON, and command-result
+  surfaces, including the established subsystem order with network trust after host proxy. Updated both
+  doctor walkthroughs with the exact check names, ordering, safe context, and remediation contract.
+- Verification: typecheck and lint passed; 176 focused and adjacent doctor tests passed with 844 assertions
+  (one existing skip), plus 3 doctor contract tests; focused guide scenarios, guide lint/coverage/drift,
+  generated output, public transcripts, renderer, machine-output, and redaction gates passed. A freshly
+  compiled sandbox CLI reported selected mkcert and healthy empty network trust, then reported an unreadable
+  CA as `missing-custom-ca` with the secret path segment redacted and `lando setup` remediation; QA roots
+  were removed. The unrelated spec-reference gate remains blocked by pre-existing `.omo/**` planning files.
+- **Learnings for future iterations:**
+  - Resolve optional CA plugin state while the provider runtime context is available, then feed the typed
+    outcome into subsystem aggregation so bootstrap failure still yields an unresolved certs check rather
+    than suppressing the report.
+  - Network-trust diagnostics should reuse setup's trust resolver and project only booleans/counts on
+    success; failure text must pass through the secrets redactor before any report format sees it.
+---
+## 2026-08-01 22:58 CDT - US-495 Review
+- Fixed the maintained global doctor walkthrough to document the exact certs remediation and the stable
+  unreadable/malformed CA remediation strings required alongside the new check names and stream order.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both current-branch attempts hit
+  the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected hiding arbitrary CA path segments because the established shared
+  loader contract requires path-named remediation; known secret values and patterns remain redacted before
+  every output format.
+- Review notes (deferred/rejected): Rejected treating a malicious same-user CA plugin that echoes an unrelated
+  SecretStore value as a story blocker; it already executes with the user's privileges, while production
+  diagnostics redact environment, proxy, resolver failure, and setup-trust inputs.
+- Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware
+  guide drift passed; 126 focused and adjacent doctor tests passed with 493 assertions. All completed
+  review-work lanes passed after a bounded retry of the initially incomplete context-mining lane.
 ---
