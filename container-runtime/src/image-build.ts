@@ -130,6 +130,7 @@ export const buildContainerArtifact = (
     }
     const artifact = service.artifact;
     const { steps, caEntries } = yield* prepareDerivedBuild(service, options.providerId);
+    const hasPrivilegedStep = steps.some((step) => step.privileged);
     const tag = deterministicRef(input);
     let digest: string | undefined;
     const secretValues =
@@ -167,7 +168,7 @@ export const buildContainerArtifact = (
         secretValues,
       });
       if (steps.length > 0) {
-        const inheritedUser = steps.some((step) => step.privileged)
+        const inheritedUser = hasPrivilegedStep
           ? yield* inspectInheritedImageUser({ baseRef: baseTag, providerId: options.providerId, request })
           : undefined;
         const dockerfile = yield* dockerfileForDerivedBuild({
@@ -191,7 +192,6 @@ export const buildContainerArtifact = (
       }
     } else if (artifact?.kind === "ref" && steps.length > 0) {
       const resolvedRef = resolvedBaseRef(artifact);
-      const hasPrivilegedStep = steps.some((step) => step.privileged);
       const baseRef = hasPrivilegedStep ? `${tag}-base` : resolvedRef;
       if (hasPrivilegedStep) {
         const baseDockerfile = yield* dockerfileForDerivedBuild({
