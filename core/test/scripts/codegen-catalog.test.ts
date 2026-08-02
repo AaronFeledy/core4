@@ -56,6 +56,7 @@ const isCodegenCatalogModule = (value: unknown): value is CodegenCatalogModule =
 };
 
 const repositoryRoot = resolve(import.meta.dirname, "../../..");
+const packageJson: unknown = await Bun.file(resolve(repositoryRoot, "package.json")).json();
 const catalogModuleUrl = pathToFileURL(resolve(repositoryRoot, "scripts/codegen-catalog.ts")).href;
 const importedCatalogModule: unknown = await import(catalogModuleUrl);
 if (!isCodegenCatalogModule(importedCatalogModule)) {
@@ -91,6 +92,23 @@ const expectedCatalogRows = [
 ] as const;
 
 describe("codegen catalog", () => {
+  test("exposes focused guide scenario generation as a package command", () => {
+    // Given
+    const scripts =
+      typeof packageJson === "object" && packageJson !== null && "scripts" in packageJson
+        ? packageJson.scripts
+        : undefined;
+
+    // When
+    const command =
+      typeof scripts === "object" && scripts !== null && "codegen:guide-scenarios" in scripts
+        ? scripts["codegen:guide-scenarios"]
+        : undefined;
+
+    // Then
+    expect(command).toBe("bun run scripts/build-guide-scenarios.ts");
+  });
+
   test("preserves the exact generator order, commands, and workspaces", () => {
     // Given
     const expectedKeys = ["id", "ownership", "script", "workspace"] as const;
