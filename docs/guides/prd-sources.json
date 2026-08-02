@@ -1,4 +1,4 @@
 {
-  "directories": ["spec/service-trust"],
-  "files": []
+  "directories": [],
+  "files": ["docs/guides/prd-service-trust-01-guide-coverage.md"]
 }
