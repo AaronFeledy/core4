@@ -83,8 +83,8 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
-      - name: Typecheck
-        run: bun run typecheck
+      - name: Regenerate and verify codegen catalog
+        run: bun run codegen:check
 
       - name: Lint
         run: bun run lint

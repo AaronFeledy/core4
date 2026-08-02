@@ -330,7 +330,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        uses: oven-sh/setup-bun@v2");
     expect(staticChecksPlatform).toContain("          bun-version-file: .bun-version");
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
-    expect(staticChecksPlatform).toContain("        run: bun run typecheck");
+    expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
+    expect(staticChecksPlatform).not.toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
     expect(staticChecksPlatform).toContain("      - name: Import cycle lint");
     expect(staticChecksPlatform).toContain("        run: bun run check:import-cycle");
