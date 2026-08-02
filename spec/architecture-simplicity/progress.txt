@@ -13,6 +13,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 
 - Scope generated-output drift checks with `git status --porcelain=v1 --untracked-files=all -- <pathspecs>` so tracked and newly untracked outputs fail without unrelated working-tree dirt causing false failures.
 - A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
+- Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
 
 ## Log
 
@@ -41,4 +42,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Use a directory pathspec only when the whole directory is generator-owned; use a file pathspec when generated files share a directory with hand-authored siblings.
   - Keep gitignored `core/oclif.manifest.json` and generated guide scenarios outside the git-status half; their generator and consumer validation remains the applicable proof.
+---
+
+## [2026-08-02 13:43 CDT] - US-506
+- Added a machine-readable generator catalog that preserves the 24-step execution order and assigns each generator exactly one ownership value: committed pin, committed workflow, or derived output. The codegen runner now consumes that catalog without import-time execution.
+- Reconciled the binary-build catalog with the executable inventory, separating current catalog entries from network-only maintenance scripts and planned generators that do not exist yet.
+- Verification: typecheck, lint, codegen drift, generated-output, package-DAG, managed-file boundary, focused catalog/fixture/drift tests, idempotent full-catalog generation, and direct generator probes passed. The unchanged adjacent CI-codegen suite retains two stale expectations, and the spec-reference gate retains its previously recorded `.omo/**` failures; neither surface differs from `origin/main`.
+- **Learnings for future iterations:**
+  - Keep catalog modules import-side-effect-free and guard executable runners with `import.meta.main` so tests and tooling can inspect metadata safely.
+  - Core tests that inspect root-level scripts should dynamically import file URLs and narrow the module shape to avoid crossing the core TypeScript `rootDir` through a static import.
 ---
