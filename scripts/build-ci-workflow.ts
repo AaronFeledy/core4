@@ -83,8 +83,8 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
-      - name: Typecheck
-        run: bun run typecheck
+      - name: Regenerate and verify codegen catalog
+        run: bun run codegen:check
 
       - name: Lint
         run: bun run lint
@@ -724,14 +724,7 @@ ${timingStartStep}
 ${setupBunSteps}
 
       - name: Regenerate guide scenarios
-        run: bun run codegen${
-          isLinuxX64
-            ? `
-
-      - name: Verify generated workflows are current
-        run: git diff --exit-code -- .github/workflows`
-            : ""
-        }
+        run: bun run codegen:guide-scenarios
 
       - name: Typecheck
         run: bun run typecheck

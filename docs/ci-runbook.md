@@ -9,7 +9,7 @@ CI pins Bun via `.bun-version`; the Beta 1 floor is `>=1.3.14`, matching root an
 Every platform cell runs the fork-safe portable static gates:
 
 ```bash
-bun run typecheck
+bun run codegen:check
 bun run lint
 bun run check:import-cycle
 bun run check:package-dag
@@ -30,6 +30,8 @@ bun run check:machine-output
 bun run check:runtime-bundle-manifest
 ```
 
+`bun run codegen:check` regenerates the full ordered codegen catalog, checks catalog-owned outputs (including committed workflows) for drift, checks deprecations, and finishes by executing `bun run typecheck`.
+
 Local fast path: `bun run scripts/check-boundaries.ts --all` runs every boundary rule with one file walk and one TypeScript parse per file shared across rules; module edges come from that same parse, while rules may run their own AST visitors. Individual `bun run check:<gate>` commands remain the CI contract; each is a thin shim over the declarative rules in `scripts/boundary/rules/`.
 
 The `unit-tests-linux-x64` job aggregates a `unit-tests-linux-x64-shard` matrix that runs the unit-test layer split into balanced shards across `ubuntu-24.04` and `ubuntu-26.04`. Shards start immediately (no `needs:` on `static-checks`) so unit failures surface in parallel with the static gate, and the aggregate job keeps a single required status check name. The same dual-Ubuntu runner matrix applies to `library-api-tests-runner`, `recipe-tests-runner`, `guide-scenarios-linux-x64-runner`, and `provider-integration-linux-x64-runner`, each with a stable aggregate job matching the branch-protection check name. Builds stay on `ubuntu-24.04` for the older glibc reference. `scripts/test-shards.ts` owns the shard assignment; it excludes `*.integration.test.ts`, files owned by the dedicated `library-api-tests` and `recipe-tests` jobs, and nightly-tier meta-suites (see below). The static matrix emits a `static-checks-scope` notice instead of pretending path-sensitive test layers ran on every platform. Full cross-platform static test portability remains separate US-189 work.
@@ -48,7 +50,7 @@ The unsharded full pass remains available locally:
 bun run test:unit
 ```
 
-Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; workflow drift they used to catch per-PR is covered by the `Verify generated workflows are current` step in `guide-scenarios-linux-x64`.
+Heavy meta-suites that re-run generators or other test files (`core/test/scripts/codegen-ci.test.ts`, `core/test/build/linux-acceptance-criteria-10-14.test.ts`) run in the nightly `nightly-tier-unit-tests-linux-x64` job instead of per-PR shards; per-PR workflow drift is covered by `bun run codegen:check` in `static-checks-platform`.
 
 ## Generated schema and bundled-codegen gates
 
@@ -181,7 +183,7 @@ Provider integration also runs as platform-specific jobs (`provider-integration-
 
 ## Guide e2e smoke subset
 
-The scenario-layer generated guide tests run on all five PR platforms through `guide-scenarios-<platform>` jobs. Each job regenerates guides, validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
+The scenario-layer generated guide tests run on all five PR platforms through `guide-scenarios-<platform>` jobs. Each job regenerates guides with `bun run codegen:guide-scenarios`, validates guide metadata and transcript artifacts, then runs `test/scenarios/generated/guides/**` through the source-mapped guide scenario wrapper so failures annotate the MDX source.
 
 `bun run check:public-transcripts` is also a standalone clean-tree gate. When `dist/transcripts/public/guides` is empty after `bun run clean` or on a fresh clone, the command deterministically emits the public transcript corpus before checking its inventory. Existing or partially populated corpora are checked without regeneration, so missing-artifact diagnostics remain actionable. The generated corpus is gitignored and must not be committed.
 

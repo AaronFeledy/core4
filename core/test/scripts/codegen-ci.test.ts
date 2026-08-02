@@ -426,13 +426,17 @@ describe("ci workflow codegen", () => {
       await runCodegen();
 
       const workflow = await readFile(workflowPath, "utf8");
+      const staticChecksStart = workflow.indexOf("  static-checks-platform:");
+      const staticChecksEnd = workflow.indexOf("\n  static-checks:", staticChecksStart);
+      const staticChecksPlatform = workflow.slice(staticChecksStart, staticChecksEnd);
 
       expect(workflow).toContain("static-checks-platform:");
       for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
         expect(workflow).toContain(`- platform: ${platform}`);
       }
-      expect(workflow).toContain("- name: Typecheck");
-      expect(workflow).toContain("run: bun run typecheck");
+      expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
+      expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
+      expect(staticChecksPlatform).not.toContain("- name: Typecheck");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
       expect(workflow).toContain("- name: Import cycle lint");
@@ -479,8 +483,9 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks, build-linux-x64]");
-      expect(workflow).toContain("run: bun run codegen");
+      expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
+      expect(workflow).toContain("run: bun run codegen:guide-scenarios");
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(0);
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
       expect(workflow).toContain("run: bun run check:guide-coverage");
@@ -503,9 +508,17 @@ describe("ci workflow codegen", () => {
 
       expect(
         workflow.indexOf("run: bun install --frozen-lockfile", workflow.indexOf("guide-scenarios-linux-x64")),
-      ).toBeLessThan(workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")));
+      ).toBeLessThan(
+        workflow.indexOf(
+          "run: bun run codegen:guide-scenarios",
+          workflow.indexOf("guide-scenarios-linux-x64"),
+        ),
+      );
       expect(
-        workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")),
+        workflow.indexOf(
+          "run: bun run codegen:guide-scenarios",
+          workflow.indexOf("guide-scenarios-linux-x64"),
+        ),
       ).toBeLessThan(
         workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
       );

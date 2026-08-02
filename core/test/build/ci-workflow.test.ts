@@ -42,6 +42,17 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
+  test("runs the full codegen catalog once and focused guide generation per platform", async () => {
+    // Given / When
+    const workflow = await readWorkflow();
+
+    // Then
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(0);
+    expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
+    expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(5);
+    expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
+  });
+
   test("keeps generated workflows as the only active workflows", async () => {
     const entries = await readdir(workflowsDir, { withFileTypes: true });
     const activeWorkflowFiles = entries
@@ -330,7 +341,8 @@ describe("ci workflow", () => {
     expect(staticChecksPlatform).toContain("        uses: oven-sh/setup-bun@v2");
     expect(staticChecksPlatform).toContain("          bun-version-file: .bun-version");
     expect(staticChecksPlatform).toContain("        run: bun install --frozen-lockfile");
-    expect(staticChecksPlatform).toContain("        run: bun run typecheck");
+    expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
+    expect(staticChecksPlatform).not.toContain("        run: bun run typecheck");
     expect(staticChecksPlatform).toContain("        run: bun run lint");
     expect(staticChecksPlatform).toContain("      - name: Import cycle lint");
     expect(staticChecksPlatform).toContain("        run: bun run check:import-cycle");
@@ -690,7 +702,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
     expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
     expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
-    expect(guideScenariosRunner).toContain("        run: bun run codegen");
+    expect(guideScenariosRunner).toContain("        run: bun run codegen:guide-scenarios");
     expect(guideScenariosRunner).toContain("        run: bun run typecheck");
     expect(guideScenariosRunner).toContain("        run: bun run lint:guides");
     expect(guideScenariosRunner).toContain("        run: bun run check:guide-coverage");
@@ -746,9 +758,9 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("          retention-days: 7");
 
     expect(guideScenariosRunner.indexOf("bun install --frozen-lockfile")).toBeLessThan(
-      guideScenariosRunner.indexOf("bun run codegen"),
+      guideScenariosRunner.indexOf("bun run codegen:guide-scenarios"),
     );
-    expect(guideScenariosRunner.indexOf("bun run codegen")).toBeLessThan(
+    expect(guideScenariosRunner.indexOf("bun run codegen:guide-scenarios")).toBeLessThan(
       guideScenariosRunner.indexOf("bun run typecheck"),
     );
     expect(guideScenariosRunner.indexOf("bun run typecheck")).toBeLessThan(
@@ -790,7 +802,7 @@ describe("ci workflow", () => {
       expect(guideScenarios).toContain("    needs: [static-checks]");
       expect(guideScenarios).toContain(`    runs-on: ${runsOn}`);
       expect(guideScenarios).toContain("          fetch-depth: 0");
-      expect(guideScenarios).toContain("        run: bun run codegen");
+      expect(guideScenarios).toContain("        run: bun run codegen:guide-scenarios");
       expect(guideScenarios).toContain("        run: bun run typecheck");
       expect(guideScenarios).toContain("        run: bun run lint:guides");
       expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
@@ -834,9 +846,8 @@ describe("ci workflow", () => {
   test("prepares the Lando provider via lando setup with no manual socket bring-up", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
-    const providerIntegrationRunner = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
     const providerIntegrationGate = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
-    const providerIntegration = providerIntegrationRunner;
 
     expect(providerIntegration).toContain("    needs: [build-linux-x64, runtime-bundle-linux-x64]");
     expect(providerIntegration).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
