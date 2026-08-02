@@ -6,6 +6,13 @@ timeout: 60000
 tags: [beta, docs, subsystems, proxy, traefik]
 ---
 
+## HTTPS routes require an active certificate authority
+
+Traefik only terminates TLS for a route when a certificate authority has issued the cert. Run
+`lando setup` before starting HTTPS routes so the active `CertificateAuthority` is prepared; the
+bundled default is the [mkcert plugin](./certificates-mkcert.mdx). HTTP-only routes never resolve
+or set up a CA, so a project with no HTTPS endpoints has no cert dependency at all.
+
 <Guide>
   <Scenario id="proxy-sdk-contract" render={false} reason="The ProxyService SDK contract is exercised against an in-memory test double; the Traefik Live Layer requires the global app and running containers">
     <Step name="proxy-contract">
@@ -37,7 +44,7 @@ tags: [beta, docs, subsystems, proxy, traefik]
     </Step>
     <Step name="certificate-material">
       <Variable name="defaultCertificate" value="*.lndo.site, lndo.site, traefik.lndo.site" display="The default wildcard certificate covers the wildcard, apex, and Traefik dashboard hostname" />
-      <Variable name="appCertificate" value="unique sorted HTTPS/both route hostnames" display="Each app receives a deterministic certificate file keyed by encoded AppId and is reissued when its HTTPS hostname coverage changes" />
+      <Variable name="appCertificate" value="unique sorted HTTPS/both route hostnames" display="Each app's certificate filename is keyed by its encoded AppId, and the certificate is reissued whenever the app's HTTPS route hostname coverage changes" />
       <Variable name="hostDirectory" value="&lt;globalAppRoot&gt;/proxy-traefik/dynamic/certs" display="Issued certificate and key PEMs are copied into the existing dynamic file-provider mount before the app route YAML is replaced" />
       <Variable name="traefikConfig" value="tls.certificates + tls.stores.default.defaultCertificate" display="Dynamic YAML references /etc/traefik/dynamic/certs paths using Traefik v3 file-provider TLS configuration; router tls: {} remains the HTTPS activation marker" />
     </Step>
