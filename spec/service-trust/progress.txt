@@ -61,6 +61,8 @@ Spec SoT:
 - Runtime-dependent doctor checks should resolve optional plugin/runtime state inside their own isolated
   report section, then pass a typed status into the self-contained subsystem aggregate; do not make the
   default subsystem layer depend on an optional resolver just to report its absence.
+- Filesystem fakes must match `FileSystemLive` for directory existence; otherwise lifecycle cleanup and
+  persisted-status tests can pass while production silently treats populated directories as absent.
 
 ## Status
 
@@ -1342,4 +1344,22 @@ Spec SoT:
 - Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware
   guide drift passed; 126 focused and adjacent doctor tests passed with 493 assertions. All completed
   review-work lanes passed after a bounded retry of the initially incomplete context-mining lane.
+---
+## 2026-08-02 00:30 CDT - US-497
+- Traefik now terminates HTTPS with active-certificate-authority material instead of its generated fallback: route application lazily issues a domain-keyed default certificate plus deterministic per-app certificates, copies the PEMs into the existing global dynamic-config mount, and writes the official file-provider certificate and default-store configuration before publishing route updates.
+- HTTP-only routes avoid certificate-authority work, HTTPS hostname changes refresh the app certificate, HTTPS-to-HTTP and route removal clean app material, proxy stop cleans all TLS artifacts, and selection failures preserve tagged causes with `lando setup` remediation. The proxy contribution contract supplies this through a generic deferred authority layer rather than a Traefik-specific core path.
+- Documented the setup/mkcert prerequisite, SAN coverage, mounted paths, and Traefik configuration in the proxy guide.
+- Verification: typecheck, lint/deprecations, import-cycle, package DAG, guide lint, and guide coverage passed; 28 focused proxy, TLS, contract, deferred-authority, and registry tests passed with 60 assertions. A real-filesystem proxy surface wrote and parsed the expected per-app and default TLS YAML plus four copied PEM files, then removed its temporary root. High-rigor review approved after fixing fixed-dashboard SAN coverage across default-domain rotation.
+- **Learnings for future iterations:**
+  - Proxy plugins that need the active certificate authority should depend on the existing service tag; core can provide a resolver-backed deferred implementation so missing or ambiguous selection fails only when TLS is used, not during bootstrap.
+  - Traefik's router `tls: {}` activates HTTPS but does not provide certificate material. Keep one durable default-store file and per-app certificate entries, and write PEM/config inputs before the watched route file that activates them.
+---
+## 2026-08-02 02:03 CDT - US-497 Review
+- Fixed real-filesystem proxy lifecycle behavior so persisted status sees configured routes and stop removes route and TLS artifacts, and made copied private keys use an injected atomic writer that creates owner-only files before publication.
+- Completed the reader-visible setup/mkcert prerequisite and direct certificates guide link required by the source acceptance criteria.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required current-branch attempts hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected removing the `ProxyServiceContributionLayer` CertificateAuthority requirement; it adds no CA method or export and accurately declares the existing service dependency supplied by core's deferred layer.
+- Review notes (deferred/rejected): Deferred generation-specific certificate-pair publication, mutation locking, and expiry renewal as hardening beyond US-497; current writes remain atomic per file and the story does not define interruption consistency or renewal policy.
+- Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware guide drift passed; 39 focused and adjacent FileSystem, proxy, TLS, registry, deferred-authority, and contract tests passed.
+- **Learnings for future iterations:** Filesystem fakes must preserve directory-existence semantics from the live adapter, and secret copies need restrictive mode on the temporary inode before atomic rename.
 ---

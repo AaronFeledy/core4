@@ -51,6 +51,31 @@ describe("FileSystemLive", () => {
     });
   });
 
+  test("exists returns true for a directory", async () => {
+    await withTempDir(async (dir) => {
+      const exists = await Effect.runPromise(
+        Effect.flatMap(FileSystem, (fileSystem) => fileSystem.exists(dir)).pipe(
+          Effect.provide(FileSystemLive),
+        ),
+      );
+
+      expect(exists).toBe(true);
+    });
+  });
+
+  test("exists returns false for a missing path", async () => {
+    await withTempDir(async (dir) => {
+      const missing = join(dir, "missing");
+      const exists = await Effect.runPromise(
+        Effect.flatMap(FileSystem, (fileSystem) => fileSystem.exists(missing)).pipe(
+          Effect.provide(FileSystemLive),
+        ),
+      );
+
+      expect(exists).toBe(false);
+    });
+  });
+
   test("fails missing reads with FileNotFoundError carrying the path", async () => {
     await withTempDir(async (dir) => {
       const missing = join(dir, "missing.txt");
