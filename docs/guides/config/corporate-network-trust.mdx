@@ -89,7 +89,7 @@ The bundled language service types consume that trust material as follows:
 
 | Runtime | Effective CA behavior when CA material injects |
 | --- | --- |
-| Python | `REQUESTS_CA_BUNDLE` and `SSL_CERT_FILE` point to `/etc/lando/certs/ca-bundle.pem`. |
+| Python | `REQUESTS_CA_BUNDLE` points to `/etc/lando/certs/ca-bundle.pem`. `SSL_CERT_FILE` uses that path unless the service already authored a value, which Lando preserves. |
 | Node.js | `NODE_EXTRA_CA_CERTS` points to `/etc/lando/certs/ca-bundle.pem`. |
 | PHP | `SSL_CERT_FILE` and `SSL_CERT_DIR` provide the OpenSSL trust paths. |
 | Ruby | `SSL_CERT_FILE` and `SSL_CERT_DIR` provide the OpenSSL trust paths. |
