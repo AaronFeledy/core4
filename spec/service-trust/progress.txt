@@ -1383,3 +1383,21 @@ Spec SoT:
   - A plugin-owned readiness check avoids teaching core plugin-specific paths; no HTTPS route is the
     inactive state and should produce no diagnostic rather than a false warning.
 ---
+## 2026-08-02 05:39 CDT - US-498 Review
+- Fixed false-ready diagnostics by requiring readable, non-symlink regular TLS material and by checking the
+  certificate paths persisted in each HTTPS route instead of deriving filenames from the route artifact name.
+  HTTPS routes with no certificate pair now degrade even when conventionally named files happen to exist.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the required current-branch review
+  hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected changing `runtime.running` in this plugin because core maps an
+  omitted plugin runtime to the same status-derived value; truthful unknown state requires an out-of-scope
+  core doctor-contract change.
+- Review notes (deferred/rejected): Deferred unreadable route-directory/file reporting because scheme cannot
+  be established from unreadable state without breaking HTTP-only silence or adding a new diagnostic contract;
+  deferred bounded route-read concurrency as same-user resilience hardening with no US-498 acceptance criterion.
+- Verification: typecheck and lint/deprecations passed; 43 proxy tests and 23 adjacent plugin-doctor/chaos tests
+  passed; focused doctor guide execution, guide lint/coverage, base-aware guide drift, package DAG, and import-cycle
+  gates passed. All five review-work lanes completed; the code-quality and QA blockers were repaired.
+- **Learnings for future iterations:** Readiness requires proving the same access the consumer needs, not inode
+  existence alone, and persisted configuration is the source of truth for paths another process will open.
+---
