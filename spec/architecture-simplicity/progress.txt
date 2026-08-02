@@ -72,3 +72,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Classify similarly named `check:*` scripts by behavior before consolidation: generated-banner placement and guide ownership are semantic gates, not alternate codegen drift implementations.
 ---
+
+## [2026-08-02 15:52 CDT] - US-508
+- Wired the generated portable static-check matrix to run the consolidated `codegen:check` pipeline exactly once per matrix cell, replacing the redundant standalone typecheck step while preserving independent semantic and consumer-validation jobs.
+- Guide-Coverage-Skip: Internal CI drift-gate wiring has no end-user guide surface.
+- Verification: typecheck and lint passed; focused workflow, generator, branch-protection, codegen-drift, and deprecation spot checks passed. The unchanged full CI-codegen suite retains the two pre-existing stale expectations recorded in US-506.
+- **Learnings for future iterations:**
+  - A command declared once in a matrix job executes once per expanded matrix cell; assert the generated step count within the job block so unrelated jobs cannot satisfy or break the contract.
+---
