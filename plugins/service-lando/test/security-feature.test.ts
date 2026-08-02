@@ -39,26 +39,32 @@ const securityFeature = (): ServiceFeatureDefinition => {
   return definition;
 };
 
-const composeSecurity = (config: Readonly<Record<string, unknown>> = {}, serviceType = "node:22") =>
+const composeSecurity = (
+  config: Readonly<Record<string, unknown>> = {},
+  serviceType = "node:22",
+  environment: Readonly<Record<string, string>> = {},
+) =>
   composeService({
     base: {
       name: ServiceName.make("web"),
       type: serviceType,
       provider: ProviderId.make("lando"),
       primary: true,
+      environment,
       defaultFeatures: [],
     },
     baseKind: "lando",
     appName: "security-test",
     appRoot: "/srv/apps/security-test",
-    normalizedConfig: { type: serviceType },
+    normalizedConfig: { type: serviceType, environment },
     features: [{ id: "lando.security", config, definition: securityFeature() }],
   });
 
 const composeSecurityPlan = (
   config: Readonly<Record<string, unknown>> = {},
   serviceType = "node:22",
-): Promise<ServicePlan> => Effect.runPromise(composeSecurity(config, serviceType));
+  environment: Readonly<Record<string, string>> = {},
+): Promise<ServicePlan> => Effect.runPromise(composeSecurity(config, serviceType, environment));
 
 const buildStepsFor = (plan: ServicePlan) =>
   Schema.decodeUnknownSync(FeatureExtension)(plan.extensions["@lando/core/service-features"]).buildSteps ??
@@ -196,8 +202,34 @@ describe("lando.security feature", () => {
     expect(plan.environment.SSL_CERT_FILE).toBe("/etc/lando/certs/ca-bundle.pem");
   });
 
+  test("preserves an authored Python SSL certificate file when CA injection is active", async () => {
+    const plan = await composeSecurityPlan(
+      {
+        injectCa: true,
+        cas: [{ path: "/host/corp.pem", digest: DIGEST_A }],
+      },
+      "python:3.12",
+      { SSL_CERT_FILE: "/app/certs/python.pem" },
+    );
+
+    expect(plan.environment.REQUESTS_CA_BUNDLE).toBe("/etc/lando/certs/ca-bundle.pem");
+    expect(plan.environment.SSL_CERT_FILE).toBe("/app/certs/python.pem");
+  });
+
   test("omits the Requests CA bundle from Python services without injected CA material", async () => {
     const plan = await composeSecurityPlan({}, "python:3.12");
+
+    expect(plan.environment.REQUESTS_CA_BUNDLE).toBeUndefined();
+  });
+
+  test("omits the Requests CA bundle from unregistered Python service ids", async () => {
+    const plan = await composeSecurityPlan(
+      {
+        injectCa: true,
+        cas: [{ path: "/host/corp.pem", digest: DIGEST_A }],
+      },
+      "python:9.9",
+    );
 
     expect(plan.environment.REQUESTS_CA_BUNDLE).toBeUndefined();
   });

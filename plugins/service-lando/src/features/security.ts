@@ -55,8 +55,14 @@ const applyCaIntent = (ctx: ServiceFeatureContext, config: LandoSecurityFeatureC
   }
 
   ctx.addEnv("NODE_EXTRA_CA_CERTS", CA_BUNDLE_PATH);
-  if (ctx.serviceType.startsWith("python:")) ctx.addEnv("REQUESTS_CA_BUNDLE", CA_BUNDLE_PATH);
-  ctx.addEnv("SSL_CERT_FILE", CA_BUNDLE_PATH);
+  if (ctx.serviceType === "python:3.12") {
+    ctx.addEnv("REQUESTS_CA_BUNDLE", CA_BUNDLE_PATH);
+    if (ctx.normalizedConfig.environment?.SSL_CERT_FILE === undefined) {
+      ctx.addEnv("SSL_CERT_FILE", CA_BUNDLE_PATH);
+    }
+  } else {
+    ctx.addEnv("SSL_CERT_FILE", CA_BUNDLE_PATH);
+  }
   ctx.addEnv("SSL_CERT_DIR", CA_DIRECTORY_PATH);
   ctx.addEnv("LANDO_CA_CERT", CA_BUNDLE_PATH);
   ctx.addEnv("LANDO_CA_BUNDLE", CA_BUNDLE_PATH);
