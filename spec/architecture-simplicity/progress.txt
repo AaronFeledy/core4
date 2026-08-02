@@ -14,6 +14,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Scope generated-output drift checks with `git status --porcelain=v1 --untracked-files=all -- <pathspecs>` so tracked and newly untracked outputs fail without unrelated working-tree dirt causing false failures.
 - A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
 - Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
+- When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
 
 ## Log
 
@@ -111,4 +112,12 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Distinguish a check's stated responsibility from a composite command's full failure surface before classifying it.
   - Pin exact step sequences rather than substring presence when a contract depends on ordering.
+---
+
+## [2026-08-02 18:51 CDT] - US-510
+- Moved SDK schema JSON, command-result schemas, and generated schema reference pages out of git source-of-truth while preserving their deterministic build-time regeneration and the committed bundled-plugin manifest fixture.
+- Guide-Coverage-Skip: Internal generated-artifact tracking policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 78 focused schema snapshot, codegen-drift, CI workflow, and schema-compatibility tests passed; direct generation and git ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Ignored derived outputs are validated by generator and consumer tests rather than the git-status drift half; keep committed generator-owned fixtures explicitly visible.
 ---

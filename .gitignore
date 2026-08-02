@@ -1,11 +1,7 @@
 # Build output
 **/dist/
 /dist/*
-!/dist/
-!/dist/schemas/
-!/dist/schemas/*.json
-!/dist/command-schemas/
-!/dist/command-schemas/*.json
+/docs/reference/schemas/
 *.tsbuildinfo
 **/*.tsbuildinfo
 
