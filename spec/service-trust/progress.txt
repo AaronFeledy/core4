@@ -1295,7 +1295,8 @@ Spec SoT:
   unregistered `python:*` types. Regression tests lock both boundaries and the runtime table states the
   preservation rule.
 - Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected
-  the required current-branch review and its retry; this was not treated as approval.
+  the initial current-branch review, its retry, and the required post-fix rerun; this was not treated as
+  approval.
 - Review notes (deferred/rejected): Rejected adding links to the Node, PHP, Python, Ruby, or Go service guides
   because none discusses outbound HTTPS clients, so the source PRD's conditional link requirement does not
   apply.
