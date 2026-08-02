@@ -12,6 +12,7 @@ import type { BuildContextEntry } from "./build-context.ts";
 export interface PreparedBuildStep {
   readonly command: string | ReadonlyArray<string>;
   readonly phase: string;
+  readonly privileged: boolean;
   readonly caFiles: ReadonlyArray<ServiceCaFileDescriptor>;
 }
 
@@ -52,13 +53,16 @@ const parseStep = (
   const caFiles = "caFiles" in value ? parseCaFiles(value.caFiles, providerId) : Effect.succeed([]);
   return caFiles.pipe(
     Effect.map((files) => {
-      if (typeof value.command === "string")
-        return { command: value.command, phase: "build", caFiles: files };
-      if (!Array.isArray(value.command)) return undefined;
-      const command = value.command.filter((part): part is string => typeof part === "string");
-      return command.length === value.command.length
-        ? { command, phase: "build", caFiles: files }
-        : undefined;
+      let command: string | ReadonlyArray<string>;
+      if (typeof value.command === "string") {
+        command = value.command;
+      } else if (Array.isArray(value.command)) {
+        command = value.command.filter((part): part is string => typeof part === "string");
+        if (command.length !== value.command.length) return undefined;
+      } else {
+        return undefined;
+      }
+      return { command, phase: "build", privileged: value.privileged === true, caFiles: files };
     }),
   );
 };

@@ -6,7 +6,9 @@
 
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
-  artifact builders can verify and pack host CA inputs without adding provider-specific intent.
+  artifact builders can verify and pack host CA inputs without adding provider-specific intent,
+  and optional `privileged` so a step can request temporary build-time privilege while the
+  artifact realizer restores the parent image's exact inherited user afterward.
 - `LandofileService.discover`'s error channel additively gains `LandofileImportRefMisuseError`,
   `LandofileLoadLimitError`, and `LandofileLoadOutsideRootError` for production `load()` / `import()`
   evaluation; the frozen service-surface fixture is updated to match.

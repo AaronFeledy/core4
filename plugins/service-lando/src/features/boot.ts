@@ -14,6 +14,7 @@ export const landoBootFeature: ServiceFeatureDefinition = {
         id: "lando.boot:scaffold",
         phase: "build",
         command: "mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs",
+        privileged: true,
       });
     }),
 };
