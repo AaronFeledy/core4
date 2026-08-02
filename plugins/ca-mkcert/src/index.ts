@@ -32,7 +32,15 @@ export const manifest = Schema.decodeSync(PluginManifest)({
   description: "mkcert-backed CertificateAuthority implementation.",
   enabled: true,
   contributes: {
-    cas: [CA_ID],
+    certificateAuthorities: [
+      {
+        id: CA_ID,
+        module: "./src/ca.ts",
+        defaultFor: { platform: ["darwin", "linux", "win32"] },
+        enabledByDefault: true,
+        summary: "mkcert-backed local certificate authority",
+      },
+    ],
   },
   entry: "./src/index.ts",
 });
@@ -40,7 +48,7 @@ export const manifest = Schema.decodeSync(PluginManifest)({
 export const plugin = definePlugin({
   name: manifest.name,
   manifest,
-  layer: engine,
+  certificateAuthorities: new Map([[CA_ID, engine]]),
 });
 
 export { CA_ID, makeMkcertCertificateAuthority, mkcertLeafCertificateName } from "./ca.ts";

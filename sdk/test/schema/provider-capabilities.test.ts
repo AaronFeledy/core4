@@ -160,7 +160,7 @@ describe("IsolateMode", () => {
 });
 
 describe("ProviderCapabilities — field set lock", () => {
-  test("exposes exactly the spec-mandated fields (no additions, no omissions)", () => {
+  test("exposes exactly the documented capability fields (no additions, no omissions)", () => {
     const actual = Object.keys(ProviderCapabilities.fields).sort();
     expect(actual).toEqual(EXPECTED_FIELD_SET);
     expect(actual).toHaveLength(33);
@@ -184,7 +184,7 @@ describe("ProviderCapabilities — field set lock", () => {
     }
   });
 
-  test("every literal capability accepts exactly the spec literal options", () => {
+  test("every literal capability accepts exactly the documented literal options", () => {
     const literalEntries = Object.entries(LITERAL_FIELDS) as Array<
       [keyof typeof LITERAL_FIELDS, readonly [string, ...string[]]]
     >;

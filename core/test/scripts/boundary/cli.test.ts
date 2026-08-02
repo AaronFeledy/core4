@@ -42,6 +42,7 @@ describe("check-boundaries CLI", () => {
       "probe",
       "redaction",
       "renderer",
+      "spec-reference",
       "state-store",
       "generated-output",
     ];

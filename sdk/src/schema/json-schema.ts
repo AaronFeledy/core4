@@ -180,6 +180,7 @@ import {
   DownloadResult,
   DownloaderCapabilities,
 } from "./downloader.ts";
+import { EmbeddingPluginPolicy } from "./embedding-plugin-policy.ts";
 import { BindAddress, InternalEndpoint, PublishedEndpoint } from "./endpoint.ts";
 import {
   FileSyncEngineCapabilities,
@@ -243,7 +244,6 @@ import { PluginDoctorReport } from "./plugin-doctor.ts";
 import { PluginTrustState } from "./plugin-trust.ts";
 import {
   ContributionRef,
-  EmbeddingPluginPolicy,
   GlobalServiceContribution,
   InteractionServiceContribution,
   PluginContribution,
@@ -1665,7 +1665,6 @@ const PUBLIC_FIELD_DESCRIPTION_EXEMPTIONS = new Set([
   "PlanMetadata.resolvedAt",
   "PlanMetadata.runtime",
   "PlanMetadata.source",
-  "PluginContribution.cas",
   "PluginContribution.commands",
   "PluginContribution.downloaders",
   "PluginContribution.fileSyncEngines",

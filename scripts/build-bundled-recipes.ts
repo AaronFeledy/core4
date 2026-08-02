@@ -19,6 +19,7 @@ import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { buildConfig } from "../core/build.config.ts";
+import { formatGeneratedPaths } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "core/src/recipes/bundled.ts");
@@ -111,17 +112,7 @@ const renderModule = (entries: typeof buildConfig.bundledRecipes): string => {
 const main = async (): Promise<void> => {
   const content = renderModule(buildConfig.bundledRecipes);
   await Bun.write(OUTPUT, content);
-
-  const check = Bun.spawn({
-    cmd: [process.execPath, "x", "biome", "check", "--write", OUTPUT],
-    cwd: REPO_ROOT,
-    stdout: "ignore",
-    stderr: "inherit",
-  });
-  const exitCode = await check.exited;
-  if (exitCode !== 0) {
-    throw new Error(`biome check exited with code ${exitCode} for ${OUTPUT}`);
-  }
+  await formatGeneratedPaths([OUTPUT]);
 
   console.log(`[bundled-recipes] wrote ${OUTPUT} (${buildConfig.bundledRecipes.length} entries)`);
 };

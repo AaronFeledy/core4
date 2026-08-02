@@ -48,28 +48,30 @@ The CLI is *one* imperative shell; an embedding host is another. Both build the 
 
 ### 3.2 Bootstrap flow
 
-The CLI uses a router-first bootstrap with a pre-OCLIF fast path for level-`none` commands. OCLIF must resolve a command before Lando can know that command's required `BootstrapLevel`, so the OCLIF `init` hook is limited to routing metadata and cache reads. The Effect runtime is built only after command resolution.
+The CLI uses a router-first bootstrap with a pre-dispatch fast path for level-`none` commands. The native command dispatcher must resolve a command before Lando can know that command's required `BootstrapLevel`, so the dispatcher's router phase is limited to routing metadata and cache reads. The Effect runtime is built only after command resolution.
+
+**Current state:** the diagram, levels, and command examples below are the target. Until architecture-simplicity US-522..US-531 land, today's source entry (`bin/lando.ts`) maps this router phase through the pre-OCLIF fast path and OCLIF's `init` hook (§3.4, §8.4.1) rather than the native dispatcher; the phase boundaries, cache reads, and budgets described here are unchanged by which router implements them.
 
 ```text
 $ lando <cmd>
   |
   +-- bin/lando (compiled binary or `bun run bin/lando.ts`)
        |
-       +-- 0. Pre-OCLIF level-`none` fast path
+       +-- 0. Pre-dispatch level-`none` fast path
             |    (sniffs argv for `--version`/`-v`/top-level `--help`/`shellenv`/
             |     `version`/`recipes`/`recipes:list` shortcuts; on match, prints
             |     embedded data via direct stdout writes and exits BEFORE any
-            |     OCLIF, Effect runtime, or plugin code is imported)
+            |     dispatcher, Effect runtime, or plugin code is imported)
        |
-       +-- OCLIF init hook fires [router phase]
+       +-- Native command dispatcher: router phase fires
             |
-            +-- 1. Load embedded core command manifest
+            +-- 1. Load embedded core command-registry manifest
             +-- 2. Load plugin command index from cache
             +-- 3. Locate app root by `cwd-app-map` cache lookup, falling back to
             |     stat-walk on miss/staleness (§12.1)
             +-- 4. Load app command index from cache when fresh
-            +-- 5. Register OCLIF command shims + aliases from cached metadata
-            +-- 6. OCLIF resolves the command to a canonical id
+            +-- 5. Register command-registry entries + aliases from cached metadata
+            +-- 6. Dispatcher resolves the command to a canonical id
             +-- 7. Read command's required/effective BootstrapLevel
             +-- 8. Provide the AOT-composed bootstrap layer for that level
             |     (§17.2 codegen output; no runtime Layer.merge/provide chain)
@@ -82,7 +84,7 @@ The router phase is not a `BootstrapLevel`: it does not parse Landofiles, import
 
 | Level | Adds | Used by |
 |---|---|---|
-| `none` | Command-base depth: do not pre-build an Effect runtime layer before the command body runs. The **pre-OCLIF fast path** (below) is a subset that also skips OCLIF/Effect entirely; other `none` commands still resolve through OCLIF and may build a runtime *inside* their program. | Fast path: `meta:version` (alias `version`), `meta:shellenv` (alias `shellenv`), `meta:recipes:list` (alias `recipes`), top-level `--help` (no command), `--version`, `-V`, `-v`. OCLIF `none` with in-program runtime: `meta:doctor` (builds `provider` itself per §10.9.1) |
+| `none` | Command-base depth: do not pre-build an Effect runtime layer before the command body runs. The **pre-dispatch fast path** (below) is a subset that also skips the dispatcher/Effect entirely; other `none` commands still resolve through the native dispatcher and may build a runtime *inside* their program. | Fast path: `meta:version` (alias `version`), `meta:shellenv` (alias `shellenv`), `meta:recipes:list` (alias `recipes`), top-level `--help` (no command), `--version`, `-V`, `-v`. Dispatcher-routed `none` with in-program runtime: `meta:doctor` (builds `provider` itself per §10.9.1) |
 | `minimal` | Config, env, platform info, cache, logging, event service (lazy per §2.4) | `meta:config`, `meta:plugin:login`, `meta:plugin:logout`, `meta:recipes:describe`, `meta:recipes:validate`, `meta:uninstall`, `meta:events:follow`, `apps:init`, `apps:list` |
 | `plugins` | Plugin discovery, manifest validation, contribution graph | `meta:plugin:add`, `meta:plugin:remove`, `meta:update` |
 | `commands` | Lando command registry services and command-cache refresh ability | command-management and docs/reference commands |
@@ -96,14 +98,16 @@ Levels `minimal` through `app` each emit `pre-bootstrap-<level>` and `post-boots
 
 **Level `none` has two shapes** that share the same declared bootstrap depth but different entry paths:
 
-1. **Pre-OCLIF fast path** (the historical cold-start optimization):
-   - `bin/lando.ts` MUST sniff `process.argv` before any `import` of `@oclif/core`, the Effect runtime, or any module that builds a `Context.Service`. Argv matching uses a hand-rolled string scan, not a parser.
+1. **Pre-dispatch fast path** (the cold-start optimization):
+   - `bin/lando.ts` MUST sniff `process.argv` before any `import` of the native command dispatcher, the Effect runtime, or any module that builds a `Context.Service`. Argv matching uses a hand-rolled string scan, not a parser.
    - The set of fast-path argv shapes is fixed and exhaustive: `--version`, `-V`, `-v`, `version`, top-level `--help` / `-h` (i.e. `--help` with no preceding command), `shellenv`, `recipes`, `recipes list`, plus the canonical `meta:version`, `meta:shellenv`, `meta:recipes:list` invocations and the `meta version|shellenv|recipes …` flexible-taxonomy variants.
    - Output is generated from compile-time embedded constants (version string, shellenv snippet templates, the canonical recipe registry) read via `EmbeddedAssetService` mechanism A (static JSON import; §17.3). No `Bun.file`, no `fetch`, no plugin discovery.
    - A fast-path command MUST exit within its end-to-end budget (§2.1) without constructing any `Context.Service` instance.
-   - An argv shape that *looks* like a fast-path command but carries unrecognized flags (e.g., `lando version --json` if `meta:version` ever grows a flag) falls through to the OCLIF router phase. The fast path is an optimization, never a correctness shortcut.
+   - An argv shape that *looks* like a fast-path command but carries unrecognized flags (e.g., `lando version --json` if `meta:version` ever grows a flag) falls through to the native router/dispatcher phase. The fast path is an optimization, never a correctness shortcut.
 
-2. **OCLIF-routed `none`** (safe-mode / deferred runtime): the command still resolves through OCLIF and may run Effect, but the command base MUST NOT pre-build a fallible bootstrap layer before the command body. `meta:doctor` is the shipped example: it declares `none`, builds the `provider` runtime inside its own program, and reports bootstrap failure as a self check (§10.9.1). OCLIF-routed `none` commands MAY emit lifecycle events only after they construct an EventService-capable runtime themselves; they MUST NOT rely on the command-base bootstrap path to emit `pre-bootstrap-*` / `post-bootstrap-*`. Because `notify.commands` promotion would otherwise force a full `commands` runtime before the body runs, OCLIF-routed `none` commands whose depth is load-bearing (today: `meta:doctor`) MUST be exempt from that promotion (§8.9.7, §10.9.1).
+2. **Dispatcher-routed `none`** (safe-mode / deferred runtime): the command still resolves through the native command dispatcher and may run Effect, but the command base MUST NOT pre-build a fallible bootstrap layer before the command body. `meta:doctor` is the shipped example: it declares `none`, builds the `provider` runtime inside its own program, and reports bootstrap failure as a self check (§10.9.1). Dispatcher-routed `none` commands MAY emit lifecycle events only after they construct an EventService-capable runtime themselves; they MUST NOT rely on the command-base bootstrap path to emit `pre-bootstrap-*` / `post-bootstrap-*`. Because `notify.commands` promotion would otherwise force a full `commands` runtime before the body runs, dispatcher-routed `none` commands whose depth is load-bearing (today: `meta:doctor`) MUST be exempt from that promotion (§8.9.7, §10.9.1).
+
+**Current state:** until US-522..US-531 land, the shapes above are implemented as the pre-OCLIF fast path and OCLIF-routed `none` respectively. The OCLIF `init` hook plays the role of the native dispatcher's router phase, and OCLIF command bases play the role of the dispatcher-routed command base. The requirements, budgets, and exemptions above hold identically under either router.
 
 **Intra-level concurrency.** Bootstrap levels are sequential — `plugins` runs strictly after `minimal` completes. Independent IO-bound steps *within* a level MUST run concurrently via `Effect.all({ concurrency: "unbounded" })` or `Effect.forEach({ concurrency })` per the §2.4 rule. Examples:
 
@@ -242,7 +246,7 @@ core/
 ├── package.json
 ├── bun.lock
 ├── tsconfig.json
-└── oclif.manifest.json              # Generated at build time
+└── oclif.manifest.json               # Transitional generated command manifest; replaced by the registry-derived artifact in US-528
 ```
 
 ### 3.4 Core Effect services
@@ -254,7 +258,7 @@ The following services are provided by core. Each has a `Live` Layer in core and
 | `ConfigService` | Global config + env overrides; expression AST resolution with staged, bootstrap-level-aware evaluation (§7.3.1) | `ConfigServiceLive` |
 | `LandofileService` | Discovery, parse, merge, validate; produces the AST for every embedded `{{ … }}` and `${…}` form (§7.3.1) | `LandofileServiceLive` |
 | `PluginRegistry` | Manifest loading, contribution graph | `PluginRegistryLive` |
-| `CommandRegistry` | OCLIF + tooling registration | `CommandRegistryLive` |
+| `CommandRegistry` | Native command registry: built-in/plugin/tooling registration, canonical id resolution, topic/alias indexing (today also compiled into the OCLIF adapter as an interim implementation detail; §8.4) | `CommandRegistryLive` |
 | `ConfigTranslatorRegistry` | Plugin-contributed external config translators | `ConfigTranslatorRegistryLive` |
 | `TemplateEngineRegistry` | Discovery and selection of `TemplateEngine` implementations (§4.2, §7.3.2). Built-in `lando` engine registered eagerly; plugin engines registered when the plugin contribution graph loads | `TemplateEngineRegistryLive` |
 | `TemplateRenderer` | Front-door for whole-file and string template rendering. Resolves engine via the registry, builds the canonical `TemplateRenderContext`, calls the engine, and writes the content-addressed render cache (§12.1 `template-render`). Used by the mount materializer, the recipe scaffold, and `ConfigService` for string-value interpolation | `TemplateRendererLive` |
@@ -502,13 +506,13 @@ CLI event names use the **canonical command id** (§8.1.1), not the top-level al
 
 **Closed event registry.** `LandoEvent` is the closed schema union of the built-in event taxonomy in this section plus the three generated lifecycle schemas for every canonical command in the resolved command registry: `cli-<canonical-id>-init`, `cli-<canonical-id>-run`, and `cli-<canonical-id>-error`. Registering a plugin command adds only those generated lifecycle names for that command. Plugins cannot contribute event schemas, register arbitrary event names, or widen `LandoEvent`; their only publish seam is the closed rich `RenderEvent` subset exposed by `LandoPluginContext.events.publishRender` (§9.8).
 
-**CLI event mapping to OCLIF lifecycle:**
+**CLI event mapping to dispatcher lifecycle:**
 
-| Event suffix | Fires when | OCLIF hook |
+| Event suffix | Fires when | Dispatcher stage |
 |---|---|---|
-| `-init` | The runtime has resolved which canonical command will run, but before its `run()` body executes. Bootstrap up to the command's declared `BootstrapLevel` is complete; argv is parsed; lifecycle and plugin subscribers are registered. | Command base after OCLIF resolution and runtime bootstrap |
-| `-run` | The command's `run()` body has returned successfully. Fires before `Scope` finalizers run, so subscribers may inspect runtime services and the command's typed result. | OCLIF `postrun` |
-| `-error` | The command's `run()` body raised a tagged error or was interrupted. The error is published as the event payload. Fires before `Scope` finalization. | OCLIF error path / `command_not_found` |
+| `-init` | The runtime has resolved which canonical command will run, but before its `run()` body executes. Bootstrap up to the command's declared `BootstrapLevel` is complete; argv is parsed; lifecycle and plugin subscribers are registered. | Command base after dispatch resolution and runtime bootstrap (today: after OCLIF resolution; §8.4) |
+| `-run` | The command's `run()` body has returned successfully. Fires before `Scope` finalizers run, so subscribers may inspect runtime services and the command's typed result. | Dispatcher post-run stage (today: OCLIF `postrun` hook; §8.4) |
+| `-error` | The command's `run()` body raised a tagged error or was interrupted. The error is published as the event payload. Fires before `Scope` finalization. | Dispatcher error path / unknown-command handling (today: OCLIF error path / `command_not_found`; §8.4) |
 
 Exactly one of `-run` or `-error` fires for any given invocation; `-init` always fires first when the command is resolved (it does not fire for `command_not_found`).
 
@@ -522,7 +526,7 @@ export const CommandInvocationCorrelation = Schema.Struct({
 export type CommandInvocationCorrelation = Schema.Schema.Type<typeof CommandInvocationCorrelation>;
 ```
 
-- The **outer invocation** — the command OCLIF (or `runCompiledCli`) resolved directly from user/embedding-host argv — gets a freshly generated `invocationId` and carries no `parentInvocationId`. It is the **only** notification-eligible foreground invocation for the run (§8.9.7): `@lando/notify-lando` and any other foreground-presentation consumer act on the outer invocation's `-run`/`-error` event only.
+- The **outer invocation** — the command the native dispatcher resolves directly from user/embedding-host argv — gets a freshly generated `invocationId` and carries no `parentInvocationId`. Until the single-dispatcher migration lands, this role is split between OCLIF in source mode and `runCompiledCli` in compiled mode (§8.4.1). The outer invocation is the **only** notification-eligible foreground invocation for the run (§8.9.7): `@lando/notify-lando` and any other foreground-presentation consumer act on its `-run`/`-error` event only.
 - A **nested canonical invocation** is a registered canonical command dispatched while another command lifecycle is active rather than resolved directly from user or embedding-host argv. MCP tool dispatch is the production Beta 1 producer of this relationship; a §8.5.2.1 `command:` step is another producer governed by the same correlation contract. A nested canonical invocation gets its own fresh `invocationId` and sets `parentInvocationId` to the invocation that contains it (which may itself be nested, chaining an arbitrary-depth invocation tree). A nested invocation's `-run`/`-error` event fires exactly as normal for any subscriber watching that canonical id or the `cli-command-terminal` family (§11.3.1) — it is not suppressed — but it never independently qualifies as *the* foreground invocation, so it never drives desktop notifications or other single-shot foreground presentation on its own.
 - `cli-<canonical-id>-run` and `cli-<canonical-id>-error` for a given invocation share the same `invocationId`/`parentInvocationId` pair their sibling `cli-<canonical-id>-init` published — the triplet for one invocation always correlates by that single id, never regenerated between `-init` and `-run`/`-error`.
 - `RendererCapabilities`-gated presentation (§8.9) still governs whether the outer invocation's notification is actually shown; invocation correlation only decides *which* invocation is eligible to ask, not whether the renderer honors the request.
@@ -537,7 +541,7 @@ The architecture supports any number of imperative shells over the runtime. Two 
 
 | Shell | Source | Imperative responsibilities |
 |---|---|---|
-| **CLI** | `src/cli/oclif/` + `bin/lando.ts` | argv parsing, help rendering, OCLIF hooks, `SIGINT` → `Effect.interrupt`, exit codes |
+| **CLI** | Native command registry + dispatcher (§8.4.1) + `bin/lando.ts` (current implementation still routes source-mode dispatch through `src/cli/oclif/`, pending removal per architecture-simplicity US-522..US-531; §8.4) | argv parsing, help rendering, dispatcher lifecycle hooks, `SIGINT` → `Effect.interrupt`, exit codes |
 | **Embedding host** | A consumer's program importing `@lando/core` | Whatever input/output/signal model the host uses — core's runtime is signal-agnostic |
 
 Both shells:
@@ -1011,7 +1015,7 @@ post-start
   (priority 2) healthchecks
   (priority 10) url scan
 ready-app
-cli-app:start-run          → OCLIF postrun: run() returned successfully
+cli-app:start-run          → dispatcher post-run stage: run() returned successfully (today: OCLIF postrun; §8.4)
                               (or cli-app:start-error if run() raised; mutually exclusive)
 before-exit
 ```

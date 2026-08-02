@@ -19,7 +19,7 @@ tags: [beta, docs, global, lifecycle]
     </Step>
   </Scenario>
 
-  <Scenario id="global-lifecycle-aliases" render={false} reason="Each meta:global:* command publishes a top-level global:* alias per the §8.2 alias rules so operators can use the shorter form">
+  <Scenario id="global-lifecycle-aliases" render={false} reason="Each meta:global:* command publishes a top-level global:* alias (the global: prefix is reserved for meta:global:*; other plugin- or tooling-contributed aliases starting with global: are rejected) so operators can use the shorter form">
     <Step name="aliases">
       <Variable name="installAlias" value="global:install" display="`lando global:install` is the alias for `lando meta:global:install`" />
       <Variable name="startAlias" value="global:start" display="`lando global:start` is the alias for `lando meta:global:start`" />

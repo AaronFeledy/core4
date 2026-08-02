@@ -104,6 +104,7 @@ jobs:
           bun run --filter='@lando/renderer-lando' build
           bun run --filter='@lando/notify-lando' build
           bun run --filter='@lando/file-sync-mutagen' build
+          bun run --filter='@lando/ca-mkcert' build
           bun run --filter='@lando/proxy-traefik' build
           bun run --filter='@lando/template-handlebars' build
           bun run --filter='@lando/template-mustache' build
@@ -130,6 +131,7 @@ jobs:
           npm publish --workspace @lando/renderer-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/notify-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/file-sync-mutagen --dry-run --access public --tag dev
+          npm publish --workspace @lando/ca-mkcert --dry-run --access public --tag dev
           npm publish --workspace @lando/proxy-traefik --dry-run --access public --tag dev
           npm publish --workspace @lando/template-handlebars --dry-run --access public --tag dev
           npm publish --workspace @lando/template-mustache --dry-run --access public --tag dev
@@ -149,6 +151,7 @@ jobs:
           npm publish --workspace @lando/renderer-lando --access public --tag dev --provenance
           npm publish --workspace @lando/notify-lando --access public --tag dev --provenance
           npm publish --workspace @lando/file-sync-mutagen --access public --tag dev --provenance
+          npm publish --workspace @lando/ca-mkcert --access public --tag dev --provenance
           npm publish --workspace @lando/proxy-traefik --access public --tag dev --provenance
           npm publish --workspace @lando/template-handlebars --access public --tag dev --provenance
           npm publish --workspace @lando/template-mustache --access public --tag dev --provenance

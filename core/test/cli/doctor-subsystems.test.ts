@@ -5,7 +5,9 @@ import { Effect, Layer, Schema } from "effect";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import { ProxyService } from "@lando/sdk/services";
+import { makeTestProxyService } from "@lando/sdk/test";
 
+import type { CertsDoctorStatus } from "../../src/cli/commands/doctor-certs-status.ts";
 import {
   DefaultSubsystemDoctorLayer,
   type SubsystemDoctorResult,
@@ -104,12 +106,75 @@ describe("meta:doctor subsystem checks", () => {
     expect(result.checks.length).toBe(EXPECTED_SUBSYSTEMS.length);
   });
 
+  test("uses the selected certificate authority id from precomputed status", async () => {
+    // Given / When
+    const result = await Effect.runPromise(
+      subsystemDoctor({ certs: { _tag: "selected", id: "mkcert" } }).pipe(
+        Effect.provide(DefaultSubsystemDoctorLayer),
+      ),
+    );
+
+    // Then
+    const certs = result.checks.find((check) => check.name === "certs");
+    expect(certs).toMatchObject({
+      status: "pass",
+      severity: "info",
+      context: { subsystem: "certs", subsystemId: "mkcert", ready: "true" },
+      solutions: [],
+    });
+  });
+
+  test("preserves tagged certificate resolution context for degraded statuses", async () => {
+    // Given
+    const cases: ReadonlyArray<{
+      readonly status: CertsDoctorStatus;
+      readonly context: Readonly<Record<string, string>>;
+    }> = [
+      {
+        status: { _tag: "unresolved" },
+        context: {},
+      },
+      {
+        status: { _tag: "ambiguous", candidateIds: ["first", "second"], detail: "choose one" },
+        context: {
+          certsReason: "ambiguous",
+          certsCandidateIds: "first,second",
+          certsDetail: "choose one",
+        },
+      },
+      {
+        status: { _tag: "load-failed", pluginName: "ca-plugin", detail: "load failed" },
+        context: {
+          certsReason: "load-failed",
+          certsPlugin: "ca-plugin",
+          certsDetail: "load failed",
+        },
+      },
+    ];
+
+    for (const fixture of cases) {
+      // When
+      const result = await Effect.runPromise(
+        subsystemDoctor({ certs: fixture.status }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+      );
+
+      // Then
+      const certs = result.checks.find((check) => check.name === "certs");
+      expect(certs?.status).toBe("warn");
+      expect(certs?.context).toEqual({
+        subsystem: "certs",
+        subsystemId: "unavailable",
+        ready: "false",
+        ...fixture.context,
+      });
+      expect(certs?.solutions[0]?.command).toBe("lando setup");
+    }
+  });
+
   test("reports a ready subsystem as pass with no remediation when a real implementation is wired", async () => {
     const readyProxy = Layer.succeed(ProxyService, {
+      ...makeTestProxyService(),
       id: "traefik",
-      setup: () => Effect.void,
-      applyRoutes: () => Effect.void,
-      removeRoutes: () => Effect.void,
     });
     const layer = Layer.mergeAll(DefaultSubsystemDoctorLayer, readyProxy);
     const result = await Effect.runPromise(subsystemDoctor().pipe(Effect.provide(layer)));

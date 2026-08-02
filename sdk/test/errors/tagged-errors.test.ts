@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Either, Exit, Schema } from "effect";
 
 import {
+  AmbiguousCertificateAuthoritiesError,
   AppResolveError,
   DeprecatedSurfaceError,
   DeprecationContradictionError,
@@ -10,6 +11,7 @@ import {
   GlobalServiceMissingError,
   LandoRuntimeBootstrapError,
   LandofileParseError,
+  NoCertificateAuthorityError,
   NoProviderInstalledError,
   PluginLoadError,
   ProviderCapabilityError,
@@ -22,7 +24,7 @@ const deprecationNoticeFixture = {
 };
 
 describe("DeprecatedSurfaceError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(DeprecatedSurfaceError.fields);
     expect(fields).toContain("kind");
     expect(fields).toContain("id");
@@ -62,7 +64,7 @@ describe("DeprecatedSurfaceError", () => {
 });
 
 describe("DeprecationContradictionError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(DeprecationContradictionError.fields);
     expect(fields).toContain("canonicalId");
     expect(fields).toContain("aliasId");
@@ -101,7 +103,7 @@ describe("DeprecationContradictionError", () => {
 });
 
 describe("LandofileParseError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(LandofileParseError.fields);
     expect(fields).toContain("filePath");
     expect(fields).toContain("message");
@@ -170,7 +172,7 @@ describe("LandofileParseError", () => {
 });
 
 describe("ProviderCapabilityError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(ProviderCapabilityError.fields);
     expect(fields).toContain("providerId");
     expect(fields).toContain("capability");
@@ -178,7 +180,7 @@ describe("ProviderCapabilityError", () => {
     expect(fields).toContain("actualValue");
   });
 
-  test("constructs with the spec-mandated payload (boolean-shaped capability)", () => {
+  test("constructs with the documented payload (boolean-shaped capability)", () => {
     const error = new ProviderCapabilityError({
       providerId: "provider-docker",
       operation: "checkCapability",
@@ -355,6 +357,37 @@ describe("NoProviderInstalledError", () => {
   });
 });
 
+describe("certificate authority selection errors", () => {
+  const candidates = [
+    { id: "mkcert", pluginName: "@lando/ca-mkcert", source: "bundled" },
+    { id: "corp", pluginName: "@example/ca-corp", source: "user" },
+  ];
+
+  test("no-authority failure carries candidate context and remediation", () => {
+    const error = new NoCertificateAuthorityError({
+      message: "No certificate authority is available.",
+      candidates: [],
+      remediation: "Enable or install a certificate authority plugin.",
+    });
+
+    expect(error._tag).toBe("NoCertificateAuthorityError");
+    expect(error.candidates).toEqual([]);
+    expect(error.remediation.length).toBeGreaterThan(0);
+  });
+
+  test("ambiguous-authority failure carries every candidate", () => {
+    const error = new AmbiguousCertificateAuthoritiesError({
+      message: "Multiple certificate authorities match.",
+      candidates,
+      remediation: "Select one certificate authority explicitly.",
+    });
+
+    expect(error._tag).toBe("AmbiguousCertificateAuthoritiesError");
+    expect(error.candidates).toEqual(candidates);
+    expect(error.remediation.length).toBeGreaterThan(0);
+  });
+});
+
 describe("MVP tagged-error catalog", () => {
   test("the five MVP-mandated tagged-error classes are all exported", () => {
     expect(LandoRuntimeBootstrapError).toBeDefined();
@@ -439,7 +472,7 @@ describe("GlobalAutoStartError", () => {
 });
 
 describe("AppResolveError", () => {
-  test("carries the spec-mandated payload fields", () => {
+  test("carries the documented payload fields", () => {
     const fields = Object.keys(AppResolveError.fields);
     expect(fields).toContain("message");
     expect(fields).toContain("reason");

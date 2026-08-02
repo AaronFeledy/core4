@@ -36,7 +36,7 @@ tags: [beta, docs, cli, json, scripting, agent]
     </Step>
     <Step name="success-envelope">
       <Variable name="successShape" value="{ &quot;ok&quot;: true, &quot;result&quot;: &lt;typed-result&gt; }" display="On success the envelope wraps the command's typed result under result with ok set to true" />
-      <Variable name="apiVersion" value="apiVersion: &quot;v4&quot;" display="One global envelope version identifies the wire contract; per-command result shape stability is frozen by the §13.2 schema artifact set, not per-command versioning" />
+      <Variable name="apiVersion" value="apiVersion: &quot;v4&quot;" display="One global envelope version identifies the wire contract; per-command result shape stability is frozen by the published schema artifact set, not per-command versioning" />
       <Variable name="redaction" value="redacted before emission" display="Every envelope passes through the redaction service before it reaches stdout, so secrets never appear in machine output" />
     </Step>
     <Step name="failure-envelope">

@@ -3,7 +3,7 @@
 Programmatic Landofile demonstration recipe. Emits a `.lando.ts`
 (not `.lando.yml`) so an advanced recipe author can adapt the
 Landofile at parse time using `process.env` and other documented
-`LandofileContext` inputs (see spec §7.1.1).
+`LandofileContext` inputs.
 
 The default Lando v4 recipe shape is YAML; ship YAML unless your
 recipe needs the programmatic form. This recipe exists primarily as

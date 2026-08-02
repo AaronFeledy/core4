@@ -5,7 +5,7 @@ import { AppId, PortNumber } from "./primitives.ts";
 
 // ============================================================================
 // Proxy service contracts
-// SPEC: §10.2 Proxy and routing
+// Proxy and routing schemas.
 // ============================================================================
 
 export const ProxyCapabilities = Schema.Struct({

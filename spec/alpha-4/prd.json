@@ -166,7 +166,7 @@
     {
       "id": "US-209",
       "title": "OCLIF major lock decision",
-      "description": "As a CLI maintainer, I need the OCLIF v4 versus v5 decision closed so source-mode CLI behavior, manifest generation, and dual-dispatch parity tests have a stable target.",
+      "description": "At Alpha 4, as a CLI maintainer, I needed the OCLIF v4 versus v5 decision closed so source-mode CLI behavior, manifest generation, and the then-authoritative dual-dispatch parity tests had a stable target.",
       "acceptanceCriteria": [
         "A Alpha 4 decision note chooses either stay on OCLIF v4 or move to OCLIF v5, with the current `@oclif/core ^4.11.2` and `oclif ^4.23.0` state cited.",
         "If staying on v4, dependency ranges, compatibility notes, and dispatch parity assumptions are preserved and documented.",
@@ -177,7 +177,7 @@
       ],
       "priority": 10,
       "passes": true,
-      "notes": "Alpha 4 stays on OCLIF v4, preserving @oclif/core ^4.11.2 and oclif ^4.23.0 in core package metadata, documenting compatibility notes and keeping permanent dual dispatch with compiled-binary dispatch parity tests authoritative."
+      "notes": "OCLIF v4 lock remains an accurate current dependency fact (@oclif/core ^4.11.2, oclif ^4.23.0) for as long as the OCLIF source-mode path exists. Alpha 4 additionally treated dual dispatch as permanent and authoritative at the time, but that permanence is superseded by normative §8.4.1 and architecture-simplicity (US-522..US-531), which collapse to one native dispatcher and remove OCLIF from the shipping CLI path. Acceptance criteria are preserved historically as the Alpha 4 record."
     },
     {
       "id": "US-210",
@@ -1421,7 +1421,7 @@
       ],
       "priority": 80,
       "passes": true,
-      "notes": "External plugin acceptance harness now covers ESM file:// package roots, Bun-native TypeScript entries, package-root dependency resolution, in-root contribution module normalization to file:// URLs, escaping-module PluginLoadError isolation, codegen:check, bundled artifact codegen, and canonical recipe codegen guide surface."
+      "notes": "External plugin acceptance harness now covers ESM file:// package roots, Bun-native TypeScript entries, package-root dependency resolution, in-root contribution module normalization to file:// URLs, escaping-module PluginLoadError isolation, codegen:check, bundled artifact codegen, and canonical recipe codegen guide surface. Criteria 25-27 are preserved as the historical Alpha 4 record. Architecture-simplicity later supersedes their forward-looking effect: US-505 makes pure drift a dedicated codegen:check target; today's bundled-plugin generator emits core/src/plugins/generated/bundled.ts and renderers.ts without changing the OCLIF command manifest; and today's bundled-recipe generator requires the core/build.config.ts ship-list entry plus core/src/recipes/builtin/<id>/manifest.ts. Current work follows §17.2 and §17.9."
     },
     {
       "id": "US-280",

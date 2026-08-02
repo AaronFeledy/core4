@@ -17,6 +17,7 @@ import { EventService, RuntimeProvider } from "@lando/sdk/services";
 import { DataMoverLive } from "../../../data-mover/service.ts";
 import { GlobalAppServiceLive } from "../../../global-app/service.ts";
 import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";
+import { CertificateAuthorityResolverLive } from "../../../plugins/certificate-authority-resolver.ts";
 import { LogFileHelperAssetsLive } from "../../../providers/log-file-helper-payloads.ts";
 import { RuntimeProviderRegistryLive } from "../../../providers/registry.ts";
 import { ConfigServiceLive } from "../../../services/config.ts";
@@ -37,11 +38,15 @@ export const makeProviderBootstrapBaseLayer = (inputs: BootstrapLayerInputs) => 
   const urlScannerLive = UrlScannerLive.pipe(
     Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive)),
   );
+  const certificateAuthorityResolverLive = CertificateAuthorityResolverLive.pipe(
+    Layer.provide(pluginsRuntimeLive),
+  );
 
   return Layer.mergeAll(
     pluginsRuntimeLive,
     providerSupportLive,
     runtimeProviderLive,
+    certificateAuthorityResolverLive,
     urlScannerLive,
     DataMoverLive.pipe(Layer.provide(Layer.mergeAll(runtimeProviderLive, pluginsRuntimeLive))),
     providerRegistryLive,

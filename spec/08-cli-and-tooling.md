@@ -3,9 +3,9 @@
 > **Part 8 of 18** · [Index](./README.md)
 > **Read next:** [09 Embedding and Library Use](./09-embedding.md)
 
-This part defines the CLI surface. OCLIF is consumed in exactly one place — `src/cli/oclif/` — and the moment a command's `run()` is invoked, control crosses into Effect and never goes back.
+This part defines the CLI surface. **Normative target (§8.4.1):** one native command registry and dispatcher own shipping argv parsing, help, deferred-command plans, and dispatch for both source and compiled modes; OCLIF is not part of the target shipping CLI path (superseded dual-dispatch decision; historical spike in §14 Appendix D.1). The moment a command's `run()` is invoked, control crosses into Effect and never goes back. Today's source-path implementation still routes through OCLIF pending the architecture-simplicity migration to that target (current state: §8.4).
 
-Covered here: the four kinds of commands (built-in, plugin, tooling, management), the three first-class command namespaces (`app`, `apps`, `meta`) and the top-level alias mechanism, the full list of built-in commands and their behavioral requirements (including the dedicated `app config` and `meta config` commands), the `LandoCommandSpec` contract and `CommandInput` shape, OCLIF integration policies (manifest-first, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, flexible taxonomy, namespace-to-topic mapping), the Taskfile-inspired tooling YAML schema with dynamic service resolution and config expressions, the `ToolingEngine` abstraction (default `providerExec`, plus `host`, `remote`, `dryRun` alternatives), the tooling compilation pipeline and its hot-path cache, `lando apps init` and the v4 recipe model (Yeoman-style scaffolds with Q&A prompts, file manifests, and post-init actions, replacing the v3 recipe-as-plugin model), and the `Renderer` service with built-in render events and selection precedence.
+Covered here: the four kinds of commands (built-in, plugin, tooling, management), the three first-class command namespaces (`app`, `apps`, `meta`) and the top-level alias mechanism, the full list of built-in commands and their behavioral requirements (including the dedicated `app config` and `meta config` commands), the `LandoCommandSpec` contract and `CommandInput` shape, native dispatcher policies (registry-first manifest, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, namespace mapping), the Taskfile-inspired tooling YAML schema with dynamic service resolution and config expressions, the `ToolingEngine` abstraction (default `providerExec`, plus `host`, `remote`, `dryRun` alternatives), the tooling compilation pipeline and its hot-path cache, `lando apps init` and the v4 recipe model (Yeoman-style scaffolds with Q&A prompts, file manifests, and post-init actions, replacing the v3 recipe-as-plugin model), and the `Renderer` service with built-in render events and selection precedence.
 
 ---
 
@@ -13,20 +13,20 @@ Covered here: the four kinds of commands (built-in, plugin, tooling, management)
 
 ### 8.1 Command kinds
 
-Every command in Lando v4 belongs to exactly one of four **kinds** and is registered under exactly one **namespace** (§8.1.1). The kind determines who authors the command and how it is loaded; the namespace determines the canonical OCLIF topic prefix.
+Every command in Lando v4 belongs to exactly one of four **kinds** and is registered under exactly one **namespace** (§8.1.1). The kind determines who authors the command and how it is loaded; the namespace determines the canonical registry topic prefix (§8.4.1).
 
-| Kind | Source | OCLIF representation |
+| Kind | Source | Registry representation |
 |---|---|---|
-| **Built-in command** | Core package | Static OCLIF `Command` subclass adapting Effect |
-| **Plugin command** | Plugin manifest `provides.commands` | Lazy-loaded OCLIF `Command` subclass |
-| **Tooling command** | Landofile `tooling:` | Generated OCLIF command shim metadata, read from the app command index during router bootstrap |
-| **Management command** | Core or plugin, `hidden: true` | Hidden OCLIF command |
+| **Built-in command** | Core package | Static `LandoCommandSpec` registry entry adapting Effect command logic (today also represented by an OCLIF `Command` subclass; §8.4) |
+| **Plugin command** | Plugin manifest `provides.commands` | Lazy-loaded `LandoCommandSpec` (today also compiled into a lazy-loaded OCLIF `Command` subclass; §8.4) |
+| **Tooling command** | Landofile `tooling:` | Generated registry shim metadata, read from the app command index during router bootstrap |
+| **Management command** | Core or plugin, `hidden: true` | Hidden registry entry (today also a hidden OCLIF command; §8.4) |
 
 #### 8.1.1 Command namespaces
 
-Lando commands live under **three first-class namespaces** that map directly to OCLIF topics. Every command — built-in, plugin-contributed, or tooling — has a canonical id of the form `<namespace>:<segments…>` and is invoked at that path.
+Lando commands live under **three first-class namespaces** that map directly to registry topics (today also OCLIF topics; §8.4). Every command — built-in, plugin-contributed, or tooling — has a canonical id of the form `<namespace>:<segments…>` and is invoked at that path.
 
-| Namespace | OCLIF topic | Scope | Examples |
+| Namespace | Topic | Scope | Examples |
 |---|---|---|---|
 | `app` | `app:` | Operations on the current Lando app (or one referenced by `--path`) | `app:start`, `app:stop`, `app:logs`, `app:exec`, `app:config`, tooling tasks |
 | `apps` | `apps:` | Operations across multiple apps or app discovery on the host | `apps:list`, `apps:poweroff`, `apps:init` |
@@ -36,16 +36,16 @@ Plugins MAY contribute commands to any of the three core namespaces or to a plug
 
 Namespaces are stable parts of every command's canonical id and surface in:
 
-- OCLIF help output (commands grouped under their topic).
+- Native dispatcher help output (commands grouped under their topic; today rendered through OCLIF's help class, §8.4).
 - Lifecycle events: `cli-<canonical-id>-<phase>` (e.g., `cli-app:start-run`; §3.5/§11.4).
 - Generated docs (one page per namespace plus per-command pages).
 - The `command` cache index (§12.1), which keys by canonical id.
 
-Because OCLIF runs with `flexibleTaxonomy: true` (§8.4), the canonical separator `:` and a single space are interchangeable in input: `lando app start`, `lando app:start`, and `lando app:start --` all resolve to the same command when unambiguous.
+The colon-form canonical separator `:` is required under the native dispatcher target (§8.4.1); space-form flexible taxonomy MAY also be implemented and, if shipped, MUST be documented there. Today's OCLIF-backed implementation runs with `flexibleTaxonomy: true` (§8.4), so `lando app start`, `lando app:start`, and `lando app:start --` all resolve to the same command when unambiguous.
 
 **Reserved namespace names:** `app`, `apps`, `meta`, plus `plugin` (used as a sub-topic of `meta`). Plugins MUST NOT contribute commands directly under `plugin:` at the top level; plugin-management commands live under `meta:plugin:*`. Plugin-owned topics MUST NOT shadow the three core namespace names.
 
-**Multi-segment ids.** A canonical id MAY have more than two segments. `meta:plugin:add`, `meta:plugin:remove`, and `app:db:import` (plugin-contributed) are all legal. Each additional segment becomes a nested OCLIF topic.
+**Multi-segment ids.** A canonical id MAY have more than two segments. `meta:plugin:add`, `meta:plugin:remove`, and `app:db:import` (plugin-contributed) are all legal. Each additional segment becomes a nested topic.
 
 #### 8.1.2 Top-level aliases
 
@@ -56,11 +56,11 @@ Top-level aliases are configured per command via the `topLevelAlias` field on `L
 | Value | Effect |
 |---|---|
 | `false` (default) | No top-level alias is registered. |
-| `true` | Register the canonical id with its **namespace prefix stripped** as a top-level alias. `app:start` → `lando start`. `meta:plugin:add` → `lando plugin:add` (which OCLIF flexible taxonomy also accepts as `lando plugin add`). Multi-segment canonical ids therefore yield multi-segment top-level aliases that occupy a top-level OCLIF topic; conflict rules (below) apply to the alias's first segment. |
-| `"name"` (string) | Register the given name as the top-level alias instead of the auto-derived name. `apps:poweroff` → `topLevelAlias: "halt"` produces `lando halt`. Multi-segment values like `"plugin:add"` are accepted and become a top-level OCLIF topic-and-command pair. |
+| `true` | Register the canonical id with its **namespace prefix stripped** as a top-level alias. `app:start` → `lando start`. `meta:plugin:add` → `lando plugin:add` (which today's OCLIF-backed flexible taxonomy also accepts as `lando plugin add`). Multi-segment canonical ids therefore yield multi-segment top-level aliases that occupy a top-level registry topic; conflict rules (below) apply to the alias's first segment. |
+| `"name"` (string) | Register the given name as the top-level alias instead of the auto-derived name. `apps:poweroff` → `topLevelAlias: "halt"` produces `lando halt`. Multi-segment values like `"plugin:add"` are accepted and become a top-level topic-and-command pair. |
 | `["a", "b"]` (string[]) | Register multiple top-level aliases. The same conflict rules apply to each entry independently. |
 
-**Conflict resolution.** A top-level alias MUST NOT collide with another top-level alias, a top-level OCLIF topic name (`app`, `apps`, `meta`, or any plugin cspace topic), or a reserved word (`help`, `--help`, `--version`). Conflicts are detected at command registration and reported as a tagged `CommandAliasConflictError` with remediation. The conflict policy is:
+**Conflict resolution.** A top-level alias MUST NOT collide with another top-level alias, a top-level topic name (`app`, `apps`, `meta`, or any plugin cspace topic), or a reserved word (`help`, `--help`, `--version`). Conflicts are detected at command registration and reported as a tagged `CommandAliasConflictError` with remediation. The conflict policy is:
 
 1. Built-in command top-level aliases never silently lose to plugin or tooling aliases. A plugin contribution that conflicts with a built-in alias is rejected with remediation pointing at the built-in.
 2. Plugin-vs-plugin alias conflicts are resolved by the standard selection precedence (§4.3); otherwise rejected.
@@ -179,7 +179,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 **Command requirements** (canonical ids; the same behaviors apply when invoked through a top-level alias):
 
 - `app:info` supports `--deep`, repeated `--filter`, `--path`, `--service`, `--format json|table|yaml`.
-- `app:cache:refresh` performs full app bootstrap, rebuilds the app plan cache, compiled tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.json`, then exits without contacting the provider unless app materialization needs missing Lando-managed dependencies.
+- `app:cache:refresh` performs full app bootstrap, rebuilds the app plan cache, compiled tooling graph, and `<userCacheRoot>/apps/<app-id>/commands.bin`, then exits without contacting the provider unless app materialization needs missing Lando-managed dependencies.
 - `app:includes:update [<source>...]` resolves the named include sources fresh, writes new `<appRoot>/.lando.lock.yml` entries with refreshed refs and checksums, and invalidates the app plan cache. With no positional arguments, refreshes every entry. Supports `--no-network` to fail fast when a refresh would require network and `--check` to report would-be drift without writing. Network access is required by definition.
 - `app:includes:verify` re-reads every entry in `.lando.lock.yml` and re-computes the checksum of the cached fragment under `<userCacheRoot>/includes/`. Succeeds without network access when every entry resolves from the warm cache. Reports drift, missing cache entries, or checksum mismatches as a non-zero exit with `IncludeLockError` and remediation pointing at `app:includes:update`. Supports `--format json|table`.
 - `apps:list` works inside and outside an app context, supports `--all`, filters, `--path`, JSON, table.
@@ -360,7 +360,7 @@ Behaviors:
 
 ### 8.3 Command contract
 
-Every command, whether built-in or contributed by a plugin, conforms to the `LandoCommandSpec` shape. The OCLIF adapter compiles this into an OCLIF `Command` subclass.
+Every command, whether built-in or contributed by a plugin, conforms to the `LandoCommandSpec` shape. The command registry is the source of truth for that spec (§8.4.1); today's OCLIF adapter also compiles it into an OCLIF `Command` subclass as an interim implementation detail (§8.4).
 
 ```ts
 export type CommandNamespace = "app" | "apps" | "meta" | string;
@@ -404,7 +404,7 @@ export interface CommandInput {
 
 Rules:
 
-- `id` is the canonical id including the namespace prefix (`app:start`, `meta:plugin:add`). The OCLIF adapter parses the prefix to derive the topic path.
+- `id` is the canonical id including the namespace prefix (`app:start`, `meta:plugin:add`). The registry derives the topic path from the prefix (today via the OCLIF adapter; §8.4).
 - `namespace` MUST equal the prefix segment of `id`. Mismatches are rejected at registration with a tagged `CommandRegistrationError`.
 - `aliases` is a list of additional **namespaced** aliases (for example, `apps:halt` aliasing `apps:poweroff`). Each entry may be a bare string (the alias name) or an object `{ name, deprecated? }` declaring a per-alias `DeprecationNotice` (§18.5). Top-level aliases use `topLevelAlias` instead and are interpreted per §8.1.2.
 - `topLevelAlias` defaults to `false`. The shipped built-ins in §8.2 declare their default top-level aliases explicitly. The object form `{ name, deprecated }` declares a `DeprecationNotice` for the top-level alias independently of the canonical command (§18.5).
@@ -420,9 +420,9 @@ Every command MUST accept the universal `--format <text|json|...>` flag and its 
 
 The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` instances so commands compose cleanly with Effect's IO.
 
-### 8.4 OCLIF integration
+### 8.4 OCLIF integration (current implementation, pending removal)
 
-OCLIF is consumed in *one place only*: `src/cli/oclif/`. Outside that directory, no module imports `@oclif/core`. The integration policies:
+This section describes today's source-path implementation, kept accurate while architecture-simplicity US-522..US-531 is in flight. It is not the target contract — §8.4.1 is normative and supersedes OCLIF as a shipping dispatch engine. OCLIF is consumed in *one place only*: `src/cli/oclif/`. Outside that directory, no module imports `@oclif/core`. The integration policies:
 
 - **Pre-OCLIF level-`none` fast path.** Before any `import("@oclif/core")` resolves, `bin/lando.ts` MUST argv-sniff for the level-`none` shapes enumerated in §3.2 and short-circuit to a static-print exit on match. The fast path is hand-rolled string matching against `process.argv`; it never imports OCLIF, the Effect runtime, or any plugin code. An argv shape that *looks* like a level-`none` command but carries unrecognized flags falls through to the OCLIF path.
 - **Manifest-first.** `oclif.manifest.json` is generated at build time for built-in command shims. Lando's plugin and app command indexes (`plugin-command`, `app-command`; §12.1) provide runtime command metadata and are refreshed on plugin install/remove/update, app planning, and `app:cache:refresh`.
@@ -442,28 +442,22 @@ OCLIF is consumed in *one place only*: `src/cli/oclif/`. Outside that directory,
 
 **Namespace-to-topic mapping.** A canonical command id like `app:start` is a two-segment OCLIF id (topic `app`, command `start`). Three-segment ids like `meta:plugin:add` produce a nested topic (`meta` topic, `plugin` sub-topic, `add` command). The OCLIF adapter generates `Topics` entries from the registered namespaces and registers each canonical command under its topic. **Top-level aliases** (§8.1.2) are registered as additional OCLIF commands sharing the same `run()` implementation; they are flagged in the manifest with an `aliasOf:` pointer to the canonical id and rendered in the "Common commands" help group rather than under their topic.
 
-### 8.4.1 Compiled-binary dispatch
+### 8.4.1 Single native dispatch (source + compiled)
 
-§8.4 above describes the OCLIF integration policy as it applies to **source mode** — `bun core/bin/lando.ts <cmd>` and the test harnesses that drive `core/bin/lando.ts` through `runCli`. In source mode, `runCli` calls `@oclif/core`'s `execute()` and the policy in §8.4 is normative.
+**Normative (architecture-simplicity):** source mode (`bun core/bin/lando.ts`, test harnesses) and the compiled `$bunfs` binary produced by `scripts/build-compiled-binary.ts` share **one** native command registry and **one** dispatcher engine (today's `runCompiledCli` shape becomes the only path; the name may be `runCli` / `runNativeCli`). There is **no** shipping call to `@oclif/core`'s `execute()`, and dual-dispatch parity is **not** a permanent architecture.
 
-The **compiled `$bunfs` binary** produced by `scripts/build-compiled-binary.ts` does NOT route through `@oclif/core` at runtime. `runCli` detects `entryPath.includes("$bunfs")` and forks to a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`) that parses argv directly and dispatches to the same `LandoCommandSpec.run` implementations the OCLIF path uses. This dual-dispatch architecture is **permanent**: the §14.2 "Compiled-binary CLI dispatch unification" decision resolved to **option (b)** (see §14 Appendix D.1). The spike proved that `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile` single-executable binary through any supported public API — `Config.load` → `findRoot` cannot locate the package root next to a relocated single-file binary, and the `module-loader` does a runtime `import()` of a computed absolute path the bundler never embeds. The two shipping paths are instead held at parity by the rules below and enforced by the §13.1 compiled-binary dispatch parity test layer.
+**Why not OCLIF in-binary.** The historical spike (§14 Appendix D.1) proved `@oclif/core`'s `execute()` cannot dispatch inside `bun build --compile` through any supported public API (`Config.load` → `findRoot` and runtime `import()` of computed paths both break under `$bunfs`). That evidence previously justified option (b) dual dispatch; it is now the reason OCLIF is **removed** from the shipping CLI rather than kept as a second engine.
 
-**Why the fork exists.** OCLIF v4's `execute()` performs runtime command discovery against the on-disk `commands/` tree, which is not addressable inside a `bun build --compile` single-executable binary. The static manifest (`oclif.manifest.json`) and the static command registry (`core/src/cli/oclif/compiled-commands.ts`) together carry every shape `execute()` would otherwise discover at runtime, but `execute()` still re-roots and re-`import()`s from real disk, so the compiled binary cannot consume them. The hand-rolled dispatcher is therefore the permanent compiled-mode router, not a temporary scaffold.
+**Single-engine rules (normative).**
 
-**Parity rules (normative).** The two paths share command implementations and renderers by construction; only argv parsing, help/version interception, and `command_not_found` are forked.
-
-- Every `LandoCommandSpec` and its `render` function MUST live in exactly one module under `core/src/cli/commands/` and be imported by both paths.
-- Every cross-cutting CLI helper (renderer selection, deferred-command remediation, bug-report formatting, error-tag rendering) MUST live in one shared module under `core/src/cli/` and be invoked at both entry points (`LandoCommandBase.runEffect` for source; the top of `runCompiledCli` for compiled).
-- Both paths MUST produce semantically identical exit codes, tagged-error payloads (`commandId`, `specSection`, `remediation`), and JSON-renderer event fields after normalizing timestamps and temp paths. The §17.1 stage-7 contract continues to gate this.
-- New canonical command ids MUST be registered in BOTH the OCLIF command class under `core/src/cli/oclif/commands/<topic>/<cmd>.ts` AND the static registry `core/src/cli/oclif/compiled-commands.ts`.
-- The implemented-canonical-id set is tracked at runtime by `MVP_COMMAND_IDS` in `core/src/cli/oclif/command-base.ts` (source path) and the matching `argv[0]` switch in `runCompiledCli` (compiled path). Every canonical id NOT in the implemented set MUST be paired with an entry in `core/src/cli/deferred-commands.ts::DEFERRED_COMMAND_PLANS` so both paths emit the catalog's phase-tagged `NotImplementedError`. Adding a canonical id to `MVP_COMMAND_IDS` without a matching compiled-dispatcher branch in `runCompiledCli` (or removing one without removing the other) is a parity bug that the §13.1 compiled-binary dispatch parity test layer is responsible for catching: that layer classifies every canonical command id in the compiled registry as exactly one of MVP-implemented or deferred, asserts every MVP id has a compiled-dispatch branch and every deferred id routes through the generic `NotImplementedError` fallthrough, and drives both shipping binaries to confirm representative MVP and deferred ids behave identically.
-
-**Permanently accepted divergences.** Because dual dispatch is permanent (option (b)), these divergences are accepted as a stable contract. They MUST NOT widen.
-
-- The compiled binary does not accept OCLIF flexible-taxonomy space forms for multi-segment canonical ids (e.g., `lando plugin add` resolves only via `lando plugin:add`). The colon form is canonical.
-- Help and version output in the compiled binary are rendered by hand-rolled `printRootHelp` / `printCommandHelp` in `core/src/cli/run.ts`, not by OCLIF's help class. The two help outputs are NOT byte-identical.
-- The §8.4 rule "outside `src/cli/oclif/`, no module imports `@oclif/core`" is relaxed for `core/src/cli/run.ts`, which imports `execute` and the `Command` type. Every other module under `core/src/` MUST still observe the §8.4 rule.
-- Scenario tests target source mode (`core/bin/lando.ts`) by default; the compiled binary is exercised by a smaller set of dedicated tests (`core/test/build/compile.test.ts`, `core/test/cli/setup.test.ts`). The §13.1 layer-coverage rules MUST treat both as the same surface even when the per-test target differs.
+- Every `LandoCommandSpec` and its `render` function MUST live in exactly one module under `core/src/cli/commands/` and be reachable only through the command registry.
+- Cross-cutting CLI helpers (renderer selection, deferred-command remediation, bug-report formatting, error-tag rendering, format-flag stripping) MUST live under `core/src/cli/` and be invoked from the single dispatcher entry — not duplicated per engine.
+- Exit codes, tagged-error payloads (`commandId`, `specSection`, `remediation`), and JSON-renderer event fields MUST meet the §17.1 stage-7 / §8.11 machine-output contract for both the source entry and the relocated compiled binary (smoke + conformance tests — **not** an OCLIF-vs-native parity suite).
+- New canonical command ids MUST be registered once in the command registry (implemented or deferred). Deferred ids MUST appear in `DEFERRED_COMMAND_PLANS` (or successor) and emit the catalog's phase-tagged `NotImplementedError`.
+- Help, version, unknown-command, and topic/alias surfaces are registry-derived. Colon-form canonical ids are required; space-form flexible taxonomy MAY be implemented by the native parser and MUST be documented if shipped.
+- Level-`none` cold-start files MUST NOT import OCLIF, heavy Effect graphs, `@lando/sdk`, renderers, or plugins (§1.2).
+- `@lando/core/oclif` is not a shipping export (§16.2). Embedding hosts use `@lando/core/cli` / library APIs.
+- Scenario tests may target `core/bin/lando.ts` by default; the compiled binary is exercised by dedicated build/smoke tests. Both are the same dispatcher surface.
 
 ### 8.5 Tooling schema
 
@@ -603,7 +597,7 @@ Shorthands:
 
 - `namespace:` defaults to `app`. Most tasks live in `app:` and never set this field. A task MAY set `apps`, `meta`, or a plugin-owned topic when its semantics warrant it; setting a core namespace not under `app` requires the user to acknowledge the implication (these tasks run without an app context unless they declare `bootstrap: app`).
 - Task names MAY contain `:` for sub-namespaces within the task's chosen namespace. With `namespace: app` (default), `tooling.db:wait` becomes canonical id `app:db:wait`. With `namespace: meta`, `tooling.cleanup:caches` becomes `meta:cleanup:caches`.
-- OCLIF flexible taxonomy (§8.4) means `lando app db:wait` and `lando app db wait` resolve to the same command when unambiguous.
+- The native parser MAY preserve today's OCLIF flexible-taxonomy behavior (§8.4), where `lando app db:wait` and `lando app db wait` resolve to the same command when unambiguous; colon form remains the required canonical syntax (§8.4.1).
 - `topLevelAlias` is interpreted per §8.1.2. A task with `topLevelAlias: true` exposes the task's last segment as a bare top-level alias (`db:wait` → `lando wait`); use a string to set an explicit alias name (`topLevelAlias: db-wait`).
 
 **Conflict rules.** Built-in command ids are reserved; a tooling task that collides with a built-in or plugin command at the same canonical id MUST be namespaced differently or rejected with remediation. Top-level alias collisions follow §8.1.2.
@@ -677,7 +671,7 @@ Semantics:
 - **Cancellation.** `Effect.interrupt` propagates from the outer task to the inner command. The target's resource scopes finalize per §2.4 and §3.6.
 - **Bare canonical ids only.** `command:` accepts canonical ids (`app:start`), not top-level aliases (`start`). This keeps the wrap explicit and prevents an alias override from accidentally short-circuiting itself.
 
-The `command:` step does **not** re-parse argv through OCLIF. It calls the same Effect program that backs `@lando/core/cli`'s `appStart`, `metaPluginAdd`, etc. (§16.7), so wrap behavior in the CLI and in an embedding host is identical.
+The `command:` step does **not** re-parse argv through the dispatcher. It calls the same Effect program that backs `@lando/core/cli`'s `appStart`, `metaPluginAdd`, etc. (§16.7), so wrap behavior in the CLI and in an embedding host is identical.
 
 The intended composition pattern is a Landofile `commandAliases.custom:` entry (§8.1.2) pointing at a wrapper tooling task whose `cmds:` invoke the original built-in via `command:`. Subscribers to the wrapped command's lifecycle events still fire because the inner invocation goes through the canonical Effect program; the canonical id (e.g., `lando app start`) remains callable directly.
 
@@ -708,7 +702,7 @@ tooling:
 
 When the user runs `lando start --rebuild`:
 
-1. OCLIF resolves `start` via the Landofile-overridden alias → canonical id `app:my-start`.
+1. The command registry resolves `start` via the Landofile-overridden alias → canonical id `app:my-start`.
 2. The runtime bootstraps at level `app` (auto-escalated because `command: app:start` requires it).
 3. The banner step runs on the host through `ShellRunner` via the `host` ToolingEngine.
 4. The `command: app:start` step invokes the built-in's Effect program with `--rebuild` forwarded explicitly. Subscribers to `cli-app:start-run` still fire.
@@ -835,7 +829,7 @@ events:
       silent: true
 ```
 
-Event entries accept the same step types as `cmds:` (§8.5.2): string, `cmd:`, `task:`, `command:`, `defer:`, `for:`. Event task and command calls execute through the same tooling graph compiler and expression evaluator. Event expressions add `.event` containing the decoded event payload. Event-triggered tasks MUST NOT register OCLIF commands; they execute directly through the runtime.
+Event entries accept the same step types as `cmds:` (§8.5.2): string, `cmd:`, `task:`, `command:`, `defer:`, `for:`. Event task and command calls execute through the same tooling graph compiler and expression evaluator. Event expressions add `.event` containing the decoded event payload. Event-triggered tasks MUST NOT register router commands; they execute directly through the runtime.
 
 Event subscribers that wrap a CLI command (e.g., adding a banner before `app:start`) SHOULD prefer the wrap pattern in §8.5.2.1 over `events.pre-start:`, because lifecycle events fire on every code path that triggers the lifecycle (including `app:restart`, `app:rebuild`, and embedding-host invocations) while a `commandAliases.custom` override + wrapper task fires only when the user invokes that specific top-level alias.
 
@@ -978,21 +972,21 @@ Landofile tooling entries + tooling includes
   → service + flag/arg metadata resolution
   → engine selection
   → engine.compile(spec) → ToolingProgram(s)
-  → OCLIF command shim metadata generation
+  → native command-registry metadata generation
   → app command index + app-plan cache write
-  → on invocation: OCLIF parses argv → invocation expressions/dynamic vars → engine.execute(program, input)
+  → on invocation: the native dispatcher parses argv → invocation expressions/dynamic vars → engine.execute(program, input)
 ```
 
-**Cache hot path.** Tooling routing metadata is stored in the app command index, while the compiled `ToolingProgram` graph is stored in the app plan cache. The app command index contains only routing-safe metadata: canonical ids, namespace assignments, summaries, flag/arg specs, aliases, top-level aliases, effective bootstrap levels, and the app-plan cache key. The `ToolingProgram` includes task metadata, dependencies, command step plans (including resolved `command:` targets and their input schemas), expression ASTs, static vars/env, source/generate glob specs, status/precondition plans, engine ids, **resolved canonical command ids, namespace assignments, the resolved top-level alias list per task, and the per-task effective bootstrap level**. It excludes dynamic `vars.<name>.sh` results, decrypted secrets, runtime service info, and any provider connection state. Storing the alias, namespace, and bootstrap metadata in the app command index means OCLIF command registration in the router phase is a pure data lookup — no Landofile parse, no expression resolution, no include traversal, no command-registry walk.
+**Cache hot path.** Tooling routing metadata is stored in the app command index, while the compiled `ToolingProgram` graph is stored in the app plan cache. The app command index contains only routing-safe metadata: canonical ids, namespace assignments, summaries, flag/arg specs, aliases, top-level aliases, effective bootstrap levels, and the app-plan cache key. The `ToolingProgram` includes task metadata, dependencies, command step plans (including resolved `command:` targets and their input schemas), expression ASTs, static vars/env, source/generate glob specs, status/precondition plans, engine ids, **resolved canonical command ids, namespace assignments, the resolved top-level alias list per task, and the per-task effective bootstrap level**. It excludes dynamic `vars.<name>.sh` results, decrypted secrets, runtime service info, and any provider connection state. Storing the alias, namespace, and bootstrap metadata in the app command index makes native command registration in the router phase a pure data lookup — no Landofile parse, no expression resolution, no include traversal, no command-registry walk.
 
 On invocation at bootstrap level `tooling`:
 
 1. Resolve the command from the app command index loaded during router bootstrap.
 2. Read the cached `ToolingProgram` from `CacheService` using the stored app-plan cache key.
-3. Parse argv with OCLIF using the cached flag/arg specs.
+3. Parse argv with the native command parser using the cached flag/arg specs.
 4. Resolve invocation-time expressions, dynamic service targets, dependency call vars, status/precondition checks, and dynamic vars.
 5. Build `LandoRuntimeLive` at the task's **effective bootstrap level** (which already accounts for any `command:` step's requirements, §8.5.2.1).
-6. Run `engine.execute(program, input)` and propagate exit code. `command:` steps invoke the target command's Effect program directly; they do not re-parse argv through OCLIF.
+6. Run `engine.execute(program, input)` and propagate exit code. `command:` steps invoke the target command's Effect program directly; they do not re-parse argv through the dispatcher.
 
 If the app command index is missing or stale, router bootstrap omits app tooling commands rather than reparsing the Landofile. `command_not_found` detects that the current directory is inside a Lando app with a missing/stale command index and prints remediation pointing to `lando app cache refresh` or any full app-planning command such as `lando start` / `lando rebuild`.
 
@@ -1286,7 +1280,7 @@ The following recipes ship in the binary at v4.0 under `recipes/<id>/`. Each shi
 | `empty` | Blank Landofile starter: service catalog selection only, no opinion |
 | `toolbox` | Disposable tool-runner default (§21.10.3): one `type: lando` service with a version-pinned general-purpose CLI image; every prompt has a non-interactive default |
 
-Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts` which generates `src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
+Core ships a canonical recipe set under `recipes/<id>/`. The set is defined at build time via `scripts/build-bundled-recipes.ts`, which generates `core/src/recipes/bundled.ts`; recipes are statically imported into the compiled binary (§13.5). The bundled set MAY grow in any v4.x release; removals require a major version bump and a `DeprecationNotice` per §18.
 
 The v4.0 set covers common PHP, Node, Python, Ruby, and static-site stacks plus an `empty` starter. Out of scope for the v4.0 bundle: Drupal (community can publish via npm/git/registry) and v3-style recipe compatibility shims (external config translators may provide them; §7.4.1).
 
@@ -1427,14 +1421,14 @@ The Renderer is responsible for the perceived-performance budget in §2.1. The c
 
 | Event | Required behavior |
 |---|---|
-| **Pre-bootstrap banner** | After OCLIF resolves the canonical command id and *before* the AOT bootstrap layer is provided, the command base writes a single-line banner (e.g., `▲ Starting (using lando runtime)…`) directly to stdout via a tiny pre-renderer module that does not require the full `Renderer` Layer. The banner MUST appear within the §2.1 first-byte budget (50 ms cold). For level ≥ `plugins`, this MUST land before any plugin module is imported. |
+| **Pre-bootstrap banner** | After the native dispatcher resolves the canonical command id and *before* the AOT bootstrap layer is provided, the command base writes a single-line banner (e.g., `▲ Starting (using lando runtime)…`) directly to stdout via a tiny pre-renderer module that does not require the full `Renderer` Layer. The banner MUST appear within the §2.1 first-byte budget (50 ms cold). For level ≥ `plugins`, this MUST land before any plugin module is imported. |
 | **Streaming output** | The Renderer MUST NOT buffer for TTY mode. Each `RenderEvent` is flushed to stdout/stderr as it arrives. Only `--format json` (the structured-output mode) MAY buffer — it must emit one valid document, so it accumulates until completion. |
 | **Skeleton-first tables** | `table.row` events stream as rows resolve. Renderers MUST emit column headers on the first `table.row` (or via a synthetic `table.start`) within the first-meaningful-line budget (80 ms cold) when the command produces tabular output (`info`, `list`). Computed-row latency does not count against first-paint. |
 | **Spinner threshold** | When a `task.start` event has no `task.progress` follow-up within 100 ms, the Renderer MUST display a spinner / activity indicator until the task completes or progresses. Below 100 ms, no spinner is shown (avoids flashing). |
 | **Completion line latency** | After the last `task.complete` / `message.*` event of a run, the final completion line (e.g., `✓ Done in 312 ms`) MUST land within 50 ms of that event. |
 | **No first-paint for level `none`** | Level-`none` commands (§3.2) print directly from `bin/lando.ts` without involving the `Renderer` service at all. The contract above does not apply to them; their end-to-end budget already covers the first-paint case. |
 
-**The pre-renderer module.** A tiny `src/cli/oclif/pre-renderer.ts` exposes synchronous functions that write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner. It MUST NOT import Effect, the `Renderer` service, `@oclif/core`, or any plugin code. It is the only direct-stdout-write path in the CLI; once the `Renderer` Layer is forced (§3.4), all subsequent output flows through `Renderer`.
+**The pre-renderer module.** A tiny module under `src/cli/` exposes synchronous functions that write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner. Today's transitional implementation is `src/cli/oclif/pre-renderer.ts`; US-522..US-531 moves that seam out of the OCLIF adapter with the single dispatcher. It MUST NOT import Effect, the `Renderer` service, `@oclif/core`, or any plugin code. It is the only direct-stdout-write path in the CLI; once the `Renderer` Layer is forced (§3.4), all subsequent output flows through `Renderer`.
 
 **Hand-off.** When the `Renderer` Layer is constructed, it consumes a synthetic `paint.banner` event carrying the pre-renderer's banner so the renderer's internal state machine knows what was already shown. This avoids double-banners and lets renderers like `json` rewrite/erase the pre-renderer's TTY line on first valid JSON emission.
 
@@ -2025,7 +2019,7 @@ For each prompt the service resolves an answer in this order:
 
 `mode: "auto"` resolves to interactive only when the active stdin is a TTY; the CLI default is `auto` and the library-mode default is `non-interactive` (§16.3). This replaces the per-command `process.stdin.isTTY !== true` checks that were previously inlined across `apps:init`, `meta:plugin:add`, and `meta:plugin:new`.
 
-The `--answer key=value` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` flags are parsed by **one shared module** that both the OCLIF command path and the compiled `run.ts` dispatcher import, so the answer source and interactivity gate are byte-for-byte identical across paths (§8.4.1 single-source-of-truth rule; the scratch `--option` synonym merges into the same answer source per §21.10.1).
+**Normative (§8.4.1):** the `--answer key=value` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` flags are parsed by **one shared module**, consumed by the single native dispatcher for both source and compiled entries, so the answer source and interactivity gate are byte-for-byte identical (single-source-of-truth rule; the scratch `--option` synonym merges into the same answer source per §21.10.1). Today, as a transitional implementation detail pending the §8.4.1 migration, that shared module is imported from both the OCLIF command path and the compiled `run.ts` dispatcher (§8.4).
 
 #### 8.10.4 Required behaviors
 
@@ -2121,7 +2115,7 @@ export const StreamFrame = Schema.Union(
 - JSON MUST be produced solely by `encodeCommandResult`; the §13.4 gate fails any other result `JSON.stringify`.
 - Every envelope MUST pass through `RedactionService` (§3.7) before emission.
 - The envelope and every per-command `resultSchema` MUST be in the §13.2 schema snapshot; a shape change requires an intentional, reviewable snapshot regen.
-- `--format json` MUST behave identically across the OCLIF and compiled (`runCompiledCli`) dispatch paths; the §13.1 parity layer covers every canonical id.
+- `--format json` MUST produce identical, schema-valid output for the source entry and the compiled binary entry of the single native dispatcher (§8.4.1); the §13.1 conformance layer covers every canonical id against `TestRuntime`; this is a smoke/conformance check of one dispatcher's two entry points, **not** an OCLIF-vs-native parity suite.
 - The §13.1 machine-output conformance gate drives **every** canonical command id with `--format json` against `TestRuntime` and asserts a decodable envelope with correct `command`/`ok` for a success and a failure case.
 
 ---

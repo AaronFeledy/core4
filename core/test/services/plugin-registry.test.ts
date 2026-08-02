@@ -26,6 +26,7 @@ const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/renderer-lando",
   "@lando/notify-lando",
   "@lando/file-sync-mutagen",
+  "@lando/ca-mkcert",
   "@lando/proxy-traefik",
   "@lando/template-handlebars",
   "@lando/template-mustache",
@@ -468,7 +469,7 @@ describe("PluginRegistryLive", () => {
     });
   });
 
-  test("merges sources by app over user over system precedence and warns on conflicts", async () => {
+  test("merges sources by app over user over bundled precedence and warns on conflicts", async () => {
     await writeInstalledPlugin(join(userDataRoot, "plugins"), {
       name: "@lando/provider-docker",
       version: "99.0.0",
@@ -489,7 +490,7 @@ describe("PluginRegistryLive", () => {
       description: "app override",
     });
     expect(warnings).toEqual([
-      "Plugin @lando/provider-docker from user source overrides system source.",
+      "Plugin @lando/provider-docker from user source overrides bundled source.",
       "Plugin @lando/provider-docker from app source overrides user source.",
     ]);
   });

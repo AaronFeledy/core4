@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readdir, stat } from "node:fs/promises";
+import { delimiter, resolve } from "node:path";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 
@@ -16,12 +16,21 @@ const INTERNAL_PRD_NUMBERS = new Set(["09", "13"]);
 const SERVICE_TRUST_PRD_NUMBER_PATTERN = /prd-service-trust-(\d{2})-/;
 const SERVICE_TRUST_USER_FACING_PRD_NUMBERS = new Set(["01", "02"]);
 
+const ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN = /prd-architecture-simplicity-(\d{2})-/;
+const ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS = new Set(["01", "02", "03", "04"]);
+
 export type PrdClassification = "user-facing" | "internal" | "exempt";
 
 export const classifyPrd = (name: string): PrdClassification => {
   const serviceTrustNumber = name.match(SERVICE_TRUST_PRD_NUMBER_PATTERN)?.[1];
   if (serviceTrustNumber !== undefined) {
     return SERVICE_TRUST_USER_FACING_PRD_NUMBERS.has(serviceTrustNumber) ? "user-facing" : "exempt";
+  }
+  const architectureSimplicityNumber = name.match(ARCHITECTURE_SIMPLICITY_PRD_NUMBER_PATTERN)?.[1];
+  if (architectureSimplicityNumber !== undefined) {
+    return ARCHITECTURE_SIMPLICITY_INTERNAL_PRD_NUMBERS.has(architectureSimplicityNumber)
+      ? "internal"
+      : "exempt";
   }
   const number = name.match(PRD_NUMBER_PATTERN)?.[1];
   if (number === undefined) return "exempt";
@@ -74,9 +83,91 @@ export interface CheckGuideCoverageInput {
 }
 
 export interface CheckGuideCoverageOptions {
-  readonly specDir?: string;
+  readonly prdSources?: ReadonlyArray<string>;
+  readonly env?: NodeJS.ProcessEnv;
   readonly indexPath?: string;
 }
+
+export interface ResolvedPrdSources {
+  readonly directories: ReadonlyArray<string>;
+  readonly files: ReadonlyArray<string>;
+}
+
+const PRD_SOURCES_CONFIG_PATH = "docs/guides/prd-sources.json";
+
+const uniqueInOrder = (values: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+};
+
+const stringArray = (value: unknown): ReadonlyArray<string> =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const configSources = async (root: string): Promise<ResolvedPrdSources> => {
+  const path = resolve(root, PRD_SOURCES_CONFIG_PATH);
+  if (!existsSync(path)) return { directories: [], files: [] };
+  const value: unknown = await Bun.file(path).json();
+  if (!isRecord(value)) return { directories: [], files: [] };
+  return { directories: stringArray(value.directories), files: stringArray(value.files) };
+};
+
+const existingGenericSources = async (
+  root: string,
+  sources: ReadonlyArray<string>,
+): Promise<ResolvedPrdSources> => {
+  const directories: Array<string> = [];
+  const files: Array<string> = [];
+  for (const source of uniqueInOrder(
+    sources.map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+  )) {
+    const absolute = resolve(root, source);
+    if (!existsSync(absolute)) continue;
+    const sourceStat = await stat(absolute);
+    if (sourceStat.isDirectory()) directories.push(source);
+    else if (sourceStat.isFile()) files.push(source);
+  }
+  return { directories, files };
+};
+
+export const resolvePrdSources = async (
+  root: string,
+  options: Pick<CheckGuideCoverageOptions, "prdSources" | "env"> = {},
+): Promise<ResolvedPrdSources> => {
+  if (options.prdSources !== undefined) return existingGenericSources(root, options.prdSources);
+  const envSources = (options.env ?? process.env).LANDO_PRD_SOURCES;
+  if (envSources !== undefined) return existingGenericSources(root, envSources.split(delimiter));
+  const configured = await configSources(root);
+  return {
+    directories: configured.directories.filter((source) => existsSync(resolve(root, source))),
+    files: configured.files.filter((source) => existsSync(resolve(root, source))),
+  };
+};
+
+export const parsePrdSourceArgs = (args: ReadonlyArray<string>): ReadonlyArray<string> => {
+  const sources: Array<string> = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index] ?? "";
+    if (arg.startsWith("--prd-source=")) {
+      sources.push(arg.slice("--prd-source=".length));
+      continue;
+    }
+    if (arg === "--prd-source") {
+      const value = args[index + 1];
+      if (value !== undefined) {
+        sources.push(value);
+        index += 1;
+      }
+    }
+  }
+  return sources;
+};
 
 const tableCells = (line: string): ReadonlyArray<string> => {
   const parts = line.trim().split("|");
@@ -208,16 +299,7 @@ export const checkGuideCoverageOnDisk = async (
   root = REPO_ROOT,
   options: CheckGuideCoverageOptions = {},
 ): Promise<CoverageResult> => {
-  const internalSpecRoot = ["s", "pec"].join("");
-  const defaultSpecDirs = [
-    "prd/alpha-3",
-    [internalSpecRoot, "alpha-3"].join("/"),
-    [internalSpecRoot, "service-trust"].join("/"),
-  ];
-  const specDirs =
-    options.specDir !== undefined
-      ? [options.specDir]
-      : defaultSpecDirs.filter((specDir) => existsSync(resolve(root, specDir)));
+  const prdSources = await resolvePrdSources(root, options);
   const indexPath = options.indexPath ?? "docs/guides/INDEX.md";
 
   const indexAbsolute = resolve(root, indexPath);
@@ -235,28 +317,28 @@ export const checkGuideCoverageOnDisk = async (
 
   const declarations: Array<GuideCoverageDeclaration> = [];
   const prdCoverage: Array<PrdGuideCoverage> = [];
-  for (const specDir of specDirs) {
-    let specEntries: ReadonlyArray<string> = [];
+  const pushPrd = async (source: string, absolutePath: string): Promise<void> => {
+    const content = await Bun.file(absolutePath).text();
+    const section = parseGuideCoverageSection(content);
+    prdCoverage.push({
+      source,
+      classification: classifyPrd(source.split("/").at(-1) ?? source),
+      present: section.present,
+      none: section.none,
+      pathCount: section.paths.length,
+    });
+    for (const guidePath of section.paths) declarations.push({ source, guidePath });
+  };
+  for (const prdDir of prdSources.directories) {
+    let prdEntries: ReadonlyArray<string> = [];
     try {
-      specEntries = (await readdir(resolve(root, specDir))).filter((name) => name.endsWith(".md")).sort();
+      prdEntries = (await readdir(resolve(root, prdDir))).filter((name) => name.endsWith(".md")).sort();
     } catch {
-      specEntries = [];
+      prdEntries = [];
     }
-    for (const name of specEntries) {
-      const content = await Bun.file(resolve(root, specDir, name)).text();
-      const section = parseGuideCoverageSection(content);
-      prdCoverage.push({
-        source: `${specDir}/${name}`,
-        classification: classifyPrd(name),
-        present: section.present,
-        none: section.none,
-        pathCount: section.paths.length,
-      });
-      for (const guidePath of section.paths) {
-        declarations.push({ source: `${specDir}/${name}`, guidePath });
-      }
-    }
+    for (const name of prdEntries) await pushPrd(`${prdDir}/${name}`, resolve(root, prdDir, name));
   }
+  for (const prdFile of prdSources.files) await pushPrd(prdFile, resolve(root, prdFile));
 
   return checkGuideCoverage({
     indexRows,
@@ -270,7 +352,11 @@ export const formatCoverageDiagnostic = (diagnostic: CoverageDiagnostic): string
   `${diagnostic.code}: ${diagnostic.message}`;
 
 const main = async (): Promise<void> => {
-  const result = await checkGuideCoverageOnDisk(REPO_ROOT);
+  const cliSources = parsePrdSourceArgs(process.argv.slice(2));
+  const result = await checkGuideCoverageOnDisk(
+    REPO_ROOT,
+    cliSources.length === 0 ? {} : { prdSources: cliSources },
+  );
   if (result.diagnostics.length === 0) {
     process.stdout.write("Guide coverage matrix is consistent.\n");
     return;

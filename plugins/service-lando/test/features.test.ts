@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { SERVICE_FEATURE_IDS, serviceFeatures } from "../src/index.ts";
 
 const EXPECTED_PRIORITIES: ReadonlyArray<readonly [string, number]> = [
+  ["lando.boot", 100],
   ["lando.user-id", 300],
   ["lando.storage", 500],
   ["lando.env", 700],

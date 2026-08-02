@@ -10,6 +10,7 @@ import { pathsRule } from "./rules/paths.ts";
 import { probeRule } from "./rules/probe.ts";
 import { redactionRule } from "./rules/redaction.ts";
 import { rendererRule } from "./rules/renderer.ts";
+import { specReferenceRule } from "./rules/spec-reference.ts";
 import { stateStoreRule } from "./rules/state-store.ts";
 import type { BoundaryRule } from "./types.ts";
 
@@ -25,6 +26,7 @@ export const BOUNDARY_RULE_IDS = [
   "probe",
   "redaction",
   "renderer",
+  "spec-reference",
   "state-store",
   "generated-output",
 ] as const;
@@ -41,6 +43,7 @@ export const BOUNDARY_RULES: ReadonlyMap<string, BoundaryRule> = new Map<string,
   [probeRule.id, probeRule],
   [redactionRule.id, redactionRule],
   [rendererRule.id, rendererRule],
+  [specReferenceRule.id, specReferenceRule],
   [stateStoreRule.id, stateStoreRule],
   [generatedOutputRule.id, generatedOutputRule],
 ]);

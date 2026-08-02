@@ -10,18 +10,29 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
   <Scenario id="doctor-subsystem-records" render={false} reason="The subsystem diagnostics run against the bundled default Live Layers; the production subsystem layers require the global app and a running provider">
     <Step name="subsystem-records">
       <Variable name="command" value="lando doctor" display="Aggregates the selected-provider diagnostics with one check per subsystem" />
-      <Variable name="subsystems" value="proxy, certs, ssh, healthcheck, scanner, host-proxy" display="Each subsystem reports a status alongside the selected provider" />
+      <Variable name="subsystems" value="proxy, certs, ssh, healthcheck, scanner, host-proxy, network-trust" display="Each subsystem reports a status alongside the selected provider; network-trust is appended last, after host-proxy" />
       <Variable name="recordShape" value="{ status, severity, context, solutions }" display="Each subsystem check uses the diagnostic record shape" />
       <Variable name="statusValues" value="pass | warn | fail" display="Subsystem status; severity is one of info | warn | error" />
     </Step>
   </Scenario>
 
-  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers expose degraded remediation without treating an explicitly disabled host-proxy as broken; the live layers ship with the global app and @lando/ca-mkcert">
+  <Scenario id="doctor-subsystem-remediation" render={false} reason="The bundled subsystem layers expose degraded remediation without treating an explicitly disabled host-proxy as broken; certs is resolved through the optional CertificateAuthorityResolver service rather than a required subsystem service tag">
     <Step name="subsystem-remediation">
       <Variable name="proxyRemediation" value="Run `lando setup` and start the global app to enable Traefik routing." display="proxy subsystem remediation when the HTTPS reverse proxy is not available" />
       <Variable name="certsRemediation" value="Run `lando setup` to install and trust the dev CA." display="certs subsystem remediation when the certificate authority is not installed" />
       <Variable name="hostProxyContext" value="active=false, mode=none, mechanism=skipped, baseDomain=lndo.site, loopback=127.0.0.1" display="an intentionally disabled host-proxy is an informational pass with structured status context" />
       <Variable name="solutionKind" value="manual" display="Degraded subsystem remediations are manual; the suggested command is `lando setup`" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="doctor-certs-status" render={false} reason="certsDoctorStatus resolves through the optional CertificateAuthorityResolver service tag (Effect.serviceOption), not a hard subsystem requirement; doctor-certs-status tests cover every resolution outcome and its redacted context">
+    <Step name="certs-resolution">
+      <Variable name="resolver" value="CertificateAuthorityResolver (optional service)" display="Certs status is resolver-backed: when no CertificateAuthorityResolver is provided the check reports unresolved (subsystem id unavailable) instead of failing; the check reflects resolver/plugin availability, not the mkcert binary or trust-store install state" />
+      <Variable name="selected" value="subsystem id becomes the resolved authority's id (e.g. mkcert)" display="A successful resolve reports a pass with the winning candidate's plugin id and no extra context keys" />
+      <Variable name="unavailable" value="certsReason=unavailable, certsDetail" display="No candidate authority is registered; certsDetail carries the redacted NoCertificateAuthorityError message and remediation" />
+      <Variable name="ambiguous" value="certsReason=ambiguous, certsCandidateIds, certsDetail" display="More than one authority plugin is registered; certsCandidateIds is a comma-joined, redacted list of candidate ids" />
+      <Variable name="loadFailed" value="certsReason=load-failed, certsPlugin, certsDetail" display="The resolver plugin itself failed to load, or the resolver defected; certsPlugin is 'unknown' for a bare resolver defect" />
+      <Variable name="remediation" value="lando setup" display="Every degraded certs status keeps the manual `lando setup` remediation used to install and trust the dev CA" />
     </Step>
   </Scenario>
 
@@ -40,13 +51,24 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
     </Step>
   </Scenario>
 
+  <Scenario id="doctor-network-trust" render={false} reason="The network-trust check is the final subsystem check, run after host-proxy; doctor-network-trust unit tests cover the healthy, unreadable-CA, malformed-CA-env, disabled-injection, and proxy-redaction outcomes without a live provider">
+    <Step name="network-trust-status">
+      <Variable name="checkName" value="network-trust" display="network-trust is the last subsystem check in the combined subsystem order: proxy, certs, ssh, healthcheck, scanner, host-proxy, network-trust" />
+      <Variable name="healthyContext" value="caConfigured, caCount, caLoaded, caTrustHost, caInjectIntoServices, proxyConfigured, proxyInjectIntoServices, noProxyCount" display="A pass/info result exposes only these safe, boolean/count-shaped context keys — in this exact order" />
+      <Variable name="unreadableOrMalformedCa" value="failure=missing-custom-ca" display="An unreadable configured CA path, or a malformed LANDO_NETWORK_CA_CERTS environment array, both resolve to a warn status with context { failure, message, remediation }" />
+      <Variable name="remediation" value="lando setup" display="Every network-trust warning carries a manual solution whose command is `lando setup`" />
+      <Variable name="injectionDisabled" value="pass / info, caInjectIntoServices=false" display="A configured, loaded CA with caInjectIntoServices or caTrustHost turned off stays an informational pass — disabling injection is not itself a failure" />
+      <Variable name="redactionGuarantee" value="no proxy URLs, no PEM bodies, no digests" display="The check never emits proxy URLs (credentials included), PEM certificate bodies, or certificate digests; an unreadable CA path preserves its path shape while any known secret segment is replaced with [redacted]" />
+    </Step>
+  </Scenario>
+
   <Scenario id="doctor-no-app-bootstrap" render={false} reason="Doctor safe mode starts without the normal runtime so provider bootstrap failures become diagnostics; focused resilience tests cover the scoped runtime build and degraded report">
     <Step name="no-app-bootstrap">
       <Variable name="bootstrapLevel" value="none" display="meta:doctor starts at bootstrap none and never requires app bootstrap unless --app is passed" />
       <Variable name="providerRuntime" value="built once inside doctor's scope" display="Doctor safely builds one provider runtime whose scope remains open for every runtime-dependent report section" />
       <Variable name="bootstrapFailure" value="provider-bootstrap self check" display="A provider runtime build failure produces an empty provider section and structured remediation instead of aborting the report" />
       <Variable name="continuedSections" value="subsystems, global-app, mcp, optional app checks" display="Sections that do not require the provider runtime still run after provider bootstrap fails" />
-      <Variable name="subsystemRequirements" value="ProxyService, CertificateAuthority, SshService, HealthcheckRunner, UrlScanner, HostProxyService" display="The subsystem diagnostics require only the six subsystem service tags — no AppPlanner or app context" />
+      <Variable name="subsystemRequirements" value="ProxyService, SshService, HealthcheckRunner, UrlScanner, HostProxyService" display="The subsystem diagnostics require only these five subsystem service tags — no AppPlanner or app context. Certs is resolved separately through the optional CertificateAuthorityResolver service and is not one of the five required tags" />
       <Variable name="ndjsonFixture" value="core/test/cli/fixtures/meta-doctor.subsystems.ndjson" display="JSON renderer snapshot covering every subsystem and the failing-state remediations" />
     </Step>
   </Scenario>

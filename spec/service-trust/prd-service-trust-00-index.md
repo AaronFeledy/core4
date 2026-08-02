@@ -9,7 +9,7 @@ Developers behind corporate TLS interception need containers to trust machine-lo
 This set is two PRDs:
 
 1. **Host-global CA/proxy inject** — close the service plane of §10.3.1 / §6.8 inject rules.
-2. **Leaf certs, boot, language trust, doctor, Traefik TLS** — `certs:` + mkcert Live, `lando.boot`, language CA env, doctor checks, **Traefik HTTPS certs**, guide pack completion.
+2. **Leaf certs, boot, language trust, doctor, Traefik TLS** — `certs:` + mkcert Live, `lando.boot`, artifact-step privilege and inherited-user preservation, language CA env, doctor checks, **Traefik HTTPS certs**, guide pack completion.
 
 **SSH:** The `lando.ssh-agent` / `SshService` path is **agent-socket forwarding**, not CertificateAuthority TLS. It does **not** belong in this cert/trust set (track separately).
 
@@ -19,7 +19,7 @@ This set is two PRDs:
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.3 load/import, §7.5–§7.6 network + env
 - [`spec/11-subsystems.md`](../11-subsystems.md) §10.2 proxy and routing, §10.3 CertificateAuthority + corporate proxies
 - [`spec/18-global-app.md`](../18-global-app.md) §20.10 proxy and CA realization through the global app (cite this file by name plus §20.10; "§18" is `spec/16-deprecation-and-surface-evolution.md` and is unrelated)
-- Execution order: [`prd.json`](./prd.json) `priority` (1..18, strict)
+- Execution order: [`prd.json`](./prd.json) `priority` (1..19, strict); US-489 precedes US-486, US-499 follows US-486, US-500 follows US-492, US-501 follows US-493, and US-496 runs last
 - Existing guide seed: [`docs/guides/subsystems/certificates-mkcert.mdx`](../../docs/guides/subsystems/certificates-mkcert.mdx)
 
 ## Goals
@@ -28,7 +28,8 @@ This set is two PRDs:
 - Landofile `security.ca` / `certs:` remain clear, documented, and guided.
 - mkcert-backed leaf certs work after `lando setup`.
 - Traefik terminates HTTPS with CA-issued certificates (not empty `tls: {}`).
-- `lando.boot` scaffolds `/etc/lando` for env and cert materialization.
+- `lando.boot` declares the `/etc/lando` scaffold intent for env and cert materialization.
+- A privileged artifact-step realizes that scaffold inside the built artifact for root and non-root parent artifacts and restores the parent's inherited effective user (US-501).
 - Doctor/setup remediate CA and network-trust problems.
 - **Every user-facing story includes guide MDX + `lint:guides` / `check:guide-coverage` / `check:guide-drift` (and public transcripts when applicable).**
 
@@ -45,7 +46,7 @@ This set is two PRDs:
 | #  | PRD | Subsystem | US range | Depends on |
 | -- | --- | --------- | -------- | ---------- |
 | 01 | [Host-global CA/proxy inject](./prd-service-trust-01-host-global-ca-proxy-inject.md) | security schema, env overlays, PEM load, `lando.security`, planner, production CA expressions, derived-build, setup note, corporate guide | US-483..US-489, US-499 | Spec inject contract landed |
-| 02 | [Leaf certs, boot, doctor, Traefik TLS](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + active CA selection + `lando.boot` + language CA env + doctor + **Traefik edge TLS** + guide pack | US-490..US-500 | PRD-01; US-491 before Traefik TLS |
+| 02 | [Leaf certs, boot, doctor, Traefik TLS](./prd-service-trust-02-certs-boot-doctor.md) | `certs:` + mkcert Live + `lando.certs` + active CA selection + `lando.boot` + artifact-step privilege and inherited-user preservation + language CA env + doctor + **Traefik edge TLS** + guide pack | US-490..US-501 | PRD-01; US-491 before Traefik TLS |
 
 ## Verification contract
 

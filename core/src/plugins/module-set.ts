@@ -9,6 +9,7 @@ type MapSlot =
   | "renderers"
   | "fileSyncEngines"
   | "templateEngines"
+  | "certificateAuthorities"
   | "proxyServices"
   | "globalServices"
   | "serviceTypes"
@@ -28,6 +29,7 @@ export interface PluginCapabilityIndex {
   readonly renderers: SlotMap<"renderers">;
   readonly fileSyncEngines: SlotMap<"fileSyncEngines">;
   readonly templateEngines: SlotMap<"templateEngines">;
+  readonly certificateAuthorities: SlotMap<"certificateAuthorities">;
   readonly proxyServices: SlotMap<"proxyServices">;
   readonly globalServices: SlotMap<"globalServices">;
   readonly serviceTypes: SlotMap<"serviceTypes">;
@@ -110,6 +112,12 @@ const descriptorMismatch = (module: LandoPluginModule): PluginDescriptorMismatch
     ),
     validateDescriptorIds(
       module,
+      "certificateAuthorities",
+      idsOf(contributes?.certificateAuthorities),
+      keysOf(module.certificateAuthorities),
+    ),
+    validateDescriptorIds(
+      module,
       "proxyServices",
       idsOf(contributes?.proxyServices),
       keysOf(module.proxyServices),
@@ -184,6 +192,7 @@ const computePluginCapabilityIndex = (
   const renderers = mutableMapFor<"renderers">();
   const fileSyncEngines = mutableMapFor<"fileSyncEngines">();
   const templateEngines = mutableMapFor<"templateEngines">();
+  const certificateAuthorities = mutableMapFor<"certificateAuthorities">();
   const proxyServices = mutableMapFor<"proxyServices">();
   const globalServices = mutableMapFor<"globalServices">();
   const serviceTypes = mutableMapFor<"serviceTypes">();
@@ -209,6 +218,7 @@ const computePluginCapabilityIndex = (
       add(renderers, module.renderers ?? [], "renderers"),
       add(fileSyncEngines, module.fileSyncEngines ?? [], "fileSyncEngines"),
       add(templateEngines, module.templateEngines ?? [], "templateEngines"),
+      add(certificateAuthorities, module.certificateAuthorities ?? [], "certificateAuthorities"),
       add(proxyServices, module.proxyServices ?? [], "proxyServices"),
       add(globalServices, module.globalServices ?? [], "globalServices"),
       add(serviceTypes, module.serviceTypes ?? [], "serviceTypes"),
@@ -236,6 +246,7 @@ const computePluginCapabilityIndex = (
     renderers,
     fileSyncEngines,
     templateEngines,
+    certificateAuthorities,
     proxyServices,
     globalServices,
     serviceTypes,

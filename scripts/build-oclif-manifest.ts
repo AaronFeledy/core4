@@ -137,7 +137,7 @@ const main = async (): Promise<void> => {
 
   const manifest = { commands, version: config.version } satisfies Interfaces.Manifest;
 
-  await writeFormattedOutput(JSON_OUTPUT, `${JSON.stringify(manifest, null, 2)}\n`);
+  await Bun.write(JSON_OUTPUT, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFormattedOutput(TS_OUTPUT, renderCompiledManifestModule(manifest));
   await writeFormattedOutput(COMMAND_IDS_OUTPUT, renderCommandIdsModule(Object.keys(commands)));
   console.log(

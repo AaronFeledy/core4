@@ -14,6 +14,7 @@ bun run lint
 bun run check:import-cycle
 bun run check:package-dag
 bun run check:renderer-boundary
+bun run check:spec-reference
 bun run check:managed-file-boundary
 bun run check:telemetry-inventory
 bun run check:redaction-boundary

@@ -87,19 +87,19 @@
     "surface": "command:app:config",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:edit",
@@ -111,19 +111,19 @@
     "surface": "command:app:config:edit",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:edit",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:edit",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:set",
@@ -135,19 +135,19 @@
     "surface": "command:app:config:set",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:set",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:set",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:unset",
@@ -159,19 +159,19 @@
     "surface": "command:app:config:unset",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:unset",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:unset",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:validate",
@@ -183,19 +183,19 @@
     "surface": "command:app:config:validate",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:validate",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config:validate",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config",
@@ -207,19 +207,19 @@
     "surface": "command:meta:global:config",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:edit",
@@ -231,19 +231,19 @@
     "surface": "command:meta:global:config:edit",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:edit",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:edit",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:set",
@@ -255,19 +255,19 @@
     "surface": "command:meta:global:config:set",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:set",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:set",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:unset",
@@ -279,19 +279,19 @@
     "surface": "command:meta:global:config:unset",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:unset",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:unset",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:validate",
@@ -303,19 +303,19 @@
     "surface": "command:meta:global:config:validate",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:validate",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:meta:global:config:validate",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:LandofileShape",
@@ -327,25 +327,25 @@
     "surface": "schema:LandofileShape",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:LandofileShape",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:LandofileShape",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:ProviderCapabilities",
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
-    "justification": "Additive optional composeServiceFields, composeProjectFields, and composePreservedPaths capability structs per amended spec §5.4 native-tier fail-closed refinements."
+    "justification": "Additive optional composeServiceFields, composeProjectFields, and composePreservedPaths capability structs: fail-closed refinements where a runtime knob or field is honored only when the provider's composeSpec tier is native and the exact key appears in the capability's supported set; a non-empty supported set declared at a non-native tier is rejected as an inconsistent capability declaration."
   },
   {
     "surface": "schema:ServiceConfig",
@@ -393,7 +393,7 @@
     "surface": "schema:ServiceConfig",
     "changeKind": "unsupported-keyword",
     "path": "$.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:ServiceConfigInput",
@@ -441,7 +441,7 @@
     "surface": "schema:ServiceConfigInput",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:TemplateRenderContext",
@@ -453,19 +453,19 @@
     "surface": "schema:TemplateRenderContext",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.additionalProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:TemplateRenderContext",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.patternProperties",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "schema:TemplateRenderContext",
     "changeKind": "unsupported-keyword",
     "path": "$.$defs.ServiceConfigInput.propertyNames",
-    "justification": "Service schemas accept service-level x-* extension fields preserved inert per spec §5.4/§6.2; acceptance widening (US-482)."
+    "justification": "Service schemas accept service-level x-* extension fields, preserved inert and not capability-gated (the common service schema's rule for service-level x-* fields); acceptance widening (US-482)."
   },
   {
     "surface": "command:app:config",
@@ -556,5 +556,23 @@
     "changeKind": "ref-graph-changed",
     "path": "$.$defs",
     "justification": "Service security CA fields intentionally add path and expression reference definitions while preserving prior accepted forms (US-499)."
+  },
+  {
+    "surface": "schema:EmbeddingPluginPolicy",
+    "changeKind": "unsupported-construct",
+    "path": "$.anyOf",
+    "justification": "Embedding plugin policy now types pre-resolved manifest entries as ResolvedPluginInput while preserving the existing policy modes and discovery variants (US-500)."
+  },
+  {
+    "surface": "schema:PluginContribution",
+    "changeKind": "property-removed",
+    "path": "$.cas",
+    "justification": "The unreleased cas contribution key is replaced before Beta by the normative typed certificateAuthorities surface; no shipped consumer contract exists (US-500)."
+  },
+  {
+    "surface": "schema:PluginManifest",
+    "changeKind": "property-removed",
+    "path": "$.contributes.cas",
+    "justification": "The unreleased cas manifest key is replaced before Beta by the normative typed certificateAuthorities contribution; no shipped consumer contract exists (US-500)."
   }
 ]

@@ -101,7 +101,7 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | PRD-11 | US-272 | Testing API and deterministic TestRuntime | `docs/guides/library/testing-runtime.mdx` | Shipped |
 | PRD-11 | US-273, US-274, US-289, US-290, US-291, US-292 | Library entry points, `makeLandoRuntime`, `openLandoRuntime`, and App handles | `docs/guides/library/embedding-runtime.mdx` | Shipped |
 | PRD-11 | US-275 | Plugin SDK compatibility declaration | `docs/guides/plugins/sdk-compatibility.mdx` | Shipped |
-| PRD-11 | US-276, US-277, US-278, US-279 | Linux-x64 §17.9 acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Shipped |
+| PRD-11 | US-276, US-277, US-278, US-279 | Linux-x64 binary-shipping acceptance rehearsal | `docs/guides/release/linux-acceptance-rehearsal.mdx` | Shipped |
 | PRD-12 | US-280, US-281, US-283 | Bundled default terminal renderer visual language | `docs/guides/cli/terminal-ui-polish.mdx` | Shipped |
 | PRD-12 | US-282 | OpenTUI-backed interactive prompts | `docs/guides/cli/interactive-prompts.mdx` | Shipped |
 | PRD-12 | US-284 | Terminal renderer visual QA | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
@@ -118,7 +118,8 @@ guide path declared in a PRD's `## Guide Coverage` section appears below and tha
 | BETA1-PRD-15 | US-457 | Frame-snapshot / visual-QA coverage for the renderer substrate | `docs/guides/contributing/terminal-renderer-visual-qa.mdx` | Shipped |
 | ST-PRD-01 | US-483, US-484, US-485, US-486, US-487, US-488, US-489, US-499 | host-global corporate CA / proxy inject into `type: lando` services | `docs/guides/config/corporate-network-trust.mdx` | Shipped |
 | ST-PRD-02 | US-490, US-491, US-492 | `certs:` authoring, mkcert Live, and `lando.certs` leaf issuance | `docs/guides/subsystems/certificates-mkcert.mdx` | Shipped |
-| ST-PRD-02 | US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Planned |
+| ST-PRD-02 | US-493 | `lando.boot` `/etc/lando` scaffold contract | `docs/guides/services/lando-boot-scaffold.mdx` | Shipped |
+| ST-PRD-02 | US-501 | non-root parent-artifact privileged realization and inherited-user preservation for `lando.boot` | `docs/guides/services/lando-boot-scaffold.mdx` | Shipped |
 | ST-PRD-02 | US-494, US-496 | language-runtime CA env table and guide-pack closure | `docs/guides/config/corporate-network-trust.mdx` | Planned |
 | ST-PRD-02 | US-495, US-498 | doctor CA, network-trust, and proxy TLS readiness checks | `docs/guides/subsystems/doctor-walkthrough.mdx` | Shipped |
 | ST-PRD-02 | US-495 | global-app doctor certs surface | `docs/guides/global/doctor-walkthrough.mdx` | Shipped |

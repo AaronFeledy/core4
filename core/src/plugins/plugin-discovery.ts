@@ -19,12 +19,12 @@ import { type ExternalPluginModule, loadInstalledPlugin } from "./installed-plug
 import { readInstalledPluginRegistry } from "./installed-registry.ts";
 import { pluginManifestError } from "./plugin-module-path.ts";
 
-export type PluginSourceKind = "system" | "user" | "app";
+export type PluginSourceKind = "bundled" | "system" | "user" | "app" | "explicit";
 
 export interface DiscoveredPlugin {
   readonly source: PluginSourceKind;
   readonly manifest: PluginManifest;
-  readonly module?: ExternalPluginModule;
+  readonly module?: ExternalPluginModule | LandoPluginModule;
 }
 
 const isAppFeature = (value: unknown): value is AppFeatureDefinition =>
@@ -87,7 +87,6 @@ export const findExternalServiceType = (
   id: string,
 ): ServiceType | undefined => {
   for (const plugin of plugins) {
-    if (plugin.source === "system") continue;
     const serviceType = externalServiceType(plugin, id);
     if (serviceType !== undefined) return serviceType;
   }
@@ -96,7 +95,7 @@ export const findExternalServiceType = (
 
 const warnPluginDiscoveryFailure = (
   logger: Context.Tag.Service<typeof Logger> | undefined,
-  source: Exclude<PluginSourceKind, "system">,
+  source: "system" | "user" | "app",
   pluginName: string,
   cause: PluginManifestError | PluginLoadError,
 ): Effect.Effect<void> =>
@@ -109,7 +108,7 @@ const warnPluginDiscoveryFailure = (
         .pipe(Effect.catchAll(() => Effect.void));
 
 export const discoverInstalledPlugins = (
-  source: Exclude<PluginSourceKind, "system">,
+  source: "system" | "user" | "app",
   pluginsRoot: string,
   logger: Context.Tag.Service<typeof Logger> | undefined,
 ): Effect.Effect<ReadonlyArray<DiscoveredPlugin>> =>
@@ -174,6 +173,7 @@ export const systemPluginsFromModules = (
   modules: ReadonlyArray<LandoPluginModule>,
 ): ReadonlyArray<DiscoveredPlugin> =>
   modules.map((module) => ({
-    source: "system",
+    source: "bundled",
     manifest: module.manifest,
+    module,
   }));

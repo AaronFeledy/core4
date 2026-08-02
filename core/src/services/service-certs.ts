@@ -11,7 +11,12 @@ import { resolve } from "node:path";
 
 import { type Context, Effect } from "effect";
 
-import { LandofileValidationError } from "@lando/sdk/errors";
+import {
+  type AmbiguousCertificateAuthoritiesError,
+  LandofileValidationError,
+  type NoCertificateAuthorityError,
+  type PluginLoadError,
+} from "@lando/sdk/errors";
 import type { RouteInput, ServiceConfig } from "@lando/sdk/schema";
 import type { CertificateAuthorityShape, FileSystem } from "@lando/sdk/services";
 
@@ -38,7 +43,12 @@ interface ResolveCertsFeatureInput {
   readonly hostnames: ReadonlyArray<string>;
   readonly routes: ReadonlyArray<RouteInput>;
   readonly defaultRouteHostname?: string | undefined;
-  readonly certificateAuthority?: CertificateAuthorityShape | undefined;
+  readonly resolveCertificateAuthority?:
+    | Effect.Effect<
+        CertificateAuthorityShape,
+        NoCertificateAuthorityError | AmbiguousCertificateAuthoritiesError | PluginLoadError
+      >
+    | undefined;
   readonly fileSystem?: Pick<Context.Tag.Service<typeof FileSystem>, "stat" | "readFile"> | undefined;
 }
 
@@ -108,12 +118,20 @@ const issueCertificate = (
   input: ResolveCertsFeatureInput,
 ): Effect.Effect<CertsFeatureConfig, LandofileValidationError> =>
   Effect.gen(function* () {
-    const ca = input.certificateAuthority;
-    if (ca === undefined) {
+    const resolveAuthority = input.resolveCertificateAuthority;
+    if (resolveAuthority === undefined) {
       return yield* Effect.fail(
         validationError(input, `requires an active certificate authority. ${CA_REMEDIATION}`),
       );
     }
+    const ca = yield* resolveAuthority.pipe(
+      Effect.mapError((cause) =>
+        validationError(
+          input,
+          `${cause.message} ${"remediation" in cause ? cause.remediation : CA_REMEDIATION}`,
+        ),
+      ),
+    );
     const cn = internalAlias(input.serviceName, input.appName);
     const sans = certificateSans(input);
     const issued = yield* ca

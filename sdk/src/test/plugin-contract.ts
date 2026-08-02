@@ -27,7 +27,7 @@ const pluginContributionLayerExports: ReadonlyArray<{
   readonly key: keyof NonNullable<PluginManifest["contributes"]>;
   readonly exportName: PluginLayerExportName;
 }> = [
-  { key: "cas", exportName: "ca" },
+  { key: "certificateAuthorities", exportName: "ca" },
   { key: "fileSyncEngines", exportName: "engine" },
   { key: "loggers", exportName: "logger" },
   { key: "providers", exportName: "provider" },

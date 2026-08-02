@@ -10,6 +10,7 @@ import { makeLandoPaths } from "@lando/paths";
 import { resolveUserDataRoot } from "../config/roots.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
 import { composeExtendedServiceType } from "../services/extends.ts";
+import { PluginContributionGraph } from "./contribution-graph.ts";
 import { BUNDLED_PLUGIN_MODULES } from "./generated/bundled.ts";
 import { GlobalPluginManifests } from "./global-manifests.ts";
 import { type PluginCapabilityIndex, makePluginCapabilityIndex } from "./module-set.ts";
@@ -39,6 +40,7 @@ interface PluginRegistryInput {
   readonly discovery: PluginRegistryDiscoveryOptions;
   readonly bundledPlugins: ReadonlyArray<DiscoveredPlugin>;
   readonly capabilities: PluginCapabilityIndex;
+  readonly staticPlugins?: ReadonlyArray<DiscoveredPlugin>;
 }
 
 const makePluginRegistry = (
@@ -48,7 +50,9 @@ const makePluginRegistry = (
 ): PluginRegistryServices => {
   const { capabilities, discovery } = input;
   const disabled = new Set(discovery.disable ?? []);
+  const staticPlugins = input.staticPlugins;
   const discoverGlobalPlugins = Effect.gen(function* () {
+    if (staticPlugins !== undefined) return staticPlugins.filter((plugin) => plugin.source !== "app");
     const userDataRoot =
       configService === undefined
         ? resolveUserDataRoot()
@@ -60,6 +64,7 @@ const makePluginRegistry = (
     return yield* mergeDiscoveredPlugins([input.bundledPlugins, userPlugins], logger);
   });
   const discoverPlugins = Effect.gen(function* () {
+    if (staticPlugins !== undefined) return staticPlugins;
     const globalPlugins = yield* discoverGlobalPlugins;
     const appRoot =
       discovery.app === false ? undefined : yield* Effect.promise(() => findAppRoot(process.cwd()));
@@ -150,7 +155,6 @@ const makePluginRegistry = (
 
         const plugins = yield* discoverPlugins;
         for (const plugin of plugins) {
-          if (plugin.source === "system") continue;
           const appFeature = externalAppFeature(plugin, id);
           if (appFeature !== undefined) return yield* ensureScopedAppFeature(appFeature);
         }
@@ -176,10 +180,20 @@ export const makePluginRegistryLive = (
     Effect.gen(function* () {
       const configService = yield* Effect.serviceOption(ConfigService);
       const logger = yield* Effect.serviceOption(Logger);
-      const enabledModules =
-        discovery.bundled === false
-          ? []
-          : modules.filter((module) => !(discovery.disable ?? []).includes(module.manifest.name));
+      const graph = yield* Effect.serviceOption(PluginContributionGraph);
+      const staticPlugins = graph._tag === "Some" ? graph.value.plugins : undefined;
+      let enabledModules: ReadonlyArray<LandoPluginModule>;
+      if (staticPlugins !== undefined) {
+        enabledModules = staticPlugins.flatMap((plugin) =>
+          plugin.source === "bundled" && plugin.entry !== undefined ? [plugin.entry] : [],
+        );
+      } else if (discovery.bundled === false) {
+        enabledModules = [];
+      } else {
+        enabledModules = modules.filter(
+          (module) => !(discovery.disable ?? []).includes(module.manifest.name),
+        );
+      }
       const capabilities = yield* Either.match(makePluginCapabilityIndex(enabledModules), {
         onLeft: (error) => Effect.fail(error),
         onRight: (index) => Effect.succeed(index),
@@ -191,6 +205,7 @@ export const makePluginRegistryLive = (
           discovery,
           bundledPlugins: systemPluginsFromModules(enabledModules),
           capabilities,
+          ...(staticPlugins === undefined ? {} : { staticPlugins }),
         },
       );
       return Context.make(PluginRegistry, services.registry).pipe(

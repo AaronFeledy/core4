@@ -71,7 +71,10 @@ not replace either injection flag.
 
 When a `type: lando` service receives one or more injected CAs, each host PEM is mounted read-only
 under `/usr/local/share/ca-certificates`. The runtime trust paths stay fixed before and after the
-service image is rebuilt:
+service image is rebuilt. The [`lando.boot` scaffold](../services/lando-boot-scaffold.mdx) emits a
+provider-neutral, artifact-phase intent for the shared `/etc/lando/certs` directory; `lando.security`
+also creates that directory itself before it writes its CA bundle there, so the bundle path below is
+independent of `lando.boot`'s realization state:
 
 ```text
 NODE_EXTRA_CA_CERTS=/etc/lando/certs/ca-bundle.pem
@@ -81,6 +84,18 @@ LANDO_CA_CERT=/etc/lando/certs/ca-bundle.pem
 LANDO_CA_BUNDLE=/etc/lando/certs/ca-bundle.pem
 LANDO_CA_DIR=/etc/lando/certs
 ```
+
+The bundled language service types consume that trust material as follows:
+
+| Runtime | Effective CA behavior when CA material injects |
+| --- | --- |
+| Python | `REQUESTS_CA_BUNDLE` points to `/etc/lando/certs/ca-bundle.pem`. `SSL_CERT_FILE` uses that path unless the service already authored a value, which Lando preserves. |
+| Node.js | `NODE_EXTRA_CA_CERTS` points to `/etc/lando/certs/ca-bundle.pem`. |
+| PHP | `SSL_CERT_FILE` and `SSL_CERT_DIR` provide the OpenSSL trust paths. |
+| Ruby | `SSL_CERT_FILE` and `SSL_CERT_DIR` provide the OpenSSL trust paths. |
+| Go | The derived service artifact installs the injected CAs into the system trust store; no Go-specific environment variable is required. |
+
+These runtime variables are absent when the service receives no injected CA material.
 
 Run `lando rebuild` after CA material changes so the service artifact registers the updated trust
 store. The bundle and directory paths do not change across that rebuild.
@@ -149,7 +164,7 @@ service out. Read a service's effective trust material from its plan or from
     <Step name="use-runtime-ca-paths">
       <Variable name="bundle" value="/etc/lando/certs/ca-bundle.pem" display="Use the stable concatenated CA bundle path" />
       <Variable name="directory" value="/etc/lando/certs" display="Use the stable Lando CA directory" />
-      <Variable name="runtimeEnv" value="NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR" display="Point Node and OpenSSL-family runtimes at injected CA material" />
+      <Variable name="runtimeEnv" value="REQUESTS_CA_BUNDLE, NODE_EXTRA_CA_CERTS, SSL_CERT_FILE, SSL_CERT_DIR" display="Point Python Requests, Node, and OpenSSL-family runtimes at injected CA material" />
       <Variable name="landoEnv" value="LANDO_CA_CERT, LANDO_CA_BUNDLE, LANDO_CA_DIR" display="Read the same paths through Lando's standard service environment" />
       <Variable name="rebuild" value="lando rebuild" display="Rebuild services after CA material changes" />
     </Step>

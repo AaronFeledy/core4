@@ -18,6 +18,7 @@ import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { ConfigServiceLive } from "../../services/config.ts";
 import { interruptOnAbort } from "./doctor-abort.ts";
+import { UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status.ts";
 import type { DoctorReport } from "./doctor-report-contract.ts";
 import { collectDoctorReport, doctorDeprecations } from "./doctor-report.ts";
 import { type DoctorSelfSolution, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
@@ -61,6 +62,10 @@ const collectResilientDoctorReport = (options: DoctorOptions): Effect.Effect<Doc
       // cannot fail even when the full runtime could not be built.
       return yield* collectDoctorReport({
         options,
+        certs:
+          context === undefined
+            ? Effect.succeed(UNRESOLVED_CERTS_STATUS)
+            : certsDoctorStatus(redactor.redactString).pipe(Effect.provide(context)),
         provider:
           context === undefined
             ? Effect.succeed({ checks: [] })

@@ -186,6 +186,25 @@ describe("plugin state paths", () => {
   });
 });
 
+describe("system plugin paths", () => {
+  test("derives the default plugin directory below the system plugin root", () => {
+    const paths = makeLandoPaths({ platform: "linux", home: "/home/tester", env: noEnv });
+
+    expect(paths.systemPluginsDir).toBe("/usr/local/share/lando/plugins");
+  });
+
+  test("derives the plugin directory from an overridden system plugin root", () => {
+    const paths = makeLandoPaths({
+      platform: "linux",
+      home: "/home/tester",
+      env: noEnv,
+      systemPluginRoot: "/opt/lando-system",
+    });
+
+    expect(paths.systemPluginsDir).toBe("/opt/lando-system/plugins");
+  });
+});
+
 describe("resolveLandoRoots precedence order", () => {
   const home = "/home/tester";
 

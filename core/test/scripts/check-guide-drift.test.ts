@@ -11,6 +11,7 @@ import {
   formatDriftDiagnostic,
   formatGuideDriftSummary,
   parseGuideCoverageSurfacePaths,
+  parsePrdSourceArgs,
 } from "../../../scripts/check-guide-drift.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
@@ -21,6 +22,18 @@ const scaffold = async (files: Record<string, string>): Promise<string> => {
     const absolute = resolve(root, rel);
     await mkdir(dirname(absolute), { recursive: true });
     await writeFile(absolute, content);
+  }
+  if (!("docs/guides/prd-sources.json" in files)) {
+    const directories = [
+      ...new Set(
+        Object.keys(files)
+          .filter((path) => path.startsWith("prd/") && path.endsWith(".md"))
+          .map((path) => dirname(path)),
+      ),
+    ];
+    const configPath = resolve(root, "docs/guides/prd-sources.json");
+    await mkdir(dirname(configPath), { recursive: true });
+    await writeFile(configPath, JSON.stringify({ directories, files: [] }));
   }
   return root;
 };
@@ -193,50 +206,54 @@ describe("checkGuideDrift (pure)", () => {
 });
 
 describe("checkGuideDriftOnDisk", () => {
-  test("reads real PRD declarations: recipe surface without guide fails", async () => {
-    const result = await checkGuideDriftOnDisk(repoRoot, {
-      changedFiles: ["core/src/recipes/git-source.ts"],
-      prBody: "Implements the git recipe source.",
-    });
-    expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-    expect(result.diagnostics.some((d) => d.message.includes("prd-alpha-3-07-recipes-full-breadth.md"))).toBe(
-      true,
-    );
-  });
-
-  test("reads real PRD declarations: recipe surface + its guide passes", async () => {
-    const result = await checkGuideDriftOnDisk(repoRoot, {
-      changedFiles: ["core/src/recipes/git-source.ts", "docs/guides/recipes/remote-sources.mdx"],
-      prBody: "Implements the git recipe source and updates the guide.",
-    });
-    expect(result.diagnostics).toEqual([]);
-  });
-
-  test("reads alpha-4 PRD declarations: App-handle surface without embedding guide fails", async () => {
-    const result = await checkGuideDriftOnDisk(repoRoot, {
-      changedFiles: ["core/src/app/handle.ts"],
-      prBody: "Adjusts App handle lifecycle behavior.",
-    });
-    expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
-    expect(
-      result.diagnostics.some((d) => d.message.includes("prd-alpha-4-11-library-and-acceptance.md")),
-    ).toBe(true);
-    expect(
-      result.diagnostics.some((d) => d.message.includes("docs/guides/library/embedding-runtime.mdx")),
-    ).toBe(true);
-  });
-
-  test("reads alpha-4 PRD declarations: App-handle surface + embedding guide passes", async () => {
-    const result = await checkGuideDriftOnDisk(repoRoot, {
-      changedFiles: ["core/src/app/handle.ts", "docs/guides/library/embedding-runtime.mdx"],
-      prBody: "Adjusts App handle lifecycle behavior and updates the guide.",
-    });
-    expect(result.diagnostics).toEqual([]);
-  });
-
   test("an empty changed-file set passes against the real repo", async () => {
     const result = await checkGuideDriftOnDisk(repoRoot, { changedFiles: [], prBody: "" });
     expect(result.diagnostics).toEqual([]);
+  });
+
+  test("passes with zero declarations when no PRD sources exist", async () => {
+    const root = await scaffold({
+      "docs/guides/prd-sources.json": JSON.stringify({ directories: [], files: [] }),
+    });
+    try {
+      const result = await checkGuideDriftOnDisk(root, {
+        changedFiles: ["core/src/recipes/x.ts"],
+        prBody: "changes a surface with no declared owner",
+      });
+      expect(result.diagnostics).toEqual([]);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("an explicitly supplied PRD source parses the same drift declaration", async () => {
+    const root = await scaffold({
+      "prd/custom/recipe.md": prdSection(
+        [{ story: "US-129", path: "docs/guides/recipes/remote-sources.mdx" }],
+        ["core/src/recipes/**"],
+      ),
+      "docs/guides/prd-sources.json": JSON.stringify({ directories: [], files: [] }),
+    });
+    try {
+      const result = await checkGuideDriftOnDisk(root, {
+        prdSources: ["prd/custom/recipe.md"],
+        changedFiles: ["core/src/recipes/x.ts"],
+        prBody: "changes the declared surface",
+      });
+      expect(codesFor(result.diagnostics)).toContain("drift.guide-not-touched");
+      expect(
+        result.diagnostics.some((diagnostic) => diagnostic.message.includes("prd/custom/recipe.md")),
+      ).toBe(true);
+    } finally {
+      await rm(root, { force: true, recursive: true });
+    }
+  });
+
+  test("shares repeatable PRD source CLI parsing with the coverage gate", () => {
+    expect(parsePrdSourceArgs(["--prd-source=prd/one", "--prd-source=prd/two.md"])).toEqual([
+      "prd/one",
+      "prd/two.md",
+    ]);
   });
 
   test("scaffolded PRD: touch-surface-without-guide fails, touch-both passes", async () => {

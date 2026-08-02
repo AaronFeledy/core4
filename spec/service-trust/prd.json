@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Service Trust (corporate inject, leaf certs, boot, doctor, Traefik TLS, guides)",
   "branchName": "docs/service-trust-prd",
-  "description": "PRD-01 (US-483..US-489 plus US-499): host-global corporate CA/proxy inject into type: lando services and the production Landofile load/import seam consumed by security.ca. PRD-02 (US-490..US-498 plus US-500): leaf certs + mkcert Live, CertificateAuthority runtime selection, lando.boot scaffolding, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..18, strict): US-489 precedes US-486, US-499 follows US-486, US-500 follows US-492, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
+  "description": "PRD-01 (US-483..US-489 plus US-499): host-global corporate CA/proxy inject into type: lando services and the production Landofile load/import seam consumed by security.ca. PRD-02 (US-490..US-498 plus US-500 and US-501): leaf certs + mkcert Live, CertificateAuthority runtime selection, lando.boot scaffolding, artifact-step privilege preservation, language CA env, doctor diagnostics, Traefik edge TLS, and the guide pack. SSH agent is out of scope (not TLS/CA). Every user-facing story requires executable guide coverage and guide gates; check:guide-coverage scans spec/service-trust so those criteria are enforced. Execution order is the priority field (1..19, strict): US-489 precedes US-486, US-499 follows US-486, US-500 follows US-492, US-501 follows US-493, and US-496 runs last because it closes the guide pack. Spec is source of truth.",
   "userStories": [
     {
       "id": "US-483",
@@ -217,7 +217,7 @@
       "acceptanceCriteria": [
         "lando.certs priority 1000 on lando base defaults.",
         "certs true issues SANs per section 6.8; custom paths validated; certs false no-op.",
-        "Composition tests inject a fake CA directly at AppPlanner's CertificateAuthority service seam; l337 skipped. US-500 owns plugin-module contribution publication, spec section 4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration; those are not US-492 acceptance.",
+        "Composition tests inject a fake CA through AppPlanner's CertificateAuthorityResolver seam; l337 skipped. US-500 owns plugin-module contribution publication, spec section 4.3 selection across CLI and embedding/discovery sources, bundled mkcert shipping, and bootstrap integration; those are not US-492 acceptance.",
         "Guide: certificates-mkcert documents service env and SAN coverage.",
         "Executable guide coverage updated for this user-facing behavior (render=false OK if unit-backed).",
         "bun run lint:guides and bun run check:guide-coverage pass for touched guides (final pack may complete in US-496).",
@@ -248,7 +248,7 @@
         "Lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02; adjudicated split from US-492 because active runtime wiring must satisfy the complete section 4.3 and embedding contribution graph rather than a bundled-only selector"
     },
     {
@@ -257,7 +257,7 @@
       "description": "As a user of type lando services, lando.boot materializes /etc/lando scaffold paths.",
       "acceptanceCriteria": [
         "lando.boot priority 100 on lando base defaults.",
-        "Realized as ARTIFACT-PHASE BUILD STEPS, not mounts (spec 6.13.1: the lando.boot scaffolding lives inside the built artifact); idempotent mkdir -p of /etc/lando, /etc/lando/env.d, /etc/lando/certs.",
+        "US-493 owns the provider-neutral plan seam: lando.boot emits one ARTIFACT-PHASE scaffold intent, not mounts (spec 6.13.1), whose idempotent command is mkdir -p /etc/lando /etc/lando/env.d /etc/lando/certs. Composition and compiled-plan proof of that exact intent satisfy this story. US-501 owns privileged realization when a parent artifact inherits a non-root effective user and restoration of that inherited user afterward.",
         "Does NOT write /etc/lando/environment, add env.d/*.sh sourcing, or export LANDO_LINUX_* — spec 6.11 assigns those to lando.env (priority 700), which already ships; a test asserts lando.env stays their only producer. Composition test asserts boot(100) -> env(700) -> certs(1000) -> security(1100) order and that /etc/lando/certs/ca-bundle.pem from PRD-01 is not shadowed or clobbered.",
         "l337 does not include boot.",
         "Guide: docs/guides/services/lando-boot-scaffold.mdx documents the boot contract and the lando.boot / lando.env ownership split; its docs/guides/INDEX.md row flips Planned -> Shipped in this story.",
@@ -268,8 +268,29 @@
         "Lint passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": "PRD-02"
+      "passes": true,
+      "notes": "PRD-02; adjudicated 2026-08-01: provider-neutral scaffold intent remains US-493, while non-root artifact-step privilege and inherited-user restoration moved to US-501"
+    },
+    {
+      "id": "US-501",
+      "title": "Artifact-step privilege and inherited-user preservation",
+      "description": "As the artifact builder, I can run lando.boot's system scaffold with sufficient privilege without changing the parent artifact's inherited effective user for later steps or runtime.",
+      "acceptanceCriteria": [
+        "Define a provider-neutral artifact-step privilege/effective-user contract sufficient for system-owned feature steps such as lando.boot; the feature must not embed provider-specific user-switch syntax.",
+        "lando.boot creates /etc/lando, /etc/lando/env.d, and /etc/lando/certs inside the built artifact for supported type: lando parent artifacts whose inherited effective user is either root or non-root.",
+        "A temporary privileged scaffold step restores the parent artifact's exact inherited effective user before later artifact groups and in the final artifact; it must not leave a non-root image running as root or override an explicitly authored final user.",
+        "Production-path artifact rendering/build tests cover root and non-root inherited-user parents, directory creation, exact user restoration, repeated planning/build-key stability, and later user-group ordering.",
+        "The existing l337 exclusion, lando.env ownership boundary, and lando.security CA-bundle path remain unchanged.",
+        "Guide: docs/guides/services/lando-boot-scaffold.mdx documents the non-root parent-image guarantee and effective-user preservation.",
+        "Executable guide coverage updated for this user-facing behavior (render=false OK if production-path artifact tests carry the privileged-build proof).",
+        "bun run lint:guides and bun run check:guide-coverage pass for the touched guide.",
+        "Tests pass",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 14,
+      "passes": true,
+      "notes": "PRD-02; adjudicated split from US-493 because the existing feature-step intent cannot express temporary privilege or restore an inherited non-root artifact user"
     },
     {
       "id": "US-494",
@@ -285,8 +306,8 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 14,
-      "passes": false,
+      "priority": 15,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -304,8 +325,8 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 15,
-      "passes": false,
+      "priority": 16,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -324,7 +345,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": "PRD-02. Origin: plugins/proxy-traefik tls: {} gap; spec/18-global-app.md section 20.10 + spec/11-subsystems.md sections 10.2-10.3"
     },
@@ -342,7 +363,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -364,7 +385,7 @@
         "Typecheck passes",
         "Lint passes"
       ],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": "PRD-02; includes Traefik guide"
     }

@@ -63,9 +63,10 @@ describe("@lando/service-lando package", () => {
     }
   });
 
-  test("publishes lando.security through packaged plugin.yaml", async () => {
+  test("publishes lando.boot and lando.security through packaged plugin.yaml", async () => {
     const manifest = await readFile(new URL("../plugin.yaml", import.meta.url), "utf8");
 
+    expect(manifest).toContain('- "lando.boot"');
     expect(manifest).toContain('- "lando.security"');
   });
 });

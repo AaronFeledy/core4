@@ -4,6 +4,34 @@
       "api": 4,
       "bootstrap": "app",
       "contributes": {
+        "certificateAuthorities": [
+          {
+            "defaultFor": {
+              "platform": ["darwin", "linux", "win32"]
+            },
+            "enabledByDefault": true,
+            "id": "mkcert",
+            "module": "./src/ca.ts",
+            "summary": "mkcert-backed local certificate authority"
+          }
+        ]
+      },
+      "description": "mkcert-backed CertificateAuthority implementation.",
+      "enabled": true,
+      "entry": "./src/index.ts",
+      "name": "@lando/ca-mkcert",
+      "requires": {
+        "@lando/core": "^4.0.0"
+      },
+      "version": "0.0.0"
+    },
+    "name": "@lando/ca-mkcert"
+  },
+  {
+    "manifest": {
+      "api": 4,
+      "bootstrap": "app",
+      "contributes": {
         "fileSyncEngines": ["mutagen"]
       },
       "description": "Mutagen-backed FileSyncEngine for accelerated bind mounts on slow-bind-mount providers.",
@@ -204,6 +232,7 @@
           }
         ],
         "serviceFeatures": [
+          "lando.boot",
           "lando.user-id",
           "lando.storage",
           "lando.env",

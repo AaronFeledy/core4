@@ -401,10 +401,23 @@ describe("AppPlannerLive", () => {
       const web = appPlan.services[ServiceName.make("web")];
       const buildSteps = (
         web?.extensions["@lando/core/service-features"] as
-          | { readonly buildSteps?: ReadonlyArray<unknown> }
+          | {
+              readonly buildSteps?: ReadonlyArray<{
+                readonly id: string;
+                readonly phase: string;
+                readonly command: unknown;
+              }>;
+            }
           | undefined
       )?.buildSteps;
-      expect(buildSteps).toEqual([
+      expect(buildSteps?.map(({ id }) => id)).toEqual([
+        "lando.boot:scaffold",
+        "lando-log-redirect-mkdir:access",
+        "lando-log-redirect:access",
+        "lando-log-redirect-mkdir:error",
+        "lando-log-redirect:error",
+      ]);
+      expect(buildSteps?.slice(1)).toEqual([
         {
           id: "lando-log-redirect-mkdir:access",
           phase: "build",
@@ -573,6 +586,7 @@ describe("AppPlannerLive", () => {
       const extension = web?.extensions["@lando/core/service-features"];
       expect(extension).toMatchObject({
         buildSteps: [
+          { id: "lando.boot:scaffold", phase: "build" },
           { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "npm ci"] } },
           { id: "authored-app:2", phase: "app", command: { command: ["sh", "-lc", "npm run build"] } },
         ],
@@ -743,6 +757,7 @@ describe("AppPlannerLive", () => {
         appPlan.services[ServiceName.make("worker")]?.extensions["@lando/core/service-features"],
       ).toMatchObject({
         buildSteps: [
+          { id: "lando.boot:scaffold", phase: "build" },
           { id: "authored-app:1", phase: "app", command: { command: ["sh", "-lc", "echo ready"] } },
         ],
       });
@@ -764,8 +779,9 @@ describe("AppPlannerLive", () => {
           | { readonly buildSteps?: ReadonlyArray<{ readonly id: string }> }
           | undefined
       )?.buildSteps;
-      expect(buildSteps?.every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
-      expect((buildSteps?.length ?? 0) > 0).toBe(true);
+      expect(buildSteps?.[0]?.id).toBe("lando.boot:scaffold");
+      expect(buildSteps?.slice(1).every((step) => step.id.startsWith("lando-log-redirect"))).toBe(true);
+      expect((buildSteps?.length ?? 0) > 1).toBe(true);
     });
   });
 

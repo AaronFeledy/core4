@@ -159,6 +159,7 @@ const artifactBuildStepInput = (step: unknown): unknown => {
     id: step.id,
     phase: step.phase,
     command: step.command,
+    privileged: step.privileged === true ? true : undefined,
     dependsOn: step.dependsOn,
     buildKeyInputs: step.buildKeyInputs,
     caFiles: Array.isArray(step.caFiles)

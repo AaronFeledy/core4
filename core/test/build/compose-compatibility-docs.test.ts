@@ -102,17 +102,6 @@ describe("Compose compatibility matrix", () => {
     );
   });
 
-  test("section 14.2 records the Compose subset as resolved by pointing at the generated matrix", async () => {
-    const tenets = await readText("spec/01-mission-and-tenets.md");
-
-    const openDecisions = sectionBetween(tenets, "### 14.2 Open decisions", "**Resolved since this draft:**");
-    const resolved = sectionBetween(tenets, "**Resolved since this draft:**", "**Deferred to post-v4.0");
-
-    expect(openDecisions).not.toContain("Exact Compose compatibility subset");
-    expect(resolved).toContain("Exact Compose compatibility subset");
-    expect(resolved).toContain("docs/reference/compose-key-matrix.mdx");
-  });
-
   test("the service-block guide and the generated matrix cross-link in both directions", async () => {
     const guide = await readText("docs/guides/config/compose-service-block.mdx");
     const matrix = await readText("docs/reference/compose-key-matrix.mdx");

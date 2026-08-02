@@ -3,8 +3,9 @@
  *
  * The single implementation lives in `@lando/paths` (`paths/src/paths.ts`): pure
  * logic, Node builtins and type-only SDK imports only, no Effect and no OCLIF.
- * Core re-exports it so the semver-stable `@lando/core/paths` subpath (§2.7,
- * §16.2) keeps resolving for embedding hosts and packed installs.
+ * Core re-exports it so the semver-stable `@lando/core/paths` subpath (part of
+ * the package's published `exports` map and its additive-export compatibility
+ * guarantee) keeps resolving for embedding hosts and packed installs.
  *
  * **Tree-shakeability:** importing one helper MUST NOT pull every export in the
  * package. Use `import { makeLandoPaths } from "@lando/core/paths"` — Bun's

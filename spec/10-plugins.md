@@ -246,7 +246,7 @@ The manifest is itself an Effect Schema. Validation runs before any plugin modul
 | `features` | `ServiceFeature` functions (mutate a single service plan; §6.11) | Service planner |
 | `appFeatures` | `AppFeature` functions (mutate selected services across the app plan; §6.11.4) | App planner |
 | `globalServices` | Service definitions contributed to the **global Lando app** (§20.4) | `GlobalAppService` |
-| `commands` | OCLIF + Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
+| `commands` | Lando commands (declare `namespace` and optional `topLevelAlias`; §8.1.1, §8.1.2) | Command registry |
 | `initSources` | `apps:init` sources | Init command |
 | `proxyServices` | `ProxyService` implementations | Proxy subsystem |
 | `tunnelServices` | `TunnelService` implementations for public app/service sharing (`lando share`, embedding-host share flows; §10.2.2) | Tunnel subsystem |
@@ -395,7 +395,7 @@ There are no legacy autoload directories. All contributions go through the manif
 2. Validating the manifest against the Effect Schema.
 3. Resolving dependency and API compatibility (rejects on conflict).
 4. Installing the package via `BunSelfRunner` (§3.4): the running binary self-spawns with `BUN_BE_BUN=1` and the resolved Bun verb (`add` for registry/git/tarball specs in the user-global plugin store; `install` for app-scoped `plugins:` resolution against an app's plugin store). The plugin install dir is the spawn `cwd`. Spawning a system `bun` from `$PATH` is forbidden; the compiled binary is itself Bun (§2.1). The library form falls back to a system `bun` when no embedded Bun is available, per the §3.4 contract.
-5. Refreshing the Lando plugin cache, plugin command index, and OCLIF command shim metadata.
+5. Refreshing the Lando plugin cache and the plugin command cache (`invalidatePluginCommandCache`, §12.1).
 
 The user therefore needs no separate Bun installation to install plugins. A user with only the Lando binary on PATH can run `lando plugin add @lando/provider-docker` and the binary self-spawns its embedded Bun to perform the install. This contract is checked by an end-to-end test on a clean container with no prior Bun in the §13.6 CI matrix.
 
@@ -410,14 +410,14 @@ App-declared `plugins:` do not install into the user-global plugin set. They are
 ### 9.7 Plugin loading rules
 
 - Manifest validation happens before any plugin module is loaded.
-- Bundled plugin modules are statically imported through the generated `src/plugins/bundled.ts` file and are part of the compiled binary.
+- Bundled plugin modules are statically imported through the generated `core/src/plugins/generated/bundled.ts` file and are part of the compiled binary.
 - User, system, app-local, and app-scoped plugin modules are loaded from disk outside the binary with dynamic `import()` of an absolute `file://` URL.
 - External plugin loading is staged: resolve/install the source, validate the manifest, resolve the contribution module path, verify API compatibility, verify the resolved realpath stays inside the plugin package root (or declared local plugin root), then import.
 - Manifest `module:` paths MUST be relative paths or package-export entries that resolve inside the plugin package root after realpath resolution. Paths that escape via `../`, symlinks, absolute paths, or `file://` URLs outside the root are rejected with `PluginModulePathError`.
 - Runtime imports use absolute `file://` URLs only. CWD-relative dynamic imports are forbidden.
 - App-scoped plugins from Landofile `plugins:` load only from the locked local copy recorded in `.lando.lock.yml`; routine app startup MUST NOT re-resolve the remote source.
-- Plugin command metadata is read from the validated plugin command cache during router bootstrap. Plugin command implementation modules are imported only after OCLIF resolves that command and runtime bootstrap reaches the command's declared level.
-- Each contribution module is loaded lazily on first request (e.g., `provider` is loaded when a provider is selected; `command` modules are loaded when OCLIF resolves them).
+- Plugin command metadata is read from the validated plugin command cache during router bootstrap. Plugin command implementation modules are imported only after command resolution and runtime bootstrap reach the command's declared level. Target: the native single-dispatcher registry (§8, §12.1) combines build-derived built-ins with validated plugin-command metadata. Current state: source mode resolves built-ins through the OCLIF adapter and its `core/src/cli/oclif/compiled-manifest.ts`, compiled mode uses `runCompiledCli`, and external plugin commands remain in the separate plugin-command cache. These are transitional implementation details, not the target contract.
+- Each contribution module is loaded lazily on first request (e.g., `provider` is loaded when a provider is selected; `command` modules are loaded when the command registry resolves them).
 - Config translator modules are loaded only when `app config translate`, `app config translate --detect`, or an embedding host explicitly requests translation.
 - A plugin module returning an Effect Layer is composed into `LandoRuntimeLive` at load time.
 - A plugin module returning a plain object is wrapped via `Layer.succeed`.
@@ -479,7 +479,7 @@ The authoring toolkit is **not** a plugin contribution surface. It is core code 
 | `meta:plugin:unlink <name>` | `plugins` | `BunSelfRunner` | Reverse of `link`; the previously installed registry copy is restored when the lockfile records one. |
 | `meta:plugin:publish` | `minimal` | `BunSelfRunner.publishPkg` | Publish the built artifact to a registry. Reads tokens from `<userDataRoot>/plugin-auth.json`; redacts them in lifecycle events. |
 
-None of these commands carries a default top-level alias; they are namespaced under `meta:plugin:` for discoverability and to keep the bare top-level surface uncluttered. OCLIF flexible taxonomy still accepts `lando plugin new <name>`, `lando plugin test`, etc.
+None of these commands carries a default top-level alias; they are namespaced under `meta:plugin:` for discoverability and to keep the bare top-level surface uncluttered. The colon form (`lando meta:plugin:new <name>`) is canonical under the native dispatch target (§8.4.1). Space-form access such as `lando plugin new <name>`, `lando plugin test`, etc. is today's OCLIF-backed behavior (flexible taxonomy, §8.4); whether the native parser continues to accept space-form is a per-namespace policy decision under §8.4.1, not a guarantee of this section.
 
 #### 9.10.2 `meta:plugin:new` templates
 
@@ -512,7 +512,7 @@ Both commands publish `cli-meta:plugin:test-*` and `cli-meta:plugin:build-*` lif
 
 #### 9.10.4 `meta:plugin:link` and `meta:plugin:unlink`
 
-`meta:plugin:link [<path>]` resolves a plugin source tree (defaulting to `cwd` per §9.10.3), validates the manifest, then registers the local path in the user-global plugin store at `<userDataRoot>/plugins/<name>` as a symlink. The plugin command index, OCLIF shim cache, and plugin cache are refreshed (§12.1). Subsequent `lando` invocations import the linked plugin's modules from the live source tree, so plugin authors get a real edit-build-test loop without re-running `meta:plugin:add`.
+`meta:plugin:link [<path>]` resolves a plugin source tree (defaulting to `cwd` per §9.10.3), validates the manifest, then registers the local path in the user-global plugin store at `<userDataRoot>/plugins/<name>` as a symlink. The plugin command cache is invalidated (`invalidatePluginCommandCache`, §12.1). Subsequent `lando` invocations import the linked plugin's modules from the live source tree, so plugin authors get a real edit-build-test loop without re-running `meta:plugin:add`.
 
 `meta:plugin:unlink <name>` reverses the operation. If the user's plugin lockfile (`<userDataRoot>/plugins/.lando.lock.yml`) records a registry-installed copy that the link replaced, the registry copy is restored via `BunSelfRunner.add`. Otherwise the plugin is simply removed.
 

@@ -2,33 +2,22 @@ import { describe, expect, test } from "bun:test";
 
 import { CA_ID, PLUGIN_NAME, engine, manifest, plugin } from "../src/index.ts";
 
-const contributionIds = (
-  entries: ReadonlyArray<string | { readonly id: string }> | undefined,
-): readonly string[] => (entries ?? []).map((entry) => (typeof entry === "string" ? entry : entry.id));
-
 describe("@lando/ca-mkcert plugin descriptor", () => {
   test("plugin.name matches manifest.name", () => {
-    // Given / When the additive descriptor is exported
-    // Then
     expect(plugin.name).toBe(manifest.name);
     expect(plugin.name).toBe(PLUGIN_NAME);
   });
 
-  test("manifest.contributes.cas is declared and descriptor exposes the CA layer", () => {
-    // Given — LandoPluginModule has no `cas` map slot (SDK gap)
-    const caIds = contributionIds(manifest.contributes?.cas);
+  test("manifest and descriptor expose the same certificate authority", () => {
+    const caIds = (manifest.contributes?.certificateAuthorities ?? []).map((entry) => entry.id);
 
-    // When / Then — contribution is declared on the manifest
     expect(caIds).toContain(CA_ID);
-    // Descriptor can only carry the CA via `layer` until a `cas` slot exists
-    expect(plugin.layer).toBeDefined();
-    expect("cas" in plugin).toBe(false);
+    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(engine);
+    expect(plugin.layer).toBeUndefined();
   });
 
   test("descriptor values are reference-identical to existing exports", () => {
-    // Given / When the descriptor wraps existing package exports
-    // Then
     expect(plugin.manifest).toBe(manifest);
-    expect(plugin.layer).toBe(engine);
+    expect(plugin.certificateAuthorities?.get(CA_ID)).toBe(engine);
   });
 });

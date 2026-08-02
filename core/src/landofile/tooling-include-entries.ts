@@ -107,9 +107,12 @@ const groupByNamespace = (
  * `toolingIncludes:` map composes them: a namespace redeclared by a
  * higher-precedence source overrides, and distinct namespaces accumulate.
  * Ordinary `includes:` arrays carry no merge identity key, so they replace
- * wholesale (§7.2); without this a declaration from a lower-precedence layer or
- * a sibling fragment would be dropped instead of composed, breaking the §7.7.1
- * equivalence between the two spellings.
+ * wholesale under Landofile merge rules (later layers override earlier; maps
+ * deep-merge, scalar arrays replace); without this a declaration from a
+ * lower-precedence layer or a sibling fragment would be dropped instead of
+ * composed, breaking the equivalence between the canonical `includes:` form
+ * and the `toolingIncludes:` shorthand — both must resolve through one
+ * resolver and produce equivalent plans.
  *
  * Declarations made *within* one source are siblings, not overrides: an
  * `includes:` array may legitimately point several fragments at one namespace,
@@ -249,9 +252,12 @@ export const normalizeToolingIncludes = (
 ];
 
 /**
- * `aliases:` alias the include-namespace (§8.5.8), which `flatten: true` removes,
- * so the pair would be accepted and then ignored. §8.5.8 fails an include-level
- * `dir:` closed for that same reason; this guard applies it to aliases.
+ * `aliases:` alias the include-namespace, which `flatten: true` removes, so the
+ * pair would be accepted and then ignored: flattening removes the
+ * include-namespace the aliases would alias. An include-level `dir:` is
+ * rejected for the same reason (task-level `dir:` is itself unsupported, so an
+ * include-level working directory would be accepted and then silently have no
+ * effect); this guard applies the same fail-closed rule to aliases.
  */
 export const assertNamespacing = (entry: NormalizedToolingInclude): LandofileIncludeError | undefined => {
   if (entry.flatten) {

@@ -5,105 +5,75 @@ import { describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 
-const readRepoFile = (path: string): Promise<string> => Bun.file(resolve(repoRoot, path)).text();
+const SOURCE_ROOTS = ["sdk/src", "core/src", "plugins"] as const;
 
-const listSpecFiles = async (dir = resolve(repoRoot, "spec")): Promise<ReadonlyArray<string>> => {
+const LEGACY_TOKENS = ["HostingProvider", "hosting-provider"] as const;
+
+/** Every sync lifecycle event the RemoteSource/Dataset contract publishes. */
+const SYNC_EVENT_EXPORTS = [
+  "PrePullEvent",
+  "PostPullEvent",
+  "PrePushEvent",
+  "PostPushEvent",
+  "PreDatasetFetchEvent",
+  "PostDatasetFetchEvent",
+  "PreDatasetApplyEvent",
+  "PostDatasetApplyEvent",
+  "PreDatasetCaptureEvent",
+  "PostDatasetCaptureEvent",
+  "PreDatasetSendEvent",
+  "PostDatasetSendEvent",
+] as const;
+
+const listSourceFiles = async (dir: string): Promise<ReadonlyArray<string>> => {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = await Promise.all(
     entries.map(async (entry) => {
       const path = resolve(dir, entry.name);
-      if (entry.isDirectory()) return listSpecFiles(path);
+      if (entry.isDirectory()) return entry.name === "node_modules" ? [] : listSourceFiles(path);
       if (!entry.isFile()) return [];
-      return /\.(md|json)$/.test(entry.name) ? [path] : [];
+      return /\.tsx?$/u.test(entry.name) ? [path] : [];
     }),
   );
 
   return files.flat();
 };
 
-const expectContains = (content: string, fragment: string): void => {
-  expect(content, `missing fragment: ${fragment}`).toContain(fragment);
-};
-
 describe("RemoteSource/Dataset canonical surface", () => {
-  test("keeps legacy hosting provider identifiers out of spec and PRD identifiers", async () => {
-    const files = await listSpecFiles();
-    const offenders: Array<string> = [];
-    const legacyTokens = ["HostingProvider", "hosting-provider"];
+  test("publishes the RemoteSource and Dataset service tags from @lando/sdk/services", async () => {
+    // Given/When: the published SDK service surface is loaded.
+    const services = await import("@lando/sdk/services");
 
+    // Then: both contract tags are part of it.
+    expect(services.RemoteSource).toBeDefined();
+    expect(services.Dataset).toBeDefined();
+  });
+
+  test("publishes every remote-sync lifecycle event schema from @lando/sdk/events", async () => {
+    // Given/When: the published event taxonomy is loaded.
+    const events: Readonly<Record<string, unknown>> = await import("@lando/sdk/events");
+
+    // Then: each sync event schema is exported.
+    const missing = SYNC_EVENT_EXPORTS.filter((name) => events[name] === undefined);
+    expect(missing).toEqual([]);
+  });
+
+  test("keeps legacy hosting-provider identifiers out of shipped source", async () => {
+    // Given: every TypeScript source file in the shipped packages.
+    const files = (
+      await Promise.all(SOURCE_ROOTS.map((root) => listSourceFiles(resolve(repoRoot, root))))
+    ).flat();
+
+    // When: each file is scanned for the superseded contract identifiers.
+    const offenders: string[] = [];
     for (const file of files) {
       const content = await Bun.file(file).text();
-      for (const token of legacyTokens) {
-        if (content.includes(token)) {
-          offenders.push(`${file.slice(repoRoot.length + 1)} (${token})`);
-        }
+      for (const token of LEGACY_TOKENS) {
+        if (content.includes(token)) offenders.push(`${file.slice(repoRoot.length + 1)} (${token})`);
       }
     }
 
+    // Then: none remain.
     expect(offenders).toEqual([]);
-  });
-
-  test("keeps RemoteSource and Dataset aligned across canonical surfaces", async () => {
-    const [pluggability, pluginManifest, contractSuites, events, landofile, embedding, roadmap, agents] =
-      await Promise.all([
-        readRepoFile("spec/04-pluggability.md"),
-        readRepoFile("spec/10-plugins.md"),
-        readRepoFile("spec/13-testing-and-distribution.md"),
-        readRepoFile("spec/03-architecture.md"),
-        readRepoFile("spec/07-landofile-and-config.md"),
-        readRepoFile("spec/09-embedding.md"),
-        readRepoFile("spec/ROADMAP.md"),
-        readRepoFile("AGENTS.md"),
-      ]);
-    const services = await import("@lando/sdk/services");
-
-    expectContains(pluggability, "| **Remote data sync** | `RemoteSource` |");
-    expectContains(pluggability, "| **Dataset** | `Dataset` |");
-    expectContains(pluggability, "Plugin contributes `remoteSources:`");
-    expectContains(pluggability, "Plugin contributes `datasets:`");
-
-    expectContains(pluginManifest, "| `remoteSources` | `RemoteSource` implementations");
-    expectContains(pluginManifest, "| `datasets` | `Dataset` implementations");
-
-    expectContains(contractSuites, "| RemoteSource contract | Shared contract suite");
-    expectContains(contractSuites, "| Dataset contract | Shared contract suite");
-
-    for (const eventName of [
-      "pre-pull",
-      "post-pull",
-      "pre-push",
-      "post-push",
-      "pre-dataset-fetch",
-      "post-dataset-fetch",
-      "pre-dataset-apply",
-      "post-dataset-apply",
-      "pre-dataset-capture",
-      "post-dataset-capture",
-      "pre-dataset-send",
-      "post-dataset-send",
-    ]) {
-      expectContains(events, eventName);
-    }
-
-    expectContains(landofile, "remotes:");
-    expectContains(landofile, "sync:");
-    expectContains(landofile, "RemoteSource");
-    expectContains(landofile, "Dataset");
-
-    expectContains(embedding, "readonly pull:");
-    expectContains(embedding, "readonly push:");
-    expectContains(embedding, "readonly remote: AppRemoteApi");
-
-    expectContains(roadmap, "`RemoteSource` + `Dataset`");
-    expectContains(roadmap, "contract-only");
-    expectContains(roadmap, "feature is 4.1");
-
-    expectContains(agents, "RemoteSource/Dataset contract freeze");
-    expectContains(agents, "`Dataset` x `RemoteSource`");
-    expectContains(agents, "never syncs application code");
-    expectContains(agents, "4.1 feature wave");
-
-    expect(services.RemoteSource).toBeDefined();
-    expect(services.Dataset).toBeDefined();
   });
 });

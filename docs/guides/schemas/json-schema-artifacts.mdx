@@ -9,7 +9,7 @@ tags: [beta, docs, schemas]
 <Guide>
   <Scenario id="public-schema-artifacts" render={false} reason="The schema artifact generator is covered by core/test/build/schema-snapshot.test.ts to avoid committing generated dist output">
     <Step name="generate">
-      <Variable name="command" value="bun run scripts/build-schema-snapshot.ts" display="Regenerate the §13.2 schema artifact set: public SDK schemas, command result schemas, metadata indexes, bundled manifests, and reference docs" />
+      <Variable name="command" value="bun run scripts/build-schema-snapshot.ts" display="Regenerate the published schema artifact set: public SDK schemas, command result schemas, metadata indexes, bundled manifests, and reference docs" />
       <Variable name="dialect" value="http://json-schema.org/draft-07/schema#" display="Every generated schema document uses draft-07 by default" />
       <Variable name="coverage" value="dist/schemas/index.json + dist/command-schemas/index.json" display="The indexes cover every public SDK registry entry and every exact canonical command id while each schema file remains standalone" />
     </Step>
