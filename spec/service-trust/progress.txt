@@ -1415,3 +1415,20 @@ Spec SoT:
   - MDX closure needs both structural guide lint and a focused `dev:guides --once` run; link presence alone does
     not prove the executable scenarios still compile and pass.
 ---
+
+## 2026-08-02 07:47 CDT - US-496 Review
+- Completed accurate global-proxy, setup, and doctor reader coverage; corrected proxy precedence, machine-output,
+  and doctor bootstrap claims found by review, and restored the missing setup/doctor trust-guide backlinks.
+- Made the default guide-coverage gate scan the service-trust PRDs and completed the certificates guide's US-500
+  mapping, so the bare gate now enforces the story's declared guide tables instead of passing vacuously.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because the account usage limit rejected the
+  required current-branch review; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected changing the runtime resolver's null-only proxy precedence as outside
+  this guide-pack story; the guide now states the current block-selection behavior precisely.
+- Review notes (deferred/rejected): Rejected a full-suite proof demand because this loop explicitly forbids bare
+  `bun test`; focused guide-tooling and executable-guide checks cover the changed surface.
+- Verification: typecheck and lint passed; 37 focused guide-coverage tests and 25 changed-guide scenarios passed;
+  guide lint, default service-trust coverage, base-aware drift, public transcripts, and diff checks passed.
+- **Learnings for future iterations:** A successful bare guide-coverage command is meaningful only when
+  `docs/guides/prd-sources.json` names the owning PRD source; an empty source list makes the matrix gate vacuous.
+---
