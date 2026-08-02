@@ -38,11 +38,11 @@ tags: [beta, docs, global, doctor, diagnostics]
     </Step>
   </Scenario>
 
-  <Scenario id="global-app-doctor-ndjson" render={false} reason="The JSON renderer (lando doctor --renderer=json) emits the global-app check as a standard doctor.check event in the ndjson stream">
+  <Scenario id="global-app-doctor-ndjson" render={false} reason="The JSON renderer (lando doctor --renderer=json) emits the global-app check as a standard doctor.check event in the ndjson stream; network-trust is the final subsystem check, added after host-proxy">
     <Step name="ndjson-stream">
       <Variable name="eventTag" value="doctor.check" display="The ndjson event tag for every check, including global-app" />
-      <Variable name="streamOrder" value="selected-provider, proxy, certs, ssh, healthcheck, scanner, host-proxy, global-app" display="Doctor checks appear in this order in the ndjson stream" />
-      <Variable name="totalChecks" value="8" display="Combined check count across provider + 6 subsystems + global-app when no provider-conflict check fires" />
+      <Variable name="streamOrder" value="selected-provider, runtime-service, proxy, certs, ssh, healthcheck, scanner, host-proxy, network-trust, global-app, mcp" display="Doctor checks appear in this order in the ndjson stream" />
+      <Variable name="totalChecks" value="11" display="Combined check count across 2 provider checks + 7 subsystems (proxy, certs, ssh, healthcheck, scanner, host-proxy, network-trust) + global-app + mcp when no provider-conflict check fires" />
     </Step>
   </Scenario>
 </Guide>

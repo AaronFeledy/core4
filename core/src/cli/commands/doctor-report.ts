@@ -12,8 +12,10 @@ import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } 
 import { lintLandofile } from "../../landofile/lint.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
 import { interruptOnAbort } from "./doctor-abort.ts";
+import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status.ts";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app.ts";
 import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp.ts";
+import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust.ts";
 import type {
   DoctorDeprecationEntry,
   DoctorDeprecationReport,
@@ -106,6 +108,7 @@ export interface CollectDoctorReportInput<R> {
   readonly options: DoctorOptions;
   readonly provider: Effect.Effect<DoctorResult, never, R>;
   readonly deprecations: Effect.Effect<DoctorDeprecationReport, never, R>;
+  readonly certs?: Effect.Effect<CertsDoctorStatus, never, R>;
   /** Self checks recorded before collection started (e.g. bootstrap failure). */
   readonly initialSelfChecks?: ReadonlyArray<DoctorSelfCheck>;
 }
@@ -139,9 +142,23 @@ export const collectDoctorReport = <R>(
     const provider = yield* section("provider", input.provider, EMPTY_CHECKS);
     // Provider-section self checks are lifted here so the report has one home for them.
     selfChecks.push(...(provider.selfChecks ?? []));
+    const certs = yield* section(
+      "certificate-authority",
+      input.certs ?? certsDoctorStatus(redact),
+      UNRESOLVED_CERTS_STATUS,
+    );
+    const networkTrust = yield* section<NetworkTrustDoctorStatus | undefined, unknown, ConfigService>(
+      "network-trust",
+      networkTrustDoctorStatus(sourceEnv),
+      undefined,
+    );
     const subsystems = yield* section(
       "subsystems",
-      subsystemDoctor({ fix: options.fix === true }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
+      subsystemDoctor({
+        fix: options.fix === true,
+        certs,
+        ...(networkTrust === undefined ? {} : { networkTrust }),
+      }).pipe(Effect.provide(DefaultSubsystemDoctorLayer)),
       EMPTY_CHECKS,
     );
     const globalApp = yield* section(

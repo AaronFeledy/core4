@@ -86,7 +86,7 @@ const buildLayers = (
   );
 
 const run = (provider: typeof TestRuntimeProvider): Promise<DoctorReport> =>
-  Effect.runPromise(doctorReport().pipe(Effect.provide(buildLayers(provider))));
+  Effect.runPromise(doctorReport({ env: {} }).pipe(Effect.provide(buildLayers(provider))));
 
 const deprecationNotice = (overrides: Partial<DeprecationNotice> = {}): DeprecationNotice => ({
   since: "4.1.0",
@@ -125,6 +125,7 @@ describe("meta:doctor combined report", () => {
       "healthcheck",
       "scanner",
       "host-proxy",
+      "network-trust",
     ]);
     expect(report.globalApp.checks[0]?.name).toBe("global-app");
     expect(report.mcp.checks[0]?.name).toBe("mcp");
@@ -137,7 +138,7 @@ describe("meta:doctor combined report", () => {
     const text = renderDoctorReport(report);
 
     expect(text).toContain("selected-provider: pass");
-    for (const name of ["proxy", "certs", "ssh", "healthcheck", "scanner", "host-proxy"]) {
+    for (const name of ["proxy", "certs", "ssh", "healthcheck", "scanner", "host-proxy", "network-trust"]) {
       expect(text).toContain(`${name}:`);
     }
     expect(text).toContain("global-app:");
@@ -149,7 +150,7 @@ describe("meta:doctor combined report", () => {
   test("does not require app bootstrap — runs with only ConfigService + RuntimeProviderRegistry", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await run(provider);
-    expect(report.subsystems.checks.length).toBe(6);
+    expect(report.subsystems.checks.length).toBe(7);
     expect(report.globalApp.checks.length).toBe(1);
   });
 
@@ -177,6 +178,7 @@ describe("meta:doctor combined report", () => {
       "healthcheck",
       "scanner",
       "host-proxy",
+      "network-trust",
       "global-app",
       "mcp",
     ]);
@@ -185,7 +187,7 @@ describe("meta:doctor combined report", () => {
       ok: true,
       result: {
         timestamp: "1970-01-01T00:00:00.000Z",
-        checks: 10,
+        checks: 11,
         failed: 0,
         warned: 4,
       },
@@ -243,7 +245,7 @@ describe("meta:doctor combined report", () => {
     try {
       process.chdir(dir);
       const report = await Effect.runPromise(
-        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+        doctorReport({ app: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
       );
 
       expect(report.appConfig).toBeDefined();
@@ -255,7 +257,7 @@ describe("meta:doctor combined report", () => {
 
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-config-lint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 11, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 12, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -270,7 +272,7 @@ describe("meta:doctor combined report", () => {
     try {
       process.chdir(dir);
       const report = await Effect.runPromise(
-        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+        doctorReport({ app: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
       );
 
       expect(report.appVersionConstraints?.checks[0]).toMatchObject({
@@ -287,7 +289,7 @@ describe("meta:doctor combined report", () => {
       expect(text).toContain("app-version-constraint: fail");
       const ndjson = renderDoctorReportAsNdjson(report, { now: new Date("1970-01-01T00:00:00.000Z") });
       expect(eventPayloads(ndjson).map((line) => line.name)).toContain("app-version-constraint");
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 12, failed: 1 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 13, failed: 1 });
     } finally {
       process.chdir(previousCwd);
       await rm(dir, { recursive: true, force: true });
@@ -305,7 +307,7 @@ describe("meta:doctor combined report", () => {
     try {
       process.chdir(dir);
       const report = await Effect.runPromise(
-        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+        doctorReport({ app: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
       );
 
       expect(report.appVersionConstraints?.checks[0]).toMatchObject({
@@ -336,7 +338,7 @@ describe("meta:doctor combined report", () => {
     try {
       process.chdir(dir);
       const report = await Effect.runPromise(
-        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+        doctorReport({ app: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
       );
 
       expect(report.appVersionConstraints?.checks[0]).toMatchObject({
@@ -443,7 +445,7 @@ describe("meta:doctor combined report", () => {
       process.chdir(dir);
       process.env.LANDO_SKIP_VERSION_CONSTRAINT = "1";
       const report = await Effect.runPromise(
-        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+        doctorReport({ app: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
       );
 
       expect(report.appVersionConstraints?.checks[0]).toMatchObject({
@@ -476,7 +478,7 @@ describe("meta:doctor combined report", () => {
         ),
       );
       const report = await Effect.runPromise(
-        doctorReport({ app: true }).pipe(Effect.provide(buildLayers(provider))),
+        doctorReport({ app: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
       );
 
       const text = renderDoctorReport(report);
@@ -508,7 +510,7 @@ describe("meta:doctor combined report", () => {
         yield* useDeprecation("command", "app:legacy");
         yield* useDeprecation("event", "legacy-event");
         yield* useDeprecation("command", "app:legacy");
-        return yield* doctorReport({ deprecations: true });
+        return yield* doctorReport({ deprecations: true, env: {} });
       }).pipe(Effect.provide(buildLayers(provider))),
     );
 
@@ -543,7 +545,7 @@ describe("meta:doctor combined report", () => {
     const report = await Effect.runPromise(
       Effect.gen(function* () {
         yield* useDeprecation("manifest-contribution", "legacy-plugin:globalServices.legacy-proxy");
-        return yield* doctorReport({ deprecations: true });
+        return yield* doctorReport({ deprecations: true, env: {} });
       }).pipe(Effect.provide(buildLayers(provider))),
     );
 
@@ -560,7 +562,7 @@ describe("meta:doctor combined report", () => {
   test("doctor --deprecations empty report states no deprecations were used at runtime", async () => {
     const provider = { ...TestRuntimeProvider, id: "lando" };
     const report = await Effect.runPromise(
-      doctorReport({ deprecations: true }).pipe(Effect.provide(buildLayers(provider))),
+      doctorReport({ deprecations: true, env: {} }).pipe(Effect.provide(buildLayers(provider))),
     );
 
     expect(report.deprecations?.entries).toEqual([]);
@@ -576,7 +578,7 @@ describe("meta:doctor combined report", () => {
       const report = await Effect.runPromise(
         Effect.gen(function* () {
           yield* useDeprecation("env-override", "LANDO_LEGACY");
-          return yield* doctorReport({ deprecations: true });
+          return yield* doctorReport({ deprecations: true, env: {} });
         }).pipe(Effect.provide(buildLayers(provider))),
       );
 
@@ -610,7 +612,7 @@ describe("meta:doctor combined report", () => {
         severity: "warn",
         count: 1,
       });
-      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 11 });
+      expect(resultEnvelope(ndjson).result).toMatchObject({ checks: 12 });
     } finally {
       process.env.LANDO_DEPRECATION_WARNINGS = undefined;
     }
@@ -625,7 +627,7 @@ describe("meta:doctor combined report", () => {
     await runWithRendererHandling(
       Effect.gen(function* () {
         yield* useDeprecation("command", "app:legacy", deprecationNotice({ severity: "info" }));
-        return yield* doctorReport({ deprecations: true, format: "json" });
+        return yield* doctorReport({ deprecations: true, format: "json", env: {} });
       }),
       {
         runtime: buildLayers(provider),
