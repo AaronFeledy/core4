@@ -134,6 +134,51 @@ may carry several certificate authorities, and `security.inheritNetworkCa: false
 service out. Read a service's effective trust material from its plan or from
 `/etc/lando/certs/ca-bundle.pem` inside the running service, not from setup output.
 
+## Configure a global proxy
+
+Author the corporate proxy under `network.proxy` in the global config. `http` and `https` are each
+a URL string or `null`; `noProxy` is a list of hostnames or suffixes; `injectIntoServices` controls
+whether the resolved proxy env reaches `type: lando` services:
+
+```yaml
+network:
+  proxy:
+    http: "http://proxy.corp.example:8080"
+    https: "http://proxy.corp.example:8080"
+    noProxy:
+      - "localhost"
+      - ".corp.example"
+    injectIntoServices: false
+```
+
+Proxy precedence is block-level, not field-level: a non-empty `http` or `https` value, or a
+non-empty `noProxy` list, makes the whole `network.proxy` block the sole source of proxy values for
+outbound requests. Lando then ignores the `HTTP_PROXY`, `HTTPS_PROXY`, and `NO_PROXY` environment
+variables (and their lowercase forms), even for a field you left unset. An absent block, or a block
+whose `http`, `https`, and `noProxy` values are all empty or unset, falls back to those environment
+variables instead. Within a block selected by another non-empty proxy value, set `http` or `https`
+to `null` to disable that direction without falling back to its environment variable. A block that
+contains only `null` values does not select config precedence by itself.
+
+`network.proxy.injectIntoServices` defaults to `false`, the opposite of
+`network.ca.injectIntoServices`'s default `true`. Proxy URLs can carry embedded credentials
+(`http://user:pass@proxy.corp.example:8080`), so Lando never writes proxy env into a service unless
+you opt in; CA certificates carry no comparable secret, so CA injection is set-and-forget by
+default. Set `security.inheritNetworkProxy` on one service to override the global default for that
+service only, independent of `security.inheritNetworkCa`: each flag is `true`, `false`, or omitted,
+and an omitted flag inherits its own global default, not the other flag's setting.
+
+When proxy injection runs for a service, `type: lando` services receive `HTTP_PROXY` only when an
+`http` value resolved and `HTTPS_PROXY` only when an `https` value resolved, both uppercase; there
+is no lowercase `http_proxy`/`https_proxy` pair written into the service. `NO_PROXY` is always
+written when injection runs, as a comma-joined string, even when `noProxy` resolved to an empty
+list (an empty string is still a defined `NO_PROXY=` env entry, not an absent variable).
+
+`lando doctor` reports proxy state through `proxyConfigured` (whether an `http` or `https` value
+resolved), `proxyInjectIntoServices`, and `noProxyCount`. It does not print the resolved proxy URL
+or any embedded credential. `lando setup` does not publish those proxy fields; proxy failures still
+run through the command redaction boundary before they reach a human or a `--format json` consumer.
+
 <Guide>
   <Scenario id="author-service-security" render={false} reason="Focused ServiceConfig schema tests cover strict decoding, aliases, overrides, and canonical output without requiring private CA material">
     <Step name="declare-security">
@@ -185,6 +230,17 @@ service out. Read a service's effective trust material from its plan or from
       <Variable name="command" value="lando setup" display="Report that configured host certificate authorities are set to inject into eligible type: lando services" />
       <Variable name="suppressed" value="network.ca.injectIntoServices=false" display="Omit the note when CA injection is disabled" />
       <Variable name="machineField" value="networkCaInjectionConfigured" display="Read the boolean host-global injection condition from the setup result in --format json; false means no configured host CAs or disabled injection, and setup publishes no certificate count" />
+    </Step>
+  </Scenario>
+  <Scenario id="resolve-global-proxy" render={false} reason="Focused sdk/src/network-trust and lando.security feature tests cover canonical authoring, block-level precedence, credential-safe default-off injection, emitted service env, per-service override, and redacted diagnostics without requiring a live proxy or private credentials">
+    <Step name="author-and-resolve-proxy">
+      <Variable name="canonical" value="network.proxy.http, network.proxy.https, network.proxy.noProxy" display="Author the global proxy block in global config" />
+      <Variable name="precedence" value="non-empty http, https, or noProxy" display="Make the selected config block supply all proxy values; HTTP_PROXY/HTTPS_PROXY/NO_PROXY and lowercase env are ignored entirely" />
+      <Variable name="disable" value="network.proxy.http=null" display="Disable that direction without environment fallback when another non-empty value selects config precedence; null alone still falls back to env" />
+      <Variable name="injectionDefault" value="network.proxy.injectIntoServices=false" display="Keep proxy injection off by default because proxy URLs may embed credentials, unlike network.ca.injectIntoServices=true" />
+      <Variable name="serviceEnv" value="HTTP_PROXY, HTTPS_PROXY, NO_PROXY" display="Write uppercase HTTP_PROXY/HTTPS_PROXY only when resolved and always write comma-joined NO_PROXY, including an empty string, when injection runs" />
+      <Variable name="serviceOverride" value="security.inheritNetworkProxy" display="Override injection for one service independently of security.inheritNetworkCa; true, false, or omitted each resolve on their own" />
+      <Variable name="diagnostics" value="proxyConfigured, proxyInjectIntoServices, noProxyCount" display="Expose doctor proxy state as safe booleans and counts, never the resolved URL or credentials; setup redacts proxy failures without publishing these fields" />
     </Step>
   </Scenario>
 </Guide>
