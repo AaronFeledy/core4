@@ -39,11 +39,11 @@ const securityFeature = (): ServiceFeatureDefinition => {
   return definition;
 };
 
-const composeSecurity = (config: Readonly<Record<string, unknown>> = {}) =>
+const composeSecurity = (config: Readonly<Record<string, unknown>> = {}, serviceType = "node:22") =>
   composeService({
     base: {
       name: ServiceName.make("web"),
-      type: "node:22",
+      type: serviceType,
       provider: ProviderId.make("lando"),
       primary: true,
       defaultFeatures: [],
@@ -51,12 +51,14 @@ const composeSecurity = (config: Readonly<Record<string, unknown>> = {}) =>
     baseKind: "lando",
     appName: "security-test",
     appRoot: "/srv/apps/security-test",
-    normalizedConfig: { type: "node:22" },
+    normalizedConfig: { type: serviceType },
     features: [{ id: "lando.security", config, definition: securityFeature() }],
   });
 
-const composeSecurityPlan = (config: Readonly<Record<string, unknown>> = {}): Promise<ServicePlan> =>
-  Effect.runPromise(composeSecurity(config));
+const composeSecurityPlan = (
+  config: Readonly<Record<string, unknown>> = {},
+  serviceType = "node:22",
+): Promise<ServicePlan> => Effect.runPromise(composeSecurity(config, serviceType));
 
 const buildStepsFor = (plan: ServicePlan) =>
   Schema.decodeUnknownSync(FeatureExtension)(plan.extensions["@lando/core/service-features"]).buildSteps ??
@@ -64,6 +66,7 @@ const buildStepsFor = (plan: ServicePlan) =>
 
 const caEnvironment = (plan: ServicePlan): Readonly<Record<string, string | undefined>> => ({
   NODE_EXTRA_CA_CERTS: plan.environment.NODE_EXTRA_CA_CERTS,
+  REQUESTS_CA_BUNDLE: plan.environment.REQUESTS_CA_BUNDLE,
   SSL_CERT_FILE: plan.environment.SSL_CERT_FILE,
   SSL_CERT_DIR: plan.environment.SSL_CERT_DIR,
   LANDO_CA_CERT: plan.environment.LANDO_CA_CERT,
@@ -105,6 +108,7 @@ describe("lando.security feature", () => {
     expect(plan.mounts).toEqual([]);
     expect(caEnvironment(plan)).toEqual({
       NODE_EXTRA_CA_CERTS: undefined,
+      REQUESTS_CA_BUNDLE: undefined,
       SSL_CERT_FILE: undefined,
       SSL_CERT_DIR: undefined,
       LANDO_CA_CERT: undefined,
@@ -141,6 +145,7 @@ describe("lando.security feature", () => {
     ]);
     expect(caEnvironment(plan)).toEqual({
       NODE_EXTRA_CA_CERTS: "/etc/lando/certs/ca-bundle.pem",
+      REQUESTS_CA_BUNDLE: undefined,
       SSL_CERT_FILE: "/etc/lando/certs/ca-bundle.pem",
       SSL_CERT_DIR: "/etc/lando/certs",
       LANDO_CA_CERT: "/etc/lando/certs/ca-bundle.pem",
@@ -177,6 +182,39 @@ describe("lando.security feature", () => {
     expect(plan.mounts).toEqual([]);
     expect(buildStepsFor(plan)).toEqual([]);
   });
+
+  test("adds the Requests CA bundle to Python services when CA injection is active", async () => {
+    const plan = await composeSecurityPlan(
+      {
+        injectCa: true,
+        cas: [{ path: "/host/corp.pem", digest: DIGEST_A }],
+      },
+      "python:3.12",
+    );
+
+    expect(plan.environment.REQUESTS_CA_BUNDLE).toBe("/etc/lando/certs/ca-bundle.pem");
+    expect(plan.environment.SSL_CERT_FILE).toBe("/etc/lando/certs/ca-bundle.pem");
+  });
+
+  test("omits the Requests CA bundle from Python services without injected CA material", async () => {
+    const plan = await composeSecurityPlan({}, "python:3.12");
+
+    expect(plan.environment.REQUESTS_CA_BUNDLE).toBeUndefined();
+  });
+
+  for (const serviceType of ["node:22", "php:8.3", "ruby:3.3", "go:1.23"]) {
+    test(`does not add the Python-specific CA environment to ${serviceType}`, async () => {
+      const plan = await composeSecurityPlan(
+        {
+          injectCa: true,
+          cas: [{ path: "/host/corp.pem", digest: DIGEST_A }],
+        },
+        serviceType,
+      );
+
+      expect(plan.environment.REQUESTS_CA_BUNDLE).toBeUndefined();
+    });
+  }
 
   test("keeps CA bundle environment stable across host materialization paths", async () => {
     const before = await composeSecurityPlan({
