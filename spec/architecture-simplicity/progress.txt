@@ -80,3 +80,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - A command declared once in a matrix job executes once per expanded matrix cell; assert the generated step count within the job block so unrelated jobs cannot satisfy or break the contract.
 ---
+
+## [2026-08-02 16:27 CDT] - US-508 Review
+- Review closed the remaining duplicate-regeneration gap: guide jobs now run only the guide-scenario generator, the Linux guide job no longer repeats workflow drift checking, and workflow-wide assertions prevent another full-catalog invocation outside `codegen:check`.
+- Review notes (deferred/rejected): `schema-snapshot` and `bundled-codegen` remain focused semantic and consumer-validation jobs under the US-507 decision; they are not duplicate full-catalog drift gates.
+- Review notes (deferred/rejected): guide-job typechecks remain unchanged because removing them is unnecessary for US-508 and would broaden the story beyond catalog-regeneration ownership.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account was out of usage; the five review-work lanes otherwise completed, and the two goal/quality lanes independently identified the blocker fixed here.
+- Guide-Coverage-Skip: Internal CI generation and drift ownership have no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, generated-output boundary, LSP diagnostics, and 36 focused workflow/runbook/catalog/codegen-CI tests passed; the unchanged full CI-codegen suite retains its two previously recorded stale expectations.
+- **Learnings for future iterations:**
+  - CI consumers of one generated family should invoke a focused generator; reserve full-catalog regeneration and drift comparison for `codegen:check`.
+---
