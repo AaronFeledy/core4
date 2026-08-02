@@ -87,25 +87,18 @@ export const writeAtomicFile = async (
     await Bun.write(tempPath, content);
     await replace(tempPath, path);
   } finally {
-    // Clean up the temp file but never let cleanup failures mask the real
-    // error from the try block. Callers cannot act on cleanup failure: the
-    // primary write either succeeded (target is current) or failed (its
-    // error is already propagating via the implicit rethrow).
     try {
       if (await Bun.file(tempPath).exists()) {
         await Bun.file(tempPath).delete();
       }
     } catch {
-      // intentionally ignored — see comment above
+      // Cleanup failure must not mask the write or replace failure.
     }
   }
 };
 
 const stat = async (path: string): Promise<FileStat> => {
-  // Note: Bun.file(path).exists() returns false for directories, so it cannot
-  // be used as a guard here. Call .stat() directly and translate ENOENT to a
-  // tagged FileNotFoundError so the FileStat contract (which includes
-  // isDirectory: true) is actually reachable for directory paths.
+  // Bun.file(path).exists() returns false for directories, so stat directly.
   try {
     const stats = await Bun.file(path).stat();
     return {
@@ -161,8 +154,7 @@ const remove = async (path: string): Promise<void> => {
     return;
   }
 
-  // path may not exist at all — Bun.Glob.scan throws ENOENT for a non-existent cwd,
-  // so catch that case and return silently (no-op semantics for missing paths).
+  // Preserve no-op semantics when Bun.Glob.scan reports a missing path.
   try {
     for await (const entry of new Bun.Glob("**/*").scan({ cwd: path, onlyFiles: true, dot: true })) {
       await Bun.file(joinPath(path, entry)).delete();
