@@ -67,6 +67,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 ## [2026-08-02 14:57 CDT] - US-507
 - Verified that `check:codegen-drift` is already the sole full-catalog pure-drift implementation and `codegen:check` is its composite wrapper; no redundant regen-and-compare script or unused public alias remains to retire.
 - Preserved `check:generated-output`, `check:guide-drift`, and deprecation checks because they enforce independent semantic and boundary contracts rather than generated-artifact drift.
+- Guide-Coverage-Skip: Internal drift-gate inventory has no end-user guide surface.
 - Verification: typecheck, scripts typecheck, and lint passed; focused codegen-drift, generated-output, and guide-drift tests passed; all three direct gate invocations behaved as expected.
 - **Learnings for future iterations:**
   - Classify similarly named `check:*` scripts by behavior before consolidation: generated-banner placement and guide ownership are semantic gates, not alternate codegen drift implementations.
