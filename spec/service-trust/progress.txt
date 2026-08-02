@@ -53,6 +53,9 @@ Spec SoT:
 - System-owned artifact steps request provider-neutral temporary privilege; the artifact realizer inspects
   the parent image's effective user, wraps only those steps with root, and restores the exact inherited
   user before later steps. A service `user` override is runtime intent and must not be baked into the image.
+- Language-specific trust variables that depend on resolved CA injection belong in `lando.security`, which
+  owns the injected-material condition and runs after runtime features; keep language features free of
+  unconditional CA paths so services without injected material remain unchanged.
 
 ## Status
 
@@ -1267,4 +1270,19 @@ Spec SoT:
 - **Learnings for future iterations:** Build-key inputs must use the same canonicalization as their consumer,
   or an optional boolean creates spurious cache misses. When a code-path change supersedes prior host QA,
   record that boundary explicitly rather than carrying the earlier evidence forward.
+---
+
+## 2026-08-01 20:18 CDT - US-494
+- Added Python Requests trust to the existing injected-CA environment path: `python:*` services now receive
+  `REQUESTS_CA_BUNDLE` only when CA material is present, while Node, PHP, Ruby, and Go retain their existing
+  Node/OpenSSL/system-trust behavior. The corporate network trust guide now publishes the runtime
+  compatibility table and suppression rule.
+- Verification: typecheck and lint passed; 209 focused and adjacent service-trust tests plus 7 focused guide
+  scenarios passed; guide lint, coverage, base-aware drift, and generated-output gates passed. A compiled
+  sandbox CLI plan proved injected and empty Python behavior plus the Node regression case, and all QA
+  material was removed.
+- **Learnings for future iterations:**
+  - Runtime features run before `lando.security` and cannot know whether the planner resolved CA material;
+    apply condition-dependent language trust variables at the security feature seam instead of setting
+    unconditional paths in each language feature.
 ---
