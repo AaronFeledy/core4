@@ -4,39 +4,11 @@ import { dirname, join, resolve } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-interface CodegenDriftResult {
-  readonly dirtyPaths: ReadonlyArray<string>;
-  readonly ok: boolean;
-}
-
-interface CheckCodegenDriftOptions {
-  readonly root?: string;
-  readonly env?: Readonly<Record<string, string | undefined>>;
-}
-
-interface CodegenDriftModule {
-  readonly CATALOG_OUTPUT_PATHS: ReadonlyArray<string>;
-  readonly checkCodegenDrift: (options?: CheckCodegenDriftOptions) => Promise<CodegenDriftResult>;
-}
-
-const isCodegenDriftModule = (value: unknown): value is CodegenDriftModule =>
-  value !== null &&
-  typeof value === "object" &&
-  "CATALOG_OUTPUT_PATHS" in value &&
-  Array.isArray(value.CATALOG_OUTPUT_PATHS) &&
-  "checkCodegenDrift" in value &&
-  typeof value.checkCodegenDrift === "function";
-
-const loadCodegenDriftModule = async (): Promise<CodegenDriftModule> => {
-  const moduleUrl = new URL("../../../scripts/check-codegen-drift.ts", import.meta.url);
-  const loaded: unknown = await import(moduleUrl.href);
-  if (!isCodegenDriftModule(loaded)) {
-    throw new TypeError("check-codegen-drift module does not expose the expected test seam");
-  }
-  return loaded;
-};
-
-const { CATALOG_OUTPUT_PATHS, checkCodegenDrift } = await loadCodegenDriftModule();
+import {
+  CATALOG_OUTPUT_PATHS,
+  GitStatusError,
+  checkCodegenDrift,
+} from "../../../scripts/check-codegen-drift.ts";
 
 const EXPECTED_CATALOG_PATHS = [
   ".github/workflows",
@@ -293,12 +265,7 @@ describe("check:codegen-drift", () => {
     const result = checkCodegenDrift({ env, root });
 
     // Then: the git failure is propagated as a checker failure.
-    const rejection: unknown = await result.then(
-      () => undefined,
-      (error: unknown) => error,
-    );
-    expect(rejection).toBeInstanceOf(Error);
-    if (rejection instanceof Error) expect(rejection.message).toContain("git status failed");
+    await expect(result).rejects.toBeInstanceOf(GitStatusError);
   });
 });
 
