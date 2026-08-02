@@ -112,4 +112,28 @@ describe("gate classification matrix", () => {
     expect(scripts["codegen:check"]).toContain("check:codegen-drift");
     expect(semanticScripts.every((script) => !script?.includes("check:codegen-drift"))).toBe(true);
   });
+
+  test("pins codegen:check ordered composite bun run steps", async () => {
+    // Given
+    const scripts = await rootScripts();
+    const codegenCheck = scripts["codegen:check"];
+
+    // When
+    const orderedSteps = [...(codegenCheck?.matchAll(/bun run ([\w:*-]+)/g) ?? [])].map((match) => match[1]);
+
+    // Then
+    expect(orderedSteps).toEqual(["codegen", "check:codegen-drift", "check:deprecations", "typecheck"]);
+  });
+
+  test("keeps companion codegen:check steps out of pure-drift classification", async () => {
+    // Given / When
+    const matrix = new Map(await readGateRows());
+
+    // Then
+    expect(matrix.get("codegen:check")).toBe("pure drift");
+    expect(matrix.get("check:codegen-drift")).not.toBe("pure drift");
+    expect(matrix.get("check:deprecations")).not.toBe("pure drift");
+    expect(matrix.get("typecheck")).not.toBe("pure drift");
+    expect(matrix.get("codegen")).not.toBe("pure drift");
+  });
 });
