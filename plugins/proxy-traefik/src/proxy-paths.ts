@@ -44,10 +44,7 @@ export const defaultCertificateFiles = (paths: ProxyPaths, defaultDomain: string
 };
 
 export const appCertificateFiles = (paths: ProxyPaths, app: AppId) => {
-  return encodedAppCertificateFiles(paths, encodeURIComponent(String(app)));
-};
-
-const encodedAppCertificateFiles = (paths: ProxyPaths, encodedApp: string) => {
+  const encodedApp = encodeURIComponent(String(app));
   return {
     cert: joinFor(paths)(certificateDir(paths), `${encodedApp}.crt`),
     key: joinFor(paths)(certificateDir(paths), `${encodedApp}.key`),

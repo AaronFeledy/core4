@@ -34,10 +34,10 @@ const isReadableRegularFile = (path: string): Effect.Effect<boolean> =>
     }
   }).pipe(Effect.catchAll(() => Effect.succeed(false)));
 
-const routeToken = (name: string): string | undefined => {
-  if (!name.startsWith(ROUTE_FILE_PREFIX) || !name.endsWith(ROUTE_FILE_SUFFIX)) return undefined;
+const isRouteFile = (name: string): boolean => {
+  if (!name.startsWith(ROUTE_FILE_PREFIX) || !name.endsWith(ROUTE_FILE_SUFFIX)) return false;
   const token = name.slice(ROUTE_FILE_PREFIX.length, -ROUTE_FILE_SUFFIX.length);
-  return token.length === 0 ? undefined : token;
+  return token.length > 0;
 };
 
 const configPath = (content: string, field: "certFile" | "keyFile"): string | undefined => {
@@ -141,7 +141,7 @@ export const proxyTlsDoctorCheck: PluginDoctorCheckContribution = {
       const httpsConfigs = yield* Effect.forEach(
         names,
         (name) => {
-          if (routeToken(name) === undefined) return Effect.succeed(undefined);
+          if (!isRouteFile(name)) return Effect.succeed(undefined);
           return readText(joinFor(paths)(dynamicConfigDir(paths), name)).pipe(
             Effect.map((content) =>
               content !== undefined &&

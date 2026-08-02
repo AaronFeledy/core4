@@ -5,12 +5,12 @@
  *   - `proxies: ["traefik"]` — the Traefik-backed `ProxyService` id.
  *   - `globalServices: ["traefik"]` — the bundled global reverse-proxy service
  *     materialized into the global app's `.lando.dist.yml`.
+ *   - `doctorChecks: ["proxy-tls"]` — readiness of persisted HTTPS TLS material.
  *
- * The `globalServices` map is the static, compiled-binary-safe contribution
- * surface: `meta:global:install`'s bundled-first loader reads it instead of
- * dynamically importing the manifest `module:` path (which cannot resolve in a
- * `bun build --compile` binary). The manifest still records `module:` for
- * documentation and the non-bundled (future) dynamic-import fallback.
+ * The `globalServices` map is the compiled-binary-safe contribution surface:
+ * `meta:global:install`'s bundled-first loader reads it instead of dynamically
+ * importing the manifest `module:` path (which cannot resolve in a
+ * `bun build --compile` binary).
  */
 import { type Effect, Schema } from "effect";
 
@@ -27,7 +27,6 @@ export { makeTraefikProxyService, proxy, renderTraefikDynamicConfig } from "./pr
 export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export const proxyServices = new Map([["traefik", proxy]]);
 
-/** Static global-service contributions, keyed by contribution id. */
 export const globalServices: ReadonlyMap<string, Effect.Effect<ServiceConfig>> = new Map([
   ["traefik", traefikGlobalService],
 ]);

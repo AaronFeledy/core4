@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { basename, join, posix } from "node:path";
 import { Effect } from "effect";
 
-import type { PluginDoctorCheckContribution, PluginDoctorReport } from "@lando/sdk/plugins";
+import type { PluginDoctorReport } from "@lando/sdk/plugins";
 import type { AppId, HostPlatform, RoutePlan } from "@lando/sdk/schema";
 
-import * as proxyTraefikExports from "../src/index.ts";
+import { proxyTlsDoctorCheck } from "../src/index.ts";
 import {
+  TRAEFIK_CONTAINER_CERTIFICATE_DIR,
   appCertificateFiles,
   certificateDir,
   defaultCertificateFiles,
@@ -22,8 +23,6 @@ import {
   renderTraefikDynamicConfig,
 } from "../src/routing.ts";
 
-const TRAEFIK_CONTAINER_CERTIFICATE_DIR = "/etc/traefik/dynamic/certs";
-
 const currentPlatform = (): HostPlatform => {
   switch (process.platform) {
     case "darwin":
@@ -34,16 +33,6 @@ const currentPlatform = (): HostPlatform => {
       return "linux";
   }
 };
-
-const hasProxyTlsDoctorCheck = (
-  moduleExports: typeof proxyTraefikExports,
-): moduleExports is typeof proxyTraefikExports & {
-  readonly proxyTlsDoctorCheck: PluginDoctorCheckContribution;
-} => "proxyTlsDoctorCheck" in moduleExports;
-
-const proxyTlsDoctorCheck = hasProxyTlsDoctorCheck(proxyTraefikExports)
-  ? proxyTraefikExports.proxyTlsDoctorCheck
-  : undefined;
 
 export interface ProxyTlsFixture {
   readonly userDataRoot: string;
@@ -135,8 +124,9 @@ export const symlinkAppTls = async (fixture: ProxyTlsFixture, app: AppId): Promi
   return containerTlsFiles(basename(files.cert), basename(files.key));
 };
 
-export const runProxyTlsDoctorCheck = (userDataRoot: string): Promise<ReadonlyArray<PluginDoctorReport>> => {
-  if (proxyTlsDoctorCheck === undefined) throw new Error("proxyTlsDoctorCheck is not exported");
+export const runProxyTlsDoctorCheck = (
+  userDataRoot: string | undefined,
+): Promise<ReadonlyArray<PluginDoctorReport>> => {
   return Effect.runPromise(
     proxyTlsDoctorCheck.run({
       providerId: "lando",
