@@ -61,6 +61,12 @@ reports unreadable CA paths before service startup.
 If a path cannot be read, Lando names that path and points to all three correction surfaces:
 `network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`.
 
+This host-global and per-service CA injection is separate from browser trust of the
+[Traefik reverse proxy's HTTPS certificates](../subsystems/proxy-traefik.mdx): injected corporate
+or service CAs let in-container runtimes trust outbound HTTPS calls, while a browser trusting the
+proxy's own HTTPS certificates depends on the CertificateAuthority root that `lando setup` installs
+into the host trust store.
+
 Use `LANDO_NETWORK_CA_INJECT_INTO_SERVICES=true|false` to override
 `network.ca.injectIntoServices`, and `LANDO_NETWORK_PROXY_INJECT_INTO_SERVICES=true|false` to
 override `network.proxy.injectIntoServices`. Values other than `true` or `false` are rejected as

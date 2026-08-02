@@ -111,6 +111,11 @@ embedding hosts pass `skipTrustInstall: true` to `CertificateAuthority.setup` fo
 Issuing a certificate before setup fails with remediation naming `lando setup`, and hosts with no
 published mkcert build fail with remediation instead of a partial install.
 
+Installing the root CA into the host trust store is also what makes browsers trust the
+[Traefik reverse proxy's HTTPS certificates](./proxy-traefik.mdx): without that host trust step, a
+browser shows a certificate warning even though the proxy is issuing valid certificates from the
+same authority.
+
 <Guide>
   <Scenario id="author-service-certs" render={false} reason="Focused ServiceConfig schema tests cover every certs shape, invalid-shape rejection, and independence from security.ca without requiring an installed certificate authority">
     <Step name="declare-certs">
