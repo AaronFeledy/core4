@@ -403,7 +403,7 @@ describe("deprecation release gate", () => {
     const packageJson = await Bun.file(resolve(repoRoot, "package.json")).json();
 
     expect(packageJson.scripts["codegen:check"]).toBe(
-      "bun run codegen && bun run check:deprecations && bun run typecheck",
+      "bun run codegen && bun run check:codegen-drift && bun run check:deprecations && bun run typecheck",
     );
   });
 

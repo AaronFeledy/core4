@@ -9,6 +9,10 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Internal/infra only — Guide Coverage None on every PRD.
 - Do not touch unrelated dirty working-tree files from other waves.
 
+## Codebase Patterns
+
+- Scope generated-output drift checks with `git status --porcelain=v1 --untracked-files=all -- <pathspecs>` so tracked and newly untracked outputs fail without unrelated working-tree dirt causing false failures.
+
 ## Log
 
 ## [2026-07-30] - US-500..US-504
@@ -16,3 +20,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Applied normative spec supersession for single dispatcher, artifact policy, internal packages, codegen:check drift.
 - Updated root/core/sdk AGENTS.md and check-guide-coverage allowlist.
 - Marked US-500..US-504 passes true (contract/scaffolding landed). Implementation stories US-505..US-532 remain open.
+
+## [2026-08-02 12:02 CDT] - US-505
+- Strengthened `codegen:check` to regenerate the full catalog and fail on tracked or newly untracked catalog-output drift while ignoring unrelated working-tree changes.
+- Verification: codegen:check, typecheck, scripts typecheck, lint, and focused codegen/deprecation tests passed; tracked, untracked, and unrelated-dirt CLI probes behaved as required. The spec-reference gate remains blocked by pre-existing `.omo/**` citations outside this story.
+- **Learnings for future iterations:**
+  - Keep the drift path set explicit and pathspec-scoped; plain `git diff --exit-code` misses newly generated untracked files.
+  - Gitignored derived trees remain outside the git-status half and need deterministic generator/consumer validation instead.
+---
