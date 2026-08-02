@@ -91,3 +91,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - CI consumers of one generated family should invoke a focused generator; reserve full-catalog regeneration and drift comparison for `codegen:check`.
 ---
+
+## [2026-08-02 17:19 CDT] - US-509
+- Published one shared gate-classification matrix for agent instructions and quality-gate policy: `codegen:check` is the sole pure-drift gate, while guide coverage, schema compatibility, public transcripts, package DAG, and behavioral boundaries remain semantic checks.
+- Verification: typecheck and lint/deprecations passed; 5 focused matrix tests and 49 adjacent codegen, boundary, workflow, and runbook tests passed. Mutation testing proved a drift-gate misclassification fails the contract. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep drift detection and semantic correctness visibly separate even when one composite command runs companion semantic checks.
+  - Structural documentation tests should pin table cells and script wiring rather than prose wording.
+---
