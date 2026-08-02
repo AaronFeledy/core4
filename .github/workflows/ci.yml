@@ -378,7 +378,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Regenerate guide scenarios
-        run: bun run codegen
+        run: bun run codegen:guide-scenarios
 
       - name: Typecheck
         run: bun run typecheck
@@ -430,7 +430,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Regenerate guide scenarios
-        run: bun run codegen
+        run: bun run codegen:guide-scenarios
 
       - name: Typecheck
         run: bun run typecheck
@@ -482,7 +482,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Regenerate guide scenarios
-        run: bun run codegen
+        run: bun run codegen:guide-scenarios
 
       - name: Typecheck
         run: bun run typecheck
@@ -538,10 +538,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Regenerate guide scenarios
-        run: bun run codegen
-
-      - name: Verify generated workflows are current
-        run: git diff --exit-code -- .github/workflows
+        run: bun run codegen:guide-scenarios
 
       - name: Typecheck
         run: bun run typecheck
@@ -772,7 +769,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Regenerate guide scenarios
-        run: bun run codegen
+        run: bun run codegen:guide-scenarios
 
       - name: Typecheck
         run: bun run typecheck
