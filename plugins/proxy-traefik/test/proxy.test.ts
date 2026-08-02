@@ -64,7 +64,28 @@ const makeHarness = (
         }),
     },
   });
-  return { ensured, files, service };
+  const makePersistedService = () =>
+    makeTraefikProxyService({
+      certificateAuthority: makeTestCertificateAuthority(),
+      fileSystem: {
+        mkdir: () => Effect.void,
+        writeAtomic: (path, content) => Effect.sync(() => void files.set(path, String(content))),
+        writeSecretAtomic: (path, content) => Effect.sync(() => void files.set(path, String(content))),
+        remove: (path) => Effect.sync(() => void files.delete(path)),
+        exists: (path) =>
+          Effect.succeed(files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
+        readDir: (path) =>
+          Effect.succeed(
+            [...files.keys()]
+              .filter((file) => file.startsWith(`${path}/`))
+              .map((file) => file.slice(path.length + 1)),
+          ),
+        readText: (path) => Effect.succeed(files.get(path) ?? ""),
+      },
+      paths: { platform: "linux", globalAppRoot: "/lando/global" },
+      globalApp: { ensureRunning: () => Effect.succeed([]) },
+    });
+  return { ensured, files, makePersistedService, service };
 };
 
 describe("Traefik ProxyService", () => {
@@ -116,27 +137,7 @@ describe("Traefik ProxyService", () => {
     await Effect.runPromise(Effect.scoped(harness.service.setup({ defaultDomain: "lndo.site" })));
 
     const applied = await Effect.runPromise(harness.service.applyRoutes(routes, app));
-    const freshService = makeTraefikProxyService({
-      certificateAuthority: makeTestCertificateAuthority(),
-      fileSystem: {
-        mkdir: () => Effect.void,
-        writeAtomic: (path, content) => Effect.sync(() => void harness.files.set(path, String(content))),
-        writeSecretAtomic: (path, content) =>
-          Effect.sync(() => void harness.files.set(path, String(content))),
-        remove: (path) => Effect.sync(() => void harness.files.delete(path)),
-        exists: (path) =>
-          Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
-        readDir: (path) =>
-          Effect.succeed(
-            [...harness.files.keys()]
-              .filter((file) => file.startsWith(`${path}/`))
-              .map((file) => file.slice(path.length + 1)),
-          ),
-        readText: (path) => Effect.succeed(harness.files.get(path) ?? ""),
-      },
-      paths: { platform: "linux", globalAppRoot: "/lando/global" },
-      globalApp: { ensureRunning: () => Effect.succeed([]) },
-    });
+    const freshService = harness.makePersistedService();
 
     const status = await Effect.runPromise(freshService.status);
 
@@ -151,27 +152,7 @@ describe("Traefik ProxyService", () => {
     await Effect.runPromise(harness.service.applyRoutes(routes, app));
 
     await Effect.runPromise(harness.service.stop);
-    const fresh = makeTraefikProxyService({
-      certificateAuthority: makeTestCertificateAuthority(),
-      fileSystem: {
-        mkdir: () => Effect.void,
-        writeAtomic: (path, content) => Effect.sync(() => void harness.files.set(path, String(content))),
-        writeSecretAtomic: (path, content) =>
-          Effect.sync(() => void harness.files.set(path, String(content))),
-        remove: (path) => Effect.sync(() => void harness.files.delete(path)),
-        exists: (path) =>
-          Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
-        readDir: (path) =>
-          Effect.succeed(
-            [...harness.files.keys()]
-              .filter((file) => file.startsWith(`${path}/`))
-              .map((file) => file.slice(path.length + 1)),
-          ),
-        readText: (path) => Effect.succeed(harness.files.get(path) ?? ""),
-      },
-      paths: { platform: "linux", globalAppRoot: "/lando/global" },
-      globalApp: { ensureRunning: () => Effect.succeed([]) },
-    });
+    const fresh = harness.makePersistedService();
 
     expect(await Effect.runPromise(fresh.status)).toEqual({
       state: "stopped",

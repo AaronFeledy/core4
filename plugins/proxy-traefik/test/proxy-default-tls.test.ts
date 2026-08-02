@@ -14,15 +14,9 @@ test("reissues default TLS material when the normalized default domain changes",
   await Effect.runPromise(harness.service.applyRoutes(httpsRoutes, app));
 
   // Then: a second default certificate is issued and the durable store references its keyed paths.
-  expect(harness.calls.filter((spec) => spec.cn.startsWith("*.")).map((spec) => spec.cn)).toEqual([
-    "*.lndo.site",
-    "*.other.test",
-  ]);
-  expect(harness.calls.filter((spec) => spec.cn.startsWith("*.")).at(-1)?.sans).toEqual([
-    "*.other.test",
-    "other.test",
-    "traefik.lndo.site",
-  ]);
+  const defaultCertificates = harness.calls.filter((spec) => spec.cn.startsWith("*."));
+  expect(defaultCertificates.map((spec) => spec.cn)).toEqual(["*.lndo.site", "*.other.test"]);
+  expect(defaultCertificates.at(-1)?.sans).toEqual(["*.other.test", "other.test", "traefik.lndo.site"]);
   expect(
     Bun.YAML.parse(harness.files.get("/lando/global/proxy-traefik/dynamic/tls-default.yml") ?? ""),
   ).toEqual({

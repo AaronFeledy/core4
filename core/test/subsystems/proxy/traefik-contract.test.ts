@@ -66,17 +66,18 @@ test("real filesystem status sees configured routing and stop removes route and 
       issueCert: () => Effect.succeed({ certPath: sourceCert, keyPath: sourceKey, caPath: sourceCert }),
     };
     const fileSystem = await Effect.runPromise(FileSystem.pipe(Effect.provide(FileSystemLive)));
+    const proxyFileSystem = {
+      mkdir: fileSystem.mkdir,
+      exists: fileSystem.exists,
+      readDir: fileSystem.readDir,
+      readText: fileSystem.readText,
+      writeAtomic: fileSystem.writeAtomic,
+      writeSecretAtomic: fileSystem.writeAtomic,
+      remove: fileSystem.remove,
+    };
     const service = makeTraefikProxyService({
       certificateAuthority,
-      fileSystem: {
-        mkdir: fileSystem.mkdir,
-        exists: fileSystem.exists,
-        readDir: fileSystem.readDir,
-        readText: fileSystem.readText,
-        writeAtomic: fileSystem.writeAtomic,
-        writeSecretAtomic: fileSystem.writeAtomic,
-        remove: fileSystem.remove,
-      },
+      fileSystem: proxyFileSystem,
       paths: { platform: "linux", globalAppRoot: root },
       globalApp: {
         ensureRunning: () =>
@@ -108,15 +109,7 @@ test("real filesystem status sees configured routing and stop removes route and 
     // When: a fresh service reads status and the active service is stopped.
     const fresh = makeTraefikProxyService({
       certificateAuthority,
-      fileSystem: {
-        mkdir: fileSystem.mkdir,
-        exists: fileSystem.exists,
-        readDir: fileSystem.readDir,
-        readText: fileSystem.readText,
-        writeAtomic: fileSystem.writeAtomic,
-        writeSecretAtomic: fileSystem.writeAtomic,
-        remove: fileSystem.remove,
-      },
+      fileSystem: proxyFileSystem,
       paths: { platform: "linux", globalAppRoot: root },
       globalApp: { ensureRunning: () => Effect.succeed([]) },
     });
