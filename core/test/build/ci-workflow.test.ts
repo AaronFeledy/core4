@@ -245,6 +245,7 @@ describe("ci workflow", () => {
     expect(published).toContain('          test -z "${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"');
     expect(published).not.toContain("      - name: Install Podman 6 toolchain");
     expect(published).not.toContain("      - name: Stage current-commit runtime bundle");
+    expect(published).toContain("      - name: Seed rootless containers user config");
     expect(published).toContain("runtime-bundle-portability");
     expect(published).toContain("libgpgme|libassuan|not found");
   });
@@ -888,6 +889,8 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain(
       '          echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"',
     );
+    expect(providerIntegration).toContain("      - name: Seed rootless containers user config");
+    expect(providerIntegration).toContain('unqualified-search-registries = ["docker.io"]');
     expect(providerIntegration).toContain("      - name: Configure rootless overlay storage");
     expect(providerIntegration).toContain("          cat > dist/cache/runtime-bundle/storage.conf <<EOF");
     expect(providerIntegration).toContain(

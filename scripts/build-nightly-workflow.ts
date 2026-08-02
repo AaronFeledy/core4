@@ -131,6 +131,16 @@ ${landoRootlessPrereqSteps}
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
+      - name: Seed rootless containers user config
+        run: |
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\\n' > "$HOME/.config/containers/policy.json"
+          fi
+
       - name: Prepare provider via lando setup against the published manifest
         run: |
           test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"

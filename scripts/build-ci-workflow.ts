@@ -352,6 +352,19 @@ const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linu
           MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
 
+      - name: Seed rootless containers user config
+        run: |
+          # User-level configs override system files wholesale. Distro
+          # /etc/containers/registries.conf can still be v1 TOML; Podman 6
+          # rejects that with "registries.conf must be in v2 format but is in v1".
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\\n' > "$HOME/.config/containers/policy.json"
+          fi
+
       - name: Configure rootless overlay storage
         run: |
           cat > dist/cache/runtime-bundle/storage.conf <<EOF
