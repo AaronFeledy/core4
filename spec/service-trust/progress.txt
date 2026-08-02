@@ -1328,3 +1328,18 @@ Spec SoT:
   - Network-trust diagnostics should reuse setup's trust resolver and project only booleans/counts on
     success; failure text must pass through the secrets redactor before any report format sees it.
 ---
+## 2026-08-01 22:58 CDT - US-495 Review
+- Fixed the maintained global doctor walkthrough to document the exact certs remediation and the stable
+  unreadable/malformed CA remediation strings required alongside the new check names and stream order.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both current-branch attempts hit
+  the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected hiding arbitrary CA path segments because the established shared
+  loader contract requires path-named remediation; known secret values and patterns remain redacted before
+  every output format.
+- Review notes (deferred/rejected): Rejected treating a malicious same-user CA plugin that echoes an unrelated
+  SecretStore value as a story blocker; it already executes with the user's privileges, while production
+  diagnostics redact environment, proxy, resolver failure, and setup-trust inputs.
+- Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware
+  guide drift passed; 126 focused and adjacent doctor tests passed with 493 assertions. All completed
+  review-work lanes passed after a bounded retry of the initially incomplete context-mining lane.
+---
