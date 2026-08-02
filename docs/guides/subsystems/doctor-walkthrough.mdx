@@ -65,7 +65,7 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
   <Scenario id="doctor-proxy-tls" render={false} reason="The proxy-tls doctor check is contributed through the plugin doctorChecks seam; focused doctor tests cover the pass/warn outcomes and safe context without requiring a live Traefik container">
     <Step name="proxy-tls-status">
       <Variable name="checkName" value="proxy-tls" display="Plugin-contributed check reports one proxy-tls pass/warn result only when a persisted app has at least one HTTPS route" />
-      <Variable name="runtimeStatus" value="tls-material-missing" display="A warn result sets runtimeStatus=tls-material-missing when the default certificate or an app's certificate is not present" />
+      <Variable name="runtimeStatus" value="tls-material-missing" display="A warn result sets runtimeStatus=tls-material-missing when the default certificate or an app's certificate is missing or unreadable" />
       <Variable name="context" value="proxyId, httpsApps, defaultTlsConfig, defaultCertificate, appsMissingCertificates" display="Safe, redaction-clean context keys carried on both pass and warn results" />
       <Variable name="remediation" value="lando setup" display="Warn remediation names lando setup and configuring an active CertificateAuthority plugin" />
       <Variable name="silentCase" value="no persisted HTTPS routes" display="The check emits nothing when no persisted app has an HTTPS route, so HTTP-only projects stay silent" />
