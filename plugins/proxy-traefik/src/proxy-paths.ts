@@ -47,7 +47,7 @@ export const appCertificateFiles = (paths: ProxyPaths, app: AppId) => {
   return encodedAppCertificateFiles(paths, encodeURIComponent(String(app)));
 };
 
-export const encodedAppCertificateFiles = (paths: ProxyPaths, encodedApp: string) => {
+const encodedAppCertificateFiles = (paths: ProxyPaths, encodedApp: string) => {
   return {
     cert: joinFor(paths)(certificateDir(paths), `${encodedApp}.crt`),
     key: joinFor(paths)(certificateDir(paths), `${encodedApp}.key`),
