@@ -846,9 +846,8 @@ describe("ci workflow", () => {
   test("prepares the Lando provider via lando setup with no manual socket bring-up", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
-    const providerIntegrationRunner = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
+    const providerIntegration = findIndentedBlock(jobs, "provider-integration-linux-x64-runner", 2);
     const providerIntegrationGate = findIndentedBlock(jobs, "provider-integration-linux-x64", 2);
-    const providerIntegration = providerIntegrationRunner;
 
     expect(providerIntegration).toContain("    needs: [build-linux-x64, runtime-bundle-linux-x64]");
     expect(providerIntegration).toContain("        runs-on: [ubuntu-24.04, ubuntu-26.04]");
