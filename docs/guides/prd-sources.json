@@ -1,4 +1,4 @@
 {
-  "directories": [],
+  "directories": ["spec/service-trust"],
   "files": []
 }
