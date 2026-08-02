@@ -136,12 +136,15 @@ describe("codegen catalog", () => {
     // When
     const ids = catalog.map((entry) => entry.id);
     const ownerships = catalog.map((entry) => entry.ownership);
+    const scripts = catalog.map((entry) => entry.script);
     const existingScripts = await Promise.all(
       catalog.map((entry) => Bun.file(resolve(repositoryRoot, "scripts", entry.script)).exists()),
     );
 
     // Then
-    expect(new Set(ids).size).toBe(24);
+    expect(catalog).toHaveLength(24);
+    expect(new Set(ids).size).toBe(catalog.length);
+    expect(new Set(scripts).size).toBe(catalog.length);
     expect(existingScripts).toEqual(catalog.map(() => true));
     expect(ownerships.filter((ownership) => ownership === "committed-pin")).toHaveLength(1);
     expect(ownerships.filter((ownership) => ownership === "committed-workflow")).toHaveLength(7);

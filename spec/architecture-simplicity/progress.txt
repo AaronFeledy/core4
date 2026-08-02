@@ -52,3 +52,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Keep catalog modules import-side-effect-free and guard executable runners with `import.meta.main` so tests and tooling can inspect metadata safely.
   - Core tests that inspect root-level scripts should dynamically import file URLs and narrow the module shape to avoid crossing the core TypeScript `rootDir` through a static import.
 ---
+
+## [2026-08-02 14:16 CDT] - US-506 Review
+- Review closed the catalog ownership proof gap by requiring both unique generator ids and unique script paths, preventing one script from acquiring conflicting ownership rows under different ids.
+- Review notes (deferred/rejected): per-generator output-path ownership remains outside US-506's source acceptance criteria; this story owns execution order and one ownership classification per generator, while drift-path consolidation is later-wave scope.
+- Review notes (deferred/rejected): the stale pre-US-505 wording in §13 predates this branch and does not block US-506's explicit §17.2 acceptance criteria.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the account usage limit was exhausted; the five review-work lanes otherwise completed and the sole in-scope blocker was fixed.
+- Guide-Coverage-Skip: Internal codegen catalog invariants have no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, generated-output/package-DAG/managed-file gates, LSP diagnostics, and 20 focused catalog/fixture/orchestrator/drift tests passed; mutation testing proved the new uniqueness assertion fails on a duplicated script registration.
+- **Learnings for future iterations:**
+  - Catalog uniqueness checks must cover both entry ids and executable script paths; unique ids alone do not prevent duplicate execution or conflicting ownership.
+---
