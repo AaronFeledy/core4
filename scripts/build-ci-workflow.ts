@@ -6,7 +6,10 @@ import {
   LINUX_X64_CI_RUNNERS,
   LINUX_X64_PRIMARY_RUNNER,
 } from "./ci-platforms.ts";
-import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
+import {
+  RUNTIME_BUNDLE_ACTION_PINS,
+  RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT,
+} from "./runtime-bundle-supply-chain.ts";
 import { UNIT_SHARD_COUNT } from "./test-shards.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
@@ -336,33 +339,31 @@ export const landoRootlessPrereqSteps = `      - name: Provision rootless runtim
           sudo mkdir -p /sys/fs/cgroup/user.slice/user-$(id -u).slice
           sudo chown -R "$(id -un)" "/sys/fs/cgroup/user.slice/user-$(id -u).slice" || true`;
 
-const landoRuntimeBundleSetupSteps = `${renderInstallPodman6Step()}
-
-${renderAssertPodman6Step()}
-
-      - name: Stage current-commit runtime bundle
-        run: |
-          mkdir -p dist/cache/runtime-bundle
-          STAGE="$(mktemp -d)"
-          cp "$(command -v podman)" "$STAGE/podman"
-          for helper in newuidmap newgidmap pasta passt rootlessport catatonit slirp4netns fuse-overlayfs crun runc conmon netavark aardvark-dns gvproxy; do
-            src=""
-            IFS=":"
-            for dir in \${LANDO_CI_PODMAN_TOOLCHAIN_DIRS:-}; do
-              if test -x "$dir/$helper"; then src="$dir/$helper"; break; fi
-            done
-            unset IFS
-            if test -z "$src"; then src="$(command -v "$helper" 2>/dev/null || true)"; fi
-            if test -z "$src" && test -x "/usr/lib/podman/$helper"; then src="/usr/lib/podman/$helper"; fi
-            if test -n "$src"; then cp "$src" "$STAGE/$helper"; fi
-          done
-          tar -czf dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz -C "$STAGE" .
-          rm -rf "$STAGE"
+const landoRuntimeBundleSetupSteps = `      - name: Download current-commit Linux x64 runtime bundle
+        uses: actions/download-artifact@v7
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle
 
       - name: Build local runtime bundle manifest
         run: |
-          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64)"
+          test -f dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          RUNTIME_VERSION="$(bun -e 'import { readRuntimeBundleSources } from "./scripts/runtime-bundle-sources.ts"; process.stdout.write((await readRuntimeBundleSources()).runtimeVersion)')"
+          MANIFEST="$(bun run scripts/build-runtime-bundle.ts --local --platform linux-x64 --runtime-version "$RUNTIME_VERSION")"
           echo "LANDO_RUNTIME_BUNDLE_MANIFEST=$MANIFEST" >> "$GITHUB_ENV"
+
+      - name: Seed rootless containers user config
+        run: |
+          # User-level configs override system files wholesale. Distro
+          # /etc/containers/registries.conf can still be v1 TOML; Podman 6
+          # rejects that with "registries.conf must be in v2 format but is in v1".
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\\n' > "$HOME/.config/containers/policy.json"
+          fi
 
       - name: Configure rootless overlay storage
         run: |
@@ -480,6 +481,42 @@ ${landoManagedPodmanTeardownCommands}
 const landoProviderIntegrationSteps = (platform: CiPlatform): string =>
   `${landoRootlessPrereqSteps}\n\n${landoRuntimeBundleSetupSteps}\n\n${contractProviderTestSteps}\n\n${landoRuntimeLiveTestSteps(platform)}`;
 
+const linuxRuntimeBundleJob = `  runtime-bundle-linux-x64:
+    runs-on: ${LINUX_X64_PRIMARY_RUNNER}
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+${timingStartStep}
+
+${setupBunSteps}
+
+      - name: Setup Go for Linux Podman source build
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.setupGo}
+        with:
+          go-version: 1.25.6
+
+      - name: Setup Rust for Linux helper source builds
+        uses: ${RUNTIME_BUNDLE_ACTION_PINS.rustToolchain}
+
+      - name: Install Linux Podman source-build prerequisites
+        run: |
+          ${RUNTIME_BUNDLE_UBUNTU_PREREQUISITE_SCRIPT}
+
+      - name: Assemble current-commit Linux x64 runtime bundle
+        run: bun run scripts/assemble-runtime-bundle.ts --platform linux-x64
+
+      - name: Upload current-commit Linux x64 runtime bundle
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-bundle-linux-x64-current
+          path: dist/cache/runtime-bundle/lando-runtime-linux-x64.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+${timingNoticeStep("runtime-bundle-linux-x64", 40)}
+`;
+
 const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15
@@ -562,7 +599,7 @@ const renderProviderIntegrationJob = (platform: CiPlatform): string => {
     : `provider-integration-${platform.id}`;
 
   const runnerJob = `  ${jobId}:
-    needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : `[build-${platform.id}]`}
+    needs: ${platform.id === "windows-x64" ? "[build-windows-x64, runtime-bundle-win32-x64]" : platform.id === "linux-x64" ? "[build-linux-x64, runtime-bundle-linux-x64]" : `[build-${platform.id}]`}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: ${platform.providerTimeoutMinutes}
     steps:
@@ -674,7 +711,7 @@ const renderGuideScenariosJob = (platform: CiPlatform): string => {
     : `guide-scenarios-${platform.id}`;
 
   const runnerJob = `  ${runnerJobId}:
-    needs: ${isLinuxX64 ? "[static-checks, build-linux-x64]" : "[static-checks]"}
+    needs: ${isLinuxX64 ? "[static-checks, build-linux-x64, runtime-bundle-linux-x64]" : "[static-checks]"}
 ${matrixBlock}    runs-on: ${runsOn}
     timeout-minutes: 30
     steps:
@@ -884,6 +921,7 @@ ${timingNoticeStep("recipe-tests/${{ matrix.runs-on }}", 15)}
 ${renderLinuxX64MatrixGate("recipe-tests", "recipe-tests-runner", "recipe-tests")}
 ${guideScenarioJobs}
 ${buildJobs}
+${linuxRuntimeBundleJob}
 ${windowsRuntimeBundleJob}
 ${perfBudgetJob}
 ${providerIntegrationJobs}`;
