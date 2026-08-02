@@ -58,6 +58,11 @@ This is set-and-forget for `type: lando` services: global CAs inject by default.
 that service's own `security.ca` entries. `lando setup` remains the preflight for host trust and
 reports unreadable CA paths before service startup.
 
+Follow the [guided setup workflow](../setup/provider-auto-setup.mdx) before app lifecycle commands,
+use the [doctor walkthrough](../subsystems/doctor-walkthrough.mdx) to diagnose CA and network-trust
+readiness, and configure service leaf TLS separately through the
+[certificates with mkcert guide](../subsystems/certificates-mkcert.mdx).
+
 If a path cannot be read, Lando names that path and points to all three correction surfaces:
 `network.ca.certs`, `LANDO_NETWORK_CA_CERTS`, and Landofile `security.ca`.
 
