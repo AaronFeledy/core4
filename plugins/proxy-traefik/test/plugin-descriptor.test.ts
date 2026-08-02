@@ -1,10 +1,23 @@
 import { describe, expect, test } from "bun:test";
 
+import type { PluginDoctorCheckContribution } from "@lando/sdk/plugins";
+
+import * as proxyTraefikExports from "../src/index.ts";
 import { PLUGIN_NAME, globalServices, manifest, plugin, proxy, proxyServices } from "../src/index.ts";
 
 const contributionIds = (
   entries: ReadonlyArray<string | { readonly id: string }> | undefined,
 ): readonly string[] => (entries ?? []).map((entry) => (typeof entry === "string" ? entry : entry.id));
+
+const hasProxyTlsDoctorCheck = (
+  moduleExports: typeof proxyTraefikExports,
+): moduleExports is typeof proxyTraefikExports & {
+  readonly proxyTlsDoctorCheck: PluginDoctorCheckContribution;
+} => "proxyTlsDoctorCheck" in moduleExports;
+
+const proxyTlsDoctorCheck = hasProxyTlsDoctorCheck(proxyTraefikExports)
+  ? proxyTraefikExports.proxyTlsDoctorCheck
+  : undefined;
 
 describe("@lando/proxy-traefik plugin descriptor", () => {
   test("plugin.name matches manifest.name", () => {
@@ -36,5 +49,15 @@ describe("@lando/proxy-traefik plugin descriptor", () => {
     expect(plugin.layer).toBe(proxy);
     expect(plugin.proxyServices).toBe(proxyServices);
     expect(plugin.globalServices).toBe(globalServices);
+  });
+
+  test("wires the proxy TLS doctor contribution", () => {
+    // Given / When the plugin descriptor is exported
+    const doctorChecks = plugin.doctorChecks ?? [];
+
+    // Then
+    expect(doctorChecks.map((check) => check.id)).toEqual(["proxy-tls"]);
+    expect(doctorChecks.at(0)).toBe(proxyTlsDoctorCheck);
+    expect(proxyTlsDoctorCheck?.relevant).toBeUndefined();
   });
 });

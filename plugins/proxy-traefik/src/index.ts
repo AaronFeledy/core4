@@ -17,12 +17,14 @@ import { type Effect, Schema } from "effect";
 import { definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest, type ServiceConfig } from "@lando/sdk/schema";
 
+import { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 import traefikGlobalService from "./global-services/traefik.ts";
 import { proxy } from "./proxy.ts";
 
 export const PLUGIN_NAME = "@lando/proxy-traefik" as const;
 
 export { makeTraefikProxyService, proxy, renderTraefikDynamicConfig } from "./proxy.ts";
+export { proxyTlsDoctorCheck } from "./doctor-tls.ts";
 export const proxyServices = new Map([["traefik", proxy]]);
 
 /** Static global-service contributions, keyed by contribution id. */
@@ -64,4 +66,5 @@ export const plugin = definePlugin({
   layer: proxy,
   proxyServices,
   globalServices,
+  doctorChecks: [proxyTlsDoctorCheck],
 });

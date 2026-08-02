@@ -13,6 +13,17 @@ Traefik only terminates TLS for a route when a certificate authority has issued 
 bundled default is the [mkcert plugin](./certificates-mkcert.mdx). HTTP-only routes never resolve
 or set up a CA, so a project with no HTTPS endpoints has no cert dependency at all.
 
+Browsers trust the certificates Traefik serves because `lando setup` installs the active
+`CertificateAuthority`'s root into the host trust store, as described in the
+[mkcert host CA trust guide](./certificates-mkcert.mdx). That host trust store install is separate
+from the corporate and service CA injection covered in the
+[corporate network trust guide](../config/corporate-network-trust.mdx); injected corporate CAs let
+in-container runtimes trust outbound HTTPS calls, while host trust store installation is what makes
+a browser trust the proxy's own HTTPS certificates. Run `lando doctor` to check proxy TLS material
+readiness through the `proxy-tls` check documented in the
+[doctor walkthrough](./doctor-walkthrough.mdx). SSH agent forwarding uses sockets and agent
+identity, not TLS certificates, so it is unrelated to proxy TLS or CA trust state.
+
 <Guide>
   <Scenario id="proxy-sdk-contract" render={false} reason="The ProxyService SDK contract is exercised against an in-memory test double; the Traefik Live Layer requires the global app and running containers">
     <Step name="proxy-contract">

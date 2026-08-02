@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import type { AppId, RoutePlan } from "@lando/sdk/schema";
 
 import {
+  TRAEFIK_CONTAINER_CERTIFICATE_DIR,
   appCertificateFiles,
   certificateDir,
   defaultCertificateFiles,
@@ -12,8 +13,6 @@ import {
 } from "./proxy-paths.ts";
 import type { TraefikProxyDependencies } from "./proxy-types.ts";
 import { type TraefikTlsFiles, renderTraefikDefaultTlsConfig } from "./routing.ts";
-
-const CONTAINER_CERTIFICATE_DIR = "/etc/traefik/dynamic/certs";
 
 export const httpsHostnames = (routes: ReadonlyArray<RoutePlan>): ReadonlyArray<string> =>
   [...new Set(routes.filter((route) => route.scheme !== "http").map((route) => route.hostname))].sort();
@@ -68,8 +67,8 @@ export const ensureTlsFiles = (
     yield* dependencies.fileSystem.writeAtomic(
       defaultTlsFile(dependencies.paths),
       renderTraefikDefaultTlsConfig({
-        certFile: `${CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
-        keyFile: `${CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
+        certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.cert}`,
+        keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${defaultNames.key}`,
       }),
     );
 
@@ -87,8 +86,8 @@ export const ensureTlsFiles = (
 
     const encodedApp = encodeURIComponent(String(input.app));
     return {
-      certFile: `${CONTAINER_CERTIFICATE_DIR}/${encodedApp}.crt`,
-      keyFile: `${CONTAINER_CERTIFICATE_DIR}/${encodedApp}.key`,
+      certFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.crt`,
+      keyFile: `${TRAEFIK_CONTAINER_CERTIFICATE_DIR}/${encodedApp}.key`,
     };
   });
 

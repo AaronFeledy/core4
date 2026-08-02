@@ -6,6 +6,7 @@ import type { ProxyPaths } from "./proxy-types.ts";
 
 export const ROUTE_FILE_PREFIX = "routes-";
 export const ROUTE_FILE_SUFFIX = ".yml";
+export const TRAEFIK_CONTAINER_CERTIFICATE_DIR = "/etc/traefik/dynamic/certs";
 
 export const joinFor = (paths: ProxyPaths) => (paths.platform === "win32" ? win32.join : posix.join);
 
@@ -43,9 +44,12 @@ export const defaultCertificateFiles = (paths: ProxyPaths, defaultDomain: string
 };
 
 export const appCertificateFiles = (paths: ProxyPaths, app: AppId) => {
-  const encoded = encodeURIComponent(String(app));
+  return encodedAppCertificateFiles(paths, encodeURIComponent(String(app)));
+};
+
+export const encodedAppCertificateFiles = (paths: ProxyPaths, encodedApp: string) => {
   return {
-    cert: joinFor(paths)(certificateDir(paths), `${encoded}.crt`),
-    key: joinFor(paths)(certificateDir(paths), `${encoded}.key`),
+    cert: joinFor(paths)(certificateDir(paths), `${encodedApp}.crt`),
+    key: joinFor(paths)(certificateDir(paths), `${encodedApp}.key`),
   };
 };
