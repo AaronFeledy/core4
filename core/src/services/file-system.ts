@@ -192,7 +192,17 @@ const fileSystemService: Context.Tag.Service<typeof FileSystem> = {
     }),
   exists: (path) =>
     Effect.tryPromise({
-      try: () => Bun.file(path).exists(),
+      try: async () => {
+        try {
+          await Bun.file(path).stat();
+          return true;
+        } catch (cause) {
+          if (codeFrom(cause) === "ENOENT") {
+            return false;
+          }
+          throw cause;
+        }
+      },
       catch: mapFileError(path, `Failed to check ${path}`),
     }),
   stat: (path) =>
