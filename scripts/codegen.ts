@@ -1,154 +1,26 @@
 #!/usr/bin/env bun
 /** Runs generators in catalog order because some outputs feed later steps. */
-import { resolve } from "node:path";
+import { CODEGEN_CATALOG, type CodegenCommand, resolveCodegenCommand } from "./codegen-catalog.ts";
 
-const SCRIPT_DIR = import.meta.dirname;
-const REPO_ROOT = resolve(SCRIPT_DIR, "..");
-const CORE_ROOT = resolve(REPO_ROOT, "core");
-
-interface Generator {
-  readonly id: string;
-  readonly cmd: Array<string>;
-  readonly cwd: string;
-}
-
-const generators: ReadonlyArray<Generator> = [
-  {
-    id: "build-guide-scenarios",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-guide-scenarios.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "build-recipe-readmes",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-recipe-readmes.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "bundled-plugins",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-plugins.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "mutagen-versions",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-mutagen-versions.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "provider-images",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-provider-images.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "compose-fixture-manifest",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-compose-fixture-manifest.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "bundled-recipes",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bundled-recipes.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "bootstrap-layers",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-bootstrap-layers.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "schema-snapshot",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-schema-snapshot.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "setup-plugin-flags",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-setup-plugin-flags.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "mcp-allowlist",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-mcp-allowlist.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "host-proxy-allowlist",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-host-proxy-allowlist.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "oclif-manifest",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-oclif-manifest.ts`],
-    cwd: CORE_ROOT,
-  },
-  {
-    id: "command-reference",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-command-reference.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "compose-key-matrix",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-compose-key-matrix.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "opentui-native-stubs",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-opentui-native-stubs.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "php-base-images",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-php-base-images.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "ci-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-ci-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "nightly-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-nightly-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "release-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-release-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "provider-matrix-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-provider-matrix-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "runtime-bundle-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-runtime-bundle-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "php-base-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-php-base-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-  {
-    id: "compose-vendor-bump-workflow",
-    cmd: [process.execPath, "run", `${SCRIPT_DIR}/build-compose-vendor-bump-workflow.ts`],
-    cwd: REPO_ROOT,
-  },
-];
-
-const run = async (cmd: Array<string>, cwd: string): Promise<void> => {
-  const proc = Bun.spawn({ cmd, cwd, stdout: "inherit", stderr: "inherit" });
+const run = async (command: CodegenCommand): Promise<void> => {
+  const proc = Bun.spawn({
+    cmd: [...command.cmd],
+    cwd: command.cwd,
+    stdout: "inherit",
+    stderr: "inherit",
+  });
   const exitCode = await proc.exited;
 
   if (exitCode !== 0) {
-    throw new Error(`Command failed with exit code ${exitCode}: ${cmd.join(" ")}`);
+    throw new Error(`Command failed with exit code ${exitCode}: ${command.cmd.join(" ")}`);
   }
 };
 
 const main = async (): Promise<void> => {
-  for (const gen of generators) {
-    console.log(`[codegen] run ${gen.id}`);
-    await run(gen.cmd, gen.cwd);
+  for (const entry of CODEGEN_CATALOG) {
+    console.log(`[codegen] run ${entry.id}`);
+    await run(resolveCodegenCommand(entry));
   }
 };
 
-await main();
+if (import.meta.main) await main();
