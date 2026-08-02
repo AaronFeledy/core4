@@ -6,6 +6,24 @@ timeout: 60000
 tags: [beta, docs, subsystems, doctor, diagnostics]
 ---
 
+## Doctor runs without a live app or provider
+
+`lando doctor` starts at bootstrap level `none`, including when you pass `--app`; that flag adds
+isolated Landofile lint and version-constraint checks without changing the command's bootstrap level.
+Doctor builds one provider runtime inside its own scope and keeps going even when that build fails, so a
+broken provider produces a diagnostic instead of aborting the whole report. Individual sections are
+isolated too: a failing, defective, or slow section is attributed and reported, while every other section
+still runs.
+
+The combined subsystem check runs in a fixed order: proxy, certs, ssh, healthcheck, scanner, host-proxy,
+and finally network-trust. Pass `--app` to add Landofile lint and version-constraint checks for the
+current app, `--deprecations` to add a deprecations section, and `--format=json` or `--format=yaml` for
+machine-readable output consumed by scripts and agents. The `network-trust` and `proxy-tls` checks never
+emit proxy URLs, PEM certificate bodies, or certificate digests; any known secret segment in their context
+is replaced with `[redacted]`. See the [corporate network trust guide](../config/corporate-network-trust.mdx)
+for the CA and proxy settings doctor is validating, and run `lando setup` first, as described in the
+[provider auto-setup guide](../setup/provider-auto-setup.mdx), to produce the readiness state doctor reports.
+
 <Guide>
   <Scenario id="doctor-subsystem-records" render={false} reason="The subsystem diagnostics run against the bundled default Live Layers; the production subsystem layers require the global app and a running provider">
     <Step name="subsystem-records">
@@ -74,7 +92,7 @@ tags: [beta, docs, subsystems, doctor, diagnostics]
 
   <Scenario id="doctor-no-app-bootstrap" render={false} reason="Doctor safe mode starts without the normal runtime so provider bootstrap failures become diagnostics; focused resilience tests cover the scoped runtime build and degraded report">
     <Step name="no-app-bootstrap">
-      <Variable name="bootstrapLevel" value="none" display="meta:doctor starts at bootstrap none and never requires app bootstrap unless --app is passed" />
+      <Variable name="bootstrapLevel" value="none" display="meta:doctor stays at bootstrap none; --app adds isolated Landofile checks without switching to app bootstrap" />
       <Variable name="providerRuntime" value="built once inside doctor's scope" display="Doctor safely builds one provider runtime whose scope remains open for every runtime-dependent report section" />
       <Variable name="bootstrapFailure" value="provider-bootstrap self check" display="A provider runtime build failure produces an empty provider section and structured remediation instead of aborting the report" />
       <Variable name="continuedSections" value="subsystems, global-app, mcp, optional app checks" display="Sections that do not require the provider runtime still run after provider bootstrap fails" />
