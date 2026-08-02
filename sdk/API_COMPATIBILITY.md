@@ -4,6 +4,7 @@
 
 ## Compatibility notes
 
+- `ProxyServiceContributionLayer` additively requires the existing `CertificateAuthority` service so proxy plugins can terminate TLS with the selected active CA; core supplies a deferred resolver-backed implementation to selected proxy contributions.
 - `@lando/sdk/services` additively exports the runtime `ServiceCaFileDescriptor` Effect Schema and
   its inferred type. `ServiceBuildStepIntent` additively accepts optional `caFiles` so derived
   artifact builders can verify and pack host CA inputs without adding provider-specific intent,

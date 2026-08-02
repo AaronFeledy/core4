@@ -3,6 +3,7 @@ import { Effect } from "effect";
 
 import { FileNotFoundError } from "@lando/sdk/errors";
 import { AppId, ServiceName } from "@lando/sdk/schema";
+import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
 import { makeTraefikProxyService, renderTraefikDynamicConfig } from "../src/proxy.ts";
 
@@ -30,6 +31,7 @@ const makeHarness = (
   const ensured: Array<ReadonlyArray<string>> = [];
   const files = new Map<string, string>();
   const service = makeTraefikProxyService({
+    certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
       writeAtomic: (path, content) =>
@@ -37,7 +39,8 @@ const makeHarness = (
           ? Effect.fail(new Error("injected atomic replacement failure"))
           : Effect.sync(() => void files.set(path, String(content))),
       remove: (path) => Effect.sync(() => void files.delete(path)),
-      exists: (path) => Effect.succeed(files.has(path) || path.endsWith("/dynamic")),
+      exists: (path) =>
+        Effect.succeed(files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
       readDir: (path) =>
         Effect.succeed(
           [...files.keys()]
@@ -47,7 +50,9 @@ const makeHarness = (
       readText: (path) =>
         files.has(path)
           ? Effect.succeed(files.get(path) ?? "")
-          : Effect.fail(new FileNotFoundError({ message: "removed", path })),
+          : path.startsWith("/tmp/test-certs/")
+            ? Effect.succeed("test pem")
+            : Effect.fail(new FileNotFoundError({ message: "removed", path })),
     },
     paths: { platform: "linux", globalAppRoot: "/lando/global" },
     globalApp: {
@@ -111,11 +116,13 @@ describe("Traefik ProxyService", () => {
 
     const applied = await Effect.runPromise(harness.service.applyRoutes(routes, app));
     const freshService = makeTraefikProxyService({
+      certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: (path, content) => Effect.sync(() => void harness.files.set(path, String(content))),
         remove: (path) => Effect.sync(() => void harness.files.delete(path)),
-        exists: (path) => Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic")),
+        exists: (path) =>
+          Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
         readDir: (path) =>
           Effect.succeed(
             [...harness.files.keys()]
@@ -142,11 +149,13 @@ describe("Traefik ProxyService", () => {
 
     await Effect.runPromise(harness.service.stop);
     const fresh = makeTraefikProxyService({
+      certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: (path, content) => Effect.sync(() => void harness.files.set(path, String(content))),
         remove: (path) => Effect.sync(() => void harness.files.delete(path)),
-        exists: (path) => Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic")),
+        exists: (path) =>
+          Effect.succeed(harness.files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
         readDir: (path) =>
           Effect.succeed(
             [...harness.files.keys()]
@@ -168,6 +177,7 @@ describe("Traefik ProxyService", () => {
 
   test("status skips route files removed after the directory snapshot", async () => {
     const service = makeTraefikProxyService({
+      certificateAuthority: makeTestCertificateAuthority(),
       fileSystem: {
         mkdir: () => Effect.void,
         writeAtomic: () => Effect.void,

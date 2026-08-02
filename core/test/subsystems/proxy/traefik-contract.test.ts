@@ -2,14 +2,16 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { makeTraefikProxyService } from "@lando/proxy-traefik";
-import { runProxyServiceContractSuite } from "@lando/sdk/test";
+import { makeTestCertificateAuthority, runProxyServiceContractSuite } from "@lando/sdk/test";
 
 test("bundled Traefik satisfies the ProxyService contract suite", async () => {
   const files = new Map<string, string>();
   const service = makeTraefikProxyService({
+    certificateAuthority: makeTestCertificateAuthority(),
     fileSystem: {
       mkdir: () => Effect.void,
-      exists: (path) => Effect.succeed(files.has(path) || path.endsWith("/dynamic")),
+      exists: (path) =>
+        Effect.succeed(files.has(path) || path.endsWith("/dynamic") || path.endsWith("/certs")),
       readDir: (path) =>
         Effect.succeed(
           [...files.keys()]

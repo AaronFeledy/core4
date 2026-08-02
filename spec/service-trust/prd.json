@@ -346,7 +346,7 @@
         "Lint passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02. Origin: plugins/proxy-traefik tls: {} gap; spec/18-global-app.md section 20.10 + spec/11-subsystems.md sections 10.2-10.3"
     },
     {
