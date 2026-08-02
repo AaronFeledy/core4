@@ -1432,3 +1432,10 @@ Spec SoT:
 - **Learnings for future iterations:** A successful bare guide-coverage command is meaningful only when
   `docs/guides/prd-sources.json` names the owning PRD source; an empty source list makes the matrix gate vacuous.
 ---
+
+## 2026-08-02 08:32 CDT - Babysit
+- PR: #676 https://github.com/AaronFeledy/core4/pull/676
+- CI outcome: pass (after triage)
+- Review feedback: fixed (removed spec path from docs/guides/prd-sources.json so check:spec-reference passes)
+- Merge: merged (squash)
+---
