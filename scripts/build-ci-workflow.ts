@@ -504,8 +504,6 @@ ${setupBunSteps}
 ${timingNoticeStep("runtime-bundle-linux-x64", 40)}
 `;
 
-
-
 const windowsRuntimeBundleJob = `  runtime-bundle-win32-x64:
     runs-on: ${LINUX_X64_PRIMARY_RUNNER}
     timeout-minutes: 15

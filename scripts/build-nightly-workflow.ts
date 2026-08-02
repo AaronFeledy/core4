@@ -6,11 +6,7 @@ import {
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
 } from "./build-ci-workflow.ts";
-import {
-  CI_PLATFORMS,
-  type CiPlatform,
-  LINUX_X64_CI_RUNNERS,
-} from "./ci-platforms.ts";
+import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { NIGHTLY_TIER_TESTS } from "./test-shards.ts";
 
