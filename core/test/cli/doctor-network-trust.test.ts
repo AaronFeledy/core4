@@ -175,8 +175,9 @@ describe("network-trust doctor status", () => {
       proxyInjectIntoServices: "true",
       noProxyCount: "2",
     });
-    expect(JSON.stringify(result)).not.toContain(secret);
-    expect(JSON.stringify(result)).not.toContain(proxyUrl);
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain(proxyUrl);
   });
 
   test("lets ConfigService failures propagate", async () => {
@@ -221,9 +222,10 @@ describe("network-trust doctor status", () => {
       "proxyInjectIntoServices",
       "noProxyCount",
     ]);
-    expect(JSON.stringify(result)).not.toContain(path);
-    expect(JSON.stringify(result)).not.toContain("CERTIFICATE");
-    expect(JSON.stringify(result)).not.toMatch(/[a-f0-9]{64}/u);
-    expect(JSON.stringify(result)).not.toContain("proxy.internal");
+    const serialized = JSON.stringify(result);
+    expect(serialized).not.toContain(path);
+    expect(serialized).not.toContain("CERTIFICATE");
+    expect(serialized).not.toMatch(/[a-f0-9]{64}/u);
+    expect(serialized).not.toContain("proxy.internal");
   });
 });

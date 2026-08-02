@@ -10,10 +10,6 @@ import type { DoctorSeverity, DoctorSolution, DoctorStatus } from "./doctor.ts";
  */
 export type SubsystemRecovery = "automatic" | "manual";
 
-/**
- * A subsystem diagnostic entry with `name`, `status`, `severity`, `recovery`,
- * `context`, and `solutions` fields.
- */
 export interface DoctorSubsystemCheck {
   readonly name: string;
   readonly status: DoctorStatus;
@@ -133,10 +129,6 @@ const degradedSolution = (spec: SubsystemSpec): DoctorSolution =>
     ? automaticFixSolution(spec.automaticRemediation)
     : manualSetupSolution(spec.manualRemediation);
 
-/**
- * Map a subsystem's failure path to a tagged diagnostic carrying `severity`
- * and `solution`. Returns `undefined` for an unknown subsystem name.
- */
 export const classifySubsystemFailure = (
   subsystem: string,
   cause?: unknown,
@@ -151,10 +143,6 @@ export const classifySubsystemFailure = (
   });
 };
 
-/**
- * Public alias for `classifySubsystemFailure` that always returns a diagnostic
- * for the six known subsystems.
- */
 export const subsystemFailureDiagnostic = (subsystem: string, cause?: unknown): DoctorSubsystemFailure => {
   const diagnostic = classifySubsystemFailure(subsystem, cause);
   if (diagnostic !== undefined) return diagnostic;

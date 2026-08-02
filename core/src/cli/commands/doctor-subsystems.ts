@@ -78,11 +78,6 @@ export interface SubsystemDoctorOptions {
   readonly networkTrust?: NetworkTrustDoctorStatus;
 }
 
-/**
- * Default Live Layers used to probe subsystem status from `lando doctor`.
- * These bundled fallback/disabled stubs do not require app bootstrap or any
- * other ambient service.
- */
 // `subsystemDoctor` reads only the runner `id`, never invoking `run()`/`scan()`,
 // so the bootstrap placeholder provider satisfies the real layers' dependencies
 // while keeping `DefaultSubsystemDoctorLayer` self-contained.
@@ -104,9 +99,6 @@ export const DefaultSubsystemDoctorLayer: Layer.Layer<
   HostProxyServiceDisabledLive,
 );
 
-/**
- * Build the subsystem diagnostics using only the five subsystem service tags.
- */
 export const subsystemDoctor = (
   options: SubsystemDoctorOptions = {},
 ): Effect.Effect<

@@ -15,39 +15,28 @@ export const buildHostProxyCheck = (
 ): Effect.Effect<DoctorSubsystemCheck, never> =>
   Effect.gen(function* () {
     const status = yield* Effect.either(hostProxy.status());
+    const context: Record<string, string> = {
+      subsystem: "host-proxy",
+      subsystemId: hostProxy.id,
+      ...(Either.isRight(status)
+        ? {
+            active: String(status.right.active),
+            mode: status.right.mode,
+            mechanism: status.right.mechanism,
+            baseDomain: status.right.baseDomain,
+            loopback: status.right.loopback,
+          }
+        : { active: "false" }),
+    };
     if (
       Either.isRight(status) &&
       (status.right.active || (status.right.mode === "none" && status.right.mechanism === "skipped"))
     ) {
-      const value = status.right;
-      return passCheck(HOST_PROXY_SPEC, {
-        subsystem: "host-proxy",
-        subsystemId: hostProxy.id,
-        active: String(value.active),
-        mode: value.mode,
-        mechanism: value.mechanism,
-        baseDomain: value.baseDomain,
-        loopback: value.loopback,
-      });
+      return passCheck(HOST_PROXY_SPEC, context);
     }
-    const baseContext: Record<string, string> = Either.isRight(status)
-      ? {
-          subsystem: "host-proxy",
-          subsystemId: hostProxy.id,
-          active: String(status.right.active),
-          mode: status.right.mode,
-          mechanism: status.right.mechanism,
-          baseDomain: status.right.baseDomain,
-          loopback: status.right.loopback,
-        }
-      : {
-          subsystem: "host-proxy",
-          subsystemId: hostProxy.id,
-          active: "false",
-        };
     return yield* buildDegradedCheck(
       HOST_PROXY_SPEC,
-      baseContext,
+      context,
       fix,
       undefined,
       Either.isLeft(status) ? status.left : undefined,
