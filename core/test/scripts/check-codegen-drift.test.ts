@@ -40,18 +40,38 @@ const { CATALOG_OUTPUT_PATHS, checkCodegenDrift } = await loadCodegenDriftModule
 
 const EXPECTED_CATALOG_PATHS = [
   ".github/workflows",
+  "core/src/cli/generated",
+  "core/src/cli/oclif/compiled-manifest.ts",
+  "core/src/cli/oclif/generated",
   "core/src/data-mover/generated/provider-images.ts",
   "core/src/plugins/generated",
   "core/src/recipes/bundled.ts",
   "core/src/runtime/generated/layers",
+  "core/test/fixtures/compose/manifest.json",
   "dist/command-schemas",
   "dist/schemas",
   "docs/reference/commands.mdx",
   "docs/reference/compose-key-matrix.mdx",
   "docs/reference/schemas",
+  "images/php",
   "plugins/file-sync-mutagen/mutagen-versions.json",
+  "recipes/*/.scaffold/*",
   "scripts/generated/opentui-native",
   "sdk/test/fixtures/bundled-plugin-manifests.json",
+] as const;
+
+const TRACKED_CATALOG_SENTINELS = [
+  "core/src/cli/generated/command-ids.ts",
+  "core/src/cli/oclif/compiled-manifest.ts",
+  "core/src/cli/oclif/generated/host-proxy-allowlist.ts",
+  "core/src/cli/oclif/generated/mcp-allowlist.ts",
+  "core/src/cli/oclif/generated/setup-plugin-flags.ts",
+  "core/src/recipes/bundled.ts",
+  "core/test/fixtures/compose/manifest.json",
+  "docs/reference/commands.mdx",
+  "images/php/8.4/Dockerfile",
+  "plugins/file-sync-mutagen/mutagen-versions.json",
+  "recipes/drupal/.scaffold/default.md",
 ] as const;
 
 interface Fixture {
@@ -120,6 +140,7 @@ const makeRepository = async (): Promise<Fixture> => {
   await write(root, ".github/workflows/old.yml", "name: old\n");
   await write(root, "docs/reference/commands.mdx", "# Commands\n");
   await write(root, "README.md", "# Fixture\n");
+  await write(root, "recipes/demo/.scaffold/default.md", "# Default scaffold\n");
   await runGit(root, env, ["add", "."]);
   await runGit(root, env, ["commit", "-m", "fixture"]);
   return { root, env };
@@ -177,6 +198,22 @@ describe("check:codegen-drift", () => {
     expect(result).toEqual({ dirtyPaths: ["docs/reference/commands.mdx"], ok: false });
   });
 
+  test("fails for tracked and untracked recipe scaffold drift", async () => {
+    // Given: a tracked scaffold modification and an untracked scaffold beside it.
+    const { root, env } = await makeRepository();
+    await write(root, "recipes/demo/.scaffold/default.md", "# Changed default scaffold\n");
+    await write(root, "recipes/demo/.scaffold/extra.md", "# Extra scaffold\n");
+
+    // When: catalog drift is checked.
+    const result = await checkCodegenDrift({ env, root });
+
+    // Then: both scaffold paths are reported.
+    expect(result).toEqual({
+      dirtyPaths: ["recipes/demo/.scaffold/default.md", "recipes/demo/.scaffold/extra.md"],
+      ok: false,
+    });
+  });
+
   test("consumes both NUL path fields for a tracked rename", async () => {
     // Given: a tracked catalog file renamed within a catalog directory.
     const { root, env } = await makeRepository();
@@ -220,8 +257,30 @@ describe("check:codegen-drift", () => {
   test("keeps the catalog path set aligned with the documented CI union", () => {
     // Given: the existing CI-generated artifact path union.
     // When: the checker path set is inspected.
-    // Then: all 13 paths and no others are present in documented order.
+    // Then: all 19 paths and no others are present in documented order.
     expect(CATALOG_OUTPUT_PATHS).toEqual(EXPECTED_CATALOG_PATHS);
+  });
+
+  test("covers representative tracked output from every catalog generator path", async () => {
+    // Given: fixed tracked sentinels selected independently from generator outputs.
+    const process = Bun.spawn({
+      cmd: ["git", "ls-files", "--", ...CATALOG_OUTPUT_PATHS],
+      cwd: repoRoot,
+      stderr: "pipe",
+      stdout: "pipe",
+    });
+
+    // When: tracked files covered by the production catalog pathspecs are listed.
+    const [exitCode, stdout, stderr] = await Promise.all([
+      process.exited,
+      text(process.stdout),
+      text(process.stderr),
+    ]);
+    if (exitCode !== 0) throw new Error(`git ls-files failed: ${stderr.trim()}`);
+    const matchedPaths = stdout.split("\n").filter((path) => path.length > 0);
+
+    // Then: every independent sentinel is matched by the production pathspecs.
+    expect(matchedPaths).toEqual(expect.arrayContaining([...TRACKED_CATALOG_SENTINELS]));
   });
 
   test("rejects a directory that is not a git repository", async () => {
