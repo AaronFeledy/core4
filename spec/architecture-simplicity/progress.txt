@@ -99,3 +99,16 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Keep drift detection and semantic correctness visibly separate even when one composite command runs companion semantic checks.
   - Structural documentation tests should pin table cells and script wiring rather than prose wording.
 ---
+
+## [2026-08-02 17:38 CDT] - US-509 Review
+- Review clarified that `codegen:check` is a composite command whose full failure surface includes `check:deprecations` and `typecheck` alongside pure drift, and locked the new step-sequence assertion to the exact full step order rather than mere substring presence.
+- Review notes (deferred/rejected): the stale pre-US-505 wording in §13.2 predates this branch and was explicitly deferred in US-506 Review, outside US-509's acceptance criteria.
+- Review notes (deferred/rejected): `check:codegen-drift` is not reclassified because the source acceptance criteria name `codegen:check`, and the gate inventory remains unchanged.
+- Review notes (deferred/rejected): optional Markdown-parser, trailing-pipe, and wildcard-table hardening is non-blocking and broadens scope beyond this fix.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable due to exhausted usage; the five review-work lanes otherwise completed, and the code-quality lane produced the one in-scope blocker fixed here.
+- Guide-Coverage-Skip: Internal gate-classification documentation has no end-user guide surface.
+- Verification: explicit-base guide drift passed; typecheck passed; lint/deprecations passed; matrix 7/7, adjacent codegen drift 13/13, CI runbook 4/4; mutation dropping `check:deprecations` caused exactly the new sequence assertion to fail (6 pass, 1 fail), then `package.json` was restored clean; LSP diagnostics clean.
+- **Learnings for future iterations:**
+  - Distinguish a check's stated responsibility from a composite command's full failure surface before classifying it.
+  - Pin exact step sequences rather than substring presence when a contract depends on ordering.
+---
