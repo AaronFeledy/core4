@@ -61,6 +61,8 @@ Spec SoT:
 - Runtime-dependent doctor checks should resolve optional plugin/runtime state inside their own isolated
   report section, then pass a typed status into the self-contained subsystem aggregate; do not make the
   default subsystem layer depend on an optional resolver just to report its absence.
+- Filesystem fakes must match `FileSystemLive` for directory existence; otherwise lifecycle cleanup and
+  persisted-status tests can pass while production silently treats populated directories as absent.
 
 ## Status
 
@@ -1351,4 +1353,13 @@ Spec SoT:
 - **Learnings for future iterations:**
   - Proxy plugins that need the active certificate authority should depend on the existing service tag; core can provide a resolver-backed deferred implementation so missing or ambiguous selection fails only when TLS is used, not during bootstrap.
   - Traefik's router `tls: {}` activates HTTPS but does not provide certificate material. Keep one durable default-store file and per-app certificate entries, and write PEM/config inputs before the watched route file that activates them.
+---
+## 2026-08-02 02:03 CDT - US-497 Review
+- Fixed real-filesystem proxy lifecycle behavior so persisted status sees configured routes and stop removes route and TLS artifacts, and made copied private keys use an injected atomic writer that creates owner-only files before publication.
+- Completed the reader-visible setup/mkcert prerequisite and direct certificates guide link required by the source acceptance criteria.
+- Review notes (deferred/rejected): Cursor Bugbot was inconclusive because both required current-branch attempts hit the account usage limit; this was not treated as approval.
+- Review notes (deferred/rejected): Rejected removing the `ProxyServiceContributionLayer` CertificateAuthority requirement; it adds no CA method or export and accurately declares the existing service dependency supplied by core's deferred layer.
+- Review notes (deferred/rejected): Deferred generation-specific certificate-pair publication, mutation locking, and expiry renewal as hardening beyond US-497; current writes remain atomic per file and the story does not define interruption consistency or renewal policy.
+- Verification: typecheck, lint/deprecations, focused guide execution, guide lint/coverage, and base-aware guide drift passed; 39 focused and adjacent FileSystem, proxy, TLS, registry, deferred-authority, and contract tests passed.
+- **Learnings for future iterations:** Filesystem fakes must preserve directory-existence semantics from the live adapter, and secret copies need restrictive mode on the temporary inode before atomic rename.
 ---
