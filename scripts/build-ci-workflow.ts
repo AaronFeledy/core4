@@ -68,6 +68,9 @@ const setupBunSteps = `      - name: Setup Bun
       - name: Install dependencies
         run: bun install --frozen-lockfile`;
 
+const codegenStep = `      - name: Regenerate derived sources
+        run: bun run codegen`;
+
 const renderStaticChecks = (): string => `  static-checks-platform:
     strategy:
       fail-fast: false
@@ -178,6 +181,8 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
+${codegenStep}
+
       - name: Unit test shard
         run: bun run test:unit:shard \${{ matrix.shard }}/${UNIT_SHARD_COUNT}
 
@@ -239,6 +244,8 @@ const renderBuildJob = (platform: CiPlatform): string => `  build-${platform.id}
 ${timingStartStep}
 
 ${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
+
+${codegenStep}
 
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -723,8 +730,7 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
-      - name: Regenerate guide scenarios
-        run: bun run codegen:guide-scenarios
+${codegenStep}
 
       - name: Typecheck
         run: bun run typecheck
@@ -807,6 +813,8 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
+${codegenStep}
+
       - name: Regenerate schema artifact set
         run: bun run codegen:schema-snapshot
 
@@ -886,6 +894,8 @@ ${timingStartStep}
 
 ${setupBunSteps}
 
+${codegenStep}
+
       - name: Run library API tests
         run: bun test core/test/library sdk/test/library
 
@@ -905,6 +915,8 @@ ${renderLinuxX64MatrixGate("library-api-tests", "library-api-tests-runner", "lib
 ${timingStartStep}
 
 ${setupBunSteps}
+
+${codegenStep}
 
       - name: Run recipe test layer
         run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts

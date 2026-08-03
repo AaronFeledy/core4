@@ -42,14 +42,14 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
-  test("runs the full codegen catalog once and focused guide generation per platform", async () => {
+  test("regenerates derived sources before every source-consuming CI job", async () => {
     // Given / When
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(0);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(14);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-    expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(5);
+    expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
   });
 
@@ -713,7 +713,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
     expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
     expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
-    expect(guideScenariosRunner).toContain("        run: bun run codegen:guide-scenarios");
+    expect(guideScenariosRunner).toContain("        run: bun run codegen");
     expect(guideScenariosRunner).toContain("        run: bun run typecheck");
     expect(guideScenariosRunner).toContain("        run: bun run lint:guides");
     expect(guideScenariosRunner).toContain("        run: bun run check:guide-coverage");
@@ -769,9 +769,9 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("          retention-days: 7");
 
     expect(guideScenariosRunner.indexOf("bun install --frozen-lockfile")).toBeLessThan(
-      guideScenariosRunner.indexOf("bun run codegen:guide-scenarios"),
+      guideScenariosRunner.indexOf("bun run codegen"),
     );
-    expect(guideScenariosRunner.indexOf("bun run codegen:guide-scenarios")).toBeLessThan(
+    expect(guideScenariosRunner.indexOf("bun run codegen")).toBeLessThan(
       guideScenariosRunner.indexOf("bun run typecheck"),
     );
     expect(guideScenariosRunner.indexOf("bun run typecheck")).toBeLessThan(
@@ -813,7 +813,7 @@ describe("ci workflow", () => {
       expect(guideScenarios).toContain("    needs: [static-checks]");
       expect(guideScenarios).toContain(`    runs-on: ${runsOn}`);
       expect(guideScenarios).toContain("          fetch-depth: 0");
-      expect(guideScenarios).toContain("        run: bun run codegen:guide-scenarios");
+      expect(guideScenarios).toContain("        run: bun run codegen");
       expect(guideScenarios).toContain("        run: bun run typecheck");
       expect(guideScenarios).toContain("        run: bun run lint:guides");
       expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
