@@ -57,6 +57,7 @@ describe("biomeCheckArgv", () => {
       "biome",
       "check",
       "--write",
+      "--vcs-use-ignore-file=false",
       "--",
       join("core", "generated", "example.ts"),
     ]);

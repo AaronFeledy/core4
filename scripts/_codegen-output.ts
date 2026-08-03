@@ -44,7 +44,16 @@ export const biomeCheckArgv = (paths: readonly string[]): string[] => {
     }
     return normalized;
   });
-  return [process.execPath, "x", "biome", "check", "--write", "--", ...relativePaths];
+  return [
+    process.execPath,
+    "x",
+    "biome",
+    "check",
+    "--write",
+    "--vcs-use-ignore-file=false",
+    "--",
+    ...relativePaths,
+  ];
 };
 
 export const formatGeneratedPaths = async (paths: readonly string[]): Promise<void> => {

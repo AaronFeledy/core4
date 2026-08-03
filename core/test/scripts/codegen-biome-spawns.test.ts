@@ -55,3 +55,11 @@ test("shared Biome argv keeps unmatched paths observable", () => {
   // Then
   expect(argv).not.toContain("--no-errors-on-unmatched");
 });
+
+test("shared Biome argv formats explicit ignored generated paths", () => {
+  // Given / When
+  const argv = biomeCheckArgv([resolve(repoRoot, "core/src/plugins/generated/bundled.ts")]);
+
+  // Then
+  expect(argv).toContain("--vcs-use-ignore-file=false");
+});

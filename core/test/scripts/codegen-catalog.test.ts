@@ -73,11 +73,11 @@ const expectedCatalogRows = [
   ["compose-fixture-manifest", "derived", "build-compose-fixture-manifest.ts", "repo"],
   ["bundled-recipes", "derived", "build-bundled-recipes.ts", "repo"],
   ["bootstrap-layers", "derived", "build-bootstrap-layers.ts", "repo"],
-  ["schema-snapshot", "derived", "build-schema-snapshot.ts", "repo"],
   ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo"],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo"],
   ["host-proxy-allowlist", "derived", "build-host-proxy-allowlist.ts", "repo"],
   ["oclif-manifest", "derived", "build-oclif-manifest.ts", "core"],
+  ["schema-snapshot", "derived", "build-schema-snapshot.ts", "repo"],
   ["command-reference", "derived", "build-command-reference.ts", "repo"],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
   ["opentui-native-stubs", "derived", "build-opentui-native-stubs.ts", "repo"],
@@ -136,6 +136,27 @@ describe("codegen catalog", () => {
       catalog.map(() => [...expectedKeys].sort()),
     );
     expect(commands).toEqual(expectedCommands);
+  });
+
+  test("generates command graph prerequisites before schema artifacts", () => {
+    // Given: schema generation imports the complete command and plugin graph.
+    const prerequisiteIds = [
+      "bundled-plugins",
+      "bundled-recipes",
+      "bootstrap-layers",
+      "setup-plugin-flags",
+      "mcp-allowlist",
+      "host-proxy-allowlist",
+      "oclif-manifest",
+    ] as const;
+
+    // When: generator positions are compared with the schema generator.
+    const schemaIndex = catalog.findIndex((entry) => entry.id === "schema-snapshot");
+
+    // Then: every imported generated prerequisite already exists.
+    for (const id of prerequisiteIds) {
+      expect(catalog.findIndex((entry) => entry.id === id)).toBeLessThan(schemaIndex);
+    }
   });
 
   test("classifies ownership and references unique existing scripts", async () => {

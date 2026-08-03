@@ -42,14 +42,14 @@ const findIndentedBlock = (source: string, key: string, indent = 0): string => {
 };
 
 describe("ci workflow", () => {
-  test("runs the full codegen catalog once and focused guide generation per platform", async () => {
+  test("regenerates derived sources before every source-consuming CI job", async () => {
     // Given / When
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(0);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(15);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
-    expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(5);
+    expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
   });
 
@@ -413,13 +413,21 @@ describe("ci workflow", () => {
     expect(workflow).not.toContain("contents: write");
   });
 
-  test("regenerates and drift-checks the OpenTUI native catalog", async () => {
+  test("regenerates derived bundled outputs and drift-checks only the committed pin", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const bundledCodegen = findIndentedBlock(jobs, "bundled-codegen", 2);
 
     expect(bundledCodegen).toContain("        run: bun run codegen:opentui-native-stubs");
-    expect(bundledCodegen).toContain("scripts/generated/opentui-native");
+    expect(bundledCodegen).toContain("        run: bun run codegen:bundled-plugins");
+    expect(bundledCodegen).toContain("        run: bun run codegen:bundled-recipes");
+    expect(bundledCodegen).toContain("        run: bun run codegen:bootstrap-layers");
+    expect(bundledCodegen).toContain("        run: bun run codegen:provider-images");
+    expect(bundledCodegen).toContain(
+      "        run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json",
+    );
+    expect(bundledCodegen).not.toContain("scripts/generated/opentui-native");
+    expect(bundledCodegen).not.toContain("core/src/plugins/generated");
   });
 
   test("detects drift in the committed bundled-plugin manifest fixture", async () => {
@@ -705,7 +713,7 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("        uses: oven-sh/setup-bun@v2");
     expect(guideScenariosRunner).toContain("          bun-version-file: .bun-version");
     expect(guideScenariosRunner).toContain("        run: bun install --frozen-lockfile");
-    expect(guideScenariosRunner).toContain("        run: bun run codegen:guide-scenarios");
+    expect(guideScenariosRunner).toContain("        run: bun run codegen");
     expect(guideScenariosRunner).toContain("        run: bun run typecheck");
     expect(guideScenariosRunner).toContain("        run: bun run lint:guides");
     expect(guideScenariosRunner).toContain("        run: bun run check:guide-coverage");
@@ -761,9 +769,9 @@ describe("ci workflow", () => {
     expect(guideScenariosRunner).toContain("          retention-days: 7");
 
     expect(guideScenariosRunner.indexOf("bun install --frozen-lockfile")).toBeLessThan(
-      guideScenariosRunner.indexOf("bun run codegen:guide-scenarios"),
+      guideScenariosRunner.indexOf("bun run codegen"),
     );
-    expect(guideScenariosRunner.indexOf("bun run codegen:guide-scenarios")).toBeLessThan(
+    expect(guideScenariosRunner.indexOf("bun run codegen")).toBeLessThan(
       guideScenariosRunner.indexOf("bun run typecheck"),
     );
     expect(guideScenariosRunner.indexOf("bun run typecheck")).toBeLessThan(
@@ -805,7 +813,7 @@ describe("ci workflow", () => {
       expect(guideScenarios).toContain("    needs: [static-checks]");
       expect(guideScenarios).toContain(`    runs-on: ${runsOn}`);
       expect(guideScenarios).toContain("          fetch-depth: 0");
-      expect(guideScenarios).toContain("        run: bun run codegen:guide-scenarios");
+      expect(guideScenarios).toContain("        run: bun run codegen");
       expect(guideScenarios).toContain("        run: bun run typecheck");
       expect(guideScenarios).toContain("        run: bun run lint:guides");
       expect(guideScenarios).toContain("        run: bun run check:guide-coverage");
@@ -858,6 +866,10 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("    timeout-minutes: 25");
     expect(providerIntegrationGate).toContain("    needs: [provider-integration-linux-x64-runner]");
     expect(providerIntegrationGate).toContain("    if: always()");
+    expect(providerIntegration).toContain("      - name: Regenerate derived sources");
+    expect(providerIntegration.indexOf("Regenerate derived sources")).toBeLessThan(
+      providerIntegration.indexOf("Run provider contract tests"),
+    );
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
     expect(providerIntegration).toContain(
       "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",

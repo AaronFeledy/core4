@@ -152,6 +152,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Unit test shard
         run: bun run test:unit:shard ${{ matrix.shard }}/3
 
@@ -192,6 +195,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Regenerate schema artifact set
         run: bun run codegen:schema-snapshot
@@ -264,7 +270,7 @@ jobs:
         run: bun run codegen:opentui-native-stubs
 
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts scripts/generated/opentui-native
+        run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json
 
       - name: Report job timing
         if: always()
@@ -291,6 +297,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Run library API tests
         run: bun test core/test/library sdk/test/library
@@ -335,6 +344,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Run recipe test layer
         run: bun test core/test/recipes core/test/cli/init.canonical-recipes.test.ts
 
@@ -377,8 +389,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Regenerate guide scenarios
-        run: bun run codegen:guide-scenarios
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Typecheck
         run: bun run typecheck
@@ -429,8 +441,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Regenerate guide scenarios
-        run: bun run codegen:guide-scenarios
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Typecheck
         run: bun run typecheck
@@ -481,8 +493,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Regenerate guide scenarios
-        run: bun run codegen:guide-scenarios
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Typecheck
         run: bun run typecheck
@@ -537,8 +549,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Regenerate guide scenarios
-        run: bun run codegen:guide-scenarios
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Typecheck
         run: bun run typecheck
@@ -768,8 +780,8 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Regenerate guide scenarios
-        run: bun run codegen:guide-scenarios
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Typecheck
         run: bun run typecheck
@@ -817,6 +829,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -878,6 +893,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
 
@@ -938,6 +956,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
 
@@ -997,6 +1018,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1063,6 +1087,9 @@ jobs:
         with:
           name: lando-linux-x64
           path: linux-sidecars
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Build OCLIF manifest
         run: bun run --filter='@lando/core' build:manifest
@@ -1405,6 +1432,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download linux-x64 binary artifact
         uses: actions/download-artifact@v7

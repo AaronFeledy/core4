@@ -48,6 +48,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 | `check:*-boundary` (behavioral) | semantic |
 
 - Codegen scripts are expected to finish with `biome check --write` on emitted files; do not replace that with formatting-only steps.
+- Route generated-file formatting through `scripts/_codegen-output.ts`; it explicitly disables Biome's VCS-ignore handling so gitignored derived outputs are still processed.
 - Clean checkout bootstrap (target): `git clone && bun install && bun run codegen` before typecheck/test.
 
 ## Architecture Boundaries
