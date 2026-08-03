@@ -161,3 +161,16 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - A deliberately unusable HEAD lockfile is a strong regression fixture proving baseline installation runs from the base checkout and its own `bun.lock`.
   - Keep skip metadata tied to the missing generator path so ignored derived indexes can never silently disable both compatibility families again.
 ---
+
+## [2026-08-03 06:35 CDT] - US-533 Review
+- Review closed two fail-closed gaps: generator-presence probe failures can no longer masquerade as historical absence, and the configured base ref is resolved once so probing and worktree materialization use the same immutable commit.
+- Reconciled the normative post-landing contract and CI runbook with the shipped fixture-only Git-status scope, ignored derived trees, and semantic comparison behavior.
+- Review notes (deferred/rejected): a broader cleanup/finally redesign and cleanup-failure injection were non-blocking hardening; the existing paths cover worktree-add, install, generation, artifact-load, and normal teardown failures without weakening the gate.
+- Review notes (deferred/rejected): the optional base-artifact cache is explicitly optional, classifier-test import churn is behavior-neutral, and the architecture-simplicity index closure wording belongs to US-532 rather than this focused repair.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account was out of usage; all five review-work lanes completed, and the confirmed blockers were fixed.
+- Guide-Coverage-Skip: Internal schema compatibility gate behavior has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, and 84 focused schema/workflow/runbook tests passed; the real gate compared the regenerated `origin/main` baseline with zero skips. `check:spec-reference` remains blocked only by the previously recorded unrelated `.omo/**` citations.
+- **Learnings for future iterations:**
+  - A historical absence probe must encode absence as successful empty output; treating every nonzero probe exit as absence silently turns operational failures into skipped validation.
+  - Resolve a mutable Git ref once and pass its immutable commit SHA through every probe and materialization step.
+---
