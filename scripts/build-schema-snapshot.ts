@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Regenerate the public schema artifact set used by the CI drift gate.
+ * Regenerate the public schema artifact set.
  *
  * Scope:
  *   - JSON Schema output for the public `@lando/sdk/schema` registry
- *   - committed standalone schema artifacts generated from that registry
+ *   - gitignored derived standalone schema artifacts from that registry
  *   - standalone result schemas for every canonical command
+ *   - byte-identical `core/dist/{schemas,command-schemas}` package mirrors for npm packaging
  *   - decoded manifests for the in-binary bundled plugins only
  *
  * Out-of-tree plugin manifests are intentionally not discovered here.
