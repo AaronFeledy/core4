@@ -205,3 +205,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Keep contributor bootstrap instructions ordered as install, full catalog codegen, then typecheck/test; focused generators do not prove first materialization of the complete derived graph.
 ---
+
+## [2026-08-03 11:40 CDT] - US-512 Review
+- Review hardened the Quick Start regression proof to require exact commands inside its Bash block, preventing comments or `bun run codegen:check` from falsely satisfying the explicit clean-checkout bootstrap contract.
+- Review notes (deferred/rejected): the two stale `codegen-ci.test.ts` workflow-count assertions predate this story and have been recorded since US-506; they do not invalidate US-512's focused tests or existing clean CI proof.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account exhausted its usage; the five review-work lanes completed and the confirmed in-scope blocker was fixed.
+- Guide-Coverage-Skip: Internal contributor bootstrap ordering has no executable end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, LSP diagnostics, and 38 focused runbook, bootstrap, catalog, and CI workflow tests passed.
+- **Learnings for future iterations:**
+  - Documentation contract tests should match exact executable command lines inside the owned code block rather than substrings that comments or longer commands can satisfy.
+---
