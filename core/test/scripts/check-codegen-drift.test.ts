@@ -29,7 +29,6 @@ const EXPECTED_CATALOG_PATHS = [
   "sdk/test/fixtures/bundled-plugin-manifests.json",
 ] as const;
 
-/** US-510 gitignored derived schema trees — must stay outside the git-status drift half. */
 const GITIGNORED_SCHEMA_TREES = ["dist/command-schemas", "dist/schemas", "docs/reference/schemas"] as const;
 
 const TRACKED_CATALOG_SENTINELS = [
@@ -233,7 +232,7 @@ describe("check:codegen-drift", () => {
     expect(CATALOG_OUTPUT_PATHS).toEqual(EXPECTED_CATALOG_PATHS);
   });
 
-  test("excludes US-510 gitignored schema trees from the git-status drift half", () => {
+  test("excludes gitignored schema trees from the git-status drift check", () => {
     // Given: the three derived schema trees that generator/consumer validation owns.
     // When: the checker path set is inspected.
     // Then: none of those trees appear (prevents reintroduction into git-status drift).

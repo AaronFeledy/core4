@@ -375,9 +375,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("- name: Check schema compatibility");
       expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
       expect(workflow).toContain("run: bun run check:schema-compatibility");
-      expect(workflow.indexOf("Verify committed schema fixture is current")).toBeLessThan(
-        workflow.indexOf("Check schema compatibility"),
-      );
+      expect(fixtureVerificationStart).toBeLessThan(fixtureVerificationEnd);
       expect(workflow).toContain("- name: Regenerate Compose key matrix");
       expect(workflow).toContain("run: bun run codegen:compose-key-matrix");
       expect(workflow).toContain("run: git diff --exit-code -- docs/reference/compose-key-matrix.mdx");

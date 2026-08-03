@@ -33,9 +33,8 @@ const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
 
 const DESCRIBED = "A described field used to prove annotation resolution.";
 
-// The generator is deterministic, and the tests below inspect every derived
-// output family. Running it once per test file is enough for the artifact
-// assertions; re-running it per test only re-pays the same ~2s spawn.
+// Generate once because the output is deterministic, every derived family is
+// inspected below, and each invocation costs about two seconds.
 let generatorRan = false;
 const runGenerator = (): void => {
   if (generatorRan) {
