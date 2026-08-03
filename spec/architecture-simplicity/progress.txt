@@ -264,3 +264,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - When a later platform-support decision changes a pin manifest's required key set, update the normative codegen catalog description alongside validators, workflows, and tests.
 ---
+
+## [2026-08-03 18:25 CDT] - US-515
+- Verified the SDK author guidance already directs schema changes through codegen, identifies schema trees as untracked derived outputs, and names the CI drift gate; no new implementation was needed.
+- Guide-Coverage-Skip: Internal SDK contributor workflow guidance has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 53 focused schema snapshot, tracking-policy, and drift-classification tests passed.
+- **Learnings for future iterations:**
+  - Keep contributor guidance aligned with generated-artifact ownership, but verify the underlying ignore, tracking, and regeneration behavior instead of pinning maintainers' prose in tests.
+---
