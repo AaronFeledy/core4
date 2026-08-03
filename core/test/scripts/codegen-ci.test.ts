@@ -703,11 +703,15 @@ describe("ci workflow codegen", () => {
 
       // Then
       expect({
+        foundAllMarkers: [installPosition, codegenPosition, buildPosition, dryRunPosition].every(
+          (position) => position >= 0,
+        ),
         hasNamedStep: job.includes("- name: Regenerate derived sources"),
         afterInstall: codegenPosition > installPosition,
         beforeBuild: codegenPosition < buildPosition,
         beforeDryRunPublish: codegenPosition < dryRunPosition,
       }).toEqual({
+        foundAllMarkers: true,
         hasNamedStep: true,
         afterInstall: true,
         beforeBuild: true,
