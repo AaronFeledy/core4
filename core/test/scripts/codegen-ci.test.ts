@@ -702,21 +702,14 @@ describe("ci workflow codegen", () => {
       const dryRunPosition = job.indexOf("- name: Dry-run npm dev publishes");
 
       // Then
-      expect({
-        foundAllMarkers: [installPosition, codegenPosition, buildPosition, dryRunPosition].every(
-          (position) => position >= 0,
-        ),
-        hasNamedStep: job.includes("- name: Regenerate derived sources"),
-        afterInstall: codegenPosition > installPosition,
-        beforeBuild: codegenPosition < buildPosition,
-        beforeDryRunPublish: codegenPosition < dryRunPosition,
-      }).toEqual({
-        foundAllMarkers: true,
-        hasNamedStep: true,
-        afterInstall: true,
-        beforeBuild: true,
-        beforeDryRunPublish: true,
-      });
+      expect(installPosition).toBeGreaterThanOrEqual(0);
+      expect(codegenPosition).toBeGreaterThanOrEqual(0);
+      expect(buildPosition).toBeGreaterThanOrEqual(0);
+      expect(dryRunPosition).toBeGreaterThanOrEqual(0);
+      expect(job).toContain("- name: Regenerate derived sources");
+      expect(codegenPosition).toBeGreaterThan(installPosition);
+      expect(codegenPosition).toBeLessThan(buildPosition);
+      expect(codegenPosition).toBeLessThan(dryRunPosition);
     },
     codegenTestTimeout,
   );

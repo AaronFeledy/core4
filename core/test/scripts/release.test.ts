@@ -305,7 +305,7 @@ describe("release orchestrator", () => {
     });
 
     // Then
-    expect(logs.filter((line) => line.includes("skip 5-schema-artifacts"))).toEqual([]);
+    expect(logs.some((line) => line.includes("skip 5-schema-artifacts"))).toBe(false);
   });
 
   test("stage 5 schema regeneration runs before library bundle, compile, and publish", async () => {
@@ -330,17 +330,12 @@ describe("release orchestrator", () => {
     });
 
     // Then
-    expect({
-      observed: observed.filter((stageId) =>
-        ["5-schema-artifacts", "6-library-bundle", "7-compile"].includes(stageId),
-      ),
-      beforePublish:
-        RELEASE_STAGES.findIndex(({ id }) => id === "5-schema-artifacts") <
-        RELEASE_STAGES.findIndex(({ id }) => id === "13-publish"),
-    }).toEqual({
-      observed: ["5-schema-artifacts", "6-library-bundle", "7-compile"],
-      beforePublish: true,
-    });
+    expect(
+      observed.filter((stageId) => ["5-schema-artifacts", "6-library-bundle", "7-compile"].includes(stageId)),
+    ).toEqual(["5-schema-artifacts", "6-library-bundle", "7-compile"]);
+    expect(RELEASE_STAGES.findIndex(({ id }) => id === "5-schema-artifacts")).toBeLessThan(
+      RELEASE_STAGES.findIndex(({ id }) => id === "13-publish"),
+    );
   });
 
   test("skips artifact-family stages without changing stage order", async () => {

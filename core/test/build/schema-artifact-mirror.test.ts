@@ -20,6 +20,17 @@ interface NpmPackResult {
 
 const loadSchemaMirror = async (): Promise<SchemaMirrorModule> => import(mirrorScriptUrl.href);
 
+const generateSchemaArtifacts = (): void => {
+  const generated = Bun.spawnSync([process.execPath, generatorPath], {
+    cwd: repoRoot,
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  expect({ exitCode: generated.exitCode, stderr: generated.stderr.toString() }).toMatchObject({
+    exitCode: 0,
+  });
+};
+
 const withTempRepo = async (run: (root: string) => Promise<void>): Promise<void> => {
   const root = await mkdtemp(resolve(tmpdir(), "lando-schema-mirror-"));
   try {
@@ -111,14 +122,7 @@ describe("schema artifact package mirror", () => {
       }
 
       try {
-        const generated = Bun.spawnSync([process.execPath, generatorPath], {
-          cwd: repoRoot,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        expect({ exitCode: generated.exitCode, stderr: generated.stderr.toString() }).toMatchObject({
-          exitCode: 0,
-        });
+        generateSchemaArtifacts();
 
         // When
         const { mirrorSchemaArtifacts } = await loadSchemaMirror();
@@ -156,14 +160,7 @@ describe("schema artifact package mirror", () => {
       // Given
       const packDestination = await mkdtemp(resolve(tmpdir(), "lando-core-pack-"));
       try {
-        const generated = Bun.spawnSync([process.execPath, generatorPath], {
-          cwd: repoRoot,
-          stdout: "pipe",
-          stderr: "pipe",
-        });
-        expect({ exitCode: generated.exitCode, stderr: generated.stderr.toString() }).toMatchObject({
-          exitCode: 0,
-        });
+        generateSchemaArtifacts();
         const publicIndex = JSON.parse(
           await readFile(resolve(repoRoot, "dist/schemas/index.json"), "utf8"),
         ) as ReadonlyArray<{ readonly jsonSchemaPath: string }>;
