@@ -255,3 +255,12 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Review feedback: none
 - Merge: deferred (no PR to merge; US-514 work already on main)
 ---
+
+## [2026-08-03 17:39 CDT] - US-514 Review
+- Review reconciled the normative runtime-bundle invariant with the later Podman 6 platform decision: the documented host set now matches the four keys enforced by the manifest, validator, workflows, and tests, with Intel macOS excluded.
+- Review notes (deferred/rejected): the README's pre-existing placeholder-manifest limitation is inaccurate but does not affect US-514's tracking or offline-invariant acceptance criteria, so it remains separate documentation cleanup.
+- Guide-Coverage-Skip: Internal pin-manifest platform invariant wording has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 87 focused manifest/catalog/drift/workflow/tracking tests, 2 targeted codegen-CI assertions, and post-fix manifest spot checks passed; Bugbot and all five review lanes found no remaining blocker.
+- **Learnings for future iterations:**
+  - When a later platform-support decision changes a pin manifest's required key set, update the normative codegen catalog description alongside validators, workflows, and tests.
+---
