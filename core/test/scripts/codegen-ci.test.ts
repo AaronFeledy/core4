@@ -394,8 +394,13 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run codegen:mutagen-versions");
       expect(workflow).toContain("- name: Regenerate provider images manifest");
       expect(workflow).toContain("run: bun run codegen:provider-images");
+      expect(workflow).toContain("- name: Regenerate OpenTUI native catalog");
+      expect(workflow).toContain("run: bun run codegen:opentui-native-stubs");
       expect(workflow).toContain(
-        "run: git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts",
+        "run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json",
+      );
+      expect(workflow).not.toContain(
+        "git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts",
       );
       expect(workflow).toContain(
         "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",

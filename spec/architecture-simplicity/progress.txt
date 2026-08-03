@@ -16,6 +16,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
 - When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
 - For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
+- Explicit generated paths must override Biome's VCS-ignore handling so gitignored derived outputs are still formatted during regeneration.
 
 ## Log
 
@@ -173,4 +174,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - A historical absence probe must encode absence as successful empty output; treating every nonzero probe exit as absence silently turns operational failures into skipped validation.
   - Resolve a mutable Git ref once and pass its immutable commit SHA through every probe and materialization step.
+---
+
+## [2026-08-03 08:44 CDT] - US-511
+- Moved the catalog-derived bake-time TypeScript families out of the Git source of truth while preserving deterministic regeneration, formatting, and consumer coverage; human-reviewed CI workflows remain committed.
+- Narrowed pure Git-status drift checks and bundled-codegen CI verification to committed outputs, with policy tests locking the derived-versus-workflow ownership boundary.
+- Guide-Coverage-Skip: Internal generated-artifact tracking policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 116 focused generator, consumer, drift, and workflow tests plus the targeted CI-codegen assertion passed; full catalog regeneration and direct ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Gitignored generated TypeScript still needs `--vcs-use-ignore-file=false` on explicit Biome invocations or regeneration silently skips formatting those outputs.
+  - Test directory families with `git ls-files -- <directory>`, not only representative files, so newly tracked outputs cannot evade the policy contract.
 ---

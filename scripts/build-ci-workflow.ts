@@ -868,7 +868,7 @@ ${setupBunSteps}
         run: bun run codegen:opentui-native-stubs
 
       - name: Verify bundled codegen is current
-        run: git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts scripts/generated/opentui-native
+        run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json
 
 ${timingNoticeStep("bundled-codegen", 15)}
 

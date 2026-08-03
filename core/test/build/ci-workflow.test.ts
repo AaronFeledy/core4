@@ -413,13 +413,21 @@ describe("ci workflow", () => {
     expect(workflow).not.toContain("contents: write");
   });
 
-  test("regenerates and drift-checks the OpenTUI native catalog", async () => {
+  test("regenerates derived bundled outputs and drift-checks only the committed pin", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const bundledCodegen = findIndentedBlock(jobs, "bundled-codegen", 2);
 
     expect(bundledCodegen).toContain("        run: bun run codegen:opentui-native-stubs");
-    expect(bundledCodegen).toContain("scripts/generated/opentui-native");
+    expect(bundledCodegen).toContain("        run: bun run codegen:bundled-plugins");
+    expect(bundledCodegen).toContain("        run: bun run codegen:bundled-recipes");
+    expect(bundledCodegen).toContain("        run: bun run codegen:bootstrap-layers");
+    expect(bundledCodegen).toContain("        run: bun run codegen:provider-images");
+    expect(bundledCodegen).toContain(
+      "        run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json",
+    );
+    expect(bundledCodegen).not.toContain("scripts/generated/opentui-native");
+    expect(bundledCodegen).not.toContain("core/src/plugins/generated");
   });
 
   test("detects drift in the committed bundled-plugin manifest fixture", async () => {
