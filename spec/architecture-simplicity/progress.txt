@@ -140,3 +140,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Keep schema-compatibility baseline regeneration in US-533; US-510 remains limited to untracking, ignore rules, and working-tree regeneration.
 ---
+
+## [2026-08-03 00:06 CDT] - US-510 Drift Audit
+- Trigger: 3 cycles, 111748 changed lines, 4 commits
+- Category 2: removed inert ignored-tree pathspecs and restored tests to reject that misleading proof surface.
+- Category 5: removed unrelated PRD JSON serialization churn while preserving every adjudicated semantic change.
+- Category 6: aligned the normative drift contract with committed-output checks and ignored-output generator/consumer validation.
+- Category 7: fixed the branch-owned git-status blindness without reopening the US-533 base-regeneration boundary.
+- Fixed: deleted dead drift operands, narrowed the generated CI proof to its committed fixture, restored load-bearing assertions, and reconciled contract wording.
+- Split/excise decisions: none; the adjudicated US-533 follow-up and US-510 `passes: true` remain unchanged.
+- Verification: typecheck, lint/deprecations, codegen drift, schema snapshot 30/30, drift checker 14/14, CI workflow 26/26, and targeted codegen-CI 1/1 passed; the adjacent full codegen-CI suite retains its previously recorded stale Bun-version count expectation (14/15).
+---
