@@ -52,16 +52,16 @@ const parseJsonValue = (value: unknown, source: string): JsonValue => {
 };
 
 const parseJson = (text: string, source: string): JsonValue => {
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(text);
-    return parseJsonValue(parsed, source);
+    parsed = JSON.parse(text);
   } catch (error) {
-    if (error instanceof SchemaCompatibilityInputError) throw error;
     if (error instanceof SyntaxError) {
       throw new SchemaCompatibilityInputError(`Invalid JSON in ${source}.`, error.message);
     }
     throw error;
   }
+  return parseJsonValue(parsed, source);
 };
 
 const parseSchema = (text: string, source: string): JsonSchema => {

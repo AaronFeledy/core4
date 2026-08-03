@@ -46,9 +46,7 @@ const FAMILY_METADATA = {
     prefix: "command:",
     label: "command schemas",
   },
-} as const satisfies Readonly<
-  Record<SchemaArtifactFamily, { readonly prefix: string; readonly label: string }>
->;
+} as const satisfies Record<SchemaArtifactFamily, { readonly prefix: string; readonly label: string }>;
 
 export const skippedFamilyNotices = (
   after: SchemaArtifactSet,

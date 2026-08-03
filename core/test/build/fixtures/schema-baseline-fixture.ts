@@ -14,16 +14,16 @@ const ARTIFACTS_MODULE_PATH = new URL(
 const GENERATOR_PATH = "scripts/build-schema-snapshot.ts";
 const roots: string[] = [];
 
-export type SchemaArtifactFamily = "sdk" | "command";
+type SchemaArtifactFamily = "sdk" | "command";
 
-export interface Fixture {
+interface Fixture {
   readonly root: string;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly historicalRef: string;
   readonly baseRef: string;
 }
 
-export interface RegenerationRequest {
+interface RegenerationRequest {
   readonly baseRef: string;
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly repoRoot: string;
@@ -186,7 +186,7 @@ type GitShimOptions =
       readonly mutationTarget: string;
     };
 
-export interface GitShim {
+interface GitShim {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly logPath: string;
 }

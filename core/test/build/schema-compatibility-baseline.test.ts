@@ -25,6 +25,13 @@ afterEach(async () => {
   await cleanupRepositories();
 });
 
+const artifactsFrom = (result: unknown): Map<unknown, unknown> => {
+  const artifacts = field(result, "artifacts");
+  expect(artifacts).toBeInstanceOf(Map);
+  if (!(artifacts instanceof Map)) throw new FixtureCommandError("read artifacts", "expected Map");
+  return artifacts;
+};
+
 describe("isolated schema compatibility baseline regeneration", () => {
   test("regenerates both artifact families with the base generator and cleans its worktree", async () => {
     // Given: alpha at the base commit and a beta generator in the head checkout.
@@ -34,9 +41,7 @@ describe("isolated schema compatibility baseline regeneration", () => {
     const result = await regenerate({ baseRef: fixture.baseRef, env: fixture.env, repoRoot: fixture.root });
 
     // Then: both artifacts came from alpha and the temporary worktree was removed.
-    const artifacts = field(result, "artifacts");
-    expect(artifacts).toBeInstanceOf(Map);
-    if (!(artifacts instanceof Map)) throw new FixtureCommandError("read artifacts", "expected Map");
+    const artifacts = artifactsFrom(result);
     expect(field(field(artifacts.get("schema:Fixture"), "schema"), "const")).toBe("alpha");
     expect(field(field(artifacts.get("command:fixture"), "schema"), "const")).toBe("alpha");
     expect(unavailableFamilies(result)).toEqual([]);
@@ -102,9 +107,7 @@ describe("isolated schema compatibility baseline regeneration", () => {
     });
 
     // Then: sdk and command skips each count one surface, without creating a worktree.
-    const artifacts = field(result, "artifacts");
-    expect(artifacts).toBeInstanceOf(Map);
-    if (!(artifacts instanceof Map)) throw new FixtureCommandError("read artifacts", "expected Map");
+    const artifacts = artifactsFrom(result);
     expect(artifacts.size).toBe(0);
     const families = unavailableFamilies(result);
     expect(families).toEqual(["sdk", "command"]);
@@ -162,9 +165,7 @@ describe("isolated schema compatibility baseline regeneration", () => {
     const result = await regenerate({ baseRef: mutableRef, env: shim.env, repoRoot: fixture.root });
 
     // Then: the alpha commit supplies both the probe and detached worktree inputs.
-    const artifacts = field(result, "artifacts");
-    expect(artifacts).toBeInstanceOf(Map);
-    if (!(artifacts instanceof Map)) throw new FixtureCommandError("read artifacts", "expected Map");
+    const artifacts = artifactsFrom(result);
     expect(field(field(artifacts.get("schema:Fixture"), "schema"), "const")).toBe("alpha");
     const commands = (await Bun.file(shim.logPath).text()).trim().split("\n");
     expect(commands).toContain(
