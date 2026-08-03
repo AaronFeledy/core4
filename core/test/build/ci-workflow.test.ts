@@ -47,7 +47,7 @@ describe("ci workflow", () => {
     const workflow = await readWorkflow();
 
     // Then
-    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(14);
+    expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(15);
     expect(workflow.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
     expect(workflow.match(/^ {8}run: bun run codegen:guide-scenarios$/gm) ?? []).toHaveLength(0);
     expect(workflow.match(/^ {8}run: git diff --exit-code -- \.github\/workflows$/gm) ?? []).toHaveLength(0);
@@ -866,6 +866,10 @@ describe("ci workflow", () => {
     expect(providerIntegration).toContain("    timeout-minutes: 25");
     expect(providerIntegrationGate).toContain("    needs: [provider-integration-linux-x64-runner]");
     expect(providerIntegrationGate).toContain("    if: always()");
+    expect(providerIntegration).toContain("      - name: Regenerate derived sources");
+    expect(providerIntegration.indexOf("Regenerate derived sources")).toBeLessThan(
+      providerIntegration.indexOf("Run provider contract tests"),
+    );
     expect(providerIntegration).toContain("      - name: Run provider contract tests");
     expect(providerIntegration).toContain(
       "          bun test sdk/test/contract/provider.test.ts sdk/test/contract/service.test.ts",
