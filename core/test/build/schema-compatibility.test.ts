@@ -135,7 +135,7 @@ describe("schema compatibility classifier", () => {
       {
         family: "command",
         count: 2,
-        indexPath: "dist/command-schemas/index.json",
+        generatorPath: "scripts/build-schema-snapshot.ts",
         baseRef: "origin/main",
       },
     ]);

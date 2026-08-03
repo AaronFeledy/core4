@@ -15,6 +15,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
 - Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
 - When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
+- For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
 
 ## Log
 
@@ -150,4 +151,26 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Fixed: deleted dead drift operands, narrowed the generated CI proof to its committed fixture, restored load-bearing assertions, and reconciled contract wording.
 - Split/excise decisions: none; the adjudicated US-533 follow-up and US-510 `passes: true` remain unchanged.
 - Verification: typecheck, lint/deprecations, codegen drift, schema snapshot 30/30, drift checker 14/14, CI workflow 26/26, and targeted codegen-CI 1/1 passed; the adjacent full codegen-CI suite retains its previously recorded stale Bun-version count expectation (14/15).
+---
+
+## [2026-08-03 04:04 CDT] - US-533
+- Replaced committed-artifact baseline reads with fail-closed regeneration in a detached temporary worktree at the configured base ref, using that commit's frozen lockfile and schema generator while always cleaning worktree and temp-directory resources.
+- Historical bases skip both schema families only when they predate the schema-snapshot generator; current bases compare real regenerated SDK and command artifacts even when HEAD has a different lockfile.
+- Verification: typecheck and lint/deprecations passed; 70 focused schema baseline, classifier, snapshot, and CI workflow tests passed; the real compatibility gate regenerated 316 SDK and 85 command schemas, compared against `origin/main` with zero skips, and left tempdir/worktree counts unchanged.
+- **Learnings for future iterations:**
+  - A deliberately unusable HEAD lockfile is a strong regression fixture proving baseline installation runs from the base checkout and its own `bun.lock`.
+  - Keep skip metadata tied to the missing generator path so ignored derived indexes can never silently disable both compatibility families again.
+---
+
+## [2026-08-03 06:35 CDT] - US-533 Review
+- Review closed two fail-closed gaps: generator-presence probe failures can no longer masquerade as historical absence, and the configured base ref is resolved once so probing and worktree materialization use the same immutable commit.
+- Reconciled the normative post-landing contract and CI runbook with the shipped fixture-only Git-status scope, ignored derived trees, and semantic comparison behavior.
+- Review notes (deferred/rejected): a broader cleanup/finally redesign and cleanup-failure injection were non-blocking hardening; the existing paths cover worktree-add, install, generation, artifact-load, and normal teardown failures without weakening the gate.
+- Review notes (deferred/rejected): the optional base-artifact cache is explicitly optional, classifier-test import churn is behavior-neutral, and the architecture-simplicity index closure wording belongs to US-532 rather than this focused repair.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account was out of usage; all five review-work lanes completed, and the confirmed blockers were fixed.
+- Guide-Coverage-Skip: Internal schema compatibility gate behavior has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, and 84 focused schema/workflow/runbook tests passed; the real gate compared the regenerated `origin/main` baseline with zero skips. `check:spec-reference` remains blocked only by the previously recorded unrelated `.omo/**` citations.
+- **Learnings for future iterations:**
+  - A historical absence probe must encode absence as successful empty output; treating every nonzero probe exit as absence silently turns operational failures into skipped validation.
+  - Resolve a mutable Git ref once and pass its immutable commit SHA through every probe and materialization step.
 ---
