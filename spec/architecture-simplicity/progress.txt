@@ -185,3 +185,16 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Gitignored generated TypeScript still needs `--vcs-use-ignore-file=false` on explicit Biome invocations or regeneration silently skips formatting those outputs.
   - Test directory families with `git ls-files -- <directory>`, not only representative files, so newly tracked outputs cannot evade the policy contract.
 ---
+
+## [2026-08-03 09:18 CDT] - US-511 Adjudication
+- Contradiction: Review correctly found that a clean `bun run codegen` violates §17.2's "A single command, `bun run codegen`, runs every generator in dependency order" because `schema-snapshot` precedes generated command/allowlist prerequisites, and that fresh isolated CI jobs import absent derived modules. Treating US-511's "Catalog marks which core generated TS paths are untracked" or generic green-gate AC as ownership of those repairs conflicts with ARCH-02 US-512's explicit "git clone && bun install && bun run codegen is enough before typecheck/test" scope and "Clean CI job proves clone→install→codegen→typecheck" AC.
+- Decision: narrowed US-511 in `prd.json` to catalog classification, gitignore/index removal, and focused validation after materialization. First-materialization dependency order and isolated CI-job bootstrap remain US-512 scope; US-511 stays `passes: true`, and derived TypeScript must not be re-committed as a substitute.
+- Follow-up story: US-512 — make clean-checkout codegen dependency order and independently bootstrapped CI consumers work before typecheck/test.
+---
+
+## [2026-08-03 09:24 CDT] - US-511 Verification
+- Verified the derived TypeScript families remain catalog-classified, gitignored, and absent from the Git index while all human-reviewed CI workflows remain tracked; no new implementation was needed.
+- Verification: codegen, codegen drift, typecheck, and lint/deprecations passed; 58 focused tracking, generator, drift, and workflow tests plus direct ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Keep clean-checkout first materialization and isolated CI bootstrap in US-512; US-511 validation begins after derived artifacts are materialized.
+---

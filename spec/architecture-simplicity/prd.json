@@ -176,13 +176,13 @@
       "title": "Gitignore and untrack core bake-time generated TS",
       "description": "As a maintainer, bootstrap layers, bundled plugin/recipe tables, compiled command manifest, and opentui stub catalog are untracked derived outputs where the catalog allows.",
       "acceptanceCriteria": [
-        "Catalog marks which core generated TS paths are untracked.",
+        "The codegen catalog and focused tracking-policy tests classify each listed core bake-time generated TypeScript family as derived/untracked; those paths are gitignored and absent from the Git index.",
         "CI workflows remain committed (human-reviewed exception).",
-        "Tests pass; typecheck passes; lint passes"
+        "US-511 focused tests, typecheck, and lint pass after the derived TypeScript artifacts are materialized; first-materialization dependency order and isolated CI-job bootstrap are US-512."
       ],
       "priority": 13,
       "passes": true,
-      "notes": "PRD-02"
+      "notes": "PRD-02. Scope is catalog classification, gitignore/untrack, and validation after materialization. Clean-checkout first-materialization order and isolated CI-job bootstrap are US-512 (adjudication 2026-08-03); do not reopen US-511 or re-commit derived TypeScript as a substitute."
     },
     {
       "id": "US-512",
