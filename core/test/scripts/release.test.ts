@@ -259,6 +259,85 @@ describe("release orchestrator", () => {
     expect(shellStages.some((entry) => entry.startsWith("1-codegen:"))).toBe(false);
   });
 
+  test("stage 5 regenerates schema artifacts through the schema snapshot codegen command", async () => {
+    // Given
+    const commands: Array<{ readonly stageId: string; readonly cmd: ReadonlyArray<string> }> = [];
+
+    // When
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
+      target: "all",
+      throughStage: "5-schema-artifacts",
+      env: localRehearsalEnv,
+      runner: {
+        spawn: async ({ stageId, cmd }) => {
+          commands.push({ stageId, cmd });
+        },
+        shell: async () => {},
+      },
+      logger: () => {},
+    });
+
+    // Then
+    expect(commands).toContainEqual({
+      stageId: "5-schema-artifacts",
+      cmd: ["bun", "run", "codegen:schema-snapshot"],
+    });
+  });
+
+  test("stage 5 emits no schema artifact skip log", async () => {
+    // Given
+    const logs: string[] = [];
+
+    // When
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
+      target: "all",
+      throughStage: "5-schema-artifacts",
+      env: localRehearsalEnv,
+      runner: {
+        spawn: async () => {},
+        shell: async () => {},
+      },
+      logger: (line) => logs.push(line),
+    });
+
+    // Then
+    expect(logs.some((line) => line.includes("skip 5-schema-artifacts"))).toBe(false);
+  });
+
+  test("stage 5 schema regeneration runs before library bundle, compile, and publish", async () => {
+    // Given
+    const observed: string[] = [];
+    const observe = (stageId: string): void => {
+      if (observed.at(-1) !== stageId) observed.push(stageId);
+    };
+
+    // When
+    await runRelease({
+      deprecationGate: passingDeprecationGate,
+      manifestGate: passingManifestGate,
+      target: "all",
+      throughStage: "7-compile",
+      env: localRehearsalEnv,
+      runner: {
+        spawn: async ({ stageId }) => observe(stageId),
+        shell: async ({ stageId }) => observe(stageId),
+      },
+      logger: () => {},
+    });
+
+    // Then
+    expect(
+      observed.filter((stageId) => ["5-schema-artifacts", "6-library-bundle", "7-compile"].includes(stageId)),
+    ).toEqual(["5-schema-artifacts", "6-library-bundle", "7-compile"]);
+    expect(RELEASE_STAGES.findIndex(({ id }) => id === "5-schema-artifacts")).toBeLessThan(
+      RELEASE_STAGES.findIndex(({ id }) => id === "13-publish"),
+    );
+  });
+
   test("skips artifact-family stages without changing stage order", async () => {
     const logs: Array<string> = [];
 
@@ -2305,6 +2384,7 @@ describe("release orchestrator", () => {
       "2-typecheck",
       "3-lint-format",
       "4-test-gates",
+      "5-schema-artifacts",
       "7-compile",
     ]);
     expect(spawnStages.at(-2)?.cmd).toEqual([

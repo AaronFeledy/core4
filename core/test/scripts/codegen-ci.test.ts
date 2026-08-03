@@ -684,4 +684,33 @@ describe("ci workflow codegen", () => {
     },
     codegenTestTimeout,
   );
+
+  test(
+    "regenerates all derived sources before the npm alpha package build and dry-run publish",
+    async () => {
+      // Given
+      await runCodegen();
+      const workflow = await readFile(releaseWorkflowPath, "utf8");
+      const jobStart = workflow.indexOf("  npm-alpha-packages:");
+      expect(jobStart).toBeGreaterThanOrEqual(0);
+      const job = workflow.slice(jobStart);
+
+      // When
+      const installPosition = job.indexOf("run: bun install --frozen-lockfile");
+      const codegenPosition = job.indexOf("run: bun run codegen");
+      const buildPosition = job.indexOf("- name: Build package artifacts");
+      const dryRunPosition = job.indexOf("- name: Dry-run npm dev publishes");
+
+      // Then
+      expect(installPosition).toBeGreaterThanOrEqual(0);
+      expect(codegenPosition).toBeGreaterThanOrEqual(0);
+      expect(buildPosition).toBeGreaterThanOrEqual(0);
+      expect(dryRunPosition).toBeGreaterThanOrEqual(0);
+      expect(job).toContain("- name: Regenerate derived sources");
+      expect(codegenPosition).toBeGreaterThan(installPosition);
+      expect(codegenPosition).toBeLessThan(buildPosition);
+      expect(codegenPosition).toBeLessThan(dryRunPosition);
+    },
+    codegenTestTimeout,
+  );
 });

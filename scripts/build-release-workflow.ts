@@ -122,6 +122,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Build package artifacts
         run: |
 ${packageBuildLines}
