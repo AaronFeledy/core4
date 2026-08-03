@@ -8,10 +8,10 @@
       "title": "Spec: reopen dual-dispatch as single engine",
       "description": "As a maintainer, the normative spec supersedes option (b) dual dispatch with one native command registry and dispatcher for source and compiled modes.",
       "acceptanceCriteria": [
-        "§1.2 tenet no longer says OCLIF parses/discovers/packs the shipping CLI.",
-        "§14.2 dual-dispatch row and ROADMAP Alpha 3 outcome state option (b) is superseded by architecture-simplicity single dispatcher.",
+        "\u00a71.2 tenet no longer says OCLIF parses/discovers/packs the shipping CLI.",
+        "\u00a714.2 dual-dispatch row and ROADMAP Alpha 3 outcome state option (b) is superseded by architecture-simplicity single dispatcher.",
         "Appendix D.1 remains as historical spike evidence and ends with the supersession note.",
-        "§8.4.1 describes single native dispatch, not permanent dual parity rules.",
+        "\u00a78.4.1 describes single native dispatch, not permanent dual parity rules.",
         "alpha-3 PRD-09 US-155/156 carry a supersession note without rewriting historical AC checkmarks.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -22,9 +22,9 @@
     {
       "id": "US-501",
       "title": "Spec: derived vs persisted artifact policy",
-      "description": "As a maintainer, the spec distinguishes git sources of truth from regen-only build outputs, modeled on §19.6 transcripts.",
+      "description": "As a maintainer, the spec distinguishes git sources of truth from regen-only build outputs, modeled on \u00a719.6 transcripts.",
       "acceptanceCriteria": [
-        "§13.2 and §17.2 classify pin manifests vs derived outputs (schemas, command-schemas, bootstrap layers, compiled command manifest, docs schema refs).",
+        "\u00a713.2 and \u00a717.2 classify pin manifests vs derived outputs (schemas, command-schemas, bootstrap layers, compiled command manifest, docs schema refs).",
         "Derived outputs are not required to be git-committed; publish/binary embed still ships them as build products.",
         "Guide scenarios/transcripts remain the gitignore model for derived data.",
         "Tests pass; typecheck passes; lint passes"
@@ -36,10 +36,10 @@
     {
       "id": "US-502",
       "title": "Spec: internal package seams without public core split",
-      "description": "As a maintainer, §2.7 keeps public @lando/core as one package while allowing private internal workspace packages for seams.",
+      "description": "As a maintainer, \u00a72.7 keeps public @lando/core as one package while allowing private internal workspace packages for seams.",
       "acceptanceCriteria": [
-        "§2.7 explicitly allows private workspace packages (paths, state-store, …) and still rejects splitting public core into runtime+CLI packages.",
-        "§13.8 states package-dag is primary for seam ownership; AST boundary rules remain for residual behavioral bans.",
+        "\u00a72.7 explicitly allows private workspace packages (paths, state-store, \u2026) and still rejects splitting public core into runtime+CLI packages.",
+        "\u00a713.8 states package-dag is primary for seam ownership; AST boundary rules remain for residual behavioral bans.",
         "ROADMAP notes concurrent architecture-simplicity wave and private packages.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -52,7 +52,7 @@
       "title": "Spec: single codegen drift gate",
       "description": "As a maintainer, codegen:check is the one pure-drift gate (full codegen then git diff --exit-code on catalog outputs).",
       "acceptanceCriteria": [
-        "§17.2 defines codegen:check as regenerate-then-git-diff on the codegen catalog, not merely typecheck.",
+        "\u00a717.2 defines codegen:check as regenerate-then-git-diff on the codegen catalog, not merely typecheck.",
         "Semantic gates (guide-coverage, schema-compatibility, public-transcripts, package-dag, behavioral boundaries) stay separate from pure drift.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -92,9 +92,9 @@
     {
       "id": "US-506",
       "title": "Inventory generators into single catalog ownership",
-      "description": "As a maintainer, scripts/codegen.ts order and §17.2 table name the same generators with no orphan drift checkers.",
+      "description": "As a maintainer, scripts/codegen.ts order and \u00a717.2 table name the same generators with no orphan drift checkers.",
       "acceptanceCriteria": [
-        "§17.2 table matches scripts/codegen.ts dependency order.",
+        "\u00a717.2 table matches scripts/codegen.ts dependency order.",
         "Every generator has exactly one ownership row (committed pin vs untracked derived).",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -131,7 +131,7 @@
     {
       "id": "US-509",
       "title": "Document semantic-vs-drift gate matrix",
-      "description": "As an agent, AGENTS.md and §13.4 list which gates are pure drift vs semantic correctness.",
+      "description": "As an agent, AGENTS.md and \u00a713.4 list which gates are pure drift vs semantic correctness.",
       "acceptanceCriteria": [
         "Root AGENTS.md matrix: codegen:check = drift; guide-coverage, schema-compatibility, public-transcripts, package-dag, behavioral boundaries = semantic.",
         "Tests pass; typecheck passes; lint passes"
@@ -152,7 +152,24 @@
       ],
       "priority": 11,
       "passes": true,
-      "notes": "PRD-02"
+      "notes": "PRD-02. Scope is untrack/gitignore/regen-write only. Semantic 'before' path after untrack is US-533 (human adjudication 2026-08-02); do not re-commit dist/schemas or fail US-510 for transitional skip-all."
+    },
+    {
+      "id": "US-533",
+      "title": "Schema-compatibility base regen (isolated checkout)",
+      "description": "As CI, check:schema-compatibility materializes its before baseline by regenerating schema artifacts in an isolated checkout of the base ref (that commit's sources and bun.lock), then compares them to the head working-tree set \u2014 without re-committing derived trees and without skipping all surfaces when indexes are absent from git.",
+      "acceptanceCriteria": [
+        "Base baseline via isolated checkout + bun install + codegen:schema-snapshot at LANDO_SCHEMA_COMPATIBILITY_BASE_REF.",
+        "Head uses regenerated working-tree artifacts; schema trees stay gitignored/untracked.",
+        "Dependency-update PRs still get a real comparison (no full-family skip solely from missing git indexes).",
+        "Fail-closed when base baseline cannot be materialized, except base commits that predate schema-snapshot generators.",
+        "Optional CI cache by base SHA + digest allowed; miss falls back to regen; cache is not SoT.",
+        "Tests prove the gate does not skip both families solely because indexes are absent from git at base.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "PRD-02. Human adjudication 2026-08-02: option-2 primary (isolated base regen); option-1 cache optional not SoT. Owns \u00a713.2 before-source after US-510 untrack. Drift Audit MUST NOT excise this story or re-commit schema trees as a substitute."
     },
     {
       "id": "US-511",
@@ -163,7 +180,7 @@
         "CI workflows remain committed (human-reviewed exception).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -174,10 +191,10 @@
       "acceptanceCriteria": [
         "README or AGENTS documents the bootstrap order.",
         "Optional prepare/postinstall does not force network beyond bun install; codegen is explicit or documented.",
-        "Clean CI job proves clone→install→codegen→typecheck.",
+        "Clean CI job proves clone\u2192install\u2192codegen\u2192typecheck.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -190,7 +207,7 @@
         "Published tarball contains required schema artifacts.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -203,7 +220,7 @@
         "Offline invariant checks still run in codegen/staleness path.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 15,
+      "priority": 16,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -215,7 +232,7 @@
         "sdk/AGENTS.md schema-snapshot bullet matches untracked policy.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -228,19 +245,19 @@
         "Public types that must stay stable remain on sdk or documented core re-exports.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": "PRD-03"
     },
     {
       "id": "US-517",
       "title": "package-dag allowlists private seam packages",
-      "description": "As CI, check:package-dag knows paths, state-store, and sdk seams; still forbids plugins→core.",
+      "description": "As CI, check:package-dag knows paths, state-store, and sdk seams; still forbids plugins\u2192core.",
       "acceptanceCriteria": [
         "package-dag rule updated and tested.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -253,7 +270,7 @@
         "Focused tests for lock/atomic write still green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 19,
+      "priority": 20,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -266,7 +283,7 @@
         "check:state-store-boundary either deleted with alias note or thinned.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 20,
+      "priority": 21,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -278,7 +295,7 @@
         "paths, probe, redaction, renderer rules reviewed; behavioral bans (console.*, hand-rolled retry) kept.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 21,
+      "priority": 22,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -290,7 +307,7 @@
         "ROADMAP or PRD-03 Non-Goals lists deferred extractions.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 22,
+      "priority": 23,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -303,7 +320,7 @@
         "Registry drives help, dispatch, schema snapshot command list, and MCP projections.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 23,
+      "priority": 24,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -316,7 +333,7 @@
         "core/bin/lando.ts and compiled entry share the engine.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 24,
+      "priority": 25,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -329,7 +346,7 @@
         "Cold-start import graph excludes OCLIF.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 25,
+      "priority": 26,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -343,20 +360,20 @@
         "Flexible taxonomy policy documented for the native parser (colon canonical; space forms if supported).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 26,
+      "priority": 27,
       "passes": false,
       "notes": "PRD-01"
     },
     {
       "id": "US-526",
       "title": "Drop @lando/core/oclif public export",
-      "description": "As an embedding host, @lando/core/oclif is removed per §16.2.",
+      "description": "As an embedding host, @lando/core/oclif is removed per \u00a716.2.",
       "acceptanceCriteria": [
         "package.json exports no longer advertise a required oclif adapter for shipping.",
         "Embedding docs updated; boundary tests updated.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 27,
+      "priority": 28,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -369,7 +386,7 @@
         "Machine-output and relocated binary tests still green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 28,
+      "priority": 29,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -378,23 +395,23 @@
       "title": "Codegen: command registry manifest for embed",
       "description": "As a releaser, the binary embeds a registry-derived command manifest; oclif-manifest generator is removed or repurposed.",
       "acceptanceCriteria": [
-        "§17.2 catalog row updated; build embeds registry manifest.",
+        "\u00a717.2 catalog row updated; build embeds registry manifest.",
         "No oclif.manifest.json required for shipping dispatch.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 29,
+      "priority": 30,
       "passes": false,
       "notes": "PRD-01"
     },
     {
       "id": "US-529",
       "title": "Cold-start gate: no OCLIF on level-none",
-      "description": "As CI, level-none fast path remains free of OCLIF and heavy Effect imports per §1.2.",
+      "description": "As CI, level-none fast path remains free of OCLIF and heavy Effect imports per \u00a71.2.",
       "acceptanceCriteria": [
         "Import-boundary / cold-start tests updated for native dispatcher.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 30,
+      "priority": 31,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -407,7 +424,7 @@
         "meta:setup still merges bundled plugin flags without importing bundled plugin graph into cold path.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 31,
+      "priority": 32,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -420,7 +437,7 @@
         "rg for 'dual dispatch is permanent' returns only historical/superseded notes.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 32,
+      "priority": 33,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -429,12 +446,12 @@
       "title": "Wave closure",
       "description": "As a maintainer, all architecture-simplicity stories pass with verification contracts green.",
       "acceptanceCriteria": [
-        "prd.json all US-500..US-532 passes true.",
+        "prd.json all US-500..US-533 passes true.",
         "codegen:check, typecheck, lint, boundary suite, focused CLI tests green.",
         "progress.txt records closure.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 33,
+      "priority": 34,
       "passes": false,
       "notes": "PRD-00"
     }

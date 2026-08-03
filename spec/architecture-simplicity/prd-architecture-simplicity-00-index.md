@@ -28,7 +28,7 @@ Root diagnosis: one contract (the spec + Effect schemas + command registry) is c
 ```
 US-500..504 (contract + scaffolding)
     → US-505..509 (D drift)
-    → US-510..515 (B artifacts)
+    → US-510..515, US-533 (B artifacts; US-533 = schema-compat base regen after untrack)
     → US-516..521 (C seams)
     → US-522..531 (A CLI)
     → US-532 (closure)

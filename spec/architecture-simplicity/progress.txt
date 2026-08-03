@@ -121,3 +121,15 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Ignored derived outputs are validated by generator and consumer tests rather than the git-status drift half; keep committed generator-owned fixtures explicitly visible.
 ---
+
+## [2026-08-02 20:05 CDT] - US-510 Human adjudication (schema-compat before-source)
+- Contradiction: US-510 untracked `dist/schemas/**` and `dist/command-schemas/**` while §13.2 still loaded "before" via `git show $BASE_REF:dist/...`, so every post-untrack base permanently missed both indexes and the gate skipped all surfaces (Review: 401 skipped) — conflicting with §13.4 semantic-gate classification. Same-lock-only repair rejected (blocks or blinds dep-update PRs).
+- Decision (human): **Option 2 primary** — isolated checkout of base ref + that commit's `bun.lock` → install → `codegen:schema-snapshot` → compare to head WT artifacts. **Option 1 (CI baseline artifact) is optional cache only, not SoT.** Fail-closed on materialization failure except historical pre-generator bases.
+- Contract changes (do not reverse as out-of-scope drift):
+  - `spec/13-testing-and-distribution.md` §13.2 rewritten for isolated base regen + optional cache + transitional skip owned by US-533.
+  - ARCH-02 FR + US-533 story added; US-510 notes narrowed to untrack/gitignore/regen-write only.
+  - `prd.json` US-533 priority 12 (immediately after US-510); US-511+ priorities shifted; US-532 closure includes US-533.
+- US-510 remains `passes: true` for its written ACs. Restoring a real semantic before-path is **US-533**, not a US-510 reopen.
+- **Drift Audit / Review MUST NOT:** re-commit derived schema trees into git; demand US-510 implement base-regen; excise US-533 as foreign scope; treat transitional skip-all as the permanent §13.2 contract.
+- Looper: cleared `.looper-stop` after this entry so the loop can resume.
+---

@@ -74,9 +74,23 @@ Stop treating pure build outputs as git sources of truth. Schema JSON, command-s
 - [ ] sdk/AGENTS.md schema-snapshot bullet matches untracked policy.
 - [ ] Tests pass; typecheck passes; lint passes
 
+### US-533: Schema-compatibility base regen (isolated checkout)
+
+**Description:** As CI, `check:schema-compatibility` loads its "before" documents by regenerating schema artifacts in an isolated checkout of the base ref (that commit's sources + `bun.lock`), then compares them to the head working-tree artifact set — without re-committing derived trees and without skipping all surfaces when indexes are absent from git.
+
+**Acceptance Criteria:**
+- [ ] Base baseline is produced via isolated checkout + `bun install` + `bun run codegen:schema-snapshot` at `LANDO_SCHEMA_COMPATIBILITY_BASE_REF` (or equivalent worktree isolation).
+- [ ] Head comparison uses regenerated working-tree artifacts; derived schema trees stay gitignored / untracked.
+- [ ] Dependency-update PRs (different `bun.lock` at base vs head) still run a real comparison, not a full-family skip.
+- [ ] Fail-closed when base baseline cannot be materialized, except base commits that predate schema-snapshot generators (visible skip + count only for that historical case).
+- [ ] Optional CI cache by base commit SHA + digest is allowed; cache miss falls back to regen; cache is not SoT.
+- [ ] Tests prove the gate does not skip both artifact families solely because indexes are absent from git at base.
+- [ ] Tests pass; typecheck passes; lint passes
+
 ## Functional Requirements
 
-- Semantic schema compatibility continues to compare working-tree artifacts to base ref after regen (§13.2) — it does not require committing the artifact set.
+- Semantic schema compatibility compares head working-tree artifacts to a baseline **regenerated in an isolated checkout** of the base ref under that commit's own `bun.lock` (§13.2, US-533) — it does not require committing the artifact set. Optional CI cache by base commit SHA is allowed; cache is not source of truth.
+- US-510 scope is gitignore/untrack/regen-write only. Restoring a real semantic "before" path after untrack is **US-533**, not a hidden US-510 acceptance criterion.
 - Compose vendor pin and checksum-pinned upstream bytes stay committed.
 
 ## Non-Goals
