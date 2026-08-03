@@ -14,6 +14,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Scope generated-output drift checks with `git status --porcelain=v1 --untracked-files=all -- <pathspecs>` so tracked and newly untracked outputs fail without unrelated working-tree dirt causing false failures.
 - A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
 - Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
+- When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
 
 ## Log
 
@@ -111,4 +112,42 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Distinguish a check's stated responsibility from a composite command's full failure surface before classifying it.
   - Pin exact step sequences rather than substring presence when a contract depends on ordering.
+---
+
+## [2026-08-02 18:51 CDT] - US-510
+- Moved SDK schema JSON, command-result schemas, and generated schema reference pages out of git source-of-truth while preserving their deterministic build-time regeneration and the committed bundled-plugin manifest fixture.
+- Guide-Coverage-Skip: Internal generated-artifact tracking policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 78 focused schema snapshot, codegen-drift, CI workflow, and schema-compatibility tests passed; direct generation and git ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Ignored derived outputs are validated by generator and consumer tests rather than the git-status drift half; keep committed generator-owned fixtures explicitly visible.
+---
+
+## [2026-08-02 20:05 CDT] - US-510 Human adjudication (schema-compat before-source)
+- Contradiction: US-510 untracked `dist/schemas/**` and `dist/command-schemas/**` while §13.2 still loaded "before" via `git show $BASE_REF:dist/...`, so every post-untrack base permanently missed both indexes and the gate skipped all surfaces (Review: 401 skipped) — conflicting with §13.4 semantic-gate classification. Same-lock-only repair rejected (blocks or blinds dep-update PRs).
+- Decision (human): **Option 2 primary** — isolated checkout of base ref + that commit's `bun.lock` → install → `codegen:schema-snapshot` → compare to head WT artifacts. **Option 1 (CI baseline artifact) is optional cache only, not SoT.** Fail-closed on materialization failure except historical pre-generator bases.
+- Contract changes (do not reverse as out-of-scope drift):
+  - `spec/13-testing-and-distribution.md` §13.2 rewritten for isolated base regen + optional cache + transitional skip owned by US-533.
+  - ARCH-02 FR + US-533 story added; US-510 notes narrowed to untrack/gitignore/regen-write only.
+  - `prd.json` US-533 priority 12 (immediately after US-510); US-511+ priorities shifted; US-532 closure includes US-533.
+- US-510 remains `passes: true` for its written ACs. Restoring a real semantic before-path is **US-533**, not a US-510 reopen.
+- **Drift Audit / Review MUST NOT:** re-commit derived schema trees into git; demand US-510 implement base-regen; excise US-533 as foreign scope; treat transitional skip-all as the permanent §13.2 contract.
+- Looper: cleared `.looper-stop` after this entry so the loop can resume.
+---
+
+## [2026-08-02 23:16 CDT] - US-510 Verification
+- Verified the schema artifact trees remain derived-only, regenerate successfully, and stay outside the git index while the committed bundled-plugin fixture and hand-authored schema guide remain tracked; no new implementation was needed.
+- Verification: typecheck and lint/deprecations passed; 52 focused schema snapshot, schema compatibility, and codegen-drift tests passed; direct regeneration and git ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Keep schema-compatibility baseline regeneration in US-533; US-510 remains limited to untracking, ignore rules, and working-tree regeneration.
+---
+
+## [2026-08-03 00:06 CDT] - US-510 Drift Audit
+- Trigger: 3 cycles, 111748 changed lines, 4 commits
+- Category 2: removed inert ignored-tree pathspecs and restored tests to reject that misleading proof surface.
+- Category 5: removed unrelated PRD JSON serialization churn while preserving every adjudicated semantic change.
+- Category 6: aligned the normative drift contract with committed-output checks and ignored-output generator/consumer validation.
+- Category 7: fixed the branch-owned git-status blindness without reopening the US-533 base-regeneration boundary.
+- Fixed: deleted dead drift operands, narrowed the generated CI proof to its committed fixture, restored load-bearing assertions, and reconciled contract wording.
+- Split/excise decisions: none; the adjudicated US-533 follow-up and US-510 `passes: true` remain unchanged.
+- Verification: typecheck, lint/deprecations, codegen drift, schema snapshot 30/30, drift checker 14/14, CI workflow 26/26, and targeted codegen-CI 1/1 passed; the adjacent full codegen-CI suite retains its previously recorded stale Bun-version count expectation (14/15).
 ---

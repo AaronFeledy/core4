@@ -342,7 +342,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates schema-snapshot and bundled-codegen drift gates",
+    "generates the committed schema fixture and bundled-codegen drift gates",
     async () => {
       await runCodegen();
 
@@ -351,11 +351,20 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("schema-snapshot:");
       expect(workflow).toContain("- name: Regenerate schema artifact set");
       expect(workflow).toContain("run: bun run codegen:schema-snapshot");
-      expect(workflow).toContain(
-        'schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json dist/schemas dist/command-schemas docs/reference/schemas)"',
+      const fixtureVerificationStart = workflow.indexOf("- name: Verify committed schema fixture is current");
+      const fixtureVerificationEnd = workflow.indexOf(
+        "- name: Check schema compatibility",
+        fixtureVerificationStart,
       );
-      expect(workflow).toContain('if [[ -n "$schema_changes" ]]; then');
-      expect(workflow).toContain('printf "%s\\n" "$schema_changes"');
+      const fixtureVerification = workflow.slice(fixtureVerificationStart, fixtureVerificationEnd);
+      expect(fixtureVerification).toContain(
+        'schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json)"',
+      );
+      expect(fixtureVerification).not.toContain("dist/schemas");
+      expect(fixtureVerification).not.toContain("dist/command-schemas");
+      expect(fixtureVerification).not.toContain("docs/reference/schemas");
+      expect(fixtureVerification).toContain('if [[ -n "$schema_changes" ]]; then');
+      expect(fixtureVerification).toContain('printf "%s\\n" "$schema_changes"');
       expect(workflow).toContain(`  schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -366,9 +375,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("- name: Check schema compatibility");
       expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
       expect(workflow).toContain("run: bun run check:schema-compatibility");
-      expect(workflow.indexOf("Verify schema artifact set is current")).toBeLessThan(
-        workflow.indexOf("Check schema compatibility"),
-      );
+      expect(fixtureVerificationStart).toBeLessThan(fixtureVerificationEnd);
       expect(workflow).toContain("- name: Regenerate Compose key matrix");
       expect(workflow).toContain("run: bun run codegen:compose-key-matrix");
       expect(workflow).toContain("run: git diff --exit-code -- docs/reference/compose-key-matrix.mdx");

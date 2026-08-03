@@ -33,10 +33,8 @@ const schemaArtifactPath = (schemaName: JsonSchemaName): string =>
 
 const DESCRIBED = "A described field used to prove annotation resolution.";
 
-// The generator is deterministic, and the CI `schema-snapshot` job already
-// proves the committed outputs are current (regenerate + `git diff
-// --exit-code`). Running it once per test file is enough for the artifact
-// assertions below; re-running it per test only re-pays the same ~2s spawn.
+// Generate once because the output is deterministic, every derived family is
+// inspected below, and each invocation costs about two seconds.
 let generatorRan = false;
 const runGenerator = (): void => {
   if (generatorRan) {
@@ -593,32 +591,41 @@ describe("schema snapshot artifact-set gate", () => {
     }
   });
 
-  test("generated schema artifact paths are visible to the git drift gate", async () => {
+  test("derived schema artifact paths are ignored while the generator-owned fixture remains visible", async () => {
     runGenerator();
     const commandSchemaIndex = JSON.parse(await readFile(commandSchemaIndexPath, "utf8")) as Readonly<
       Record<string, string>
     >;
-    const generatedPaths = [
-      "sdk/test/fixtures/bundled-plugin-manifests.json",
+    const derivedPaths = [
       "dist/schemas/index.json",
       ...JSON_SCHEMA_NAMES.map((schemaName) => `dist/schemas/${schemaArtifactFilename(schemaName)}`),
       "dist/command-schemas/index.json",
       ...Object.values(commandSchemaIndex),
+      ...publicSchemaMetadataIndex.map((entry) => entry.docsPath),
     ].sort();
 
     for (const path of [
-      "sdk/test/fixtures/bundled-plugin-manifests.json",
+      ...derivedPaths,
       "dist/schemas/new-schema.json",
       "dist/command-schemas/new-command.json",
+      "docs/reference/schemas/new-schema.mdx",
     ]) {
       const ignored = Bun.spawnSync(["git", "check-ignore", "-q", "--no-index", path], {
         cwd: repoRoot,
       });
-      expect(ignored.exitCode, path).toBe(1);
+      expect(ignored.exitCode, path).toBe(0);
     }
 
     const visible = Bun.spawnSync(
-      ["git", "ls-files", "--cached", "--others", "--exclude-standard", "--", ...generatedPaths],
+      [
+        "git",
+        "ls-files",
+        "--cached",
+        "--others",
+        "--exclude-standard",
+        "--",
+        "sdk/test/fixtures/bundled-plugin-manifests.json",
+      ],
       {
         cwd: repoRoot,
         stdout: "pipe",
@@ -628,7 +635,24 @@ describe("schema snapshot artifact-set gate", () => {
     expect({ exitCode: visible.exitCode, stderr: visible.stderr.toString() }).toMatchObject({
       exitCode: 0,
     });
-    expect(visible.stdout.toString().trim().split("\n").sort()).toEqual(generatedPaths);
+    expect(visible.stdout.toString().trim()).toBe("sdk/test/fixtures/bundled-plugin-manifests.json");
+  });
+
+  test("hand-authored schema guides remain visible to git", () => {
+    const path = "docs/guides/schemas/schema-registry.mdx";
+    const ignored = Bun.spawnSync(["git", "check-ignore", "-q", "--no-index", path], {
+      cwd: repoRoot,
+    });
+    expect(ignored.exitCode).toBe(1);
+
+    const tracked = Bun.spawnSync(["git", "ls-files", "--error-unmatch", "--", path], {
+      cwd: repoRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    expect({ exitCode: tracked.exitCode, stderr: tracked.stderr.toString() }).toMatchObject({
+      exitCode: 0,
+    });
   });
 
   test("generator is deterministic and idempotent across the schema artifact set", async () => {
