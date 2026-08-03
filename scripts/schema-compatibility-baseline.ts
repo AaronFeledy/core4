@@ -54,25 +54,41 @@ const requireSuccess = async (request: CommandRequest, message: string): Promise
   throw new SchemaCompatibilityInputError(message, output.stderr.trim() || output.stdout.trim());
 };
 
-const verifyBaseRef = async (request: RegenerationRequest): Promise<void> => {
-  await requireSuccess(
+const resolveBaseRef = async (request: RegenerationRequest): Promise<string> =>
+  (
+    await requireSuccess(
+      {
+        command: ["git", "rev-parse", "--verify", `${request.baseRef}^{commit}`],
+        cwd: request.repoRoot,
+        env: request.env ?? Bun.env,
+      },
+      `Schema compatibility base ref ${request.baseRef} is unavailable.`,
+    )
+  ).stdout.trim();
+
+const hasSchemaSnapshotGenerator = async (
+  request: RegenerationRequest,
+  commitSha: string,
+): Promise<boolean> => {
+  const output = await requireSuccess(
     {
-      command: ["git", "rev-parse", "--verify", `${request.baseRef}^{commit}`],
+      command: [
+        "git",
+        "ls-tree",
+        "-z",
+        "--full-tree",
+        "--name-only",
+        commitSha,
+        "--",
+        SCHEMA_SNAPSHOT_GENERATOR_PATH,
+      ],
       cwd: request.repoRoot,
       env: request.env ?? Bun.env,
     },
-    `Schema compatibility base ref ${request.baseRef} is unavailable.`,
+    `Could not inspect schema compatibility base ${request.baseRef} for ${SCHEMA_SNAPSHOT_GENERATOR_PATH}.`,
   );
+  return output.stdout.length > 0;
 };
-
-const hasSchemaSnapshotGenerator = async (request: RegenerationRequest): Promise<boolean> =>
-  (
-    await runCommand({
-      command: ["git", "cat-file", "-e", `${request.baseRef}:${SCHEMA_SNAPSHOT_GENERATOR_PATH}`],
-      cwd: request.repoRoot,
-      env: request.env ?? Bun.env,
-    })
-  ).exitCode === 0;
 
 const removeWorktree = async (
   request: RegenerationRequest,
@@ -96,8 +112,8 @@ const removeWorktree = async (
 export const regenerateBaseSchemaArtifacts = async (
   request: RegenerationRequest,
 ): Promise<BaseSchemaArtifacts> => {
-  await verifyBaseRef(request);
-  if (!(await hasSchemaSnapshotGenerator(request))) {
+  const commitSha = await resolveBaseRef(request);
+  if (!(await hasSchemaSnapshotGenerator(request, commitSha))) {
     return { artifacts: new Map(), unavailableFamilies: UNAVAILABLE_FAMILIES };
   }
 
@@ -107,7 +123,7 @@ export const regenerateBaseSchemaArtifacts = async (
   try {
     await requireSuccess(
       {
-        command: ["git", "worktree", "add", "--detach", worktreeRoot, request.baseRef],
+        command: ["git", "worktree", "add", "--detach", worktreeRoot, commitSha],
         cwd: request.repoRoot,
         env,
       },

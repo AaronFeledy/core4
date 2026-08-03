@@ -1,174 +1,28 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 
-const BASELINE_MODULE_PATH = "../../../scripts/schema-compatibility-baseline.ts";
-const CHECK_MODULE_PATH = "../../../scripts/check-schema-compatibility.ts";
-const ARTIFACTS_MODULE_PATH = "../../../scripts/schema-compatibility-artifacts.ts";
-const GENERATOR_PATH = "scripts/build-schema-snapshot.ts";
-const roots: string[] = [];
-type SchemaArtifactFamily = "sdk" | "command";
-
-interface Fixture {
-  readonly root: string;
-  readonly env: Readonly<Record<string, string | undefined>>;
-  readonly historicalRef: string;
-  readonly baseRef: string;
-}
-
-interface RegenerationRequest {
-  readonly baseRef: string;
-  readonly env?: Readonly<Record<string, string | undefined>>;
-  readonly repoRoot: string;
-}
-
-class FixtureCommandError extends Error {
-  constructor(
-    readonly command: string,
-    readonly stderr: string,
-  ) {
-    super(`${command} failed: ${stderr}`);
-  }
-}
-
-const text = (stream: ReadableStream<Uint8Array>): Promise<string> => new Response(stream).text();
-
-const write = async (root: string, path: string, content: string): Promise<void> => {
-  const target = join(root, path);
-  await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, content, "utf8");
-};
-
-const run = async (
-  root: string,
-  env: Readonly<Record<string, string | undefined>>,
-  command: ReadonlyArray<string>,
-): Promise<string> => {
-  const child = Bun.spawn({ cmd: [...command], cwd: root, env, stdout: "pipe", stderr: "pipe" });
-  const [exitCode, stdout, stderr] = await Promise.all([
-    child.exited,
-    text(child.stdout),
-    text(child.stderr),
-  ]);
-  if (exitCode !== 0) throw new FixtureCommandError(command.join(" "), stderr.trim());
-  return stdout.trim();
-};
-
-const git = (fixture: Pick<Fixture, "root" | "env">, ...args: ReadonlyArray<string>): Promise<string> =>
-  run(fixture.root, fixture.env, ["git", ...args]);
-
-const commit = async (fixture: Pick<Fixture, "root" | "env">, message: string): Promise<string> => {
-  await git(fixture, "add", ".");
-  await git(fixture, "commit", "-m", message);
-  return git(fixture, "rev-parse", "HEAD");
-};
-
-const generator = (version: "alpha" | "beta"): string => `
-import { mkdir, writeFile } from "node:fs/promises";
-await mkdir("dist/schemas", { recursive: true });
-await mkdir("dist/command-schemas", { recursive: true });
-await writeFile("dist/schemas/index.json", JSON.stringify([{ id: "Fixture", jsonSchemaPath: "dist/schemas/fixture.json" }]));
-await writeFile("dist/schemas/fixture.json", JSON.stringify({ type: "string", const: "${version}" }));
-await writeFile("dist/command-schemas/index.json", JSON.stringify({ fixture: "dist/command-schemas/fixture.json" }));
-await writeFile("dist/command-schemas/fixture.json", JSON.stringify({ type: "string", const: "${version}" }));
-if (process.env.FAIL_GENERATOR === "1") process.exit(23);
-`;
-
-const isolatedGitEnv = async (root: string): Promise<Readonly<Record<string, string | undefined>>> => {
-  const emptyConfig = join(root, "empty.gitconfig");
-  await writeFile(emptyConfig, "", "utf8");
-  return {
-    ...Bun.env,
-    GIT_AUTHOR_EMAIL: "test@example.test",
-    GIT_AUTHOR_NAME: "Lando Test",
-    GIT_COMMITTER_EMAIL: "test@example.test",
-    GIT_COMMITTER_NAME: "Lando Test",
-    GIT_CONFIG_GLOBAL: emptyConfig,
-    GIT_CONFIG_NOSYSTEM: "1",
-    GIT_CONFIG_SYSTEM: emptyConfig,
-    GIT_TERMINAL_PROMPT: "0",
-    HOME: root,
-  };
-};
-
-const makeRepository = async (): Promise<Fixture> => {
-  const root = await mkdtemp(join(tmpdir(), "lando-schema-baseline-"));
-  roots.push(root);
-  const env = await isolatedGitEnv(root);
-  const fixture = { root, env };
-  await git(fixture, "init", "-b", "main");
-  await write(root, ".gitignore", "dist/\n");
-  await write(
-    root,
-    "package.json",
-    '{"name":"schema-fixture","private":true,"scripts":{"codegen:schema-snapshot":"bun run scripts/build-schema-snapshot.ts"}}\n',
-  );
-  await run(root, env, ["bun", "install", "--lockfile-only"]);
-  const historicalRef = await commit(fixture, "historical fixture");
-  await write(root, GENERATOR_PATH, generator("alpha"));
-  const baseRef = await commit(fixture, "alpha generator");
-  await write(root, "bun.lock", "malformed head lockfile\n");
-  await write(root, GENERATOR_PATH, generator("beta"));
-  await commit(fixture, "beta generator");
-  return { root, env, historicalRef, baseRef };
-};
-
-const field = (value: unknown, name: string): unknown => {
-  if (value === null || typeof value !== "object" || !(name in value)) {
-    throw new FixtureCommandError("read regeneration result", `missing ${name}`);
-  }
-  const result: unknown = Reflect.get(value, name);
-  return result;
-};
-
-const moduleExport = async (path: string, name: string): Promise<unknown> => field(await import(path), name);
-
-const callExport = async (path: string, name: string, args: ReadonlyArray<unknown>): Promise<unknown> => {
-  const exported = await moduleExport(path, name);
-  if (typeof exported !== "function") throw new FixtureCommandError(path, `missing ${name} export`);
-  return Reflect.apply(exported, undefined, args);
-};
-
-const regenerate = (request: RegenerationRequest): Promise<unknown> =>
-  callExport(BASELINE_MODULE_PATH, "regenerateBaseSchemaArtifacts", [request]);
-
-const unavailableFamilies = (result: unknown): ReadonlyArray<SchemaArtifactFamily> => {
-  const value = field(result, "unavailableFamilies");
-  if (!Array.isArray(value) || !value.every((entry) => entry === "sdk" || entry === "command")) {
-    throw new FixtureCommandError("read regeneration result", "invalid unavailableFamilies");
-  }
-  return value;
-};
-
-const captureFailure = async (action: () => Promise<unknown>): Promise<unknown> => {
-  try {
-    await action();
-    return undefined;
-  } catch (error) {
-    return error;
-  }
-};
-
-const expectInputFailure = async (failure: unknown, baseRef: string): Promise<void> => {
-  const errorType = await moduleExport(ARTIFACTS_MODULE_PATH, "SchemaCompatibilityInputError");
-  if (typeof errorType !== "function") {
-    throw new FixtureCommandError(ARTIFACTS_MODULE_PATH, "missing SchemaCompatibilityInputError export");
-  }
-  expect(failure).toBeInstanceOf(errorType);
-  if (!(failure instanceof errorType)) {
-    throw new FixtureCommandError("regenerate baseline", "expected SchemaCompatibilityInputError");
-  }
-  expect(`${field(failure, "message")} ${field(failure, "detail") ?? ""}`).toContain(baseRef);
-};
-
-const worktreeCount = async (fixture: Fixture): Promise<number> =>
-  (await git(fixture, "worktree", "list", "--porcelain"))
-    .split("\n")
-    .filter((line) => line.startsWith("worktree ")).length;
+import {
+  CHECK_MODULE_PATH,
+  FixtureCommandError,
+  callExport,
+  captureFailure,
+  cleanupRepositories,
+  commit,
+  expectInputFailure,
+  field,
+  git,
+  installGitShim,
+  makeRepository,
+  regenerate,
+  runFixtureCommand,
+  unavailableFamilies,
+  worktreeCount,
+  writeFixtureFile,
+} from "./fixtures/schema-baseline-fixture.ts";
 
 afterEach(async () => {
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await cleanupRepositories();
 });
 
 describe("isolated schema compatibility baseline regeneration", () => {
@@ -192,13 +46,18 @@ describe("isolated schema compatibility baseline regeneration", () => {
   test("fails closed when base dependency installation fails and cleans its worktree", async () => {
     // Given: a zero-dependency base whose install lifecycle exits nonzero.
     const fixture = await makeRepository();
-    await write(
+    await writeFixtureFile(
       fixture.root,
       "package.json",
       '{"name":"schema-fixture","private":true,"scripts":{"codegen:schema-snapshot":"bun run scripts/build-schema-snapshot.ts","preinstall":"exit 19"}}\n',
     );
     await rm(join(fixture.root, "bun.lock"));
-    await run(fixture.root, fixture.env, ["bun", "install", "--lockfile-only", "--ignore-scripts"]);
+    await runFixtureCommand(fixture.root, fixture.env, [
+      "bun",
+      "install",
+      "--lockfile-only",
+      "--ignore-scripts",
+    ]);
     const baseRef = await commit(fixture, "failing install");
 
     // When: regeneration attempts to install the base checkout.
@@ -269,6 +128,53 @@ describe("isolated schema compatibility baseline regeneration", () => {
       },
     ]);
     expect(await worktreeCount(fixture)).toBe(countBefore);
+  }, 30_000);
+
+  test("fails closed when the historical generator probe fails operationally", async () => {
+    // Given: a valid base ref whose git tree probe exits nonzero.
+    const fixture = await makeRepository();
+    const countBefore = await worktreeCount(fixture);
+    const shim = await installGitShim(fixture, { mode: "fail-ls-tree" });
+
+    // When: regeneration probes for the historical generator.
+    const failure = await captureFailure(() =>
+      regenerate({ baseRef: fixture.baseRef, env: shim.env, repoRoot: fixture.root }),
+    );
+
+    // Then: the operational failure is typed and does not masquerade as historical absence.
+    await expectInputFailure(failure, fixture.baseRef);
+    expect(await worktreeCount(fixture)).toBe(countBefore);
+  }, 30_000);
+
+  test("uses the resolved commit SHA after a mutable base ref moves", async () => {
+    // Given: a branch at alpha that moves to beta immediately after resolution.
+    const fixture = await makeRepository();
+    const mutableRef = "refs/heads/moving-base";
+    const mutationTarget = await git(fixture, "rev-parse", "HEAD");
+    await git(fixture, "branch", "moving-base", fixture.baseRef);
+    const shim = await installGitShim(fixture, {
+      mode: "move-ref-after-resolution",
+      mutableRef,
+      mutationTarget,
+    });
+
+    // When: regeneration resolves and uses the moving ref.
+    const result = await regenerate({ baseRef: mutableRef, env: shim.env, repoRoot: fixture.root });
+
+    // Then: the alpha commit supplies both the probe and detached worktree inputs.
+    const artifacts = field(result, "artifacts");
+    expect(artifacts).toBeInstanceOf(Map);
+    if (!(artifacts instanceof Map)) throw new FixtureCommandError("read artifacts", "expected Map");
+    expect(field(field(artifacts.get("schema:Fixture"), "schema"), "const")).toBe("alpha");
+    const commands = (await Bun.file(shim.logPath).text()).trim().split("\n");
+    expect(commands).toContain(
+      `ls-tree -z --full-tree --name-only ${fixture.baseRef} -- scripts/build-schema-snapshot.ts`,
+    );
+    expect(
+      commands.some(
+        (command) => command.startsWith("worktree add --detach ") && command.endsWith(` ${fixture.baseRef}`),
+      ),
+    ).toBe(true);
   }, 30_000);
 
   test("rejects an unresolvable base ref without creating a worktree", async () => {
