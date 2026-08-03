@@ -210,6 +210,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Review hardened the Quick Start regression proof to require exact commands inside its Bash block, preventing comments or `bun run codegen:check` from falsely satisfying the explicit clean-checkout bootstrap contract.
 - Review notes (deferred/rejected): the two stale `codegen-ci.test.ts` workflow-count assertions predate this story and have been recorded since US-506; they do not invalidate US-512's focused tests or existing clean CI proof.
 - Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account exhausted its usage; the five review-work lanes completed and the confirmed in-scope blocker was fixed.
+- Post-fix Cursor Bugbot reran successfully and reported no bugs.
 - Guide-Coverage-Skip: Internal contributor bootstrap ordering has no executable end-user guide surface.
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, LSP diagnostics, and 38 focused runbook, bootstrap, catalog, and CI workflow tests passed.
 - **Learnings for future iterations:**
