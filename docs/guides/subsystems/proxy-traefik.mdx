@@ -6,6 +6,24 @@ timeout: 60000
 tags: [beta, docs, subsystems, proxy, traefik]
 ---
 
+## HTTPS routes require an active certificate authority
+
+Traefik only terminates TLS for a route when a certificate authority has issued the cert. Run
+`lando setup` before starting HTTPS routes so the active `CertificateAuthority` is prepared; the
+bundled default is the [mkcert plugin](./certificates-mkcert.mdx). HTTP-only routes never resolve
+or set up a CA, so a project with no HTTPS endpoints has no cert dependency at all.
+
+Browsers trust the certificates Traefik serves because `lando setup` installs the active
+`CertificateAuthority`'s root into the host trust store, as described in the
+[mkcert host CA trust guide](./certificates-mkcert.mdx). That host trust store install is separate
+from the corporate and service CA injection covered in the
+[corporate network trust guide](../config/corporate-network-trust.mdx); injected corporate CAs let
+in-container runtimes trust outbound HTTPS calls, while host trust store installation is what makes
+a browser trust the proxy's own HTTPS certificates. Run `lando doctor` to check proxy TLS material
+readiness through the `proxy-tls` check documented in the
+[doctor walkthrough](./doctor-walkthrough.mdx). SSH agent forwarding uses sockets and agent
+identity, not TLS certificates, so it is unrelated to proxy TLS or CA trust state.
+
 <Guide>
   <Scenario id="proxy-sdk-contract" render={false} reason="The ProxyService SDK contract is exercised against an in-memory test double; the Traefik Live Layer requires the global app and running containers">
     <Step name="proxy-contract">
@@ -26,7 +44,20 @@ tags: [beta, docs, subsystems, proxy, traefik]
   <Scenario id="proxy-unavailable-layer" render={false} reason="The fail-closed ProxyServiceUnavailableLive stub is exercised by unit tests; the Traefik Live Layer requires the global app and running containers">
     <Step name="unavailable-layer">
       <Variable name="stubLayer" value="ProxyServiceUnavailableLive" display="ProxyServiceRegistry's fallback layer when zero ProxyService plugins are registered; fails closed with remediation to install/select a plugin and rerun setup" />
-      <Variable name="liveLayer" value="SelectedProxyServiceLive" display="Resolved from ProxyServiceRegistry (built from each installed plugin's proxyServices: manifest contribution, using explicit-selection / default / sole-installed-implementation precedence); the bundled Traefik implementation additionally depends on the global app for actual ingress via GlobalAppService.ensureRunning" />
+      <Variable name="liveLayer" value="SelectedProxyServiceLive" display="Resolved from ProxyServiceRegistry (built from each installed plugin's proxyServices: manifest contribution, using explicit-selection / default / sole-installed-implementation precedence); core supplies the selected proxy with a deferred active CertificateAuthority, while bundled Traefik also depends on GlobalAppService.ensureRunning for ingress" />
+    </Step>
+  </Scenario>
+
+  <Scenario id="proxy-traefik-https-certificates" render={false} reason="Certificate issuance and Traefik file-provider configuration are covered by focused plugin and core tests; live issuance requires the configured CA tool and global Traefik container">
+    <Step name="https-prerequisites">
+      <Variable name="setup" value="lando setup" display="Prepare the selected CertificateAuthority before HTTPS routes are started; the bundled default is the mkcert plugin and therefore requires the mkcert dependency to be installable" />
+      <Variable name="selection" value="CertificateAuthorityResolver" display="HTTPS route application resolves the active CA lazily; HTTP-only routes do not resolve, set up, or issue through a CA" />
+    </Step>
+    <Step name="certificate-material">
+      <Variable name="defaultCertificate" value="*.lndo.site, lndo.site, traefik.lndo.site" display="The default wildcard certificate covers the wildcard, apex, and Traefik dashboard hostname" />
+      <Variable name="appCertificate" value="unique sorted HTTPS/both route hostnames" display="Each app's certificate filename is keyed by its encoded AppId, and the certificate is reissued whenever the app's HTTPS route hostname coverage changes" />
+      <Variable name="hostDirectory" value="&lt;globalAppRoot&gt;/proxy-traefik/dynamic/certs" display="Issued certificate and key PEMs are copied into the existing dynamic file-provider mount before the app route YAML is replaced" />
+      <Variable name="traefikConfig" value="tls.certificates + tls.stores.default.defaultCertificate" display="Dynamic YAML references /etc/traefik/dynamic/certs paths using Traefik v3 file-provider TLS configuration; router tls: {} remains the HTTPS activation marker" />
     </Step>
   </Scenario>
 

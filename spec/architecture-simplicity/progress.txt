@@ -9,6 +9,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Internal/infra only — Guide Coverage None on every PRD.
 - Do not touch unrelated dirty working-tree files from other waves.
 
+## Codebase Patterns
+
+- Scope generated-output drift checks with `git status --porcelain=v1 --untracked-files=all -- <pathspecs>` so tracked and newly untracked outputs fail without unrelated working-tree dirt causing false failures.
+- A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
+- Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
+- When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
+
 ## Log
 
 ## [2026-07-30] - US-500..US-504
@@ -16,3 +23,131 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Applied normative spec supersession for single dispatcher, artifact policy, internal packages, codegen:check drift.
 - Updated root/core/sdk AGENTS.md and check-guide-coverage allowlist.
 - Marked US-500..US-504 passes true (contract/scaffolding landed). Implementation stories US-505..US-532 remain open.
+
+## [2026-08-02 12:02 CDT] - US-505
+- Strengthened `codegen:check` to regenerate the full catalog and fail on tracked or newly untracked catalog-output drift while ignoring unrelated working-tree changes.
+- Verification: codegen:check, typecheck, scripts typecheck, lint, and focused codegen/deprecation tests passed; tracked, untracked, and unrelated-dirt CLI probes behaved as required. The spec-reference gate remains blocked by pre-existing `.omo/**` citations outside this story.
+- **Learnings for future iterations:**
+  - Keep the drift path set explicit and pathspec-scoped; plain `git diff --exit-code` misses newly generated untracked files.
+  - Gitignored derived trees remain outside the git-status half and need deterministic generator/consumer validation instead.
+---
+
+## [2026-08-02 12:28 CDT] - US-505 Review
+- Review found that the original 13 pathspecs omitted tracked outputs from existing catalog generators. Expanded the set to 19 pathspecs covering recipe scaffolds, command manifests and allowlists, the Compose fixture manifest, and PHP base Dockerfiles, with independent sentinel and wildcard regression coverage.
+- Corrected the remaining pre-landing specification wording so the acceptance checklist describes the shipped drift gate.
+- Review notes (deferred/rejected): a generator-owned output registry remains US-506+ scope; US-505 hand-completes the path set and keeps independent coverage sentinels in the test.
+- Review notes (deferred/rejected): dedicated copy-status, unusual-filename, inherited-Git-environment, and diagnostic-escaping hardening were non-blocking and outside this focused catalog-coverage fix.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable after its initial run and retry both hit the account usage limit; the five-lane review otherwise completed, and both failing lanes identified the path-coverage blocker fixed here.
+- Guide-Coverage-Skip: Internal codegen drift-gate behavior has no end-user guide surface.
+- Verification: `check:codegen-drift`, explicit-base guide drift, typecheck, lint/deprecations, and 42 focused codegen/deprecation tests passed; LSP diagnostics were clean; live scaffold-glob and unrelated-dirt CLI probes behaved as required.
+- **Learnings for future iterations:**
+  - Use a directory pathspec only when the whole directory is generator-owned; use a file pathspec when generated files share a directory with hand-authored siblings.
+  - Keep gitignored `core/oclif.manifest.json` and generated guide scenarios outside the git-status half; their generator and consumer validation remains the applicable proof.
+---
+
+## [2026-08-02 13:43 CDT] - US-506
+- Added a machine-readable generator catalog that preserves the 24-step execution order and assigns each generator exactly one ownership value: committed pin, committed workflow, or derived output. The codegen runner now consumes that catalog without import-time execution.
+- Reconciled the binary-build catalog with the executable inventory, separating current catalog entries from network-only maintenance scripts and planned generators that do not exist yet.
+- Verification: typecheck, lint, codegen drift, generated-output, package-DAG, managed-file boundary, focused catalog/fixture/drift tests, idempotent full-catalog generation, and direct generator probes passed. The unchanged adjacent CI-codegen suite retains two stale expectations, and the spec-reference gate retains its previously recorded `.omo/**` failures; neither surface differs from `origin/main`.
+- **Learnings for future iterations:**
+  - Keep catalog modules import-side-effect-free and guard executable runners with `import.meta.main` so tests and tooling can inspect metadata safely.
+  - Core tests that inspect root-level scripts should dynamically import file URLs and narrow the module shape to avoid crossing the core TypeScript `rootDir` through a static import.
+---
+
+## [2026-08-02 14:16 CDT] - US-506 Review
+- Review closed the catalog ownership proof gap by requiring both unique generator ids and unique script paths, preventing one script from acquiring conflicting ownership rows under different ids.
+- Review notes (deferred/rejected): per-generator output-path ownership remains outside US-506's source acceptance criteria; this story owns execution order and one ownership classification per generator, while drift-path consolidation is later-wave scope.
+- Review notes (deferred/rejected): the stale pre-US-505 wording in §13 predates this branch and does not block US-506's explicit §17.2 acceptance criteria.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable because the account usage limit was exhausted; the five review-work lanes otherwise completed and the sole in-scope blocker was fixed.
+- Guide-Coverage-Skip: Internal codegen catalog invariants have no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, generated-output/package-DAG/managed-file gates, LSP diagnostics, and 20 focused catalog/fixture/orchestrator/drift tests passed; mutation testing proved the new uniqueness assertion fails on a duplicated script registration.
+- **Learnings for future iterations:**
+  - Catalog uniqueness checks must cover both entry ids and executable script paths; unique ids alone do not prevent duplicate execution or conflicting ownership.
+---
+
+## [2026-08-02 14:57 CDT] - US-507
+- Verified that `check:codegen-drift` is already the sole full-catalog pure-drift implementation and `codegen:check` is its composite wrapper; no redundant regen-and-compare script or unused public alias remains to retire.
+- Preserved `check:generated-output`, `check:guide-drift`, and deprecation checks because they enforce independent semantic and boundary contracts rather than generated-artifact drift.
+- Guide-Coverage-Skip: Internal drift-gate inventory has no end-user guide surface.
+- Verification: typecheck, scripts typecheck, and lint passed; focused codegen-drift, generated-output, and guide-drift tests passed; all three direct gate invocations behaved as expected.
+- **Learnings for future iterations:**
+  - Classify similarly named `check:*` scripts by behavior before consolidation: generated-banner placement and guide ownership are semantic gates, not alternate codegen drift implementations.
+---
+
+## [2026-08-02 15:52 CDT] - US-508
+- Wired the generated portable static-check matrix to run the consolidated `codegen:check` pipeline exactly once per matrix cell, replacing the redundant standalone typecheck step while preserving independent semantic and consumer-validation jobs.
+- Guide-Coverage-Skip: Internal CI drift-gate wiring has no end-user guide surface.
+- Verification: typecheck and lint passed; focused workflow, generator, branch-protection, codegen-drift, and deprecation spot checks passed. The unchanged full CI-codegen suite retains the two pre-existing stale expectations recorded in US-506.
+- **Learnings for future iterations:**
+  - A command declared once in a matrix job executes once per expanded matrix cell; assert the generated step count within the job block so unrelated jobs cannot satisfy or break the contract.
+---
+
+## [2026-08-02 16:27 CDT] - US-508 Review
+- Review closed the remaining duplicate-regeneration gap: guide jobs now run only the guide-scenario generator, the Linux guide job no longer repeats workflow drift checking, and workflow-wide assertions prevent another full-catalog invocation outside `codegen:check`.
+- Review notes (deferred/rejected): `schema-snapshot` and `bundled-codegen` remain focused semantic and consumer-validation jobs under the US-507 decision; they are not duplicate full-catalog drift gates.
+- Review notes (deferred/rejected): guide-job typechecks remain unchanged because removing them is unnecessary for US-508 and would broaden the story beyond catalog-regeneration ownership.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account was out of usage; the five review-work lanes otherwise completed, and the two goal/quality lanes independently identified the blocker fixed here.
+- Guide-Coverage-Skip: Internal CI generation and drift ownership have no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, generated-output boundary, LSP diagnostics, and 36 focused workflow/runbook/catalog/codegen-CI tests passed; the unchanged full CI-codegen suite retains its two previously recorded stale expectations.
+- **Learnings for future iterations:**
+  - CI consumers of one generated family should invoke a focused generator; reserve full-catalog regeneration and drift comparison for `codegen:check`.
+---
+
+## [2026-08-02 17:19 CDT] - US-509
+- Published one shared gate-classification matrix for agent instructions and quality-gate policy: `codegen:check` is the sole pure-drift gate, while guide coverage, schema compatibility, public transcripts, package DAG, and behavioral boundaries remain semantic checks.
+- Verification: typecheck and lint/deprecations passed; 5 focused matrix tests and 49 adjacent codegen, boundary, workflow, and runbook tests passed. Mutation testing proved a drift-gate misclassification fails the contract. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep drift detection and semantic correctness visibly separate even when one composite command runs companion semantic checks.
+  - Structural documentation tests should pin table cells and script wiring rather than prose wording.
+---
+
+## [2026-08-02 17:38 CDT] - US-509 Review
+- Review clarified that `codegen:check` is a composite command whose full failure surface includes `check:deprecations` and `typecheck` alongside pure drift, and locked the new step-sequence assertion to the exact full step order rather than mere substring presence.
+- Review notes (deferred/rejected): the stale pre-US-505 wording in §13.2 predates this branch and was explicitly deferred in US-506 Review, outside US-509's acceptance criteria.
+- Review notes (deferred/rejected): `check:codegen-drift` is not reclassified because the source acceptance criteria name `codegen:check`, and the gate inventory remains unchanged.
+- Review notes (deferred/rejected): optional Markdown-parser, trailing-pipe, and wildcard-table hardening is non-blocking and broadens scope beyond this fix.
+- Review notes (deferred/rejected): Cursor Bugbot was unavailable due to exhausted usage; the five review-work lanes otherwise completed, and the code-quality lane produced the one in-scope blocker fixed here.
+- Guide-Coverage-Skip: Internal gate-classification documentation has no end-user guide surface.
+- Verification: explicit-base guide drift passed; typecheck passed; lint/deprecations passed; matrix 7/7, adjacent codegen drift 13/13, CI runbook 4/4; mutation dropping `check:deprecations` caused exactly the new sequence assertion to fail (6 pass, 1 fail), then `package.json` was restored clean; LSP diagnostics clean.
+- **Learnings for future iterations:**
+  - Distinguish a check's stated responsibility from a composite command's full failure surface before classifying it.
+  - Pin exact step sequences rather than substring presence when a contract depends on ordering.
+---
+
+## [2026-08-02 18:51 CDT] - US-510
+- Moved SDK schema JSON, command-result schemas, and generated schema reference pages out of git source-of-truth while preserving their deterministic build-time regeneration and the committed bundled-plugin manifest fixture.
+- Guide-Coverage-Skip: Internal generated-artifact tracking policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 78 focused schema snapshot, codegen-drift, CI workflow, and schema-compatibility tests passed; direct generation and git ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Ignored derived outputs are validated by generator and consumer tests rather than the git-status drift half; keep committed generator-owned fixtures explicitly visible.
+---
+
+## [2026-08-02 20:05 CDT] - US-510 Human adjudication (schema-compat before-source)
+- Contradiction: US-510 untracked `dist/schemas/**` and `dist/command-schemas/**` while §13.2 still loaded "before" via `git show $BASE_REF:dist/...`, so every post-untrack base permanently missed both indexes and the gate skipped all surfaces (Review: 401 skipped) — conflicting with §13.4 semantic-gate classification. Same-lock-only repair rejected (blocks or blinds dep-update PRs).
+- Decision (human): **Option 2 primary** — isolated checkout of base ref + that commit's `bun.lock` → install → `codegen:schema-snapshot` → compare to head WT artifacts. **Option 1 (CI baseline artifact) is optional cache only, not SoT.** Fail-closed on materialization failure except historical pre-generator bases.
+- Contract changes (do not reverse as out-of-scope drift):
+  - `spec/13-testing-and-distribution.md` §13.2 rewritten for isolated base regen + optional cache + transitional skip owned by US-533.
+  - ARCH-02 FR + US-533 story added; US-510 notes narrowed to untrack/gitignore/regen-write only.
+  - `prd.json` US-533 priority 12 (immediately after US-510); US-511+ priorities shifted; US-532 closure includes US-533.
+- US-510 remains `passes: true` for its written ACs. Restoring a real semantic before-path is **US-533**, not a US-510 reopen.
+- **Drift Audit / Review MUST NOT:** re-commit derived schema trees into git; demand US-510 implement base-regen; excise US-533 as foreign scope; treat transitional skip-all as the permanent §13.2 contract.
+- Looper: cleared `.looper-stop` after this entry so the loop can resume.
+---
+
+## [2026-08-02 23:16 CDT] - US-510 Verification
+- Verified the schema artifact trees remain derived-only, regenerate successfully, and stay outside the git index while the committed bundled-plugin fixture and hand-authored schema guide remain tracked; no new implementation was needed.
+- Verification: typecheck and lint/deprecations passed; 52 focused schema snapshot, schema compatibility, and codegen-drift tests passed; direct regeneration and git ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Keep schema-compatibility baseline regeneration in US-533; US-510 remains limited to untracking, ignore rules, and working-tree regeneration.
+---
+
+## [2026-08-03 00:06 CDT] - US-510 Drift Audit
+- Trigger: 3 cycles, 111748 changed lines, 4 commits
+- Category 2: removed inert ignored-tree pathspecs and restored tests to reject that misleading proof surface.
+- Category 5: removed unrelated PRD JSON serialization churn while preserving every adjudicated semantic change.
+- Category 6: aligned the normative drift contract with committed-output checks and ignored-output generator/consumer validation.
+- Category 7: fixed the branch-owned git-status blindness without reopening the US-533 base-regeneration boundary.
+- Fixed: deleted dead drift operands, narrowed the generated CI proof to its committed fixture, restored load-bearing assertions, and reconciled contract wording.
+- Split/excise decisions: none; the adjudicated US-533 follow-up and US-510 `passes: true` remain unchanged.
+- Verification: typecheck, lint/deprecations, codegen drift, schema snapshot 30/30, drift checker 14/14, CI workflow 26/26, and targeted codegen-CI 1/1 passed; the adjacent full codegen-CI suite retains its previously recorded stale Bun-version count expectation (14/15).
+---

@@ -92,7 +92,7 @@ export type CertificateAuthorityContributionLayer = Layer.Layer<
 export type ProxyServiceContributionLayer = Layer.Layer<
   ProxyService,
   ProxyError,
-  FileSystem | GlobalAppService | PathsService
+  CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
 export type GlobalServiceContributionEffect = Effect.Effect<ServiceConfig, unknown, never>;
 export type LoggerContributionLayer = Layer.Layer<never, unknown, unknown>;

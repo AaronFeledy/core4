@@ -3,6 +3,7 @@ import { Context, Effect, Either, Layer } from "effect";
 import { ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import {
+  type CertificateAuthority,
   ConfigService,
   type FileSystem,
   type GlobalAppService,
@@ -13,11 +14,12 @@ import {
 import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
 import { makePluginCapabilityIndex } from "../../plugins/module-set.ts";
 import { ProxyServiceUnavailableLive } from "./api.ts";
+import { DeferredCertificateAuthorityLive } from "./deferred-certificate-authority.ts";
 
 export type ProxyServiceLayer = Layer.Layer<
   ProxyService,
   ProxyError,
-  FileSystem | GlobalAppService | PathsService
+  CertificateAuthority | FileSystem | GlobalAppService | PathsService
 >;
 
 export interface ProxyServiceRegistration {
@@ -152,7 +154,11 @@ export const SelectedProxyServiceLive = Layer.unwrapEffect(
     Effect.flatMap(registry.list, (ids) =>
       ids.length === 0
         ? Effect.succeed(ProxyServiceUnavailableLive)
-        : registry.select().pipe(Effect.map((selected) => selected.layer)),
+        : registry
+            .select()
+            .pipe(
+              Effect.map((selected) => selected.layer.pipe(Layer.provide(DeferredCertificateAuthorityLive))),
+            ),
     ),
   ),
 );

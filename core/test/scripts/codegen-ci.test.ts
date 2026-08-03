@@ -342,7 +342,7 @@ describe("ci workflow codegen", () => {
   );
 
   test(
-    "generates schema-snapshot and bundled-codegen drift gates",
+    "generates the committed schema fixture and bundled-codegen drift gates",
     async () => {
       await runCodegen();
 
@@ -351,11 +351,20 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("schema-snapshot:");
       expect(workflow).toContain("- name: Regenerate schema artifact set");
       expect(workflow).toContain("run: bun run codegen:schema-snapshot");
-      expect(workflow).toContain(
-        'schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json dist/schemas dist/command-schemas docs/reference/schemas)"',
+      const fixtureVerificationStart = workflow.indexOf("- name: Verify committed schema fixture is current");
+      const fixtureVerificationEnd = workflow.indexOf(
+        "- name: Check schema compatibility",
+        fixtureVerificationStart,
       );
-      expect(workflow).toContain('if [[ -n "$schema_changes" ]]; then');
-      expect(workflow).toContain('printf "%s\\n" "$schema_changes"');
+      const fixtureVerification = workflow.slice(fixtureVerificationStart, fixtureVerificationEnd);
+      expect(fixtureVerification).toContain(
+        'schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json)"',
+      );
+      expect(fixtureVerification).not.toContain("dist/schemas");
+      expect(fixtureVerification).not.toContain("dist/command-schemas");
+      expect(fixtureVerification).not.toContain("docs/reference/schemas");
+      expect(fixtureVerification).toContain('if [[ -n "$schema_changes" ]]; then');
+      expect(fixtureVerification).toContain('printf "%s\\n" "$schema_changes"');
       expect(workflow).toContain(`  schema-snapshot:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -366,9 +375,7 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("- name: Check schema compatibility");
       expect(workflow).toContain("LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
       expect(workflow).toContain("run: bun run check:schema-compatibility");
-      expect(workflow.indexOf("Verify schema artifact set is current")).toBeLessThan(
-        workflow.indexOf("Check schema compatibility"),
-      );
+      expect(fixtureVerificationStart).toBeLessThan(fixtureVerificationEnd);
       expect(workflow).toContain("- name: Regenerate Compose key matrix");
       expect(workflow).toContain("run: bun run codegen:compose-key-matrix");
       expect(workflow).toContain("run: git diff --exit-code -- docs/reference/compose-key-matrix.mdx");
@@ -426,13 +433,17 @@ describe("ci workflow codegen", () => {
       await runCodegen();
 
       const workflow = await readFile(workflowPath, "utf8");
+      const staticChecksStart = workflow.indexOf("  static-checks-platform:");
+      const staticChecksEnd = workflow.indexOf("\n  static-checks:", staticChecksStart);
+      const staticChecksPlatform = workflow.slice(staticChecksStart, staticChecksEnd);
 
       expect(workflow).toContain("static-checks-platform:");
       for (const platform of ["darwin-arm64", "darwin-x64", "linux-arm64", "linux-x64", "windows-x64"]) {
         expect(workflow).toContain(`- platform: ${platform}`);
       }
-      expect(workflow).toContain("- name: Typecheck");
-      expect(workflow).toContain("run: bun run typecheck");
+      expect(staticChecksPlatform).toContain("- name: Regenerate and verify codegen catalog");
+      expect(staticChecksPlatform.match(/^ {8}run: bun run codegen:check$/gm) ?? []).toHaveLength(1);
+      expect(staticChecksPlatform).not.toContain("- name: Typecheck");
       expect(workflow).toContain("- name: Lint");
       expect(workflow).toContain("run: bun run lint");
       expect(workflow).toContain("- name: Import cycle lint");
@@ -479,8 +490,9 @@ describe("ci workflow codegen", () => {
       const workflow = await readFile(workflowPath, "utf8");
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
-      expect(workflow).toContain("needs: [static-checks, build-linux-x64]");
-      expect(workflow).toContain("run: bun run codegen");
+      expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
+      expect(workflow).toContain("run: bun run codegen:guide-scenarios");
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(0);
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
       expect(workflow).toContain("run: bun run check:guide-coverage");
@@ -503,9 +515,17 @@ describe("ci workflow codegen", () => {
 
       expect(
         workflow.indexOf("run: bun install --frozen-lockfile", workflow.indexOf("guide-scenarios-linux-x64")),
-      ).toBeLessThan(workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")));
+      ).toBeLessThan(
+        workflow.indexOf(
+          "run: bun run codegen:guide-scenarios",
+          workflow.indexOf("guide-scenarios-linux-x64"),
+        ),
+      );
       expect(
-        workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")),
+        workflow.indexOf(
+          "run: bun run codegen:guide-scenarios",
+          workflow.indexOf("guide-scenarios-linux-x64"),
+        ),
       ).toBeLessThan(
         workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
       );

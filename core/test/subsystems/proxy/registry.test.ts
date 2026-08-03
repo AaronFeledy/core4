@@ -1,17 +1,30 @@
 import { describe, expect, test } from "bun:test";
-import { Effect, Either, Layer, Schema } from "effect";
+import { Context, Effect, Either, Layer, Schema } from "effect";
 
-import { ProxyError } from "@lando/sdk/errors";
+import { makeLandoPaths } from "@lando/paths";
+import { ProxyApplyError, ProxyError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
-import { GlobalConfig, PluginManifest } from "@lando/sdk/schema";
-import { ConfigService, ProxyService, type ProxyServiceShape } from "@lando/sdk/services";
+import { AppId, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
+import {
+  CertificateAuthority,
+  ConfigService,
+  PathsService,
+  ProxyService,
+  type ProxyServiceShape,
+} from "@lando/sdk/services";
 
+import {
+  CertificateAuthorityResolver,
+  type CertificateAuthorityResolverShape,
+} from "../../../src/plugins/certificate-authority-resolver.ts";
 import {
   type ProxyServiceRegistration,
   ProxyServiceRegistry,
+  SelectedProxyServiceLive,
   makeProxyServiceRegistry,
   makeProxyServiceRegistryLive,
 } from "../../../src/subsystems/proxy/registry.ts";
+import { provideTestRuntime } from "../../../src/testing/test-runtime.ts";
 
 const service = (id: string): ProxyServiceShape => ({
   id,
@@ -54,6 +67,28 @@ const runInjectedSelection = (modules: ReadonlyArray<LandoPluginModule>, explici
     Effect.flatMap(ProxyServiceRegistry, (registry) => registry.select({ explicit })).pipe(
       Effect.provide(makeProxyServiceRegistryLive(modules).pipe(Layer.provide(configLayer))),
       Effect.either,
+    ),
+  );
+
+const buildSelectedProxy = (
+  registry: Context.Tag.Service<typeof ProxyServiceRegistry>,
+  resolver: CertificateAuthorityResolverShape,
+) =>
+  Effect.scoped(
+    Effect.map(
+      Layer.build(
+        SelectedProxyServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(ProxyServiceRegistry, registry),
+              Layer.succeed(CertificateAuthorityResolver, resolver),
+              Layer.succeed(PathsService, makeLandoPaths({ userDataRoot: "/tmp/proxy-registry-test" })),
+              provideTestRuntime({ bootstrap: "global" }),
+            ),
+          ),
+        ),
+      ),
+      (context) => Context.get(context, ProxyService),
     ),
   );
 
@@ -120,5 +155,92 @@ describe("ProxyService registry selection", () => {
     const selected = await Effect.runPromise(registry.select());
 
     expect(selected.id).toBe("remote");
+  });
+
+  test("selected proxy receives a CA that resolves only when the proxy uses it", async () => {
+    // Given: a contributed proxy Layer requiring CertificateAuthority and an observable resolver.
+    let resolutions = 0;
+    const requiringCa = Layer.effect(
+      ProxyService,
+      Effect.map(CertificateAuthority, (authority) => ({
+        ...service("needs-ca"),
+        applyRoutes: (routes, app) =>
+          authority.issueCert({ cn: "proxy.test", sans: ["proxy.test"] }).pipe(
+            Effect.as({ app, appliedRoutes: routes, authorities: [] }),
+            Effect.mapError(
+              (cause) =>
+                new ProxyApplyError({
+                  message: "proxy CA failed",
+                  proxyId: "needs-ca",
+                  app: String(app),
+                  remediation: "Run lando setup.",
+                  cause,
+                }),
+            ),
+          ),
+      })),
+    );
+    const resolver: CertificateAuthorityResolverShape = {
+      resolve: Effect.sync(() => {
+        resolutions += 1;
+        return {
+          id: "test-ca",
+          setup: () => Effect.void,
+          issueCert: () => Effect.succeed({ certPath: "/cert", keyPath: "/key", caPath: "/ca" }),
+        };
+      }),
+    };
+    const selected = await Effect.runPromise(
+      buildSelectedProxy(
+        {
+          list: Effect.succeed(["needs-ca"]),
+          select: () => Effect.succeed({ id: "needs-ca", layer: requiringCa }),
+        },
+        resolver,
+      ),
+    );
+    expect(resolutions).toBe(0);
+
+    // When: the selected proxy executes its CA-backed operation.
+    await Effect.runPromise(selected.applyRoutes([], AppId.make("demo")));
+
+    // Then: resolver evaluation occurs exactly at proxy use.
+    expect(resolutions).toBe(1);
+  });
+
+  test("unavailable selected proxy builds without resolving a certificate authority", async () => {
+    // Given: an empty registry and an observable resolver.
+    let resolutions = 0;
+    const resolver: CertificateAuthorityResolverShape = {
+      resolve: Effect.sync(() => {
+        resolutions += 1;
+        return {
+          id: "unused-ca",
+          setup: () => Effect.void,
+          issueCert: () => Effect.succeed({ certPath: "/cert", keyPath: "/key", caPath: "/ca" }),
+        };
+      }),
+    };
+
+    // When: the unavailable branch is built but not invoked.
+    const selected = await Effect.runPromise(
+      buildSelectedProxy(
+        {
+          list: Effect.succeed([]),
+          select: () =>
+            Effect.fail(
+              new ProxyError({
+                message: "selection must not run",
+                proxyId: "unavailable",
+              }),
+            ),
+        },
+        resolver,
+      ),
+    );
+
+    // Then: no CA selection occurs.
+    expect(selected.id).toBe("unavailable");
+    expect(resolutions).toBe(0);
   });
 });

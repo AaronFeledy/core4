@@ -86,7 +86,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04"
     },
     {
@@ -99,7 +99,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04"
     },
     {
@@ -112,7 +112,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04"
     },
     {
@@ -125,7 +125,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04"
     },
     {
@@ -137,7 +137,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-04"
     },
     {
@@ -151,8 +151,25 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 11,
+      "passes": true,
+      "notes": "PRD-02. Scope is untrack/gitignore/regen-write only. Semantic 'before' path after untrack is US-533 (human adjudication 2026-08-02); do not re-commit dist/schemas or fail US-510 for transitional skip-all."
+    },
+    {
+      "id": "US-533",
+      "title": "Schema-compatibility base regen (isolated checkout)",
+      "description": "As CI, check:schema-compatibility materializes its before baseline by regenerating schema artifacts in an isolated checkout of the base ref (that commit's sources and bun.lock), then compares them to the head working-tree set — without re-committing derived trees and without skipping all surfaces when indexes are absent from git.",
+      "acceptanceCriteria": [
+        "Base baseline via isolated checkout + bun install + codegen:schema-snapshot at LANDO_SCHEMA_COMPATIBILITY_BASE_REF.",
+        "Head uses regenerated working-tree artifacts; schema trees stay gitignored/untracked.",
+        "Dependency-update PRs still get a real comparison (no full-family skip solely from missing git indexes).",
+        "Fail-closed when base baseline cannot be materialized, except base commits that predate schema-snapshot generators.",
+        "Optional CI cache by base SHA + digest allowed; miss falls back to regen; cache is not SoT.",
+        "Tests prove the gate does not skip both families solely because indexes are absent from git at base.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
       "passes": false,
-      "notes": "PRD-02"
+      "notes": "PRD-02. Human adjudication 2026-08-02: option-2 primary (isolated base regen); option-1 cache optional not SoT. Owns §13.2 before-source after US-510 untrack. Drift Audit MUST NOT excise this story or re-commit schema trees as a substitute."
     },
     {
       "id": "US-511",
@@ -163,7 +180,7 @@
         "CI workflows remain committed (human-reviewed exception).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 12,
+      "priority": 13,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -177,7 +194,7 @@
         "Clean CI job proves clone→install→codegen→typecheck.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 13,
+      "priority": 14,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -190,7 +207,7 @@
         "Published tarball contains required schema artifacts.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 14,
+      "priority": 15,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -203,7 +220,7 @@
         "Offline invariant checks still run in codegen/staleness path.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 15,
+      "priority": 16,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -215,7 +232,7 @@
         "sdk/AGENTS.md schema-snapshot bullet matches untracked policy.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 16,
+      "priority": 17,
       "passes": false,
       "notes": "PRD-02"
     },
@@ -228,7 +245,7 @@
         "Public types that must stay stable remain on sdk or documented core re-exports.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 17,
+      "priority": 18,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -240,7 +257,7 @@
         "package-dag rule updated and tested.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 18,
+      "priority": 19,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -253,7 +270,7 @@
         "Focused tests for lock/atomic write still green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 19,
+      "priority": 20,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -266,7 +283,7 @@
         "check:state-store-boundary either deleted with alias note or thinned.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 20,
+      "priority": 21,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -278,7 +295,7 @@
         "paths, probe, redaction, renderer rules reviewed; behavioral bans (console.*, hand-rolled retry) kept.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 21,
+      "priority": 22,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -290,7 +307,7 @@
         "ROADMAP or PRD-03 Non-Goals lists deferred extractions.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 22,
+      "priority": 23,
       "passes": false,
       "notes": "PRD-03"
     },
@@ -303,7 +320,7 @@
         "Registry drives help, dispatch, schema snapshot command list, and MCP projections.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 23,
+      "priority": 24,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -316,7 +333,7 @@
         "core/bin/lando.ts and compiled entry share the engine.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 24,
+      "priority": 25,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -329,7 +346,7 @@
         "Cold-start import graph excludes OCLIF.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 25,
+      "priority": 26,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -343,7 +360,7 @@
         "Flexible taxonomy policy documented for the native parser (colon canonical; space forms if supported).",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 26,
+      "priority": 27,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -356,7 +373,7 @@
         "Embedding docs updated; boundary tests updated.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 27,
+      "priority": 28,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -369,7 +386,7 @@
         "Machine-output and relocated binary tests still green.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 28,
+      "priority": 29,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -382,7 +399,7 @@
         "No oclif.manifest.json required for shipping dispatch.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 29,
+      "priority": 30,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -394,7 +411,7 @@
         "Import-boundary / cold-start tests updated for native dispatcher.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 30,
+      "priority": 31,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -407,7 +424,7 @@
         "meta:setup still merges bundled plugin flags without importing bundled plugin graph into cold path.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 31,
+      "priority": 32,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -420,7 +437,7 @@
         "rg for 'dual dispatch is permanent' returns only historical/superseded notes.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 32,
+      "priority": 33,
       "passes": false,
       "notes": "PRD-01"
     },
@@ -429,12 +446,12 @@
       "title": "Wave closure",
       "description": "As a maintainer, all architecture-simplicity stories pass with verification contracts green.",
       "acceptanceCriteria": [
-        "prd.json all US-500..US-532 passes true.",
+        "prd.json all US-500..US-533 passes true.",
         "codegen:check, typecheck, lint, boundary suite, focused CLI tests green.",
         "progress.txt records closure.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 33,
+      "priority": 34,
       "passes": false,
       "notes": "PRD-00"
     }

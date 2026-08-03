@@ -257,7 +257,7 @@ Execution order is defined by `priority` in [`prd.json`](./prd.json); US-500 fol
 
 ## Guide Coverage
 
-Every path below is a concrete guide file so `bun run check:guide-coverage` can resolve it against `docs/guides/INDEX.md`. `docs/guides/services/lando-boot-scaffold.mdx` is new in this wave and is registered as `Planned` until US-493 lands it; `docs/guides/config/corporate-network-trust.mdx` is created by PRD-01 US-488. The rest already exist.
+Every path below is a concrete guide file and is registered as `Shipped` in `docs/guides/INDEX.md`, so `bun run check:guide-coverage` verifies that each guide exists on disk.
 
 **Guides owned by this PRD:**
 

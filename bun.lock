@@ -125,6 +125,7 @@
       "name": "@lando/proxy-traefik",
       "version": "0.0.0",
       "dependencies": {
+        "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "effect": "^3.21.2",
       },

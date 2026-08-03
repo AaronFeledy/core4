@@ -6,7 +6,7 @@ import {
   landoRootlessPrereqSteps,
   landoRuntimeSocketPath,
 } from "./build-ci-workflow.ts";
-import { CI_PLATFORMS, type CiPlatform } from "./ci-platforms.ts";
+import { CI_PLATFORMS, type CiPlatform, LINUX_X64_CI_RUNNERS } from "./ci-platforms.ts";
 import { renderAssertPodman6Step, renderInstallPodman6Step } from "./ci-podman-install.ts";
 import { NIGHTLY_TIER_TESTS } from "./test-shards.ts";
 
@@ -100,15 +100,15 @@ ${renderAssertPodman6Step()}
 
 const publishedManifestSetupJob = `
   published-manifest-setup-linux-x64:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        runs-on: [${LINUX_X64_CI_RUNNERS.join(", ")}]
+    runs-on: \${{ matrix.runs-on }}
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
 ${bunSetupStep}
-
-${renderInstallPodman6Step()}
-
-${renderAssertPodman6Step()}
 
 ${landoRootlessPrereqSteps}
 
@@ -131,6 +131,16 @@ ${landoRootlessPrereqSteps}
           EOF
           echo "CONTAINERS_STORAGE_CONF=$GITHUB_WORKSPACE/dist/cache/runtime-bundle/storage.conf" >> "$GITHUB_ENV"
 
+      - name: Seed rootless containers user config
+        run: |
+          mkdir -p "$HOME/.config/containers"
+          if ! test -f "$HOME/.config/containers/registries.conf"; then
+            printf 'unqualified-search-registries = ["docker.io"]\\n' > "$HOME/.config/containers/registries.conf"
+          fi
+          if ! test -f "$HOME/.config/containers/policy.json" && ! test -f /etc/containers/policy.json; then
+            printf '{"default":[{"type":"insecureAcceptAnything"}]}\\n' > "$HOME/.config/containers/policy.json"
+          fi
+
       - name: Prepare provider via lando setup against the published manifest
         run: |
           test -z "\${LANDO_RUNTIME_BUNDLE_MANIFEST:-}"
@@ -146,6 +156,11 @@ ${landoRootlessPrereqSteps}
           done
           test -S ${landoRuntimeSocketPath}
           test -x "$HOME/.local/share/lando/runtime/bin/podman"
+          if ldd "$HOME/.local/share/lando/runtime/bin/podman" | grep -E 'libgpgme|libassuan|not found'; then
+            echo "::error title=runtime-bundle-portability::managed podman has non-portable or missing shared libraries"
+            ldd "$HOME/.local/share/lando/runtime/bin/podman" || true
+            exit 1
+          fi
 
       - name: Teardown Lando runtime
         if: always()

@@ -38,6 +38,7 @@ describe("ci runbook", () => {
   test("documents local commands and failure artifacts", async () => {
     const runbook = await readText(runbookPath);
 
+    expect(runbook).toContain("bun run codegen:check");
     expect(runbook).toContain("bun run typecheck");
     expect(runbook).toContain("bun run lint");
     expect(runbook).toContain("bun run check:import-cycle");
