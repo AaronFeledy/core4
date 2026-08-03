@@ -4,10 +4,13 @@ import {
   type SchemaArtifactFamily,
   type SchemaArtifactSet,
   SchemaCompatibilityInputError,
-  loadBaseSchemaArtifacts,
   loadCompatibilityExceptions,
   loadWorkingSchemaArtifacts,
 } from "./schema-compatibility-artifacts.ts";
+import {
+  SCHEMA_SNAPSHOT_GENERATOR_PATH,
+  regenerateBaseSchemaArtifacts,
+} from "./schema-compatibility-baseline.ts";
 import {
   type CompatibilityException,
   type CompatibilityFinding,
@@ -33,22 +36,18 @@ export interface SchemaCompatibilityResult {
 export interface SchemaCompatibilitySkip {
   readonly family: SchemaArtifactFamily;
   readonly count: number;
-  readonly indexPath: string;
+  readonly generatorPath: string;
   readonly baseRef: string;
 }
 
 const FAMILY_METADATA = {
-  sdk: { prefix: "schema:", indexPath: "dist/schemas/index.json", label: "SDK schemas" },
+  sdk: { prefix: "schema:", label: "SDK schemas" },
   command: {
     prefix: "command:",
-    indexPath: "dist/command-schemas/index.json",
     label: "command schemas",
   },
 } as const satisfies Readonly<
-  Record<
-    SchemaArtifactFamily,
-    { readonly prefix: string; readonly indexPath: string; readonly label: string }
-  >
+  Record<SchemaArtifactFamily, { readonly prefix: string; readonly label: string }>
 >;
 
 export const skippedFamilyNotices = (
@@ -59,7 +58,7 @@ export const skippedFamilyNotices = (
   unavailableFamilies.map((family) => ({
     family,
     count: [...after.keys()].filter((surface) => surface.startsWith(FAMILY_METADATA[family].prefix)).length,
-    indexPath: FAMILY_METADATA[family].indexPath,
+    generatorPath: SCHEMA_SNAPSHOT_GENERATOR_PATH,
     baseRef,
   }));
 
@@ -122,7 +121,7 @@ export const checkSchemaCompatibility = async (
     loadWorkingSchemaArtifacts(REPO_ROOT),
     loadCompatibilityExceptions(EXCEPTIONS_PATH),
   ]);
-  const before = loadBaseSchemaArtifacts(REPO_ROOT, baseRef);
+  const before = await regenerateBaseSchemaArtifacts({ repoRoot: REPO_ROOT, baseRef });
   const skips = skippedFamilyNotices(after, baseRef, before.unavailableFamilies);
   const findings = compareArtifactSets(
     before.artifacts,
@@ -147,7 +146,7 @@ const main = async (): Promise<void> => {
   const result = await checkSchemaCompatibility();
   for (const skip of result.skips) {
     process.stdout.write(
-      `SKIPPED ${FAMILY_METADATA[skip.family].label}: base ${skip.baseRef} predates ${skip.indexPath}; skipped ${skip.count} current surfaces.\n`,
+      `SKIPPED ${FAMILY_METADATA[skip.family].label}: base ${skip.baseRef} predates ${skip.generatorPath}; skipped ${skip.count} current surfaces.\n`,
     );
   }
   for (const entry of result.findings) process.stdout.write(`${formatFinding(entry)}\n`);

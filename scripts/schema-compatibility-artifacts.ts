@@ -71,30 +71,6 @@ const parseSchema = (text: string, source: string): JsonSchema => {
   return parsed;
 };
 
-const gitShow = (repoRoot: string, baseRef: string, path: string): string | undefined => {
-  const result = Bun.spawnSync(["git", "show", `${baseRef}:${path}`], {
-    cwd: repoRoot,
-    stdout: "pipe",
-    stderr: "pipe",
-  });
-  if (result.exitCode === 0) return result.stdout.toString();
-  return undefined;
-};
-
-const verifyBaseRef = (repoRoot: string, baseRef: string): void => {
-  const result = Bun.spawnSync(["git", "rev-parse", "--verify", `${baseRef}^{commit}`], {
-    cwd: repoRoot,
-    stdout: "ignore",
-    stderr: "pipe",
-  });
-  if (result.exitCode !== 0) {
-    throw new SchemaCompatibilityInputError(
-      `Schema compatibility base ref ${baseRef} is unavailable.`,
-      result.stderr.toString().trim(),
-    );
-  }
-};
-
 const metadataEntries = (index: JsonValue, source: string): ReadonlyArray<readonly [string, string]> => {
   if (!Array.isArray(index)) throw new SchemaCompatibilityInputError(`${source} must contain an array.`);
   return index.map((entry) => {
@@ -143,49 +119,6 @@ export const loadWorkingSchemaArtifacts = async (repoRoot: string): Promise<Sche
     });
   }
   return artifacts;
-};
-
-export const loadBaseSchemaArtifacts = (repoRoot: string, baseRef: string): BaseSchemaArtifacts => {
-  verifyBaseRef(repoRoot, baseRef);
-  const artifacts = new Map<string, SchemaArtifact>();
-  const unavailableFamilies: SchemaArtifactFamily[] = [];
-  const schemaIndexText = gitShow(repoRoot, baseRef, "dist/schemas/index.json");
-  if (schemaIndexText === undefined) {
-    unavailableFamilies.push("sdk");
-  } else {
-    const index = parseJson(schemaIndexText, `${baseRef}:dist/schemas/index.json`);
-    for (const [schemaId, artifactPath] of metadataEntries(index, `${baseRef}:dist/schemas/index.json`)) {
-      const schemaText = gitShow(repoRoot, baseRef, artifactPath);
-      if (schemaText === undefined)
-        throw new SchemaCompatibilityInputError(`${baseRef} is missing ${artifactPath}.`);
-      addArtifact(artifacts, {
-        surface: `schema:${schemaId}`,
-        polarity: schemaPolarity(schemaId),
-        schema: parseSchema(schemaText, `${baseRef}:${artifactPath}`),
-      });
-    }
-  }
-
-  const commandIndexText = gitShow(repoRoot, baseRef, "dist/command-schemas/index.json");
-  if (commandIndexText === undefined) {
-    unavailableFamilies.push("command");
-  } else {
-    const index = parseJson(commandIndexText, `${baseRef}:dist/command-schemas/index.json`);
-    for (const [commandId, artifactPath] of commandEntries(
-      index,
-      `${baseRef}:dist/command-schemas/index.json`,
-    )) {
-      const schemaText = gitShow(repoRoot, baseRef, artifactPath);
-      if (schemaText === undefined)
-        throw new SchemaCompatibilityInputError(`${baseRef} is missing ${artifactPath}.`);
-      addArtifact(artifacts, {
-        surface: `command:${commandId}`,
-        polarity: "output",
-        schema: parseSchema(schemaText, `${baseRef}:${artifactPath}`),
-      });
-    }
-  }
-  return { artifacts, unavailableFamilies };
 };
 
 export const loadCompatibilityExceptions = async (
