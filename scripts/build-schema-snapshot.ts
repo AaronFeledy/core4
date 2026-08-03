@@ -30,6 +30,7 @@ import {
 } from "../sdk/src/schema/index.ts";
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
+import { mirrorSchemaArtifacts } from "./mirror-schema-artifacts.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const BUNDLED_PLUGIN_MANIFESTS_OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/bundled-plugin-manifests.json");
@@ -188,6 +189,7 @@ const main = async (): Promise<void> => {
     COMMAND_SCHEMA_ARTIFACT_DIR,
     SCHEMA_REFERENCE_DIR,
   ]);
+  await mirrorSchemaArtifacts({ repoRoot: REPO_ROOT });
 
   console.log(
     `[build-schema-snapshot] wrote ${sdkSchemas.length} SDK schemas and ${commandResultSchemas.length} command schemas`,
