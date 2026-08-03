@@ -146,7 +146,7 @@ export const regenerateBaseSchemaArtifacts = async (
     );
     await requireSuccess(
       {
-        command: ["bun", "run", "codegen:schema-snapshot"],
+        command: ["bun", "run", "codegen"],
         cwd: worktreeRoot,
         env,
       },
