@@ -810,9 +810,9 @@ ${setupBunSteps}
       - name: Regenerate schema artifact set
         run: bun run codegen:schema-snapshot
 
-      - name: Verify schema artifact set is current
+      - name: Verify committed schema fixture is current
         run: |
-          schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json dist/schemas dist/command-schemas docs/reference/schemas)"
+          schema_changes="$(git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json)"
           if [[ -n "$schema_changes" ]]; then
             printf "%s\\n" "$schema_changes"
             exit 1

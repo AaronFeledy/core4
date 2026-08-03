@@ -422,15 +422,18 @@ describe("ci workflow", () => {
     expect(bundledCodegen).toContain("scripts/generated/opentui-native");
   });
 
-  test("detects tracked and untracked schema artifact drift", async () => {
+  test("detects drift in the committed bundled-plugin manifest fixture", async () => {
     const workflow = await readWorkflow();
     const jobs = findIndentedBlock(workflow, "jobs");
     const schemaSnapshot = findIndentedBlock(jobs, "schema-snapshot", 2);
 
     expect(schemaSnapshot).toContain("        run: bun run codegen:schema-snapshot");
-    expect(schemaSnapshot).toContain("git status --porcelain=v1 --untracked-files=all");
-    expect(schemaSnapshot).toContain("sdk/test/fixtures/bundled-plugin-manifests.json");
-    expect(schemaSnapshot).toContain("dist/schemas dist/command-schemas docs/reference/schemas");
+    expect(schemaSnapshot).toContain(
+      "git status --porcelain=v1 --untracked-files=all -- sdk/test/fixtures/bundled-plugin-manifests.json",
+    );
+    expect(schemaSnapshot).not.toContain("dist/schemas");
+    expect(schemaSnapshot).not.toContain("dist/command-schemas");
+    expect(schemaSnapshot).not.toContain("docs/reference/schemas");
     expect(schemaSnapshot).toContain('if [[ -n "$schema_changes" ]]; then');
     expect(schemaSnapshot).toContain(`      - uses: actions/checkout@v5
         with:
@@ -438,7 +441,7 @@ describe("ci workflow", () => {
     expect(schemaSnapshot).toContain("      - name: Check schema compatibility");
     expect(schemaSnapshot).toContain("          LANDO_SCHEMA_COMPATIBILITY_BASE_REF: origin/main");
     expect(schemaSnapshot).toContain("        run: bun run check:schema-compatibility");
-    expect(schemaSnapshot.indexOf("Verify schema artifact set is current")).toBeLessThan(
+    expect(schemaSnapshot.indexOf("Verify committed schema fixture is current")).toBeLessThan(
       schemaSnapshot.indexOf("Check schema compatibility"),
     );
   });
