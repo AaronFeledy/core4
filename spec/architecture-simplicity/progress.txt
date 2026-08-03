@@ -198,3 +198,10 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Keep clean-checkout first materialization and isolated CI bootstrap in US-512; US-511 validation begins after derived artifacts are materialized.
 ---
+
+## [2026-08-03 11:22 CDT] - US-512
+- Completed the clean-checkout contributor path by documenting codegen immediately after dependency installation and locking that command order with a structural Quick Start regression test. Existing bootstrap stubs, catalog dependency order, and fresh-checkout CI jobs already provided the required implementation and CI proof.
+- Verification: typecheck and lint/deprecations passed; 39 focused bootstrap, catalog, workflow, and documentation assertions passed. A fresh isolated clone with all derived TypeScript absent completed frozen install, full codegen, and typecheck with a clean Git status; the temporary clone was removed.
+- **Learnings for future iterations:**
+  - Keep contributor bootstrap instructions ordered as install, full catalog codegen, then typecheck/test; focused generators do not prove first materialization of the complete derived graph.
+---
