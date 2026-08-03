@@ -240,3 +240,18 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Generated-output inventories must be updated when an existing generator gains package-mirror destinations.
   - Ordering tests must assert every marker exists before comparing `indexOf` positions.
 ---
+
+## [2026-08-03 16:42 CDT] - US-514
+- Verified the runtime-bundle and Mutagen version manifests remain committed pins: Mutagen stays catalog-owned and drift-checked, while the runtime-bundle manifest retains its dedicated offline invariant across CI, release, and pin-recovery paths. No new implementation was needed.
+- Guide-Coverage-Skip: Internal pin-manifest tracking and staleness policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 87 focused manifest, catalog, drift, workflow, and tracking-policy tests plus 2 targeted codegen-CI assertions passed; full catalog regeneration, offline runtime-manifest validation, and direct Git tracking/ignore probes passed.
+- **Learnings for future iterations:**
+  - Keep release-generated runtime-bundle pins on their dedicated offline invariant path; only catalog-generated Mutagen pins belong in the pure codegen drift set.
+---
+
+## [2026-08-03 17:22 CDT] - Babysit
+- PR: none (missing; push skipped — verification-only story already on main, no branch commits)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to merge; US-514 work already on main)
+---
