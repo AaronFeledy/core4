@@ -168,7 +168,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02. Human adjudication 2026-08-02: option-2 primary (isolated base regen); option-1 cache optional not SoT. Owns §13.2 before-source after US-510 untrack. Drift Audit MUST NOT excise this story or re-commit schema trees as a substitute."
     },
     {

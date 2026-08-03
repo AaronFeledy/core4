@@ -15,6 +15,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
 - Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
 - When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
+- For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
 
 ## Log
 
@@ -150,4 +151,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Fixed: deleted dead drift operands, narrowed the generated CI proof to its committed fixture, restored load-bearing assertions, and reconciled contract wording.
 - Split/excise decisions: none; the adjudicated US-533 follow-up and US-510 `passes: true` remain unchanged.
 - Verification: typecheck, lint/deprecations, codegen drift, schema snapshot 30/30, drift checker 14/14, CI workflow 26/26, and targeted codegen-CI 1/1 passed; the adjacent full codegen-CI suite retains its previously recorded stale Bun-version count expectation (14/15).
+---
+
+## [2026-08-03 04:04 CDT] - US-533
+- Replaced committed-artifact baseline reads with fail-closed regeneration in a detached temporary worktree at the configured base ref, using that commit's frozen lockfile and schema generator while always cleaning worktree and temp-directory resources.
+- Historical bases skip both schema families only when they predate the schema-snapshot generator; current bases compare real regenerated SDK and command artifacts even when HEAD has a different lockfile.
+- Verification: typecheck and lint/deprecations passed; 70 focused schema baseline, classifier, snapshot, and CI workflow tests passed; the real compatibility gate regenerated 316 SDK and 85 command schemas, compared against `origin/main` with zero skips, and left tempdir/worktree counts unchanged.
+- **Learnings for future iterations:**
+  - A deliberately unusable HEAD lockfile is a strong regression fixture proving baseline installation runs from the base checkout and its own `bun.lock`.
+  - Keep skip metadata tied to the missing generator path so ignored derived indexes can never silently disable both compatibility families again.
 ---
