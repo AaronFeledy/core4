@@ -19,6 +19,10 @@ const BOOTSTRAP_MODULES = [
     content: "export const HOST_PROXY_RUNLANDO_ALLOWLIST: ReadonlyArray<string> = [];\n",
     path: "core/src/cli/oclif/generated/host-proxy-allowlist.ts",
   },
+  {
+    content: 'export const COMPILED_OCLIF_MANIFEST = { commands: {}, version: "0.0.0" };\n',
+    path: "core/src/cli/oclif/compiled-manifest.ts",
+  },
 ] as const;
 
 export const ensureCodegenBootstrapModules = async (repositoryRoot = REPOSITORY_ROOT): Promise<void> => {
