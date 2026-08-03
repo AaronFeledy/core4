@@ -36,6 +36,28 @@ const listPrTemplates = async (): Promise<ReadonlyArray<string>> => {
 };
 
 describe("ci runbook", () => {
+  test("documents clean-checkout codegen before typecheck", async () => {
+    // Given: the contributor-facing Quick Start instructions.
+    const readme = await readText(readmePath);
+    const quickStart = readme.match(/^## Quick start\n[\s\S]*?(?=^## )/m)?.[0];
+    if (quickStart === undefined) throw new Error("expected README Quick Start section");
+    const commands = quickStart
+      .match(/```bash\n([\s\S]*?)\n```/)?.[1]
+      ?.split("\n")
+      .map((line) => line.trim());
+    if (commands === undefined) throw new Error("expected README Quick Start bash block");
+
+    // When: the clean-checkout commands are located.
+    const installIndex = commands.indexOf("bun install");
+    const codegenIndex = commands.indexOf("bun run codegen");
+    const typecheckIndex = commands.indexOf("bun run typecheck");
+
+    // Then: generated sources are materialized after install and before typecheck.
+    expect(installIndex).toBeGreaterThanOrEqual(0);
+    expect(codegenIndex).toBeGreaterThan(installIndex);
+    expect(typecheckIndex).toBeGreaterThan(codegenIndex);
+  });
+
   test("documents local commands and failure artifacts", async () => {
     const runbook = await readText(runbookPath);
 

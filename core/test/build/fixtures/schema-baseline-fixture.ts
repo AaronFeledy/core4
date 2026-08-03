@@ -74,6 +74,7 @@ export const commit = async (fixture: Pick<Fixture, "root" | "env">, message: st
 
 const generator = (version: "alpha" | "beta"): string => `
 import { mkdir, writeFile } from "node:fs/promises";
+import "../generated/prerequisite.ts";
 await mkdir("dist/schemas", { recursive: true });
 await mkdir("dist/command-schemas", { recursive: true });
 await writeFile("dist/schemas/index.json", JSON.stringify([{ id: "Fixture", jsonSchemaPath: "dist/schemas/fixture.json" }]));
@@ -106,11 +107,16 @@ export const makeRepository = async (): Promise<Fixture> => {
   const env = await isolatedGitEnv(root);
   const fixture = { root, env };
   await git(fixture, "init", "-b", "main");
-  await writeFixtureFile(root, ".gitignore", "dist/\n");
+  await writeFixtureFile(root, ".gitignore", "dist/\ngenerated/\n");
   await writeFixtureFile(
     root,
     "package.json",
-    '{"name":"schema-fixture","private":true,"scripts":{"codegen:schema-snapshot":"bun run scripts/build-schema-snapshot.ts"}}\n',
+    '{"name":"schema-fixture","private":true,"scripts":{"codegen":"bun run scripts/build-prerequisite.ts && bun run codegen:schema-snapshot","codegen:schema-snapshot":"bun run scripts/build-schema-snapshot.ts"}}\n',
+  );
+  await writeFixtureFile(
+    root,
+    "scripts/build-prerequisite.ts",
+    'import { mkdir, writeFile } from "node:fs/promises";\nawait mkdir("generated", { recursive: true });\nawait writeFile("generated/prerequisite.ts", "export {};\\n");\n',
   );
   await runFixtureCommand(root, env, ["bun", "install", "--lockfile-only"]);
   const historicalRef = await commit(fixture, "historical fixture");
