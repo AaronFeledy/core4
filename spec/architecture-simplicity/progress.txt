@@ -230,3 +230,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Package publishing jobs must run full codegen after install; package-local builds alone do not materialize ignored derived schema mirrors.
   - Keep JSON schemas in package mirrors and generated TypeScript manifests in the compiled module graph; they are distinct build products with different consumers.
 ---
+
+## [2026-08-03 15:48 CDT] - US-513 Review
+- Review corrected the canonical schema-snapshot output inventory and generator scope comment, and hardened the release-workflow ordering test so absent markers cannot satisfy position comparisons.
+- Review notes (deferred/rejected): non-atomic mirror replacement is non-blocking because codegen failure aborts before pack/publish; repository-root codegen test isolation is a suite-wide harness concern; filtering speculative non-JSON or symlink contamination is unwarranted because the generator exclusively owns JSON output in these derived trees.
+- Guide-Coverage-Skip: Internal schema packaging and release orchestration have no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, LSP diagnostics, and the focused workflow-ordering test passed. `check:spec-reference` remains blocked only by the previously recorded unrelated `.omo/**` citations; the optional external no-excuse audit could not resolve its own TypeScript dependency.
+- **Learnings for future iterations:**
+  - Generated-output inventories must be updated when an existing generator gains package-mirror destinations.
+  - Ordering tests must assert every marker exists before comparing `indexOf` positions.
+---
