@@ -11,6 +11,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
 const pathsSrc = resolve(repoRoot, "paths/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
+const stateStoreSrc = resolve(repoRoot, "state-store/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
 const rendererLiveRegionSubstrate = resolve(
@@ -40,7 +41,13 @@ const tuiCodePathFiles = [
 const isTuiCodePath = (absPath: string): boolean =>
   tuiCodePathDirs.some((dir) => absPath.startsWith(dir)) || tuiCodePathFiles.includes(absPath);
 
-const firstPartySourceRoots = [`${coreSrc}/`, `${pathsSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
+const firstPartySourceRoots = [
+  `${coreSrc}/`,
+  `${pathsSrc}/`,
+  `${sdkSrc}/`,
+  `${stateStoreSrc}/`,
+  `${pluginsRoot}/`,
+] as const;
 
 const isFirstPartySource = (absPath: string): boolean =>
   firstPartySourceRoots.some((root) => absPath.startsWith(root));
@@ -62,7 +69,6 @@ const isRendererTestSource = (absPath: string): boolean => absPath.startsWith(`$
 const isEffectNpmSpecifier = (specifier: string): boolean =>
   specifier === "effect" || specifier.startsWith("effect/");
 
-/** Follow only first-party static edges: relative paths and `@lando/*` packages. */
 const isFollowableSpecifier = (specifier: string): boolean =>
   specifier.startsWith(".") || specifier.startsWith("@lando/");
 
@@ -80,8 +86,6 @@ const classifyOclifImport = (edge: {
   readonly specifier: string;
   readonly resolvedAbs: string | undefined;
 }): string | undefined => {
-  // Signal A: a direct import of the `@oclif/*` npm package, from anywhere in
-  // the followed first-party graph.
   if (isOclifNpmSpecifier(edge.specifier)) {
     return `imports the OCLIF npm package "${edge.specifier}"`;
   }
@@ -117,7 +121,6 @@ const classifyEffectImport = (edge: { readonly specifier: string }): string | un
   isEffectNpmSpecifier(edge.specifier) ? `imports the Effect runtime package "${edge.specifier}"` : undefined;
 
 interface OclifViolation {
-  /** Import chain from the walked entry to the offending module/specifier. */
   readonly chain: ReadonlyArray<string>;
   readonly reason: string;
 }
@@ -607,6 +610,7 @@ describe("OCLIF-free default entry", () => {
     const { visited, violations } = walkStaticImportGraph(entryAbs);
 
     expect(visited.size).toBeGreaterThan(1);
+    expect(visited.has(resolve(stateStoreSrc, "service.ts"))).toBe(true);
 
     if (violations.length > 0) {
       const report = violations.map((violation) => formatViolation("@lando/core", violation)).join("\n\n");
@@ -929,7 +933,6 @@ describe("@lando/core default-entry symbol resolution", () => {
       expect(mod[key], `@lando/core export "${key}" must be defined`).toBeDefined();
     }
 
-    // Known value exports per core/src/index.ts (factory + re-exported service tags).
     const requiredSymbols = [
       "makeLandoRuntime",
       "resolveApp",

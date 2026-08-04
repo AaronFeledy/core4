@@ -394,8 +394,13 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run codegen:mutagen-versions");
       expect(workflow).toContain("- name: Regenerate provider images manifest");
       expect(workflow).toContain("run: bun run codegen:provider-images");
+      expect(workflow).toContain("- name: Regenerate OpenTUI native catalog");
+      expect(workflow).toContain("run: bun run codegen:opentui-native-stubs");
       expect(workflow).toContain(
-        "run: git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts core/src/runtime/generated/layers plugins/file-sync-mutagen/mutagen-versions.json core/src/data-mover/generated/provider-images.ts",
+        "run: git diff --exit-code -- plugins/file-sync-mutagen/mutagen-versions.json",
+      );
+      expect(workflow).not.toContain(
+        "git diff --exit-code -- core/src/plugins/generated core/src/recipes/bundled.ts",
       );
       expect(workflow).toContain(
         "needs: [static-checks, schema-snapshot, bundled-codegen, library-api-tests, recipe-tests]",
@@ -491,8 +496,8 @@ describe("ci workflow codegen", () => {
 
       expect(workflow).toContain("guide-scenarios-linux-x64:");
       expect(workflow).toContain("needs: [static-checks, build-linux-x64, runtime-bundle-linux-x64]");
-      expect(workflow).toContain("run: bun run codegen:guide-scenarios");
-      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(0);
+      expect(workflow.match(/^ {8}run: bun run codegen$/gm) ?? []).toHaveLength(14);
+      expect(workflow).not.toContain("run: bun run codegen:guide-scenarios");
       expect(workflow).toContain("run: bun run typecheck");
       expect(workflow).toContain("run: bun run lint:guides");
       expect(workflow).toContain("run: bun run check:guide-coverage");
@@ -515,17 +520,9 @@ describe("ci workflow codegen", () => {
 
       expect(
         workflow.indexOf("run: bun install --frozen-lockfile", workflow.indexOf("guide-scenarios-linux-x64")),
-      ).toBeLessThan(
-        workflow.indexOf(
-          "run: bun run codegen:guide-scenarios",
-          workflow.indexOf("guide-scenarios-linux-x64"),
-        ),
-      );
+      ).toBeLessThan(workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")));
       expect(
-        workflow.indexOf(
-          "run: bun run codegen:guide-scenarios",
-          workflow.indexOf("guide-scenarios-linux-x64"),
-        ),
+        workflow.indexOf("run: bun run codegen", workflow.indexOf("guide-scenarios-linux-x64")),
       ).toBeLessThan(
         workflow.indexOf("run: bun run typecheck", workflow.indexOf("guide-scenarios-linux-x64")),
       );
@@ -684,6 +681,35 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain(`grep -Eq '"?4\\.0\\.0-alpha\\.[0-9]+"?'`);
       expect(workflow).not.toContain("NPM_TOKEN");
       expect(workflow).not.toContain("NODE_AUTH_TOKEN");
+    },
+    codegenTestTimeout,
+  );
+
+  test(
+    "regenerates all derived sources before the npm alpha package build and dry-run publish",
+    async () => {
+      // Given
+      await runCodegen();
+      const workflow = await readFile(releaseWorkflowPath, "utf8");
+      const jobStart = workflow.indexOf("  npm-alpha-packages:");
+      expect(jobStart).toBeGreaterThanOrEqual(0);
+      const job = workflow.slice(jobStart);
+
+      // When
+      const installPosition = job.indexOf("run: bun install --frozen-lockfile");
+      const codegenPosition = job.indexOf("run: bun run codegen");
+      const buildPosition = job.indexOf("- name: Build package artifacts");
+      const dryRunPosition = job.indexOf("- name: Dry-run npm dev publishes");
+
+      // Then
+      expect(installPosition).toBeGreaterThanOrEqual(0);
+      expect(codegenPosition).toBeGreaterThanOrEqual(0);
+      expect(buildPosition).toBeGreaterThanOrEqual(0);
+      expect(dryRunPosition).toBeGreaterThanOrEqual(0);
+      expect(job).toContain("- name: Regenerate derived sources");
+      expect(codegenPosition).toBeGreaterThan(installPosition);
+      expect(codegenPosition).toBeLessThan(buildPosition);
+      expect(codegenPosition).toBeLessThan(dryRunPosition);
     },
     codegenTestTimeout,
   );

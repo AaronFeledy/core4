@@ -168,7 +168,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02. Human adjudication 2026-08-02: option-2 primary (isolated base regen); option-1 cache optional not SoT. Owns §13.2 before-source after US-510 untrack. Drift Audit MUST NOT excise this story or re-commit schema trees as a substitute."
     },
     {
@@ -176,13 +176,13 @@
       "title": "Gitignore and untrack core bake-time generated TS",
       "description": "As a maintainer, bootstrap layers, bundled plugin/recipe tables, compiled command manifest, and opentui stub catalog are untracked derived outputs where the catalog allows.",
       "acceptanceCriteria": [
-        "Catalog marks which core generated TS paths are untracked.",
+        "The codegen catalog and focused tracking-policy tests classify each listed core bake-time generated TypeScript family as derived/untracked; those paths are gitignored and absent from the Git index.",
         "CI workflows remain committed (human-reviewed exception).",
-        "Tests pass; typecheck passes; lint passes"
+        "US-511 focused tests, typecheck, and lint pass after the derived TypeScript artifacts are materialized; first-materialization dependency order and isolated CI-job bootstrap are US-512."
       ],
       "priority": 13,
-      "passes": false,
-      "notes": "PRD-02"
+      "passes": true,
+      "notes": "PRD-02. Scope is catalog classification, gitignore/untrack, and validation after materialization. Clean-checkout first-materialization order and isolated CI-job bootstrap are US-512 (adjudication 2026-08-03); do not reopen US-511 or re-commit derived TypeScript as a substitute."
     },
     {
       "id": "US-512",
@@ -195,7 +195,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -208,7 +208,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -221,7 +221,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -233,7 +233,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-02"
     },
     {
@@ -246,7 +246,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-03"
     },
     {
@@ -258,7 +258,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-03"
     },
     {

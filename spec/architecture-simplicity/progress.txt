@@ -15,6 +15,9 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - A wildcard git pathspec disables leading-directory matching, so globbed generated trees need a trailing file pattern such as `recipes/*/.scaffold/*`; `recipes/*/.scaffold` matches no files below those directories.
 - Keep codegen order and ownership in `scripts/codegen-catalog.ts`; `scripts/codegen.ts` is the side-effect-guarded runner that consumes the catalog.
 - When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
+- For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
+- Explicit generated paths must override Biome's VCS-ignore handling so gitignored derived outputs are still formatted during regeneration.
+- Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
 
 ## Log
 
@@ -150,4 +153,172 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Fixed: deleted dead drift operands, narrowed the generated CI proof to its committed fixture, restored load-bearing assertions, and reconciled contract wording.
 - Split/excise decisions: none; the adjudicated US-533 follow-up and US-510 `passes: true` remain unchanged.
 - Verification: typecheck, lint/deprecations, codegen drift, schema snapshot 30/30, drift checker 14/14, CI workflow 26/26, and targeted codegen-CI 1/1 passed; the adjacent full codegen-CI suite retains its previously recorded stale Bun-version count expectation (14/15).
+---
+
+## [2026-08-03 04:04 CDT] - US-533
+- Replaced committed-artifact baseline reads with fail-closed regeneration in a detached temporary worktree at the configured base ref, using that commit's frozen lockfile and schema generator while always cleaning worktree and temp-directory resources.
+- Historical bases skip both schema families only when they predate the schema-snapshot generator; current bases compare real regenerated SDK and command artifacts even when HEAD has a different lockfile.
+- Verification: typecheck and lint/deprecations passed; 70 focused schema baseline, classifier, snapshot, and CI workflow tests passed; the real compatibility gate regenerated 316 SDK and 85 command schemas, compared against `origin/main` with zero skips, and left tempdir/worktree counts unchanged.
+- **Learnings for future iterations:**
+  - A deliberately unusable HEAD lockfile is a strong regression fixture proving baseline installation runs from the base checkout and its own `bun.lock`.
+  - Keep skip metadata tied to the missing generator path so ignored derived indexes can never silently disable both compatibility families again.
+---
+
+## [2026-08-03 06:35 CDT] - US-533 Review
+- Review closed two fail-closed gaps: generator-presence probe failures can no longer masquerade as historical absence, and the configured base ref is resolved once so probing and worktree materialization use the same immutable commit.
+- Reconciled the normative post-landing contract and CI runbook with the shipped fixture-only Git-status scope, ignored derived trees, and semantic comparison behavior.
+- Review notes (deferred/rejected): a broader cleanup/finally redesign and cleanup-failure injection were non-blocking hardening; the existing paths cover worktree-add, install, generation, artifact-load, and normal teardown failures without weakening the gate.
+- Review notes (deferred/rejected): the optional base-artifact cache is explicitly optional, classifier-test import churn is behavior-neutral, and the architecture-simplicity index closure wording belongs to US-532 rather than this focused repair.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account was out of usage; all five review-work lanes completed, and the confirmed blockers were fixed.
+- Guide-Coverage-Skip: Internal schema compatibility gate behavior has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, scripts typecheck, lint/deprecations, and 84 focused schema/workflow/runbook tests passed; the real gate compared the regenerated `origin/main` baseline with zero skips. `check:spec-reference` remains blocked only by the previously recorded unrelated `.omo/**` citations.
+- **Learnings for future iterations:**
+  - A historical absence probe must encode absence as successful empty output; treating every nonzero probe exit as absence silently turns operational failures into skipped validation.
+  - Resolve a mutable Git ref once and pass its immutable commit SHA through every probe and materialization step.
+---
+
+## [2026-08-03 08:44 CDT] - US-511
+- Moved the catalog-derived bake-time TypeScript families out of the Git source of truth while preserving deterministic regeneration, formatting, and consumer coverage; human-reviewed CI workflows remain committed.
+- Narrowed pure Git-status drift checks and bundled-codegen CI verification to committed outputs, with policy tests locking the derived-versus-workflow ownership boundary.
+- Guide-Coverage-Skip: Internal generated-artifact tracking policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 116 focused generator, consumer, drift, and workflow tests plus the targeted CI-codegen assertion passed; full catalog regeneration and direct ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Gitignored generated TypeScript still needs `--vcs-use-ignore-file=false` on explicit Biome invocations or regeneration silently skips formatting those outputs.
+  - Test directory families with `git ls-files -- <directory>`, not only representative files, so newly tracked outputs cannot evade the policy contract.
+---
+
+## [2026-08-03 09:18 CDT] - US-511 Adjudication
+- Contradiction: Review correctly found that a clean `bun run codegen` violates §17.2's "A single command, `bun run codegen`, runs every generator in dependency order" because `schema-snapshot` precedes generated command/allowlist prerequisites, and that fresh isolated CI jobs import absent derived modules. Treating US-511's "Catalog marks which core generated TS paths are untracked" or generic green-gate AC as ownership of those repairs conflicts with ARCH-02 US-512's explicit "git clone && bun install && bun run codegen is enough before typecheck/test" scope and "Clean CI job proves clone→install→codegen→typecheck" AC.
+- Decision: narrowed US-511 in `prd.json` to catalog classification, gitignore/index removal, and focused validation after materialization. First-materialization dependency order and isolated CI-job bootstrap remain US-512 scope; US-511 stays `passes: true`, and derived TypeScript must not be re-committed as a substitute.
+- Follow-up story: US-512 — make clean-checkout codegen dependency order and independently bootstrapped CI consumers work before typecheck/test.
+---
+
+## [2026-08-03 09:24 CDT] - US-511 Verification
+- Verified the derived TypeScript families remain catalog-classified, gitignored, and absent from the Git index while all human-reviewed CI workflows remain tracked; no new implementation was needed.
+- Verification: codegen, codegen drift, typecheck, and lint/deprecations passed; 58 focused tracking, generator, drift, and workflow tests plus direct ignore/index probes passed.
+- **Learnings for future iterations:**
+  - Keep clean-checkout first materialization and isolated CI bootstrap in US-512; US-511 validation begins after derived artifacts are materialized.
+---
+
+## [2026-08-03 11:22 CDT] - US-512
+- Completed the clean-checkout contributor path by documenting codegen immediately after dependency installation and locking that command order with a structural Quick Start regression test. Existing bootstrap stubs, catalog dependency order, and fresh-checkout CI jobs already provided the required implementation and CI proof.
+- Verification: typecheck and lint/deprecations passed; 39 focused bootstrap, catalog, workflow, and documentation assertions passed. A fresh isolated clone with all derived TypeScript absent completed frozen install, full codegen, and typecheck with a clean Git status; the temporary clone was removed.
+- **Learnings for future iterations:**
+  - Keep contributor bootstrap instructions ordered as install, full catalog codegen, then typecheck/test; focused generators do not prove first materialization of the complete derived graph.
+---
+
+## [2026-08-03 11:40 CDT] - US-512 Review
+- Review hardened the Quick Start regression proof to require exact commands inside its Bash block, preventing comments or `bun run codegen:check` from falsely satisfying the explicit clean-checkout bootstrap contract.
+- Review notes (deferred/rejected): the two stale `codegen-ci.test.ts` workflow-count assertions predate this story and have been recorded since US-506; they do not invalidate US-512's focused tests or existing clean CI proof.
+- Review notes (deferred/rejected): Cursor Bugbot could not run because the configured account exhausted its usage; the five review-work lanes completed and the confirmed in-scope blocker was fixed.
+- Post-fix Cursor Bugbot reran successfully and reported no bugs.
+- Guide-Coverage-Skip: Internal contributor bootstrap ordering has no executable end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, LSP diagnostics, and 38 focused runbook, bootstrap, catalog, and CI workflow tests passed.
+- **Learnings for future iterations:**
+  - Documentation contract tests should match exact executable command lines inside the owned code block rather than substrings that comments or longer commands can satisfy.
+---
+## [2026-08-03 13:34 CDT] - Babysit
+- PR: #685 https://github.com/AaronFeledy/core4/pull/685
+- CI outcome: pass
+- Review feedback: fixed (schema baseline regen runs ordered codegen so untracked generated prerequisites exist)
+- Merge: merged (squash)
+---
+## [2026-08-03 15:20 CDT] - US-513
+- Release and npm prerelease packaging now regenerate derived sources before package builds, compile, dry-run publish, and publish; schema snapshot codegen mirrors the complete public and command schema sets into the core package tree without relying on Git history.
+- The release schema-artifact stage now performs real schema regeneration instead of skipping, while compiled binaries continue embedding the generated TypeScript manifest through the existing module graph.
+- Verification: typecheck, lint/deprecations, generated-output, and codegen-drift passed; 120 focused release, schema, codegen, manifest, pack, and compile tests plus the targeted workflow test passed; real npm pack listed 317 public and 86 command schema files, and the compiled build succeeded. The unchanged full codegen-CI suite retains its two previously documented stale global-count expectations.
+- **Learnings for future iterations:**
+  - Package publishing jobs must run full codegen after install; package-local builds alone do not materialize ignored derived schema mirrors.
+  - Keep JSON schemas in package mirrors and generated TypeScript manifests in the compiled module graph; they are distinct build products with different consumers.
+---
+
+## [2026-08-03 15:48 CDT] - US-513 Review
+- Review corrected the canonical schema-snapshot output inventory and generator scope comment, and hardened the release-workflow ordering test so absent markers cannot satisfy position comparisons.
+- Review notes (deferred/rejected): non-atomic mirror replacement is non-blocking because codegen failure aborts before pack/publish; repository-root codegen test isolation is a suite-wide harness concern; filtering speculative non-JSON or symlink contamination is unwarranted because the generator exclusively owns JSON output in these derived trees.
+- Guide-Coverage-Skip: Internal schema packaging and release orchestration have no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, LSP diagnostics, and the focused workflow-ordering test passed. `check:spec-reference` remains blocked only by the previously recorded unrelated `.omo/**` citations; the optional external no-excuse audit could not resolve its own TypeScript dependency.
+- **Learnings for future iterations:**
+  - Generated-output inventories must be updated when an existing generator gains package-mirror destinations.
+  - Ordering tests must assert every marker exists before comparing `indexOf` positions.
+---
+
+## [2026-08-03 16:42 CDT] - US-514
+- Verified the runtime-bundle and Mutagen version manifests remain committed pins: Mutagen stays catalog-owned and drift-checked, while the runtime-bundle manifest retains its dedicated offline invariant across CI, release, and pin-recovery paths. No new implementation was needed.
+- Guide-Coverage-Skip: Internal pin-manifest tracking and staleness policy has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 87 focused manifest, catalog, drift, workflow, and tracking-policy tests plus 2 targeted codegen-CI assertions passed; full catalog regeneration, offline runtime-manifest validation, and direct Git tracking/ignore probes passed.
+- **Learnings for future iterations:**
+  - Keep release-generated runtime-bundle pins on their dedicated offline invariant path; only catalog-generated Mutagen pins belong in the pure codegen drift set.
+---
+
+## [2026-08-03 17:22 CDT] - Babysit
+- PR: none (missing; push skipped — verification-only story already on main, no branch commits)
+- CI outcome: n/a
+- Review feedback: none
+- Merge: deferred (no PR to merge; US-514 work already on main)
+---
+
+## [2026-08-03 17:39 CDT] - US-514 Review
+- Review reconciled the normative runtime-bundle invariant with the later Podman 6 platform decision: the documented host set now matches the four keys enforced by the manifest, validator, workflows, and tests, with Intel macOS excluded.
+- Review notes (deferred/rejected): the README's pre-existing placeholder-manifest limitation is inaccurate but does not affect US-514's tracking or offline-invariant acceptance criteria, so it remains separate documentation cleanup.
+- Guide-Coverage-Skip: Internal pin-manifest platform invariant wording has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 87 focused manifest/catalog/drift/workflow/tracking tests, 2 targeted codegen-CI assertions, and post-fix manifest spot checks passed; Bugbot and all five review lanes found no remaining blocker.
+- **Learnings for future iterations:**
+  - When a later platform-support decision changes a pin manifest's required key set, update the normative codegen catalog description alongside validators, workflows, and tests.
+---
+
+## [2026-08-03 18:25 CDT] - US-515
+- Verified the SDK author guidance already directs schema changes through codegen, identifies schema trees as untracked derived outputs, and names the CI drift gate; no new implementation was needed.
+- Guide-Coverage-Skip: Internal SDK contributor workflow guidance has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 53 focused schema snapshot, tracking-policy, and drift-classification tests passed.
+- **Learnings for future iterations:**
+  - Keep contributor guidance aligned with generated-artifact ownership, but verify the underlying ignore, tracking, and regeneration behavior instead of pinning maintainers' prose in tests.
+---
+
+## [2026-08-03 18:39 CDT] - US-515 Review
+- Clarified the SDK schema-snapshot guidance so ignored schema/reference trees are tied to generator and consumer validation, while `codegen:check` is explicitly limited to pure drift for committed catalog outputs.
+- Review notes (deferred/rejected): rejected the implication that `codegen:check` should Git-diff ignored derived trees; that would conflict with the US-510 tracking policy, and only the ambiguous wording required correction.
+- Guide-Coverage-Skip: Internal SDK contributor workflow guidance has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and 51 focused schema snapshot, catalog, tracking-policy, and drift tests passed.
+- **Learnings for future iterations:**
+  - Contributor guidance should name the separate validation mechanisms for ignored derived outputs and committed generated outputs rather than calling both drift checks.
+---
+
+## [2026-08-03 20:03 CDT] - US-516
+- Moved the durable StateStore implementation into a private `@lando/state-store` workspace package while preserving existing core consumers through identity-equivalent re-export shims; public contracts remain SDK-owned.
+- Extended first-party boundary and import-cycle coverage to the new package without absorbing the later package-DAG allowlist, consumer migration, or boundary-thinning stories.
+- Verification: typecheck and lint/deprecations passed; 40 focused StateStore tests and 79 adjacent boundary/import tests passed; package build, package-DAG, import-cycle, StateStore/probe boundaries, and a real package-import round-trip/path-rejection probe passed. The aggregate boundary runner retains only the previously recorded unrelated `.omo/**` spec-reference failures.
+- **Learnings for future iterations:**
+  - Mirror core's SDK/path source aliases in Effect-bearing seam packages so Bun loads shared service tags and tagged errors through one physical module identity.
+  - When a workspace takes ownership before consumer migration, thin re-export shims keep generated layers and existing imports stable while package-level tests prove the implementation was moved rather than copied.
+---
+
+## [2026-08-03 20:37 CDT] - US-516 Review
+- Fixed the npm release inventory so `@lando/state-store` is prepared, built, dry-run published, and published before its dependent `@lando/core`; added a generic regression invariant for runtime workspace dependencies and aligned the CI runbook.
+- Review notes (deferred/rejected): package-DAG seam allowlisting, direct consumer import migration, and StateStore boundary thinning remain explicitly owned by US-517, US-518, and US-519 rather than this scaffold repair.
+- Review notes (deferred/rejected): Bugbot, goal verification, hands-on QA, security, and context mining found no additional in-scope blockers; the release omission was the sole confirmed defect.
+- Guide-Coverage-Skip: Internal package publication wiring has no end-user executable-guide behavior.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, 8 npm-preparation tests, 59 release tests, and 6 CI-runbook tests passed; a direct inventory/workflow probe passed.
+- **Learnings for future iterations:**
+  - Adding a private runtime workspace dependency requires adding it to prerelease preparation and publish inventories before every dependent package.
+---
+
+## [2026-08-03 22:07 CDT] - US-517
+- Routed the package-DAG gate through the shared all-package source tier, explicitly allowlisted `@lando/state-store` alongside the SDK and paths seams, and added state-store to the reverse-direction policy while preserving the plugin-to-core prohibition.
+- Closed a latent coverage gap where SDK and container-runtime roots were named by the reverse-direction policy but never walked by the gate's narrower source scope; consumer migration and boundary thinning remain deferred to their dedicated stories.
+- Guide-Coverage-Skip: Internal CI boundary-gate wiring has no end-user executable-guide surface.
+- Verification: typecheck, scripts typecheck, and lint/deprecations passed; 19 focused package-DAG/source-root tests and 16 adjacent boundary-substrate tests passed; the real gate reported zero violations across 996 files, and the isolated CLI probe reported exactly the forbidden state-store-to-plugin edge and removed its temporary fixture.
+- **Learnings for future iterations:**
+  - Route package-wide boundary rules through the shared source-root tier; a hand-rolled scope can silently make an existing policy list unreachable.
+---
+
+## [2026-08-03 23:41 CDT] - US-517 Review
+- Closed a gate bypass that defeated the story's own plugins-to-core prohibition: a bare specifier that names a seam package but walks out of it (`@lando/state-store\..\core`) resolved into core at runtime while matching no package identity, so it was silently allowed. Package identity is now decided on a separator-normalized specifier, and an escaping bare specifier is reported in both the plugin and reverse directions.
+- Closed the companion blind spot where the gate scanned only `.ts`, leaving `.tsx`/`.mts`/`.cts` plugin sources unscanned for forbidden core edges; the two import-graph rules on the shared root tier now see the same module extensions, locked by a parity assertion.
+- Review notes (deferred/rejected): a manifest dependency alias (`"core-alias": "file:../../core"`) is still unreported, but detecting it requires resolving manifest dependency *values* and a reporting seam for `package.json`, which lives outside the walked source scope; it also demands a committed manifest plus lockfile change, unlike the one-line import bypass fixed here. Recorded as a follow-up manifest-value policy check rather than absorbed into this rule.
+- Review notes (deferred/rejected): a plugin relative-path escape (`../../../core/src/...`) needs the same path-resolution machinery as the alias case and belongs to that same follow-up; consumer migration and state-store boundary thinning remain owned by US-518 and US-519.
+- Guide-Coverage-Skip: Internal CI boundary-gate specifier handling has no end-user executable-guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and LSP diagnostics passed; 17 package-DAG tests and 29 adjacent boundary/import-cycle tests passed; the real gate reported zero violations and import-cycle passed across 1018 production modules; all boundary rules passed except the previously recorded unrelated `.omo/**` spec-reference citations.
+- **Learnings for future iterations:**
+  - A boundary gate that decides package identity from a raw specifier must normalize separators and reject path escapes first; an allowlist checked against un-normalized text can be walked straight through.
+  - Sibling rules sharing a source-root tier must also share their file-extension set, or one rule silently stops seeing whole modules the other scans.
 ---

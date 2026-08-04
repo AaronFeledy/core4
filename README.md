@@ -114,6 +114,9 @@ Development follows this phase ladder:
 # Install all workspace deps (creates the workspace symlinks)
 bun install
 
+# Materialize generated sources from the codegen catalog
+bun run codegen
+
 # Type check the whole workspace
 bun run typecheck
 

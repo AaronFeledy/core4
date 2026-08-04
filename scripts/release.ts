@@ -1431,13 +1431,14 @@ export const RELEASE_STAGES: ReadonlyArray<ReleaseStage> = [
   defineStage({
     id: "5-schema-artifacts",
     label: "Schema artifacts",
-    description: "Generate dist/schemas/*.json + dist/types/*.d.ts.",
+    description:
+      "Regenerate public schema artifacts (dist/schemas, dist/command-schemas) and the package mirror via codegen:schema-snapshot.",
     forBinary: true,
     forLibrary: true,
-    kind: "skip",
-    commandSummary: "schema artifact generation",
-    remediation: "Implement schema artifact generation before making this stage required.",
-    command: "[release] skip 5-schema-artifacts (scripts/build-schema-json.ts not yet implemented)",
+    kind: "spawn",
+    commandSummary: "bun run codegen:schema-snapshot",
+    remediation: defaultRemediation,
+    command: ["bun", "run", "codegen:schema-snapshot"],
   }),
   defineStage({
     id: "6-library-bundle",

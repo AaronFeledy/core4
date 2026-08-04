@@ -24,6 +24,8 @@ bun run release -- --binary --through-stage=7-compile
 
 Stages run in order and are numbered `1-codegen`, `2-typecheck`, `3-lint-format`, `4-test-gates`, `5-schema-artifacts`, `6-library-bundle`, `7-compile`, `8-strip`, `9-sign`, `10-notarize`, `11-manifest`, `12-provenance-sbom`, `13-publish`. `--through-stage` accepts a stage id or its leading number.
 
+Stage `5-schema-artifacts` regenerates schema artifacts (`bun run codegen:schema-snapshot`) immediately before package/compile stages (`6-library-bundle`, `7-compile`).
+
 ### Platform scope
 
 By default the orchestrator targets every CI platform (`darwin-arm64`, `darwin-x64`, `linux-arm64`, `linux-x64`, `windows-x64`). Scope a run to one platform with `LANDO_RELEASE_PLATFORM`, using the CI/release platform id:

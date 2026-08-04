@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Regenerate the public schema artifact set used by the CI drift gate.
+ * Regenerate the public schema artifact set.
  *
  * Scope:
  *   - JSON Schema output for the public `@lando/sdk/schema` registry
- *   - committed standalone schema artifacts generated from that registry
+ *   - gitignored derived standalone schema artifacts from that registry
  *   - standalone result schemas for every canonical command
+ *   - byte-identical `core/dist/{schemas,command-schemas}` package mirrors for npm packaging
  *   - decoded manifests for the in-binary bundled plugins only
  *
  * Out-of-tree plugin manifests are intentionally not discovered here.
@@ -30,6 +31,7 @@ import {
 } from "../sdk/src/schema/index.ts";
 import { assertPublicSchemaContractCoverage } from "../sdk/test/schema/public-schema-contracts.ts";
 import { formatGeneratedPaths } from "./_codegen-output.ts";
+import { mirrorSchemaArtifacts } from "./mirror-schema-artifacts.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const BUNDLED_PLUGIN_MANIFESTS_OUTPUT = resolve(REPO_ROOT, "sdk/test/fixtures/bundled-plugin-manifests.json");
@@ -188,6 +190,7 @@ const main = async (): Promise<void> => {
     COMMAND_SCHEMA_ARTIFACT_DIR,
     SCHEMA_REFERENCE_DIR,
   ]);
+  await mirrorSchemaArtifacts({ repoRoot: REPO_ROOT });
 
   console.log(
     `[build-schema-snapshot] wrote ${sdkSchemas.length} SDK schemas and ${commandResultSchemas.length} command schemas`,

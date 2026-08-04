@@ -12,6 +12,16 @@ import {
 
 const EXPECTED_CATALOG_PATHS = [
   ".github/workflows",
+  "core/test/fixtures/compose/manifest.json",
+  "docs/reference/commands.mdx",
+  "docs/reference/compose-key-matrix.mdx",
+  "images/php",
+  "plugins/file-sync-mutagen/mutagen-versions.json",
+  "recipes/*/.scaffold/*",
+  "sdk/test/fixtures/bundled-plugin-manifests.json",
+] as const;
+
+const GITIGNORED_DERIVED_PATHS = [
   "core/src/cli/generated",
   "core/src/cli/oclif/compiled-manifest.ts",
   "core/src/cli/oclif/generated",
@@ -19,30 +29,20 @@ const EXPECTED_CATALOG_PATHS = [
   "core/src/plugins/generated",
   "core/src/recipes/bundled.ts",
   "core/src/runtime/generated/layers",
-  "core/test/fixtures/compose/manifest.json",
-  "docs/reference/commands.mdx",
-  "docs/reference/compose-key-matrix.mdx",
-  "images/php",
-  "plugins/file-sync-mutagen/mutagen-versions.json",
-  "recipes/*/.scaffold/*",
+  "dist/command-schemas",
+  "dist/schemas",
+  "docs/reference/schemas",
   "scripts/generated/opentui-native",
-  "sdk/test/fixtures/bundled-plugin-manifests.json",
 ] as const;
 
-const GITIGNORED_SCHEMA_TREES = ["dist/command-schemas", "dist/schemas", "docs/reference/schemas"] as const;
-
 const TRACKED_CATALOG_SENTINELS = [
-  "core/src/cli/generated/command-ids.ts",
-  "core/src/cli/oclif/compiled-manifest.ts",
-  "core/src/cli/oclif/generated/host-proxy-allowlist.ts",
-  "core/src/cli/oclif/generated/mcp-allowlist.ts",
-  "core/src/cli/oclif/generated/setup-plugin-flags.ts",
-  "core/src/recipes/bundled.ts",
+  ".github/workflows/ci.yml",
   "core/test/fixtures/compose/manifest.json",
   "docs/reference/commands.mdx",
   "images/php/8.4/Dockerfile",
   "plugins/file-sync-mutagen/mutagen-versions.json",
   "recipes/drupal/.scaffold/default.md",
+  "sdk/test/fixtures/bundled-plugin-manifests.json",
 ] as const;
 
 interface Fixture {
@@ -107,7 +107,7 @@ const makeRepository = async (): Promise<Fixture> => {
   roots.push(root);
   const env = await makeIsolatedGitEnv(root);
   await runGit(root, env, ["init", "-b", "main"]);
-  await write(root, ".gitignore", "scripts/generated/opentui-native/ignored-output.json\n");
+  await write(root, ".gitignore", "ignored-output.json\n");
   await write(root, ".github/workflows/old.yml", "name: old\n");
   await write(root, "docs/reference/commands.mdx", "# Commands\n");
   await write(root, "README.md", "# Fixture\n");
@@ -148,13 +148,13 @@ describe("check:codegen-drift", () => {
   test("fails when an untracked file appears in a catalog directory", async () => {
     // Given: an untracked generated file under a committed catalog path.
     const { root, env } = await makeRepository();
-    await write(root, "scripts/generated/opentui-native/new.json", "{}\n");
+    await write(root, ".github/workflows/new.yml", "name: new\n");
 
     // When: catalog drift is checked.
     const result = await checkCodegenDrift({ env, root });
 
     // Then: the untracked catalog file is reported.
-    expect(result).toEqual({ dirtyPaths: ["scripts/generated/opentui-native/new.json"], ok: false });
+    expect(result).toEqual({ dirtyPaths: [".github/workflows/new.yml"], ok: false });
   });
 
   test("fails when a tracked catalog file is deleted", async () => {
@@ -216,7 +216,7 @@ describe("check:codegen-drift", () => {
   test("ignores gitignored files in a catalog directory", async () => {
     // Given: a gitignored generated file under a catalog path.
     const { root, env } = await makeRepository();
-    await write(root, "scripts/generated/opentui-native/ignored-output.json", "{}\n");
+    await write(root, ".github/workflows/ignored-output.json", "{}\n");
 
     // When: catalog drift is checked.
     const result = await checkCodegenDrift({ env, root });
@@ -228,15 +228,15 @@ describe("check:codegen-drift", () => {
   test("keeps the catalog path set aligned with the documented CI union", () => {
     // Given: the existing CI-generated artifact path union.
     // When: the checker path set is inspected.
-    // Then: all 16 paths and no others are present in documented order.
+    // Then: all committed output paths and no others are present in documented order.
     expect(CATALOG_OUTPUT_PATHS).toEqual(EXPECTED_CATALOG_PATHS);
   });
 
-  test("excludes gitignored schema trees from the git-status drift check", () => {
-    // Given: the three derived schema trees that generator/consumer validation owns.
+  test("excludes gitignored derived outputs from the git-status drift check", () => {
+    // Given: derived outputs whose generator and consumer validation own correctness.
     // When: the checker path set is inspected.
     // Then: none of those trees appear (prevents reintroduction into git-status drift).
-    for (const path of GITIGNORED_SCHEMA_TREES) {
+    for (const path of GITIGNORED_DERIVED_PATHS) {
       expect(CATALOG_OUTPUT_PATHS).not.toContain(path);
     }
   });

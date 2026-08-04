@@ -11,6 +11,7 @@ const rootPackagePath = resolve(repoRoot, "package.json");
 const corePackagePath = resolve(repoRoot, "core/package.json");
 const bunVersionPath = resolve(repoRoot, ".bun-version");
 const githubPath = resolve(repoRoot, ".github");
+const ciWorkflowPath = resolve(githubPath, "workflows/ci.yml");
 
 const readText = async (path: string): Promise<string> => Bun.file(path).text();
 
@@ -35,6 +36,28 @@ const listPrTemplates = async (): Promise<ReadonlyArray<string>> => {
 };
 
 describe("ci runbook", () => {
+  test("documents clean-checkout codegen before typecheck", async () => {
+    // Given: the contributor-facing Quick Start instructions.
+    const readme = await readText(readmePath);
+    const quickStart = readme.match(/^## Quick start\n[\s\S]*?(?=^## )/m)?.[0];
+    if (quickStart === undefined) throw new Error("expected README Quick Start section");
+    const commands = quickStart
+      .match(/```bash\n([\s\S]*?)\n```/)?.[1]
+      ?.split("\n")
+      .map((line) => line.trim());
+    if (commands === undefined) throw new Error("expected README Quick Start bash block");
+
+    // When: the clean-checkout commands are located.
+    const installIndex = commands.indexOf("bun install");
+    const codegenIndex = commands.indexOf("bun run codegen");
+    const typecheckIndex = commands.indexOf("bun run typecheck");
+
+    // Then: generated sources are materialized after install and before typecheck.
+    expect(installIndex).toBeGreaterThanOrEqual(0);
+    expect(codegenIndex).toBeGreaterThan(installIndex);
+    expect(typecheckIndex).toBeGreaterThan(codegenIndex);
+  });
+
   test("documents local commands and failure artifacts", async () => {
     const runbook = await readText(runbookPath);
 
@@ -96,7 +119,9 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run --filter='@lando/sdk' build");
     expect(runbook).toContain("bun run --filter='@lando/container-runtime' build");
     expect(runbook).toContain("bun run --filter='@lando/core' build:manifest");
-    expect(runbook).toContain("`@lando/sdk`, `@lando/container-runtime`, `@lando/core`");
+    expect(runbook).toContain(
+      "`@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/core`",
+    );
     expect(runbook).toContain("npm install @lando/core@dev");
     expect(runbook).toContain("`latest` dist-tag is unchanged");
     expect(runbook).toContain(
@@ -110,6 +135,37 @@ describe("ci runbook", () => {
     expect(runbook).toContain("Docker Desktop, Docker Engine, Podman Desktop, Podman, Lima, and OrbStack");
     expect(runbook).toContain("provider-matrix-diagnostics-<cell>");
     expect(runbook).toContain("not listed as a per-PR branch-protection check");
+  });
+
+  test("documents schema artifact checks from the generated workflow structure", async () => {
+    const [runbook, workflow] = await Promise.all([readText(runbookPath), readText(ciWorkflowPath)]);
+    const schemaJob = workflow.match(/^ {2}schema-snapshot:\n[\s\S]*?(?=^ {2}bundled-codegen:)/m)?.[0];
+    const schemaSection = runbook.match(
+      /^## Generated schema and bundled-codegen gates\n[\s\S]*?(?=^## )/m,
+    )?.[0];
+
+    expect(schemaJob).toBeDefined();
+    expect(schemaSection).toBeDefined();
+    if (schemaJob === undefined || schemaSection === undefined) {
+      throw new Error("expected schema job and runbook section");
+    }
+
+    const porcelainPaths =
+      schemaJob
+        .match(/git status --porcelain=v1 --untracked-files=all -- ([^)]+)\)/)?.[1]
+        ?.trim()
+        .split(/\s+/) ?? [];
+    const referencePaths = Array.from(schemaJob.matchAll(/git diff --exit-code -- ([^\n]+)/g)).flatMap(
+      (match) => match[1]?.trim().split(/\s+/) ?? [],
+    );
+
+    expect(porcelainPaths).toEqual(["sdk/test/fixtures/bundled-plugin-manifests.json"]);
+    expect(referencePaths).toEqual(["docs/reference/commands.mdx", "docs/reference/compose-key-matrix.mdx"]);
+    for (const path of [...porcelainPaths, ...referencePaths]) {
+      expect(schemaSection).toContain(`\`${path}\``);
+    }
+    expect(schemaSection).toContain("ignored derived outputs");
+    expect(schemaSection).toContain("semantic comparison");
   });
 
   test("keeps the Beta 1 Bun floor decision synchronized across docs and package metadata", async () => {

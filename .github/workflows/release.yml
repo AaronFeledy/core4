@@ -91,11 +91,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Build package artifacts
         run: |
           bun run --filter='@lando/sdk' build
           bun run --filter='@lando/paths' build
           bun run --filter='@lando/container-runtime' build
+          bun run --filter='@lando/state-store' build
           bun run --filter='@lando/provider-lando' build
           bun run --filter='@lando/provider-docker' build
           bun run --filter='@lando/provider-podman' build
@@ -122,6 +126,7 @@ jobs:
           npm publish --workspace @lando/sdk --dry-run --access public --tag dev
           npm publish --workspace @lando/paths --dry-run --access public --tag dev
           npm publish --workspace @lando/container-runtime --dry-run --access public --tag dev
+          npm publish --workspace @lando/state-store --dry-run --access public --tag dev
           npm publish --workspace @lando/core --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-docker --dry-run --access public --tag dev
@@ -142,6 +147,7 @@ jobs:
           npm publish --workspace @lando/sdk --access public --tag dev --provenance
           npm publish --workspace @lando/paths --access public --tag dev --provenance
           npm publish --workspace @lando/container-runtime --access public --tag dev --provenance
+          npm publish --workspace @lando/state-store --access public --tag dev --provenance
           npm publish --workspace @lando/core --access public --tag dev --provenance
           npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
           npm publish --workspace @lando/provider-docker --access public --tag dev --provenance

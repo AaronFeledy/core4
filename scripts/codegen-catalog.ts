@@ -66,12 +66,6 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    id: "schema-snapshot",
-    ownership: "derived",
-    script: "build-schema-snapshot.ts",
-    workspace: "repo",
-  },
-  {
     id: "setup-plugin-flags",
     ownership: "derived",
     script: "build-setup-plugin-flags.ts",
@@ -94,6 +88,12 @@ export const CODEGEN_CATALOG = [
     ownership: "derived",
     script: "build-oclif-manifest.ts",
     workspace: "core",
+  },
+  {
+    id: "schema-snapshot",
+    ownership: "derived",
+    script: "build-schema-snapshot.ts",
+    workspace: "repo",
   },
   {
     id: "command-reference",

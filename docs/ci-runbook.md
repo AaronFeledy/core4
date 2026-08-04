@@ -60,9 +60,9 @@ CI fails if the generated schema artifact set or bundled plugin/recipe tables dr
 bun run codegen
 ```
 
-For focused local checks, CI runs `bun run codegen:schema-snapshot`, verifies path-scoped artifact status, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout uses full git history so the compatibility checker can read base-ref artifacts; set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. If the base predates an SDK or command artifact index, the summary visibly counts that family as skipped instead of consulting the deleted combined snapshot.
+For focused local checks, CI regenerates the HEAD schemas with `bun run codegen:schema-snapshot`, checks only the committed bundled-plugin manifest fixture at `sdk/test/fixtures/bundled-plugin-manifests.json` with path-scoped `git status --porcelain`, then runs `bun run check:schema-compatibility` against `origin/main`. The checkout needs full git history (`fetch-depth: 0`) because the checker resolves the base ref. It creates a detached temporary worktree at that commit, installs its dependencies from `bun.lock` with `bun install --frozen-lockfile`, runs its `codegen:schema-snapshot` to materialize the base schemas, then removes the worktree and underlying OS temp directory. Set `LANDO_SCHEMA_COMPATIBILITY_BASE_REF=<ref>` to compare against another base locally. There is no fallback to committed artifacts, so any failure materializing the base schemas fails the gate closed. The checker fails on unaccepted `breaking` or `unknown` findings, with exact reviewed exceptions recorded in `sdk/compatibility-exceptions.json`. The only accepted skip is a base commit that predates `scripts/build-schema-snapshot.ts` and therefore has no generator; the summary reports the exact per-family counts skipped for that reason instead of comparing against a nonexistent generator.
 
-The same job checks path-scoped `git status --porcelain` output for the SDK schemas, command result schemas, both indexes, bundled manifest fixture, and generated reference docs, so modified, deleted, and newly generated untracked files all fail the gate. It also regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` is current, then regenerates the Compose key matrix (`bun run codegen:compose-key-matrix`) and verifies `docs/reference/compose-key-matrix.mdx` is current. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
+That fixture is the job's only porcelain path; modifying, deleting, or regenerating it as untracked fails the gate. The SDK schema and command-result schema trees, including both indexes, are ignored derived outputs validated by regeneration and semantic comparison rather than by git status. The job regenerates the command reference (`bun run codegen:oclif-manifest` then `bun run codegen:command-reference`) and verifies `docs/reference/commands.mdx` with `git diff --exit-code`. It then regenerates the Compose key matrix (`bun run codegen:compose-key-matrix`) and applies the same check to `docs/reference/compose-key-matrix.mdx`. Other focused codegen checks run `bun run codegen:bundled-plugins`, `bun run codegen:bundled-recipes`, and `bun run codegen:mutagen-versions`.
 
 ## Library API and recipe test layers
 
@@ -111,7 +111,7 @@ bun run bench:tooling-hot-path -- --binary core/dist/lando
 
 ## npm alpha package publishing
 
-The release workflow publishes `@lando/core@4.0.0-alpha.N`, `@lando/paths`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
+The release workflow publishes `@lando/core@4.0.0-alpha.N`, `@lando/paths`, `@lando/state-store`, and the bundled workspace packages to npm with `--tag dev` after a successful `ci` workflow run. It uses npm trusted publishing through GitHub OIDC (`id-token: write`) and does not use a local `NPM_TOKEN` or `NODE_AUTH_TOKEN` path.
 
 The package job builds workspace artifacts first:
 
@@ -119,11 +119,12 @@ The package job builds workspace artifacts first:
 bun run --filter='@lando/sdk' build
 bun run --filter='@lando/paths' build
 bun run --filter='@lando/container-runtime' build
+bun run --filter='@lando/state-store' build
 bun run --filter='@lando/core' typecheck
 bun run --filter='@lando/core' build:manifest
 ```
 
-Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-alpha.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact alpha version before the dry-run and real publish; end users install the Alpha distribution as `npm install @lando/core@dev`.
+Packaging plan: `@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/core`, and each bundled plugin package are published to the npm `dev` tag at the same `4.0.0-alpha.N` version. The workflow rewrites temporary checkout `workspace:*` dependency ranges to that exact alpha version before the dry-run and real publish; end users install the Alpha distribution as `npm install @lando/core@dev`.
 
 Before publishing, CI runs dry-runs for every release package with the same `--tag dev` / `--access public` arguments. After publishing, CI asserts `@lando/core`'s `dev` dist-tag points at the alpha version and its `latest` dist-tag is unchanged.
 

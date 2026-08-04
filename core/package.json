@@ -49,6 +49,7 @@
     "@lando/container-runtime": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
+    "@lando/state-store": "workspace:*",
     "@oclif/core": "^4.11.2",
     "@oclif/plugin-help": "^6.2.48",
     "effect": "^3.21.2",

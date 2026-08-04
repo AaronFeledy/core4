@@ -35,6 +35,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 
 - Do not hand-edit generated CI workflows, pin manifests, or the vendored Compose spec JSON. Edit the generator, run the matching `bun run codegen:*`. The Compose vendor generator writes checksum-pinned upstream bytes verbatim and must not format that file.
 - **Pins vs derived (architecture-simplicity):** pin manifests (runtime-bundle, mutagen, compose vendor) and human-reviewed CI workflows stay committed. Pure build products (`dist/schemas/**`, `dist/command-schemas/**`, bake-time generated TS tables, command registry embed manifest, generated schema docs) are **derived** — produce them with codegen; they are not required as git SoT once US-510+ lands. Model: treat them like guide transcripts, which are regenerated every test run, gitignored, and never committed.
+- `core/dist/schemas/**` and `core/dist/command-schemas/**` are ignored derived package mirrors produced byte-identically by schema snapshot codegen.
 - `bun run codegen` runs generators in dependency order (see `scripts/codegen-catalog.ts`, the machine-readable ordered catalog; each entry carries exactly one ownership value (`committed-pin`, `committed-workflow`, or `derived`); `scripts/codegen.ts` is the runner).
 - **Pure-drift `codegen:check` gate (architecture-simplicity US-505):** `codegen:check` runs the full codegen catalog and then `check:codegen-drift`, which fails on drift for the generated paths named by `CATALOG_OUTPUT_PATHS` in `scripts/check-codegen-drift.ts`. Its pathspec-scoped `git status --porcelain=v1 --untracked-files=all` catches tracked and newly untracked outputs without false-failing on unrelated dirty files elsewhere in the working tree. Gitignored derived trees stay outside that git-status half; they're covered instead by their existing generator/consumer validation. `codegen:check` owns pure-drift responsibility, but as currently wired the same composite script also runs `check:deprecations` and `typecheck`, so a failing run isn't necessarily a drift failure. Use `bun run codegen` alone when you just want to iterate. Semantic gates stay separate: `check:guide-coverage`, `check:schema-compatibility`, `check:public-transcripts`, `check:package-dag`, behavioral `check:*-boundary`.
 
@@ -48,6 +49,7 @@ Keep this file compact: add only repo-specific facts an agent would likely miss.
 | `check:*-boundary` (behavioral) | semantic |
 
 - Codegen scripts are expected to finish with `biome check --write` on emitted files; do not replace that with formatting-only steps.
+- Route generated-file formatting through `scripts/_codegen-output.ts`; it explicitly disables Biome's VCS-ignore handling so gitignored derived outputs are still processed.
 - Clean checkout bootstrap (target): `git clone && bun install && bun run codegen` before typecheck/test.
 
 ## Architecture Boundaries

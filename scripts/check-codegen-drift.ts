@@ -2,20 +2,12 @@ import { resolve } from "node:path";
 
 export const CATALOG_OUTPUT_PATHS = [
   ".github/workflows",
-  "core/src/cli/generated",
-  "core/src/cli/oclif/compiled-manifest.ts",
-  "core/src/cli/oclif/generated",
-  "core/src/data-mover/generated/provider-images.ts",
-  "core/src/plugins/generated",
-  "core/src/recipes/bundled.ts",
-  "core/src/runtime/generated/layers",
   "core/test/fixtures/compose/manifest.json",
   "docs/reference/commands.mdx",
   "docs/reference/compose-key-matrix.mdx",
   "images/php",
   "plugins/file-sync-mutagen/mutagen-versions.json",
   "recipes/*/.scaffold/*",
-  "scripts/generated/opentui-native",
   "sdk/test/fixtures/bundled-plugin-manifests.json",
 ] as const;
 

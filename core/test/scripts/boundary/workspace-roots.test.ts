@@ -9,6 +9,7 @@ import {
   ALL_PACKAGE_SOURCE_ROOTS,
   ALL_PACKAGE_WALK_ROOTS,
   CORE_AND_PLUGIN_SOURCE_ROOTS,
+  NON_PLUGIN_SOURCE_ROOTS,
 } from "../../../../scripts/boundary/workspace-roots.ts";
 import * as deprecations from "../../../../scripts/check-deprecations.ts";
 import * as telemetryInventory from "../../../../scripts/check-telemetry-inventory.ts";
@@ -32,9 +33,8 @@ const CORE_AND_PLUGIN_RULE_IDS = [
   "state-store",
 ] as const;
 
-const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
+const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output", "package-dag"] as const;
 
-/** True when `path`'s segments match `root`'s segments, treating a `*` root segment as a wildcard. */
 const rootCoversPath = (root: string, path: string): boolean => {
   const rootSegments = root.split("/");
   const pathSegments = path.split("/");
@@ -75,7 +75,9 @@ describe("workspace source-root drift gate", () => {
     // matched by some root in ALL_PACKAGE_SOURCE_ROOTS — this is the assertion
     // that goes red the moment a new top-level package (e.g. `paths/`) gains a
     // src/ tree without extending the shared constants.
-    expect(packagesWithSource).toEqual(expect.arrayContaining(["core", "sdk", "container-runtime", "paths"]));
+    expect(packagesWithSource).toEqual(
+      expect.arrayContaining(["core", "sdk", "container-runtime", "paths", "state-store"]),
+    );
     expect(packagesWithSource.some((dir) => dir.startsWith("plugins/"))).toBe(true);
     for (const dir of packagesWithSource) {
       const sourcePath = `${dir}/src`;
@@ -118,6 +120,17 @@ describe("workspace source-root drift gate", () => {
       expect(rule).toBeDefined();
       expect(rule?.scope.roots).toEqual(ALL_PACKAGE_SOURCE_ROOTS);
     }
+  });
+
+  test("policies the reverse-direction tier as the all-package tier minus plugins", () => {
+    // Given
+    const expectedRoots: readonly string[] = ALL_PACKAGE_SOURCE_ROOTS.filter(
+      (root) => !root.startsWith("plugins/"),
+    );
+    const actualRoots: readonly string[] = NON_PLUGIN_SOURCE_ROOTS;
+
+    // When / Then
+    expect(actualRoots).toEqual(expectedRoots);
   });
 
   test("routes walk-based gates through the shared plain-directory roots", () => {
