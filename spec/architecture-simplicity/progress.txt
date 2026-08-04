@@ -364,3 +364,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Narrow a residual rule only when the consumer scope replaces a real in-tier seam implementation carve-out; narrowing a rule with no such implementation silently deletes coverage.
   - Lock both sides of a mixed decision: tests should prove narrowed consumer rules reject former shim escapes and retained broad rules still inspect private runtime packages.
 ---
+
+## [2026-08-04 09:56 CDT] - US-520 Review
+- Context mining found and fixed the branch-introduced package coverage regression: paths now scans the shared shipped-runtime tier except its owning `paths/src`, while probe scans that full tier; regression tests prove `state-store/src` cannot escape paths enforcement and neither `paths/src` nor `state-store/src` can escape probe enforcement.
+- Review notes (deferred/rejected): alternate `.mts`/`.cts`/`.tsx` and symlink-walk extensions remain pre-existing limitations rejected as out of scope per US-519 Review; this repair does not change scanner or extension policy.
+- Review notes (deferred/rejected): the medium container-runtime sanitizer leak is pre-existing and outside US-520's confirmed scope, so it remains deferred rather than changing redaction or renderer production rules here.
+- Guide-Coverage-Skip: Internal boundary-gate scope repair has no end-user executable-guide surface.
+- Verification: 58/58 tests passed across the six focused boundary suites; direct paths, probe, redaction, renderer, StateStore, and package-DAG gates passed; typecheck and lint/deprecations passed; explicit-base guide drift against `origin/main` passed. LSP diagnostics were clean for both production rules and the workspace-root test; the two direct boundary tests retain their pre-existing core `rootDir` diagnostics for root-script imports, previously recorded in US-519 Review.
+- **Learnings for future iterations:**
+  - Derive an owner-excluding boundary scope by filtering the shared root tier, and derive its classification expectation the same way, so later workspace additions cannot silently escape the rule.
+---
