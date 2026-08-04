@@ -20,6 +20,8 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
+  ["paths", ["core/src", "plugins"]],
+  ["probe", ["core/src", "plugins"]],
   ["state-store", ["core/src", "plugins"]],
 ]);
 
@@ -27,8 +29,6 @@ const CORE_AND_PLUGIN_RULE_IDS = [
   "machine-output",
   "managed-file",
   "network",
-  "paths",
-  "probe",
   "redaction",
   "renderer",
 ] as const;
@@ -99,7 +99,7 @@ describe("workspace source-root drift gate", () => {
   });
 
   test("routes runtime boundary rules through the core-and-plugin source tier", () => {
-    // Given: the eight rules that police shipped core and plugin runtime code
+    // Given: residual rules whose behavior applies across every shipped runtime source tier
     for (const id of CORE_AND_PLUGIN_RULE_IDS) {
       // When: reading each rule's declared scope from the live registry
       const rule = BOUNDARY_RULES.get(id);

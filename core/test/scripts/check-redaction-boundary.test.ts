@@ -96,4 +96,23 @@ describe("redaction boundary lint gate", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("covers private primitive packages in the shipped-source scope", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "paths/src/leak.ts", 'const S = "[redacted]";\n');
+      await write(root, "state-store/src/leak.ts", 'const S = "[redacted]";\n');
+
+      const result = await checkRedactionBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.match}`,
+        ),
+      ).toEqual(["paths/src/leak.ts:[redacted]", "state-store/src/leak.ts:[redacted]"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

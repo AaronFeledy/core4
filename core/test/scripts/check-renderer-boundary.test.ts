@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { rendererRule } from "../../../scripts/boundary/rules/renderer.ts";
 import { checkRendererBoundary } from "../../../scripts/check-renderer-boundary.ts";
 
 const makeFixtureRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-renderer-boundary-"));
@@ -14,6 +15,13 @@ const write = async (root: string, path: string, content: string): Promise<void>
 };
 
 describe("renderer boundary lint gate", () => {
+  test("keeps the public gate messages stable", () => {
+    expect(rendererRule.passMessage).toBe("Renderer boundary check passed.");
+    expect(rendererRule.failureHeadline).toBe(
+      "Renderer boundary check failed. Direct console/process writes must route through the Renderer boundary.",
+    );
+  });
+
   test("passes when direct writes are confined to explicit carve-outs", async () => {
     const root = await makeFixtureRoot();
     try {
@@ -106,6 +114,25 @@ describe("renderer boundary lint gate", () => {
         "plugins/example/src/nested.ts:2:console.info",
         "plugins/example/src/nested.ts:3:console.debug",
       ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("covers private primitive packages in the shipped-source scope", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(root, "paths/src/leak.ts", "console.log('x');\n");
+      await write(root, "state-store/src/leak.ts", "console.log('x');\n");
+
+      const result = await checkRendererBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.match}`,
+        ),
+      ).toEqual(["paths/src/leak.ts:console.log", "state-store/src/leak.ts:console.log"]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
