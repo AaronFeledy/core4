@@ -11,6 +11,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const coreSrc = resolve(repoRoot, "core/src");
 const pathsSrc = resolve(repoRoot, "paths/src");
 const sdkSrc = resolve(repoRoot, "sdk/src");
+const stateStoreSrc = resolve(repoRoot, "state-store/src");
 const pluginsRoot = resolve(repoRoot, "plugins");
 const rendererPromptDriver = resolve(pluginsRoot, "renderer-lando/src/opentui/prompt-driver.ts");
 const rendererLiveRegionSubstrate = resolve(
@@ -40,7 +41,13 @@ const tuiCodePathFiles = [
 const isTuiCodePath = (absPath: string): boolean =>
   tuiCodePathDirs.some((dir) => absPath.startsWith(dir)) || tuiCodePathFiles.includes(absPath);
 
-const firstPartySourceRoots = [`${coreSrc}/`, `${pathsSrc}/`, `${sdkSrc}/`, `${pluginsRoot}/`] as const;
+const firstPartySourceRoots = [
+  `${coreSrc}/`,
+  `${pathsSrc}/`,
+  `${sdkSrc}/`,
+  `${stateStoreSrc}/`,
+  `${pluginsRoot}/`,
+] as const;
 
 const isFirstPartySource = (absPath: string): boolean =>
   firstPartySourceRoots.some((root) => absPath.startsWith(root));
@@ -607,6 +614,7 @@ describe("OCLIF-free default entry", () => {
     const { visited, violations } = walkStaticImportGraph(entryAbs);
 
     expect(visited.size).toBeGreaterThan(1);
+    expect(visited.has(resolve(stateStoreSrc, "service.ts"))).toBe(true);
 
     if (violations.length > 0) {
       const report = violations.map((violation) => formatViolation("@lando/core", violation)).join("\n\n");

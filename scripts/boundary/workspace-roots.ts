@@ -13,9 +13,9 @@
 
 /**
  * Rules policing runtime behaviour in shipped code: core, the `@lando/paths`
- * primitive package, and every plugin.
+ * and `@lando/state-store` primitive packages, and every plugin.
  */
-export const CORE_AND_PLUGIN_SOURCE_ROOTS = ["core/src", "paths/src", "plugins"] as const;
+export const CORE_AND_PLUGIN_SOURCE_ROOTS = ["core/src", "paths/src", "state-store/src", "plugins"] as const;
 
 /**
  * Rules that must see every first-party package's own source tree (glob
@@ -26,6 +26,7 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
   "core/src",
   "paths/src",
   "sdk/src",
+  "state-store/src",
   "plugins/*/src",
 ] as const;
 
@@ -37,7 +38,13 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
  * them there is tracked as separate, later scope (D11) rather than folded in
  * silently here.
  */
-export const ALL_PACKAGE_WALK_ROOTS = ["core/src", "paths/src", "sdk/src", "plugins"] as const;
+export const ALL_PACKAGE_WALK_ROOTS = [
+  "core/src",
+  "paths/src",
+  "sdk/src",
+  "state-store/src",
+  "plugins",
+] as const;
 
 /**
  * First-party, non-plugin packages — the set a plugin package must never be

@@ -221,11 +221,11 @@ export const stateStoreRule = {
       "core/src/scratch-app/registry.ts",
       "core/src/state-store/atomic.ts",
     ],
-    prefixes: ["core/src/state/"],
+    prefixes: ["core/src/state/", "state-store/src/"],
   },
   passMessage: "State-store boundary check passed.",
   failureHeadline:
-    "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through core/src/state/.",
+    "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through @lando/state-store.",
   onProgram: async (context) => {
     for (const file of context.files) {
       const state = scan(await context.sourceFile(file));
