@@ -374,3 +374,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Derive an owner-excluding boundary scope by filtering the shared root tier, and derive its classification expectation the same way, so later workspace additions cannot silently escape the rule.
 ---
+
+## [2026-08-04 10:43 CDT] - US-521
+- Verified the architecture-simplicity ROADMAP paragraph and package-seams Non-Goals already defer network, managed-file, data-mover, and planner package extractions beyond this wave; no new implementation was needed.
+- Guide-Coverage-Skip: Internal extraction-scope planning changes no user-facing behavior or executable guide surface.
+- Verification: typecheck, lint passed; relevant test spot checks passed.
+- **Learnings for future iterations:**
+  - Keep extraction scope bounded in both the wave-level ROADMAP summary and the package-seams Non-Goals so later package work is selected deliberately rather than inferred from boundary cleanup.
+---
