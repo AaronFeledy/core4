@@ -19,6 +19,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Explicit generated paths must override Biome's VCS-ignore handling so gitignored derived outputs are still formatted during regeneration.
 - Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
 - Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
+- Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
 
 ## Log
 
@@ -388,4 +389,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - CI outcome: pass (after fix; first run failed unit-tests-linux-x64-shard (2, ubuntu-26.04))
 - Review feedback: fixed (register host-proxy SIGTERM/SIGINT listeners before ready handoff so provider-apply failure cleanup removes the session dir)
 - Merge: merged (squash)
+---
+
+## [2026-08-04 14:04 CDT] - US-522
+- Consolidated built-in command identity, metadata, implemented/deferred status, alias ownership, and transitional OCLIF class references into one validated registry. Native dispatch canonicalizes through that registry, while help, command-schema generation, MCP, and host-proxy projections consume its entries.
+- Preserved source-mode OCLIF execution for the later dispatcher-unification story while removing the separate MVP command-id source of truth and keeping deferred remediation identical across source and compiled paths.
+- Verification: typecheck and lint/deprecations passed; 143 focused registry/schema/MCP tests, 102 dispatch-parity tests, 3 focused guide scenarios, and the 115-test reviewer-fix rerun passed. Import-cycle, package-DAG, machine-output, guide lint/coverage/drift/public-transcript gates passed; compiled canonical, alias, help, MCP, and deferred surfaces behaved as required; high-rigor review approved.
+- **Learnings for future iterations:**
+  - Derive registry projections from validated entries rather than independently enumerating class maps or status sets.
+  - Structural ordering tests must isolate executable function bodies and compare actual call sites, not import occurrences.
 ---
