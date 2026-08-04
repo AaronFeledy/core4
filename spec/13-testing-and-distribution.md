@@ -373,6 +373,13 @@ The §13.4 architecture boundary gates — `check:renderer-boundary`, `check:man
 
 **Package seams first (architecture-simplicity US-502+).** When a boundary is expressible as a private workspace package edge (`@lando/paths`, `@lando/state-store`, sdk probe/redaction/renderer contracts), `check:package-dag` is the **primary** enforcement. Matching AST rules SHOULD be retired or thinned to residual behavioral bans packages cannot express (`console.*` / `process.std*.write`, hand-rolled `Effect.retry` outside allowlist, machine-output stringify, generated-file banners). Gate names that remain public contracts stay stable even when thinned.
 
+| StateStore boundary concern | Owner | Disposition |
+| --- | --- | --- |
+| Package dependency direction and plugin-to-core prohibition | `check:package-dag` | **Keep** as the primary seam boundary. |
+| Stable command name, CI wiring, and pass/fail contract | `check:state-store-boundary` shim | **Keep** for existing callers. |
+| Hand-rolled atomic-write + lockfile + version-envelope combinations in core and plugins | `state-store` residual rule | **Thin** to this behavioral ban, which package edges cannot express. |
+| Package-location and legacy core-shim carve-outs | package scope and import-seam coverage | **Delete** from the residual rule; `@lando/state-store` is outside its core/plugin scan scope and package/import edges own shim usage. |
+
 Gate names, script paths (`scripts/check-*.ts`), CLI output strings, and pass/fail semantics are unchanged by this substrate; they remain the public contract referenced throughout this spec. Each `scripts/check-*.ts` entry point stays a stable, individually invocable script — CI, `bun run check:<gate>`, and any spec cross-reference keep working exactly as documented in §13.4 and elsewhere. What moved is the implementation underneath: rules that used to be bespoke text/regex heuristics — `check:libpod-prefix`, `check:managed-file-boundary`, and `check:state-store-boundary` — were rewritten as AST-plus-comment-plus-const-folding rules on the shared engine. These are strictly stronger than what they replace: they catch aliased and const-composed patterns the old regex heuristics missed, while retaining full comment coverage.
 
 `bun run scripts/check-boundaries.ts <rule-id>|--all|--list` runs one or every registered rule against the shared engine in a single pass, and lists the registered rule ids. This is the substrate's own multi-rule entry point; the per-gate `scripts/check-*.ts` shims remain the addressable, individually documented commands for CI and for this spec.

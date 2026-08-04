@@ -43,11 +43,12 @@ const TWO_SIGNAL_CASES = [
   },
 ] as const;
 
-const EXPLICIT_CARVE_OUTS = [
+const FORMER_CARVE_OUTS = [
   "core/src/cache/atomic.ts",
   "core/src/landofile/includes.ts",
   "core/src/scratch-app/registry.ts",
   "core/src/state-store/atomic.ts",
+  "core/src/state/service.ts",
 ] as const;
 
 interface FixtureFile {
@@ -126,17 +127,26 @@ describe("state-store boundary lint gate", () => {
     });
   });
 
-  for (const path of EXPLICIT_CARVE_OUTS) {
-    test(`passes when all three signals occur in the explicit carve-out ${path}`, async () => {
+  for (const path of FORMER_CARVE_OUTS) {
+    test(`reports hand-rolled durable state in the former carve-out ${path}`, async () => {
+      // Given a core source path that was exempt before StateStore became a package seam.
+      // When it combines all three durable-state mechanics, then the residual gate reports it.
       expect(await checkFixture([{ path, content: ALL_SIGNALS }])).toEqual({
-        ok: true,
-        offenders: [],
+        ok: false,
+        offenders: [
+          {
+            file: path,
+            signals: ["atomic-write-rename", "lockfile", "version-envelope"],
+          },
+        ],
       });
     });
   }
 
-  test("passes when all three signals occur under the core state prefix", async () => {
-    expect(await checkFixture([{ path: "core/src/state/nested/atomic.ts", content: ALL_SIGNALS }])).toEqual({
+  test("ignores the canonical StateStore package implementation", async () => {
+    // Given the implementation package that owns durable-state mechanics.
+    // When the residual core/plugin gate runs, then package internals stay outside its scope.
+    expect(await checkFixture([{ path: "state-store/src/service.ts", content: ALL_SIGNALS }])).toEqual({
       ok: true,
       offenders: [],
     });
