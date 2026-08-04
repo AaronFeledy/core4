@@ -18,6 +18,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
 - Explicit generated paths must override Biome's VCS-ignore handling so gitignored derived outputs are still formatted during regeneration.
 - Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
+- Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
 
 ## Log
 
@@ -321,4 +322,55 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - A boundary gate that decides package identity from a raw specifier must normalize separators and reject path escapes first; an allowlist checked against un-normalized text can be walked straight through.
   - Sibling rules sharing a source-root tier must also share their file-extension set, or one rule silently stops seeing whole modules the other scans.
+---
+
+## [2026-08-04 01:42 CDT] - US-518
+- Migrated core runtime, test support, bundled-provider integration fixtures, and generated bootstrap-layer inputs to consume the private StateStore package subpaths directly while retaining only the intentional identity-preserving core re-export shims.
+- Added repository-wide import-graph coverage that resolves first-party module edges, locks the bootstrap generator to the package service import, and proves provider workspaces resolve the private seam.
+- Guide-Coverage-Skip: Internal package-import ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 232 focused import-seam, StateStore lock/atomic/contract, CLI, lifecycle, build, scratch, and registry tests passed; package-DAG, state-store-boundary, and import-cycle gates passed; direct provider imports and bootstrap-render probes passed.
+- **Learnings for future iterations:**
+  - Enforce migrations with resolved AST module edges rather than text search so aliases and dynamic imports are covered while intentional shim identity checks remain explicit.
+  - For import-only provider fixture changes, resolve and import the private package from each provider test directory to verify the changed surface without invoking a container runtime.
+---
+
+## [2026-08-04 02:46 CDT] - US-519
+- Kept `check:state-store-boundary` as a stable residual gate while narrowing it to core and plugin behavior: package direction remains owned by package-DAG, and the AST rule now rejects only hand-rolled atomic-write, lockfile, and version-envelope combinations without pre-extraction carve-outs.
+- Published the keep/thin/delete inventory for StateStore seam ownership and residual enforcement.
+- Guide-Coverage-Skip: Internal boundary-gate ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 76 focused StateStore boundary, package-DAG, import-seam, atomic-write, lock, and service tests passed; package-DAG and the real StateStore boundary CLI passed. A live mutation probe was rejected with all three signals, then the gate passed after teardown; high-rigor review approved with no blockers.
+- **Learnings for future iterations:**
+  - Package scope is cleaner than carve-outs for excluding the implementation that legitimately owns a forbidden behavioral combination.
+  - Preserve public gate names while deleting ownership logic that a package edge now enforces.
+---
+
+## [2026-08-04 03:04 CDT] - US-519 Review
+- Review fixed the stale workspace-root classification so the intentionally core/plugin-only StateStore rule remains exact-root guarded, and restored the retained gate's documented-stable failure headline with regression coverage.
+- Review notes (deferred/rejected): excluding `paths/src` is the documented core/plugin residual scope, while package-DAG owns private seam direction; expanding this behavioral gate to other private packages is not required by US-519.
+- Review notes (deferred/rejected): `.mts`/`.cts`/`.tsx` and symlink-walk limitations predate this branch, have no current production instances, and do not represent a regression introduced by the thinning.
+- Guide-Coverage-Skip: Internal boundary-gate ownership and CI contract repair have no end-user executable-guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, StateStore boundary, and package-DAG passed; 53 focused and adjacent boundary tests passed. LSP was clean for the production rule and workspace-root test; the direct boundary test retains its pre-existing core `rootDir` diagnostic for root-script imports.
+- **Learnings for future iterations:**
+  - When narrowing a rule off a shared root tier, update the exact-root classification test in the same commit.
+  - Stable boundary-gate output strings need direct regression assertions when the gate shim remains public.
+---
+
+## [2026-08-04 04:09 CDT] - US-520
+- Narrowed the paths and probe residual gates to core and plugin consumers, replacing obsolete package-location and legacy-shim carve-outs while retaining their hand-rolled join and retry/schedule bans. Confirmed redaction already has residual-only enforcement and kept the renderer's broader shipped-source coverage and documented fast-path exceptions.
+- Published the keep/thin inventory so package-DAG remains the primary seam-direction gate while stable boundary shims continue enforcing behavior package edges cannot express.
+- Guide-Coverage-Skip: Internal boundary-gate ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 87 focused and adjacent boundary tests passed; paths, probe, redaction, renderer, StateStore, and package-DAG gates passed. Live root-join, retry/schedule, and private-package renderer mutations failed with the expected diagnostics, then all probes were removed and the gates repassed; high-rigor review approved with no blockers. The aggregate boundary runner retains only the previously recorded unrelated `.omo/**` spec-reference failures.
+- **Learnings for future iterations:**
+  - Narrow a residual rule only when the consumer scope replaces a real in-tier seam implementation carve-out; narrowing a rule with no such implementation silently deletes coverage.
+  - Lock both sides of a mixed decision: tests should prove narrowed consumer rules reject former shim escapes and retained broad rules still inspect private runtime packages.
+---
+
+## [2026-08-04 09:56 CDT] - US-520 Review
+- Context mining found and fixed the branch-introduced package coverage regression: paths now scans the shared shipped-runtime tier except its owning `paths/src`, while probe scans that full tier; regression tests prove `state-store/src` cannot escape paths enforcement and neither `paths/src` nor `state-store/src` can escape probe enforcement.
+- Review notes (deferred/rejected): alternate `.mts`/`.cts`/`.tsx` and symlink-walk extensions remain pre-existing limitations rejected as out of scope per US-519 Review; this repair does not change scanner or extension policy.
+- Review notes (deferred/rejected): the medium container-runtime sanitizer leak is pre-existing and outside US-520's confirmed scope, so it remains deferred rather than changing redaction or renderer production rules here.
+- Guide-Coverage-Skip: Internal boundary-gate scope repair has no end-user executable-guide surface.
+- Verification: 58/58 tests passed across the six focused boundary suites; direct paths, probe, redaction, renderer, StateStore, and package-DAG gates passed; typecheck and lint/deprecations passed; explicit-base guide drift against `origin/main` passed. LSP diagnostics were clean for both production rules and the workspace-root test; the two direct boundary tests retain their pre-existing core `rootDir` diagnostics for root-script imports, previously recorded in US-519 Review.
+- **Learnings for future iterations:**
+  - Derive an owner-excluding boundary scope by filtering the shared root tier, and derive its classification expectation the same way, so later workspace additions cannot silently escape the rule.
 ---
