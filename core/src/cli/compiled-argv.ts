@@ -1,13 +1,13 @@
 import type { Command } from "@oclif/core";
 
+import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry.ts";
 import type { LandoCommandSpec } from "./oclif/command-base.ts";
-import compiledCommands from "./oclif/compiled-commands.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
 
 export type CompiledCommand = Command.Class;
 
-export const commandEntries: Array<[string, CompiledCommand]> = Object.entries(compiledCommands).sort(
-  ([left], [right]) => left.localeCompare(right),
+export const commandEntries: ReadonlyArray<readonly [string, CompiledCommand]> = builtInCommandEntries.map(
+  (entry) => [entry.spec.id, entry.command],
 );
 
 export const compiledManifest = loadCompiledManifest();
@@ -20,8 +20,10 @@ export const commandName = (id: string, command: CompiledCommand): string => {
   return aliases[0] ?? id;
 };
 
-export const findCommand = (name: string): [string, CompiledCommand] | undefined =>
-  commandEntries.find(([id, command]) => id === name || command.aliases?.includes(name));
+export const findCommand = (name: string): [string, CompiledCommand] | undefined => {
+  const entry = resolveBuiltInCommand(name);
+  return entry === undefined ? undefined : [entry.spec.id, entry.command];
+};
 
 export type OclifFlagDefinition = {
   readonly name?: string;
@@ -38,7 +40,7 @@ export type OclifArgDefinition = {
 };
 
 export const commandSpecForId = (commandId: string): CompiledCommand | undefined =>
-  (compiledCommands as Readonly<Record<string, CompiledCommand>>)[commandId];
+  builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.command;
 
 export const landoSpecForId = (commandId: string): LandoCommandSpec | undefined =>
   (commandSpecForId(commandId) as { readonly landoSpec?: LandoCommandSpec } | undefined)?.landoSpec;

@@ -4,7 +4,7 @@
  * `LandoCommandSpec` with `mcpAllowed: true`.
  *
  * Inputs:
- *   - `core/src/cli/oclif/compiled-commands.ts` (the canonical command index)
+ *   - `core/src/cli/built-in-command-registry.ts` (the canonical command index)
  *
  * Output:
  *   - `core/src/cli/oclif/generated/mcp-allowlist.ts` — plain literal data (no
@@ -17,9 +17,8 @@
  */
 import { resolve } from "node:path";
 
-import { mcpRegistryFromCompiled } from "../core/src/cli/commands/meta/mcp.ts";
-import type { LandoCommandSpec } from "../core/src/cli/oclif/command-base.ts";
-import compiledCommands from "../core/src/cli/oclif/compiled-commands.ts";
+import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
+import { mcpRegistryFromBuiltIns } from "../core/src/cli/commands/meta/mcp.ts";
 import { computeMcpDefaultAllowlist } from "../core/src/cli/oclif/mcp-allowlist.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
@@ -46,9 +45,7 @@ const renderModule = (ids: ReadonlyArray<string>): string => {
 };
 
 const main = async (): Promise<void> => {
-  const specs = mcpRegistryFromCompiled(
-    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-  ).commandEntries.map((entry) => entry.spec);
+  const specs = mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.map((entry) => entry.spec);
   const ids = computeMcpDefaultAllowlist(specs);
   await writeFormattedOutput(OUTPUT, renderModule(ids));
   console.log(`[build-mcp-allowlist] wrote ${OUTPUT} (${ids.length} tools)`);

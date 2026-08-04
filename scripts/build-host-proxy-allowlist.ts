@@ -4,7 +4,7 @@
  * `LandoCommandSpec` with `hostProxyAllowed: true`.
  *
  * Inputs:
- *   - `core/src/cli/oclif/compiled-commands.ts` (the canonical command index)
+ *   - `core/src/cli/built-in-command-registry.ts` (the canonical command index)
  *
  * Output:
  *   - `core/src/cli/oclif/generated/host-proxy-allowlist.ts` — plain literal
@@ -18,8 +18,7 @@
  */
 import { resolve } from "node:path";
 
-import type { LandoCommandSpec } from "../core/src/cli/oclif/command-base.ts";
-import compiledCommands from "../core/src/cli/oclif/compiled-commands.ts";
+import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { computeHostProxyRunLandoAllowlist } from "../core/src/cli/oclif/host-proxy-allowlist.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
@@ -49,9 +48,7 @@ const renderModule = (ids: ReadonlyArray<string>): string => {
 };
 
 const main = async (): Promise<void> => {
-  const specs = Object.values(compiledCommands)
-    .map((commandClass) => (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec)
-    .filter((spec): spec is LandoCommandSpec => spec !== undefined);
+  const specs = builtInCommandEntries.map((entry) => entry.spec);
   const ids = computeHostProxyRunLandoAllowlist(specs);
   await writeFormattedOutput(OUTPUT, renderModule(ids));
   console.log(`[build-host-proxy-allowlist] wrote ${OUTPUT} (${ids.length} commands)`);

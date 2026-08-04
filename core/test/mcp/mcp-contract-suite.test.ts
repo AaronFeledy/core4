@@ -24,9 +24,9 @@ import type { LandoEvent } from "@lando/sdk/events";
 import { CommandResultEnvelope } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
-import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
 import { assertMcpAllowlistSafe } from "../../src/cli/oclif/mcp-allowlist.ts";
 import { buildCatalog, computeEffectiveAllowlist } from "../../src/mcp/catalog.ts";
@@ -102,8 +102,7 @@ const specFor = (id: string): LandoCommandSpec | undefined =>
   allCommandEntries().find((entry) => entry.spec.id === id)?.spec;
 
 const allCommandEntries = (): ReadonlyArray<McpCommandEntry> =>
-  mcpRegistryFromCompiled(compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>)
-    .commandEntries;
+  mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries;
 
 const redactionLayer = (values: ReadonlyArray<string> = []) =>
   Layer.succeed(RedactionService, {

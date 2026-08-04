@@ -9,8 +9,8 @@
  *     stdio JSON-RPC transport, and emits NO command-result envelope so it
  *     never corrupts the MCP protocol stream (serve mode skips command-result envelopes).
  *
- * The command registry is injected (never imported from `compiled-commands`
- * here) so this module stays out of the compiled command-graph import cycle.
+ * The built-in entries are projected by the registry hub and passed in so this
+ * module stays out of the command-graph import cycle.
  */
 import { Effect, Layer, Schema } from "effect";
 
@@ -127,12 +127,10 @@ export const mcpFlagsFromParsed = (flags: Record<string, unknown>): McpCommandFl
   };
 };
 
-export const mcpRegistryFromCompiled = (
-  compiled: Record<string, { readonly landoSpec?: LandoCommandSpec }>,
+export const mcpRegistryFromBuiltIns = (
+  entries: ReadonlyArray<{ readonly spec: LandoCommandSpec }>,
 ): McpCommandRegistry => ({
-  commandEntries: Object.values(compiled).flatMap((command) => {
-    const spec = command.landoSpec;
-    if (spec === undefined) return [];
+  commandEntries: entries.flatMap(({ spec }) => {
     assertMcpAllowlistSafe(spec);
     if (isAppConfigMcpUnsafeId(spec.id) && spec.id !== "app:config") return [];
     if (spec.id === "app:config") return appConfigMcpSpecs.map((projection) => ({ spec: projection }));

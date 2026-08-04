@@ -16,9 +16,9 @@ import {
   renderMcpListResult,
 } from "../../../commands/meta/mcp-list.ts";
 import {
+  type McpCommandRegistry,
   dispatchMcpCommand,
   mcpFlagsFromParsed,
-  mcpRegistryFromCompiled,
 } from "../../../commands/meta/mcp.ts";
 import { type ResultFormat, resolveResultFormat } from "../../../format-flags.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../../renderer-boundary.ts";
@@ -35,12 +35,10 @@ import {
 } from "../../command-boundary.ts";
 import { getCommandRuntimeLayer } from "../../hooks/init.ts";
 
-type CompiledCommandMap = Record<string, { readonly landoSpec?: LandoCommandSpec }>;
+let mcpCommandRegistrySource: McpCommandRegistry = { commandEntries: [] };
 
-let compiledCommandMapSource: CompiledCommandMap = {};
-
-export const injectMcpCompiledCommands = (compiledCommands: CompiledCommandMap): void => {
-  compiledCommandMapSource = compiledCommands;
+export const injectMcpCommandRegistry = (registry: McpCommandRegistry): void => {
+  mcpCommandRegistrySource = registry;
 };
 
 export const metaMcpSpec: LandoCommandSpec<McpListResult> = {
@@ -77,7 +75,7 @@ export default class MetaMcpCommand extends LandoCommandBase {
   static override bootstrap = metaMcpSpec.bootstrap;
 
   override async run(): Promise<void> {
-    const registry = mcpRegistryFromCompiled(compiledCommandMapSource);
+    const registry = mcpCommandRegistrySource;
 
     let rendererMode: RendererMode;
     try {

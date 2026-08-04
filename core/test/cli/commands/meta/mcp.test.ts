@@ -5,18 +5,17 @@ import { McpToolInputError } from "@lando/sdk/errors";
 import type { GlobalConfig, McpConfig } from "@lando/sdk/schema";
 import { ConfigService } from "@lando/sdk/services";
 
+import { builtInCommandEntries } from "../../../../src/cli/built-in-command-registry.ts";
 import {
   type McpCommandRegistry,
   classifyMcpServeStartup,
   mcpFlagsFromParsed,
   mcpListResult,
-  mcpRegistryFromCompiled,
+  mcpRegistryFromBuiltIns,
   mcpRegistryWithToolingEntries,
   resolveMcpOptions,
   validateMcpAllowlistIds,
 } from "../../../../src/cli/commands/meta/mcp.ts";
-import type { LandoCommandSpec } from "../../../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../../../src/cli/oclif/compiled-commands.ts";
 import { APP_CONFIG_MCP_UNSAFE_IDS } from "../../../../src/cli/oclif/mcp-allowlist.ts";
 import type { McpCommandEntry } from "../../../../src/mcp/registry.ts";
 
@@ -36,8 +35,7 @@ const registry: McpCommandRegistry = {
 
 const appConfigUnsafeIds = [...APP_CONFIG_MCP_UNSAFE_IDS];
 
-const fullRegistry = (): McpCommandRegistry =>
-  mcpRegistryFromCompiled(compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>);
+const fullRegistry = (): McpCommandRegistry => mcpRegistryFromBuiltIns(builtInCommandEntries);
 
 describe("resolveMcpOptions", () => {
   test("unions flag + config allow/deny and ORs tooling", () => {
@@ -136,21 +134,16 @@ describe("mcpFlagsFromParsed", () => {
   });
 });
 
-describe("mcpRegistryFromCompiled", () => {
-  test("projects only compiled commands with Lando specs", () => {
+describe("mcpRegistryFromBuiltIns", () => {
+  test("projects registered built-in command specs", () => {
     const spec = entry("app:info", "Show app info").spec;
-    const registry = mcpRegistryFromCompiled({
-      "app:info": { landoSpec: spec },
-      "meta:missing": {},
-    });
+    const registry = mcpRegistryFromBuiltIns([{ spec }]);
 
     expect(registry).toEqual({ commandEntries: [{ spec }] });
   });
 
   test("projects app config as constrained MCP read tools and omits the umbrella", () => {
-    const registry = mcpRegistryFromCompiled({
-      "app:config": { landoSpec: entry("app:config", "App config").spec },
-    });
+    const registry = mcpRegistryFromBuiltIns([{ spec: entry("app:config", "App config").spec }]);
 
     expect(registry.commandEntries.map((command) => command.spec.id).sort()).toEqual([
       "app:config:get",
@@ -222,9 +215,7 @@ describe("mcpListResult", () => {
   });
 
   test("fails with McpToolInputError when the app config umbrella is explicitly allowed", async () => {
-    const projected = mcpRegistryFromCompiled({
-      "app:config": { landoSpec: entry("app:config", "App config").spec },
-    });
+    const projected = mcpRegistryFromBuiltIns([{ spec: entry("app:config", "App config").spec }]);
 
     const exit = await Effect.runPromiseExit(
       mcpListResult(projected, { allow: ["app:config"] }).pipe(Effect.provide(configLayer(undefined))),

@@ -22,6 +22,10 @@ export const pluginLoginSpec: LandoCommandSpec<never> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  deferred: {
+    summary: "Plugin registry login/logout are not available yet.",
+    remediation: "Plugin registry login/logout are not available yet.",
+  },
   run: () => Effect.die("not yet implemented: meta:plugin:login"),
 };
 

@@ -3,7 +3,8 @@ import { Effect, Layer, Queue, Stream } from "effect";
 
 import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sdk/services";
 
-import { resolveCanonicalCommandId, runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
+import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { runMetaVersion } from "../../src/cli/cli-adapters/meta-plugin.ts";
 import { landoSpecForId } from "../../src/cli/compiled-argv.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/compiled-input.ts";
 import * as compiledRuntime from "../../src/cli/compiled-runtime.ts";
@@ -74,7 +75,7 @@ describe("CLI lifecycle adapters", () => {
 
   test("compiled alias input retains the canonical command identity", () => {
     // Given
-    const commandId = resolveCanonicalCommandId("start");
+    const commandId = resolveBuiltInCommand("start")?.spec.id ?? "cli:unknown";
     setActiveCommandId(commandId);
     resetActiveCommandInvocation(commandId, []);
 
