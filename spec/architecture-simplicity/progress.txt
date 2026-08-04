@@ -301,3 +301,12 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Adding a private runtime workspace dependency requires adding it to prerelease preparation and publish inventories before every dependent package.
 ---
+
+## [2026-08-03 22:07 CDT] - US-517
+- Routed the package-DAG gate through the shared all-package source tier, explicitly allowlisted `@lando/state-store` alongside the SDK and paths seams, and added state-store to the reverse-direction policy while preserving the plugin-to-core prohibition.
+- Closed a latent coverage gap where SDK and container-runtime roots were named by the reverse-direction policy but never walked by the gate's narrower source scope; consumer migration and boundary thinning remain deferred to their dedicated stories.
+- Guide-Coverage-Skip: Internal CI boundary-gate wiring has no end-user executable-guide surface.
+- Verification: typecheck, scripts typecheck, and lint/deprecations passed; 19 focused package-DAG/source-root tests and 16 adjacent boundary-substrate tests passed; the real gate reported zero violations across 996 files, and the isolated CLI probe reported exactly the forbidden state-store-to-plugin edge and removed its temporary fixture.
+- **Learnings for future iterations:**
+  - Route package-wide boundary rules through the shared source-root tier; a hand-rolled scope can silently make an existing policy list unreachable.
+---
