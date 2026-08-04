@@ -21,7 +21,7 @@ interface PluginEdge extends RuntimeEdge {
 const PACKAGE_DAG_DATA = {
   scope: {
     roots: ALL_PACKAGE_SOURCE_ROOTS,
-    extensions: [".ts"],
+    extensions: [".ts", ".tsx", ".mts", ".cts"],
     excludePathSegments: ["test"],
     excludeTestFiles: true,
   },
@@ -31,8 +31,19 @@ const PACKAGE_DAG_DATA = {
 
 const normalizePath = (path: string): string => path.replaceAll("\\", "/");
 
-const packageMatches = (specifier: string, packageName: string): boolean =>
-  specifier === packageName || specifier.startsWith(`${packageName}/`);
+const normalizeSpecifier = (specifier: string): string => specifier.replaceAll("\\", "/");
+
+/**
+ * A bare specifier that walks out of the package it names does not name that
+ * package: the runtime resolves it elsewhere, so no allowlist entry may cover it.
+ */
+const escapesNamedPackage = (specifier: string): boolean =>
+  !specifier.startsWith(".") && normalizeSpecifier(specifier).split("/").includes("..");
+
+const packageMatches = (specifier: string, packageName: string): boolean => {
+  const normalized = normalizeSpecifier(specifier);
+  return normalized === packageName || normalized.startsWith(`${packageName}/`);
+};
 
 const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -69,7 +80,7 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
     if (owner === undefined) continue;
     for (const edge of await context.edges(file)) {
       const violation = { file: file.relativePath, line: edge.line, detail: edge.specifier };
-      if (packageMatches(edge.specifier, "@lando/core")) {
+      if (escapesNamedPackage(edge.specifier) || packageMatches(edge.specifier, "@lando/core")) {
         report(violation);
         continue;
       }
@@ -116,7 +127,11 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
   for (const file of context.files) {
     if (!NON_PLUGIN_SOURCE_ROOTS.some((root) => file.relativePath.startsWith(`${root}/`))) continue;
     for (const edge of await context.edges(file)) {
-      if (!packages.some((candidate) => packageMatches(edge.specifier, candidate.name))) continue;
+      if (
+        !escapesNamedPackage(edge.specifier) &&
+        !packages.some((candidate) => packageMatches(edge.specifier, candidate.name))
+      )
+        continue;
       report({ file: file.relativePath, line: edge.line, detail: edge.specifier });
     }
   }

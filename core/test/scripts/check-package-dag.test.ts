@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { importCycleRule } from "../../../scripts/boundary/rules/import-cycle.ts";
 import { packageDagRule } from "../../../scripts/boundary/rules/package-dag.ts";
 
 let root: string;
@@ -115,6 +116,76 @@ describe("check-package-dag", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  test("reports separator-escaped specifiers that resolve back into core", async () => {
+    // Given: specifiers that name a seam package but walk out of it into core
+    await write(
+      "plugins/alpha/src/index.ts",
+      [
+        'import "@lando/state-store\\\\..\\\\core";',
+        'import "@lando/sdk\\\\..\\\\core";',
+        'import "@lando/core\\\\scratch";',
+      ].join("\n"),
+    );
+    await write("state-store/src/index.ts", 'import "@lando/sdk\\\\..\\\\..\\\\plugins\\\\alpha\\\\src";\n');
+
+    // When
+    const result = await runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toBe(
+      [
+        "plugins/alpha/src/index.ts:1: @lando/state-store\\..\\core",
+        "plugins/alpha/src/index.ts:2: @lando/sdk\\..\\core",
+        "plugins/alpha/src/index.ts:3: @lando/core\\scratch",
+        "state-store/src/index.ts:1: @lando/sdk\\..\\..\\plugins\\alpha\\src",
+        "Package DAG violations: 4",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("allows relative parent imports inside a plugin package", async () => {
+    // Given
+    await write("plugins/alpha/src/nested/index.ts", 'import "../shared/util.ts";\n');
+
+    // When
+    const result = await runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toBe("Package DAG violations: 0\n");
+  });
+
+  test("scans every TypeScript module extension for core edges", async () => {
+    // Given
+    await Promise.all([
+      write("plugins/alpha/src/index.cts", 'import "@lando/core";\n'),
+      write("plugins/alpha/src/index.mts", 'import "@lando/core";\n'),
+      write("plugins/alpha/src/index.tsx", 'import "@lando/core";\n'),
+    ]);
+
+    // When
+    const result = await runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toBe(
+      [
+        "plugins/alpha/src/index.cts:1: @lando/core",
+        "plugins/alpha/src/index.mts:1: @lando/core",
+        "plugins/alpha/src/index.tsx:1: @lando/core",
+        "Package DAG violations: 3",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("sees the same module extensions as the sibling import-graph rule", () => {
+    // Given / When
+    const extensions: readonly string[] = packageDagRule.scope.extensions;
+
+    // Then
+    expect(extensions).toEqual(importCycleRule.scope.extensions);
   });
 
   test("reports plugin-package edges from every non-plugin package source root", async () => {
