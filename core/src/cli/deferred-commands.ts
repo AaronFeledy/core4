@@ -1,6 +1,3 @@
-/**
- * Deferred-command error projection from registry-owned command metadata.
- */
 import { NotImplementedError } from "@lando/sdk/errors";
 import type { LandoCommandSpec } from "./oclif/command-spec.ts";
 

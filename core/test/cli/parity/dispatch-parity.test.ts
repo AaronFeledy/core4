@@ -1,28 +1,4 @@
-/**
- * Compiled-binary dispatch parity tests.
- *
- * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
- * single-file binary, so source-mode OCLIF `execute()` and the compiled
- * hand-rolled `runCompiledCli` stay as separate dispatch paths. These tests
- * enforce parity across every command id that is implemented or deliberately
- * deferred in the compiled registry.
- *
- * Two parts:
- *
- *   Part 1 — structural parity (no spawn; runs on every platform). The canonical
- *   command-id universe is `Object.keys(compiledCommands)`. Every id is
- *   classified as exactly one of implemented or deferred; every implemented id has a
- *   compiled-dispatch branch in `core/src/cli/run.ts`; every deferred id has a
- *   registered deferral plan and NO bespoke dispatch branch (it routes through
- *   the generic `notImplementedErrorForCommand` fallthrough). This exhaustively
- *   covers every canonical command id.
- *
- *   Part 2 — behavioral parity (drives the compiled binary on linux-x64). The
- *   source and compiled paths are semantically identical for representative implemented commands
- *   (including `meta:version` / `meta:shellenv`, whose canonical forms must
- *   dispatch — not emit `NotImplementedError`) and for the deferred set.
- */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -1997,8 +1973,4 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       }
     }, 30_000);
   });
-});
-
-afterAll(() => {
-  /* no-op: the shared compiled binary is reused, never removed here. */
 });

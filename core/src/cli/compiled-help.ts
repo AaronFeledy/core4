@@ -3,7 +3,7 @@
  *
  * The compiled `$bunfs` dispatch path renders help without OCLIF, so these
  * builders format the top-level topic/command listing and a single command's
- * usage/aliases/flags directly from the compiled command table.
+ * usage/aliases/flags directly from the built-in command registry.
  */
 import { CORE_VERSION } from "../version.ts";
 import { builtInCommandEntries } from "./built-in-command-registry.ts";

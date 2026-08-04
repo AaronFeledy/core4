@@ -32,7 +32,7 @@ const syntheticRegistration = (id: string, aliases: ReadonlyArray<string> = []):
 
 describe("built-in command registry contract", () => {
   test("one registry owns canonical specs, OCLIF metadata, and implementation status", async () => {
-    // Given: the canonical built-in command registry required by the native dispatcher migration.
+    // Given: the canonical built-in command registry module on disk.
     const registryFile = Bun.file(registryPath);
 
     // When: the registry module is loaded.
@@ -103,7 +103,7 @@ describe("built-in command registry contract", () => {
   });
 
   test("help, schema, MCP, and native dispatch project from the registry", () => {
-    // Given: the four consumers migrated by US-522.
+    // Given: help, schema, MCP allowlist, and compiled-argv consumers of the registry.
     const consumers = [
       "src/cli/compiled-argv.ts",
       "src/cli/compiled-help.ts",

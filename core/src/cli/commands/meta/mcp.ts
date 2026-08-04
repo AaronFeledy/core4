@@ -6,11 +6,11 @@
  *     allowance) as a normal machine-output result (`McpListResult`).
  *   - serve mode runs the long-running stdio MCP server: it constructs
  *     `McpServiceLive` lazily, drives `McpService.serve` over the hand-rolled
- *     stdio JSON-RPC transport, and emits NO command-result envelope so it
- *     never corrupts the MCP protocol stream (serve mode skips command-result envelopes).
+ *     stdio JSON-RPC transport, and emits no command-result envelope, preserving
+ *     the MCP protocol stream.
  *
- * The built-in entries are projected by the registry hub and passed in so this
- * module stays out of the command-graph import cycle.
+ * Built-in entries are injected so this module stays out of the command-graph
+ * import cycle.
  */
 import { Effect, Layer, Schema } from "effect";
 
