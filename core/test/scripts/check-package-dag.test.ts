@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
+import { packageDagRule } from "../../../scripts/boundary/rules/package-dag.ts";
+
 let root: string;
 
 const write = async (path: string, contents: string): Promise<void> => {
@@ -56,6 +58,92 @@ afterEach(async () => {
 });
 
 describe("check-package-dag", () => {
+  test("declares the private seam packages a plugin may always import", () => {
+    // Given / When
+    const allowedPackages: readonly string[] = packageDagRule.alwaysAllowedPackages;
+
+    // Then
+    expect(allowedPackages).toEqual([
+      "@lando/sdk",
+      "@lando/container-runtime",
+      "@lando/paths",
+      "@lando/state-store",
+    ]);
+  });
+
+  test("allows plugin edges into the private seam packages", async () => {
+    // Given
+    await write(
+      "plugins/alpha/src/index.ts",
+      [
+        'import "@lando/sdk";',
+        'import type { AbsolutePath } from "@lando/sdk/schema";',
+        'import "@lando/paths";',
+        'import "@lando/state-store";',
+        'import "@lando/state-store/service";',
+      ].join("\n"),
+    );
+
+    // When
+    const result = await runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toBe("Package DAG violations: 0\n");
+  });
+
+  test("still reports core edges when seam edges share the file", async () => {
+    // Given
+    await write(
+      "plugins/alpha/src/index.ts",
+      [
+        'import "@lando/state-store/service";',
+        'import "@lando/core";',
+        'import "@lando/paths";',
+        'import type { Scratch } from "@lando/core/scratch";',
+      ].join("\n"),
+    );
+
+    // When
+    const result = await runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toBe(
+      [
+        "plugins/alpha/src/index.ts:2: @lando/core",
+        "plugins/alpha/src/index.ts:4: @lando/core/scratch",
+        "Package DAG violations: 2",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("reports plugin-package edges from every non-plugin package source root", async () => {
+    // Given
+    await Promise.all([
+      write("container-runtime/src/index.ts", 'import "@lando/beta";\n'),
+      write("core/src/index.ts", 'import "@lando/beta";\n'),
+      write("paths/src/index.ts", 'import "@lando/beta";\n'),
+      write("sdk/src/index.ts", 'import "@lando/alpha/subpath";\n'),
+      write("state-store/src/service.ts", 'import "@lando/alpha";\n'),
+    ]);
+
+    // When
+    const result = await runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toBe(
+      [
+        "container-runtime/src/index.ts:1: @lando/beta",
+        "core/src/index.ts:1: @lando/beta",
+        "paths/src/index.ts:1: @lando/beta",
+        "sdk/src/index.ts:1: @lando/alpha/subpath",
+        "state-store/src/service.ts:1: @lando/alpha",
+        "Package DAG violations: 5",
+        "",
+      ].join("\n"),
+    );
+  });
+
   test("reports value and type-only core edges from plugin production source", async () => {
     // Given
     await write(

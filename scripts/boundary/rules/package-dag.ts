@@ -2,7 +2,7 @@ import { relative } from "node:path";
 
 import { type RuntimeEdge, collectManifests, stronglyConnectedComponents } from "../graph.ts";
 import type { BoundaryRule, ProgramContext, Violation } from "../types.ts";
-import { NON_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
+import { ALL_PACKAGE_SOURCE_ROOTS, NON_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 interface PackageDagBoundaryRule extends BoundaryRule {
   readonly alwaysAllowedPackages: readonly string[];
@@ -20,13 +20,13 @@ interface PluginEdge extends RuntimeEdge {
 
 const PACKAGE_DAG_DATA = {
   scope: {
-    roots: ["plugins/*/src", "core/src", "paths/src"],
+    roots: ALL_PACKAGE_SOURCE_ROOTS,
     extensions: [".ts"],
     excludePathSegments: ["test"],
     excludeTestFiles: true,
   },
   carveOuts: { files: [], prefixes: ["core/src/plugins/generated/"] },
-  alwaysAllowedPackages: ["@lando/sdk", "@lando/container-runtime", "@lando/paths"],
+  alwaysAllowedPackages: ["@lando/sdk", "@lando/container-runtime", "@lando/paths", "@lando/state-store"],
 } as const;
 
 const normalizePath = (path: string): string => path.replaceAll("\\", "/");
