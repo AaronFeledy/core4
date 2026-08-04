@@ -20,8 +20,8 @@ import {
   ServiceName,
   type ServicePlan,
 } from "@lando/sdk/schema";
+import { makeStateStore } from "@lando/state-store/service";
 import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
-import { makeStateStore } from "../../../core/src/state/service.ts";
 
 const providerId = ProviderId.make("lando");
 

@@ -1,10 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { writeFileAtomicScoped } from "../../src/state-store/atomic.ts";
+import { writeFileAtomicScoped } from "@lando/state-store/atomic";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

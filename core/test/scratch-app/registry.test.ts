@@ -5,13 +5,13 @@ import { join } from "node:path";
 
 import { Effect } from "effect";
 
+import { LOCK_STALE_THRESHOLD_MS } from "@lando/state-store/lock";
 import {
   type ScratchRegistryEntry,
   acquireScratchRegistryLock,
   makeScratchRegistry,
   scratchRegistryPaths,
 } from "../../src/scratch-app/registry.ts";
-import { LOCK_STALE_THRESHOLD_MS } from "../../src/state/lock.ts";
 
 const withTempCache = async <T>(run: (cacheRoot: string) => Promise<T>): Promise<T> => {
   const cacheRoot = await realpath(await mkdtemp(join(tmpdir(), "lando-scratch-registry-cache-")));

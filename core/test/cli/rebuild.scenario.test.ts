@@ -29,13 +29,13 @@ import type { AppSelector, DestroyOptions, RuntimeProviderShape } from "@lando/s
 import { TestProxyService, TestRuntimeProvider } from "@lando/sdk/test";
 
 import { makeLandoPaths } from "@lando/paths";
+import { StateStoreLive } from "@lando/state-store/service";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import { RedactionService, createStandaloneRedactor } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { ShellRunnerLive } from "../../src/services/shell-runner.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

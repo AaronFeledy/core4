@@ -5,7 +5,7 @@ import { Effect, Schema } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath } from "@lando/sdk/schema";
 
-import { makeStateStore } from "../state/service.ts";
+import { makeStateStore } from "@lando/state-store/service";
 
 export const DEFAULT_SHELL_HISTORY_LIMIT = 1000;
 

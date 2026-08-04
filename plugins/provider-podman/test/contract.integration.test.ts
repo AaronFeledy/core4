@@ -24,8 +24,8 @@ import {
   runProviderContractMatrix,
   runProviderDataPlaneContract,
 } from "@lando/sdk/test";
+import { makeStateStore } from "@lando/state-store/service";
 import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
-import { makeStateStore } from "../../../core/src/state/service.ts";
 
 const providerId = ProviderId.make("podman");
 const appId = AppId.make("persisted-podman");

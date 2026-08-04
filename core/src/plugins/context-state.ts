@@ -5,8 +5,8 @@ import type { PluginStateStore } from "@lando/sdk/plugins";
 import type { AbsolutePath } from "@lando/sdk/schema";
 import type { StateStoreShape } from "@lando/sdk/services";
 
-import { withAdvisoryLock } from "../state/lock.ts";
-import { resolveStatePath } from "../state/paths.ts";
+import { withAdvisoryLock } from "@lando/state-store/lock";
+import { resolveStatePath } from "@lando/state-store/paths";
 
 export type { PluginStateBucketSpec, PluginStateStore } from "@lando/sdk/plugins";
 

@@ -1,10 +1,11 @@
+import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Effect } from "effect";
 
-import { withAdvisoryLock } from "../../src/state/lock.ts";
+import { withAdvisoryLock } from "@lando/state-store/lock";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);
 

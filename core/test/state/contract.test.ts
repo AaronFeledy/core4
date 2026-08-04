@@ -8,7 +8,7 @@ import { Effect, Schema } from "effect";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateStoreContractHarness, runStateStoreContract } from "@lando/sdk/test";
 
-import { makeStateStore } from "../../src/state/service.ts";
+import { makeStateStore } from "@lando/state-store/service";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 let root: AbsolutePathType;

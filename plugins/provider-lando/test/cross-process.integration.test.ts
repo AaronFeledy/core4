@@ -23,8 +23,8 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { RuntimeProvider } from "@lando/sdk/services";
+import { makeStateStore } from "@lando/state-store/service";
 import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
-import { makeStateStore } from "../../../core/src/state/service.ts";
 import type { PodmanApiClient, PodmanHttpRequest, PodmanHttpResponse } from "../src/capabilities.ts";
 import type { PodmanServiceRunner } from "../src/podman-service-runner.ts";
 

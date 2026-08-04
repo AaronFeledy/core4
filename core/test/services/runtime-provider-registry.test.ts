@@ -12,11 +12,11 @@ import {
 } from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { StateStoreLive } from "@lando/state-store/service";
 import { DownloaderLive } from "../../src/downloader/service.ts";
 import { HttpClientLive } from "../../src/http-client/live.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const appPlan: AppPlan = {

@@ -23,8 +23,8 @@ import {
   encodeFrame,
   isCustomCodec,
   makeSchemaCodec,
-} from "../state/codec.ts";
-import { resolveStatePath } from "../state/paths.ts";
+} from "@lando/state-store/codec";
+import { resolveStatePath } from "@lando/state-store/paths";
 
 const textEncoder = new TextEncoder();
 
