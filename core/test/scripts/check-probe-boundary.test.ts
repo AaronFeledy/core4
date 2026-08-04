@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { probeRule } from "../../../scripts/boundary/rules/probe.ts";
 import { checkProbeBoundary } from "../../../scripts/check-probe-boundary.ts";
 
 const makeFixtureRoot = async (): Promise<string> => mkdtemp(join(tmpdir(), "lando-probe-boundary-"));
@@ -14,6 +15,13 @@ const write = async (root: string, path: string, content: string): Promise<void>
 };
 
 describe("probe boundary lint gate", () => {
+  test("keeps the public gate messages stable", () => {
+    expect(probeRule.passMessage).toBe("Probe boundary check passed.");
+    expect(probeRule.failureHeadline).toBe(
+      "Probe boundary check failed. Host/provider-shaped retry/backoff/timeout-to-verdict probing must build on @lando/sdk/probe (runProbe), not hand-rolled Effect.retry/repeat/schedule or Schedule loops.",
+    );
+  });
+
   test("passes for runProbe usage, string repeat, Effect.sleep, and test fixtures", async () => {
     const root = await makeFixtureRoot();
     try {
@@ -297,16 +305,14 @@ describe("probe boundary lint gate", () => {
     }
   });
 
-  test("allowlisted non-probe lock loops and named consumers are not flagged, but the same pattern elsewhere is", async () => {
+  test("reports hand-rolled retry loops in the former lock allowlist", async () => {
     const root = await makeFixtureRoot();
     try {
-      // Allowlisted pre-existing non-probe Schedule use stays clean.
       await write(
         root,
         "core/src/state/lock.ts",
         'import { Effect, Schedule } from "effect"; export const s = Effect.retry(eff, Schedule.spaced("10 millis"));\n',
       );
-      // Same forbidden pattern at a non-allowlisted path IS flagged.
       await write(
         root,
         "core/src/elsewhere/loop.ts",
@@ -316,9 +322,32 @@ describe("probe boundary lint gate", () => {
       const result = await checkProbeBoundary({ root });
 
       expect(result.ok).toBe(false);
-      expect(result.offenders.map((offender) => relative(root, offender.file).replaceAll("\\", "/"))).toEqual(
-        ["core/src/elsewhere/loop.ts", "core/src/elsewhere/loop.ts"],
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual([
+        "core/src/elsewhere/loop.ts:1:Effect.retry",
+        "core/src/elsewhere/loop.ts:1:Schedule.spaced",
+        "core/src/state/lock.ts:1:Effect.retry",
+        "core/src/state/lock.ts:1:Schedule.spaced",
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores the state-store package implementation outside the core and plugin scope", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "state-store/src/service.ts",
+        'import { Effect, Schedule } from "effect"; export const s = Effect.retry(eff, Schedule.spaced("10 millis"));\n',
       );
+
+      expect(await checkProbeBoundary({ root })).toEqual({ ok: true, offenders: [] });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

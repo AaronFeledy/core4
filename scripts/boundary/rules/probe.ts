@@ -3,7 +3,6 @@ import { dirname, join, resolve } from "node:path";
 import type ts from "typescript";
 
 import type { BoundaryRule, FileRecord, ProgramContext } from "../types.ts";
-import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 import {
   type ModuleProbeBindings,
   analyzeModuleBindings,
@@ -68,15 +67,11 @@ const onProgram = async (context: ProgramContext): Promise<void> => {
 export const probeRule = {
   id: "probe",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: ["core/src", "plugins"],
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: {
-    files: ["core/src/state/lock.ts", "state-store/src/lock.ts"],
-    prefixes: [],
-    reportOnly: true,
-  },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Probe boundary check passed.",
   failureHeadline:
     "Probe boundary check failed. Host/provider-shaped retry/backoff/timeout-to-verdict probing must build on @lando/sdk/probe (runProbe), not hand-rolled Effect.retry/repeat/schedule or Schedule loops.",
