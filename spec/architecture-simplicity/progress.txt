@@ -382,3 +382,10 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Keep extraction scope bounded in both the wave-level ROADMAP summary and the package-seams Non-Goals so later package work is selected deliberately rather than inferred from boundary cleanup.
 ---
+
+## [2026-08-04 11:56 CDT] - Babysit
+- PR: #694 https://github.com/AaronFeledy/core4/pull/694
+- CI outcome: pass (after fix; first run failed unit-tests-linux-x64-shard (2, ubuntu-26.04))
+- Review feedback: fixed (register host-proxy SIGTERM/SIGINT listeners before ready handoff so provider-apply failure cleanup removes the session dir)
+- Merge: merged (squash)
+---
