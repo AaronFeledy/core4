@@ -36,6 +36,7 @@
         "@lando/container-runtime": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
         "@oclif/core": "^4.11.2",
         "@oclif/plugin-help": "^6.2.48",
         "effect": "^3.21.2",
@@ -185,6 +186,15 @@
       },
       "devDependencies": {
         "@types/semver": "^7.7.1",
+      },
+    },
+    "state-store": {
+      "name": "@lando/state-store",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "effect": "^3.21.2",
       },
     },
   },
@@ -348,6 +358,8 @@
     "@lando/sdk": ["@lando/sdk@workspace:sdk"],
 
     "@lando/service-lando": ["@lando/service-lando@workspace:plugins/service-lando"],
+
+    "@lando/state-store": ["@lando/state-store@workspace:state-store"],
 
     "@lando/template-handlebars": ["@lando/template-handlebars@workspace:plugins/template-handlebars"],
 

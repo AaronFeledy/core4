@@ -17,6 +17,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - When a generated tree becomes derived-only, pair its ignore rule and `git rm --cached` with tests that prove regeneration still works and neighboring hand-authored artifacts remain tracked.
 - For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
 - Explicit generated paths must override Biome's VCS-ignore handling so gitignored derived outputs are still formatted during regeneration.
+- Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
 
 ## Log
 
@@ -280,4 +281,23 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, and 51 focused schema snapshot, catalog, tracking-policy, and drift tests passed.
 - **Learnings for future iterations:**
   - Contributor guidance should name the separate validation mechanisms for ignored derived outputs and committed generated outputs rather than calling both drift checks.
+---
+
+## [2026-08-03 20:03 CDT] - US-516
+- Moved the durable StateStore implementation into a private `@lando/state-store` workspace package while preserving existing core consumers through identity-equivalent re-export shims; public contracts remain SDK-owned.
+- Extended first-party boundary and import-cycle coverage to the new package without absorbing the later package-DAG allowlist, consumer migration, or boundary-thinning stories.
+- Verification: typecheck and lint/deprecations passed; 40 focused StateStore tests and 79 adjacent boundary/import tests passed; package build, package-DAG, import-cycle, StateStore/probe boundaries, and a real package-import round-trip/path-rejection probe passed. The aggregate boundary runner retains only the previously recorded unrelated `.omo/**` spec-reference failures.
+- **Learnings for future iterations:**
+  - Mirror core's SDK/path source aliases in Effect-bearing seam packages so Bun loads shared service tags and tagged errors through one physical module identity.
+  - When a workspace takes ownership before consumer migration, thin re-export shims keep generated layers and existing imports stable while package-level tests prove the implementation was moved rather than copied.
+---
+
+## [2026-08-03 20:37 CDT] - US-516 Review
+- Fixed the npm release inventory so `@lando/state-store` is prepared, built, dry-run published, and published before its dependent `@lando/core`; added a generic regression invariant for runtime workspace dependencies and aligned the CI runbook.
+- Review notes (deferred/rejected): package-DAG seam allowlisting, direct consumer import migration, and StateStore boundary thinning remain explicitly owned by US-517, US-518, and US-519 rather than this scaffold repair.
+- Review notes (deferred/rejected): Bugbot, goal verification, hands-on QA, security, and context mining found no additional in-scope blockers; the release omission was the sole confirmed defect.
+- Guide-Coverage-Skip: Internal package publication wiring has no end-user executable-guide behavior.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, 8 npm-preparation tests, 59 release tests, and 6 CI-runbook tests passed; a direct inventory/workflow probe passed.
+- **Learnings for future iterations:**
+  - Adding a private runtime workspace dependency requires adding it to prerelease preparation and publish inventories before every dependent package.
 ---

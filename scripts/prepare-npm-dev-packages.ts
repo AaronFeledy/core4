@@ -14,6 +14,7 @@ export const releasePackageWorkspaces: ReadonlyArray<string> = [
   "sdk",
   "paths",
   "container-runtime",
+  "state-store",
   "core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.path),
 ];
@@ -22,6 +23,7 @@ export const releasePackageNames: ReadonlyArray<string> = [
   "@lando/sdk",
   "@lando/paths",
   "@lando/container-runtime",
+  "@lando/state-store",
   "@lando/core",
   ...buildConfig.bundledPlugins.map((plugin) => plugin.name),
 ];
@@ -101,16 +103,14 @@ const writePreparedPackage = async (
   console.log(`[prepare-npm-dev-packages] ${relativePath} -> ${version} (${tag})`);
 };
 
-// Active prerelease line: the full workspace surface publishes as `4.0.0-alpha.N`
-// on the `dev` dist-tag.
+// The full workspace surface publishes as `4.0.0-alpha.N` on the `dev` dist-tag.
 export const prepareNpmAlphaPackages = async (version = deriveNpmAlphaVersion()): Promise<void> => {
   for (const workspace of releasePackageWorkspaces) {
     await writePreparedPackage(workspace, version, "dev");
   }
 };
 
-// Held for the upcoming Beta 1 line: the full workspace surface publishes as
-// `4.0.0-beta.N` on the `next` dist-tag.
+// The full workspace surface publishes as `4.0.0-beta.N` on the `next` dist-tag.
 export const prepareNpmBetaPackages = async (version = deriveNpmBetaVersion()): Promise<void> => {
   for (const workspace of releasePackageWorkspaces) {
     await writePreparedPackage(workspace, version, "next");

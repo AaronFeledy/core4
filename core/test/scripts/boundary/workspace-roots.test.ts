@@ -34,7 +34,6 @@ const CORE_AND_PLUGIN_RULE_IDS = [
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 
-/** True when `path`'s segments match `root`'s segments, treating a `*` root segment as a wildcard. */
 const rootCoversPath = (root: string, path: string): boolean => {
   const rootSegments = root.split("/");
   const pathSegments = path.split("/");
@@ -75,7 +74,9 @@ describe("workspace source-root drift gate", () => {
     // matched by some root in ALL_PACKAGE_SOURCE_ROOTS — this is the assertion
     // that goes red the moment a new top-level package (e.g. `paths/`) gains a
     // src/ tree without extending the shared constants.
-    expect(packagesWithSource).toEqual(expect.arrayContaining(["core", "sdk", "container-runtime", "paths"]));
+    expect(packagesWithSource).toEqual(
+      expect.arrayContaining(["core", "sdk", "container-runtime", "paths", "state-store"]),
+    );
     expect(packagesWithSource.some((dir) => dir.startsWith("plugins/"))).toBe(true);
     for (const dir of packagesWithSource) {
       const sourcePath = `${dir}/src`;

@@ -36,45 +36,31 @@ const objectKeys = (object: ts.ObjectLiteralExpression): ReadonlySet<string> => 
   return keys;
 };
 
-const fsBindings = (
-  source: ts.SourceFile,
-): { readonly aliases: ReadonlyMap<string, string>; readonly namespaces: ReadonlySet<string> } => {
+const fsBindings = (source: ts.SourceFile): ReadonlyMap<string, string> => {
   const aliases = new Map<string, string>();
-  const namespaces = new Set<string>();
   for (const statement of source.statements) {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
     if (!FS_MODULES.has(statement.moduleSpecifier.text)) continue;
     const bindings = statement.importClause?.namedBindings;
-    if (bindings === undefined) continue;
-    if (ts.isNamespaceImport(bindings)) {
-      namespaces.add(bindings.name.text);
-      continue;
-    }
+    if (bindings === undefined || ts.isNamespaceImport(bindings)) continue;
     for (const element of bindings.elements) {
       aliases.set(element.name.text, element.propertyName?.text ?? element.name.text);
     }
   }
-  return { aliases, namespaces };
+  return aliases;
 };
 
 const calledName = (
   expression: ts.LeftHandSideExpression,
   aliases: ReadonlyMap<string, string>,
-  namespaces: ReadonlySet<string>,
 ): string | undefined => {
   if (ts.isIdentifier(expression)) return aliases.get(expression.text) ?? expression.text;
-  if (
-    ts.isPropertyAccessExpression(expression) &&
-    (!ts.isIdentifier(expression.expression) || namespaces.has(expression.expression.text))
-  ) {
-    return expression.name.text;
-  }
   if (ts.isPropertyAccessExpression(expression)) return expression.name.text;
   return undefined;
 };
 
 const scan = (source: ts.SourceFile): ScanState => {
-  const { aliases, namespaces } = fsBindings(source);
+  const aliases = fsBindings(source);
   const calls = new Map<string, ts.CallExpression[]>();
   const identifiers = new Set<string>();
   const objects: ts.ObjectLiteralExpression[] = [];
@@ -82,7 +68,7 @@ const scan = (source: ts.SourceFile): ScanState => {
     if (ts.isIdentifier(node)) identifiers.add(node.text);
     if (ts.isObjectLiteralExpression(node)) objects.push(node);
     if (ts.isCallExpression(node)) {
-      const name = calledName(node.expression, aliases, namespaces);
+      const name = calledName(node.expression, aliases);
       if (name !== undefined) calls.set(name, [...(calls.get(name) ?? []), node]);
     }
     ts.forEachChild(node, visit);
@@ -221,11 +207,11 @@ export const stateStoreRule = {
       "core/src/scratch-app/registry.ts",
       "core/src/state-store/atomic.ts",
     ],
-    prefixes: ["core/src/state/"],
+    prefixes: ["core/src/state/", "state-store/src/"],
   },
   passMessage: "State-store boundary check passed.",
   failureHeadline:
-    "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through core/src/state/.",
+    "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through @lando/state-store.",
   onProgram: async (context) => {
     for (const file of context.files) {
       const state = scan(await context.sourceFile(file));

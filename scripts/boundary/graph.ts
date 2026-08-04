@@ -66,6 +66,7 @@ export const collectManifests = async (root: string): Promise<readonly string[]>
     "sdk/package.json",
     "container-runtime/package.json",
     "paths/package.json",
+    "state-store/package.json",
   ];
   const manifests: string[] = [];
   for (const path of fixed) {
