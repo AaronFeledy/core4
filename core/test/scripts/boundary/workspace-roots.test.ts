@@ -20,8 +20,6 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
-  ["paths", ["core/src", "plugins"]],
-  ["probe", ["core/src", "plugins"]],
   ["state-store", ["core/src", "plugins"]],
 ]);
 
@@ -29,6 +27,7 @@ const CORE_AND_PLUGIN_RULE_IDS = [
   "machine-output",
   "managed-file",
   "network",
+  "probe",
   "redaction",
   "renderer",
 ] as const;
@@ -108,6 +107,18 @@ describe("workspace source-root drift gate", () => {
       expect(rule).toBeDefined();
       expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS);
     }
+  });
+
+  test("routes the paths rule through the shared runtime tier minus its owner", () => {
+    // Given: the shared shipped-runtime tier and the package that owns path construction
+    const expectedRoots = CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "paths/src");
+
+    // When: reading the paths rule's declared scope from the live registry
+    const rule = BOUNDARY_RULES.get("paths");
+
+    // Then: every shared runtime consumer remains covered except the owning implementation
+    expect(rule).toBeDefined();
+    expect(rule?.scope.roots).toEqual(expectedRoots);
   });
 
   test("routes package-wide boundary rules through the all-package source tier", () => {

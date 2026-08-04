@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import type ts from "typescript";
 
 import type { BoundaryRule, FileRecord, ProgramContext } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 import {
   type ModuleProbeBindings,
   analyzeModuleBindings,
@@ -67,7 +68,7 @@ const onProgram = async (context: ProgramContext): Promise<void> => {
 export const probeRule = {
   id: "probe",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
     extensions: [".ts"],
     excludeTestFiles: true,
   },

@@ -338,16 +338,29 @@ describe("probe boundary lint gate", () => {
     }
   });
 
-  test("ignores the state-store package implementation outside the core and plugin scope", async () => {
+  test("reports hand-rolled probe primitives across the full shared runtime tier", async () => {
     const root = await makeFixtureRoot();
     try {
       await write(
         root,
         "state-store/src/service.ts",
-        'import { Effect, Schedule } from "effect"; export const s = Effect.retry(eff, Schedule.spaced("10 millis"));\n',
+        'import { Schedule } from "effect"; export const s = Schedule.recurs(3);\n',
+      );
+      await write(
+        root,
+        "paths/src/paths.ts",
+        'import { Effect } from "effect"; export const s = Effect.retry(eff, policy);\n',
       );
 
-      expect(await checkProbeBoundary({ root })).toEqual({ ok: true, offenders: [] });
+      const result = await checkProbeBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) =>
+            `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.line}:${offender.match}`,
+        ),
+      ).toEqual(["paths/src/paths.ts:1:Effect.retry", "state-store/src/service.ts:1:Schedule.recurs"]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

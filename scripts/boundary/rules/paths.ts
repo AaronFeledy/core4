@@ -1,6 +1,7 @@
 import ts from "typescript";
 
 import type { BoundaryRule, FileContext } from "../types.ts";
+import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 // Each forbidden join pairs a root-identifier suffix with a literal segment.
 const FORBIDDEN_JOINS: ReadonlyArray<{ readonly rootSuffix: string; readonly segment: string }> = [
@@ -50,7 +51,7 @@ const onNode = (node: ts.Node, context: FileContext): void => {
 export const pathsRule = {
   id: "paths",
   scope: {
-    roots: ["core/src", "plugins"],
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "paths/src"),
     extensions: [".ts"],
     excludeTestFiles: true,
   },

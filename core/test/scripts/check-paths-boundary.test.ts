@@ -99,7 +99,7 @@ describe("paths boundary lint gate", () => {
     }
   });
 
-  test("ignores private seam package sources outside the core and plugin scope", async () => {
+  test("ignores only the paths owner while reporting shared-tier consumers", async () => {
     const root = await makeFixtureRoot();
     try {
       await write(
@@ -118,7 +118,14 @@ describe("paths boundary lint gate", () => {
         'import { join } from "node:path";\nexport const scratch = (userCacheRoot: string) => join(userCacheRoot, "scratch");\n',
       );
 
-      expect(await checkPathsBoundary({ root })).toEqual({ ok: true, offenders: [] });
+      const result = await checkPathsBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.snippet}`,
+        ),
+      ).toEqual(['state-store/src/paths.ts:join(userCacheRoot, "scratch")']);
     } finally {
       await fs.rm(root, { recursive: true, force: true });
     }
