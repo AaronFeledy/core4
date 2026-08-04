@@ -382,8 +382,8 @@ The §13.4 architecture boundary gates — `check:renderer-boundary`, `check:man
 
 | Boundary concern | Owner | Disposition |
 | --- | --- | --- |
-| Hand-rolled Lando root joins in core and plugin consumers | `paths` residual rule | **Thin** — keep the behavioral ban, narrow the scan scope to `core/src` and `plugins`, and remove the package implementation and legacy shim carve-outs. |
-| Hand-rolled `Effect.retry`/`repeat`/`schedule` and `Schedule.*` loops in core and plugin consumers | `probe` residual rule | **Thin** — keep the behavioral ban, narrow the scan scope to `core/src` and `plugins`, and remove the advisory-lock allowlist and `reportOnly`. |
+| Hand-rolled Lando root joins in shipped-runtime consumers outside the owning paths package | `paths` residual rule | **Thin** — keep the behavioral ban across the shared shipped-runtime tier except `paths/src`, and remove the package implementation and legacy shim carve-outs. |
+| Hand-rolled `Effect.retry`/`repeat`/`schedule` and `Schedule.*` loops across the shared shipped-runtime tier | `probe` residual rule | **Thin** — keep the behavioral ban across `core/src`, `paths/src`, `state-store/src`, and plugins, and remove the advisory-lock allowlist and `reportOnly`. |
 | Ad-hoc redaction sentinels and secret-matching regexes | `redaction` residual rule | **Thin, already complete** — keep its zero-carve-out behavioral rule and shipped-runtime source scope because `@lando/sdk/secrets` was never inside that tier. |
 | Direct `console.*` / `process.std*.write` outside the Renderer seam | `renderer` residual rule | **Keep** — retain the shipped-runtime source scope and documented cold-start and prompt-IO carve-outs. |
 | Package direction for `@lando/paths`, `@lando/state-store`, and `@lando/sdk` | `check:package-dag` | **Keep** as the primary seam boundary. |
