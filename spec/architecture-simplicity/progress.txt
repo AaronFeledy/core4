@@ -264,3 +264,20 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - When a later platform-support decision changes a pin manifest's required key set, update the normative codegen catalog description alongside validators, workflows, and tests.
 ---
+
+## [2026-08-03 18:25 CDT] - US-515
+- Verified the SDK author guidance already directs schema changes through codegen, identifies schema trees as untracked derived outputs, and names the CI drift gate; no new implementation was needed.
+- Guide-Coverage-Skip: Internal SDK contributor workflow guidance has no end-user guide surface.
+- Verification: typecheck and lint/deprecations passed; 53 focused schema snapshot, tracking-policy, and drift-classification tests passed.
+- **Learnings for future iterations:**
+  - Keep contributor guidance aligned with generated-artifact ownership, but verify the underlying ignore, tracking, and regeneration behavior instead of pinning maintainers' prose in tests.
+---
+
+## [2026-08-03 18:39 CDT] - US-515 Review
+- Clarified the SDK schema-snapshot guidance so ignored schema/reference trees are tied to generator and consumer validation, while `codegen:check` is explicitly limited to pure drift for committed catalog outputs.
+- Review notes (deferred/rejected): rejected the implication that `codegen:check` should Git-diff ignored derived trees; that would conflict with the US-510 tracking policy, and only the ambiguous wording required correction.
+- Guide-Coverage-Skip: Internal SDK contributor workflow guidance has no end-user guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and 51 focused schema snapshot, catalog, tracking-policy, and drift tests passed.
+- **Learnings for future iterations:**
+  - Contributor guidance should name the separate validation mechanisms for ignored derived outputs and committed generated outputs rather than calling both drift checks.
+---
