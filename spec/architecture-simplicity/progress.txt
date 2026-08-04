@@ -354,3 +354,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - When narrowing a rule off a shared root tier, update the exact-root classification test in the same commit.
   - Stable boundary-gate output strings need direct regression assertions when the gate shim remains public.
 ---
+
+## [2026-08-04 04:09 CDT] - US-520
+- Narrowed the paths and probe residual gates to core and plugin consumers, replacing obsolete package-location and legacy-shim carve-outs while retaining their hand-rolled join and retry/schedule bans. Confirmed redaction already has residual-only enforcement and kept the renderer's broader shipped-source coverage and documented fast-path exceptions.
+- Published the keep/thin inventory so package-DAG remains the primary seam-direction gate while stable boundary shims continue enforcing behavior package edges cannot express.
+- Guide-Coverage-Skip: Internal boundary-gate ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 87 focused and adjacent boundary tests passed; paths, probe, redaction, renderer, StateStore, and package-DAG gates passed. Live root-join, retry/schedule, and private-package renderer mutations failed with the expected diagnostics, then all probes were removed and the gates repassed; high-rigor review approved with no blockers. The aggregate boundary runner retains only the previously recorded unrelated `.omo/**` spec-reference failures.
+- **Learnings for future iterations:**
+  - Narrow a residual rule only when the consumer scope replaces a real in-tier seam implementation carve-out; narrowing a rule with no such implementation silently deletes coverage.
+  - Lock both sides of a mixed decision: tests should prove narrowed consumer rules reject former shim escapes and retained broad rules still inspect private runtime packages.
+---
