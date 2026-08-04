@@ -125,6 +125,32 @@ const lastEnvelope = (output: string): Record<string, unknown> => {
   return Object.fromEntries(Object.entries(parsed));
 };
 
+test("Given fresh app caches, when global help heads are dispatched, then both paths render root help", async () => {
+  const source = await makeFixture("source-root-help");
+  const compiled = await makeFixture("compiled-root-help");
+  try {
+    // Given
+    await writeFreshCache(source, "known");
+    await writeFreshCache(compiled, "known");
+
+    // When
+    const [sourceResult, compiledResult] = await Promise.all([
+      runSource(source, ["--help"]),
+      runCompiledDispatcher(compiled, ["-h"]),
+    ]);
+
+    // Then
+    expect(sourceResult.exitCode, `${sourceResult.stderr}\n${sourceResult.stdout}`).toBe(0);
+    expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
+    expect(sourceResult.stdout).toContain("$ lando [COMMAND]");
+    expect(compiledResult.stdout).toContain("$ lando [COMMAND]");
+    expect(`${sourceResult.stdout}\n${sourceResult.stderr}`).not.toContain("ToolingCompileError");
+    expect(`${compiledResult.stdout}\n${compiledResult.stderr}`).not.toContain("ToolingCompileError");
+  } finally {
+    await Promise.all([source.cleanup(), compiled.cleanup()]);
+  }
+}, 30_000);
+
 test("Given cached scripts and unparseable Landofiles, when tasks run, then both dispatchers use the script hot path", async () => {
   const source = await makeFixture("source-success");
   const compiled = await makeFixture("compiled-success");
@@ -184,6 +210,28 @@ test("Given a cached custom task, when compiled dispatch receives version, then 
       command: "app:inspect-argv",
       ok: true,
       result: { stdout: "dynamic-version-ok" },
+    });
+  } finally {
+    await compiled.cleanup();
+  }
+}, 30_000);
+
+test("Given a cached custom task, when help is in its tail, then native dispatch runs the task", async () => {
+  const compiled = await makeFixture("compiled-help-argv");
+  try {
+    // Given
+    await writeTask(compiled, "inspect-argv", ["echo -n dynamic-help-ok"]);
+    await writeFreshCache(compiled, "inspect-argv");
+
+    // When
+    const compiledResult = await runCompiledDispatcher(compiled, ["inspect-argv", "--help", "--format=json"]);
+
+    // Then
+    expect(compiledResult.exitCode, `${compiledResult.stderr}\n${compiledResult.stdout}`).toBe(0);
+    expect(lastEnvelope(compiledResult.stdout)).toMatchObject({
+      command: "app:inspect-argv",
+      ok: true,
+      result: { stdout: "dynamic-help-ok" },
     });
   } finally {
     await compiled.cleanup();
@@ -318,7 +366,7 @@ test("Given fresh caches without a match, when an unknown task is invoked, then 
   }
 }, 30_000);
 
-test("Given a directory outside an app, when a source command is unknown, then OCLIF retains exit 127", async () => {
+test("Given a directory outside an app, when a source command is unknown, then native dispatch exits 1", async () => {
   const source = await makeFixture("source-outside-app");
   try {
     // Given
@@ -328,8 +376,8 @@ test("Given a directory outside an app, when a source command is unknown, then O
     const result = await runSource(source, ["unknown-outside-app"]);
 
     // Then
-    expect(result.exitCode).toBe(127);
-    expect(result.stderr).toContain("command unknown-outside-app not found");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Command unknown-outside-app not found");
   } finally {
     await source.cleanup();
   }

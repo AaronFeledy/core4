@@ -1,7 +1,3 @@
-import { extname, normalize } from "node:path";
-import { fileURLToPath } from "node:url";
-
-import { execute } from "@oclif/core";
 import { Effect, Layer } from "effect";
 
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
@@ -194,63 +190,6 @@ export interface RunCliOptions {
   readonly rootUrl: string;
 }
 
-export const isCompiledCliEntryPath = (entryPath: string, execPath: string = process.execPath): boolean =>
-  entryPath.includes("$bunfs") ||
-  normalize(entryPath) === normalize(execPath) ||
-  extname(entryPath) !== ".ts";
-
 export const runCli = async (options: RunCliOptions): Promise<void> => {
-  const entryPath = fileURLToPath(options.rootUrl);
-  const args = options.argv as Array<string>;
-
-  if (args[0] === HOST_PROXY_WORKER_COMMAND) {
-    await runHostProxyWorkerProcess();
-    return;
-  }
-
-  if (isCompiledCliEntryPath(entryPath)) {
-    await runCompiledCli(options.argv);
-    return;
-  }
-
-  const normalizedSourceArgv = normalizeCompiledCommandArgv(args);
-  if (
-    normalizedSourceArgv[0] === "run" ||
-    normalizedSourceArgv[0] === "scratch:run" ||
-    normalizedSourceArgv[0] === "apps:scratch:run"
-  ) {
-    await runCompiledCli(options.argv);
-    return;
-  }
-
-  const rawHead = args[0];
-  const isBunOrXPassthrough =
-    rawHead === "bun" || rawHead === "meta:bun" || rawHead === "x" || rawHead === "meta:x";
-  if (!isBunOrXPassthrough) {
-    try {
-      const resolution = await resolveCliRendererMode({ argv: args, env: process.env });
-      setActiveRendererMode(resolution.mode);
-    } catch (error) {
-      if (error instanceof RendererSelectionError || error instanceof NotImplementedError) {
-        setActiveCommandId("cli:renderer-selection");
-        const output = preCommandOutputMode({ argv: args, env: process.env });
-        await renderPreCommandFailure({
-          commandId: "cli:renderer-selection",
-          error,
-          ...output,
-        });
-        return;
-      }
-      throw error;
-    }
-  }
-
-  await execute({
-    args,
-    loadOptions: {
-      root: entryPath,
-      // Lando owns external plugin discovery; OCLIF's user-plugin store is not used.
-      userPlugins: false,
-    },
-  });
+  await runCompiledCli(options.argv);
 };

@@ -399,3 +399,22 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Derive registry projections from validated entries rather than independently enumerating class maps or status sets.
   - Structural ordering tests must isolate executable function bodies and compare actual call sites, not import occurrences.
 ---
+
+## [2026-08-04 15:37 CDT] - US-523
+- Unified source and compiled CLI entries on the native dispatcher, removing entry-path routing through OCLIF while preserving the level-none version and shellenv fast paths.
+- Replaced obsolete compiled-entry detection coverage with a one-engine contract and aligned the remaining source-path assertions with native argument and unknown-command behavior.
+- Verification: typecheck and lint/deprecations passed; 168 focused native-dispatch, compiled-parity, lifecycle, deferred-command, scenario-context, and tooling-router tests passed; import-cycle, package-DAG, renderer-boundary, LSP diagnostics, real source CLI, and relocated compiled-binary checks passed. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep `RunCliOptions.rootUrl` stable for callers while treating it as host metadata, never as a dispatch-engine selector.
+  - A dispatcher unification can intentionally change framework-specific unknown-command wording and exit codes; pin the native contract at the real source and relocated-binary surfaces.
+---
+
+## [2026-08-04 16:08 CDT] - US-523 Review
+- Review fixed a source-path regression where bare global option heads such as `--help` and `-h` could be resolved as app tooling before native help handling; leading-hyphen heads now bypass tooling lookup while named tasks still receive option-like tail arguments.
+- Review notes (deferred/rejected): repeated in-process `runCli` state isolation is non-blocking for the one-command shipping entries and was not introduced by this dispatch-selection removal.
+- Review notes (deferred/rejected): rejected Bugbot's demand to restore space-separated `apps ...` phrases because the source PRD requires colon-form canonical ids and explicitly assigns the native parser's optional space-form product policy to US-525.
+- Guide-Coverage-Skip: Internal dispatcher routing safety changes no documented command capability or executable guide workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and LSP diagnostics passed; 25 focused tooling-policy and native-dispatch tests passed; real source `--help` inside an app returned root help with exit 0. Initial Bugbot found no bugs; post-fix Bugbot's sole finding was rejected as US-525 scope.
+- **Learnings for future iterations:**
+  - Dynamic tooling lookup must reject option-like command heads before constructing `app:<name>` cache keys; option-like arguments after a valid tooling name remain task-owned.
+---

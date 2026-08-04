@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
-import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { resolveToolingRoute, toolingName } from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -35,6 +35,36 @@ const writeFreshCache = async (
     writeAppCommandCacheStrict({ landofile, entries, cwd: root, cacheRoot, now: () => 100 }),
   );
 };
+
+test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
+  // Given
+  const tokens = ["--help", "-h"];
+
+  // When
+  const names = tokens.map(toolingName);
+
+  // Then
+  expect(names).toEqual([undefined, undefined]);
+});
+
+test("Given a fresh app cache, when help options are command heads, then they are not tooling", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [
+      { id: "app:quality", summary: "Run quality checks", hidden: false },
+    ]);
+
+    // When
+    const routes = await Promise.all(
+      ["--help", "-h"].map((token) =>
+        Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot })),
+      ),
+    );
+
+    // Then
+    expect(routes).toEqual([{ _tag: "not-tooling" }, { _tag: "not-tooling" }]);
+  });
+});
 
 test("Given a fresh cached Bun script, when resolving it, then it selects the script hot path", async () => {
   await withApp(async (root, cacheRoot) => {

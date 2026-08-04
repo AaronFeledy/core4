@@ -759,11 +759,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
-      // Source-mode OCLIF topic resolution intercepts `shell web` as the id
-      // `shell:web` before arg validation; compiled dispatch reaches the
-      // command's argv validation. Both reject loudly with exit 2 instead of
-      // silently opening a host shell.
-      expect(source.stderr).toContain("command shell:web not found");
+      expect(source.stderr).toContain("Unexpected argument: web");
       expect(compiled.stderr).toContain("Unexpected argument: web");
     }, 30_000);
 

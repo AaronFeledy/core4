@@ -1,23 +1,12 @@
 #!/usr/bin/env bun
 /**
- * Lando v4 CLI entry point.
+ * Compiled CLI entry point. Keep this shell limited to fast paths and handing
+ * control to `@lando/core/cli`.
  *
- * This is the imperative shell consumed by `bun build --compile` to produce
- * the single-binary release artifact. It MUST stay tiny — the only
- * responsibility here is to hand control to the OCLIF adapter inside
- * `@lando/core/cli`, which then bridges into the Effect runtime.
- *
- * Notes:
- * - Compiled-binary constraints forbid dynamic `import()` of arbitrary paths
- *   at runtime. Bundled plugins are statically imported via the generated
- *   `src/plugins/generated/bundled.ts`. User-installed plugins load from disk outside
- *   the binary using Bun's runtime loader.
- * - SIGINT handling and bridge-to-Effect-interrupt happen inside
- *   `@lando/core/cli`. This file does not install signal handlers directly.
+ * Compiled builds cannot dynamically import arbitrary paths, so bundled
+ * plugins enter through the generated static table while user plugins load
+ * from disk. The dispatcher owns signal handling and Effect interruption.
  */
-
-import { basename } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { ensureHostProxyNoProxy } from "../src/subsystems/host-proxy/proxy-bypass.ts";
 
@@ -40,13 +29,10 @@ const main = async (): Promise<void> => {
   }
 
   const { runCli } = await import("@lando/core/cli");
-  const execName = basename(process.execPath).toLowerCase();
-  const isCompiledExecutable = execName !== "bun" && execName !== "bun.exe";
-  const rootUrl = isCompiledExecutable ? pathToFileURL(process.execPath).href : import.meta.url;
 
   await runCli({
     argv,
-    rootUrl,
+    rootUrl: import.meta.url,
   });
 };
 

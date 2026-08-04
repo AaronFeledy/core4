@@ -63,7 +63,7 @@ const expectShellenvOutput = (stdout: string): void => {
 };
 
 describe("CLI version fast path", () => {
-  test.each(["--version", "-v", "version"])("%s exits before OCLIF runtime bootstrap", async (arg) => {
+  test.each(["--version", "-v", "version"])("%s exits before CLI dispatch bootstrap", async (arg) => {
     const result = await runCli(arg);
 
     expect(result.exitCode).toBe(0);
