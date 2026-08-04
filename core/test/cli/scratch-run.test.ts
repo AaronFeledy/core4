@@ -23,6 +23,7 @@ import {
 import { Effect, Exit, Fiber, Layer, Schema, Stream } from "effect";
 
 import { makeLandoPaths } from "@lando/paths";
+import { StateStoreLive } from "@lando/state-store/service";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import {
   type ScratchRunResult,
@@ -53,7 +54,6 @@ import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 import { SecretStoreLive } from "../../src/services/secret-store.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const providerId = ProviderId.make("lando");

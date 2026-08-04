@@ -38,6 +38,7 @@ import {
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
+import { StateStoreLive } from "@lando/state-store/service";
 import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 import {
   DataMoverLive,
@@ -46,7 +47,6 @@ import {
 } from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 import { makeTestDataMover } from "../../src/testing/data-mover.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 

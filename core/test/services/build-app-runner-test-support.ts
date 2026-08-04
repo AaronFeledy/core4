@@ -16,10 +16,10 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import type { RuntimeProviderShape } from "@lando/sdk/services";
+import { StateStoreLive } from "@lando/state-store/service";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 
 export const providerId = ProviderId.make("test");
 

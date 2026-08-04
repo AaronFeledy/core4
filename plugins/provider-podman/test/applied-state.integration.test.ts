@@ -6,8 +6,8 @@ import { join } from "node:path";
 import { DateTime, Effect } from "effect";
 
 import { AbsolutePath, AppId, type AppPlan, ProviderId, ServiceName } from "@lando/sdk/schema";
+import { makeStateStore } from "@lando/state-store/service";
 import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
-import { makeStateStore } from "../../../core/src/state/service.ts";
 import {
   listAppliedPlans,
   loadAppliedPlan,

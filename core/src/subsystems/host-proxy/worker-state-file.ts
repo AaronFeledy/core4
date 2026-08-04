@@ -7,8 +7,8 @@ import { HostProxyTransportUnavailableError } from "@lando/sdk/errors";
 import type { AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
-import { writeFileAtomicScoped } from "../../state-store/atomic.ts";
-import { withAdvisoryLock } from "../../state/lock.ts";
+import { writeFileAtomicScoped } from "@lando/state-store/atomic";
+import { withAdvisoryLock } from "@lando/state-store/lock";
 import { hostProxyRunLandoStateDir } from "./transport-session.ts";
 import { HostProxyWorkerRecord, LegacyHostProxyWorkerRecord } from "./worker-records.ts";
 

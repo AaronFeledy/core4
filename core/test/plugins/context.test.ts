@@ -5,8 +5,8 @@ import type { Scope } from "effect";
 
 import { AbsolutePath, type PortablePath } from "@lando/sdk/schema";
 
+import { makeStateStore } from "@lando/state-store/service";
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
-import { makeStateStore } from "../../src/state/service.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const run = <A, E>(effect: Effect.Effect<A, E, never>): Promise<A> => Effect.runPromise(effect);

@@ -20,7 +20,7 @@ export const renderMinimal = (): string =>
     'import { PrivilegeServiceLive } from "../../../services/privilege.ts";',
     'import { RedactionServiceLive } from "../../../redaction/service.ts";',
     'import { SecretStoreLive } from "../../../services/secret-store.ts";',
-    'import { StateStoreLive } from "../../../state/service.ts";',
+    'import { StateStoreLive } from "@lando/state-store/service";',
     'import { makeTelemetryLayer } from "../../../telemetry/service.ts";',
     'import { makeLandoPaths } from "@lando/paths";',
     'import { EventService, PathsService, Renderer } from "@lando/sdk/services";',

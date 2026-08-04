@@ -27,12 +27,12 @@ import {
 } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { StateStoreLive } from "@lando/state-store/service";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { buildKeyForService } from "../../src/services/build-key.ts";
 import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts";
 import { openScratchBuildResults, recordBuildResult } from "../../src/services/build-results.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 
 const providerId = ProviderId.make("test");

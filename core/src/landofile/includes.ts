@@ -15,6 +15,7 @@ import {
 import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
 import type { StateBucket, StateRoot } from "@lando/sdk/services";
 
+import { makeStateStore } from "@lando/state-store/service";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
 import {
   type VersionConstraintEntry,
@@ -30,7 +31,6 @@ import {
   defaultTarballRecipeExtractor,
   defaultTarballRecipeFetcher,
 } from "../recipes/tarball-source.ts";
-import { makeStateStore } from "../state/service.ts";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";

@@ -14,6 +14,7 @@ import {
 } from "@lando/core/services";
 
 import { makeLandoPaths } from "@lando/paths";
+import { StateStoreLive } from "@lando/state-store/service";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { scratchStart } from "../../src/cli/commands/scratch.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
@@ -27,7 +28,6 @@ import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
-import { StateStoreLive } from "../../src/state/service.ts";
 
 const providerId = ProviderId.make("lando");
 
