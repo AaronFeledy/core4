@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { pathsRule } from "../../../scripts/boundary/rules/paths.ts";
 import { checkPathsBoundary } from "../../../scripts/check-paths-boundary.ts";
 
 const makeFixtureRoot = async (): Promise<string> => fs.mkdtemp(join(tmpdir(), "lando-paths-boundary-"));
@@ -14,6 +15,13 @@ const write = async (root: string, path: string, content: string): Promise<void>
 };
 
 describe("paths boundary lint gate", () => {
+  test("keeps the public gate messages stable", () => {
+    expect(pathsRule.passMessage).toBe("Paths boundary check passed.");
+    expect(pathsRule.failureHeadline).toBe(
+      "Paths boundary check failed. Hand-rolled root joins must use @lando/core/paths (makeLandoPaths) or PathsService.",
+    );
+  });
+
   test("reports hand-rolled root joins for plugins, scratch, and bin", async () => {
     const root = await makeFixtureRoot();
     try {
@@ -49,21 +57,6 @@ describe("paths boundary lint gate", () => {
     try {
       await write(
         root,
-        "core/src/config/paths.ts",
-        'import { join } from "node:path";\nexport const make = (userDataRoot: string) => join(userDataRoot, "plugins");\n',
-      );
-      await write(
-        root,
-        "paths/src/paths.ts",
-        'import { join } from "node:path";\nexport const make = (userDataRoot: string) => join(userDataRoot, "plugins");\n',
-      );
-      await write(
-        root,
-        "paths/src/paths-platform.ts",
-        'import { join } from "node:path";\nexport const bin = (userDataRoot: string) => join(userDataRoot, "bin");\n',
-      );
-      await write(
-        root,
         "core/src/cli/clean.ts",
         'import { makeLandoPaths } from "../config/paths.ts";\nexport const p = (userDataRoot: string) => makeLandoPaths({ userDataRoot }).pluginsDir;\n',
       );
@@ -76,6 +69,53 @@ describe("paths boundary lint gate", () => {
         root,
         "core/src/cli/fixture.test.ts",
         'import { join } from "node:path";\nexport const t = (userDataRoot: string) => join(userDataRoot, "plugins");\n',
+      );
+
+      expect(await checkPathsBoundary({ root })).toEqual({ ok: true, offenders: [] });
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("reports hand-rolled root joins in the former core paths shim carve-out", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "core/src/config/paths.ts",
+        'import { join } from "node:path";\nexport const make = (userDataRoot: string) => join(userDataRoot, "plugins");\n',
+      );
+
+      const result = await checkPathsBoundary({ root });
+
+      expect(result.ok).toBe(false);
+      expect(
+        result.offenders.map(
+          (offender) => `${relative(root, offender.file).replaceAll("\\", "/")}:${offender.snippet}`,
+        ),
+      ).toEqual(['core/src/config/paths.ts:join(userDataRoot, "plugins")']);
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("ignores private seam package sources outside the core and plugin scope", async () => {
+    const root = await makeFixtureRoot();
+    try {
+      await write(
+        root,
+        "paths/src/paths.ts",
+        'import { join } from "node:path";\nexport const make = (userDataRoot: string) => join(userDataRoot, "plugins");\n',
+      );
+      await write(
+        root,
+        "paths/src/paths-platform.ts",
+        'import { join } from "node:path";\nexport const bin = (userDataRoot: string) => join(userDataRoot, "bin");\n',
+      );
+      await write(
+        root,
+        "state-store/src/paths.ts",
+        'import { join } from "node:path";\nexport const scratch = (userCacheRoot: string) => join(userCacheRoot, "scratch");\n',
       );
 
       expect(await checkPathsBoundary({ root })).toEqual({ ok: true, offenders: [] });
