@@ -291,3 +291,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Mirror core's SDK/path source aliases in Effect-bearing seam packages so Bun loads shared service tags and tagged errors through one physical module identity.
   - When a workspace takes ownership before consumer migration, thin re-export shims keep generated layers and existing imports stable while package-level tests prove the implementation was moved rather than copied.
 ---
+
+## [2026-08-03 20:37 CDT] - US-516 Review
+- Fixed the npm release inventory so `@lando/state-store` is prepared, built, dry-run published, and published before its dependent `@lando/core`; added a generic regression invariant for runtime workspace dependencies and aligned the CI runbook.
+- Review notes (deferred/rejected): package-DAG seam allowlisting, direct consumer import migration, and StateStore boundary thinning remain explicitly owned by US-517, US-518, and US-519 rather than this scaffold repair.
+- Review notes (deferred/rejected): Bugbot, goal verification, hands-on QA, security, and context mining found no additional in-scope blockers; the release omission was the sole confirmed defect.
+- Guide-Coverage-Skip: Internal package publication wiring has no end-user executable-guide behavior.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, 8 npm-preparation tests, 59 release tests, and 6 CI-runbook tests passed; a direct inventory/workflow probe passed.
+- **Learnings for future iterations:**
+  - Adding a private runtime workspace dependency requires adding it to prerelease preparation and publish inventories before every dependent package.
+---
