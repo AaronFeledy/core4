@@ -20,6 +20,7 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
+  ["state-store", ["core/src", "plugins"]],
 ]);
 
 const CORE_AND_PLUGIN_RULE_IDS = [
@@ -30,7 +31,6 @@ const CORE_AND_PLUGIN_RULE_IDS = [
   "probe",
   "redaction",
   "renderer",
-  "state-store",
 ] as const;
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output", "package-dag"] as const;
@@ -86,8 +86,8 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
-  test("classifies libpod-prefix and env-helper as narrow-by-design with their exact current roots", () => {
-    // Given: the two rules that are deliberately scoped narrower than the shared tiers
+  test("classifies narrow-by-design rules with their exact current roots", () => {
+    // Given: rules that are deliberately scoped narrower than the shared tiers
     for (const [id, expectedRoots] of NARROW_BY_DESIGN) {
       // When: reading the rule's declared scope from the live registry
       const rule = BOUNDARY_RULES.get(id);

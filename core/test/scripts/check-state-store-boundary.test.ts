@@ -4,6 +4,7 @@ import { dirname, join, relative } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { stateStoreRule } from "../../../scripts/boundary/rules/state-store.ts";
 import { checkStateStoreBoundary } from "../../../scripts/check-state-store-boundary.ts";
 
 const ATOMIC_WRITE_RENAME = `
@@ -83,6 +84,12 @@ const checkFixture = async (files: ReadonlyArray<FixtureFile>) => {
 };
 
 describe("state-store boundary lint gate", () => {
+  test("preserves the stable failure headline", () => {
+    expect(stateStoreRule.failureHeadline).toBe(
+      "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through @lando/state-store.",
+    );
+  });
+
   for (const signalCase of SINGLE_SIGNAL_CASES) {
     test(`passes when a core source file has only the ${signalCase.name} signal`, async () => {
       expect(

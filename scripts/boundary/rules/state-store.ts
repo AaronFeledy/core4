@@ -202,7 +202,7 @@ export const stateStoreRule = {
   carveOuts: { files: [], prefixes: [] },
   passMessage: "State-store boundary check passed.",
   failureHeadline:
-    "State-store boundary check failed. Hand-rolled atomic-write + lockfile + version-envelope logic is forbidden outside @lando/state-store.",
+    "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through @lando/state-store.",
   onProgram: async (context) => {
     for (const file of context.files) {
       const state = scan(await context.sourceFile(file));
