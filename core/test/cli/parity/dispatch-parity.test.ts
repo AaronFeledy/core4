@@ -759,8 +759,6 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
-      // Both entries reach the command's native argv validation and reject
-      // loudly with exit 2 instead of silently opening a host shell.
       expect(source.stderr).toContain("Unexpected argument: web");
       expect(compiled.stderr).toContain("Unexpected argument: web");
     }, 30_000);

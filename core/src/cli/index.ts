@@ -1,25 +1,7 @@
 /**
- * `@lando/core/cli` — programmatic CLI runner entry point.
- *
- * This module must not statically import OCLIF or Effect. ESM hoists
- * static imports/re-exports ahead of the module
- * body, so this file:
- *   - Uses a dynamic `await import("./run.ts")` for the native CLI dispatcher.
- *   - Contains NO static `export *` re-exports that would transitively pull
- *     in `effect` (the built-in command operations live in
- *     `@lando/core/cli/operations` instead).
- *
- * The level-none version/shellenv fast path lives only in the binary entry
- * (`bin/lando.ts`), which is the package `bin` and the `bun build --compile`
- * target; it short-circuits before this module is ever loaded.
- *
- * Two consumers:
- *   1. The `lando` binary (`bin/lando.ts`) imports `runCli` here to wire
- *      the native dispatcher + the bootstrap.
- *   2. Embedding hosts that want to invoke built-in command operations
- *      (`startApp`, `stopApp`, `infoApp`, …) without parsing argv or
- *      pulling OCLIF into the host bundle import from
- *      `@lando/core/cli/operations`.
+ * Programmatic CLI runner. Keep runtime imports dynamic so loading this module
+ * does not eagerly pull Effect into embedding hosts. Version and shellenv fast
+ * paths stay in the binary entry and return before this module loads.
  */
 
 import type { RunCliOptions } from "./run.ts";

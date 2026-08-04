@@ -68,12 +68,13 @@ export const resolveToolingRoute = (
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
     const commandId = `app:${name}`;
+    const commandArgv = options.argv.slice(1);
     if (cache === null) {
       return {
         _tag: "cache-miss",
         commandId,
         name,
-        argv: options.argv.slice(1),
+        argv: commandArgv,
         remediation: CACHE_REMEDIATION,
       } as const;
     }
@@ -83,7 +84,7 @@ export const resolveToolingRoute = (
         _tag: "unknown-tooling",
         commandId,
         name,
-        argv: options.argv.slice(1),
+        argv: commandArgv,
         remediation: CACHE_REMEDIATION,
       } as const;
     }
@@ -93,11 +94,11 @@ export const resolveToolingRoute = (
         _tag: "bun-script",
         commandId,
         name,
-        argv: options.argv.slice(1),
+        argv: commandArgv,
         appRoot,
       } as const;
     }
-    return { _tag: "tooling", commandId, name, argv: options.argv.slice(1) } as const;
+    return { _tag: "tooling", commandId, name, argv: commandArgv } as const;
   });
 
 export const toolingRouteError = (
