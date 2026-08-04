@@ -1,12 +1,3 @@
-// Interrupt-safe, `Scope`-bound atomic file write. The existing
-// `cache/atomic.ts` `writeFileAtomicViaRename` is a plain Promise: its temp
-// cleanup runs only on a thrown error, never on `Effect.interrupt`, and the
-// underlying Promise is not cancellable. This helper is the durable-state /
-// managed-file write seam: it runs the `mkdir -> write temp -> rename` mutation
-// inside an uninterruptible critical section and registers a `Scope` finalizer
-// that removes the temp file if the rename never committed, so an interrupt
-// leaves no torn live file and no orphan temp.
-
 import { randomUUID } from "node:crypto";
 import { type FileHandle, chmod, mkdir, open, rename, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
@@ -23,8 +14,7 @@ const removeIfPresent = (path: string): Promise<void> =>
  * is uninterruptible (a started rename always finishes), and a finalizer cleans
  * up the temp file when the rename did not commit (interrupt or failure).
  *
- * The error channel surfaces the raw filesystem cause; callers map it into their
- * own tagged error (`ManagedFileError`, etc.).
+ * The error channel surfaces the raw filesystem cause for callers to map.
  */
 export const writeFileAtomicScoped = (
   path: string,
@@ -54,9 +44,9 @@ export const writeFileAtomicScoped = (
           const handle = await open(tempPath, "w", options.mode);
           try {
             await handle.writeFile(content);
-            // umask masks the create mode; chmod before rename pins exact perms (0600 backups).
+            // The create mode is masked by umask; chmod pins the requested permissions.
             if (options.mode !== undefined) await chmod(tempPath, options.mode);
-            // Flush before rename so power loss can never publish a torn live file.
+            // Flush before rename to avoid publishing a torn live file after power loss.
             await (options.syncFile ?? ((h: FileHandle) => h.sync()))(handle);
           } finally {
             await handle.close();

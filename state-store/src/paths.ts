@@ -1,10 +1,3 @@
-// Resolve a `StateBucketSpec`'s `(root, namespace?, key)` to a concrete,
-// containment-checked absolute file path. Root resolution flows through the
-// single `@lando/paths` primitive (`resolveLandoRoots`) — never a
-// re-derived `$HOME`/XDG/`%APPDATA%` fallback — so the named roots stay in
-// lockstep with every other Lando path. The `{ app }` / `{ path }` roots pin an
-// explicit absolute directory for app-scoping and host/test isolation.
-
 import { realpath } from "node:fs/promises";
 import { basename, isAbsolute, relative, resolve, sep } from "node:path";
 
@@ -15,7 +8,6 @@ import type { StateRoot } from "@lando/sdk/services";
 
 import { resolveLandoRoots } from "@lando/paths";
 
-/** Resolve a {@link StateRoot} to its base directory through the Paths primitive. */
 const baseDirForRoot = (root: StateRoot): string => {
   if (typeof root === "object") {
     return "app" in root ? root.app : root.path;
@@ -41,15 +33,9 @@ const pathError = (operation: string, path: string, cause?: unknown): StateStore
   });
 
 /**
- * Resolve `path`'s realpath by walking up to its deepest existing ancestor,
- * realpath-ing that ancestor, then lexically re-appending the not-yet-created
- * tail segments. Plain `realpath(path).catch(() => path)` falls back to the
- * unresolved literal the instant `path` itself doesn't exist yet (e.g. a
- * root directory nobody has created on this machine), which desyncs from
- * {@link realpathDeepestExisting}'s ancestor walk used for containment checks
- * below and produces false-positive "escapes the root" rejections. Walking
- * from the same starting point with the same existing-ancestor semantics
- * keeps both sides consistent regardless of what already exists on disk.
+ * Resolve through the deepest existing ancestor, then append missing segments.
+ * Applying the same rule to the root and target avoids false containment
+ * failures when either path has not been created yet.
  */
 const realpathOrDeepestExisting = async (path: string): Promise<string> => {
   const tailSegments: Array<string> = [];
@@ -64,11 +50,6 @@ const realpathOrDeepestExisting = async (path: string): Promise<string> => {
   }
 };
 
-/**
- * The resolved location of a single durable document: the realpath-checked base
- * root and the final absolute file path. `file` is guaranteed lexically and
- * (for already-existing ancestors) realpath-contained within `rootReal`.
- */
 export interface ResolvedStatePath {
   readonly rootReal: string;
   readonly file: string;
@@ -76,8 +57,7 @@ export interface ResolvedStatePath {
 
 const sanitizeSegment = (segment: string, operation: string, baseDir: string): string => {
   if (segment.includes("/") || segment.includes("\\")) {
-    // Reject embedded separators outright: `namespace`/`key` name one path
-    // segment each, never a sub-path that could climb out of the root.
+    // Namespace and key each name one segment, never a subpath.
     throw pathError(operation, baseDir);
   }
   return segment;
@@ -112,10 +92,7 @@ export const resolveStatePath = (
         throw pathError(operation, target);
       }
 
-      // Reject a symlinked ancestor that resolves outside the root even though
-      // the lexical path looked contained. Reconstructed the same way as
-      // `rootReal` above so an ordinary not-yet-created target still compares
-      // equal, and only a genuine symlinked-ancestor escape is rejected.
+      // Reject symlinked ancestors that escape an otherwise contained lexical path.
       const targetReal = await realpathOrDeepestExisting(target);
       const targetRel = relative(rootReal, targetReal);
       if (targetRel === ".." || targetRel.startsWith(`..${sep}`) || isAbsolute(targetRel)) {

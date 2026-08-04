@@ -73,11 +73,9 @@ describe("npm dev package preparation", () => {
     expect(edges.length).toBeGreaterThan(0);
 
     for (const edge of edges) {
-      // Membership: every workspace runtime edge (deps + peers) must be a release package.
       expect(releasePackageNames).toContain(edge.packageName);
       expect(workspaceByName.has(edge.packageName)).toBe(true);
 
-      // Order: only hard `dependencies` must publish before the dependent.
       if (edge.kind !== "dependency") continue;
 
       expect(releasePackageNames.indexOf(edge.packageName)).toBeLessThan(

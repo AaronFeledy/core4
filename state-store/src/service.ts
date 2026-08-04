@@ -1,12 +1,5 @@
-// `StateStoreLive` — the single concrete implementation of the public
-// `@lando/sdk` `StateStore` contract. It mints `StateBucket` handles, each a
-// closure over one durable file that composes the four sibling primitives:
-// `paths.ts` (containment-checked path resolution), `codec.ts` (framed or custom
-// encode/decode + version header), `lock.ts` (advisory cross-process
-// serialization), and the interrupt-safe atomic write seam. Root resolution
-// flows through `@lando/paths` exactly like other durable path consumers, so the
-// layer takes no `PathsService` Effect dependency (it would be an unseen sibling
-// in the minimal `Layer.mergeAll`) and its `R` stays `never`.
+// Root resolution uses `@lando/paths` directly so `StateStoreLive` requires no
+// `PathsService` dependency that would be unavailable as a sibling layer.
 
 import { rename, stat } from "node:fs/promises";
 

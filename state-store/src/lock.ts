@@ -1,14 +1,3 @@
-// A generic cross-process advisory file lock. Acquisition is an
-// `O_CREAT|O_EXCL` exclusive create of `<file>.lock` carrying the owner's
-// `{ pid, token, createdAt }`. On contention the holder is taken over only when
-// it is demonstrably stale: its record is unreadable, older than the age
-// threshold, or owned by a dead pid (`process.kill(pid, 0)` throws `ESRCH`).
-// Acquisition retries with a bounded backoff. Release is TOKEN-CHECKED — the
-// lockfile is removed only when it still carries our token — and is registered
-// into the ambient `Scope` via `Effect.acquireUseRelease`, so an interrupted or
-// failed critical section always releases the lock and never deletes a lock a
-// different owner has since taken.
-
 import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
 import { dirname } from "node:path";
 
@@ -20,10 +9,8 @@ const LOCK_STALE_MS = 30_000;
 const LOCK_RETRY_MS = 10;
 const LOCK_ATTEMPTS = 200;
 
-// The file lock serializes across PROCESSES; a per-path in-process semaphore is
-// also required because Effect can interleave two fibers in the window between a
-// holder's release-unlink and the next `O_EXCL` create. Both layers are load
-// bearing: remove the semaphore and same-process fibers can lose a write.
+// The file lock serializes processes, while this guard closes the release-unlink
+// race between fibers in the same process.
 const inProcessGuards = new Map<string, Effect.Semaphore>();
 
 const canonicalLockTarget = (file: string): Effect.Effect<string> =>
@@ -79,7 +66,6 @@ const lockError = (operation: string, lockPath: string, cause?: unknown): StateS
     remediation: "Another process holds the advisory state lock; retry once it releases.",
   });
 
-/** Mint a process-unique lock token. */
 export const makeLockToken = (): string =>
   `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
@@ -96,9 +82,8 @@ const acquire = (lockPath: string, token: string, operation: string): Effect.Eff
             return true;
           } catch (cause) {
             if ((cause as { code?: string }).code !== "EEXIST") throw cause;
-            // An unparseable record means the holder just `O_EXCL`-created the
-            // file but has not flushed its JSON body yet; gate that takeover on
-            // the lockfile's own mtime so a live owner mid-flush is never evicted.
+            // A new holder may not have flushed its JSON yet, so use the file's
+            // mtime before treating an unparseable record as stale.
             const current = await readLockRecord(lockPath);
             const takeover =
               current === null
@@ -127,8 +112,7 @@ const release = (lockPath: string, token: string): Effect.Effect<void, never> =>
         await unlink(lockPath).catch(() => undefined);
       }
     } catch {
-      // Unknown owner: leave it for acquire-time stale-record handling instead
-      // of deleting a lock we cannot prove belongs to this holder.
+      // Do not delete a lock that cannot be proven to belong to this holder.
     }
   });
 

@@ -69,7 +69,6 @@ const isRendererTestSource = (absPath: string): boolean => absPath.startsWith(`$
 const isEffectNpmSpecifier = (specifier: string): boolean =>
   specifier === "effect" || specifier.startsWith("effect/");
 
-/** Follow only first-party static edges: relative paths and `@lando/*` packages. */
 const isFollowableSpecifier = (specifier: string): boolean =>
   specifier.startsWith(".") || specifier.startsWith("@lando/");
 
@@ -87,8 +86,6 @@ const classifyOclifImport = (edge: {
   readonly specifier: string;
   readonly resolvedAbs: string | undefined;
 }): string | undefined => {
-  // Signal A: a direct import of the `@oclif/*` npm package, from anywhere in
-  // the followed first-party graph.
   if (isOclifNpmSpecifier(edge.specifier)) {
     return `imports the OCLIF npm package "${edge.specifier}"`;
   }
@@ -124,7 +121,6 @@ const classifyEffectImport = (edge: { readonly specifier: string }): string | un
   isEffectNpmSpecifier(edge.specifier) ? `imports the Effect runtime package "${edge.specifier}"` : undefined;
 
 interface OclifViolation {
-  /** Import chain from the walked entry to the offending module/specifier. */
   readonly chain: ReadonlyArray<string>;
   readonly reason: string;
 }
@@ -937,7 +933,6 @@ describe("@lando/core default-entry symbol resolution", () => {
       expect(mod[key], `@lando/core export "${key}" must be defined`).toBeDefined();
     }
 
-    // Known value exports per core/src/index.ts (factory + re-exported service tags).
     const requiredSymbols = [
       "makeLandoRuntime",
       "resolveApp",

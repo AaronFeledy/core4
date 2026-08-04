@@ -34,7 +34,6 @@ const CORE_AND_PLUGIN_RULE_IDS = [
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 
-/** True when `path`'s segments match `root`'s segments, treating a `*` root segment as a wildcard. */
 const rootCoversPath = (root: string, path: string): boolean => {
   const rootSegments = root.split("/");
   const pathSegments = path.split("/");
