@@ -6,6 +6,7 @@ import type { RedactionService } from "../../redaction/service.ts";
 
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
+import { builtInCommandEntries } from "../built-in-command-registry.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun.ts";
 import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config.ts";
 import { globalDestroy, renderGlobalDestroyResult } from "../commands/meta/global-destroy.ts";
@@ -19,7 +20,7 @@ import { globalStart, renderGlobalStartResult } from "../commands/meta/global-st
 import { globalStatus, renderGlobalStatusResult } from "../commands/meta/global-status.ts";
 import { globalStop, renderGlobalStopResult } from "../commands/meta/global-stop.ts";
 import { globalUninstall, renderGlobalUninstallResult } from "../commands/meta/global-uninstall.ts";
-import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromCompiled } from "../commands/meta/mcp.ts";
+import { dispatchMcpCommand, mcpFlagsFromParsed, mcpRegistryFromBuiltIns } from "../commands/meta/mcp.ts";
 import { pluginAdd, renderPluginAddResult } from "../commands/plugin-add.ts";
 import { pluginBuild, renderPluginBuildResult } from "../commands/plugin-build.ts";
 import { pluginLink, renderPluginLinkResult } from "../commands/plugin-link.ts";
@@ -55,7 +56,6 @@ import {
 import { renderShellenv } from "../commands/shellenv.ts";
 import { renderUninstallResult, uninstall } from "../commands/uninstall.ts";
 import { version as versionOperation } from "../commands/version.ts";
-import { commandEntries, compiledManifest } from "../compiled-argv.ts";
 import { compiledCommandInputFromArgv } from "../compiled-input.ts";
 import {
   activeRendererMode,
@@ -71,7 +71,6 @@ import {
   runWithProcessAbortSignal,
   setActiveCommandId,
 } from "../compiled-runtime.ts";
-import type { LandoCommandSpec } from "../oclif/command-base.ts";
 import {
   globalConfigFormatFromInput,
   globalConfigOptionsFromInput,
@@ -88,7 +87,6 @@ import {
 import { globalUninstallOptionsFromInput } from "../oclif/commands/meta/global/uninstall.ts";
 import { shellenvShellFromInput } from "../oclif/commands/meta/shellenv.ts";
 import { uninstallOptionsFromInput } from "../oclif/commands/meta/uninstall.ts";
-import compiledCommands from "../oclif/compiled-commands.ts";
 import { resolveNonInteractive } from "../prompts/answer-flags.ts";
 
 export const runMetaGlobalStart = (argv: ReadonlyArray<string>): Promise<void> =>
@@ -212,9 +210,7 @@ export const runMetaUninstall = (argv: ReadonlyArray<string>): Promise<void> => 
 export const runMetaMcp = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("meta:mcp", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("meta:mcp", argv);
-  const registry = mcpRegistryFromCompiled(
-    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-  );
+  const registry = mcpRegistryFromBuiltIns(builtInCommandEntries);
   const flags = mcpFlagsFromParsed(input.flags);
   const commandRuntime = resolveCompiledCommandRuntime(
     "meta:mcp",
@@ -497,32 +493,6 @@ export const runMetaPluginTrustAuthoringRoot = async (argv: ReadonlyArray<string
     makeLandoRuntime(cliRuntimeOptions({ bootstrap: "minimal", plugins: { policy: "discovery" } })),
     renderPluginTrustAuthoringRootResult,
   );
-};
-
-export const buildCanonicalCommandIdByToken = (): Readonly<Record<string, string>> => {
-  const entries: Array<[string, string]> = [];
-  for (const [id, command] of commandEntries) {
-    const spec = (command as { readonly landoSpec?: { readonly id?: string } }).landoSpec;
-    const canonicalId = spec?.id ?? id;
-    entries.push([id, canonicalId]);
-    for (const alias of command.aliases ?? []) entries.push([alias, canonicalId]);
-  }
-  for (const [id, command] of Object.entries(compiledManifest.commands)) {
-    const spec = (command as { readonly landoSpec?: { readonly id?: string } }).landoSpec;
-    const canonicalId = spec?.id ?? id;
-    entries.push([id, canonicalId]);
-    for (const alias of command.aliases ?? []) entries.push([alias, canonicalId]);
-    for (const alias of command.aliasPermutations ?? []) entries.push([alias, canonicalId]);
-    for (const permutation of command.permutations ?? []) entries.push([permutation, canonicalId]);
-  }
-  return Object.fromEntries(entries);
-};
-
-export const CANONICAL_COMMAND_ID_BY_TOKEN = buildCanonicalCommandIdByToken();
-
-export const resolveCanonicalCommandId = (token: string | undefined): string => {
-  if (token === undefined) return "cli:unknown";
-  return CANONICAL_COMMAND_ID_BY_TOKEN[token] ?? token;
 };
 
 export const runMetaVersion = async (): Promise<void> => {

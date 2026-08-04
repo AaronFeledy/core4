@@ -58,7 +58,7 @@ describe("MCP executable guide", () => {
 
     const conversation = scenarioById(guide, "stdio-conversation");
     const conversationRun = libraryRun(conversation);
-    expect(conversationRun.code).toContain("mcpRegistryFromCompiled");
+    expect(conversationRun.code).toContain("mcpRegistryFromBuiltIns");
     expect(conversationRun.code).toContain("makeStdioMcpTransport");
     expect(conversationRun.code).toContain("McpRuntimeConfig");
     expect(conversationRun.code).toContain("McpServiceLive");
@@ -99,7 +99,7 @@ describe("MCP executable guide", () => {
     expect(refusals.displayCode).toContain("catalog.exited");
 
     const bounded = libraryRun(scenarioById(guide, "bounded-read-only-regressions"));
-    expect(bounded.code).toContain("mcpRegistryFromCompiled");
+    expect(bounded.code).toContain("mcpRegistryFromBuiltIns");
     expect(bounded.code).toContain("MAX_OUTSTANDING_REQUESTS");
     expect(bounded.code).toContain('Effect.timeout("5 seconds")');
     expect(bounded.code).toContain('error: { code: -32000, message: "Server busy" }');

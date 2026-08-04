@@ -10,11 +10,10 @@
  */
 import { type Effect, Schema } from "effect";
 
-import type { NotImplementedError } from "@lando/sdk/errors";
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
-import { notImplementedErrorForCommand as deferredErrorForCommand } from "../deferred-commands.ts";
+import type { DeferredCommandPlan } from "../deferred-commands.ts";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary.ts";
 import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
@@ -66,6 +65,7 @@ export interface LandoCommandSpec<A = unknown, E = unknown, R = unknown> {
   readonly aliases?: ReadonlyArray<LandoAliasSpec>;
   readonly examples?: ReadonlyArray<string>;
   readonly hidden?: boolean;
+  readonly deferred?: DeferredCommandPlan;
   readonly bootstrap:
     | "none"
     | "minimal"
@@ -134,16 +134,11 @@ export const validateCommandSpec = (spec: {
   );
 };
 
-export { isMvpCommandId } from "./mvp-command-ids.ts";
-
 /**
  * True for canonical namespace-prefixed Lando command ids (`app:*`,
  * `apps:*`, `meta:*`).
  */
 export const isCanonicalLandoCommandId = (commandId: string): boolean => /^(app|apps|meta):/.test(commandId);
-
-export const notImplementedErrorForCommand = (commandId: string): NotImplementedError =>
-  deferredErrorForCommand(commandId);
 
 export const formatCommandError = (input: {
   readonly error: unknown;

@@ -16,8 +16,7 @@ import { resolve } from "node:path";
 
 import { JSONSchema, Schema } from "effect";
 
-import type { LandoCommandSpec } from "../core/src/cli/oclif/command-base.ts";
-import compiledCommands from "../core/src/cli/oclif/compiled-commands.ts";
+import { builtInCommandEntries } from "../core/src/cli/built-in-command-registry.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../core/src/plugins/generated/bundled.ts";
 import {
   JSON_SCHEMA_NAMES,
@@ -58,9 +57,6 @@ const generateJsonSchema = (schemaName: (typeof JSON_SCHEMA_NAMES)[number]): unk
   }
 };
 
-const commandSpecFor = (commandClass: unknown): LandoCommandSpec | undefined =>
-  (commandClass as { readonly landoSpec?: LandoCommandSpec }).landoSpec;
-
 const commandSchemaArtifactFilename = (commandId: string): string => {
   const slug = commandId
     .toLowerCase()
@@ -79,25 +75,22 @@ type CommandResultSchemaArtifact = {
 };
 
 const generateCommandResultSchemas = (): ReadonlyArray<CommandResultSchemaArtifact> => {
-  const commands = compiledCommands as Record<string, unknown>;
-  const artifacts = Object.keys(commands)
-    .sort((left, right) => left.localeCompare(right))
-    .map((commandId) => {
-      const spec = commandSpecFor(commands[commandId]);
-      if (spec?.resultSchema === undefined || spec.resultSchema === null) {
-        throw new Error(`Command ${commandId} does not declare a resultSchema.`);
-      }
-      try {
-        const filename = commandSchemaArtifactFilename(commandId);
-        return {
-          commandId,
-          artifactPath: `dist/command-schemas/${filename}`,
-          schema: stable(JSONSchema.make(spec.resultSchema)),
-        };
-      } catch (cause) {
-        throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });
-      }
-    });
+  const artifacts = builtInCommandEntries.map(({ spec }) => {
+    const commandId = spec.id;
+    if (spec.resultSchema === undefined || spec.resultSchema === null) {
+      throw new Error(`Command ${commandId} does not declare a resultSchema.`);
+    }
+    try {
+      const filename = commandSchemaArtifactFilename(commandId);
+      return {
+        commandId,
+        artifactPath: `dist/command-schemas/${filename}`,
+        schema: stable(JSONSchema.make(spec.resultSchema)),
+      };
+    } catch (cause) {
+      throw new Error(`Failed to generate command result JSON Schema for ${commandId}.`, { cause });
+    }
+  });
   const commandIdByPath = new Map<string, string>();
   for (const artifact of artifacts) {
     const existingCommandId = commandIdByPath.get(artifact.artifactPath);

@@ -7,10 +7,11 @@ import { Effect, Layer } from "effect";
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
-import { resolveCanonicalCommandId, runMetaVersion } from "./cli-adapters/meta-plugin.ts";
+import { notImplementedErrorForCommand, resolveBuiltInCommand } from "./built-in-command-registry.ts";
+import { runMetaVersion } from "./cli-adapters/meta-plugin.ts";
 import { scratchRunHasCommandTail } from "./commands/scratch-run.ts";
 import { normalizeScratchStartArgv } from "./commands/scratch.ts";
-import { findCommand, flagDefinitionsForCommand } from "./compiled-argv.ts";
+import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv.ts";
 import { printCommandHelp, printRootHelp } from "./compiled-help.ts";
 import {
   normalizeCompiledCommandArgv,
@@ -34,7 +35,6 @@ import { dispatchMetaCommand } from "./dispatch-meta.ts";
 import { routeDynamicTooling } from "./dynamic-tooling.ts";
 import { validateCommandCliFlags } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
-import { notImplementedErrorForCommand } from "./oclif/command-base.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary.ts";
 
@@ -100,7 +100,9 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
 
   argv = normalizeCompiledCommandArgv(argv);
 
-  const canonicalCommandId = resolveCanonicalCommandId(argv[0]);
+  const builtInCommand = resolveBuiltInCommand(argv[0]);
+  const canonicalCommandId = builtInCommand?.spec.id ?? argv[0] ?? "cli:unknown";
+  if (builtInCommand !== undefined) argv = [canonicalCommandId, ...argv.slice(1)];
   if (canonicalCommandId === "apps:scratch:start" && argv[0] !== undefined) {
     argv = [argv[0], ...normalizeScratchStartArgv(argv.slice(1))];
   }
@@ -113,7 +115,10 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   const scratchRunHasToolCommand = isScratchRun && scratchRunHasCommandTail(argv.slice(1));
   const dashDashIndex = argv.indexOf("--");
   const dispatchArgv = dashDashIndex === -1 ? argv : argv.slice(0, dashDashIndex);
-  const found = findCommand(argv[0] ?? "");
+  const found: [string, CompiledCommand] | undefined =
+    builtInCommand === undefined
+      ? findCommand(argv[0] ?? "")
+      : [builtInCommand.spec.id, builtInCommand.command];
 
   if (found === undefined && (await routeDynamicTooling(argv))) return;
 
@@ -162,6 +167,17 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     }
   }
 
+  if (builtInCommand?.status.kind === "deferred") {
+    const error = notImplementedErrorForCommand(builtInCommand.spec.id);
+    if (activeResultFormat === "json") {
+      await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
+      return;
+    }
+    emitDiagnosticLine(commandErrorMessage(error));
+    process.exitCode = 1;
+    return;
+  }
+
   if (await dispatchAppCommand(argv)) return;
   if (await dispatchAppsCommand(argv)) return;
   if (await dispatchMetaCommand(argv)) return;
@@ -170,14 +186,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     throw new Error(`Command ${argv[0] ?? ""} not found`);
   }
 
-  const error = notImplementedErrorForCommand(found[0]);
-  if (activeResultFormat === "json") {
-    setActiveCommandId(found[0]);
-    await runCompiledCommand(Effect.fail(error), Layer.empty, () => undefined);
-    return;
-  }
-  emitDiagnosticLine(commandErrorMessage(error));
-  process.exitCode = 1;
+  throw new Error(`Implemented command ${found[0]} has no native dispatch adapter.`);
 };
 
 export interface RunCliOptions {

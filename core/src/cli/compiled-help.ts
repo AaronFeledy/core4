@@ -3,11 +3,12 @@
  *
  * The compiled `$bunfs` dispatch path renders help without OCLIF, so these
  * builders format the top-level topic/command listing and a single command's
- * usage/aliases/flags directly from the compiled command table.
+ * usage/aliases/flags directly from the built-in command registry.
  */
 import { CORE_VERSION } from "../version.ts";
+import { builtInCommandEntries } from "./built-in-command-registry.ts";
 import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help.ts";
-import { type CompiledCommand, commandEntries, commandName } from "./compiled-argv.ts";
+import { type CompiledCommand, commandName } from "./compiled-argv.ts";
 import { emitResultLine } from "./compiled-runtime.ts";
 
 const version = `@lando/core/${CORE_VERSION}`;
@@ -29,7 +30,8 @@ TOPICS
 
 COMMANDS`,
   ];
-  for (const [id, command] of commandEntries) {
+  for (const { spec, command } of builtInCommandEntries) {
+    const id = spec.id;
     const name = commandName(id, command);
     if (!name.includes(":")) {
       lines.push(`  ${name.padEnd(22)} ${command.description ?? ""}`);

@@ -3,13 +3,12 @@ import { resolve } from "node:path";
 
 import { beforeAll, describe, expect, test } from "bun:test";
 import {
-  DEFERRED_COMMAND_PLANS,
-  deferredCommandPlan,
+  builtInCommandEntries,
+  builtInCommandRegistry,
+  deferredBuiltInCommandIds,
+  isBuiltInCommandImplemented,
   notImplementedErrorForCommand,
-} from "../../src/cli/deferred-commands.ts";
-import { isMvpCommandId } from "../../src/cli/oclif/command-base.ts";
-
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
+} from "../../src/cli/built-in-command-registry.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 interface FixtureEntry {
@@ -26,6 +25,9 @@ let compiledBinary = "";
 const fixturePath = resolve(import.meta.dirname, "fixtures/deferred-commands.json");
 
 const fixture: FixtureFile = JSON.parse(readFileSync(fixturePath, "utf-8")) as FixtureFile;
+
+const deferredCommandPlan = (commandId: string) =>
+  builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.spec.deferred;
 
 interface RunResult {
   readonly exitCode: number;
@@ -113,10 +115,10 @@ describe("deferred command remediation contract", () => {
 
   test("meta:global:rebuild is implemented, not deferred", () => {
     expect(deferredCommandPlan("meta:global:rebuild")).toBeUndefined();
-    expect(isMvpCommandId("meta:global:rebuild")).toBe(true);
+    expect(isBuiltInCommandImplemented("meta:global:rebuild")).toBe(true);
   });
 
-  test("DEFERRED_COMMAND_PLANS covers every fixture entry", () => {
+  test("registry-owned deferred metadata covers every fixture entry", () => {
     for (const entry of fixture.commands) {
       const plan = deferredCommandPlan(entry.id);
       expect(plan, `${entry.id} must have a registered deferral plan`).toBeDefined();
@@ -136,16 +138,15 @@ describe("deferred command remediation contract", () => {
   });
 
   test("every non-MVP compiled command has a registered deferral plan", () => {
-    const nonMvpIds = Object.keys(compiledCommands).filter((id) => !isMvpCommandId(id));
-    const missing = nonMvpIds.filter((id) => deferredCommandPlan(id) === undefined);
-    expect(missing, "every non-MVP compiled command id must be mapped in DEFERRED_COMMAND_PLANS").toEqual([]);
+    const missing = deferredBuiltInCommandIds.filter((id) => deferredCommandPlan(id) === undefined);
+    expect(missing, "every deferred built-in command id must carry a deferral plan").toEqual([]);
   });
 
   test("fixture only contains canonical command ids that exist in the compiled registry", () => {
     for (const entry of fixture.commands) {
       expect(
-        Object.hasOwn(compiledCommands, entry.id),
-        `${entry.id} must be registered in compiled-commands.ts`,
+        Object.hasOwn(builtInCommandRegistry, entry.id),
+        `${entry.id} must be registered in built-in-command-registry.ts`,
       ).toBe(true);
     }
   });
@@ -191,7 +192,11 @@ describe("deferred command remediation contract", () => {
   });
 
   test("every plan entry surfaces actionable remediation", () => {
-    for (const [commandId, plan] of DEFERRED_COMMAND_PLANS) {
+    for (const entry of builtInCommandEntries.filter((candidate) => candidate.status.kind === "deferred")) {
+      const commandId = entry.spec.id;
+      const plan = entry.status.kind === "deferred" ? entry.status.plan : undefined;
+      expect(plan).toBeDefined();
+      if (plan === undefined) continue;
       expect(plan.remediation, `${commandId}: remediation must explain availability`).toContain(
         "not available yet",
       );
