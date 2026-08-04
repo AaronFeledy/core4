@@ -11,6 +11,7 @@ import {
 } from "../../../scripts/prepare-npm-dev-packages";
 
 const releaseScriptPath = resolve(import.meta.dirname, "../../../scripts/release.ts");
+const repoRoot = resolve(import.meta.dirname, "../../..");
 
 describe("npm dev package preparation", () => {
   test("includes @lando/paths so the published @lando/core/paths shim resolves", () => {
@@ -20,6 +21,78 @@ describe("npm dev package preparation", () => {
     expect(releasePackageNames.indexOf("@lando/paths")).toBeLessThan(
       releasePackageNames.indexOf("@lando/core"),
     );
+  });
+
+  test("includes @lando/state-store so published @lando/core can resolve its workspace dependency", () => {
+    expect(releasePackageWorkspaces).toContain("state-store");
+    expect(releasePackageNames).toContain("@lando/state-store");
+    expect(releasePackageWorkspaces.indexOf("state-store")).toBeLessThan(
+      releasePackageWorkspaces.indexOf("core"),
+    );
+    expect(releasePackageNames.indexOf("@lando/state-store")).toBeLessThan(
+      releasePackageNames.indexOf("@lando/core"),
+    );
+  });
+
+  test("publishes every runtime workspace dependency before its dependent release package", async () => {
+    const workspaceByName = new Map(
+      releasePackageNames.map((name, index) => [name, releasePackageWorkspaces[index] ?? ""]),
+    );
+
+    type WorkspaceEdge = {
+      readonly packageName: string;
+      readonly dependent: string;
+      /** `dependencies` require publish-before-dependent order; peers only need inventory membership. */
+      readonly kind: "dependency" | "peerDependency";
+    };
+    const edges: WorkspaceEdge[] = [];
+
+    const collectWorkspaceEdges = (
+      section: Readonly<Record<string, string>> | undefined,
+      dependent: string,
+      kind: WorkspaceEdge["kind"],
+    ): void => {
+      if (section === undefined) return;
+      for (const [packageName, range] of Object.entries(section)) {
+        if (typeof range !== "string" || !range.startsWith("workspace:")) continue;
+        edges.push({ packageName, dependent, kind });
+      }
+    };
+
+    for (const dependent of releasePackageNames) {
+      const workspace = workspaceByName.get(dependent);
+      if (workspace === undefined || workspace === "") continue;
+      const packageJson = (await Bun.file(resolve(repoRoot, workspace, "package.json")).json()) as {
+        readonly dependencies?: Readonly<Record<string, string>>;
+        readonly peerDependencies?: Readonly<Record<string, string>>;
+      };
+      collectWorkspaceEdges(packageJson.dependencies, dependent, "dependency");
+      collectWorkspaceEdges(packageJson.peerDependencies, dependent, "peerDependency");
+    }
+
+    expect(edges.length).toBeGreaterThan(0);
+
+    for (const edge of edges) {
+      // Membership: every workspace runtime edge (deps + peers) must be a release package.
+      expect(releasePackageNames).toContain(edge.packageName);
+      expect(workspaceByName.has(edge.packageName)).toBe(true);
+
+      // Order: only hard `dependencies` must publish before the dependent.
+      if (edge.kind !== "dependency") continue;
+
+      expect(releasePackageNames.indexOf(edge.packageName)).toBeLessThan(
+        releasePackageNames.indexOf(edge.dependent),
+      );
+
+      const dependencyWorkspace = workspaceByName.get(edge.packageName);
+      const dependentWorkspace = workspaceByName.get(edge.dependent);
+      expect(dependencyWorkspace).toBeDefined();
+      expect(dependentWorkspace).toBeDefined();
+      if (dependencyWorkspace === undefined || dependentWorkspace === undefined) continue;
+      expect(releasePackageWorkspaces.indexOf(dependencyWorkspace)).toBeLessThan(
+        releasePackageWorkspaces.indexOf(dependentWorkspace),
+      );
+    }
   });
 
   test("derives alpha package versions for workflow runs", () => {
