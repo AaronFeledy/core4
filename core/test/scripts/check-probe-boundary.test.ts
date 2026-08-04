@@ -36,7 +36,6 @@ describe("probe boundary lint gate", () => {
         "core/src/x/sleep-loop.ts",
         'import { Effect } from "effect"; export const wait = Effect.sleep("5 millis");\n',
       );
-      // A retry primitive inside a .test.ts file is ignored (tests are not scanned).
       await write(
         root,
         "core/src/x/loop.test.ts",

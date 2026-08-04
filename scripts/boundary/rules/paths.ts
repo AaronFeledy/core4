@@ -3,7 +3,6 @@ import ts from "typescript";
 import type { BoundaryRule, FileContext } from "../types.ts";
 import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
-// Each forbidden join pairs a root-identifier suffix with a literal segment.
 const FORBIDDEN_JOINS: ReadonlyArray<{ readonly rootSuffix: string; readonly segment: string }> = [
   { rootSuffix: "userdataroot", segment: "plugins" },
   { rootSuffix: "usercacheroot", segment: "scratch" },
