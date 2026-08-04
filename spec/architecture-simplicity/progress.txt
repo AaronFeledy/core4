@@ -399,3 +399,12 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Derive registry projections from validated entries rather than independently enumerating class maps or status sets.
   - Structural ordering tests must isolate executable function bodies and compare actual call sites, not import occurrences.
 ---
+
+## [2026-08-04 15:37 CDT] - US-523
+- Unified source and compiled CLI entries on the native dispatcher, removing entry-path routing through OCLIF while preserving the level-none version and shellenv fast paths.
+- Replaced obsolete compiled-entry detection coverage with a one-engine contract and aligned the remaining source-path assertions with native argument and unknown-command behavior.
+- Verification: typecheck and lint/deprecations passed; 168 focused native-dispatch, compiled-parity, lifecycle, deferred-command, scenario-context, and tooling-router tests passed; import-cycle, package-DAG, renderer-boundary, LSP diagnostics, real source CLI, and relocated compiled-binary checks passed. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep `RunCliOptions.rootUrl` stable for callers while treating it as host metadata, never as a dispatch-engine selector.
+  - A dispatcher unification can intentionally change framework-specific unknown-command wording and exit codes; pin the native contract at the real source and relocated-binary surfaces.
+---

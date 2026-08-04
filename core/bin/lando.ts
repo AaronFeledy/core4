@@ -4,7 +4,7 @@
  *
  * This is the imperative shell consumed by `bun build --compile` to produce
  * the single-binary release artifact. It MUST stay tiny — the only
- * responsibility here is to hand control to the OCLIF adapter inside
+ * responsibility here is to hand control to the native dispatcher inside
  * `@lando/core/cli`, which then bridges into the Effect runtime.
  *
  * Notes:
@@ -15,9 +15,6 @@
  * - SIGINT handling and bridge-to-Effect-interrupt happen inside
  *   `@lando/core/cli`. This file does not install signal handlers directly.
  */
-
-import { basename } from "node:path";
-import { pathToFileURL } from "node:url";
 
 import { ensureHostProxyNoProxy } from "../src/subsystems/host-proxy/proxy-bypass.ts";
 
@@ -40,13 +37,10 @@ const main = async (): Promise<void> => {
   }
 
   const { runCli } = await import("@lando/core/cli");
-  const execName = basename(process.execPath).toLowerCase();
-  const isCompiledExecutable = execName !== "bun" && execName !== "bun.exe";
-  const rootUrl = isCompiledExecutable ? pathToFileURL(process.execPath).href : import.meta.url;
 
   await runCli({
     argv,
-    rootUrl,
+    rootUrl: import.meta.url,
   });
 };
 

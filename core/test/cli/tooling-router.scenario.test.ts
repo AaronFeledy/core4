@@ -318,7 +318,7 @@ test("Given fresh caches without a match, when an unknown task is invoked, then 
   }
 }, 30_000);
 
-test("Given a directory outside an app, when a source command is unknown, then OCLIF retains exit 127", async () => {
+test("Given a directory outside an app, when a source command is unknown, then native dispatch exits 1", async () => {
   const source = await makeFixture("source-outside-app");
   try {
     // Given
@@ -328,8 +328,8 @@ test("Given a directory outside an app, when a source command is unknown, then O
     const result = await runSource(source, ["unknown-outside-app"]);
 
     // Then
-    expect(result.exitCode).toBe(127);
-    expect(result.stderr).toContain("command unknown-outside-app not found");
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("Command unknown-outside-app not found");
   } finally {
     await source.cleanup();
   }
