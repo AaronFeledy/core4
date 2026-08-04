@@ -301,3 +301,24 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Adding a private runtime workspace dependency requires adding it to prerelease preparation and publish inventories before every dependent package.
 ---
+
+## [2026-08-03 22:07 CDT] - US-517
+- Routed the package-DAG gate through the shared all-package source tier, explicitly allowlisted `@lando/state-store` alongside the SDK and paths seams, and added state-store to the reverse-direction policy while preserving the plugin-to-core prohibition.
+- Closed a latent coverage gap where SDK and container-runtime roots were named by the reverse-direction policy but never walked by the gate's narrower source scope; consumer migration and boundary thinning remain deferred to their dedicated stories.
+- Guide-Coverage-Skip: Internal CI boundary-gate wiring has no end-user executable-guide surface.
+- Verification: typecheck, scripts typecheck, and lint/deprecations passed; 19 focused package-DAG/source-root tests and 16 adjacent boundary-substrate tests passed; the real gate reported zero violations across 996 files, and the isolated CLI probe reported exactly the forbidden state-store-to-plugin edge and removed its temporary fixture.
+- **Learnings for future iterations:**
+  - Route package-wide boundary rules through the shared source-root tier; a hand-rolled scope can silently make an existing policy list unreachable.
+---
+
+## [2026-08-03 23:41 CDT] - US-517 Review
+- Closed a gate bypass that defeated the story's own plugins-to-core prohibition: a bare specifier that names a seam package but walks out of it (`@lando/state-store\..\core`) resolved into core at runtime while matching no package identity, so it was silently allowed. Package identity is now decided on a separator-normalized specifier, and an escaping bare specifier is reported in both the plugin and reverse directions.
+- Closed the companion blind spot where the gate scanned only `.ts`, leaving `.tsx`/`.mts`/`.cts` plugin sources unscanned for forbidden core edges; the two import-graph rules on the shared root tier now see the same module extensions, locked by a parity assertion.
+- Review notes (deferred/rejected): a manifest dependency alias (`"core-alias": "file:../../core"`) is still unreported, but detecting it requires resolving manifest dependency *values* and a reporting seam for `package.json`, which lives outside the walked source scope; it also demands a committed manifest plus lockfile change, unlike the one-line import bypass fixed here. Recorded as a follow-up manifest-value policy check rather than absorbed into this rule.
+- Review notes (deferred/rejected): a plugin relative-path escape (`../../../core/src/...`) needs the same path-resolution machinery as the alias case and belongs to that same follow-up; consumer migration and state-store boundary thinning remain owned by US-518 and US-519.
+- Guide-Coverage-Skip: Internal CI boundary-gate specifier handling has no end-user executable-guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and LSP diagnostics passed; 17 package-DAG tests and 29 adjacent boundary/import-cycle tests passed; the real gate reported zero violations and import-cycle passed across 1018 production modules; all boundary rules passed except the previously recorded unrelated `.omo/**` spec-reference citations.
+- **Learnings for future iterations:**
+  - A boundary gate that decides package identity from a raw specifier must normalize separators and reject path escapes first; an allowlist checked against un-normalized text can be walked straight through.
+  - Sibling rules sharing a source-root tier must also share their file-extension set, or one rule silently stops seeing whole modules the other scans.
+---

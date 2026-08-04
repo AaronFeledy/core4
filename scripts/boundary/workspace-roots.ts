@@ -42,6 +42,12 @@ export const ALL_PACKAGE_WALK_ROOTS = [
 
 /**
  * First-party, non-plugin packages — the set a plugin package must never be
- * imported back into. Consumed by `package-dag`'s reverse-direction check.
+ * imported back into. This is the all-package tier without its plugin glob.
  */
-export const NON_PLUGIN_SOURCE_ROOTS = ["container-runtime/src", "core/src", "paths/src", "sdk/src"] as const;
+export const NON_PLUGIN_SOURCE_ROOTS = [
+  "container-runtime/src",
+  "core/src",
+  "paths/src",
+  "sdk/src",
+  "state-store/src",
+] as const;
