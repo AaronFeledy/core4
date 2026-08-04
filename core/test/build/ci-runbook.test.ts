@@ -119,7 +119,9 @@ describe("ci runbook", () => {
     expect(runbook).toContain("bun run --filter='@lando/sdk' build");
     expect(runbook).toContain("bun run --filter='@lando/container-runtime' build");
     expect(runbook).toContain("bun run --filter='@lando/core' build:manifest");
-    expect(runbook).toContain("`@lando/sdk`, `@lando/container-runtime`, `@lando/core`");
+    expect(runbook).toContain(
+      "`@lando/sdk`, `@lando/container-runtime`, `@lando/state-store`, `@lando/core`",
+    );
     expect(runbook).toContain("npm install @lando/core@dev");
     expect(runbook).toContain("`latest` dist-tag is unchanged");
     expect(runbook).toContain(
