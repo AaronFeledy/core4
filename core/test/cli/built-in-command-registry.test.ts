@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -8,6 +8,7 @@ import { CommandAliasConflictError } from "@lando/sdk/errors";
 import { CommandRegistrationError } from "../../src/cli/oclif/command-base.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
+const repoRoot = resolve(coreRoot, "..");
 const registryPath = resolve(coreRoot, "src/cli/built-in-command-registry.ts");
 
 type SyntheticRegistration = {
@@ -171,5 +172,26 @@ describe("built-in command registry contract", () => {
       expect(call, `${dispatcher} must occur inside runCompiledCli`).toBeGreaterThanOrEqual(0);
       expect(deferredGate, `deferred status must be checked before ${dispatcher}`).toBeLessThan(call);
     }
+  });
+
+  test("legacy dual-dispatch parity assets are absent", () => {
+    // Given: the source-vs-compiled parity layer retired when the CLI collapsed to one engine.
+    const legacyPaths = [
+      "core/test/cli/parity",
+      "core/test/cli/parity/dispatch-parity.test.ts",
+      "core/test/cli/parity/normalize.test.ts",
+      "core/test/cli/parity/normalize.ts",
+      "core/test/cli/parity/oclif-static-probe.ts",
+      "core/test/cli/dispatch-unification-spike.test.ts",
+      "core/test/cli/bootstrap-lifecycle-parity.test.ts",
+      "core/test/cli/dual-dispatch-parity.test.ts",
+      "core/test/cli/apps-list-path-parity.test.ts",
+    ] as const;
+
+    // When: every legacy path is resolved against the repository root.
+    const surviving = legacyPaths.filter((path) => existsSync(resolve(repoRoot, path)));
+
+    // Then: none survive, so this registry suite is the only dispatch-completeness owner.
+    expect(surviving, "legacy dual-dispatch parity assets must be deleted, not disabled").toEqual([]);
   });
 });
