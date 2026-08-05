@@ -20,7 +20,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
 - Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
 - Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
-- When a generator's source registry imports a consumer of that generator's own output, create an import-safe bootstrap module before dynamically loading the registry so focused first materialization works with no preexisting artifact.
+- When a generator's source registry imports consumers of its generated outputs, bootstrap every owned output reached by that import graph before dynamically loading the registry so focused first materialization works with no preexisting artifacts.
 
 ## Log
 
@@ -523,3 +523,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - US-528 remains `passes: true`. Reviewers/Drift Audit MUST NOT re-attach bundled-plugin composition to US-528.
 - **Learnings for future iterations:**
   - Terse story ACs that only name a § catalog row can inherit conflicting residual "Target (US-N)" clauses elsewhere; split residual product ownership into an explicit follow-up rather than expanding a codegen migration mid-review.
+
+## [2026-08-05 11:16 CDT] - US-528 Review
+- Review fixed focused first materialization so the registry generator bootstraps both generated outputs it owns before loading consumers, and corrected normative text to keep executable built-in dispatch on `builtInCommandEntries` while describing the embedded manifest as its metadata projection.
+- Review notes (deferred/rejected): rejected making package prepack regenerate the full catalog because clean-checkout and release flows already own ordered full codegen; the focused generator should bootstrap its own outputs without absorbing unrelated catalog prerequisites.
+- Review notes (deferred/rejected): rejected deleting the pre-existing unused legacy `Manifest` type as unrelated cleanup; bundled-plugin command composition remains explicitly owned by US-534 under the human adjudication.
+- Guide-Coverage-Skip: Internal first-materialization and registry-ownership repairs add no end-user workflow.
+- Verification: explicit-base guide drift, codegen and codegen drift, typecheck, lint/deprecations, generated-output/import-cycle/package-DAG/managed-file gates, LSP diagnostics, and 17 focused manifest/codegen tests passed; the regression test failed on the missing command-id module before the fix and passed afterward. Initial Cursor Bugbot found no bugs.
+---
