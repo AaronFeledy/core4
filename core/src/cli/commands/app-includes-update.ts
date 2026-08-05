@@ -171,7 +171,7 @@ const textRender = (report: IncludeUpdateReport): string => {
 /**
  * Render an update report. In `--check` mode, sets `process.exitCode = 1` when
  * drift is detected so CI can gate on it (side-effect render pattern, identical
- * across the OCLIF and compiled dispatch paths).
+ * for source and compiled entries of the native dispatcher).
  */
 export const renderIncludesUpdateResult = (
   report: IncludeUpdateReport,

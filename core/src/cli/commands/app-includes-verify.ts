@@ -176,7 +176,7 @@ const textRender = (report: IncludeVerifyReport): string => {
 /**
  * Render a verify report. Sets `process.exitCode = 1` when the lockfile does not
  * match the resolved tree so CI can gate on it (side-effect render pattern,
- * identical across the OCLIF and compiled dispatch paths).
+ * identical for source and compiled entries of the native dispatcher).
  */
 export const renderIncludesVerifyResult = (
   report: IncludeVerifyReport,
