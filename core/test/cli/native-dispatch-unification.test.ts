@@ -7,7 +7,31 @@ const runSourcePath = resolve(repoRoot, "core/src/cli/run.ts");
 const currentGuidancePaths = [
   "AGENTS.md",
   "core/AGENTS.md",
+  "core/src/cli/bug-report.ts",
+  "core/src/cli/cli-adapters/app-lifecycle.ts",
+  "core/src/cli/commands/app-config-lint.ts",
+  "core/src/cli/commands/app-includes-update.ts",
+  "core/src/cli/commands/app-includes-verify.ts",
+  "core/src/cli/compiled-invocation-parity.ts",
+  "core/src/cli/oclif/command-base.ts",
+  "core/src/cli/oclif/command-spec.ts",
+  "core/src/cli/oclif/commands/app/destroy.ts",
+  "core/src/cli/oclif/commands/app/info.ts",
+  "core/src/cli/oclif/commands/app/start.ts",
+  "core/src/cli/oclif/commands/app/stop.ts",
+  "core/src/cli/oclif/commands/apps/init.ts",
+  "core/src/cli/oclif/commands/meta/mcp.ts",
+  "core/src/cli/oclif/commands/meta/version.ts",
+  "core/src/cli/oclif/hooks/init.ts",
+  "core/src/cli/oclif/hooks/postrun.ts",
+  "core/src/cli/oclif/hooks/prerun.ts",
+  "core/src/cli/oclif/index.ts",
+  "core/src/cli/prompts/answer-flags.ts",
+  "core/src/cli/renderer-deferred.ts",
+  "core/src/runtime/bootstrap.ts",
+  "core/src/runtime/interrupt.ts",
   "core/src/testing/scenario-context.ts",
+  "core/src/tooling/compiler.ts",
   "README.md",
   "docs/embedding.md",
   "docs/guides/INDEX.md",
@@ -56,7 +80,7 @@ describe("native CLI dispatch unification", () => {
         .split("\n")
         .map((line, index) => ({ path, line, lineNumber: index + 1 }))
         .filter(({ line }) =>
-          /still dispatches through OCLIF|source-mode OCLIF|not yet unified|Until US-522\.\.US-531|OCLIF removal in flight|mid-migration \(US-522\.\.US-531\)|migration is in flight/i.test(
+          /still dispatches through OCLIF|source-mode OCLIF|both source OCLIF|OCLIF (?:and compiled|entrypoint|command path|parses argv|init hook|would|wrapper|command .*missing|has resolved|is consumed|Command class)|internal OCLIF adapter|Bridges OCLIF|layers the OCLIF|pulling OCLIF|like the OCLIF spec|instead of OCLIF's|not yet unified|Until US-522\.\.US-531|OCLIF removal in flight|mid-migration \(US-522\.\.US-531\)|migration is in flight/i.test(
             line,
           ),
         ),

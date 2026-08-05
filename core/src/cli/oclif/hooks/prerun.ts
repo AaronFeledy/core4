@@ -1,5 +1,5 @@
 /**
- * OCLIF `prerun` hook — publish `cli-<command>-run` lifecycle event.
+ * Legacy-compatible prerun adapter — publish `cli-<command>-run` lifecycle event.
  *
  * Status: stub.
  */
