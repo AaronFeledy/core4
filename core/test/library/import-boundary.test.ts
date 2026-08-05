@@ -359,10 +359,10 @@ const formatEffectViolation = (entrySpecifier: string, violation: EffectViolatio
 const resolveEntrySource = (specifier: string): string => realpathSync(Bun.resolveSync(specifier, repoRoot));
 
 const CRITICAL_ENTRY_POINTS = [
-  ["@lando/core"],
-  ["@lando/core/cli"],
-  ["@lando/core/testing"],
-  ["@lando/core/paths"],
+  "@lando/core",
+  "@lando/core/cli",
+  "@lando/core/testing",
+  "@lando/core/paths",
 ] as const;
 
 describe("import boundaries (basic importability)", () => {
