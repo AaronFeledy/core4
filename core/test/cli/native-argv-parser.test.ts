@@ -37,8 +37,8 @@ const compiledInput = (
     ...(resultFormat === undefined ? {} : { resultFormat }),
   });
 
-describe("dual-dispatch argv parser parity", () => {
-  test("compiled command inputs carry the resolved universal result format", () => {
+describe("native argv parser seam", () => {
+  test("native command inputs carry the resolved universal result format", () => {
     expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", [], "json", "json"))).toBe("json");
     expect(scratchListFormatFromInput(compiledInput("apps:scratch:list", [], "json", "text"))).toBe("table");
     expect(globalConfigFormatFromInput(compiledInput("meta:global:config", [], "lando", "json"))).toBe(
@@ -46,13 +46,13 @@ describe("dual-dispatch argv parser parity", () => {
     );
   });
 
-  test("apps:list uses the same parsed input shape as the OCLIF helper", () => {
+  test("apps:list resolves --path through the shared input extractor", () => {
     expect(appsListPathFromInput(compiledInput("apps:list", ["--path", "demo"]))).toBe("demo");
     expect(appsListPathFromInput(compiledInput("apps:list", ["--path=demo"]))).toBe("demo");
     expect(appsListPathFromInput(compiledInput("apps:list", []))).toBeUndefined();
   });
 
-  test("apps:init uses the same parsed input shape as the OCLIF helper", () => {
+  test("apps:init resolves every scaffold flag through the shared input parser", () => {
     const input = compiledInput("apps:init", [
       "--name",
       "demo",
@@ -94,7 +94,7 @@ describe("dual-dispatch argv parser parity", () => {
     expect(initOptionsFromInput(input).nonInteractive).toBe(true);
   });
 
-  test("app:logs uses the same parsed input shape as the OCLIF helper", () => {
+  test("app:logs resolves service, tail, and since through the shared input parser", () => {
     const input = compiledInput("app:logs", ["--service", "appserver", "--tail", "25", "--since", "1h"]);
 
     expect(logsOptionsFromInput(input)).toEqual({ service: "appserver", tail: 25, since: "1h" });
@@ -102,14 +102,14 @@ describe("dual-dispatch argv parser parity", () => {
     expect(logsFollowFromInput(compiledInput("app:logs", ["--follow"]))).toBe(true);
   });
 
-  test("compiled input parses bundled log flags at the shared argv helper seam", () => {
+  test("native input parses bundled log flags at the shared argv helper seam", () => {
     const input = compiledInput("app:logs", ["-fsappserver"]);
 
     expect(logsOptionsFromInput(input)).toEqual({ service: "appserver" });
     expect(logsFollowFromInput(input)).toBe(true);
   });
 
-  test("compiled command inputs preserve valid separated, equals, and repeatable values", () => {
+  test("native command inputs preserve valid separated, equals, and repeatable values", () => {
     const logs = compiledInput("app:logs", ["--service", "appserver", "--since=1h", "--tail", "25"]);
     const init = compiledInput("apps:init", ["--answer", "php=8.3", "--answer=database=mysql"]);
 
@@ -117,7 +117,7 @@ describe("dual-dispatch argv parser parity", () => {
     expect(init.flags.answer).toEqual(["php=8.3", "database=mysql"]);
   });
 
-  test("app:logs parses --source identically in compiled dispatch", () => {
+  test("app:logs parses --source through the native input seam", () => {
     const input = compiledInput("app:logs", ["--service", "db", "--source", "slow-query", "--follow"]);
 
     expect(logsOptionsFromInput(input)).toEqual({ service: "db", source: "slow-query" });
@@ -128,7 +128,7 @@ describe("dual-dispatch argv parser parity", () => {
     ["invalid integer", ["--tail", "abc"]],
     ["repeated option", ["--service", "appserver", "--service=database"]],
     ["truncated short bundle", ["-fs"]],
-  ])("app:logs rejects %s before producing compiled input", (_name, argv) => {
+  ])("app:logs rejects %s before producing native input", (_name, argv) => {
     expect(() => compiledInput("app:logs", argv)).toThrow(MalformedCliFlagValueError);
   });
 
@@ -216,7 +216,7 @@ describe("dual-dispatch argv parser parity", () => {
     });
   });
 
-  test("compiled argv normalization mirrors space-separated global command phrases", () => {
+  test("native argv normalization maps space-separated phrases to canonical ids", () => {
     expect(normalizeCompiledCommandArgv(["apps", "scratch", "run", "--", "echo", "ok"])).toEqual([
       "apps:scratch:run",
       "--",
@@ -240,7 +240,7 @@ describe("dual-dispatch argv parser parity", () => {
     expect(normalizeCompiledCommandArgv(["meta", "global", "rebuild"])).toEqual(["meta:global:rebuild"]);
   });
 
-  test("setup, shellenv, and uninstall helpers consume compiled argv input", () => {
+  test("setup, shellenv, and uninstall helpers consume native argv input", () => {
     expect(
       compiledInput("meta:setup", ["--yes", "--provider=podman", "--skip-file-sync"]).flags,
     ).toMatchObject({
