@@ -1,11 +1,9 @@
 /**
- * `@lando/core/oclif` — OCLIF adapter.
+ * `core/src/cli/oclif` — internal OCLIF adapter.
  *
- * This entry point is **internal**. It is exported only because the OCLIF
- * compiled-binary build needs it; embedding hosts MUST NOT import it. The
- * default `@lando/core` entry point (and `@lando/core/cli`) MUST NOT pull
- * `@oclif/core` into the import graph. Tests under `test/library/` enforce
- * this boundary.
+ * This directory has no published package export. The default `@lando/core`
+ * entry point (and `@lando/core/cli`) MUST NOT pull `@oclif/core` into the
+ * import graph. Tests under `test/library/` enforce this boundary.
  *
  * **OCLIF is consumed in *one place only*:** `src/cli/oclif/`. Outside this
  * directory, no module imports `@oclif/core`.
