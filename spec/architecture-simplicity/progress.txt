@@ -451,7 +451,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Review notes (deferred/rejected): rejected adding `commandToken` to the public machine-error envelope because US-525 does not own a schema expansion; the existing typed field remains raw, the emitted message is safely escaped, and the machine-output boundary remains unchanged.
 - Review notes (deferred/rejected): rejected a literal reserved-namespace list because it would create a second source of truth; namespace heads are derived from canonical ids and colon-qualified registry aliases.
 - Guide-Coverage-Skip: Registry help and parser-routing repairs have no executable-guide workflow surface.
-- Verification: explicit-base guide drift, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, 103 focused CLI tests, 2 compiled-binary tests, and direct source CLI help/deferred/unknown-command smokes passed; initial Cursor Bugbot found no bugs.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, 103 focused CLI tests, 2 compiled-binary tests, and direct source CLI help/deferred/unknown-command smokes passed. Post-fix Cursor Bugbot caught an escaped active command id that would alter machine envelopes; raw runtime identity and plain-render escaping were separated, then 62 focused tests and all affected gates repassed.
 - **Learnings for future iterations:**
   - Derive bare namespace reservations from the same token index that owns dispatch so newly registered alias namespaces cannot silently become tooling names.
   - Escape only untrusted interpolated fragments when structured error fields must retain raw values.
