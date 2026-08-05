@@ -330,7 +330,7 @@ Effect and a small set of YAML/CA primitives are the only target runtime deps; t
 }
 ```
 
-Today's package metadata may still expose the interim `./oclif` adapter while the migration is in progress. It is not part of the required target surface and is removed by US-526.
+The interim `./oclif` adapter was removed from package metadata by US-526 and is not part of the public target surface.
 
 **Required entry-point policies:**
 
