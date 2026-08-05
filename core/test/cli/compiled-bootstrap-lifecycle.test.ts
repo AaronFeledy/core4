@@ -15,24 +15,15 @@ import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { makeRecordingHarness } from "./pre-command-failure-fixture.ts";
 
 const resultSchema = Schema.Struct({ ok: Schema.Boolean });
-const invocation = {
-  commandId: "meta:config",
-  argv: [],
-  args: {},
-  flags: {},
-  cwd: "/workspace/demo",
-} as const;
-
-const runtimeFor = (eventLayer: ReturnType<typeof makeRecordingHarness>["layer"]) =>
-  makeLandoRuntime({ bootstrap: "minimal", plugins: { layers: [eventLayer] } });
-
-const promotedRuntimeFor = (
-  bootstrap: "plugins" | "commands",
+const runtimeFor = (
+  bootstrap: "minimal" | "plugins" | "commands",
   eventLayer: ReturnType<typeof makeRecordingHarness>["layer"],
 ) => makeLandoRuntime({ bootstrap, plugins: { layers: [eventLayer] } });
 
 beforeEach(() => {
   process.exitCode = 0;
+  setActiveRendererMode("plain");
+  setActiveResultFormat("text");
 });
 
 afterEach(() => {
@@ -46,14 +37,17 @@ afterEach(() => {
 describe("compiled bootstrap lifecycle", () => {
   test("compiled dispatch emits the canonical minimal sequence", async () => {
     const compiled = makeRecordingHarness();
-    setActiveCommandId(invocation.commandId);
-    setActiveRendererMode("plain");
-    setActiveResultFormat("text");
-    resetActiveCommandInvocation(invocation.commandId, []);
-    await runCompiledCommand(Effect.succeed({ ok: true }), runtimeFor(compiled.layer), () => undefined, {
-      io: createBufferedRendererIO(),
-      resultSchema,
-    });
+    setActiveCommandId("meta:config");
+    resetActiveCommandInvocation("meta:config", []);
+    await runCompiledCommand(
+      Effect.succeed({ ok: true }),
+      runtimeFor("minimal", compiled.layer),
+      () => undefined,
+      {
+        io: createBufferedRendererIO(),
+        resultSchema,
+      },
+    );
 
     const compiledTags = compiled.events.map((event) => event._tag);
     expect(compiledTags).toEqual([
@@ -70,21 +64,18 @@ describe("compiled bootstrap lifecycle", () => {
   test("compiled meta:update promotion emits one canonical commands sequence", async () => {
     // Given: compiled dispatch receives the declared plugins runtime for a promoted command.
     const compiled = makeRecordingHarness();
-    const updateInvocation = { ...invocation, commandId: "meta:update" };
 
     // When: compiled dispatch promotes execution to the commands runtime.
-    setActiveCommandId(updateInvocation.commandId);
-    setActiveRendererMode("plain");
-    setActiveResultFormat("text");
-    resetActiveCommandInvocation(updateInvocation.commandId, []);
+    setActiveCommandId("meta:update");
+    resetActiveCommandInvocation("meta:update", []);
     await runCompiledCommand(
       Effect.succeed({ ok: true }),
-      promotedRuntimeFor("plugins", compiled.layer),
+      runtimeFor("plugins", compiled.layer),
       () => undefined,
       {
         io: createBufferedRendererIO(),
         resultSchema,
-        runtimeForBootstrap: () => promotedRuntimeFor("commands", compiled.layer),
+        runtimeForBootstrap: () => runtimeFor("commands", compiled.layer),
       },
     );
 

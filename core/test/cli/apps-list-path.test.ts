@@ -92,11 +92,11 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
     await mkdir(join(root, "conf"), { recursive: true });
     await writeFile(
       join(appsDir, "alpha.json"),
-      JSON.stringify(makePlan("alpha", "/srv/parity-alpha", ["appserver"])),
+      JSON.stringify(makePlan("alpha", "/srv/filter-alpha", ["appserver"])),
     );
     await writeFile(
       join(appsDir, "bravo.json"),
-      JSON.stringify(makePlan("bravo", "/srv/parity-bravo", ["db", "web"])),
+      JSON.stringify(makePlan("bravo", "/srv/filter-bravo", ["db", "web"])),
     );
 
     env = {
@@ -122,9 +122,9 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
     if (root !== undefined) await rm(root, { recursive: true, force: true });
   });
 
-  test("filters to the matching app (canonical id)", async () => {
+  test("filters via the apps:list command", async () => {
     const result = await runProcess(
-      [compiledBinary, "apps:list", "--path", "parity-alpha", "--format", "json"],
+      [compiledBinary, "apps:list", "--path", "filter-alpha", "--format", "json"],
       env,
     );
     expect(result.exitCode).toBe(0);
@@ -133,7 +133,7 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
 
   test("filters via the top-level `list` alias", async () => {
     const result = await runProcess(
-      [compiledBinary, "list", "--path", "parity-alpha", "--format", "json"],
+      [compiledBinary, "list", "--path", "filter-alpha", "--format", "json"],
       env,
     );
     expect(result.exitCode).toBe(0);
@@ -142,14 +142,14 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
 
   test("filters via the equals form", async () => {
     const result = await runProcess(
-      [compiledBinary, "apps:list", "--path=parity-bravo", "--format", "json"],
+      [compiledBinary, "apps:list", "--path=filter-bravo", "--format", "json"],
       env,
     );
     expect(result.exitCode).toBe(0);
     expect(appNames(result)).toEqual(["bravo"]);
   });
 
-  test("returns every app when --path is omitted (regression)", async () => {
+  test("returns every app when --path is omitted", async () => {
     const result = await runProcess([compiledBinary, "apps:list", "--format", "json"], env);
     expect(result.exitCode).toBe(0);
     expect(appNames(result)).toEqual(["alpha", "bravo"]);

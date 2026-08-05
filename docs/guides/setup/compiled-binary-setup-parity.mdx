@@ -7,23 +7,23 @@ tags: [beta, docs, setup, uninstall, compiled]
 ---
 
 <Guide>
-  <Scenario id="setup-and-shellenv-dispatch" render={false} reason="Setup and shellenv dispatch is exercised by the native dispatch and registry-completeness suites plus relocated compiled-binary smoke tests; this scenario documents the surface rather than rendering a transcript">
+  <Scenario id="setup-and-shellenv-dispatch" render={false} reason="Native dispatch, registry-completeness, and relocated compiled-binary smoke tests exercise setup and shellenv; this scenario documents the surface rather than rendering a transcript">
     <Step name="setup-aliases">
-      <Variable name="setup" value="setup" display="The top-level setup alias dispatches to the same meta:setup command helper in source and compiled paths" />
-      <Variable name="metaSetup" value="meta:setup" display="The canonical setup id remains registered as an MVP command; today it is reached through the compiled runCompiledCli branch, a temporary router pending replacement by the native dispatcher" />
-      <Variable name="unknownFlag" value="setup --definitely-not-a-setup-flag" display="Unknown setup flags fail with the same non-existent-flag diagnostic in both paths" />
+      <Variable name="setup" value="setup" display="The top-level setup alias resolves to the canonical meta:setup command through the native dispatcher" />
+      <Variable name="metaSetup" value="meta:setup" display="The canonical setup command remains available directly through the native command registry" />
+      <Variable name="unknownFlag" value="setup --definitely-not-a-setup-flag" display="Unknown setup flags fail with a non-existent-flag diagnostic" />
     </Step>
     <Step name="shellenv">
-      <Variable name="command" value="shellenv --shell=pwsh" display="Shellenv parsing is shared through the command input helper so pwsh normalizes to the PowerShell snippet in both paths" />
-      <Variable name="failure" value="meta:shellenv --shell=fish" display="Invalid shell values fail before runtime bootstrap in source and compiled paths" />
+      <Variable name="command" value="shellenv --shell=pwsh" display="Shellenv parsing normalizes pwsh to the PowerShell snippet through the command input helper" />
+      <Variable name="failure" value="meta:shellenv --shell=fish" display="Invalid shell values fail before runtime bootstrap" />
     </Step>
   </Scenario>
 
   <Scenario id="uninstall-preview-parity" render={false} reason="The uninstall command can be previewed safely, but confirmed execution is destructive and is covered by focused temporary-root command tests">
     <Step name="preview">
-      <Variable name="dryRun" value="uninstall --dry-run" display="Source and compiled paths render the same non-mutating safety plan" />
-      <Variable name="refusal" value="meta:uninstall" display="Without --yes, both paths refuse destructive execution and render the same reviewed-plan reminder" />
-      <Variable name="unknownFlag" value="meta:uninstall --definitely-not-an-uninstall-flag" display="Unknown uninstall flags fail with the same non-existent-flag diagnostic in both paths" />
+      <Variable name="dryRun" value="uninstall --dry-run" display="Dry-run renders the non-mutating safety plan" />
+      <Variable name="refusal" value="meta:uninstall" display="Without --yes, uninstall refuses destructive execution and renders the reviewed-plan reminder" />
+      <Variable name="unknownFlag" value="meta:uninstall --definitely-not-an-uninstall-flag" display="Unknown uninstall flags fail with a non-existent-flag diagnostic" />
     </Step>
   </Scenario>
 
