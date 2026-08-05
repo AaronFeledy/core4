@@ -590,3 +590,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Keep regression tests outside the specification tree focused on durable operational guidance; enforce authored-spec wording with specification-local checks or explicit build-step searches so the spec-reference boundary remains intact.
   - Preserve machine-executed MDX `value=` attributes during prose-only guide updates; change `display=` or `reason=` text and run all guide gates.
 ---
+
+## [2026-08-05 18:51 CDT] - US-531 Review
+- Review found and fixed stale dual-dispatch guidance in the exported ScenarioContext failure, public operation renderers, bootstrap/signal/tooling seams, parser/error adapters, and legacy-named command metadata; the bounded regression now covers every repaired current source surface.
+- Review notes (deferred/rejected): retained OCLIF wording in development-only fixtures, compatibility-model test names, negative dependency-boundary claims, legacy identifiers/paths, and explicitly historical records because none describes a second shipping engine.
+- Review notes (deferred/rejected): the initial quality suggestion to require a separate positive architecture assertion in every guidance file is non-blocking; the expanded stale-claim scan guards each enumerated surface while the canonical positive contract remains in AGENTS/README.
+- Guide-Coverage-Skip: Internal dispatcher guidance repair changes no documented command capability or executable workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 137 focused CLI/testing spot checks, source LSP diagnostics, direct stale-pattern searches, and post-fix Bugbot passed; the specialized no-excuse helper could not resolve its packaged `typescript` dependency, while repository typecheck and Biome remained green.
+- **Learnings for future iterations:**
+  - Architecture sweeps must inspect exported source comments and emitted diagnostics as current operational guidance, not only AGENTS, docs, and specification prose.
+---
