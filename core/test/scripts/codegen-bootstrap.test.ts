@@ -49,5 +49,6 @@ describe("codegen clean-checkout bootstrap", () => {
     expect(mcpAllowlist.MCP_DEFAULT_ALLOWLIST).toEqual([]);
     expect(hostProxyAllowlist.HOST_PROXY_RUNLANDO_ALLOWLIST).toEqual([]);
     expect(commandRegistryManifest.COMMAND_REGISTRY_MANIFEST.commands).toEqual({});
+    expect(commandRegistryManifest.COMMAND_REGISTRY_MANIFEST.topics).toEqual({});
   });
 });

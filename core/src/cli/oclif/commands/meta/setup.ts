@@ -32,11 +32,7 @@ import { isDecoratedContext } from "../../../renderer-boundary.ts";
 import { formatSummary } from "../../../renderer/summary.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
-import {
-  SETUP_BUILTIN_FLAGS,
-  SETUP_PLUGIN_FLAGS,
-  contributedSetupFlagsForProvider,
-} from "./setup-command-flags.ts";
+import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags.ts";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -79,6 +75,7 @@ export const setupSpec: LandoCommandSpec<
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "provider",
+  flags: SETUP_COMMAND_FLAGS,
   run: (input) =>
     Effect.gen(function* () {
       const configService = yield* ConfigService;
@@ -241,10 +238,7 @@ export const setupSpec: LandoCommandSpec<
 export default class SetupCommand extends LandoCommandBase {
   static override description = "Run provider, CA, proxy, and shell-integration setup.";
   static override aliases = [...resolveTopLevelAliases(setupSpec)];
-  static override flags = {
-    ...SETUP_BUILTIN_FLAGS,
-    ...SETUP_PLUGIN_FLAGS.flags,
-  };
+  static override flags = SETUP_COMMAND_FLAGS;
   static override landoSpec: LandoCommandSpec = setupSpec;
   static override bootstrap = setupSpec.bootstrap;
 

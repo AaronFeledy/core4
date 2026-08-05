@@ -3,6 +3,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 import type { BuiltInCommandEntry } from "../core/src/cli/built-in-command-registry.ts";
+import { COMMAND_TOPICS } from "../core/src/cli/command-topics.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 type JsonValue =
@@ -20,7 +21,7 @@ const COMMAND_IDS_OUTPUT = resolve(CORE_ROOT, "src/cli/generated/command-ids.ts"
 const LEGACY_JSON_OUTPUT = resolve(CORE_ROOT, "oclif.manifest.json");
 const LEGACY_TYPESCRIPT_OUTPUT = resolve(CORE_ROOT, "src/cli/oclif/compiled-manifest.ts");
 const BOOTSTRAP_SOURCE =
-  'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", version: "0.0.0" } as const;\n';
+  'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", topics: {}, version: "0.0.0" } as const;\n';
 const COMMAND_IDS_BOOTSTRAP_SOURCE = "export const BUILT_IN_COMMAND_IDS: ReadonlyArray<string> = [];\n";
 
 const toJsonValue = (value: unknown): JsonValue | undefined => {
@@ -96,12 +97,12 @@ const readCoreVersion = async (): Promise<string> => {
 
 const renderManifestModule = (entries: readonly BuiltInCommandEntry[], version: string): string => {
   const commands = Object.fromEntries(entries.map((entry) => [entry.spec.id, projectCommand(entry)]));
-  const manifest = { commands, source: "built-in-command-registry", version };
+  const manifest = { commands, source: "built-in-command-registry", topics: COMMAND_TOPICS, version };
   return `/**
  * **GENERATED FILE** — do not edit by hand.
  *
  * Regenerate via \`bun run scripts/build-command-registry-manifest.ts\`.
- * Source of truth: \`builtInCommandEntries\`.
+ * Source of truth: \`builtInCommandEntries\` and \`COMMAND_TOPICS\`.
  */
 export const COMMAND_REGISTRY_MANIFEST = ${JSON.stringify(manifest, null, 2)} as const;
 `;

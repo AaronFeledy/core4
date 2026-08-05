@@ -41,6 +41,7 @@ type CommandRegistryManifestModule = {
   readonly COMMAND_REGISTRY_MANIFEST: {
     readonly commands: Readonly<Record<string, ManifestCommand>>;
     readonly source: "built-in-command-registry";
+    readonly topics: Readonly<Record<string, { readonly description: string; readonly hidden?: boolean }>>;
     readonly version: string;
   };
 };
@@ -57,6 +58,8 @@ const isCommandRegistryManifestModule = (value: unknown): value is CommandRegist
   if (typeof manifest.commands !== "object" || manifest.commands === null) return false;
   if (!("source" in manifest) || manifest.source !== "built-in-command-registry") return false;
 
+  if (!("topics" in manifest) || typeof manifest.topics !== "object" || manifest.topics === null)
+    return false;
   return "version" in manifest && typeof manifest.version === "string";
 };
 
@@ -137,6 +140,7 @@ describe("embedded command registry manifest", () => {
     const manifestIds = Object.keys(manifest.commands).sort();
     const registryIds = builtInCommandEntries.map((entry) => entry.spec.id).sort();
     expect(manifest.source).toBe("built-in-command-registry");
+    expect(Object.keys(manifest.topics)).toHaveLength(11);
     expect(manifest.version).toBe("0.0.0");
     expect(manifestIds).toEqual(registryIds);
     for (const entry of builtInCommandEntries) {
