@@ -1,10 +1,9 @@
-import type { Command } from "@oclif/core";
-
 import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry.ts";
 import type { LandoCommandSpec } from "./oclif/command-base.ts";
 import { loadCompiledManifest } from "./oclif/manifest.ts";
+import type { CommandClass } from "./oclif/metadata.ts";
 
-export type CompiledCommand = Command.Class;
+export type CompiledCommand = CommandClass;
 
 export const commandEntries: ReadonlyArray<readonly [string, CompiledCommand]> = builtInCommandEntries.map(
   (entry) => [entry.spec.id, entry.command],

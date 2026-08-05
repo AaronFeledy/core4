@@ -1,10 +1,10 @@
-import { Flags } from "@oclif/core";
 import {
   AppsListResultSchema,
   type ListServicesResult,
   listServices,
   renderAppsListResult,
 } from "../../../commands/list.ts";
+import { Flags } from "../../metadata.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 

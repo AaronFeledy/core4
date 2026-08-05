@@ -1,4 +1,4 @@
-import { Flags } from "@oclif/core";
+import { Flags } from "../../../metadata.ts";
 
 import { ConfigLintResult } from "@lando/sdk/schema";
 import { appConfigLint, renderConfigLintResult } from "../../../../commands/app-config-lint.ts";

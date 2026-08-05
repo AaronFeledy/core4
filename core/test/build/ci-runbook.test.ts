@@ -202,7 +202,10 @@ describe("ci runbook", () => {
     ]);
     const parsedCorePackage = JSON.parse(corePackage);
 
-    expect(parsedCorePackage.dependencies["@oclif/core"]).toBe("^4.11.2");
+    expect(parsedCorePackage.dependencies["@oclif/core"]).toBeUndefined();
+    expect(parsedCorePackage.dependencies["@oclif/plugin-help"]).toBeUndefined();
+    expect(parsedCorePackage.devDependencies["@oclif/core"]).toBe("^4.11.2");
+    expect(parsedCorePackage.devDependencies["@oclif/plugin-help"]).toBe("^6.2.48");
     expect(parsedCorePackage.devDependencies.oclif).toBe("^4.23.0");
 
     expect(betaDecisions).toContain("OCLIF major lock decision");

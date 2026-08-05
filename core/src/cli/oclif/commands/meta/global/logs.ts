@@ -1,4 +1,4 @@
-import { Flags } from "@oclif/core";
+import { Flags } from "../../../metadata.ts";
 
 import { StreamFrame } from "@lando/sdk/schema";
 

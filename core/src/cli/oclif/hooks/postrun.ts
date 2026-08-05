@@ -5,7 +5,7 @@
  *
  * Status: stub.
  */
-import type { Hook } from "@oclif/core";
+import type { Hook } from "../metadata.ts";
 
 export const postrunHook: Hook<"postrun"> = async (_options) => {
   // TODO: publish post-command lifecycle events.

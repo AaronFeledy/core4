@@ -1,4 +1,4 @@
-import { Args } from "@oclif/core";
+import { Args } from "../../../metadata.ts";
 
 import {
   type PluginLinkResult,

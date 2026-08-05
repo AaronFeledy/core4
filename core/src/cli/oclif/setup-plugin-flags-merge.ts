@@ -7,18 +7,15 @@
  * `SetupFlagCollisionError` so the failure is machine-readable rather than a
  * silent last-writer-wins overwrite.
  */
-import { Flags, type Interfaces } from "@oclif/core";
-
 import type { PluginSetupFlagContribution } from "@lando/sdk/schema";
 
 import { SetupFlagCollisionError, findSetupFlagCollision } from "../../plugins/setup-flags.ts";
 import type { BundledSetupFlagContribution } from "./generated/setup-plugin-flags.ts";
+import { type BooleanFlag, Flags, type OptionFlag } from "./metadata.ts";
 
 export { SetupFlagCollisionError };
 
-type OclifSetupFlag =
-  | Interfaces.BooleanFlag<string | boolean | undefined>
-  | Interfaces.OptionFlag<string | undefined>;
+type OclifSetupFlag = BooleanFlag<boolean | undefined> | OptionFlag<string | undefined>;
 
 export interface MergedSetupFlags {
   /** Contributed flags keyed by flag name, ready to spread into command flags. */
