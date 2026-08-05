@@ -394,7 +394,7 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Compile all platform binaries

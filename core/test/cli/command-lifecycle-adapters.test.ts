@@ -16,7 +16,7 @@ import {
   setActiveCommandId,
 } from "../../src/cli/compiled-runtime.ts";
 import { runDynamicTooling } from "../../src/cli/dynamic-tooling.ts";
-import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { effectiveBootstrapForCommand } from "../../src/runtime/cli-options.ts";
@@ -122,10 +122,10 @@ describe("CLI lifecycle adapters", () => {
       ["app:start", "app"],
       ["meta:doctor", "none"],
     ]);
-    expect(COMPILED_OCLIF_MANIFEST.commands["meta:version"]?.bootstrap).toBe("none");
-    expect(COMPILED_OCLIF_MANIFEST.commands["meta:update"]?.bootstrap).toBe("plugins");
-    expect(COMPILED_OCLIF_MANIFEST.commands["meta:mcp"]?.bootstrap).toBe("plugins");
-    expect(COMPILED_OCLIF_MANIFEST.commands["apps:list"]?.bootstrap).toBe("minimal");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["meta:version"]?.spec.bootstrap).toBe("none");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["meta:update"]?.spec.bootstrap).toBe("plugins");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["meta:mcp"]?.spec.bootstrap).toBe("plugins");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["apps:list"]?.spec.bootstrap).toBe("minimal");
   });
 
   test("notification policy promotes configured lower tiers without changing cold declarations", () => {

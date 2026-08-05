@@ -1,21 +1,18 @@
 #!/usr/bin/env bun
 /**
- * Emits the generated command-reference page from the compiled OCLIF manifest.
+ * Emits the generated command-reference page from the command registry manifest.
  *
- * The manifest is the single source of truth for command metadata, so the page
- * always reflects the real CLI surface (including the universal machine-output
- * flags the adapter injects into every command). The preamble documents the
- * universal `--format json` / `--json` / `-j` flag once instead of repeating it
- * on every command.
+ * Universal machine-output flags are injected into every command by the adapter;
+ * the page documents them once in the preamble instead of repeating them per command.
  */
 import { resolve } from "node:path";
 
-import { COMPILED_OCLIF_MANIFEST } from "../core/src/cli/oclif/compiled-manifest.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../core/src/cli/generated/command-registry-manifest.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "docs/reference/commands.mdx");
 
-// Injected into every command by the adapter; documented once in the preamble.
+// Adapter-injected on every command; documented once in the page preamble.
 const UNIVERSAL_FLAGS = new Set(["format", "json"]);
 
 interface ManifestArg {
@@ -32,23 +29,18 @@ interface ManifestFlag {
 }
 
 interface ManifestCommand {
-  readonly id: string;
   readonly description?: string;
   readonly hidden?: boolean;
   readonly aliases?: ReadonlyArray<string>;
   readonly args?: Readonly<Record<string, ManifestArg>>;
   readonly flags?: Readonly<Record<string, ManifestFlag>>;
-  readonly landoSpec?: { readonly summary?: string };
+  readonly spec: { readonly id: string; readonly summary?: string };
 }
 
 const manifestCommands = (): ReadonlyArray<ManifestCommand> =>
-  Object.values(COMPILED_OCLIF_MANIFEST.commands as Record<string, ManifestCommand>);
+  Object.values(COMMAND_REGISTRY_MANIFEST.commands);
 
-/**
- * Fail the generator if a public command is missing the universal machine-output
- * flags. This turns the doc generator into a lightweight conformance guard so the
- * documented contract cannot silently drift from the real command surface.
- */
+// Conformance guard: documented universal flags must stay present on public commands.
 const assertUniversalFlags = (commands: ReadonlyArray<ManifestCommand>): void => {
   const offenders: Array<string> = [];
   for (const command of commands) {
@@ -57,7 +49,7 @@ const assertUniversalFlags = (commands: ReadonlyArray<ManifestCommand>): void =>
     const format = flags.format;
     const hasFormatJson = format?.type === "option" && (format.options ?? []).includes("json");
     const hasJsonShortcut = flags.json !== undefined;
-    if (!hasFormatJson || !hasJsonShortcut) offenders.push(command.id);
+    if (!hasFormatJson || !hasJsonShortcut) offenders.push(command.spec.id);
   }
   if (offenders.length > 0) {
     throw new Error(
@@ -68,15 +60,17 @@ const assertUniversalFlags = (commands: ReadonlyArray<ManifestCommand>): void =>
 
 const escapeCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n/g, " ").trim();
 
-const summaryOf = (command: ManifestCommand): string =>
-  command.landoSpec?.summary ?? command.description ?? "";
+const summaryOf = (command: ManifestCommand): string => command.spec.summary ?? command.description ?? "";
 
 const renderArgs = (command: ManifestCommand): ReadonlyArray<string> => {
-  const args = Object.values(command.args ?? {}).filter((arg): arg is ManifestArg => arg.name !== undefined);
+  const args = Object.entries(command.args ?? {}).map(([name, arg]) => ({
+    ...arg,
+    name: arg.name ?? name,
+  }));
   if (args.length === 0) return [];
   const lines = ["", "Arguments:", "", "| Argument | Description |", "| --- | --- |"];
-  for (const arg of args.sort((left, right) => (left.name ?? "").localeCompare(right.name ?? ""))) {
-    lines.push(`| \`${escapeCell(arg.name ?? "")}\` | ${escapeCell(arg.description ?? "")} |`);
+  for (const arg of args.sort((left, right) => left.name.localeCompare(right.name))) {
+    lines.push(`| \`${escapeCell(arg.name)}\` | ${escapeCell(arg.description ?? "")} |`);
   }
   return lines;
 };
@@ -88,9 +82,10 @@ const flagToken = (flag: ManifestFlag): string => {
 };
 
 const renderFlags = (command: ManifestCommand): ReadonlyArray<string> => {
-  const flags = Object.values(command.flags ?? {})
-    .filter((flag): flag is ManifestFlag => flag.name !== undefined && !UNIVERSAL_FLAGS.has(flag.name))
-    .sort((left, right) => (left.name ?? "").localeCompare(right.name ?? ""));
+  const flags = Object.entries(command.flags ?? {})
+    .map(([name, flag]) => ({ ...flag, name: flag.name ?? name }))
+    .filter((flag) => !UNIVERSAL_FLAGS.has(flag.name))
+    .sort((left, right) => left.name.localeCompare(right.name));
   if (flags.length === 0) return [];
   const lines = ["", "Flags:", "", "| Flag | Description |", "| --- | --- |"];
   for (const flag of flags) {
@@ -106,7 +101,7 @@ const renderFlags = (command: ManifestCommand): ReadonlyArray<string> => {
 };
 
 const renderCommand = (command: ManifestCommand): string => {
-  const lines: Array<string> = [`## \`lando ${command.id}\``, ""];
+  const lines: Array<string> = [`## \`lando ${command.spec.id}\``, ""];
   const summary = summaryOf(command);
   if (summary.length > 0) lines.push(summary, "");
   const aliases = (command.aliases ?? []).filter((alias) => alias.length > 0);
@@ -121,7 +116,7 @@ const renderCommand = (command: ManifestCommand): string => {
 const renderPage = (): string => {
   const commands = manifestCommands()
     .filter((command) => command.hidden !== true)
-    .sort((left, right) => left.id.localeCompare(right.id));
+    .sort((left, right) => left.spec.id.localeCompare(right.spec.id));
   assertUniversalFlags(commands);
 
   const header = [
@@ -134,7 +129,7 @@ const renderPage = (): string => {
     "",
     "# Command Reference",
     "",
-    "This page is generated from the compiled command manifest and lists every public",
+    "This page is generated from the command registry manifest and lists every public",
     "Lando command. Hidden and internal commands are omitted.",
     "",
     "## Machine-readable output",

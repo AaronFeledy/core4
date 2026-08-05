@@ -71,6 +71,7 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     expect(binary.mode & 0o111).not.toBe(0);
     const binaryText = await Bun.file(binaryPath).text();
     expect(binaryText).not.toContain(".tsbuildinfo");
+    expect(binaryText).toContain("built-in-command-registry");
     const embeddedOpenTuiAssets = new Set(
       binaryText.match(/\/\$bunfs\/root\/libopentui-[a-z0-9]+\.so/gu) ?? [],
     );

@@ -4,8 +4,6 @@
  * Each cache has a versioned schema header. A version mismatch triggers
  * automatic invalidation. Hot-path caches (app-plan) are Effect-Schema
  * binary-encoded; small JSON caches use Schema.JsonString.
- *
- * Status: stub.
  */
 import { Schema } from "effect";
 
@@ -24,7 +22,7 @@ export const CacheKind = Schema.Literal(
   "app-plan",
   "service-info",
   "provider",
-  "oclif-manifest",
+  "command-registry-manifest",
   "update",
 );
 export type CacheKind = typeof CacheKind.Type;

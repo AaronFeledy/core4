@@ -13,14 +13,9 @@ type CodegenCatalogModule = {
 
 const derivedTypeScriptPolicies = [
   {
-    ids: ["oclif-manifest"],
+    ids: ["command-registry-manifest"],
     ignoreProbe: "core/src/cli/generated/command-ids.ts",
     trackingPath: "core/src/cli/generated",
-  },
-  {
-    ids: ["oclif-manifest"],
-    ignoreProbe: "core/src/cli/oclif/compiled-manifest.ts",
-    trackingPath: "core/src/cli/oclif/compiled-manifest.ts",
   },
   {
     ids: ["setup-plugin-flags", "mcp-allowlist", "host-proxy-allowlist"],

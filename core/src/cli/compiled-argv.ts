@@ -1,6 +1,6 @@
 import { builtInCommandEntries, resolveBuiltInCommand } from "./built-in-command-registry.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "./generated/command-registry-manifest.ts";
 import type { LandoCommandSpec } from "./oclif/command-base.ts";
-import { loadCompiledManifest } from "./oclif/manifest.ts";
 import type { CommandClass } from "./oclif/metadata.ts";
 
 export type CompiledCommand = CommandClass;
@@ -9,7 +9,7 @@ export const commandEntries: ReadonlyArray<readonly [string, CompiledCommand]> =
   (entry) => [entry.spec.id, entry.command],
 );
 
-export const compiledManifest = loadCompiledManifest();
+export const commandRegistryManifest = COMMAND_REGISTRY_MANIFEST;
 
 export const commandName = (id: string, command: CompiledCommand): string => {
   const aliases = command.aliases;

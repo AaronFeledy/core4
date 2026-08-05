@@ -20,8 +20,9 @@ const BOOTSTRAP_MODULES = [
     path: "core/src/cli/oclif/generated/host-proxy-allowlist.ts",
   },
   {
-    content: 'export const COMPILED_OCLIF_MANIFEST = { commands: {}, version: "0.0.0" };\n',
-    path: "core/src/cli/oclif/compiled-manifest.ts",
+    content:
+      'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", version: "0.0.0" } as const;\n',
+    path: "core/src/cli/generated/command-registry-manifest.ts",
   },
 ] as const;
 

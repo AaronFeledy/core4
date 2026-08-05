@@ -56,7 +56,7 @@ The build invocation above is one stage of the larger release pipeline (codegen,
 
 1. **Bundled plugins are statically imported.** The build emits `core/src/plugins/generated/bundled.ts`, which imports each bundled plugin's entry point. These plugins are part of the binary's build graph and never require runtime filesystem discovery.
 2. **External plugins are loaded from locked stores.** User, system, and app-scoped plugins are resolved to concrete package roots under Lando-controlled plugin stores (or trusted local `pluginDirs:`), validated, compatibility-checked, root-contained, and then imported by absolute `file://` URL. They are not embedded in the binary.
-3. **The command manifest must be precomputed.** The target build embeds a registry-derived command manifest as an asset import (§8.4.1, §17.2–§17.3); today's build generates `core/oclif.manifest.json` for OCLIF tooling and statically imports `core/src/cli/oclif/compiled-manifest.ts` at runtime while the native registry migration (US-528) lands. Lazy command discovery from installed plugins happens from Lando's validated command cache, not via a directory walk inside the binary.
+3. **The command manifest must be precomputed.** The build generates `core/src/cli/generated/command-registry-manifest.ts` from the native registry and statically imports that TypeScript object-literal module so it is embedded in the binary (§8.4.1, §17.2–§17.3). No JSON sidecar is required. Lazy command discovery from installed plugins happens from Lando's validated command cache, not via a directory walk inside the binary.
 
 The asset-embedding policy (which mechanism core uses for which kind of data, and the unifying `EmbeddedAssetService` API) is specified in §17.3.
 
@@ -140,7 +140,7 @@ OCLIF is today's bundled CLI framework, pending removal. We considered `@effect/
 **Required OCLIF policies:**
 
 - Every plugin contributes its commands through the Lando manifest. The OCLIF adapter compiles that cached command metadata into OCLIF command shims; Lando does not use OCLIF's user plugin loader as the source of truth. Plugins may also define richer Lando-specific contributions (service types, features, providers, proxies, renderers, etc.) through the same manifest. Recipes are not a plugin contribution surface in v4 — they are init-time scaffolds (§8.8) consumed once and never referenced again.
-- `oclif.manifest.json` and `core/src/cli/oclif/compiled-manifest.ts` are generated together at build time for built-ins. Plugin install invalidates Lando's separate plugin command cache; it does not rewrite either build artifact.
+- The shipping build generates `core/src/cli/generated/command-registry-manifest.ts` and `command-ids.ts` together from the native built-in registry. Plugin install invalidates Lando's separate plugin command cache; it does not rewrite either build artifact.
 - Lazy command loading is mandatory. A command's `run()` is the only place its module body executes.
 - Hooks: `init` runs router bootstrap only. After command resolution, the command base builds the Effect runtime at the command's declared/effective `BootstrapLevel`. `postrun` raises success lifecycle events. `command_not_found` consults cached command indexes before falling through to OCLIF's default.
 - Flexible taxonomy is enabled. `lando app logs --service web` and `lando app:logs --service web` are both legal; top-level aliases (§8.1.2) like `lando logs --service web` resolve to the same command.

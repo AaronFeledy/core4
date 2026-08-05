@@ -192,7 +192,7 @@ const distributionRehearsalJob = `
       - uses: actions/checkout@v5
 ${bunSetupStep}
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Compile all platform binaries

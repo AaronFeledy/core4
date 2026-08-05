@@ -23,7 +23,6 @@ const EXPECTED_CATALOG_PATHS = [
 
 const GITIGNORED_DERIVED_PATHS = [
   "core/src/cli/generated",
-  "core/src/cli/oclif/compiled-manifest.ts",
   "core/src/cli/oclif/generated",
   "core/src/data-mover/generated/provider-images.ts",
   "core/src/plugins/generated",
