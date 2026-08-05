@@ -476,3 +476,12 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Test removed package exports through package specifiers, not direct filesystem paths, because an `exports` map does not encapsulate absolute file access.
   - When a public positive-control subpath is removed, point boundary detection controls at the internal source barrel so detection strength survives without republishing the surface.
 ---
+
+## [2026-08-05 01:28 CDT] - US-526 Review
+- Corrected the embedding guidance and canonical package/distribution specification: source commands use the native dispatcher, while retained OCLIF code is private compatibility and manifest/codegen tooling unavailable through published package specifiers.
+- Review notes (deferred/rejected): rejected the full local-suite demand because this review contract explicitly forbids bare `bun test`; the two affected library suites, executable guide, typecheck, lint/deprecations, package-DAG, and explicit-base guide drift provide the required focused evidence.
+- Review notes (deferred/rejected): broader transitional dispatcher wording remains US-531 scope; prose-substring and duplicate CLI-retention assertions are non-blocking maintainability suggestions, and the current tests intentionally lock the owned embedding documents and supported sibling export.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, 65 focused library tests, and 3 focused guide scenarios passed; TypeScript LSP diagnostics were clean. Initial and post-fix Cursor Bugbot reported no bugs. `check:spec-reference` retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - When a migration story removes a transitional export, update canonical present-tense package inventories as well as user-facing docs; future-tense removal notes become contradictions once the story passes.
+---
