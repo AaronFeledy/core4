@@ -531,3 +531,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Guide-Coverage-Skip: Internal first-materialization and registry-ownership repairs add no end-user workflow.
 - Verification: explicit-base guide drift, codegen and codegen drift, typecheck, lint/deprecations, generated-output/import-cycle/package-DAG/managed-file gates, LSP diagnostics, and 17 focused manifest/codegen tests passed; the regression test failed on the missing command-id module before the fix and passed afterward. Initial Cursor Bugbot found no bugs.
 ---
+
+## [2026-08-05 12:33 CDT] - US-528 Drift Audit
+- Trigger: 3 cycles, 823 changed lines, 6 commits
+- Category 2: preserved the real first-materialization and registry-equality proofs while moving generator execution out of shared checkout state.
+- Category 4: deleted the legacy manifest type orphaned when this branch removed its final consumers.
+- Category 5: removed unrelated PRD JSON serialization churn while preserving the adjudicated US-528/US-534 contract split.
+- Category 7: re-examined the rejected legacy-type cleanup and fixed it because the branch itself deleted the type's last consumers; the package-prepack rejection and US-534 deferral remain valid.
+- Fixed: isolated destructive generator coverage, removed dead OCLIF metadata, and restored semantic-only PRD changes.
+- Split/excise decisions: none; US-534 remains the binding follow-up for bundled-plugin command metadata and US-528 remains `passes: true`.
+- Verification: codegen drift, typecheck, lint/deprecations, generated-output/import-cycle/package-DAG/managed-file gates, explicit-base guide drift, and 132 changed-file spot checks passed; generated manifest contained 85 commands and compiled-marker coverage passed.
+---
