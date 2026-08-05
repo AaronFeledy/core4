@@ -223,7 +223,7 @@ export default class InitCommand extends LandoCommandBase {
       await renderPreCommandFailure({
         commandId: initSpec.id,
         error: new LandoRuntimeBootstrapError({
-          message: `OCLIF command ${this.id ?? initSpec.id} is missing a valid static bootstrap declaration.`,
+          message: `Command ${this.id ?? initSpec.id} is missing a valid static bootstrap declaration.`,
           stage: "minimal",
         }),
         rendererMode,

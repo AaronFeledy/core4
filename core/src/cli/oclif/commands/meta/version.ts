@@ -1,11 +1,11 @@
 import { renderMetaVersion } from "../../../../version.ts";
 
 /**
- * `lando meta:version` — OCLIF Command class wrapping the Effect operation.
+ * `lando meta:version` — native command metadata adapter for the Effect operation.
  *
  * Bootstrap: `none`. The pure Effect operation lives at
  * `core/src/cli/commands/version.ts` (so `@lando/core/cli` can re-export
- * it without pulling OCLIF).
+ * it without pulling the command registry).
  */
 import { type VersionResult, VersionResultSchema, version } from "../../../commands/version.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
