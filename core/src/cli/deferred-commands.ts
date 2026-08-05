@@ -1,9 +1,12 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 import type { LandoCommandSpec } from "./oclif/command-spec.ts";
 
+export type DeferredCommandPhase = "4.1";
+
 export interface DeferredCommandPlan {
   readonly summary: string;
   readonly remediation: string;
+  readonly phase: DeferredCommandPhase;
 }
 
 export const notImplementedErrorForSpec = (spec: LandoCommandSpec): NotImplementedError => {
@@ -12,7 +15,7 @@ export const notImplementedErrorForSpec = (spec: LandoCommandSpec): NotImplement
     return new NotImplementedError({
       message: `Command ${spec.id} is not implemented. ${plan.summary}`,
       commandId: spec.id,
-      remediation: plan.remediation,
+      remediation: `${plan.remediation} Planned for Lando ${plan.phase}.`,
     });
   }
   return new NotImplementedError({

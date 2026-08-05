@@ -17,7 +17,7 @@ tags: [beta, docs, tooling, php, composer]
       <Variable name="bareCommand" value="lando composer --version" display="Run the task by its bare command from the app root" />
       <Variable name="canonicalCommand" value="lando app:composer --version" display="Run the same task by its canonical app command id" />
       <Variable name="hotPath" value="The router reads only a fresh app command cache before provider-backed execution starts" display="Both command forms use the same cache-only route" />
-      <Variable name="staleCache" value="lando app cache refresh, lando start, or lando rebuild" display="A stale or missing command cache fails with commands that refresh it" />
+      <Variable name="staleCache" value="lando app:cache:refresh, lando start, or lando rebuild" display="A stale or missing command cache fails with commands that refresh it" />
       <Variable name="execution" value="runTooling" display="After routing, the normal tooling path still enforces version, provider, environment, and runtime policies" />
     </Step>
   </Scenario>

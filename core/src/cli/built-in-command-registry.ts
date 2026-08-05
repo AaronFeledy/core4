@@ -224,6 +224,9 @@ export const isBuiltInCommandImplemented = (commandId: string): boolean =>
 export const resolveBuiltInCommand = (token: string | undefined): BuiltInCommandEntry | undefined =>
   token === undefined ? undefined : builtInCommandIndex.byToken.get(token);
 
+export const isReservedNamespaceHead = (head: string | undefined): boolean =>
+  head !== undefined && builtInCommandIndex.namespaceHeads.has(head);
+
 export const notImplementedErrorForCommand = (commandId: string): NotImplementedError => {
   const entry = builtInCommandEntries.find((candidate) => candidate.spec.id === commandId);
   return entry === undefined

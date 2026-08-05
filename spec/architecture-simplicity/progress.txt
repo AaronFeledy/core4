@@ -435,3 +435,34 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - OCLIF explicit discovery accepts a local command shape with an inherited static runner, so dev-only manifest coverage can survive without a shipping runtime dependency.
   - Use the shared AST module-edge scanner for dependency-boundary tests so static imports, re-exports, dynamic imports, `require`, and folded specifiers are all covered.
 ---
+
+## [2026-08-04 21:14 CDT] - US-525
+- Made native root and per-command help consume command-registry summaries, aliases, and deferred status; unknown command and unknown-help targets now produce stack-free tagged failures with machine-readable remediation.
+- Restored typed release ownership for every remaining deferred command, with source and relocated binaries consistently identifying Lando 4.1, and documented the native parser's bounded space-form compatibility policy without broadening it.
+- Verification: typecheck and lint/deprecations passed; 154 focused and adjacent CLI/build tests passed; machine-output, renderer, import-cycle, and package-DAG gates passed; source and relocated compiled CLI surfaces passed. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep release phase on each deferred registry plan and append it at the shared error-construction seam so help, plain diagnostics, and JSON envelopes cannot drift.
+  - Treat supported space forms as an explicit compatibility set; canonical ids and multi-segment aliases remain colon-form tokens, and unsupported forms should fail through the tagged unknown-command boundary.
+---
+
+## [2026-08-04 23:07 CDT] - US-525 Review
+- Review completed root help by grouping every visible canonical id from the registry and listing every non-flag alias with its canonical target; it also prevented registry-owned bare namespace heads, including `plugin`, from falling through to app tooling while preserving colon-qualified tooling routes.
+- Escaped argv-derived unknown-command and dynamic-tooling message fragments without mutating raw typed fields, closing terminal-control injection paths in human diagnostics.
+- Review notes (deferred/rejected): rejected adding `commandToken` to the public machine-error envelope because US-525 does not own a schema expansion; the existing typed field remains raw, the emitted message is safely escaped, and the machine-output boundary remains unchanged.
+- Review notes (deferred/rejected): rejected a literal reserved-namespace list because it would create a second source of truth; namespace heads are derived from canonical ids and colon-qualified registry aliases.
+- Guide-Coverage-Skip: Registry help and parser-routing repairs have no executable-guide workflow surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, 103 focused CLI tests, 2 compiled-binary tests, and direct source CLI help/deferred/unknown-command smokes passed. Post-fix Cursor Bugbot caught an escaped active command id that would alter machine envelopes; raw runtime identity and plain-render escaping were separated, then 62 focused tests and all affected gates repassed.
+- **Learnings for future iterations:**
+  - Derive bare namespace reservations from the same token index that owns dispatch so newly registered alias namespaces cannot silently become tooling names.
+  - Escape only untrusted interpolated fragments when structured error fields must retain raw values.
+---
+
+## [2026-08-05 00:03 CDT] - US-525 Review
+- Closed the remaining registry bypass by rejecting unresolved tokens before transitional topic dispatch, so retired dispatcher-only permutations now produce the same tagged unknown-command failure as help while registered aliases and dynamic tooling retain precedence.
+- Corrected tooling cache remediation and its executable guides to use the canonical `lando app:cache:refresh` token, with registry-resolution coverage preventing future uninvokable suggestions.
+- Review notes (deferred/rejected): retained the now-unreachable dispatcher permutation branches because deleting transitional source structure belongs to later dispatcher cleanup; US-525 owns their user-visible rejection, not that refactor.
+- Verification: explicit-base guide drift, both affected focused guide runs, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, and 213 focused CLI tests passed.
+- **Learnings for future iterations:**
+  - Resolve command identity through the registry before entering transitional dispatch tables; a late unknown-command guard silently preserves undocumented aliases.
+  - Validate remediation command tokens against the registry so error UX cannot recommend parser forms the CLI rejects.
+---

@@ -9,6 +9,7 @@ type BuiltInCommandRegistration = {
 export type BuiltInCommandIndex<T extends BuiltInCommandRegistration> = {
   readonly entries: ReadonlyArray<T>;
   readonly byToken: ReadonlyMap<string, T>;
+  readonly namespaceHeads: ReadonlySet<string>;
 };
 
 export const buildBuiltInCommandIndex = <T extends BuiltInCommandRegistration>(
@@ -16,6 +17,7 @@ export const buildBuiltInCommandIndex = <T extends BuiltInCommandRegistration>(
 ): BuiltInCommandIndex<T> => {
   const entries: T[] = [];
   const byToken = new Map<string, T>();
+  const namespaceHeads = new Set<string>();
   for (const [key, entry] of [...registrations].sort(([left], [right]) => left.localeCompare(right))) {
     if (key !== entry.spec.id) {
       throw new CommandRegistrationError({
@@ -30,8 +32,10 @@ export const buildBuiltInCommandIndex = <T extends BuiltInCommandRegistration>(
         throw commandAliasConflictError(token, `command ${entry.spec.id}`, owner.spec.id);
       }
       byToken.set(token, entry);
+      const separator = token.indexOf(":");
+      if (separator > 0) namespaceHeads.add(token.slice(0, separator));
     }
     entries.push(entry);
   }
-  return { entries, byToken };
+  return { entries, byToken, namespaceHeads };
 };

@@ -5,9 +5,10 @@ import type { CacheError } from "@lando/sdk/errors";
 
 import { readFreshAppCommandCacheForCwd } from "../cache/command-index-writer.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
+import { escapeDiagnosticText } from "./diagnostic-text.ts";
 
 const CACHE_REMEDIATION =
-  "Run `lando app cache refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
+  "Run `lando app:cache:refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
@@ -105,7 +106,7 @@ export const toolingRouteError = (
   route: Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>,
 ): ToolingCompileError =>
   new ToolingCompileError({
-    message: `Tooling command ${route.commandId} is unavailable because the app command cache is missing, stale, or does not contain that task.`,
+    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable because the app command cache is missing, stale, or does not contain that task.`,
     tool: route.name,
     remediation: route.remediation,
   });

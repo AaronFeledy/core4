@@ -13,6 +13,7 @@ import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
 interface FixtureEntry {
   readonly id: string;
+  readonly phase: "4.1";
 }
 
 interface FixtureFile {
@@ -98,6 +99,9 @@ const expectDeferredRemediation = (stderr: string, entry: FixtureEntry): void =>
   expect(stderr, `${entry.id}: stderr must echo the commandId`).toContain(`commandId: ${entry.id}`);
   expect(stderr, `${entry.id}: stderr must include remediation`).toContain("↳");
   expect(stderr, `${entry.id}: stderr must explain availability`).toContain("available");
+  expect(stderr, `${entry.id}: stderr must identify the planned phase`).toContain(
+    `Planned for Lando ${entry.phase}.`,
+  );
 
   const errorBlock = extractErrorBlock(stderr);
   expect(errorBlock.length, `${entry.id}: error block must be non-empty`).toBeGreaterThan(0);
@@ -106,11 +110,8 @@ const expectDeferredRemediation = (stderr: string, entry: FixtureEntry): void =>
 
 describe("deferred command remediation contract", () => {
   test("fixture covers every required command surface", () => {
-    const ids = new Set(fixture.commands.map((entry) => entry.id));
-    const requiredExactIds = ["meta:plugin:login"];
-    for (const id of requiredExactIds) {
-      expect(ids.has(id), `requires fixture entry for ${id}`).toBe(true);
-    }
+    const ids = fixture.commands.map((entry) => entry.id);
+    expect(ids).toEqual(["meta:events:follow", "meta:plugin:login", "meta:plugin:logout"]);
   });
 
   test("meta:global:rebuild is implemented, not deferred", () => {
@@ -122,6 +123,7 @@ describe("deferred command remediation contract", () => {
     for (const entry of fixture.commands) {
       const plan = deferredCommandPlan(entry.id);
       expect(plan, `${entry.id} must have a registered deferral plan`).toBeDefined();
+      expect(plan?.phase, `${entry.id} must target the fixture phase`).toBe(entry.phase);
     }
   });
 
@@ -132,6 +134,7 @@ describe("deferred command remediation contract", () => {
       expect(error.commandId).toBe(entry.id);
       expect(error.message).toContain("not implemented");
       expect(error.remediation).toContain("not available yet");
+      expect(error.remediation).toContain(`Planned for Lando ${entry.phase}.`);
       expect(error.remediation).not.toMatch(STACK_FRAME_PATTERN);
       expect(error.remediation).not.toMatch(SOURCE_FILE_PATH_PATTERN);
     }
@@ -151,7 +154,7 @@ describe("deferred command remediation contract", () => {
     }
   });
 
-  describe("source OCLIF CLI", () => {
+  describe("source native CLI", () => {
     for (const entry of fixture.commands) {
       test(`${entry.id} returns deferred remediation`, async () => {
         const result = await runSource(entry.id);
@@ -197,6 +200,7 @@ describe("deferred command remediation contract", () => {
       const plan = entry.status.kind === "deferred" ? entry.status.plan : undefined;
       expect(plan).toBeDefined();
       if (plan === undefined) continue;
+      expect(plan.phase, `${commandId}: phase must target the deferred release`).toBe("4.1");
       expect(plan.remediation, `${commandId}: remediation must explain availability`).toContain(
         "not available yet",
       );

@@ -3,7 +3,11 @@ import { Effect, Layer } from "effect";
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
-import { notImplementedErrorForCommand, resolveBuiltInCommand } from "./built-in-command-registry.ts";
+import {
+  isReservedNamespaceHead,
+  notImplementedErrorForCommand,
+  resolveBuiltInCommand,
+} from "./built-in-command-registry.ts";
 import { runMetaVersion } from "./cli-adapters/meta-plugin.ts";
 import { scratchRunHasCommandTail } from "./commands/scratch-run.ts";
 import { normalizeScratchStartArgv } from "./commands/scratch.ts";
@@ -33,6 +37,7 @@ import { validateCommandCliFlags } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary.ts";
+import { unknownCommandError } from "./unknown-command-error.ts";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize.ts";
 export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run.ts";
@@ -116,7 +121,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       ? findCommand(argv[0] ?? "")
       : [builtInCommand.spec.id, builtInCommand.command];
 
-  if (found === undefined && (await routeDynamicTooling(argv))) return;
+  if (found === undefined && !isReservedNamespaceHead(head) && (await routeDynamicTooling(argv))) return;
 
   if (
     !isBunOrX &&
@@ -129,12 +134,18 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       return;
     }
 
-    const helpCommand = findCommand(commandArg);
+    const helpCommand = resolveBuiltInCommand(commandArg);
     if (helpCommand === undefined) {
-      throw new Error(`Command ${commandArg} not found`);
+      await renderPreCommandFailure({
+        commandId: "cli:unknown-command",
+        error: unknownCommandError(commandArg),
+        rendererMode: activeRendererMode,
+        resultFormat: activeResultFormat,
+      });
+      return;
     }
 
-    printCommandHelp(helpCommand[0], helpCommand[1]);
+    printCommandHelp(helpCommand);
     return;
   }
 
@@ -174,13 +185,19 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
+  if (found === undefined) {
+    await renderPreCommandFailure({
+      commandId: "cli:unknown-command",
+      error: unknownCommandError(argv[0] ?? ""),
+      rendererMode: activeRendererMode,
+      resultFormat: activeResultFormat,
+    });
+    return;
+  }
+
   if (await dispatchAppCommand(argv)) return;
   if (await dispatchAppsCommand(argv)) return;
   if (await dispatchMetaCommand(argv)) return;
-
-  if (found === undefined) {
-    throw new Error(`Command ${argv[0] ?? ""} not found`);
-  }
 
   throw new Error(`Implemented command ${found[0]} has no native dispatch adapter.`);
 };

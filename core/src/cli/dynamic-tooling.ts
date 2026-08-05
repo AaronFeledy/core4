@@ -7,6 +7,7 @@ import { makeLandoRuntime } from "../runtime/layer.ts";
 import { runBunShellTooling } from "./commands/tooling-bun-script.ts";
 import { type RunToolingResult, renderRunToolingResult, runTooling } from "./commands/tooling.ts";
 import { resetActiveCommandInvocation, runCompiledCommand, setActiveCommandId } from "./compiled-runtime.ts";
+import { escapeDiagnosticText } from "./diagnostic-text.ts";
 import { resolveToolingRoute, toolingName, toolingRouteError } from "./tooling-router.ts";
 
 const ToolingResultSchema = Schema.Struct({
@@ -61,9 +62,9 @@ export const runDynamicBunShellTooling = (
       result === undefined
         ? Effect.fail(
             new ToolingCompileError({
-              message: `Cached script-backed tooling command app:${name} is no longer available.`,
+              message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
               tool: name,
-              remediation: "Run `lando app cache refresh` and retry the command.",
+              remediation: "Run `lando app:cache:refresh` and retry the command.",
             }),
           )
         : Effect.succeed(result),

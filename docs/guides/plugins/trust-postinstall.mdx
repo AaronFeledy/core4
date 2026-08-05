@@ -13,7 +13,7 @@ tags: [beta, docs, plugins, trust]
       <Variable name="output" value="trusted-plugin: @lando/plugin-php" display="The command prints the exact trusted plugin name after the trust store write succeeds" />
     </Step>
     <Step name="authoring-root-trust">
-      <Variable name="command" value="lando plugin:trust-authoring-root /absolute/path/to/plugin" display="Trust a resolved absolute plugin authoring root for local development workflows" />
+      <Variable name="command" value="lando meta:plugin:trust-authoring-root /absolute/path/to/plugin" display="Trust a resolved absolute plugin authoring root for local development workflows" />
       <Variable name="output" value="trusted-authoring-root: /absolute/path/to/plugin" display="Relative paths are rejected; absolute paths are resolved before persistence" />
     </Step>
     <Step name="postinstall-gating">
