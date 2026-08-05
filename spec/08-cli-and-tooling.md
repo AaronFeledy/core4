@@ -5,7 +5,7 @@
 
 This part defines the CLI surface. **Normative implementation (§8.4.1):** one native command registry and dispatcher own shipping argv parsing, help, deferred-command plans, and dispatch for both source and compiled modes; OCLIF is not part of the shipping CLI path (superseded dual-dispatch decision; historical spike in §14 Appendix D.1). The moment a command's `run()` is invoked, control crosses into Effect and never goes back. The retired OCLIF design remains documented in §8.4 as historical context.
 
-Covered here: the four kinds of commands (built-in, plugin, tooling, management), the three first-class command namespaces (`app`, `apps`, `meta`) and the top-level alias mechanism, the full list of built-in commands and their behavioral requirements (including the dedicated `app config` and `meta config` commands), the `LandoCommandSpec` contract and `CommandInput` shape, native dispatcher policies (registry-first manifest, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, namespace mapping), the Taskfile-inspired tooling YAML schema with dynamic service resolution and config expressions, the `ToolingEngine` abstraction (default `providerExec`, plus `host`, `remote`, `dryRun` alternatives), the tooling compilation pipeline and its hot-path cache, `lando apps init` and the v4 recipe model (Yeoman-style scaffolds with Q&A prompts, file manifests, and post-init actions, replacing the v3 recipe-as-plugin model), and the `Renderer` service with built-in render events and selection precedence.
+Covered here: the four kinds of commands (built-in, plugin, tooling, management), the three first-class command namespaces (`app`, `apps`, `meta`) and the top-level alias mechanism, the full list of built-in commands and their behavioral requirements (including the dedicated `app config` and `meta:config` commands), the `LandoCommandSpec` contract and `CommandInput` shape, native dispatcher policies (registry-first manifest, hooks bridging to Effect, `SIGINT` → `Effect.interrupt`, namespace mapping), the Taskfile-inspired tooling YAML schema with dynamic service resolution and config expressions, the `ToolingEngine` abstraction (default `providerExec`, plus `host`, `remote`, `dryRun` alternatives), the tooling compilation pipeline and its hot-path cache, `lando apps:init` and the v4 recipe model (Yeoman-style scaffolds with Q&A prompts, file manifests, and post-init actions, replacing the v3 recipe-as-plugin model), and the `Renderer` service with built-in render events and selection precedence.
 
 ---
 
@@ -44,6 +44,8 @@ Namespaces are stable parts of every command's canonical id and surface in:
 The shipped native parser requires colon-form canonical ids (§8.4.1). Top-level aliases such as `start` and `plugin:add` are individually registered tokens; their colons cannot generically be replaced by spaces. Only the bounded compatibility forms enumerated in §8.4.1 are normalized. Every other space form is an unknown command.
 
 **Reserved namespace names:** `app`, `apps`, `meta`, plus `plugin` (used as a sub-topic of `meta`). Plugins MUST NOT contribute commands directly under `plugin:` at the top level; plugin-management commands live under `meta:plugin:*`. Plugin-owned topics MUST NOT shadow the three core namespace names.
+
+Native routing reserves only a namespace's **bare head token** when that head is derived from a registered canonical id or colon-qualified alias. For example, bare `plugin` cannot fall through to app tooling because registered `plugin:*` aliases own that namespace, while a colon-qualified app-tooling id such as `app:quality` remains eligible for app-command-cache routing when it is not a built-in. This bounded reservation prevents unsupported space syntax from executing tooling without turning namespace prefixes into a blanket ban on canonical colon-form tooling.
 
 **Multi-segment ids.** A canonical id MAY have more than two segments. `meta:plugin:add`, `meta:plugin:remove`, and `app:db:import` (plugin-contributed) are all legal. Each additional segment becomes a nested topic.
 
@@ -212,7 +214,7 @@ Built-in commands are defined in core. Each declares its canonical namespaced id
 
 Commands tolerate apps with no services when the command semantics allow it.
 
-**Help organization.** `lando --help` shows top-level registered tokens and their registry summaries plus the three namespace labels (`app`, `apps`, `meta`). `lando <canonical-id-or-registered-alias> --help` shows that entry's registry description, aliases, deferred status when applicable, and class-owned flags/args. Namespace topic help such as `lando app --help` is not a shipped feature; an unsupported topic token is an unknown command.
+**Help organization.** `lando --help` lists every registered canonical command id grouped by namespace (`app`, `apps`, `meta`, or a plugin-owned namespace) alongside its registry summary, plus every registered top-level alias with a pointer to the canonical id it invokes. `lando <canonical-id-or-registered-alias> --help` shows that entry's registry description, aliases, deferred status when applicable, and class-owned flags/args. Namespace topic help such as `lando app --help` is not a shipped feature; an unsupported topic token is an unknown command.
 
 #### 8.2.1 The `app config` command
 
@@ -220,12 +222,12 @@ Commands tolerate apps with no services when the command semantics allow it.
 
 ```text
 lando app config [--format json|yaml|table] [--path <key.path>]
-lando app config get <key.path>
+lando app:config get <key.path>
 lando app config set <key.path> <value> [--type string|number|boolean|json|yaml]
 lando app config unset <key.path>
 lando app config edit [--editor <bin>] [--target user|local|canonical]
 lando app config validate
-lando app config view [--source raw|merged|resolved] [--format json|yaml]
+lando app:config view [--source raw|merged|resolved] [--format json|yaml]
 lando app config translate [--from <translator-id>] [--file <path>]... [--format yaml|json]
 lando app config translate --detect [--format table|json]
 lando app config translate --list [--format table|json]
@@ -236,7 +238,7 @@ Subcommands:
 
 | Subcommand | Behavior |
 |---|---|
-| (none) | Equivalent to `lando app config view --source resolved`. |
+| (none) | Equivalent to `lando app:config view --source resolved`. |
 | `get <key.path>` | Print a single resolved value. Honors `--source`. |
 | `set <key.path> <value>` | Write to the canonical user-editable Landofile. `--type` controls parsing of the value (default `string`; `json`/`yaml` parses structured values). Validates the resulting file before writing. |
 | `unset <key.path>` | Remove a key from the canonical user-editable Landofile. |
@@ -253,22 +255,22 @@ Rules:
 - Write operations validate the resulting file against the published Landofile schema (§7.8) before persisting. A validation failure aborts the write with no partial change and returns a tagged `LandofileWriteValidationError` with the offending path and remediation.
 - Atomic-write semantics from §12.3 apply. The app-plan cache (§12.1) is invalidated after any successful write.
 - `--path <key.path>` is dot-separated (`services.appserver.environment.APP_ENV`); array indexing uses bracket notation (`tooling.test.cmds[0]`).
-- The command refuses to operate when there is no Landofile in scope and prints remediation suggesting `lando apps init`.
+- The command refuses to operate when there is no Landofile in scope and prints remediation suggesting `lando apps:init`.
 - Config-expression strings (§7.3.1) are written through unchanged; `set` does not evaluate expressions, and `view --source resolved` shows their resolved values.
 - Setting a key to a `${secret:...}` reference is allowed; the literal reference is written and resolved at runtime per §7.3.1.
 - `translate` is preview-only unless `--write` is set. Without `--from`, detection MUST produce exactly one `exact` or `likely` match; ambiguous matches fail with remediation listing `--from` choices. `--file` scopes translator input and is required when a translator cannot safely autodetect. Writes use the same target, validation, atomic-write, and cache-invalidation rules as `set`/`unset`.
 
-#### 8.2.2 The `meta config` command
+#### 8.2.2 The `meta:config` command
 
-`lando meta config` reads and writes Lando's **global** config at `<userConfRoot>/config.yml`. The `config.d/*.yml` overlay layer and `LANDO_*` environment-variable overrides are read but never written from this command. The bare `lando config` invocation is the default top-level alias for this command.
+`lando meta:config` reads and writes Lando's **global** config at `<userConfRoot>/config.yml`. The `config.d/*.yml` overlay layer and `LANDO_*` environment-variable overrides are read but never written from this command. The bare `lando config` invocation is the default top-level alias for this command.
 
 ```text
-lando meta config [--format json|yaml|table] [--path <key.path>]
-lando meta config get <key.path>
-lando meta config set <key.path> <value> [--type string|number|boolean|json|yaml]
-lando meta config unset <key.path>
-lando meta config edit [--editor <bin>]
-lando meta config view [--source raw|resolved] [--format json|yaml]
+lando meta:config [--format json|yaml|table] [--path <key.path>]
+lando meta:config get <key.path>
+lando meta:config set <key.path> <value> [--type string|number|boolean|json|yaml]
+lando meta:config unset <key.path>
+lando meta:config edit [--editor <bin>]
+lando meta:config view [--source raw|resolved] [--format json|yaml]
 ```
 
 Subcommands mirror `app config` (§8.2.1), with these specifics:
@@ -279,12 +281,12 @@ Subcommands mirror `app config` (§8.2.1), with these specifics:
 - The command runs at bootstrap level `minimal` and is callable outside any app context.
 - Plugin-config keys (`pluginConfig.<plugin>.…`) and provider extensions (`providers.<provider>.…`) are first-class write targets and are validated against each contributing schema (§9.4) before being persisted.
 
-#### 8.2.3 The `app shell` command
+#### 8.2.3 The `app:shell` command
 
-`lando app shell` (default top-level alias `lando shell`) opens an interactive Bun Shell scoped to the current Lando app. The host-mode shell is intentionally lightweight: it gives developers a one-key way to run ad-hoc commands in the app's resolved environment without retyping `LANDO_HOST_IP=… composer install` or jumping into a service for host-only tooling.
+`lando app:shell` (default top-level alias `lando shell`) opens an interactive Bun Shell scoped to the current Lando app. The host-mode shell is intentionally lightweight: it gives developers a one-key way to run ad-hoc commands in the app's resolved environment without retyping `LANDO_HOST_IP=… composer install` or jumping into a service for host-only tooling.
 
 ```text
-lando app shell [--service=<name>] [--no-history]
+lando app:shell [--service=<name>] [--no-history]
 ```
 
 Behaviors:
@@ -297,19 +299,19 @@ Behaviors:
 - **Lifecycle events** publish `cli-app:shell-init` / `cli-app:shell-run` / `cli-app:shell-error` per §3.5/§11.4. Per-command shell invocations *inside* the REPL publish `pre-shell-exec` / `post-shell-exec` (host mode) or `pre-provider-exec` / `post-provider-exec` (service mode); subscribers receive the redacted command shape, not the raw line.
 - **Errors.** Without a TTY (`--no-interactive`, redirected stdin, CI), the command fails with `ShellRequiresTtyError` and remediation pointing at `app:exec --interactive --tty -- <command>` for non-interactive use cases.
 
-#### 8.2.4 The `meta bun` and `meta x` commands
+#### 8.2.4 The `meta:bun` and `meta:x` commands
 
-`lando meta bun` (default top-level alias `lando bun`) and `lando meta x` (default top-level alias `lando x`) are the **user-visible front door to the embedded Bun CLI** (§2.1). They are thin wrappers over `BunSelfRunner` (§3.4) that exist for three reasons: a user with only `lando` installed gets a working package manager and TS runner with no extra prerequisite; recipes can rely on `lando bun` / `lando x` being callable from `postInit.command` without a host Bun (§8.8.8); and core gets one observable, redacted, lifecycle-eventing entry point for ad-hoc Bun work instead of inviting plugin authors to construct ad-hoc `BUN_BE_BUN=1` children of their own.
+`lando meta:bun` (default top-level alias `lando bun`) and `lando meta:x` (default top-level alias `lando x`) are the **user-visible front door to the embedded Bun CLI** (§2.1). They are thin wrappers over `BunSelfRunner` (§3.4) that exist for three reasons: a user with only `lando` installed gets a working package manager and TS runner with no extra prerequisite; recipes can rely on `lando bun` / `lando x` being callable from `postInit.command` without a host Bun (§8.8.8); and core gets one observable, redacted, lifecycle-eventing entry point for ad-hoc Bun work instead of inviting plugin authors to construct ad-hoc `BUN_BE_BUN=1` children of their own.
 
 ```text
-lando meta bun [<bun-argv>...]            # alias: lando bun
-lando meta bun -- [<bun-argv>...]         # explicit argv passthrough; everything after `--` is forwarded verbatim
-lando meta x <package>[@<version>] [<args>...]   # alias: lando x
+lando meta:bun [<bun-argv>...]            # alias: lando bun
+lando meta:bun -- [<bun-argv>...]         # explicit argv passthrough; everything after `--` is forwarded verbatim
+lando meta:x <package>[@<version>] [<args>...]   # alias: lando x
 ```
 
 Behaviors:
 
-- **`meta:bun`** forwards every argument after `bun` to `BunSelfRunner.run(args)`. `lando bun install`, `lando bun add lodash`, `lando bun outdated`, `lando bun audit`, `lando bun test`, `lando bun build ./entry.ts`, `lando bun create vite my-app`, `lando bun run my-script` all behave the way the upstream `bun` CLI documents them. The `cwd` defaults to the user's current working directory; flags Lando *also* defines (e.g., `--help`, `--version`) are NOT intercepted — `lando bun --version` reports the *embedded Bun's* version, not Lando's, by routing the call through `BunSelfRunner.run(["--version"])`. Use `lando version` (or `lando meta version`) to get Lando's version.
+- **`meta:bun`** forwards every argument after `bun` to `BunSelfRunner.run(args)`. `lando bun install`, `lando bun add lodash`, `lando bun outdated`, `lando bun audit`, `lando bun test`, `lando bun build ./entry.ts`, `lando bun create vite my-app`, `lando bun run my-script` all behave the way the upstream `bun` CLI documents them. The `cwd` defaults to the user's current working directory; flags Lando *also* defines (e.g., `--help`, `--version`) are NOT intercepted — `lando bun --version` reports the *embedded Bun's* version, not Lando's, by routing the call through `BunSelfRunner.run(["--version"])`. Use `lando version` (or `lando meta:version`) to get Lando's version.
 - **`meta:x`** is a structured alias for `BunSelfRunner.x(spec, argv)` with a stricter contract than freeform `lando bun x …`: the first non-flag positional MUST be a package spec, and the remainder is the package's argv. Examples: `lando x prettier --write .`, `lando x @astrojs/cli init`, `lando x degit user/repo my-clone`. The structured form lets the renderer print "Running prettier@latest…" before the spawn, lets the perf-budget suite (§13.1) instrument bunx invocations specifically, and lets sandboxed `BunSelfRunner` plugins (§4.2) decide whether to allow `x` separately from `add`.
 - **Bootstrap level:** `minimal`. Both commands construct `BunSelfRunner` (lazy at `minimal`; §3.4) and the active `Logger` / `Renderer` for output streaming. They do NOT bootstrap plugins, providers, or the app planner — `lando bun add lodash` works inside a directory that has no Landofile.
 - **Lifecycle events** publish `cli-meta:bun-init` / `cli-meta:bun-run` / `cli-meta:bun-error` and `cli-meta:x-init` / `cli-meta:x-run` / `cli-meta:x-error` per §3.5/§11. Each child Bun spawn additionally publishes `pre-bun-self-exec` / `post-bun-self-exec` (§11.2).
@@ -319,12 +321,12 @@ Behaviors:
 - **`hostProxyAllowed: false`.** Both commands MUST NOT be on the in-container `lando` shim allowlist (§10.10). A container that needs Bun should declare a `lando.bun-self` service feature (§6.11) — the container-side Bun primitive — instead of round-tripping through the host. Allowing `lando bun` over the host proxy would let a container install host-global packages or run host-side `bun create` against the user's home directory, both of which violate the host-proxy threat model.
 - **Offline mode.** When the user's effective configuration declares `offline: true` (§7.5), `meta:x` refuses uncached packages with `BunSelfOfflineError` and suggests `lando bun add <pkg>` (which writes the user's lockfile and lets the next `lando x` hit the cache). `meta:bun` passes the offline flag through to the embedded Bun unchanged.
 
-#### 8.2.5 The `app open` command
+#### 8.2.5 The `app:open` command
 
-`lando app open` (default top-level alias `lando open`) opens a resolved app URL in the user's real browser. It is the outbound sibling of the host-proxy `openUrl` channel (§10.10.2): same scheme discipline, same "the URL comes from the app plan" rule, running host-side instead of container-side.
+`lando app:open` (default top-level alias `lando open`) opens a resolved app URL in the user's real browser. It is the outbound sibling of the host-proxy `openUrl` channel (§10.10.2): same scheme discipline, same "the URL comes from the app plan" rule, running host-side instead of container-side.
 
 ```text
-lando app open [--service <name>] [--route <host>] [--all] [--print]
+lando app:open [--service <name>] [--route <host>] [--all] [--print]
 ```
 
 Behaviors:
@@ -338,12 +340,12 @@ Behaviors:
 - **Bootstrap level:** `app`, hot-path friendly: resolution reads the cached app plan/service info and does not contact the provider unless `--service` needs live endpoint state.
 - **Lifecycle events** publish `cli-app:open-init` / `-run` / `-error`; each opened URL additionally publishes `pre-open-url` / `post-open-url` with the redacted URL summary.
 
-#### 8.2.6 The `meta mcp` command
+#### 8.2.6 The `meta:mcp` command
 
-`lando meta mcp` (default top-level alias `lando mcp`) serves the **Model Context Protocol** so AI agents operate Lando through typed tools instead of scraping CLI text. It is the third leg of the agent-native tenet (§1.2): the machine-output contract (§8.11) makes every command result schema-backed, agent env forwarding (§6.9.1) keeps context across the exec boundary, and `lando mcp` makes the whole command surface *discoverable and callable* by any MCP client. The server contract lives in §10.14; this section is the command surface.
+`lando meta:mcp` (default top-level alias `lando mcp`) serves the **Model Context Protocol** so AI agents operate Lando through typed tools instead of scraping CLI text. It is the third leg of the agent-native tenet (§1.2): the machine-output contract (§8.11) makes every command result schema-backed, agent env forwarding (§6.9.1) keeps context across the exec boundary, and `lando mcp` makes the whole command surface *discoverable and callable* by any MCP client. The server contract lives in §10.14; this section is the command surface.
 
 ```text
-lando meta mcp [--allow <canonical-id>]... [--deny <canonical-id>]... [--tooling] [--list]
+lando meta:mcp [--allow <canonical-id>]... [--deny <canonical-id>]... [--tooling] [--list]
 ```
 
 Behaviors:
@@ -466,7 +468,7 @@ This section preserves the retired source-path design for historical context. It
 
 The canonical Landofile key remains `tooling:` for v4. A tooling entry is also called a **Lando task** when describing dependency graphs and step execution.
 
-**Tooling tasks register under the `app:` namespace by default** (§8.1.1). A task named `composer` is invoked canonically as `lando app composer`; setting `topLevelAlias: true` on the task additionally registers `lando composer`. A task MAY opt into a different namespace by setting `namespace:` (rare; documented in §8.5.1). Task names MAY contain `:` for sub-namespaces inside `app:`; for example, `tooling.db:wait` produces canonical id `app:db:wait`.
+**Tooling tasks register under the `app:` namespace by default** (§8.1.1). A task named `composer` is invoked canonically as `lando app:composer`; setting `topLevelAlias: true` on the task additionally registers `lando composer`. A task MAY opt into a different namespace by setting `namespace:` (rare; documented in §8.5.1). Task names MAY contain `:` for sub-namespaces inside `app:`; for example, `tooling.db:wait` produces canonical id `app:db:wait`.
 
 ```yaml
 toolingDefaults:
@@ -674,7 +676,7 @@ Semantics:
 
 The `command:` step does **not** re-parse argv through the dispatcher. It calls the same Effect program that backs `@lando/core/cli`'s `appStart`, `metaPluginAdd`, etc. (§16.7), so wrap behavior in the CLI and in an embedding host is identical.
 
-The intended composition pattern is a Landofile `commandAliases.custom:` entry (§8.1.2) pointing at a wrapper tooling task whose `cmds:` invoke the original built-in via `command:`. Subscribers to the wrapped command's lifecycle events still fire because the inner invocation goes through the canonical Effect program; the canonical id (e.g., `lando app start`) remains callable directly.
+The intended composition pattern is a Landofile `commandAliases.custom:` entry (§8.1.2) pointing at a wrapper tooling task whose `cmds:` invoke the original built-in via `command:`. Subscribers to the wrapped command's lifecycle events still fire because the inner invocation goes through the canonical Effect program; the canonical id (e.g., `lando app:start`) remains callable directly.
 
 ##### 8.5.2.2 Wrapping a built-in: worked example
 
@@ -709,7 +711,7 @@ When the user runs `lando start --rebuild`:
 4. The `command: app:start` step invokes the built-in's Effect program with `--rebuild` forwarded explicitly. Subscribers to `cli-app:start-run` still fire.
 5. The health probe runs in `appserver` through the active `ToolingEngine`.
 
-`lando app start --rebuild` (canonical) is unaffected; it always runs the built-in. The override only re-binds the bare top-level alias for the app's command registry.
+`lando app:start --rebuild` (canonical) is unaffected; it always runs the built-in. The override only re-binds the bare top-level alias for the app's command registry.
 
 #### 8.5.3 Variables and environment
 
@@ -989,13 +991,13 @@ On invocation at bootstrap level `tooling`:
 5. Build `LandoRuntimeLive` at the task's **effective bootstrap level** (which already accounts for any `command:` step's requirements, §8.5.2.1).
 6. Run `engine.execute(program, input)` and propagate exit code. `command:` steps invoke the target command's Effect program directly; they do not re-parse argv through the dispatcher.
 
-If the app command index is missing or stale, router bootstrap omits app tooling commands rather than reparsing the Landofile. `command_not_found` detects that the current directory is inside a Lando app with a missing/stale command index and prints remediation pointing to `lando app cache refresh` or any full app-planning command such as `lando start` / `lando rebuild`.
+If the app command index is missing or stale, router bootstrap omits app tooling commands rather than reparsing the Landofile. `command_not_found` detects that the current directory is inside a Lando app with a missing/stale command index and prints remediation pointing to `lando app:cache:refresh` or any full app-planning command such as `lando start` / `lando rebuild`.
 
-Provider initialization is the single hot-path cost when a task needs provider execution. The cached plan is read in microseconds, and no network, plugin install, fragment fetch, or provider contact occurs before invocation semantics require it. A wrapping task whose only escalation cost is a single `command: app:start` pays exactly the same cost as a direct `lando app start` invocation. Tooling hot path MUST remain usable offline after the app's Lando-managed dependencies and task graph are materialized.
+Provider initialization is the single hot-path cost when a task needs provider execution. The cached plan is read in microseconds, and no network, plugin install, fragment fetch, or provider contact occurs before invocation semantics require it. A wrapping task whose only escalation cost is a single `command: app:start` pays exactly the same cost as a direct `lando app:start` invocation. Tooling hot path MUST remain usable offline after the app's Lando-managed dependencies and task graph are materialized.
 
-### 8.8 `lando apps init` and the v4 recipe model
+### 8.8 `lando apps:init` and the v4 recipe model
 
-`lando apps init` (default top-level alias `lando init`) scaffolds a new Lando app from a **recipe**. A recipe in v4 is a Yeoman-style scaffolding artifact — a directory of source files plus a Q&A manifest — that produces a real, fully-visible Landofile (and any helper files) the user owns and can edit.
+`lando apps:init` (default top-level alias `lando init`) scaffolds a new Lando app from a **recipe**. A recipe in v4 is a Yeoman-style scaffolding artifact — a directory of source files plus a Q&A manifest — that produces a real, fully-visible Landofile (and any helper files) the user owns and can edit.
 
 The v3 recipe-as-plugin model is removed. There is no `recipe:` Landofile key (§7.4), no `RecipeDefinition` plugin contract, no `recipes:` plugin manifest contribution, no runtime recipe expansion, and no core migration path. The word "recipe" is preserved as the user-facing term; the implementation is a one-shot scaffold consumed at init time and never referenced again. External config translator plugins MAY provide legacy import flows outside core (§7.4.1).
 
@@ -1233,7 +1235,7 @@ The `bun` action is bounded by construction across every verb:
 - Cancellation: `Effect.interrupt` propagates through `BunSelfRunner` to the embedded Bun child. The recipe init aborts with `RecipeInterruptedError`. `verb: install`-written `node_modules/` directories are NOT auto-removed because they may contain partially extracted artifacts the user wants to inspect; the failure message points at `rm -rf node_modules && lando bun install` for retry.
 - Network: `verb: install`, `add`, `create`, and `x` may contact registries; this is the legitimate exception to the §1.4 "recipes MUST NOT contact the network" rule and is the same exception the existing `--recipe` source resolution already carries. Recipe authors SHOULD scope network-bound actions behind a `when:` expression so users on offline runs can opt out.
 - Failures are reported but do NOT roll back files already written. A recipe author who needs file rollback on a `bun` failure must pre-validate before the file-write phase via `prompts:` `validate.exists` / `validate.pattern` / `validate.message`.
-- The action MUST NOT install Lando plugins into the user-global plugin set; `lando plugin add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The action is bounded to the destination directory's package graph.
+- The action MUST NOT install Lando plugins into the user-global plugin set; `lando plugin:add` is the only canonical path for that and is forbidden in `postInit.command`'s allowlist by construction. The action is bounded to the destination directory's package graph.
 
 Recipes MUST NOT define arbitrary shell hooks outside `bun: { verb: script }`. The action set is intentionally small. New top-level actions require a spec change; new `bun` verbs require updating the verb allowlist and the generated recipe-action docs.
 

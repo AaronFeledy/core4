@@ -444,3 +444,15 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Keep release phase on each deferred registry plan and append it at the shared error-construction seam so help, plain diagnostics, and JSON envelopes cannot drift.
   - Treat supported space forms as an explicit compatibility set; canonical ids and multi-segment aliases remain colon-form tokens, and unsupported forms should fail through the tagged unknown-command boundary.
 ---
+
+## [2026-08-04 23:07 CDT] - US-525 Review
+- Review completed root help by grouping every visible canonical id from the registry and listing every non-flag alias with its canonical target; it also prevented registry-owned bare namespace heads, including `plugin`, from falling through to app tooling while preserving colon-qualified tooling routes.
+- Escaped argv-derived unknown-command and dynamic-tooling message fragments without mutating raw typed fields, closing terminal-control injection paths in human diagnostics.
+- Review notes (deferred/rejected): rejected adding `commandToken` to the public machine-error envelope because US-525 does not own a schema expansion; the existing typed field remains raw, the emitted message is safely escaped, and the machine-output boundary remains unchanged.
+- Review notes (deferred/rejected): rejected a literal reserved-namespace list because it would create a second source of truth; namespace heads are derived from canonical ids and colon-qualified registry aliases.
+- Guide-Coverage-Skip: Registry help and parser-routing repairs have no executable-guide workflow surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, 103 focused CLI tests, 2 compiled-binary tests, and direct source CLI help/deferred/unknown-command smokes passed; initial Cursor Bugbot found no bugs.
+- **Learnings for future iterations:**
+  - Derive bare namespace reservations from the same token index that owns dispatch so newly registered alias namespaces cannot silently become tooling names.
+  - Escape only untrusted interpolated fragments when structured error fields must retain raw values.
+---
