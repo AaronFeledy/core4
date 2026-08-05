@@ -568,3 +568,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Put generated command metadata beside the native registry and make compatibility command classes project the command spec rather than own a parallel flag surface.
   - Keep cold-path topic rendering data-driven from an embedded literal manifest; generator-time imports may inspect authored metadata, but level-none runtime code should import only the generated artifact.
 ---
+
+## [2026-08-05 16:54 CDT] - US-530 Review
+- Review isolated setup-flag generator execution in a temporary repository, so the proof now starts without native output, verifies real first materialization and legacy cleanup, and cannot race or dirty the shared checkout.
+- Reconciled the normative command-namespace glossary and codegen catalog rows with native topic ownership and the relocated setup-flag output.
+- Review notes (deferred/rejected): an additional negative provider-scoping case is non-blocking because provider filtering is unchanged by this relocation and the matching-provider delivery path plus pure filter are already covered.
+- Review notes (deferred/rejected): prototype-pollution and global-name concerns are not exploitable regressions because contributions are build-time bundled source, collisions are rejected, and generated values are JSON-escaped literals.
+- Guide-Coverage-Skip: Internal generator-test isolation and metadata ownership wording change no documented workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and 135 focused setup/manifest/parser/help/cold-path tests passed; Bugbot, hands-on QA, code-quality, security, and context review found no remaining functional blocker. LSP was clean before the formatting-only final edit and then timed out twice; workspace typecheck covered the final file.
+- **Learnings for future iterations:**
+  - Run destructive codegen proofs in temporary repository fixtures and assert the target output begins absent, so first-materialization tests cannot pass on stale shared-checkout artifacts.
+---
