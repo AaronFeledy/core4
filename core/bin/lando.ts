@@ -16,16 +16,46 @@ ensureHostProxyNoProxy("localhost");
 const argv = Bun.argv.slice(2);
 
 const main = async (): Promise<void> => {
-  if (argv.length === 1 && (argv[0] === "--version" || argv[0] === "-v" || argv[0] === "version")) {
+  if (
+    argv.length === 1 &&
+    (argv[0] === "--version" || argv[0] === "-V" || argv[0] === "-v" || argv[0] === "version")
+  ) {
     const { CORE_VERSION } = await import("../src/version.ts");
     console.log(CORE_VERSION);
-    process.exit(0);
+    return;
   }
 
-  if (argv.length === 1 && argv[0] === "shellenv") {
+  if (
+    (argv.length === 1 && (argv[0] === "shellenv" || argv[0] === "meta:shellenv")) ||
+    (argv.length === 2 && argv[0] === "meta" && argv[1] === "shellenv")
+  ) {
     const { renderShellenv } = await import("../src/cli/commands/shellenv.ts");
     console.log(renderShellenv("posix"));
-    process.exit(0);
+    return;
+  }
+
+  if (
+    (argv.length === 1 && (argv[0] === "meta:version" || argv[0] === "--help" || argv[0] === "-h")) ||
+    (argv.length === 2 && argv[0] === "meta" && argv[1] === "version")
+  ) {
+    if (argv[0] === "--help" || argv[0] === "-h") {
+      const { renderColdRootHelp } = await import("../src/cli/cold-path-output.ts");
+      console.log(renderColdRootHelp());
+      return;
+    }
+    const { CORE_VERSION, renderMetaVersion } = await import("../src/version.ts");
+    console.log(renderMetaVersion({ core: CORE_VERSION, bun: Bun.version, platform: process.platform }));
+    return;
+  }
+
+  if (
+    (argv.length === 1 && (argv[0] === "recipes" || argv[0] === "meta:recipes:list")) ||
+    (argv.length === 2 && argv[0] === "recipes" && argv[1] === "list") ||
+    (argv.length === 3 && argv[0] === "meta" && argv[1] === "recipes" && argv[2] === "list")
+  ) {
+    const { renderColdRecipesList } = await import("../src/cli/cold-path-output.ts");
+    console.log(renderColdRecipesList());
+    return;
   }
 
   const { runCli } = await import("@lando/core/cli");
