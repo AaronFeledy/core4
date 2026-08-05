@@ -19,6 +19,7 @@ export const pluginLogoutSpec: LandoCommandSpec<never> = {
   topLevelAlias: true,
   bootstrap: "minimal",
   deferred: {
+    phase: "4.1",
     summary: "Plugin registry login/logout are not available yet.",
     remediation: "Plugin registry login/logout are not available yet.",
   },

@@ -33,6 +33,7 @@ import { validateCommandCliFlags } from "./flag-value-validation.ts";
 import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary.ts";
+import { unknownCommandError } from "./unknown-command-error.ts";
 
 export { normalizeCompiledCommandArgv } from "./compiled-normalize.ts";
 export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run.ts";
@@ -129,12 +130,18 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       return;
     }
 
-    const helpCommand = findCommand(commandArg);
+    const helpCommand = resolveBuiltInCommand(commandArg);
     if (helpCommand === undefined) {
-      throw new Error(`Command ${commandArg} not found`);
+      await renderPreCommandFailure({
+        commandId: "cli:unknown-command",
+        error: unknownCommandError(commandArg),
+        rendererMode: activeRendererMode,
+        resultFormat: activeResultFormat,
+      });
+      return;
     }
 
-    printCommandHelp(helpCommand[0], helpCommand[1]);
+    printCommandHelp(helpCommand);
     return;
   }
 
@@ -179,7 +186,13 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
   if (await dispatchMetaCommand(argv)) return;
 
   if (found === undefined) {
-    throw new Error(`Command ${argv[0] ?? ""} not found`);
+    await renderPreCommandFailure({
+      commandId: "cli:unknown-command",
+      error: unknownCommandError(argv[0] ?? ""),
+      rendererMode: activeRendererMode,
+      resultFormat: activeResultFormat,
+    });
+    return;
   }
 
   throw new Error(`Implemented command ${found[0]} has no native dispatch adapter.`);

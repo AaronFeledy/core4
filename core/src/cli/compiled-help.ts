@@ -6,16 +6,16 @@
  * usage/aliases/flags directly from the built-in command registry.
  */
 import { CORE_VERSION } from "../version.ts";
-import { builtInCommandEntries } from "./built-in-command-registry.ts";
+import { type BuiltInCommandEntry, builtInCommandEntries } from "./built-in-command-registry.ts";
 import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help.ts";
-import { type CompiledCommand, commandName } from "./compiled-argv.ts";
 import { emitResultLine } from "./compiled-runtime.ts";
+import { resolveTopLevelAliases } from "./oclif/command-spec.ts";
 
 const version = `@lando/core/${CORE_VERSION}`;
 
 export const printRootHelp = (): void => {
   const lines = [
-    `Lando v4 core: runtime, planner, OCLIF adapter, and library API.
+    `Lando v4 core: runtime, planner, command registry, and library API.
 
 VERSION
   ${version} ${process.platform}-${process.arch} node-${process.version}
@@ -30,26 +30,29 @@ TOPICS
 
 COMMANDS`,
   ];
-  for (const { spec, command } of builtInCommandEntries) {
-    const id = spec.id;
-    const name = commandName(id, command);
+  for (const { spec } of builtInCommandEntries) {
+    const name = resolveTopLevelAliases(spec)[0] ?? spec.id;
     if (!name.includes(":")) {
-      lines.push(`  ${name.padEnd(22)} ${command.description ?? ""}`);
+      lines.push(`  ${name.padEnd(22)} ${spec.summary}`);
     }
   }
   emitResultLine(lines.join("\n"));
 };
 
-export const printCommandHelp = (id: string, command: CompiledCommand): void => {
+export const printCommandHelp = (entry: BuiltInCommandEntry): void => {
+  const { command, spec, status } = entry;
   const lines = [
-    `${command.description ?? command.summary ?? id}
+    `${spec.description ?? spec.summary}
 
 USAGE
-  $ lando ${renderCommandUsage(id, command)}
+  $ lando ${renderCommandUsage(spec.id, command)}
 
 ALIASES
-  ${[id, ...(command.aliases ?? [])].join(", ")}`,
+  ${[spec.id, ...resolveTopLevelAliases(spec)].join(", ")}`,
   ];
+  if (status.kind === "deferred") {
+    lines.push("", "STATUS", `  Planned for Lando ${status.plan.phase}.`);
+  }
   lines.push(...renderCommandHelpFlags(command));
   emitResultLine(lines.join("\n"));
 };
