@@ -1,17 +1,30 @@
-import { readFile, rm, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
-const legacyManifestPath = resolve(repoRoot, "core/oclif.manifest.json");
-const legacyCompiledManifestPath = resolve(repoRoot, "core/src/cli/oclif/compiled-manifest.ts");
-const generatedManifestPath = resolve(repoRoot, "core/src/cli/generated/command-registry-manifest.ts");
-const generatedCommandIdsPath = resolve(repoRoot, "core/src/cli/generated/command-ids.ts");
-const generatorPath = resolve(repoRoot, "scripts/build-command-registry-manifest.ts");
-const commandReferenceGeneratorPath = resolve(repoRoot, "scripts/build-command-reference.ts");
-const commandReferencePath = resolve(repoRoot, "docs/reference/commands.mdx");
+const fixtureFiles = [
+  "package.json",
+  "biome.json",
+  "core/package.json",
+  "scripts/_codegen-output.ts",
+  "scripts/build-command-registry-manifest.ts",
+  "scripts/build-command-reference.ts",
+] as const;
+
+type RepositoryFixture = {
+  readonly root: string;
+  readonly legacyManifestPath: string;
+  readonly legacyCompiledManifestPath: string;
+  readonly generatedManifestPath: string;
+  readonly generatedCommandIdsPath: string;
+  readonly generatorPath: string;
+  readonly commandReferenceGeneratorPath: string;
+  readonly commandReferencePath: string;
+};
 
 type ManifestCommand = {
   readonly aliases: ReadonlyArray<string>;
@@ -46,9 +59,34 @@ const isCommandRegistryManifestModule = (value: unknown): value is CommandRegist
   "version" in value.COMMAND_REGISTRY_MANIFEST &&
   typeof value.COMMAND_REGISTRY_MANIFEST.version === "string";
 
-const runScript = (path: string): void => {
+const createRepositoryFixture = async (): Promise<RepositoryFixture> => {
+  const root = await mkdtemp(join(tmpdir(), "lando-command-registry-"));
+  await cp(resolve(repoRoot, "core/src"), resolve(root, "core/src"), { recursive: true });
+  await Promise.all(
+    fixtureFiles.map(async (path) => {
+      const destination = resolve(root, path);
+      await mkdir(dirname(destination), { recursive: true });
+      await cp(resolve(repoRoot, path), destination);
+    }),
+  );
+  await symlink(resolve(repoRoot, "node_modules"), resolve(root, "node_modules"), "dir");
+  await mkdir(resolve(root, "docs/reference"), { recursive: true });
+
+  return {
+    root,
+    legacyManifestPath: resolve(root, "core/oclif.manifest.json"),
+    legacyCompiledManifestPath: resolve(root, "core/src/cli/oclif/compiled-manifest.ts"),
+    generatedManifestPath: resolve(root, "core/src/cli/generated/command-registry-manifest.ts"),
+    generatedCommandIdsPath: resolve(root, "core/src/cli/generated/command-ids.ts"),
+    generatorPath: resolve(root, "scripts/build-command-registry-manifest.ts"),
+    commandReferenceGeneratorPath: resolve(root, "scripts/build-command-reference.ts"),
+    commandReferencePath: resolve(root, "docs/reference/commands.mdx"),
+  };
+};
+
+const runScript = (fixture: RepositoryFixture, path: string): void => {
   const proc = Bun.spawnSync([process.execPath, path], {
-    cwd: repoRoot,
+    cwd: fixture.root,
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -60,31 +98,34 @@ const runScript = (path: string): void => {
   }).toMatchObject({ exitCode: 0 });
 };
 
+let fixture: RepositoryFixture;
+
+beforeEach(async () => {
+  fixture = await createRepositoryFixture();
+});
+
 afterEach(async () => {
-  await Promise.all([
-    rm(legacyManifestPath, { force: true }),
-    rm(legacyCompiledManifestPath, { force: true }),
-  ]);
+  await rm(fixture.root, { recursive: true, force: true });
 });
 
 describe("embedded command registry manifest", () => {
   test("generator first-materializes registry outputs without a JSON sidecar", async () => {
     // Given
     await Promise.all([
-      rm(generatedManifestPath, { force: true }),
-      rm(generatedCommandIdsPath, { force: true }),
+      rm(fixture.generatedManifestPath, { force: true }),
+      rm(fixture.generatedCommandIdsPath, { force: true }),
     ]);
-    await writeFile(legacyManifestPath, '{ "stale": true }\n', "utf8");
-    await writeFile(legacyCompiledManifestPath, "export const stale = true;\n", "utf8");
+    await writeFile(fixture.legacyManifestPath, '{ "stale": true }\n', "utf8");
+    await writeFile(fixture.legacyCompiledManifestPath, "export const stale = true;\n", "utf8");
 
     // When
-    runScript(generatorPath);
+    runScript(fixture, fixture.generatorPath);
 
     // Then
-    expect(await Bun.file(legacyManifestPath).exists()).toBe(false);
-    expect(await Bun.file(legacyCompiledManifestPath).exists()).toBe(false);
+    expect(await Bun.file(fixture.legacyManifestPath).exists()).toBe(false);
+    expect(await Bun.file(fixture.legacyCompiledManifestPath).exists()).toBe(false);
     const importedManifest: unknown = await import(
-      `${pathToFileURL(generatedManifestPath).href}?generated=${Date.now()}`
+      `${pathToFileURL(fixture.generatedManifestPath).href}?generated=${Date.now()}`
     );
     const { builtInCommandEntries } = await import("../../src/cli/built-in-command-registry.ts");
     expect(isCommandRegistryManifestModule(importedManifest)).toBe(true);
@@ -107,25 +148,25 @@ describe("embedded command registry manifest", () => {
 
   test("generator output is idempotent", async () => {
     // Given
-    runScript(generatorPath);
-    const first = await readFile(generatedManifestPath, "utf8");
+    runScript(fixture, fixture.generatorPath);
+    const first = await readFile(fixture.generatedManifestPath, "utf8");
 
     // When
-    runScript(generatorPath);
+    runScript(fixture, fixture.generatorPath);
 
     // Then
-    expect(await readFile(generatedManifestPath, "utf8")).toBe(first);
+    expect(await readFile(fixture.generatedManifestPath, "utf8")).toBe(first);
   });
 
   test("command reference preserves registry-keyed arguments and flags", async () => {
     // Given
-    runScript(generatorPath);
+    runScript(fixture, fixture.generatorPath);
 
     // When
-    runScript(commandReferenceGeneratorPath);
+    runScript(fixture, fixture.commandReferenceGeneratorPath);
 
     // Then
-    const reference = await readFile(commandReferencePath, "utf8");
+    const reference = await readFile(fixture.commandReferencePath, "utf8");
     expect(reference).toContain("| `command` | Command to run (first positional). |");
     expect(reference).toContain("| `--follow, -f` | Stream new log lines until interrupted. |");
   });
