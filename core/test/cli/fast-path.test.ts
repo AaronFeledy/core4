@@ -10,6 +10,7 @@ import { buildCliBundle } from "../build/cli-bundle.ts";
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const binaryEntry = resolve(repoRoot, "core/bin/lando.ts");
 const canaryPreload = resolve(dirname(fileURLToPath(import.meta.url)), "fast-path-canary-preload.ts");
+const canaryProbe = resolve(dirname(fileURLToPath(import.meta.url)), "fixtures/fast-path-canary-probe.ts");
 
 interface RunResult {
   readonly exitCode: number;
@@ -62,6 +63,16 @@ const expectShellenvOutput = (stdout: string): void => {
   expect(lines[1]).toBe('export PATH="${LANDO_USER_DATA_ROOT}/bin:${PATH}"');
 };
 
+describe("fast path import canary", () => {
+  test.each(["effect", "@oclif/core"])("traps a runtime load of %s", async (specifier) => {
+    const result = await runCommand([process.execPath, "--preload", canaryPreload, canaryProbe, specifier]);
+
+    expect(result.stderr).toContain("FAST_PATH_CANARY");
+    expect(result.stderr).toContain(specifier);
+    expect(result.exitCode).not.toBe(0);
+  });
+});
+
 describe("CLI version fast path", () => {
   test.each(["--version", "-v", "version"])("%s exits before CLI dispatch bootstrap", async (arg) => {
     const result = await runCli(arg);
@@ -71,16 +82,13 @@ describe("CLI version fast path", () => {
     expect(result.stderr).toBe("");
   });
 
-  test.each(["--version", "-v", "version"])(
-    "%s does not import the effect runtime (PRD-02 FR-4)",
-    async (arg) => {
-      const result = await runCli(arg, ["--preload", canaryPreload]);
+  test.each(["--version", "-v", "version"])("%s does not import the Effect or OCLIF runtime", async (arg) => {
+    const result = await runCli(arg, ["--preload", canaryPreload]);
 
-      expect(result.stderr).not.toContain("FAST_PATH_CANARY");
-      expect(result.exitCode).toBe(0);
-      expect(result.stdout.trim()).toBe(corePackage.version);
-    },
-  );
+    expect(result.stderr).not.toContain("FAST_PATH_CANARY");
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout.trim()).toBe(corePackage.version);
+  });
 
   test("documents the MVP wall-clock budget without enforcing it", () => {
     expect("version fast path budget: <=50ms on baseline Linux x64").toContain("<=50ms");
@@ -120,7 +128,7 @@ describe("CLI shellenv fast path", () => {
     }
   });
 
-  test("shellenv does not import the effect runtime", async () => {
+  test("shellenv does not import the Effect or OCLIF runtime", async () => {
     const result = await runCli("shellenv", ["--preload", canaryPreload]);
 
     expect(result.stderr).not.toContain("FAST_PATH_CANARY");
