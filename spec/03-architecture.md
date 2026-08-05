@@ -246,7 +246,7 @@ core/
 ├── package.json
 ├── bun.lock
 ├── tsconfig.json
-└── core/src/cli/generated/
+└── src/cli/generated/
     └── command-registry-manifest.ts  # Build-derived command metadata embedded in the binary
 ```
 
