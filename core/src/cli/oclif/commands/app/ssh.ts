@@ -1,5 +1,5 @@
-import { Args, Flags } from "@oclif/core";
 import { Effect } from "effect";
+import { Args, Flags } from "../../metadata.ts";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 

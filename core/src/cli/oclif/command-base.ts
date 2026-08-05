@@ -1,5 +1,3 @@
-import { Command } from "@oclif/core";
-
 import { Effect, Layer } from "effect";
 
 import {
@@ -29,6 +27,7 @@ import {
 } from "./command-boundary.ts";
 import { type LandoCommandSpec, formatCommandError, validateCommandSpec } from "./command-spec.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
+import { Command } from "./metadata.ts";
 
 export {
   type LandoAliasSpec,

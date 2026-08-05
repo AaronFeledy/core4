@@ -7,7 +7,6 @@
  * stores that Layer for `LandoCommandBase.runEffect()` to provide to the
  * command's Effect program.
  */
-import type { Command, Hook } from "@oclif/core";
 import { Either, Schema } from "effect";
 
 import { LandoRuntimeBootstrapError } from "@lando/sdk/errors";
@@ -16,14 +15,15 @@ import { BootstrapLevel, type BootstrapLevel as BootstrapLevelType } from "@land
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "../../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../../runtime/layer.ts";
 import { preCommandOutputMode, renderPreCommandFailure } from "../../oclif/command-boundary.ts";
+import type { CommandClass, Hook } from "../metadata.ts";
 
-type LandoCommandClass = Command.Class & {
+type LandoCommandClass = CommandClass & {
   readonly bootstrap?: unknown;
 };
 
 type LandoRuntimeLayer = ReturnType<typeof makeLandoRuntime>;
 
-const commandRuntimeLayers = new WeakMap<Command.Class, LandoRuntimeLayer>();
+const commandRuntimeLayers = new WeakMap<CommandClass, LandoRuntimeLayer>();
 
 const bootstrapError = (message: string, cause?: unknown): LandoRuntimeBootstrapError =>
   new LandoRuntimeBootstrapError({
@@ -42,7 +42,7 @@ const readBootstrapLevel = (CommandClass: LandoCommandClass): BootstrapLevelType
   return decoded.right;
 };
 
-export const getCommandRuntimeLayer = (CommandClass: Command.Class): LandoRuntimeLayer | undefined =>
+export const getCommandRuntimeLayer = (CommandClass: CommandClass): LandoRuntimeLayer | undefined =>
   commandRuntimeLayers.get(CommandClass);
 
 export const initHook: Hook<"init"> = async ({ argv, config, context, id }) => {

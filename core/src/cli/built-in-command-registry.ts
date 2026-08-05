@@ -1,5 +1,4 @@
 import { NotImplementedError } from "@lando/sdk/errors";
-import type { Command } from "@oclif/core";
 
 import type { BootstrapLevel } from "../runtime/bootstrap.ts";
 import { buildBuiltInCommandIndex } from "./built-in-command-index.ts";
@@ -95,10 +94,11 @@ import UninstallCommand from "./oclif/commands/meta/uninstall.ts";
 import UpdateCommand from "./oclif/commands/meta/update.ts";
 import VersionCommand from "./oclif/commands/meta/version.ts";
 import XCommand from "./oclif/commands/meta/x.ts";
+import type { CommandClass } from "./oclif/metadata.ts";
 
 export { buildBuiltInCommandIndex } from "./built-in-command-index.ts";
 
-export type BuiltInCommandClass = Command.Class & {
+export type BuiltInCommandClass = CommandClass & {
   readonly landoSpec: LandoCommandSpec;
   readonly bootstrap: BootstrapLevel;
 };

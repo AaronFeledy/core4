@@ -1,11 +1,11 @@
+import { Effect } from "effect";
 /**
  * `lando apps:init` — interactive scaffolding for new Lando apps.
  *
  * **Interactive only** — not exported as a function from
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
-import { Args, Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { Args, Flags } from "../../metadata.ts";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 

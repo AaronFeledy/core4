@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 /**
  * `lando meta:plugin:login` — write registry auth.
  *
@@ -5,8 +6,7 @@
  * `<userConfRoot>/plugin-auth.json` and are consumed by the registry
  * plugin source for private packages.
  */
-import { Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { Flags } from "../../../metadata.ts";
 
 import {
   EmptyResultSchema,

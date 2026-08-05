@@ -1,8 +1,8 @@
+import { Effect } from "effect";
 /**
  * `lando meta:plugin:logout` — clear registry auth.
  */
-import { Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { Flags } from "../../../metadata.ts";
 
 import {
   EmptyResultSchema,

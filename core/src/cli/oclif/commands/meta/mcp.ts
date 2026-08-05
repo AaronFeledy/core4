@@ -1,5 +1,5 @@
-import { Flags } from "@oclif/core";
 import { Effect, Layer } from "effect";
+import { Flags } from "../../metadata.ts";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 import type { ConfigService } from "@lando/sdk/services";

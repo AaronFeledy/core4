@@ -1,4 +1,4 @@
-import { Flags } from "@oclif/core";
+import { Flags } from "../../../metadata.ts";
 
 import { ServiceName } from "@lando/sdk/schema";
 

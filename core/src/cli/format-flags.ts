@@ -1,4 +1,4 @@
-import { Flags } from "@oclif/core";
+import { Flags } from "./oclif/metadata.ts";
 
 import { RendererSelectionError } from "@lando/sdk/errors";
 

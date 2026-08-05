@@ -418,3 +418,20 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Dynamic tooling lookup must reject option-like command heads before constructing `app:<name>` cache keys; option-like arguments after a valid tooling name remain task-owned.
 ---
+
+## [2026-08-04 17:23 CDT] - Babysit
+- PR: #696 https://github.com/AaronFeledy/core4/pull/696
+- CI outcome: fail then pass (unit-tests-linux-x64 shards 1+2: shell unknown-arg wording, app:config:lint JSON exit, native help format)
+- Review feedback: fixed (native app:config:lint records format=json; scenario asserts match intentional native diagnostics/help)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## [2026-08-04 19:22 CDT] - US-524
+- Removed OCLIF from the shipping dependency and import graphs by replacing its runtime command metadata with a local compatibility seam; retained manifest and adapter tooling remains development-only.
+- Preserved registry flags, arguments, hooks, and generated manifest behavior while source and relocated compiled binaries continue through the native dispatcher without embedding OCLIF.
+- Verification: typecheck and lint/deprecations passed; 160 focused and adjacent CLI/build tests passed; import-cycle and package-DAG gates passed; source and relocated-binary version/help surfaces passed; the compiled artifact contained no `@oclif/core`; high-rigor review approved.
+- **Learnings for future iterations:**
+  - OCLIF explicit discovery accepts a local command shape with an inherited static runner, so dev-only manifest coverage can survive without a shipping runtime dependency.
+  - Use the shared AST module-edge scanner for dependency-boundary tests so static imports, re-exports, dynamic imports, `require`, and folded specifiers are all covered.
+---
