@@ -21,6 +21,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
 - Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
 - When a generator's source registry imports consumers of its generated outputs, bootstrap every owned output reached by that import graph before dynamically loading the registry so focused first materialization works with no preexisting artifacts.
+- When a later architecture supersedes completed PRD acceptance text, preserve the checked acceptance record and add explicit supersession framing; rewrite only current guidance and forward-looking pointers.
 
 ## Log
 
@@ -578,4 +579,14 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, and 135 focused setup/manifest/parser/help/cold-path tests passed; Bugbot, hands-on QA, code-quality, security, and context review found no remaining functional blocker. LSP was clean before the formatting-only final edit and then timed out twice; workspace typecheck covered the final file.
 - **Learnings for future iterations:**
   - Run destructive codegen proofs in temporary repository fixtures and assert the target output begins absent, so first-materialization tests cannot pass on stale shared-checkout artifacts.
+---
+
+## [2026-08-05 18:15 CDT] - US-531
+- Reconciled maintainer guidance, current architecture documentation, executable-guide prose, and Beta 1 decision notes with the landed single native dispatcher while preserving historical OCLIF/dual-dispatch evidence and completed acceptance records.
+- Added a bounded regression contract for current operational guidance without reading the specification tree from production or test code.
+- Guide-Coverage-Skip: Internal dispatcher-architecture wording changes no documented command capability; affected existing guide prose was updated and its generated surfaces verified.
+- Verification: typecheck and lint/deprecations passed; 223 focused CLI, documentation, guide-lint, and guide-codegen tests passed; guide lint, coverage, drift, and public-transcript gates passed; source `meta:version --format=json` and root help behaved as documented. `check:spec-reference` retains only the previously recorded unrelated `.omo/**` citations; TypeScript LSP was clean before the final regex-only test adjustment and timed out on subsequent fresh-file requests, while full workspace typecheck covered the final file.
+- **Learnings for future iterations:**
+  - Keep regression tests outside the specification tree focused on durable operational guidance; enforce authored-spec wording with specification-local checks or explicit build-step searches so the spec-reference boundary remains intact.
+  - Preserve machine-executed MDX `value=` attributes during prose-only guide updates; change `display=` or `reason=` text and run all guide gates.
 ---
