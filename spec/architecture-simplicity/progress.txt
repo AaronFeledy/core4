@@ -466,3 +466,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Resolve command identity through the registry before entering transitional dispatch tables; a late unknown-command guard silently preserves undocumented aliases.
   - Validate remediation command tokens against the registry so error UX cannot recommend parser forms the CLI rejects.
 ---
+
+## [2026-08-05 01:09 CDT] - US-526
+- Removed the public `@lando/core/oclif` package subpath while preserving the supported `@lando/core/cli` embedding surface and the internal OCLIF manifest/codegen pipeline.
+- Updated library boundary coverage and embedding guidance so package-specifier imports reject the removed adapter while internal positive controls continue to exercise the OCLIF graph directly.
+- Guide-Coverage-Skip: This package-surface removal adds no new end-user workflow; the existing embedding-defaults guide was corrected and its scenarios regenerated.
+- Verification: typecheck and lint/deprecations passed; focused and adjacent library, manifest, codegen, and guide test spot checks passed; package-DAG and guide gates passed; root and package-directory import probes behaved as required. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Test removed package exports through package specifiers, not direct filesystem paths, because an `exports` map does not encapsulate absolute file access.
+  - When a public positive-control subpath is removed, point boundary detection controls at the internal source barrel so detection strength survives without republishing the surface.
+---
