@@ -20,6 +20,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
 - Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
 - Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
+- When a generator's source registry imports a consumer of that generator's own output, create an import-safe bootstrap module before dynamically loading the registry so focused first materialization works with no preexisting artifact.
 
 ## Log
 
@@ -503,3 +504,22 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - When deleting an architectural parity suite, extract registry reachability and relocated-artifact contracts before removing cross-engine comparisons.
 ---
+
+## [2026-08-05 05:57 CDT] - US-528
+- Replaced the OCLIF manifest generator and JSON sidecar with one registry-derived TypeScript manifest embedded in source and compiled binaries; codegen, command references, build workflows, host-proxy freshness, and setup consumers now use the native artifact.
+- Removed the obsolete OCLIF manifest loader/assets, preserved keyed argument and flag metadata in generated command references, and reconciled the durable build/cache/plugin contracts with the shipped single-manifest design.
+- Guide-Coverage-Skip: Internal codegen and binary-embed architecture adds no new end-user workflow.
+- Verification: codegen:check, typecheck, lint/deprecations, generated-output, import-cycle, package-DAG, and managed-file gates passed; 139 focused and adjacent tests passed; direct codegen emitted 85 commands and the real Linux compiled binary contained the registry manifest marker. The aggregate codegen-CI file retains only its two previously documented stale global-count expectations; the affected workflow assertion passed.
+- **Learnings for future iterations:**
+  - Test focused first materialization with the generated output absent; a static registry import can otherwise make a generator depend on the file it is supposed to create.
+  - Registry metadata maps carry identity in their keys, so derived renderers must preserve keyed arguments and flags rather than relying on redundant legacy `name` fields.
+---
+
+## [2026-08-05] - US-528 human adjudication (option 3)
+
+- **Contradiction:** retained §17.9 assigned US-528 a bundled-plugin command-metadata embed + remove-plugin proof, while §12.1/§9.7 and the landed US-528 implementation keep the embedded manifest built-in-only and route plugin commands through the `plugin-command` cache.
+- **Resolution (option 3):** split scopes. US-528 stays the OCLIF-sidecar → embedded **built-in** registry-manifest migration. Bundled-versus-external plugin command-metadata ownership, precedence/invalidation, generated inputs, direct dispatcher consumption, and the remove-a-bundled-plugin command-metadata proof move to **US-534**.
+- Spec amendments: §17.2 catalog row Inputs clarify built-in-only + US-534 pointer; §17.9 bullet rewritten (US-528 landed scope vs US-534 follow-up). PRD-01 gains US-534; `prd.json` + index graph/exit criteria include US-534 before US-532 closure.
+- US-528 remains `passes: true`. Reviewers/Drift Audit MUST NOT re-attach bundled-plugin composition to US-528.
+- **Learnings for future iterations:**
+  - Terse story ACs that only name a § catalog row can inherit conflicting residual "Target (US-N)" clauses elsewhere; split residual product ownership into an explicit follow-up rather than expanding a codegen migration mid-review.

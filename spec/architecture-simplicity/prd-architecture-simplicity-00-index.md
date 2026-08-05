@@ -30,7 +30,8 @@ US-500..504 (contract + scaffolding)
     → US-505..509 (D drift)
     → US-510..515, US-533 (B artifacts; US-533 = schema-compat base regen after untrack)
     → US-516..521 (C seams)
-    → US-522..531 (A CLI)
+    → US-522..531 (A CLI; US-528 = built-in registry embed only)
+    → US-534 (bundled-plugin command metadata ownership; split from US-528)
     → US-532 (closure)
 ```
 
@@ -52,7 +53,7 @@ Every story ends with tests/typecheck/lint. Wave closure additionally requires:
 
 ## Exit criteria
 
-All US-500..US-532 `passes: true` with green verification; dual-dispatch permanence language remains only as historical/superseded notes; derived schema trees are not git SoT; `codegen:check` is the pure-drift gate; `@lando/state-store` (or documented equivalent) owns durable state behind the package DAG.
+All US-500..US-534 `passes: true` with green verification; dual-dispatch permanence language remains only as historical/superseded notes; derived schema trees are not git SoT; `codegen:check` is the pure-drift gate; `@lando/state-store` (or documented equivalent) owns durable state behind the package DAG.
 
 ## Spec parts that remain authoritative
 

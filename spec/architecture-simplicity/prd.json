@@ -1,17 +1,17 @@
 {
   "project": "Lando v4 Architecture Simplicity",
   "branchName": "docs/architecture-simplicity-prd",
-  "description": "Concurrent meta/infra wave (US-500..US-532): collapse dual CLI dispatch to one native engine, stop committing pure derived artifacts, promote boundary seams to private packages (state-store + DAG), and strengthen codegen:check as the single pure-drift gate. Does not expand user-facing feature surface. Spec is source of truth; implementation stories follow US-505+.",
+  "description": "Concurrent meta/infra wave (US-500..US-534): collapse dual CLI dispatch to one native engine, stop committing pure derived artifacts, promote boundary seams to private packages (state-store + DAG), and strengthen codegen:check as the single pure-drift gate. Does not expand user-facing feature surface. Spec is source of truth; implementation stories follow US-505+.",
   "userStories": [
     {
       "id": "US-500",
       "title": "Spec: reopen dual-dispatch as single engine",
       "description": "As a maintainer, the normative spec supersedes option (b) dual dispatch with one native command registry and dispatcher for source and compiled modes.",
       "acceptanceCriteria": [
-        "§1.2 tenet no longer says OCLIF parses/discovers/packs the shipping CLI.",
-        "§14.2 dual-dispatch row and ROADMAP Alpha 3 outcome state option (b) is superseded by architecture-simplicity single dispatcher.",
+        "\u00a71.2 tenet no longer says OCLIF parses/discovers/packs the shipping CLI.",
+        "\u00a714.2 dual-dispatch row and ROADMAP Alpha 3 outcome state option (b) is superseded by architecture-simplicity single dispatcher.",
         "Appendix D.1 remains as historical spike evidence and ends with the supersession note.",
-        "§8.4.1 describes single native dispatch, not permanent dual parity rules.",
+        "\u00a78.4.1 describes single native dispatch, not permanent dual parity rules.",
         "alpha-3 PRD-09 US-155/156 carry a supersession note without rewriting historical AC checkmarks.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -22,9 +22,9 @@
     {
       "id": "US-501",
       "title": "Spec: derived vs persisted artifact policy",
-      "description": "As a maintainer, the spec distinguishes git sources of truth from regen-only build outputs, modeled on §19.6 transcripts.",
+      "description": "As a maintainer, the spec distinguishes git sources of truth from regen-only build outputs, modeled on \u00a719.6 transcripts.",
       "acceptanceCriteria": [
-        "§13.2 and §17.2 classify pin manifests vs derived outputs (schemas, command-schemas, bootstrap layers, compiled command manifest, docs schema refs).",
+        "\u00a713.2 and \u00a717.2 classify pin manifests vs derived outputs (schemas, command-schemas, bootstrap layers, compiled command manifest, docs schema refs).",
         "Derived outputs are not required to be git-committed; publish/binary embed still ships them as build products.",
         "Guide scenarios/transcripts remain the gitignore model for derived data.",
         "Tests pass; typecheck passes; lint passes"
@@ -36,10 +36,10 @@
     {
       "id": "US-502",
       "title": "Spec: internal package seams without public core split",
-      "description": "As a maintainer, §2.7 keeps public @lando/core as one package while allowing private internal workspace packages for seams.",
+      "description": "As a maintainer, \u00a72.7 keeps public @lando/core as one package while allowing private internal workspace packages for seams.",
       "acceptanceCriteria": [
-        "§2.7 explicitly allows private workspace packages (paths, state-store, …) and still rejects splitting public core into runtime+CLI packages.",
-        "§13.8 states package-dag is primary for seam ownership; AST boundary rules remain for residual behavioral bans.",
+        "\u00a72.7 explicitly allows private workspace packages (paths, state-store, \u2026) and still rejects splitting public core into runtime+CLI packages.",
+        "\u00a713.8 states package-dag is primary for seam ownership; AST boundary rules remain for residual behavioral bans.",
         "ROADMAP notes concurrent architecture-simplicity wave and private packages.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -52,7 +52,7 @@
       "title": "Spec: single codegen drift gate",
       "description": "As a maintainer, codegen:check is the one pure-drift gate (full codegen then git diff --exit-code on catalog outputs).",
       "acceptanceCriteria": [
-        "§17.2 defines codegen:check as regenerate-then-git-diff on the codegen catalog, not merely typecheck.",
+        "\u00a717.2 defines codegen:check as regenerate-then-git-diff on the codegen catalog, not merely typecheck.",
         "Semantic gates (guide-coverage, schema-compatibility, public-transcripts, package-dag, behavioral boundaries) stay separate from pure drift.",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -92,9 +92,9 @@
     {
       "id": "US-506",
       "title": "Inventory generators into single catalog ownership",
-      "description": "As a maintainer, scripts/codegen.ts order and §17.2 table name the same generators with no orphan drift checkers.",
+      "description": "As a maintainer, scripts/codegen.ts order and \u00a717.2 table name the same generators with no orphan drift checkers.",
       "acceptanceCriteria": [
-        "§17.2 table matches scripts/codegen.ts dependency order.",
+        "\u00a717.2 table matches scripts/codegen.ts dependency order.",
         "Every generator has exactly one ownership row (committed pin vs untracked derived).",
         "Tests pass; typecheck passes; lint passes"
       ],
@@ -131,7 +131,7 @@
     {
       "id": "US-509",
       "title": "Document semantic-vs-drift gate matrix",
-      "description": "As an agent, AGENTS.md and §13.4 list which gates are pure drift vs semantic correctness.",
+      "description": "As an agent, AGENTS.md and \u00a713.4 list which gates are pure drift vs semantic correctness.",
       "acceptanceCriteria": [
         "Root AGENTS.md matrix: codegen:check = drift; guide-coverage, schema-compatibility, public-transcripts, package-dag, behavioral boundaries = semantic.",
         "Tests pass; typecheck passes; lint passes"
@@ -157,7 +157,7 @@
     {
       "id": "US-533",
       "title": "Schema-compatibility base regen (isolated checkout)",
-      "description": "As CI, check:schema-compatibility materializes its before baseline by regenerating schema artifacts in an isolated checkout of the base ref (that commit's sources and bun.lock), then compares them to the head working-tree set — without re-committing derived trees and without skipping all surfaces when indexes are absent from git.",
+      "description": "As CI, check:schema-compatibility materializes its before baseline by regenerating schema artifacts in an isolated checkout of the base ref (that commit's sources and bun.lock), then compares them to the head working-tree set \u2014 without re-committing derived trees and without skipping all surfaces when indexes are absent from git.",
       "acceptanceCriteria": [
         "Base baseline via isolated checkout + bun install + codegen:schema-snapshot at LANDO_SCHEMA_COMPATIBILITY_BASE_REF.",
         "Head uses regenerated working-tree artifacts; schema trees stay gitignored/untracked.",
@@ -169,7 +169,7 @@
       ],
       "priority": 12,
       "passes": true,
-      "notes": "PRD-02. Human adjudication 2026-08-02: option-2 primary (isolated base regen); option-1 cache optional not SoT. Owns §13.2 before-source after US-510 untrack. Drift Audit MUST NOT excise this story or re-commit schema trees as a substitute."
+      "notes": "PRD-02. Human adjudication 2026-08-02: option-2 primary (isolated base regen); option-1 cache optional not SoT. Owns \u00a713.2 before-source after US-510 untrack. Drift Audit MUST NOT excise this story or re-commit schema trees as a substitute."
     },
     {
       "id": "US-511",
@@ -191,7 +191,7 @@
       "acceptanceCriteria": [
         "README or AGENTS documents the bootstrap order.",
         "Optional prepare/postinstall does not force network beyond bun install; codegen is explicit or documented.",
-        "Clean CI job proves clone→install→codegen→typecheck.",
+        "Clean CI job proves clone\u2192install\u2192codegen\u2192typecheck.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 14,
@@ -252,7 +252,7 @@
     {
       "id": "US-517",
       "title": "package-dag allowlists private seam packages",
-      "description": "As CI, check:package-dag knows paths, state-store, and sdk seams; still forbids plugins→core.",
+      "description": "As CI, check:package-dag knows paths, state-store, and sdk seams; still forbids plugins\u2192core.",
       "acceptanceCriteria": [
         "package-dag rule updated and tested.",
         "Tests pass; typecheck passes; lint passes"
@@ -367,7 +367,7 @@
     {
       "id": "US-526",
       "title": "Drop @lando/core/oclif public export",
-      "description": "As an embedding host, @lando/core/oclif is removed per §16.2.",
+      "description": "As an embedding host, @lando/core/oclif is removed per \u00a716.2.",
       "acceptanceCriteria": [
         "package.json exports no longer advertise a required oclif adapter for shipping.",
         "Embedding docs updated; boundary tests updated.",
@@ -393,20 +393,21 @@
     {
       "id": "US-528",
       "title": "Codegen: command registry manifest for embed",
-      "description": "As a releaser, the binary embeds a registry-derived command manifest; oclif-manifest generator is removed or repurposed.",
+      "description": "As a releaser, the binary embeds a built-in-only registry-derived command manifest; oclif-manifest generator is removed or repurposed. Bundled-plugin command composition is US-534.",
       "acceptanceCriteria": [
-        "§17.2 catalog row updated; build embeds registry manifest.",
+        "\u00a717.2 catalog row updated for built-in builtInCommandEntries only; build embeds registry manifest.",
         "No oclif.manifest.json required for shipping dispatch.",
+        "Bundled-plugin command metadata is not required in the embedded manifest (plugin-command cache / US-534).",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 30,
-      "passes": false,
-      "notes": "PRD-01"
+      "passes": true,
+      "notes": "PRD-01. Human adjudication 2026-08-05 option 3: US-528 is OCLIF-sidecar \u2192 built-in registry embed only. Bundled-plugin command metadata ownership deferred to US-534; do not expand US-528 into plugin composition."
     },
     {
       "id": "US-529",
       "title": "Cold-start gate: no OCLIF on level-none",
-      "description": "As CI, level-none fast path remains free of OCLIF and heavy Effect imports per §1.2.",
+      "description": "As CI, level-none fast path remains free of OCLIF and heavy Effect imports per \u00a71.2.",
       "acceptanceCriteria": [
         "Import-boundary / cold-start tests updated for native dispatcher.",
         "Tests pass; typecheck passes; lint passes"
@@ -442,16 +443,31 @@
       "notes": "PRD-01"
     },
     {
+      "id": "US-534",
+      "title": "Bundled-plugin command metadata ownership (follow-up)",
+      "description": "As a maintainer, decide and implement whether bundled-plugin command metadata is embedded for direct native-dispatcher consumption or follows the same validated plugin-command cache path as external plugins \u2014 split from US-528 so the OCLIF-sidecar migration does not force the architectural cache decision.",
+      "acceptanceCriteria": [
+        "Spec (\u00a79.7, \u00a712.1, \u00a717.2, \u00a717.9) states one ownership model for bundled-versus-external plugin command metadata.",
+        "Precedence, invalidation, and router/bootstrap composition rules are documented for the chosen model.",
+        "Generated inputs and consumers match the chosen model; no src/ hand edits to add/remove a bundled plugin's commands from the owning shipping surface.",
+        "Proof: removing a command-contributing bundled plugin from core/build.config.ts and rebuilding omits those commands from the owning artifact(s).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": "PRD-01. Human adjudication 2026-08-05 option 3: split from US-528. Owns residual \u00a717.9 bundled-plugin command-metadata clause. Drift Audit / reviewers MUST NOT re-attach this scope to US-528."
+    },
+    {
       "id": "US-532",
       "title": "Wave closure",
       "description": "As a maintainer, all architecture-simplicity stories pass with verification contracts green.",
       "acceptanceCriteria": [
-        "prd.json all US-500..US-533 passes true.",
+        "prd.json all US-500..US-534 passes true.",
         "codegen:check, typecheck, lint, boundary suite, focused CLI tests green.",
         "progress.txt records closure.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 34,
+      "priority": 35,
       "passes": false,
       "notes": "PRD-00"
     }
