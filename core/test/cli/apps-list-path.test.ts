@@ -1,20 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import { appsListPathFromArgv } from "../../src/cli/dispatch-apps.ts";
 import { MalformedCliFlagValueError } from "../../src/cli/flag-value-validation.ts";
 import { appsListPathFromInput } from "../../src/cli/oclif/commands/apps/list.ts";
 import { ensureCompiledCli } from "../_support/compiled-cli.ts";
 
-const coreRoot = resolve(import.meta.dirname, "../..");
-const sourceCli = join(coreRoot, "bin/lando.ts");
 const isLinuxX64 = process.platform === "linux" && process.arch === "x64";
 
-// Pure extraction seam: source mode (spec.run) and compiled mode (runAppsList)
-// MUST route --path through the same appsListPathFromInput, so parity is
-// structural rather than asserted.
 describe("apps:list --path extraction seam", () => {
   test("appsListPathFromArgv reads the space form", () => {
     expect(appsListPathFromArgv(["--path", "demo"])).toBe("demo");
@@ -32,7 +27,7 @@ describe("apps:list --path extraction seam", () => {
     expect(() => appsListPathFromArgv(["--path"])).toThrow(MalformedCliFlagValueError);
   });
 
-  test("appsListPathFromInput is the single shared extractor for both paths", () => {
+  test("appsListPathFromInput is the shared native extractor", () => {
     expect(appsListPathFromInput({ flags: { path: "demo" } })).toBe("demo");
     expect(appsListPathFromInput({ flags: {} })).toBeUndefined();
     expect(appsListPathFromInput(undefined)).toBeUndefined();
@@ -90,7 +85,7 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
 
   beforeAll(async () => {
     compiledBinary = await ensureCompiledCli();
-    root = await mkdtemp(join(tmpdir(), "lando-apps-list-path-parity-"));
+    root = await mkdtemp(join(tmpdir(), "lando-apps-list-path-"));
     const appsDir = join(root, "data", "providers", "provider-lando", "apps");
     await mkdir(appsDir, { recursive: true });
     await mkdir(join(root, "cache"), { recursive: true });
@@ -158,17 +153,5 @@ describe.skipIf(!isLinuxX64)("apps:list --path on the compiled binary", () => {
     const result = await runProcess([compiledBinary, "apps:list", "--format", "json"], env);
     expect(result.exitCode).toBe(0);
     expect(appNames(result)).toEqual(["alpha", "bravo"]);
-  });
-
-  test("compiled result matches source mode for the same argv", async () => {
-    const compiled = await runProcess(
-      [compiledBinary, "apps:list", "--path", "parity-alpha", "--format", "json"],
-      env,
-    );
-    const source = await runProcess(
-      [process.execPath, sourceCli, "apps:list", "--path", "parity-alpha", "--format", "json"],
-      env,
-    );
-    expect(appNames(compiled)).toEqual(appNames(source));
   });
 });
