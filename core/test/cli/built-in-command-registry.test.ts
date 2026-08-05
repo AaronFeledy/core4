@@ -10,6 +10,12 @@ import { CommandRegistrationError } from "../../src/cli/oclif/command-base.ts";
 const coreRoot = resolve(import.meta.dirname, "../..");
 const repoRoot = resolve(coreRoot, "..");
 const registryPath = resolve(coreRoot, "src/cli/built-in-command-registry.ts");
+const nativeDispatchPaths = [
+  "src/cli/run.ts",
+  "src/cli/dispatch-app.ts",
+  "src/cli/dispatch-apps.ts",
+  "src/cli/dispatch-meta.ts",
+] as const;
 
 type SyntheticRegistration = {
   readonly spec: { readonly id: string };
@@ -174,6 +180,26 @@ describe("built-in command registry contract", () => {
     }
   });
 
+  test("implemented commands have native argv dispatch adapters while deferred commands do not", async () => {
+    // Given: the canonical registry and every native dispatch source.
+    const registry = await import("../../src/cli/built-in-command-registry.ts");
+    const dispatchSources = nativeDispatchPaths.map((path) => readFileSync(resolve(coreRoot, path), "utf-8"));
+
+    // When: canonical argv[0] equality adapters are collected structurally.
+    const adaptedIds = new Set(
+      dispatchSources.flatMap((source) =>
+        [...source.matchAll(/argv\[0\]\s*===\s*"([^"]+)"/g)].flatMap((match) =>
+          match[1] === undefined ? [] : [match[1]],
+        ),
+      ),
+    );
+
+    // Then: implemented ids are reachable and deferred ids have no bespoke adapter.
+    for (const entry of registry.builtInCommandEntries) {
+      expect(adaptedIds.has(entry.spec.id), entry.spec.id).toBe(entry.status.kind === "implemented");
+    }
+  });
+
   test("legacy dual-dispatch parity assets are absent", () => {
     // Given: the source-vs-compiled parity layer retired when the CLI collapsed to one engine.
     const legacyPaths = [
@@ -191,7 +217,7 @@ describe("built-in command registry contract", () => {
     // When: every legacy path is resolved against the repository root.
     const surviving = legacyPaths.filter((path) => existsSync(resolve(repoRoot, path)));
 
-    // Then: none survive, so this registry suite is the only dispatch-completeness owner.
+    // Then: none of the known dual-path assets can silently return.
     expect(surviving, "legacy dual-dispatch parity assets must be deleted, not disabled").toEqual([]);
   });
 });
