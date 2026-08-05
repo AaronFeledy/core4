@@ -2,11 +2,8 @@
 /**
  * Emits the generated command-reference page from the command registry manifest.
  *
- * The manifest is the single source of truth for command metadata, so the page
- * always reflects the real CLI surface (including the universal machine-output
- * flags the adapter injects into every command). The preamble documents the
- * universal `--format json` / `--json` / `-j` flag once instead of repeating it
- * on every command.
+ * Universal machine-output flags are injected into every command by the adapter;
+ * the page documents them once in the preamble instead of repeating them per command.
  */
 import { resolve } from "node:path";
 
@@ -15,7 +12,7 @@ import { COMMAND_REGISTRY_MANIFEST } from "../core/src/cli/generated/command-reg
 const REPO_ROOT = resolve(import.meta.dirname, "..");
 const OUTPUT = resolve(REPO_ROOT, "docs/reference/commands.mdx");
 
-// Injected into every command by the adapter; documented once in the preamble.
+// Adapter-injected on every command; documented once in the page preamble.
 const UNIVERSAL_FLAGS = new Set(["format", "json"]);
 
 interface ManifestArg {
@@ -43,11 +40,7 @@ interface ManifestCommand {
 const manifestCommands = (): ReadonlyArray<ManifestCommand> =>
   Object.values(COMMAND_REGISTRY_MANIFEST.commands);
 
-/**
- * Fail the generator if a public command is missing the universal machine-output
- * flags. This turns the doc generator into a lightweight conformance guard so the
- * documented contract cannot silently drift from the real command surface.
- */
+// Conformance guard: documented universal flags must stay present on public commands.
 const assertUniversalFlags = (commands: ReadonlyArray<ManifestCommand>): void => {
   const offenders: Array<string> = [];
   for (const command of commands) {
@@ -76,8 +69,8 @@ const renderArgs = (command: ManifestCommand): ReadonlyArray<string> => {
   }));
   if (args.length === 0) return [];
   const lines = ["", "Arguments:", "", "| Argument | Description |", "| --- | --- |"];
-  for (const arg of args.sort((left, right) => (left.name ?? "").localeCompare(right.name ?? ""))) {
-    lines.push(`| \`${escapeCell(arg.name ?? "")}\` | ${escapeCell(arg.description ?? "")} |`);
+  for (const arg of args.sort((left, right) => left.name.localeCompare(right.name))) {
+    lines.push(`| \`${escapeCell(arg.name)}\` | ${escapeCell(arg.description ?? "")} |`);
   }
   return lines;
 };
@@ -92,7 +85,7 @@ const renderFlags = (command: ManifestCommand): ReadonlyArray<string> => {
   const flags = Object.entries(command.flags ?? {})
     .map(([name, flag]) => ({ ...flag, name: flag.name ?? name }))
     .filter((flag) => !UNIVERSAL_FLAGS.has(flag.name))
-    .sort((left, right) => (left.name ?? "").localeCompare(right.name ?? ""));
+    .sort((left, right) => left.name.localeCompare(right.name));
   if (flags.length === 0) return [];
   const lines = ["", "Flags:", "", "| Flag | Description |", "| --- | --- |"];
   for (const flag of flags) {

@@ -31,12 +31,12 @@ describe("meta:setup plugin flag merge", () => {
 
   test("source flag surface matches the embedded registry manifest", () => {
     const sourceFlagNames = new Set(Object.keys(SetupCommand.flags));
-    const compiledFlagNames = new Set(
+    const manifestFlagNames = new Set(
       Object.keys(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.flags ?? {}).filter(
         (name) => !UNIVERSAL_FLAG_NAMES.has(name),
       ),
     );
-    expect([...compiledFlagNames].sort()).toEqual([...sourceFlagNames].sort());
+    expect([...manifestFlagNames].sort()).toEqual([...sourceFlagNames].sort());
   });
 
   test("the generated contributions module has no runtime imports (cold-start safe)", () => {

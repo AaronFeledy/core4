@@ -45,19 +45,20 @@ type CommandRegistryManifestModule = {
   };
 };
 
-const isCommandRegistryManifestModule = (value: unknown): value is CommandRegistryManifestModule =>
-  typeof value === "object" &&
-  value !== null &&
-  "COMMAND_REGISTRY_MANIFEST" in value &&
-  typeof value.COMMAND_REGISTRY_MANIFEST === "object" &&
-  value.COMMAND_REGISTRY_MANIFEST !== null &&
-  "commands" in value.COMMAND_REGISTRY_MANIFEST &&
-  typeof value.COMMAND_REGISTRY_MANIFEST.commands === "object" &&
-  value.COMMAND_REGISTRY_MANIFEST.commands !== null &&
-  "source" in value.COMMAND_REGISTRY_MANIFEST &&
-  value.COMMAND_REGISTRY_MANIFEST.source === "built-in-command-registry" &&
-  "version" in value.COMMAND_REGISTRY_MANIFEST &&
-  typeof value.COMMAND_REGISTRY_MANIFEST.version === "string";
+const isCommandRegistryManifestModule = (value: unknown): value is CommandRegistryManifestModule => {
+  if (typeof value !== "object" || value === null || !("COMMAND_REGISTRY_MANIFEST" in value)) {
+    return false;
+  }
+
+  const manifest = value.COMMAND_REGISTRY_MANIFEST;
+  if (typeof manifest !== "object" || manifest === null || !("commands" in manifest)) {
+    return false;
+  }
+  if (typeof manifest.commands !== "object" || manifest.commands === null) return false;
+  if (!("source" in manifest) || manifest.source !== "built-in-command-registry") return false;
+
+  return "version" in manifest && typeof manifest.version === "string";
+};
 
 const createRepositoryFixture = async (): Promise<RepositoryFixture> => {
   const root = await mkdtemp(join(tmpdir(), "lando-command-registry-"));
@@ -128,8 +129,9 @@ describe("embedded command registry manifest", () => {
       `${pathToFileURL(fixture.generatedManifestPath).href}?generated=${Date.now()}`
     );
     const { builtInCommandEntries } = await import("../../src/cli/built-in-command-registry.ts");
-    expect(isCommandRegistryManifestModule(importedManifest)).toBe(true);
-    if (!isCommandRegistryManifestModule(importedManifest)) return;
+    const isManifestModule = isCommandRegistryManifestModule(importedManifest);
+    expect(isManifestModule).toBe(true);
+    if (!isManifestModule) return;
 
     const manifest = importedManifest.COMMAND_REGISTRY_MANIFEST;
     const manifestIds = Object.keys(manifest.commands).sort();
