@@ -26,7 +26,7 @@ tags: [beta, docs, file-sync, mutagen, setup]
     </Step>
   </Scenario>
 
-  <Scenario id="mutagen-skip-flag" render={false} reason="The --skip-file-sync flag is exercised by the setup command tests in both OCLIF and compiled-binary paths">
+  <Scenario id="mutagen-skip-flag" render={false} reason="The --skip-file-sync flag is exercised through both source and compiled entries of the single native dispatcher">
     <Step name="mutagen-skip">
       <Variable name="flag" value="lando setup --skip-file-sync" display="Download Mutagen on the first accelerated app:start" />
       <Variable name="rationale" value="Use when running lando setup without network access" display="When to use --skip-file-sync" />

@@ -10,6 +10,8 @@ PRD-ALPHA4-01 (setup & uninstall) and PRD-ALPHA4-08/-09/-10 (release, supply cha
 4. **macOS/Windows managed runtime falls back to system tooling.** `plugins/provider-lando/src/setup.ts` falls back to `makeSystemPodmanMachineRunner(undefined, …)` and reads `process.env.LANDO_TEST_PODMAN_SOCKET` when no socket is injected, instead of the bundled-Podman managed-machine path required by US-363..367. Linux is end-to-end; mac/win are thinner than their green flags imply.
 5. **Release automation is dev-prerelease only.** `.github/workflows/release.yml` runs a Linux dev prerelease + npm alpha publish; nothing in CI invokes the 13-stage `scripts/release.ts` pipeline (signing, notarization, SBOM, provenance, installer signing, publish). If that is intentional pre-GA staging, no decision record says so.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher described in `core/AGENTS.md`; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/alpha-4/prd-alpha-4-01-setup-and-uninstall.md`](../alpha-4/prd-alpha-4-01-setup-and-uninstall.md) US-200, US-206, US-363..US-367.

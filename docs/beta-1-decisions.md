@@ -10,13 +10,13 @@ Known constraints: bytecode is tied to the Bun version that produced the executa
 
 ## OCLIF major lock decision (superseded by architecture-simplicity)
 
-Original Beta 1 decision, kept here as historical context: Beta 1 would stay on OCLIF v4. The current package metadata remains authoritative: `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies.
+Original Beta 1 decision, kept here as historical context: Beta 1 would stay on OCLIF v4. At the time, package metadata recorded `@oclif/core ^4.11.2` in `core/package.json` dependencies and `oclif ^4.23.0` in `core/package.json` devDependencies; those literals are retained as decision evidence, not current dependency guidance.
 
 Original rationale: source mode depends on OCLIF v4 command loading, manifest generation, hooks, help, and parser behavior, while the compiled `$bunfs` binary deliberately does not route through OCLIF. The compiled path used the hand-rolled `runCompiledCli` router, and the compatibility contract was a dual dispatch model: shared command implementations, shared renderers, and compiled-binary dispatch parity tests that compare source and compiled behavior for representative commands and failure cases.
 
-Superseding decision: architecture-simplicity supersedes this entry. Dual dispatch and the OCLIF integration surface are not permanent. US-522 through US-531 remove dual dispatch and the public OCLIF surface, replacing both the OCLIF-based source dispatcher and the hand-rolled `runCompiledCli` router with one native command registry and dispatcher shared by source and compiled entries. As of this writing that migration is pending: source mode still depends on OCLIF today, and `runCompiledCli` still exists. This section records the target, not a completed change; do not treat OCLIF removal as shipped until US-522..US-531 land and the compatibility notes below are updated to match.
+Superseding decision: architecture-simplicity supersedes this entry. Dual dispatch and the OCLIF integration surface are not permanent. US-522 through US-531 removed dual dispatch and the public OCLIF surface, replacing both the OCLIF-based source dispatcher and the hand-rolled `runCompiledCli` router with one native command registry and dispatcher shared by source and compiled entries. Source and compiled entries now use that single native dispatcher; OCLIF is development-only.
 
-Compatibility notes: until the migration lands, OCLIF remains isolated to the OCLIF adapter surface and source-mode command execution, and new command work should preserve the existing dependency ranges unless it is part of the US-522..US-531 migration itself, which is expected to update source-mode loading, manifest generation, hooks, and parity coverage together as it converges both paths on the native registry/dispatcher.
+Historical compatibility notes: before the migration landed, OCLIF was isolated to the OCLIF adapter surface and source-mode command execution, and new command work preserved the existing dependency ranges while US-522..US-531 updated source-mode loading, manifest generation, hooks, and parity coverage together. Current work follows the native registry/dispatcher guidance in `core/AGENTS.md`.
 
 ## Provider auto-setup default decision
 

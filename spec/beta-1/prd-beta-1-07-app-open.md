@@ -6,6 +6,8 @@ Beta 1 adds the app-open surface as the browser-facing companion to the host-pro
 
 `app:open` is intentionally narrow. It opens only URLs Lando already knows from `ServiceInfo` and route data. It does not invent targets, expand the scheme surface, or bypass the command registry. The same command must work through source dispatch, the compiled binary, library command operations, and in-container `lando open` forwarding through the host-proxy `runLando` channel.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.2.5 `app open` target resolution, `--service`, `--route`, `--all`, `--print`, scheme allowlist, opener helper, headless degradation, `hostProxyAllowed: true`, bootstrap `app`, and `pre-open-url` / `post-open-url` events.
@@ -14,7 +16,7 @@ Beta 1 adds the app-open surface as the browser-facing companion to the host-pro
 - [`spec/06-services.md`](../06-services.md) §6.6 proxy route data and §6.10 `ServiceInfo` as the source for app info and route reporting.
 - [`spec/09-embedding.md`](../09-embedding.md) §16.7 programmatic CLI operations shared by source dispatch, compiled dispatch, and embedding hosts.
 - [`spec/03-architecture.md`](../03-architecture.md) §3.4 `HostProxyService`, `ShellRunner`, and lifecycle-event scope rows for Open.
-- [`core/AGENTS.md`](../../core/AGENTS.md) machine-output, renderer, redaction, and dual-dispatch boundary gates.
+- [`core/AGENTS.md`](../../core/AGENTS.md) machine-output, renderer, redaction, and single-native-dispatch boundary rules.
 
 ## Goals
 

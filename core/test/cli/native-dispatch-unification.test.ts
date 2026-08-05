@@ -4,6 +4,19 @@ import { resolve } from "node:path";
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
 const runSourcePath = resolve(repoRoot, "core/src/cli/run.ts");
+const currentGuidancePaths = [
+  "AGENTS.md",
+  "core/AGENTS.md",
+  "README.md",
+  "docs/embedding.md",
+  "docs/guides/INDEX.md",
+  "docs/guides/scripting-with-json.mdx",
+  "docs/guides/setup/file-sync-mutagen.mdx",
+  "docs/guides/release/linux-acceptance-rehearsal.mdx",
+  "docs/guides/library/embedding-defaults.mdx",
+] as const;
+
+const readRepoFile = (path: string): Promise<string> => Bun.file(resolve(repoRoot, path)).text();
 
 interface RunResult {
   readonly exitCode: number;
@@ -27,6 +40,34 @@ const runSourceCli = async (args: ReadonlyArray<string>): Promise<RunResult> => 
 };
 
 describe("native CLI dispatch unification", () => {
+  test("current guidance describes the landed single native dispatcher", async () => {
+    // Given the bounded set of current operational guidance surfaces.
+    const surfaces = await Promise.all(
+      currentGuidancePaths.map(async (path) => {
+        const text = await readRepoFile(path);
+        return { path, text };
+      }),
+    );
+
+    // When current guidance is inspected independently of historical records.
+    const stale = surfaces.flatMap(({ path, text }) =>
+      text
+        .split("\n")
+        .map((line, index) => ({ path, line, lineNumber: index + 1 }))
+        .filter(({ line }) =>
+          /still dispatches through OCLIF|not yet unified|Until US-522\.\.US-531|OCLIF removal in flight|mid-migration \(US-522\.\.US-531\)|migration is in flight/i.test(
+            line,
+          ),
+        ),
+    );
+
+    // Then the landed architecture is stated and no in-flight marker survives.
+    expect(surfaces.map(({ text }) => text).join("\n")).toMatch(
+      /source and compiled[^\n]*share (?:one|the same) native command registry(?:\/| and )dispatcher/i,
+    );
+    expect(stale).toEqual([]);
+  });
+
   test("source and compiled entries delegate to the native dispatcher", async () => {
     // Given the shipping dispatcher module.
     const source = await Bun.file(runSourcePath).text();

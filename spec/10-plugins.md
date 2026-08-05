@@ -479,7 +479,7 @@ The authoring toolkit is **not** a plugin contribution surface. It is core code 
 | `meta:plugin:unlink <name>` | `plugins` | `BunSelfRunner` | Reverse of `link`; the previously installed registry copy is restored when the lockfile records one. |
 | `meta:plugin:publish` | `minimal` | `BunSelfRunner.publishPkg` | Publish the built artifact to a registry. Reads tokens from `<userDataRoot>/plugin-auth.json`; redacts them in lifecycle events. |
 
-None of these commands carries a default top-level alias; they are namespaced under `meta:plugin:` for discoverability and to keep the bare top-level surface uncluttered. The colon form (`lando meta:plugin:new <name>`) is canonical under the native dispatch target (§8.4.1). Space-form access such as `lando plugin new <name>`, `lando plugin test`, etc. is today's OCLIF-backed behavior (flexible taxonomy, §8.4); whether the native parser continues to accept space-form is a per-namespace policy decision under §8.4.1, not a guarantee of this section.
+None of these commands carries a default top-level alias; they are namespaced under `meta:plugin:` for discoverability and to keep the bare top-level surface uncluttered. The colon form (`lando meta:plugin:new <name>`) is canonical under native dispatch (§8.4.1). Space-form access such as `lando plugin new <name>` is accepted only where the native parser's bounded normalization explicitly lists it; this section makes no general flexible-taxonomy guarantee.
 
 #### 9.10.2 `meta:plugin:new` templates
 

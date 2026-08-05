@@ -11,7 +11,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 - `lando init --source=git` is acquisition-only: `core/src/recipes/git-source.ts` shallow-clones, publishes by commit SHA under `<userDataRoot>/recipe-cache/git/`, then falls through to the existing recipe render path. Do not assume non-bundled directory recipes scaffold end-to-end yet.
 - `lando init --source=tarball` downloads through the resolver seam, SHA-256-verifies before extraction, uses the pure-JS tar(.gz) reader, and publishes under `<userDataRoot>/recipe-cache/tarball/<sha256>/`. `--checksum` hard-fails on mismatch; without it, verification/prompt handling belongs in `loadTarballRecipe` in `init.ts`, not the resolver.
-- Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; OCLIF init and compiled dispatch must share `--source`/`--url`/`--path`/`--checksum` acceptance and exact missing-url wording (`<git-url>` vs `<tarball-url>`). The default git cloner must stay non-interactive.
+- Keep remote-source CLI parsing centralized in `core/src/cli/commands/init-source.ts`; the single native dispatcher must preserve identical `--source`/`--url`/`--path`/`--checksum` acceptance and exact missing-url wording (`<git-url>` vs `<tarball-url>`) for source and compiled entries. The default git cloner must stay non-interactive.
 
 ## Programmatic `recipe.ts`
 
@@ -40,7 +40,7 @@ Inherit root `AGENTS.md`; keep only core-specific traps here.
 
 ## CLI dispatch (single native engine)
 
-Architecture-simplicity supersedes dual OCLIF/`runCompiledCli` dispatch. Until US-522..US-531 fully land, legacy OCLIF wrappers may still exist in-tree — **do not extend them**; register new work on the native registry/dispatcher path (`core/src/cli/run.ts` / command registry).
+Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCLIF-named files may remain in-tree as native metadata/adapters — **do not treat them as a second engine**; register new work on the native registry/dispatcher path (`core/src/cli/run.ts` / command registry).
 
 - One command registry is the SoT for canonical ids, flags, bootstrap level, `run`, help metadata, and `resultSchema`. Implemented vs deferred ids must not be split across a second engine switch.
 - Source (`bun core/bin/lando.ts`) and compiled `$bunfs` entries share the same dispatcher. Faithful compiled reproduction runs the binary **outside** the repo tree.
@@ -60,7 +60,7 @@ Architecture-simplicity supersedes dual OCLIF/`runCompiledCli` dispatch. Until U
 
 ## Runtime layer service wiring
 
-- Adding a service `Live` to a generated bootstrap layer (`core/src/runtime/generated/layers/*.ts`) is two edits: the generator (`scripts/build-bootstrap-layers.ts` `renderApp()`/etc., then `bun run codegen:bootstrap-layers`) AND the hand-maintained runtime-service type union in `core/src/runtime/layer.ts` (e.g. `AppRuntimeServices`). Skip the type union and a command whose `R` now needs the service typechecks in the OCLIF path but fails compiled `run.ts` dispatch (`runCompiledCommand` requires the effect's `R` to be a subtype of that union).
+- Adding a service `Live` to a generated bootstrap layer (`core/src/runtime/generated/layers/*.ts`) is two edits: the generator (`scripts/build-bootstrap-layers.ts` `renderApp()`/etc., then `bun run codegen:bootstrap-layers`) AND the hand-maintained runtime-service type union in `core/src/runtime/layer.ts` (e.g. `AppRuntimeServices`). Skip the type union and a command whose `R` now needs the service fails native dispatch typechecking because `runCompiledCommand` requires the effect's `R` to be a subtype of that union.
 - `BuildOrchestrator.build(plan)` returns the plan with produced or cached artifact refs stamped into its services; callers must apply the returned plan, and artifact cache hits require a persisted ref.
 - `lando app:cache:refresh` is the host-safe CLI surface that drives the full `AppPlanner` (and writes the binary app-plan cache) without starting a service or touching a container runtime; `app:config` only echoes the resolved Landofile, so planner-derived mounts and env need this command instead. `AppPlannerLive` reads its optional services (`CacheService`, `ConfigService`, `FileSystem`, `PathsService`, `CertificateAuthorityResolver`) at layer construction, so a test or driver must provide them to the layer, not to the effect that calls `plan()`.
 - Host `app:shell` uses the Bun Shell line REPL behind `ShellRunner.interactive`, not a raw system-shell child. Keep each line behind the host-shell evaluator, resolve secrets only when typed, and redact before output, events, or history; service mode remains provider-backed. `ShellRunnerLive` is wired into the `app` bootstrap layer.

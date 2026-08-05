@@ -45,7 +45,7 @@ tags: [beta, docs, cli, json, scripting, agent]
       <Variable name="errorTag" value="error._tag" display="The tagged error exposes a machine _tag plus human remediation, so an agent can react to the failure class without scraping prose" />
     </Step>
     <Step name="parity-and-streaming">
-      <Variable name="dispatchParity" value="source and compiled --format json are identical" display="--format json behaves identically in the source OCLIF dispatch and the compiled binary dispatch, so scripts get the same shape from either build" />
+      <Variable name="dispatchParity" value="source and compiled --format json are identical" display="--format json uses the same native registry and dispatcher for source and compiled entries, so scripts get the same shape from either build" />
       <Variable name="streamingFrames" value="StreamFrame frames terminated by a result frame" display="Streaming commands such as app:logs and app:exec emit StreamFrames under --format json and terminate with a single result frame" />
       <Variable name="reference" value="docs/reference/commands.mdx" display="The generated command reference lists every public command and documents the universal --format json flag once in its machine-readable output section" />
     </Step>
