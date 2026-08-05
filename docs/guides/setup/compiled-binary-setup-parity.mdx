@@ -7,7 +7,7 @@ tags: [beta, docs, setup, uninstall, compiled]
 ---
 
 <Guide>
-  <Scenario id="setup-and-shellenv-dispatch" render={false} reason="Source and compiled setup/shellenv parity is exercised today by the compiled-binary dispatch parity suite after building core/dist/lando, while migration work (US-522..US-531) converges both paths on one native command registry and dispatcher">
+  <Scenario id="setup-and-shellenv-dispatch" render={false} reason="Setup and shellenv dispatch is exercised by the native dispatch and registry-completeness suites plus relocated compiled-binary smoke tests; this scenario documents the surface rather than rendering a transcript">
     <Step name="setup-aliases">
       <Variable name="setup" value="setup" display="The top-level setup alias dispatches to the same meta:setup command helper in source and compiled paths" />
       <Variable name="metaSetup" value="meta:setup" display="The canonical setup id remains registered as an MVP command; today it is reached through the compiled runCompiledCli branch, a temporary router pending replacement by the native dispatcher" />
@@ -31,7 +31,7 @@ tags: [beta, docs, setup, uninstall, compiled]
     <Step name="output-routing">
       <Variable name="renderer" value="core/src/cli/renderer-boundary.ts" display="Command results route through Renderer output stdout and diagnostics route through Renderer output stderr" />
       <Variable name="gate" value="bun run check:renderer-boundary" display="The gate rejects direct console/process writes under core/src and plugins outside the documented first-byte carve-outs" />
-      <Variable name="parityTests" value="core/test/cli/parity/dispatch-parity.test.ts" display="Compiled-binary parity tests exercise setup, shellenv, and uninstall through the real source and compiled CLI surfaces today; once US-522..US-531 land one native dispatcher shared by source and compiled entries, this dual-dispatch parity coverage is expected to be replaced by relocated-binary/native-dispatch smoke and conformance coverage" />
+      <Variable name="dispatchTests" value="core/test/cli/native-dispatch-unification.test.ts" display="One native dispatcher serves the source entry and compiled binary; registry completeness, machine-output conformance, and relocated-binary smoke tests cover setup, shellenv, and uninstall" />
     </Step>
   </Scenario>
 </Guide>
