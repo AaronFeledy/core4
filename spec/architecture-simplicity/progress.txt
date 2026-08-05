@@ -485,3 +485,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - When a migration story removes a transitional export, update canonical present-tense package inventories as well as user-facing docs; future-tense removal notes become contradictions once the story passes.
 ---
+
+## [2026-08-05 02:40 CDT] - US-527
+- Retired the source-versus-compiled dual-dispatch parity layer and made the native command registry suite the single owner of dispatch completeness, while preserving unique argv-parser, compiled bootstrap-promotion, and compiled apps-list path coverage under single-engine names.
+- Removed stale test-shard weights and repointed the existing compiled-binary setup guide at the retained native-dispatch coverage.
+- Guide-Coverage-Skip: Internal test-topology consolidation adds no user-facing workflow; the existing compiled-binary guide and its three scenarios were updated and verified.
+- Verification: typecheck and lint/deprecations passed; renderer, machine-output, and import-cycle gates passed; focused registry, machine-output, native-dispatch, argv, lifecycle, pre-command, compiled-harness, relocated-binary, and guide tests passed; TypeScript LSP diagnostics were clean. Manual QA drove source and relocated compiled binaries against isolated state, and teardown was clean. High-rigor review approved with no blockers.
+- **Learnings for future iterations:**
+  - A suite named for retired architecture may still contain unique single-engine assertions; trace covered symbols before deleting by filename.
+  - Test deletions can leave non-test references in shard-weight hints and executable-guide variables even when surviving code has no imports.
+---
