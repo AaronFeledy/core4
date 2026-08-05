@@ -1,4 +1,4 @@
-import { COMPILED_OCLIF_MANIFEST } from "../oclif/compiled-manifest.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../generated/command-registry-manifest.ts";
 import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../oclif/generated/host-proxy-allowlist.ts";
 import type {
   DoctorCheck,
@@ -21,7 +21,7 @@ interface HostProxyAllowlistDoctorOptions {
 }
 
 interface HostProxyManifestCommand {
-  readonly landoSpec?: unknown;
+  readonly spec?: unknown;
 }
 
 export interface HostProxyAllowlistFreshness {
@@ -36,7 +36,7 @@ export const hostProxyAllowlistFreshness = (
 ): HostProxyAllowlistFreshness => {
   const expected = Object.entries(commands)
     .filter(([, command]) => {
-      const spec = command.landoSpec;
+      const spec = command.spec;
       return (
         typeof spec === "object" &&
         spec !== null &&
@@ -57,7 +57,7 @@ export const hostProxyAllowlistFreshness = (
 };
 
 export const currentHostProxyAllowlistFreshness = (): HostProxyAllowlistFreshness =>
-  hostProxyAllowlistFreshness(HOST_PROXY_RUNLANDO_ALLOWLIST, COMPILED_OCLIF_MANIFEST.commands);
+  hostProxyAllowlistFreshness(HOST_PROXY_RUNLANDO_ALLOWLIST, COMMAND_REGISTRY_MANIFEST.commands);
 
 const HOST_PROXY_ALLOWLIST_REMEDIATION: DoctorSolution = {
   kind: "manual",

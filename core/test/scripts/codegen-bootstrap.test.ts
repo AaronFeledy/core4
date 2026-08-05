@@ -42,10 +42,12 @@ describe("codegen clean-checkout bootstrap", () => {
     const hostProxyAllowlist = await import(
       join(root, "core/src/cli/oclif/generated/host-proxy-allowlist.ts")
     );
-    const compiledManifest = await import(join(root, "core/src/cli/oclif/compiled-manifest.ts"));
+    const commandRegistryManifest = await import(
+      join(root, "core/src/cli/generated/command-registry-manifest.ts")
+    );
     expect(commandIds.BUILT_IN_COMMAND_IDS).toEqual([]);
     expect(mcpAllowlist.MCP_DEFAULT_ALLOWLIST).toEqual([]);
     expect(hostProxyAllowlist.HOST_PROXY_RUNLANDO_ALLOWLIST).toEqual([]);
-    expect(compiledManifest.COMPILED_OCLIF_MANIFEST.commands).toEqual({});
+    expect(commandRegistryManifest.COMMAND_REGISTRY_MANIFEST.commands).toEqual({});
   });
 });

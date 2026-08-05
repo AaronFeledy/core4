@@ -246,7 +246,8 @@ core/
 ├── package.json
 ├── bun.lock
 ├── tsconfig.json
-└── oclif.manifest.json               # Transitional generated command manifest; replaced by the registry-derived artifact in US-528
+└── core/src/cli/generated/
+    └── command-registry-manifest.ts  # Build-derived command metadata embedded in the binary
 ```
 
 ### 3.4 Core Effect services

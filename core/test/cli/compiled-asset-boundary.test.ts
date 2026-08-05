@@ -18,8 +18,7 @@ const compiledRuntimeAssetModules = [
   "core/src/cli/cli-adapters/app-lifecycle.ts",
   "core/src/cli/cli-adapters/exec-shell.ts",
   "core/src/cli/cli-adapters/meta-plugin.ts",
-  "core/src/cli/oclif/manifest.ts",
-  "core/src/cli/oclif/compiled-manifest.ts",
+  "core/src/cli/generated/command-registry-manifest.ts",
   "core/src/recipes/bundled.ts",
   "sdk/src/schema/json-schema.ts",
 ] as const;

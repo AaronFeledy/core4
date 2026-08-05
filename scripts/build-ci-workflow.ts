@@ -247,7 +247,7 @@ ${setupBunSteps}${renderHostProxyShimDownloadStep(platform)}
 
 ${codegenStep}
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build ${platform.id} binary
@@ -833,7 +833,7 @@ ${codegenStep}
 
       - name: Regenerate command reference
         run: |
-          bun run codegen:oclif-manifest
+          bun run codegen:command-registry-manifest
           bun run codegen:command-reference
 
       - name: Verify command reference is current

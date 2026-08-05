@@ -76,7 +76,7 @@ const expectedCatalogRows = [
   ["setup-plugin-flags", "derived", "build-setup-plugin-flags.ts", "repo"],
   ["mcp-allowlist", "derived", "build-mcp-allowlist.ts", "repo"],
   ["host-proxy-allowlist", "derived", "build-host-proxy-allowlist.ts", "repo"],
-  ["oclif-manifest", "derived", "build-oclif-manifest.ts", "core"],
+  ["command-registry-manifest", "derived", "build-command-registry-manifest.ts", "core"],
   ["schema-snapshot", "derived", "build-schema-snapshot.ts", "repo"],
   ["command-reference", "derived", "build-command-reference.ts", "repo"],
   ["compose-key-matrix", "derived", "build-compose-key-matrix.ts", "repo"],
@@ -147,7 +147,7 @@ describe("codegen catalog", () => {
       "setup-plugin-flags",
       "mcp-allowlist",
       "host-proxy-allowlist",
-      "oclif-manifest",
+      "command-registry-manifest",
     ] as const;
 
     // When: generator positions are compared with the schema generator.
@@ -198,7 +198,7 @@ describe("codegen catalog", () => {
       catalog.filter((entry) => entry.ownership === "committed-workflow").map((entry) => entry.id),
     ).toEqual(expectedCommittedWorkflows);
     expect(catalog.filter((entry) => entry.workspace === "core").map((entry) => entry.id)).toEqual([
-      "oclif-manifest",
+      "command-registry-manifest",
     ]);
   });
 

@@ -3,10 +3,7 @@ import type { BoundaryRule } from "../types.ts";
 import { ALL_PACKAGE_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const BANNER_MARKER = "**GENERATED FILE** — do not edit by hand.";
-const BANNERED_OUTSIDE_GENERATED_ALLOWLIST = [
-  "core/src/cli/oclif/compiled-manifest.ts",
-  "core/src/recipes/bundled.ts",
-] as const;
+const BANNERED_OUTSIDE_GENERATED_ALLOWLIST = ["core/src/recipes/bundled.ts"] as const;
 
 const hasGeneratedPathSegment = (path: string): boolean => path.split("/").includes("generated");
 

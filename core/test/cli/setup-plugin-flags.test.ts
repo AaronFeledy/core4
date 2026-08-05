@@ -3,8 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import SetupCommand from "../../src/cli/oclif/commands/meta/setup.ts";
-import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/oclif/generated/setup-plugin-flags.ts";
 
 const UNIVERSAL_FLAG_NAMES = new Set(["format", "json"]);
@@ -29,10 +29,10 @@ describe("meta:setup plugin flag merge", () => {
     expect(Object.keys(SetupCommand.flags)).not.toContain("definitely-not-a-setup-flag");
   });
 
-  test("source flag surface matches the compiled manifest (parity)", () => {
+  test("source flag surface matches the embedded registry manifest", () => {
     const sourceFlagNames = new Set(Object.keys(SetupCommand.flags));
     const compiledFlagNames = new Set(
-      Object.keys(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.flags ?? {}).filter(
+      Object.keys(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.flags ?? {}).filter(
         (name) => !UNIVERSAL_FLAG_NAMES.has(name),
       ),
     );

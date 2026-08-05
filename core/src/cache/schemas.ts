@@ -24,7 +24,7 @@ export const CacheKind = Schema.Literal(
   "app-plan",
   "service-info",
   "provider",
-  "oclif-manifest",
+  "command-registry-manifest",
   "update",
 );
 export type CacheKind = typeof CacheKind.Type;
