@@ -456,3 +456,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - Derive bare namespace reservations from the same token index that owns dispatch so newly registered alias namespaces cannot silently become tooling names.
   - Escape only untrusted interpolated fragments when structured error fields must retain raw values.
 ---
+
+## [2026-08-05 00:03 CDT] - US-525 Review
+- Closed the remaining registry bypass by rejecting unresolved tokens before transitional topic dispatch, so retired dispatcher-only permutations now produce the same tagged unknown-command failure as help while registered aliases and dynamic tooling retain precedence.
+- Corrected tooling cache remediation and its executable guides to use the canonical `lando app:cache:refresh` token, with registry-resolution coverage preventing future uninvokable suggestions.
+- Review notes (deferred/rejected): retained the now-unreachable dispatcher permutation branches because deleting transitional source structure belongs to later dispatcher cleanup; US-525 owns their user-visible rejection, not that refactor.
+- Verification: explicit-base guide drift, both affected focused guide runs, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, and 213 focused CLI tests passed.
+- **Learnings for future iterations:**
+  - Resolve command identity through the registry before entering transitional dispatch tables; a late unknown-command guard silently preserves undocumented aliases.
+  - Validate remediation command tokens against the registry so error UX cannot recommend parser forms the CLI rejects.
+---
