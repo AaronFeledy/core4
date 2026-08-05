@@ -435,3 +435,12 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - OCLIF explicit discovery accepts a local command shape with an inherited static runner, so dev-only manifest coverage can survive without a shipping runtime dependency.
   - Use the shared AST module-edge scanner for dependency-boundary tests so static imports, re-exports, dynamic imports, `require`, and folded specifiers are all covered.
 ---
+
+## [2026-08-04 21:14 CDT] - US-525
+- Made native root and per-command help consume command-registry summaries, aliases, and deferred status; unknown command and unknown-help targets now produce stack-free tagged failures with machine-readable remediation.
+- Restored typed release ownership for every remaining deferred command, with source and relocated binaries consistently identifying Lando 4.1, and documented the native parser's bounded space-form compatibility policy without broadening it.
+- Verification: typecheck and lint/deprecations passed; 154 focused and adjacent CLI/build tests passed; machine-output, renderer, import-cycle, and package-DAG gates passed; source and relocated compiled CLI surfaces passed. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep release phase on each deferred registry plan and append it at the shared error-construction seam so help, plain diagnostics, and JSON envelopes cannot drift.
+  - Treat supported space forms as an explicit compatibility set; canonical ids and multi-segment aliases remain colon-form tokens, and unsupported forms should fail through the tagged unknown-command boundary.
+---
