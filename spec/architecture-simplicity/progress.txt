@@ -495,3 +495,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
   - A suite named for retired architecture may still contain unique single-engine assertions; trace covered symbols before deleting by filename.
   - Test deletions can leave non-test references in shard-weight hints and executable-guide variables even when surviving code has no imports.
 ---
+
+## [2026-08-05 03:11 CDT] - US-527 Review
+- Review restored the two required single-path proofs that the retired parity suite had uniquely owned: every implemented registry id now has a native adapter, and the relocated binary now demonstrates both successful and tagged-failure JSON envelopes under isolated state.
+- Review notes (deferred/rejected): rejected restoring source-versus-compiled comparisons because US-527 explicitly retires dual dispatch; rejected an additional renderer-selection secret probe because the canonical redaction seam remains covered and no runtime defect was found. Cursor Bugbot reported no bugs.
+- Verification: typecheck, lint/deprecations, explicit-base guide drift, machine-output boundary, 67 focused CLI/build tests, and 3 focused guide scenarios passed; edited-file LSP diagnostics were clean before the final comment-only wording correction, while a capped directory scan reported only unrelated pre-existing test diagnostics.
+- **Learnings for future iterations:**
+  - When deleting an architectural parity suite, extract registry reachability and relocated-artifact contracts before removing cross-engine comparisons.
+---
