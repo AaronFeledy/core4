@@ -10,8 +10,8 @@
  */
 import { Flags } from "../../metadata.ts";
 
-import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../generated/setup-plugin-flags.ts";
-import { mergeSetupPluginFlags } from "../../setup-plugin-flags-merge.ts";
+import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../../generated/setup-plugin-flags.ts";
+import { mergeSetupPluginFlags } from "../../../setup-plugin-flags-merge.ts";
 import { contributedSetupInputFlags } from "./setup-inputs.ts";
 
 export const SETUP_BUILTIN_FLAGS = {
@@ -47,6 +47,11 @@ export const SETUP_PLUGIN_FLAGS = mergeSetupPluginFlags(
   SETUP_RESERVED_FLAG_NAMES,
   BUNDLED_SETUP_FLAG_CONTRIBUTIONS,
 );
+
+export const SETUP_COMMAND_FLAGS = {
+  ...SETUP_BUILTIN_FLAGS,
+  ...SETUP_PLUGIN_FLAGS.flags,
+} as const;
 
 const contributedSetupFlagNamesForProvider = (providerId: string): ReadonlyArray<string> =>
   BUNDLED_SETUP_FLAG_CONTRIBUTIONS.filter((contribution) => contribution.providers.includes(providerId)).map(

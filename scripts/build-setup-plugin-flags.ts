@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Regenerate `core/src/cli/oclif/generated/setup-plugin-flags.ts` from the
+ * Regenerate `core/src/cli/generated/setup-plugin-flags.ts` from the
  * bundled plugins' `contributes.setup.flags`.
  *
  * Inputs:
@@ -8,7 +8,7 @@
  *   - each bundled plugin's `manifest.contributes.setup.flags`
  *
  * Output:
- *   - `core/src/cli/oclif/generated/setup-plugin-flags.ts` — plain literal
+ *   - `core/src/cli/generated/setup-plugin-flags.ts` — plain literal
  *     data (no plugin/Effect imports) that the `meta:setup` command merges into
  *     its flag surface. Keeping this a literal-data module means importing it
  *     from the setup command never pulls the bundled plugin Layers (and the
@@ -17,6 +17,7 @@
  * Drift gate: `bun run codegen` re-runs this generator and
  * `git diff --exit-code` fails if the output drifts.
  */
+import { rm } from "node:fs/promises";
 import { resolve } from "node:path";
 
 import type { ContributionRef, PluginManifest, PluginSetupFlagContribution } from "@lando/sdk/schema";
@@ -25,7 +26,11 @@ import { buildConfig } from "../core/build.config.ts";
 import { writeFormattedOutput } from "./_codegen-output.ts";
 
 const REPO_ROOT = resolve(import.meta.dirname, "..");
-const OUTPUT = resolve(REPO_ROOT, "core/src/cli/oclif/generated/setup-plugin-flags.ts");
+export const SETUP_PLUGIN_FLAGS_OUTPUT = resolve(REPO_ROOT, "core/src/cli/generated/setup-plugin-flags.ts");
+export const LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT = resolve(
+  REPO_ROOT,
+  "core/src/cli/oclif/generated/setup-plugin-flags.ts",
+);
 
 const HEADER = `/**
  * **GENERATED FILE** — do not edit by hand.
@@ -104,8 +109,11 @@ const main = async (): Promise<void> => {
     }
   }
 
-  await writeFormattedOutput(OUTPUT, renderModule(contributions));
-  console.log(`[build-setup-plugin-flags] wrote ${OUTPUT} (${contributions.length} contributions)`);
+  await rm(LEGACY_SETUP_PLUGIN_FLAGS_OUTPUT, { force: true });
+  await writeFormattedOutput(SETUP_PLUGIN_FLAGS_OUTPUT, renderModule(contributions));
+  console.log(
+    `[build-setup-plugin-flags] wrote ${SETUP_PLUGIN_FLAGS_OUTPUT} (${contributions.length} contributions)`,
+  );
 };
 
 if (import.meta.main) await main();

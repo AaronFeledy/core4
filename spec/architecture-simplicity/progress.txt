@@ -558,3 +558,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - A normative fixed/exhaustive fast-path list must be table-driven as argv arrays; single-token samples can hide both omitted aliases and multi-token taxonomy regressions.
 ---
+
+## [2026-08-05 15:35 CDT] - US-530
+- Moved bundled provider setup-flag generation and merging onto the native CLI registry path, with `meta:setup` owning one generated flag surface across its command spec, compatibility wrapper, manifest, parser, and provider setup input.
+- Consolidated CLI topic descriptions into native registry metadata and made cold-path help render from the embedded manifest, removing the remaining OCLIF-owned topic tables without loading plugin code on the level-none path.
+- Guide-Coverage-Skip: Internal command metadata ownership changes no documented command behavior or executable-guide workflow.
+- Verification: typecheck and lint/deprecations passed; 195 focused and adjacent tests passed; codegen drift, generated-output, import-cycle, package-DAG, and renderer boundaries passed; source CLI help, setup help, strict unknown-flag handling, and cold-path canary checks passed. The spec-reference gate retains only its previously recorded unrelated `.omo/**` failures; high-rigor review approved with no blockers.
+- **Learnings for future iterations:**
+  - Put generated command metadata beside the native registry and make compatibility command classes project the command spec rather than own a parallel flag surface.
+  - Keep cold-path topic rendering data-driven from an embedded literal manifest; generator-time imports may inspect authored metadata, but level-none runtime code should import only the generated artifact.
+---

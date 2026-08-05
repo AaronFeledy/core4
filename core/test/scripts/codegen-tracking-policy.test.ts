@@ -13,13 +13,13 @@ type CodegenCatalogModule = {
 
 const derivedTypeScriptPolicies = [
   {
-    ids: ["command-registry-manifest"],
+    ids: ["command-registry-manifest", "setup-plugin-flags"],
     ignoreProbe: "core/src/cli/generated/command-ids.ts",
     trackingPath: "core/src/cli/generated",
   },
   {
-    ids: ["setup-plugin-flags", "mcp-allowlist", "host-proxy-allowlist"],
-    ignoreProbe: "core/src/cli/oclif/generated/setup-plugin-flags.ts",
+    ids: ["mcp-allowlist", "host-proxy-allowlist"],
+    ignoreProbe: "core/src/cli/oclif/generated/mcp-allowlist.ts",
     trackingPath: "core/src/cli/oclif/generated",
   },
   {

@@ -2,8 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import type { PluginManifest } from "@lando/sdk/schema";
 
+import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/generated/setup-plugin-flags.ts";
 import SetupCommand from "../../src/cli/oclif/commands/meta/setup.ts";
-import { BUNDLED_SETUP_FLAG_CONTRIBUTIONS } from "../../src/cli/oclif/generated/setup-plugin-flags.ts";
 import {
   SETUP_BUILTIN_FLAG_NAMES,
   SetupFlagCollisionError,

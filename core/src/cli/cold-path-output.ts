@@ -13,6 +13,11 @@ type ColdCommandEntry = {
   readonly hidden: boolean;
 };
 
+type ColdTopicEntry = {
+  readonly description: string;
+  readonly hidden?: boolean;
+};
+
 export const renderColdRootHelp = (): string => {
   const entries: ReadonlyArray<readonly [string, ColdCommandEntry]> = Object.entries(
     COMMAND_REGISTRY_MANIFEST.commands,
@@ -29,6 +34,13 @@ export const renderColdRootHelp = (): string => {
       if (!alias.startsWith("-")) aliases.push([alias, entry.spec.id]);
     }
   }
+  const topics: ReadonlyArray<readonly [string, ColdTopicEntry]> = Object.entries(
+    COMMAND_REGISTRY_MANIFEST.topics,
+  );
+  const rootTopicLines = topics
+    .filter(([topic, metadata]) => !topic.includes(":") && metadata.hidden !== true)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([topic, metadata]) => `  ${topic.padEnd(6)}${metadata.description}`);
 
   const lines = [
     `Lando v4 core: runtime, planner, command registry, and library API.
@@ -40,9 +52,7 @@ USAGE
   $ lando [COMMAND]
 
 TOPICS
-  app   Operate on the current Lando app.
-  apps  Discover and operate across Lando apps on the host.
-  meta  Operate on Lando itself: config, plugins, host setup.
+${rootTopicLines.join("\n")}
 
 COMMANDS`,
   ];

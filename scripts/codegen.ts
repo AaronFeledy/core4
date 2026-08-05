@@ -21,7 +21,7 @@ const BOOTSTRAP_MODULES = [
   },
   {
     content:
-      'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", version: "0.0.0" } as const;\n',
+      'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", topics: {}, version: "0.0.0" } as const;\n',
     path: "core/src/cli/generated/command-registry-manifest.ts",
   },
 ] as const;
