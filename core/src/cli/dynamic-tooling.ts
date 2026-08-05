@@ -64,7 +64,7 @@ export const runDynamicBunShellTooling = (
             new ToolingCompileError({
               message: `Cached script-backed tooling command app:${escapeDiagnosticText(name)} is no longer available.`,
               tool: name,
-              remediation: "Run `lando app cache refresh` and retry the command.",
+              remediation: "Run `lando app:cache:refresh` and retry the command.",
             }),
           )
         : Effect.succeed(result),

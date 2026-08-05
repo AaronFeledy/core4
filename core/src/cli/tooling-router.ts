@@ -8,7 +8,7 @@ import { findAppRoot } from "../landofile/discovery.ts";
 import { escapeDiagnosticText } from "./diagnostic-text.ts";
 
 const CACHE_REMEDIATION =
-  "Run `lando app cache refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
+  "Run `lando app:cache:refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }

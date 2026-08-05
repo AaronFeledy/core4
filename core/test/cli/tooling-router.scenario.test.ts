@@ -326,8 +326,8 @@ test("Given missing caches, when a script name is invoked, then neither dispatch
     // Then
     expect(sourceResult.exitCode).not.toBe(0);
     expect(compiledResult.exitCode).not.toBe(0);
-    expect(`${sourceResult.stdout}\n${sourceResult.stderr}`).toContain("lando app cache refresh");
-    expect(`${compiledResult.stdout}\n${compiledResult.stderr}`).toContain("lando app cache refresh");
+    expect(`${sourceResult.stdout}\n${sourceResult.stderr}`).toContain("lando app:cache:refresh");
+    expect(`${compiledResult.stdout}\n${compiledResult.stderr}`).toContain("lando app:cache:refresh");
     expect(await Bun.file(sourceMarker).exists()).toBe(false);
     expect(await Bun.file(compiledMarker).exists()).toBe(false);
   } finally {
@@ -357,7 +357,7 @@ test("Given fresh caches without a match, when an unknown task is invoked, then 
       ok: false,
       error: {
         _tag: "ToolingCompileError",
-        remediation: expect.stringContaining("lando app cache refresh"),
+        remediation: expect.stringContaining("lando app:cache:refresh"),
       },
     });
     expect(lastEnvelope(compiledResult.stdout)).toEqual(lastEnvelope(sourceResult.stdout));
