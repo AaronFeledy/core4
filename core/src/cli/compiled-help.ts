@@ -14,6 +14,19 @@ import { resolveTopLevelAliases } from "./oclif/command-spec.ts";
 const version = `@lando/core/${CORE_VERSION}`;
 
 export const printRootHelp = (): void => {
+  const visibleEntries = builtInCommandEntries.filter(({ spec }) => spec.hidden !== true);
+  const namespaces = new Map<string, Array<BuiltInCommandEntry>>();
+  const aliases: Array<readonly [string, string]> = [];
+  for (const entry of visibleEntries) {
+    const namespace = entry.spec.id.split(":", 1)[0] ?? entry.spec.namespace;
+    const entries = namespaces.get(namespace) ?? [];
+    entries.push(entry);
+    namespaces.set(namespace, entries);
+    for (const alias of entry.command.aliases ?? []) {
+      if (!alias.startsWith("-")) aliases.push([alias, entry.spec.id]);
+    }
+  }
+
   const lines = [
     `Lando v4 core: runtime, planner, command registry, and library API.
 
@@ -30,11 +43,13 @@ TOPICS
 
 COMMANDS`,
   ];
-  for (const { spec } of builtInCommandEntries) {
-    const name = resolveTopLevelAliases(spec)[0] ?? spec.id;
-    if (!name.includes(":")) {
-      lines.push(`  ${name.padEnd(22)} ${spec.summary}`);
-    }
+  for (const [namespace, entries] of [...namespaces].sort(([left], [right]) => left.localeCompare(right))) {
+    lines.push(`  ${namespace}`);
+    for (const { spec } of entries) lines.push(`    ${spec.id.padEnd(30)} ${spec.summary}`);
+  }
+  lines.push("", "ALIASES");
+  for (const [alias, canonicalId] of aliases.sort(([left], [right]) => left.localeCompare(right))) {
+    lines.push(`  ${alias} -> ${canonicalId}`);
   }
   emitResultLine(lines.join("\n"));
 };

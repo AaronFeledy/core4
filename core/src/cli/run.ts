@@ -3,7 +3,11 @@ import { Effect, Layer } from "effect";
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
 import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
-import { notImplementedErrorForCommand, resolveBuiltInCommand } from "./built-in-command-registry.ts";
+import {
+  isReservedNamespaceHead,
+  notImplementedErrorForCommand,
+  resolveBuiltInCommand,
+} from "./built-in-command-registry.ts";
 import { runMetaVersion } from "./cli-adapters/meta-plugin.ts";
 import { scratchRunHasCommandTail } from "./commands/scratch-run.ts";
 import { normalizeScratchStartArgv } from "./commands/scratch.ts";
@@ -117,7 +121,7 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
       ? findCommand(argv[0] ?? "")
       : [builtInCommand.spec.id, builtInCommand.command];
 
-  if (found === undefined && (await routeDynamicTooling(argv))) return;
+  if (found === undefined && !isReservedNamespaceHead(head) && (await routeDynamicTooling(argv))) return;
 
   if (
     !isBunOrX &&

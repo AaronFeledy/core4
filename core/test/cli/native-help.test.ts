@@ -1,6 +1,13 @@
-import { resolve } from "node:path";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Effect } from "effect";
+
+import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { unknownCommandError } from "../../src/cli/unknown-command-error.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -11,10 +18,16 @@ type RunResult = {
   readonly stderr: string;
 };
 
-const runCli = async (argv: ReadonlyArray<string>): Promise<RunResult> => {
+type RunOptions = {
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+};
+
+const runCli = async (argv: ReadonlyArray<string>, options: RunOptions = {}): Promise<RunResult> => {
   const subprocess = Bun.spawn({
     cmd: [process.execPath, cliEntry, ...argv],
-    cwd: repoRoot,
+    cwd: options.cwd ?? repoRoot,
+    ...(options.env === undefined ? {} : { env: options.env }),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -24,6 +37,43 @@ const runCli = async (argv: ReadonlyArray<string>): Promise<RunResult> => {
     new Response(subprocess.stderr).text(),
   ]);
   return { exitCode, stdout, stderr };
+};
+
+const makeAppFixture = async (): Promise<{
+  readonly root: string;
+  readonly cacheRoot: string;
+  readonly env: Readonly<Record<string, string>>;
+  readonly cleanup: () => Promise<void>;
+}> => {
+  const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-native-help-"));
+  const root = fixtureRoot;
+  const cacheRoot = join(fixtureRoot, "cache");
+  await writeFile(join(root, ".lando.yml"), "name: native-help\n");
+  const inheritedEnv = Object.fromEntries(
+    Object.entries(process.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+  return {
+    root,
+    cacheRoot,
+    env: {
+      ...inheritedEnv,
+      LANDO_USER_CACHE_ROOT: cacheRoot,
+      LANDO_USER_DATA_ROOT: join(fixtureRoot, "data"),
+      LANDO_USER_CONF_ROOT: join(fixtureRoot, "conf"),
+    },
+    cleanup: () => rm(fixtureRoot, { recursive: true, force: true }),
+  };
+};
+
+const writeFreshCache = async (fixture: Awaited<ReturnType<typeof makeAppFixture>>): Promise<void> => {
+  await Effect.runPromise(
+    writeAppCommandCacheStrict({
+      landofile: { name: "native-help" },
+      entries: [{ id: "app:known", summary: "Known task", hidden: false, source: "bun-script" }],
+      cwd: fixture.root,
+      cacheRoot: fixture.cacheRoot,
+    }),
+  );
 };
 
 const STACK_OR_SOURCE_PATH = /(^\s*at\s+\S+)|\/[A-Za-z0-9_.\-/]+\.(?:ts|js)(?:[:?]|\b)/m;
@@ -37,6 +87,29 @@ describe("native registry help", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain("List Lando apps applied across discovered providers on this host.");
     expect(result.stdout).not.toContain("OCLIF adapter");
+  });
+
+  test("Given the root registry, when help is requested, then every visible canonical id and non-flag alias renders", async () => {
+    // Given
+    const visibleEntries = builtInCommandEntries.filter((entry) => entry.spec.hidden !== true);
+
+    // When
+    const result = await runCli(["--help"]);
+
+    // Then
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain("USAGE");
+    expect(result.stdout).toContain("TOPICS");
+    expect(result.stdout).toContain("COMMANDS");
+    for (const entry of visibleEntries) {
+      expect(result.stdout, `missing canonical id ${entry.spec.id}`).toContain(entry.spec.id);
+      for (const alias of entry.command.aliases ?? []) {
+        if (alias.startsWith("-")) continue;
+        expect(result.stdout, `missing alias pointer ${alias} -> ${entry.spec.id}`).toContain(
+          `${alias} -> ${entry.spec.id}`,
+        );
+      }
+    }
   });
 
   test("Given a registered command, when its help is requested, then registry metadata and class-owned flags render", async () => {
@@ -75,7 +148,10 @@ describe("native unknown-command failures", () => {
   test.each([
     ["plain unknown command", ["does-not-exist"]],
     ["unknown help target", ["does-not-exist", "--help"]],
+    ["unsupported app space form", ["app", "unsupported"]],
     ["unsupported space form", ["apps", "list"]],
+    ["unsupported meta space form", ["meta", "unsupported"]],
+    ["unsupported global space form", ["global", "unsupported"]],
   ] as const)(
     "Given a %s, when dispatched, then a stack-free tagged failure is rendered",
     async (_name, argv) => {
@@ -90,6 +166,85 @@ describe("native unknown-command failures", () => {
       expect(result.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
     },
   );
+
+  test.each(["app", "apps", "meta", "global", "plugin"] as const)(
+    "Given an app context, when unsupported %s namespace syntax is dispatched, then unknown-command handling wins over dynamic tooling",
+    async (head) => {
+      // Given
+      const fixture = await makeAppFixture();
+      try {
+        await writeFreshCache(fixture);
+
+        // When
+        const result = await runCli([head, "unsupported"], { cwd: fixture.root, env: fixture.env });
+
+        // Then
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toContain("UnknownCommandError");
+        expect(result.stderr).not.toContain("ToolingCompileError");
+        expect(result.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
+      } finally {
+        await fixture.cleanup();
+      }
+    },
+  );
+
+  test("Given an app context and an unknown tooling token with terminal controls, when dispatched, then ToolingCompileError text is escaped", async () => {
+    // Given
+    const fixture = await makeAppFixture();
+    const commandToken = "unknown-tooling\u001b[31m";
+    try {
+      await writeFreshCache(fixture);
+
+      // When
+      const result = await runCli([commandToken], { cwd: fixture.root, env: fixture.env });
+
+      // Then
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("ToolingCompileError");
+      expect(result.stderr).toContain("app:unknown-tooling\\u001b[31m");
+      expect(result.stderr).not.toContain("\u001b");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("Given a command token with terminal controls, when plain diagnostics render, then raw controls do not reach stderr", async () => {
+    // Given
+    const commandToken = "does-not-exist\u001b[31m";
+
+    // When
+    const result = await runCli([commandToken]);
+
+    // Then
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("\\u001b[31m");
+    expect(result.stderr).not.toContain("\u001b");
+  });
+
+  test("Given a command token with terminal controls, when real JSON diagnostics render, then typed fields remain raw and messages are escaped", async () => {
+    // Given
+    const commandToken = "does-not-exist\u001b[31m";
+
+    // When
+    const result = await runCli([commandToken, "--format=json"]);
+    const encoded: unknown = JSON.parse(result.stdout);
+    const typedError = unknownCommandError(commandToken);
+
+    // Then
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toBe("");
+    expect(result.stdout).not.toContain("\u001b");
+    expect(encoded).toMatchObject({
+      command: "cli:unknown-command",
+      ok: false,
+      error: {
+        _tag: "UnknownCommandError",
+        message: "Command does-not-exist\\u001b[31m not found",
+      },
+    });
+    expect(typedError.commandToken).toBe(commandToken);
+  });
 
   test("Given JSON output, when an unknown command is dispatched, then a valid machine failure envelope renders", async () => {
     // Given / When

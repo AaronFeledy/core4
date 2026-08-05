@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
-import { resolveToolingRoute, toolingName } from "../../src/cli/tooling-router.ts";
+import { resolveToolingRoute, toolingName, toolingRouteError } from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -194,6 +194,25 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
       remediation: expect.stringContaining("lando app cache refresh"),
     });
   });
+});
+
+test("Given an argv-derived tooling name with terminal controls, when its error is constructed, then the message is escaped and the typed tool stays raw", () => {
+  // Given
+  const name = "unknown\u001b[31m";
+
+  // When
+  const error = toolingRouteError({
+    _tag: "unknown-tooling",
+    commandId: `app:${name}`,
+    name,
+    argv: [],
+    remediation: "refresh",
+  });
+
+  // Then
+  expect(error.message).toContain("app:unknown\\u001b[31m");
+  expect(error.message).not.toContain("\u001b");
+  expect(error.tool).toBe(name);
 });
 
 test("Given another namespace or a directory outside an app, when resolving, then it is not tooling", async () => {

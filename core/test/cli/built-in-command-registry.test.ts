@@ -18,6 +18,7 @@ type SyntheticRegistration = {
 type SyntheticIndex = {
   readonly entries: ReadonlyArray<SyntheticRegistration>;
   readonly byToken: ReadonlyMap<string, SyntheticRegistration>;
+  readonly namespaceHeads: ReadonlySet<string>;
 };
 
 const isRegistryBuilder = (
@@ -100,6 +101,33 @@ describe("built-in command registry contract", () => {
         ["app:two", syntheticRegistration("app:two")],
       ]),
     ).toThrow(CommandAliasConflictError);
+  });
+
+  test("registry construction derives reserved bare namespace heads from canonical ids and colon aliases", async () => {
+    // Given
+    const registry = await import("../../src/cli/built-in-command-registry.ts");
+    const buildIndex = Reflect.get(registry, "buildBuiltInCommandIndex");
+    expect(isRegistryBuilder(buildIndex)).toBe(true);
+    if (!isRegistryBuilder(buildIndex)) return;
+
+    // When
+    const index = buildIndex([
+      ["app:one", syntheticRegistration("app:one", ["one", "plugin:one", "--legacy-one"])],
+      ["meta:two", syntheticRegistration("meta:two", ["global:two"])],
+    ]);
+
+    // Then
+    expect([...index.namespaceHeads].sort()).toEqual(["app", "global", "meta", "plugin"]);
+  });
+
+  test("registry namespace routing reserves bare heads without reserving colon-qualified tooling ids", async () => {
+    // Given
+    const registry = await import("../../src/cli/built-in-command-registry.ts");
+
+    // When / Then
+    expect(registry.isReservedNamespaceHead("app")).toBe(true);
+    expect(registry.isReservedNamespaceHead("plugin")).toBe(true);
+    expect(registry.isReservedNamespaceHead("app:quality")).toBe(false);
   });
 
   test("help, schema, MCP, and native dispatch project from the registry", () => {
