@@ -3,7 +3,9 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 
+import { CommandResultEnvelope } from "@lando/sdk/schema";
 import corePackage from "../../package.json";
 import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
 
@@ -24,10 +26,19 @@ interface RunResult {
   readonly stderr: string;
 }
 
-const runCommand = async (cmd: Array<string>, cwd = coreRoot): Promise<RunResult> => {
+interface RunCommandOptions {
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string | undefined>>;
+}
+
+const decodeEnvelope = (output: string): CommandResultEnvelope =>
+  Schema.decodeUnknownSync(CommandResultEnvelope)(JSON.parse(output));
+
+const runCommand = async (cmd: Array<string>, options: RunCommandOptions = {}): Promise<RunResult> => {
   const proc = Bun.spawn({
     cmd,
-    cwd,
+    cwd: options.cwd ?? coreRoot,
+    ...(options.env === undefined ? {} : { env: options.env }),
     stdout: "pipe",
     stderr: "pipe",
   });
@@ -95,11 +106,40 @@ describe.skipIf(process.platform !== "linux" || process.arch !== "x64")("compile
     await mkdir(appRoot);
     const env = {
       ...process.env,
+      LANDO_USER_CONF_ROOT: resolve(relocatedRoot, "config"),
       LANDO_USER_DATA_ROOT: resolve(relocatedRoot, "data"),
       LANDO_USER_CACHE_ROOT: resolve(relocatedRoot, "cache"),
       TERM: "xterm-256color",
     };
     Reflect.deleteProperty(env, "CI");
+    const versionJson = await runCommand([relocatedBinary, "meta:version", "--format=json"], {
+      cwd: appRoot,
+      env,
+    });
+    const versionEnvelope = decodeEnvelope(versionJson.stdout);
+    expect(versionJson.exitCode).toBe(0);
+    expect(versionJson.stderr).toBe("");
+    expect(versionEnvelope).toMatchObject({
+      apiVersion: "v4",
+      command: "meta:version",
+      ok: true,
+      result: { core: expect.any(String) },
+    });
+
+    const deferredJson = await runCommand([relocatedBinary, "meta:events:follow", "--format=json"], {
+      cwd: appRoot,
+      env,
+    });
+    const deferredEnvelope = decodeEnvelope(deferredJson.stdout);
+    expect(deferredJson.exitCode).toBe(1);
+    expect(deferredJson.stderr).toBe("");
+    expect(deferredEnvelope).toMatchObject({
+      apiVersion: "v4",
+      command: "meta:events:follow",
+      ok: false,
+      error: { _tag: "NotImplementedError" },
+    });
+
     let ptyOutput = "";
     const prompt = Bun.spawn({
       cmd: [relocatedBinary, "init"],
