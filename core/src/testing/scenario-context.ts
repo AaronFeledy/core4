@@ -678,9 +678,8 @@ const createTestOnlyFakeRunCli =
       return invokeRealCli(args, options, events, getWorkingDirectory, setWorkingDirectory);
     });
 
-// Source-mode OCLIF calls `process.exit` on any erroring command, which would
-// terminate the surrounding test runner. The in-process scenario runner is
-// therefore restricted to commands that succeed; everything else must run
+// The in-process scenario runner is limited to init, whose seeded answers and
+// generated working-directory transition are owned here. Other commands run
 // through the compiled binary via `ScenarioContextFactory.e2e`.
 const SCENARIO_INPROCESS_COMMANDS: ReadonlySet<string> = new Set(["init", "apps:init"]);
 
@@ -690,7 +689,7 @@ const unsupportedInProcessResult = (
 ): ScenarioRunResult => ({
   command: args,
   stdout: "",
-  stderr: `command "${args[0] ?? ""}" is not supported by the in-process scenario runner because source-mode OCLIF calls process.exit on errors and would kill the test runner; use ScenarioContextFactory.e2e to run it against the compiled binary\n`,
+  stderr: `command "${args[0] ?? ""}" is not supported by the in-process scenario runner because only init commands support seeded answers and scenario working-directory transitions; use ScenarioContextFactory.e2e to run it against the compiled binary\n`,
   exitCode: 1,
   events: [...events],
 });

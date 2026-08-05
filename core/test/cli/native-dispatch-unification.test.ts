@@ -7,6 +7,7 @@ const runSourcePath = resolve(repoRoot, "core/src/cli/run.ts");
 const currentGuidancePaths = [
   "AGENTS.md",
   "core/AGENTS.md",
+  "core/src/testing/scenario-context.ts",
   "README.md",
   "docs/embedding.md",
   "docs/guides/INDEX.md",
@@ -55,7 +56,7 @@ describe("native CLI dispatch unification", () => {
         .split("\n")
         .map((line, index) => ({ path, line, lineNumber: index + 1 }))
         .filter(({ line }) =>
-          /still dispatches through OCLIF|not yet unified|Until US-522\.\.US-531|OCLIF removal in flight|mid-migration \(US-522\.\.US-531\)|migration is in flight/i.test(
+          /still dispatches through OCLIF|source-mode OCLIF|not yet unified|Until US-522\.\.US-531|OCLIF removal in flight|mid-migration \(US-522\.\.US-531\)|migration is in flight/i.test(
             line,
           ),
         ),
