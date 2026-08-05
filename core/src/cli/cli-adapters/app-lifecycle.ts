@@ -512,8 +512,8 @@ export const runDoctor = async (argv: ReadonlyArray<string>): Promise<void> => {
   const deprecations = argv.some((arg) => arg === "--deprecations");
   const format = activeTextJsonYamlFormat();
   // Doctor provisions its own runtime so a bootstrap failure is reported rather
-  // than fatal; the compiled path therefore runs at `none` like the OCLIF spec,
-  // and threads the process abort signal so Ctrl-C cancels here too.
+  // than fatal; native dispatch therefore runs it at `none` and threads the
+  // process abort signal so Ctrl-C cancels here too.
   await runWithProcessAbortSignal((signal) =>
     runCompiledCommand(
       resilientDoctorReport({
