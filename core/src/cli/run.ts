@@ -185,10 +185,6 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     return;
   }
 
-  if (await dispatchAppCommand(argv)) return;
-  if (await dispatchAppsCommand(argv)) return;
-  if (await dispatchMetaCommand(argv)) return;
-
   if (found === undefined) {
     await renderPreCommandFailure({
       commandId: "cli:unknown-command",
@@ -198,6 +194,10 @@ const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => 
     });
     return;
   }
+
+  if (await dispatchAppCommand(argv)) return;
+  if (await dispatchAppsCommand(argv)) return;
+  if (await dispatchMetaCommand(argv)) return;
 
   throw new Error(`Implemented command ${found[0]} has no native dispatch adapter.`);
 };

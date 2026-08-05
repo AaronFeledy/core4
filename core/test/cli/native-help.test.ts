@@ -124,6 +124,18 @@ describe("native registry help", () => {
     expect(result.stdout).toContain("--registry");
   });
 
+  test.each(["app:pull", "pull"] as const)(
+    "Given the registered pull command form %s, when help is requested, then canonical registry help renders",
+    async (command) => {
+      // Given / When
+      const result = await runCli([command, "--help"]);
+
+      // Then
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("app:pull, pull");
+    },
+  );
+
   test("Given a deferred command, when help is requested, then its phase status renders successfully", async () => {
     // Given / When
     const result = await runCli(["plugin:login", "--help"]);
@@ -148,6 +160,9 @@ describe("native unknown-command failures", () => {
   test.each([
     ["plain unknown command", ["does-not-exist"]],
     ["unknown help target", ["does-not-exist", "--help"]],
+    ["retired pull dispatcher alias", ["pull:app"]],
+    ["retired share-list dispatcher alias", ["share:app:list"]],
+    ["retired plugin trust dispatcher alias", ["plugin:trust-authoring-root"]],
     ["unsupported app space form", ["app", "unsupported"]],
     ["unsupported space form", ["apps", "list"]],
     ["unsupported meta space form", ["meta", "unsupported"]],
@@ -166,6 +181,24 @@ describe("native unknown-command failures", () => {
       expect(result.stderr).not.toMatch(STACK_OR_SOURCE_PATH);
     },
   );
+
+  test("Given an app context and an unregistered share-list permutation, when dispatched, then dynamic tooling precedence is preserved", async () => {
+    // Given
+    const fixture = await makeAppFixture();
+    try {
+      await writeFreshCache(fixture);
+
+      // When
+      const result = await runCli(["app:list:share"], { cwd: fixture.root, env: fixture.env });
+
+      // Then
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("ToolingCompileError");
+      expect(result.stderr).not.toContain("UnknownCommandError");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
 
   test.each(["app", "apps", "meta", "global", "plugin"] as const)(
     "Given an app context, when unsupported %s namespace syntax is dispatched, then unknown-command handling wins over dynamic tooling",
