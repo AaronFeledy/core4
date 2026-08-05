@@ -13,16 +13,16 @@ const expectedTopics = {
   "app:config": { description: "Read/write the current app's Landofile." },
   "app:includes": { description: "Manage the app's includes lockfile." },
   apps: { description: "Discover and operate across Lando apps on the host." },
-  "apps:scratch": { description: "Short-lived scratch apps (Phase 3 Beta deliverable)." },
+  "apps:scratch": { description: "Short-lived scratch apps." },
   meta: { description: "Operate on Lando itself: config, plugins, host setup." },
   "meta:events": { description: "Lifecycle event diagnostics." },
-  "meta:global": { description: "Manage the host-level global Lando app (Phase 3 Beta deliverable)." },
+  "meta:global": { description: "Manage the host-level global Lando app." },
   "meta:plugin": { description: "Plugin install, remove, and authoring commands." },
   "meta:recipes": { description: "Inspect canonical recipes shipped with Lando." },
 } as const;
 
 describe("cold-path command topics", () => {
-  test("manifest contains exactly the former OCLIF topic metadata", () => {
+  test("manifest embeds native command topic metadata", () => {
     expect(COMMAND_REGISTRY_MANIFEST.topics).toEqual(expectedTopics);
   });
 
