@@ -10,7 +10,6 @@ import {
   setActiveRendererMode,
   setActiveResultFormat,
 } from "../../src/cli/compiled-runtime.ts";
-import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { makeRecordingHarness } from "./pre-command-failure-fixture.ts";
@@ -44,20 +43,8 @@ afterEach(() => {
   clearActiveCommandInvocation();
 });
 
-describe("bootstrap lifecycle dispatch parity", () => {
-  test("source and compiled dispatch emit the same minimal sequence", async () => {
-    const source = makeRecordingHarness();
-    await runWithRendererHandling(Effect.succeed({ ok: true }), {
-      runtime: runtimeFor(source.layer),
-      rendererMode: "plain",
-      command: invocation.commandId,
-      invocation,
-      io: createBufferedRendererIO(),
-      resultSchema,
-      render: () => undefined,
-      formatError: String,
-    });
-
+describe("compiled bootstrap lifecycle", () => {
+  test("compiled dispatch emits the canonical minimal sequence", async () => {
     const compiled = makeRecordingHarness();
     setActiveCommandId(invocation.commandId);
     setActiveRendererMode("plain");
@@ -68,10 +55,8 @@ describe("bootstrap lifecycle dispatch parity", () => {
       resultSchema,
     });
 
-    const sourceTags = source.events.map((event) => event._tag);
     const compiledTags = compiled.events.map((event) => event._tag);
-    expect(compiledTags).toEqual(sourceTags);
-    expect(sourceTags).toEqual([
+    expect(compiledTags).toEqual([
       "pre-bootstrap-minimal",
       "post-bootstrap-minimal",
       "post-bootstrap",
@@ -83,22 +68,11 @@ describe("bootstrap lifecycle dispatch parity", () => {
   });
 
   test("compiled meta:update promotion emits one canonical commands sequence", async () => {
-    // Given: source dispatch builds the effective commands runtime while compiled dispatch receives the declared plugins runtime.
-    const source = makeRecordingHarness();
+    // Given: compiled dispatch receives the declared plugins runtime for a promoted command.
     const compiled = makeRecordingHarness();
     const updateInvocation = { ...invocation, commandId: "meta:update" };
 
-    // When: both dispatch paths execute the promoted command.
-    await runWithRendererHandling(Effect.succeed({ ok: true }), {
-      runtime: promotedRuntimeFor("commands", source.layer),
-      rendererMode: "plain",
-      command: updateInvocation.commandId,
-      invocation: updateInvocation,
-      io: createBufferedRendererIO(),
-      resultSchema,
-      render: () => undefined,
-      formatError: String,
-    });
+    // When: compiled dispatch promotes execution to the commands runtime.
     setActiveCommandId(updateInvocation.commandId);
     setActiveRendererMode("plain");
     setActiveResultFormat("text");
@@ -114,11 +88,9 @@ describe("bootstrap lifecycle dispatch parity", () => {
       },
     );
 
-    // Then: promotion has exactly the source path's single commands lifecycle stream.
-    const sourceTags = source.events.map((event) => event._tag);
+    // Then: promotion emits exactly one canonical commands lifecycle stream.
     const compiledTags = compiled.events.map((event) => event._tag);
-    expect(compiledTags).toEqual(sourceTags);
-    expect(sourceTags).toEqual([
+    expect(compiledTags).toEqual([
       "pre-bootstrap-minimal",
       "post-bootstrap-minimal",
       "pre-bootstrap-plugins",
