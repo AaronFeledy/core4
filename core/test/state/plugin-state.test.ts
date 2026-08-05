@@ -8,9 +8,9 @@ import { Deferred, Effect, Exit, Fiber, Option, Schema } from "effect";
 import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 
+import { makeStateStore } from "@lando/state-store/service";
 import type { PluginStateBucketSpec } from "../../src/plugins/context-state.ts";
 import { makeLandoPluginContext } from "../../src/plugins/context.ts";
-import { makeStateStore } from "../../src/state/service.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const Doc = Schema.Struct({ count: Schema.Number, label: Schema.String });

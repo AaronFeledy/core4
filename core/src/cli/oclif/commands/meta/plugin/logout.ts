@@ -1,8 +1,8 @@
+import { Effect } from "effect";
 /**
  * `lando meta:plugin:logout` — clear registry auth.
  */
-import { Flags } from "@oclif/core";
-import { Effect } from "effect";
+import { Flags } from "../../../metadata.ts";
 
 import {
   EmptyResultSchema,
@@ -18,6 +18,11 @@ export const pluginLogoutSpec: LandoCommandSpec<never> = {
   namespace: "meta",
   topLevelAlias: true,
   bootstrap: "minimal",
+  deferred: {
+    phase: "4.1",
+    summary: "Plugin registry login/logout are not available yet.",
+    remediation: "Plugin registry login/logout are not available yet.",
+  },
   run: () => Effect.die("not yet implemented: meta:plugin:logout"),
 };
 

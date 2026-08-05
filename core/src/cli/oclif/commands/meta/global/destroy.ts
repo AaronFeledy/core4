@@ -1,4 +1,4 @@
-import { Flags } from "@oclif/core";
+import { Flags } from "../../../metadata.ts";
 
 import {
   type GlobalDestroyOptions,

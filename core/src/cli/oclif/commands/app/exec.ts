@@ -1,4 +1,4 @@
-import { Args, Flags } from "@oclif/core";
+import { Args, Flags } from "../../metadata.ts";
 
 import { StreamFrame } from "@lando/sdk/schema";
 import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";

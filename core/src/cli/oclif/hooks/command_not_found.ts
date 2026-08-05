@@ -1,5 +1,3 @@
-import type { Hook } from "@oclif/core";
-
 import {
   setActiveDeprecationWarnings,
   setActiveRendererMode,
@@ -8,6 +6,7 @@ import {
 import { routeDynamicTooling } from "../../dynamic-tooling.ts";
 import { resolveResultFormat } from "../../format-flags.ts";
 import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "../../renderer-boundary.ts";
+import type { Hook } from "../metadata.ts";
 
 const normalizeToolingArgv = async (argv: ReadonlyArray<string>): Promise<ReadonlyArray<string>> => {
   const renderer = await resolveCliRendererMode({ argv, env: process.env });

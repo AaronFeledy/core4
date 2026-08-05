@@ -5,9 +5,10 @@ import type { CacheError } from "@lando/sdk/errors";
 
 import { readFreshAppCommandCacheForCwd } from "../cache/command-index-writer.ts";
 import { findAppRoot } from "../landofile/discovery.ts";
+import { escapeDiagnosticText } from "./diagnostic-text.ts";
 
 const CACHE_REMEDIATION =
-  "Run `lando app cache refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
+  "Run `lando app:cache:refresh`, `lando start`, or `lando rebuild` to refresh tooling commands.";
 
 export type ToolingRoute =
   | { readonly _tag: "not-tooling" }
@@ -46,6 +47,7 @@ export interface ResolveToolingRouteOptions {
 }
 
 export const toolingName = (token: string): string | undefined => {
+  if (token.startsWith("-")) return undefined;
   if (token.startsWith("app:")) return token.slice("app:".length) || undefined;
   return token.includes(":") ? undefined : token;
 };
@@ -67,12 +69,13 @@ export const resolveToolingRoute = (
       ...(options.cacheRoot === undefined ? {} : { cacheRoot: options.cacheRoot }),
     });
     const commandId = `app:${name}`;
+    const commandArgv = options.argv.slice(1);
     if (cache === null) {
       return {
         _tag: "cache-miss",
         commandId,
         name,
-        argv: options.argv.slice(1),
+        argv: commandArgv,
         remediation: CACHE_REMEDIATION,
       } as const;
     }
@@ -82,7 +85,7 @@ export const resolveToolingRoute = (
         _tag: "unknown-tooling",
         commandId,
         name,
-        argv: options.argv.slice(1),
+        argv: commandArgv,
         remediation: CACHE_REMEDIATION,
       } as const;
     }
@@ -92,18 +95,18 @@ export const resolveToolingRoute = (
         _tag: "bun-script",
         commandId,
         name,
-        argv: options.argv.slice(1),
+        argv: commandArgv,
         appRoot,
       } as const;
     }
-    return { _tag: "tooling", commandId, name, argv: options.argv.slice(1) } as const;
+    return { _tag: "tooling", commandId, name, argv: commandArgv } as const;
   });
 
 export const toolingRouteError = (
   route: Extract<ToolingRoute, { readonly _tag: "cache-miss" | "unknown-tooling" }>,
 ): ToolingCompileError =>
   new ToolingCompileError({
-    message: `Tooling command ${route.commandId} is unavailable because the app command cache is missing, stale, or does not contain that task.`,
+    message: `Tooling command ${escapeDiagnosticText(route.commandId)} is unavailable because the app command cache is missing, stale, or does not contain that task.`,
     tool: route.name,
     remediation: route.remediation,
   });

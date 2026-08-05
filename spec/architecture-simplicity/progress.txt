@@ -18,6 +18,8 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - For derived compatibility baselines, regenerate from an isolated base worktree using that commit's lockfile; allow a historical skip only when the generator itself is absent, not when ignored outputs are absent.
 - Explicit generated paths must override Biome's VCS-ignore handling so gitignored derived outputs are still formatted during regeneration.
 - Effect-bearing internal workspace packages that share SDK tags or error classes with core need matching TypeScript source aliases; resolving one side through workspace symlinks can duplicate runtime identities and break `Context.Tag` or `instanceof` checks.
+- Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
+- Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
 
 ## Log
 
@@ -321,4 +323,146 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - A boundary gate that decides package identity from a raw specifier must normalize separators and reject path escapes first; an allowlist checked against un-normalized text can be walked straight through.
   - Sibling rules sharing a source-root tier must also share their file-extension set, or one rule silently stops seeing whole modules the other scans.
+---
+
+## [2026-08-04 01:42 CDT] - US-518
+- Migrated core runtime, test support, bundled-provider integration fixtures, and generated bootstrap-layer inputs to consume the private StateStore package subpaths directly while retaining only the intentional identity-preserving core re-export shims.
+- Added repository-wide import-graph coverage that resolves first-party module edges, locks the bootstrap generator to the package service import, and proves provider workspaces resolve the private seam.
+- Guide-Coverage-Skip: Internal package-import ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 232 focused import-seam, StateStore lock/atomic/contract, CLI, lifecycle, build, scratch, and registry tests passed; package-DAG, state-store-boundary, and import-cycle gates passed; direct provider imports and bootstrap-render probes passed.
+- **Learnings for future iterations:**
+  - Enforce migrations with resolved AST module edges rather than text search so aliases and dynamic imports are covered while intentional shim identity checks remain explicit.
+  - For import-only provider fixture changes, resolve and import the private package from each provider test directory to verify the changed surface without invoking a container runtime.
+---
+
+## [2026-08-04 02:46 CDT] - US-519
+- Kept `check:state-store-boundary` as a stable residual gate while narrowing it to core and plugin behavior: package direction remains owned by package-DAG, and the AST rule now rejects only hand-rolled atomic-write, lockfile, and version-envelope combinations without pre-extraction carve-outs.
+- Published the keep/thin/delete inventory for StateStore seam ownership and residual enforcement.
+- Guide-Coverage-Skip: Internal boundary-gate ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 76 focused StateStore boundary, package-DAG, import-seam, atomic-write, lock, and service tests passed; package-DAG and the real StateStore boundary CLI passed. A live mutation probe was rejected with all three signals, then the gate passed after teardown; high-rigor review approved with no blockers.
+- **Learnings for future iterations:**
+  - Package scope is cleaner than carve-outs for excluding the implementation that legitimately owns a forbidden behavioral combination.
+  - Preserve public gate names while deleting ownership logic that a package edge now enforces.
+---
+
+## [2026-08-04 03:04 CDT] - US-519 Review
+- Review fixed the stale workspace-root classification so the intentionally core/plugin-only StateStore rule remains exact-root guarded, and restored the retained gate's documented-stable failure headline with regression coverage.
+- Review notes (deferred/rejected): excluding `paths/src` is the documented core/plugin residual scope, while package-DAG owns private seam direction; expanding this behavioral gate to other private packages is not required by US-519.
+- Review notes (deferred/rejected): `.mts`/`.cts`/`.tsx` and symlink-walk limitations predate this branch, have no current production instances, and do not represent a regression introduced by the thinning.
+- Guide-Coverage-Skip: Internal boundary-gate ownership and CI contract repair have no end-user executable-guide surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, StateStore boundary, and package-DAG passed; 53 focused and adjacent boundary tests passed. LSP was clean for the production rule and workspace-root test; the direct boundary test retains its pre-existing core `rootDir` diagnostic for root-script imports.
+- **Learnings for future iterations:**
+  - When narrowing a rule off a shared root tier, update the exact-root classification test in the same commit.
+  - Stable boundary-gate output strings need direct regression assertions when the gate shim remains public.
+---
+
+## [2026-08-04 04:09 CDT] - US-520
+- Narrowed the paths and probe residual gates to core and plugin consumers, replacing obsolete package-location and legacy-shim carve-outs while retaining their hand-rolled join and retry/schedule bans. Confirmed redaction already has residual-only enforcement and kept the renderer's broader shipped-source coverage and documented fast-path exceptions.
+- Published the keep/thin inventory so package-DAG remains the primary seam-direction gate while stable boundary shims continue enforcing behavior package edges cannot express.
+- Guide-Coverage-Skip: Internal boundary-gate ownership has no end-user executable-guide surface.
+- Verification: typecheck and lint/deprecations passed; 87 focused and adjacent boundary tests passed; paths, probe, redaction, renderer, StateStore, and package-DAG gates passed. Live root-join, retry/schedule, and private-package renderer mutations failed with the expected diagnostics, then all probes were removed and the gates repassed; high-rigor review approved with no blockers. The aggregate boundary runner retains only the previously recorded unrelated `.omo/**` spec-reference failures.
+- **Learnings for future iterations:**
+  - Narrow a residual rule only when the consumer scope replaces a real in-tier seam implementation carve-out; narrowing a rule with no such implementation silently deletes coverage.
+  - Lock both sides of a mixed decision: tests should prove narrowed consumer rules reject former shim escapes and retained broad rules still inspect private runtime packages.
+---
+
+## [2026-08-04 09:56 CDT] - US-520 Review
+- Context mining found and fixed the branch-introduced package coverage regression: paths now scans the shared shipped-runtime tier except its owning `paths/src`, while probe scans that full tier; regression tests prove `state-store/src` cannot escape paths enforcement and neither `paths/src` nor `state-store/src` can escape probe enforcement.
+- Review notes (deferred/rejected): alternate `.mts`/`.cts`/`.tsx` and symlink-walk extensions remain pre-existing limitations rejected as out of scope per US-519 Review; this repair does not change scanner or extension policy.
+- Review notes (deferred/rejected): the medium container-runtime sanitizer leak is pre-existing and outside US-520's confirmed scope, so it remains deferred rather than changing redaction or renderer production rules here.
+- Guide-Coverage-Skip: Internal boundary-gate scope repair has no end-user executable-guide surface.
+- Verification: 58/58 tests passed across the six focused boundary suites; direct paths, probe, redaction, renderer, StateStore, and package-DAG gates passed; typecheck and lint/deprecations passed; explicit-base guide drift against `origin/main` passed. LSP diagnostics were clean for both production rules and the workspace-root test; the two direct boundary tests retain their pre-existing core `rootDir` diagnostics for root-script imports, previously recorded in US-519 Review.
+- **Learnings for future iterations:**
+  - Derive an owner-excluding boundary scope by filtering the shared root tier, and derive its classification expectation the same way, so later workspace additions cannot silently escape the rule.
+---
+
+## [2026-08-04 10:43 CDT] - US-521
+- Verified the architecture-simplicity ROADMAP paragraph and package-seams Non-Goals already defer network, managed-file, data-mover, and planner package extractions beyond this wave; no new implementation was needed.
+- Guide-Coverage-Skip: Internal extraction-scope planning changes no user-facing behavior or executable guide surface.
+- Verification: typecheck, lint passed; relevant test spot checks passed.
+- **Learnings for future iterations:**
+  - Keep extraction scope bounded in both the wave-level ROADMAP summary and the package-seams Non-Goals so later package work is selected deliberately rather than inferred from boundary cleanup.
+---
+
+## [2026-08-04 11:56 CDT] - Babysit
+- PR: #694 https://github.com/AaronFeledy/core4/pull/694
+- CI outcome: pass (after fix; first run failed unit-tests-linux-x64-shard (2, ubuntu-26.04))
+- Review feedback: fixed (register host-proxy SIGTERM/SIGINT listeners before ready handoff so provider-apply failure cleanup removes the session dir)
+- Merge: merged (squash)
+---
+
+## [2026-08-04 14:04 CDT] - US-522
+- Consolidated built-in command identity, metadata, implemented/deferred status, alias ownership, and transitional OCLIF class references into one validated registry. Native dispatch canonicalizes through that registry, while help, command-schema generation, MCP, and host-proxy projections consume its entries.
+- Preserved source-mode OCLIF execution for the later dispatcher-unification story while removing the separate MVP command-id source of truth and keeping deferred remediation identical across source and compiled paths.
+- Verification: typecheck and lint/deprecations passed; 143 focused registry/schema/MCP tests, 102 dispatch-parity tests, 3 focused guide scenarios, and the 115-test reviewer-fix rerun passed. Import-cycle, package-DAG, machine-output, guide lint/coverage/drift/public-transcript gates passed; compiled canonical, alias, help, MCP, and deferred surfaces behaved as required; high-rigor review approved.
+- **Learnings for future iterations:**
+  - Derive registry projections from validated entries rather than independently enumerating class maps or status sets.
+  - Structural ordering tests must isolate executable function bodies and compare actual call sites, not import occurrences.
+---
+
+## [2026-08-04 15:37 CDT] - US-523
+- Unified source and compiled CLI entries on the native dispatcher, removing entry-path routing through OCLIF while preserving the level-none version and shellenv fast paths.
+- Replaced obsolete compiled-entry detection coverage with a one-engine contract and aligned the remaining source-path assertions with native argument and unknown-command behavior.
+- Verification: typecheck and lint/deprecations passed; 168 focused native-dispatch, compiled-parity, lifecycle, deferred-command, scenario-context, and tooling-router tests passed; import-cycle, package-DAG, renderer-boundary, LSP diagnostics, real source CLI, and relocated compiled-binary checks passed. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep `RunCliOptions.rootUrl` stable for callers while treating it as host metadata, never as a dispatch-engine selector.
+  - A dispatcher unification can intentionally change framework-specific unknown-command wording and exit codes; pin the native contract at the real source and relocated-binary surfaces.
+---
+
+## [2026-08-04 16:08 CDT] - US-523 Review
+- Review fixed a source-path regression where bare global option heads such as `--help` and `-h` could be resolved as app tooling before native help handling; leading-hyphen heads now bypass tooling lookup while named tasks still receive option-like tail arguments.
+- Review notes (deferred/rejected): repeated in-process `runCli` state isolation is non-blocking for the one-command shipping entries and was not introduced by this dispatch-selection removal.
+- Review notes (deferred/rejected): rejected Bugbot's demand to restore space-separated `apps ...` phrases because the source PRD requires colon-form canonical ids and explicitly assigns the native parser's optional space-form product policy to US-525.
+- Guide-Coverage-Skip: Internal dispatcher routing safety changes no documented command capability or executable guide workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and LSP diagnostics passed; 25 focused tooling-policy and native-dispatch tests passed; real source `--help` inside an app returned root help with exit 0. Initial Bugbot found no bugs; post-fix Bugbot's sole finding was rejected as US-525 scope.
+- **Learnings for future iterations:**
+  - Dynamic tooling lookup must reject option-like command heads before constructing `app:<name>` cache keys; option-like arguments after a valid tooling name remain task-owned.
+---
+
+## [2026-08-04 17:23 CDT] - Babysit
+- PR: #696 https://github.com/AaronFeledy/core4/pull/696
+- CI outcome: fail then pass (unit-tests-linux-x64 shards 1+2: shell unknown-arg wording, app:config:lint JSON exit, native help format)
+- Review feedback: fixed (native app:config:lint records format=json; scenario asserts match intentional native diagnostics/help)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## [2026-08-04 19:22 CDT] - US-524
+- Removed OCLIF from the shipping dependency and import graphs by replacing its runtime command metadata with a local compatibility seam; retained manifest and adapter tooling remains development-only.
+- Preserved registry flags, arguments, hooks, and generated manifest behavior while source and relocated compiled binaries continue through the native dispatcher without embedding OCLIF.
+- Verification: typecheck and lint/deprecations passed; 160 focused and adjacent CLI/build tests passed; import-cycle and package-DAG gates passed; source and relocated-binary version/help surfaces passed; the compiled artifact contained no `@oclif/core`; high-rigor review approved.
+- **Learnings for future iterations:**
+  - OCLIF explicit discovery accepts a local command shape with an inherited static runner, so dev-only manifest coverage can survive without a shipping runtime dependency.
+  - Use the shared AST module-edge scanner for dependency-boundary tests so static imports, re-exports, dynamic imports, `require`, and folded specifiers are all covered.
+---
+
+## [2026-08-04 21:14 CDT] - US-525
+- Made native root and per-command help consume command-registry summaries, aliases, and deferred status; unknown command and unknown-help targets now produce stack-free tagged failures with machine-readable remediation.
+- Restored typed release ownership for every remaining deferred command, with source and relocated binaries consistently identifying Lando 4.1, and documented the native parser's bounded space-form compatibility policy without broadening it.
+- Verification: typecheck and lint/deprecations passed; 154 focused and adjacent CLI/build tests passed; machine-output, renderer, import-cycle, and package-DAG gates passed; source and relocated compiled CLI surfaces passed. The spec-reference gate retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep release phase on each deferred registry plan and append it at the shared error-construction seam so help, plain diagnostics, and JSON envelopes cannot drift.
+  - Treat supported space forms as an explicit compatibility set; canonical ids and multi-segment aliases remain colon-form tokens, and unsupported forms should fail through the tagged unknown-command boundary.
+---
+
+## [2026-08-04 23:07 CDT] - US-525 Review
+- Review completed root help by grouping every visible canonical id from the registry and listing every non-flag alias with its canonical target; it also prevented registry-owned bare namespace heads, including `plugin`, from falling through to app tooling while preserving colon-qualified tooling routes.
+- Escaped argv-derived unknown-command and dynamic-tooling message fragments without mutating raw typed fields, closing terminal-control injection paths in human diagnostics.
+- Review notes (deferred/rejected): rejected adding `commandToken` to the public machine-error envelope because US-525 does not own a schema expansion; the existing typed field remains raw, the emitted message is safely escaped, and the machine-output boundary remains unchanged.
+- Review notes (deferred/rejected): rejected a literal reserved-namespace list because it would create a second source of truth; namespace heads are derived from canonical ids and colon-qualified registry aliases.
+- Guide-Coverage-Skip: Registry help and parser-routing repairs have no executable-guide workflow surface.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, 103 focused CLI tests, 2 compiled-binary tests, and direct source CLI help/deferred/unknown-command smokes passed. Post-fix Cursor Bugbot caught an escaped active command id that would alter machine envelopes; raw runtime identity and plain-render escaping were separated, then 62 focused tests and all affected gates repassed.
+- **Learnings for future iterations:**
+  - Derive bare namespace reservations from the same token index that owns dispatch so newly registered alias namespaces cannot silently become tooling names.
+  - Escape only untrusted interpolated fragments when structured error fields must retain raw values.
+---
+
+## [2026-08-05 00:03 CDT] - US-525 Review
+- Closed the remaining registry bypass by rejecting unresolved tokens before transitional topic dispatch, so retired dispatcher-only permutations now produce the same tagged unknown-command failure as help while registered aliases and dynamic tooling retain precedence.
+- Corrected tooling cache remediation and its executable guides to use the canonical `lando app:cache:refresh` token, with registry-resolution coverage preventing future uninvokable suggestions.
+- Review notes (deferred/rejected): retained the now-unreachable dispatcher permutation branches because deleting transitional source structure belongs to later dispatcher cleanup; US-525 owns their user-visible rejection, not that refactor.
+- Verification: explicit-base guide drift, both affected focused guide runs, typecheck, lint/deprecations, renderer and machine-output boundaries, LSP diagnostics, and 213 focused CLI tests passed.
+- **Learnings for future iterations:**
+  - Resolve command identity through the registry before entering transitional dispatch tables; a late unknown-command guard silently preserves undocumented aliases.
+  - Validate remediation command tokens against the registry so error UX cannot recommend parser forms the CLI rejects.
 ---

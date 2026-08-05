@@ -1,5 +1,3 @@
-import { Command } from "@oclif/core";
-
 import { Effect, Layer } from "effect";
 
 import {
@@ -14,6 +12,7 @@ import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import type { RendererMode } from "../bug-report.ts";
 import { newInvocationId } from "../command-lifecycle.ts";
 import { normalizeScratchRunArgvForParsing } from "../commands/scratch-run.ts";
+import { notImplementedErrorForSpec } from "../deferred-commands.ts";
 import { type ResultFormat, resolveResultFormat, universalFormatFlagDefs } from "../format-flags.ts";
 import {
   resolveCliDeprecationWarnings,
@@ -26,15 +25,9 @@ import {
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
 } from "./command-boundary.ts";
-import {
-  type LandoCommandSpec,
-  formatCommandError,
-  isCanonicalLandoCommandId,
-  isMvpCommandId,
-  notImplementedErrorForCommand,
-  validateCommandSpec,
-} from "./command-spec.ts";
+import { type LandoCommandSpec, formatCommandError, validateCommandSpec } from "./command-spec.ts";
 import { getCommandRuntimeLayer } from "./hooks/init.ts";
+import { Command } from "./metadata.ts";
 
 export {
   type LandoAliasSpec,
@@ -46,8 +39,6 @@ export {
   extractSpecAbortSignal,
   formatCommandError,
   isCanonicalLandoCommandId,
-  isMvpCommandId,
-  notImplementedErrorForCommand,
   resolveTopLevelAliases,
   validateCommandSpec,
 } from "./command-spec.ts";
@@ -140,8 +131,8 @@ export abstract class LandoCommandBase extends Command {
     )
       return;
 
-    if (isCanonicalLandoCommandId(spec.id) && !isMvpCommandId(spec.id)) {
-      const error = notImplementedErrorForCommand(spec.id);
+    if (spec.deferred !== undefined) {
+      const error = notImplementedErrorForSpec(spec);
       const text = formatCommandError({
         error,
         commandId: spec.id,

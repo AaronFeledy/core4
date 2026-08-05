@@ -7,7 +7,7 @@ import { AbsolutePath, type AppRef } from "@lando/sdk/schema";
 
 import type { RootOverrides } from "@lando/paths";
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
-import { withAdvisoryLock } from "../../state/lock.ts";
+import { withAdvisoryLock } from "@lando/state-store/lock";
 import { terminateControlRecord } from "./worker-control.ts";
 import {
   readLegacyWorkerRecordAt,

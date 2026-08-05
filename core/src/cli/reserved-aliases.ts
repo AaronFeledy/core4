@@ -14,8 +14,12 @@ export const reservedTopLevelAliasOwner = (alias: string): string | undefined =>
   return undefined;
 };
 
-export const commandAliasConflictError = (alias: string, claimedBy: string): CommandAliasConflictError => {
-  const reservedFor = reservedTopLevelAliasOwner(alias) ?? alias;
+export const commandAliasConflictError = (
+  alias: string,
+  claimedBy: string,
+  builtInOwner?: string,
+): CommandAliasConflictError => {
+  const reservedFor = builtInOwner ?? reservedTopLevelAliasOwner(alias) ?? alias;
   return new CommandAliasConflictError({
     message: `Top-level alias ${alias} is reserved for the built-in ${reservedFor} command and cannot be claimed by ${claimedBy}.`,
     alias,

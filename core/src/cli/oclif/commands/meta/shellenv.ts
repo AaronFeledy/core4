@@ -1,10 +1,10 @@
+import { Effect, Schema } from "effect";
 /**
  * `lando meta:shellenv` — print shell-profile snippets to add Lando to PATH.
  *
  * **CLI-only** — not exported from `@lando/core/cli`.
  */
-import { Flags } from "@oclif/core";
-import { Effect, Schema } from "effect";
+import { Flags } from "../../metadata.ts";
 
 import { normalizeShellenvShell, renderShellenv } from "../../../commands/shellenv.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";

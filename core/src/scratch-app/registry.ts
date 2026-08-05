@@ -16,11 +16,11 @@ import type { StateStoreError } from "@lando/sdk/errors";
 import type { StateBucket } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
-import { writeFileAtomicScoped } from "../state-store/atomic.ts";
-import { encodeFrame } from "../state/codec.ts";
-import { acquireAdvisoryLockAt, withAdvisoryLock } from "../state/lock.ts";
-import { resolveStatePath } from "../state/paths.ts";
-import { makeStateStore } from "../state/service.ts";
+import { writeFileAtomicScoped } from "@lando/state-store/atomic";
+import { encodeFrame } from "@lando/state-store/codec";
+import { acquireAdvisoryLockAt, withAdvisoryLock } from "@lando/state-store/lock";
+import { resolveStatePath } from "@lando/state-store/paths";
+import { makeStateStore } from "@lando/state-store/service";
 
 const REGISTRY_VERSION = 1 as const;
 

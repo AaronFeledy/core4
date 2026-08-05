@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { Effect } from "effect";
 
 import { writeAppCommandCacheStrict } from "../../src/cache/command-index-writer.ts";
-import { resolveToolingRoute } from "../../src/cli/tooling-router.ts";
+import { resolveBuiltInCommand } from "../../src/cli/built-in-command-registry.ts";
+import { resolveToolingRoute, toolingName, toolingRouteError } from "../../src/cli/tooling-router.ts";
 
 const withApp = async <T>(run: (root: string, cacheRoot: string) => Promise<T>): Promise<T> => {
   const fixtureRoot = await mkdtemp(join(tmpdir(), "lando-tooling-router-unit-"));
@@ -35,6 +36,36 @@ const writeFreshCache = async (
     writeAppCommandCacheStrict({ landofile, entries, cwd: root, cacheRoot, now: () => 100 }),
   );
 };
+
+test("Given leading-hyphen global options, when deriving a tooling name, then they are not tooling", () => {
+  // Given
+  const tokens = ["--help", "-h"];
+
+  // When
+  const names = tokens.map(toolingName);
+
+  // Then
+  expect(names).toEqual([undefined, undefined]);
+});
+
+test("Given a fresh app cache, when help options are command heads, then they are not tooling", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [
+      { id: "app:quality", summary: "Run quality checks", hidden: false },
+    ]);
+
+    // When
+    const routes = await Promise.all(
+      ["--help", "-h"].map((token) =>
+        Effect.runPromise(resolveToolingRoute({ argv: [token], cwd: root, cacheRoot })),
+      ),
+    );
+
+    // Then
+    expect(routes).toEqual([{ _tag: "not-tooling" }, { _tag: "not-tooling" }]);
+  });
+});
 
 test("Given a fresh cached Bun script, when resolving it, then it selects the script hot path", async () => {
   await withApp(async (root, cacheRoot) => {
@@ -144,7 +175,7 @@ test("Given an uncached Landofile task, when resolving it, then the router does 
     // Then
     expect(route).toMatchObject({
       _tag: "cache-miss",
-      remediation: expect.stringContaining("lando app cache refresh"),
+      remediation: expect.stringContaining("lando app:cache:refresh"),
     });
   });
 });
@@ -161,9 +192,28 @@ test("Given a fresh app cache, when resolving an unknown task, then it returns t
     expect(route).toMatchObject({
       _tag: "unknown-tooling",
       commandId: "app:unknown",
-      remediation: expect.stringContaining("lando app cache refresh"),
+      remediation: expect.stringContaining("lando app:cache:refresh"),
     });
   });
+});
+
+test("Given an argv-derived tooling name with terminal controls, when its error is constructed, then the message is escaped and the typed tool stays raw", () => {
+  // Given
+  const name = "unknown\u001b[31m";
+
+  // When
+  const error = toolingRouteError({
+    _tag: "unknown-tooling",
+    commandId: `app:${name}`,
+    name,
+    argv: [],
+    remediation: "refresh",
+  });
+
+  // Then
+  expect(error.message).toContain("app:unknown\\u001b[31m");
+  expect(error.message).not.toContain("\u001b");
+  expect(error.tool).toBe(name);
 });
 
 test("Given another namespace or a directory outside an app, when resolving, then it is not tooling", async () => {
@@ -211,7 +261,7 @@ test("Given a stale version-policy cache, when resolving a task, then it require
     // Then
     expect(route).toMatchObject({
       _tag: "cache-miss",
-      remediation: expect.stringContaining("lando app cache refresh"),
+      remediation: expect.stringContaining("lando app:cache:refresh"),
     });
     expect(await Bun.file(marker).exists()).toBe(false);
   });
@@ -245,12 +295,40 @@ test("Given a missing cache with a remote include, when resolving, then it perfo
       // Then
       expect(route).toMatchObject({
         _tag: "cache-miss",
-        remediation: expect.stringContaining("lando app cache refresh"),
+        remediation: expect.stringContaining("lando app:cache:refresh"),
       });
       expect(requests).toBe(0);
       expect(await Bun.file(marker).exists()).toBe(false);
     } finally {
       server.stop(true);
     }
+  });
+});
+
+test("Given a cache-miss remediation, when extracting backticked lando commands, then each resolves in the built-in registry", async () => {
+  await withApp(async (root, cacheRoot) => {
+    // Given
+    await writeFreshCache(root, cacheRoot, [{ id: "app:cached", summary: "Cached task", hidden: false }]);
+    await writeFile(
+      join(root, ".lando.yml"),
+      ["name: router-test", "tooling:", "  uncached:", "    cmd: echo must-not-run", ""].join("\n"),
+    );
+
+    // When
+    const route = await Effect.runPromise(resolveToolingRoute({ argv: ["uncached"], cwd: root, cacheRoot }));
+    if (route._tag !== "cache-miss") {
+      throw new Error(`expected cache-miss, got ${route._tag}`);
+    }
+    const tokens = [...route.remediation.matchAll(/`lando\s+([^`]+)`/g)].flatMap((match) => {
+      const captured = match[1];
+      return captured === undefined ? [] : [captured.trim()];
+    });
+
+    // Then
+    expect(tokens.length).toBeGreaterThan(0);
+    for (const token of tokens) {
+      expect(resolveBuiltInCommand(token), `${token} must resolve in the built-in registry`).toBeDefined();
+    }
+    expect(tokens).toContain("app:cache:refresh");
   });
 });

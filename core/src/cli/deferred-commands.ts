@@ -1,56 +1,26 @@
-/**
- * Per-command deferral plans for canonical Lando command ids.
- *
- * The single `notImplementedErrorForCommand()` function is consumed by both
- * the source OCLIF guard and the compiled `$bunfs` dispatcher so the two paths
- * produce identical remediation text for the same command id.
- */
 import { NotImplementedError } from "@lando/sdk/errors";
+import type { LandoCommandSpec } from "./oclif/command-spec.ts";
+
+export type DeferredCommandPhase = "4.1";
 
 export interface DeferredCommandPlan {
   readonly summary: string;
   readonly remediation: string;
+  readonly phase: DeferredCommandPhase;
 }
 
-const META_PLUGIN_LOGIN_PLAN: DeferredCommandPlan = {
-  summary: "Plugin registry login/logout are not available yet.",
-  remediation: "Plugin registry login/logout are not available yet.",
-};
-
-const META_EVENTS_FOLLOW_PLAN: DeferredCommandPlan = {
-  summary: "Lifecycle-event streaming through `meta:events:follow` is not available yet.",
-  remediation:
-    "`meta:events:follow` is not available yet. Use `--renderer=json` on a specific command to observe its event stream.",
-};
-
-export const DEFERRED_COMMAND_PLANS: ReadonlyMap<string, DeferredCommandPlan> = new Map<
-  string,
-  DeferredCommandPlan
->([
-  ["meta:plugin:login", META_PLUGIN_LOGIN_PLAN],
-  ["meta:plugin:logout", META_PLUGIN_LOGIN_PLAN],
-  ["meta:events:follow", META_EVENTS_FOLLOW_PLAN],
-]);
-
-export const deferredCommandPlan = (commandId: string): DeferredCommandPlan | undefined =>
-  DEFERRED_COMMAND_PLANS.get(commandId);
-
-export const allDeferredCommandIds = (): ReadonlyArray<string> =>
-  Array.from(DEFERRED_COMMAND_PLANS.keys()).sort((left, right) => left.localeCompare(right));
-
-export const notImplementedErrorForCommand = (commandId: string): NotImplementedError => {
-  const plan = DEFERRED_COMMAND_PLANS.get(commandId);
+export const notImplementedErrorForSpec = (spec: LandoCommandSpec): NotImplementedError => {
+  const plan = spec.deferred;
   if (plan !== undefined) {
     return new NotImplementedError({
-      message: `Command ${commandId} is not implemented. ${plan.summary}`,
-      commandId,
-      remediation: plan.remediation,
+      message: `Command ${spec.id} is not implemented. ${plan.summary}`,
+      commandId: spec.id,
+      remediation: `${plan.remediation} Planned for Lando ${plan.phase}.`,
     });
   }
-  // Fallback for unknown canonical command ids.
   return new NotImplementedError({
-    message: `Command ${commandId} is not implemented.`,
-    commandId,
+    message: `Command ${spec.id} is not implemented.`,
+    commandId: spec.id,
     remediation: "This command is not available yet. Run `lando --help` to see currently available commands.",
   });
 };

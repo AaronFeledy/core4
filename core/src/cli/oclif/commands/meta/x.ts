@@ -1,5 +1,5 @@
-import { Args } from "@oclif/core";
 import { Effect, Layer } from "effect";
+import { Args } from "../../metadata.ts";
 
 import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun.ts";
 

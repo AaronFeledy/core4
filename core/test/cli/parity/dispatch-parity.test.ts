@@ -1,37 +1,16 @@
-/**
- * Compiled-binary dispatch parity tests.
- *
- * `@oclif/core`'s `execute()` cannot dispatch inside a `bun build --compile`
- * single-file binary, so source-mode OCLIF `execute()` and the compiled
- * hand-rolled `runCompiledCli` stay as separate dispatch paths. These tests
- * enforce parity across every command id that is implemented or deliberately
- * deferred in the compiled registry.
- *
- * Two parts:
- *
- *   Part 1 — structural parity (no spawn; runs on every platform). The canonical
- *   command-id universe is `Object.keys(compiledCommands)`. Every id is
- *   classified as exactly one of implemented or deferred; every implemented id has a
- *   compiled-dispatch branch in `core/src/cli/run.ts`; every deferred id has a
- *   registered deferral plan and NO bespoke dispatch branch (it routes through
- *   the generic `notImplementedErrorForCommand` fallthrough). This exhaustively
- *   covers every canonical command id.
- *
- *   Part 2 — behavioral parity (drives the compiled binary on linux-x64). The
- *   source and compiled paths are semantically identical for representative implemented commands
- *   (including `meta:version` / `meta:shellenv`, whose canonical forms must
- *   dispatch — not emit `NotImplementedError`) and for the deferred set.
- */
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { DEFERRED_COMMAND_PLANS, deferredCommandPlan } from "../../../src/cli/deferred-commands.ts";
-import { isCanonicalLandoCommandId, isMvpCommandId } from "../../../src/cli/oclif/command-base.ts";
+import {
+  builtInCommandEntries,
+  deferredBuiltInCommandIds,
+  isBuiltInCommandImplemented,
+} from "../../../src/cli/built-in-command-registry.ts";
+import { isCanonicalLandoCommandId } from "../../../src/cli/oclif/command-base.ts";
 import { updateSpec } from "../../../src/cli/oclif/commands/meta/update.ts";
-import compiledCommands from "../../../src/cli/oclif/compiled-commands.ts";
 import { COMPILED_OCLIF_MANIFEST } from "../../../src/cli/oclif/compiled-manifest.ts";
 import { ensureCompiledCli } from "../../_support/compiled-cli.ts";
 import { listTree, pathsOutsidePrefixes } from "../_util/fs-tree.ts";
@@ -50,9 +29,9 @@ const dispatchMetaSourcePath = resolve(coreRoot, "src/cli/dispatch-meta.ts");
 const sourceCli = resolve(coreRoot, "bin/lando.ts");
 let compiledBinary = "";
 
-const CANONICAL_IDS: ReadonlyArray<string> = Object.keys(compiledCommands).sort();
-const MVP_IDS: ReadonlyArray<string> = CANONICAL_IDS.filter(isMvpCommandId);
-const DEFERRED_IDS: ReadonlyArray<string> = [...DEFERRED_COMMAND_PLANS.keys()].sort();
+const CANONICAL_IDS: ReadonlyArray<string> = builtInCommandEntries.map((entry) => entry.spec.id);
+const IMPLEMENTED_IDS: ReadonlyArray<string> = CANONICAL_IDS.filter(isBuiltInCommandImplemented);
+const DEFERRED_IDS: ReadonlyArray<string> = deferredBuiltInCommandIds;
 
 const runSource = readFileSync(runSourcePath, "utf-8");
 const compiledRuntimeSource = readFileSync(compiledRuntimeSourcePath, "utf-8");
@@ -88,33 +67,36 @@ describe("compiled-binary dispatch parity — structural", () => {
     }
   });
 
-  test("every canonical id is classified as exactly one of MVP-implemented or deferred", () => {
+  test("every canonical id is classified as exactly one of implemented or deferred", () => {
     for (const id of CANONICAL_IDS) {
-      const mvp = isMvpCommandId(id);
-      const deferred = deferredCommandPlan(id) !== undefined;
+      const implemented = isBuiltInCommandImplemented(id);
+      const deferred = deferredBuiltInCommandIds.includes(id);
       expect(
-        mvp !== deferred,
-        `${id} must be exactly one of MVP-implemented or deferred (mvp=${mvp}, deferred=${deferred})`,
+        implemented !== deferred,
+        `${id} must be exactly one of implemented or deferred (implemented=${implemented}, deferred=${deferred})`,
       ).toBe(true);
     }
   });
 
-  test("the MVP and deferred sets partition the registry (exhaustive, disjoint)", () => {
-    const partition = new Set([...MVP_IDS, ...DEFERRED_IDS]);
-    expect(partition.size, "MVP and deferred sets must be disjoint").toBe(
-      MVP_IDS.length + DEFERRED_IDS.length,
+  test("the implemented and deferred sets partition the registry (exhaustive, disjoint)", () => {
+    const partition = new Set([...IMPLEMENTED_IDS, ...DEFERRED_IDS]);
+    expect(partition.size, "implemented and deferred sets must be disjoint").toBe(
+      IMPLEMENTED_IDS.length + DEFERRED_IDS.length,
     );
     expect([...partition].sort()).toEqual([...CANONICAL_IDS]);
   });
 
-  test("every MVP canonical id has a compiled-dispatch branch in run.ts", () => {
-    const missing = MVP_IDS.filter((id) => !hasCompiledDispatchBranch(id));
-    expect(missing, "every MVP id must have an argv[0] dispatch branch in core/src/cli/run.ts").toEqual([]);
+  test("every implemented canonical id has a transitional native-dispatch adapter", () => {
+    const missing = IMPLEMENTED_IDS.filter((id) => !hasCompiledDispatchBranch(id));
+    expect(missing, "every implemented id must have an argv[0] dispatch adapter").toEqual([]);
   });
 
   test("every deferred canonical id has a registered plan and no bespoke dispatch branch", () => {
     for (const id of DEFERRED_IDS) {
-      expect(deferredCommandPlan(id), `${id} must have a registered deferral plan`).toBeDefined();
+      expect(
+        builtInCommandEntries.find((entry) => entry.spec.id === id)?.status.kind,
+        `${id} must have registry-owned deferred status`,
+      ).toBe("deferred");
       expect(
         hasCompiledDispatchBranch(id),
         `${id} must route through the generic NotImplementedError fallthrough, not a bespoke branch`,
@@ -777,11 +759,7 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       expect(source.exitCode).toBe(2);
       expect(compiled.exitCode).toBe(source.exitCode);
       expect(compiled.stdout).toBe("");
-      // Source-mode OCLIF topic resolution intercepts `shell web` as the id
-      // `shell:web` before arg validation; compiled dispatch reaches the
-      // command's argv validation. Both reject loudly with exit 2 instead of
-      // silently opening a host shell.
-      expect(source.stderr).toContain("command shell:web not found");
+      expect(source.stderr).toContain("Unexpected argument: web");
       expect(compiled.stderr).toContain("Unexpected argument: web");
     }, 30_000);
 
@@ -1991,8 +1969,4 @@ describe.skipIf(!isLinuxX64)("compiled-binary dispatch parity — behavioral", (
       }
     }, 30_000);
   });
-});
-
-afterAll(() => {
-  /* no-op: the shared compiled binary is reused, never removed here. */
 });

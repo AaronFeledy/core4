@@ -3,7 +3,6 @@ import ts from "typescript";
 import type { BoundaryRule, FileContext } from "../types.ts";
 import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
-// Each forbidden join pairs a root-identifier suffix with a literal segment.
 const FORBIDDEN_JOINS: ReadonlyArray<{ readonly rootSuffix: string; readonly segment: string }> = [
   { rootSuffix: "userdataroot", segment: "plugins" },
   { rootSuffix: "usercacheroot", segment: "scratch" },
@@ -51,11 +50,11 @@ const onNode = (node: ts.Node, context: FileContext): void => {
 export const pathsRule = {
   id: "paths",
   scope: {
-    roots: CORE_AND_PLUGIN_SOURCE_ROOTS,
+    roots: CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "paths/src"),
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: { files: ["core/src/config/paths.ts"], prefixes: ["paths/src/"] },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Paths boundary check passed.",
   failureHeadline:
     "Paths boundary check failed. Hand-rolled root joins must use @lando/core/paths (makeLandoPaths) or PathsService.",

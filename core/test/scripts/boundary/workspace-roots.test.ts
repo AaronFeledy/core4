@@ -20,17 +20,16 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
+  ["state-store", ["core/src", "plugins"]],
 ]);
 
 const CORE_AND_PLUGIN_RULE_IDS = [
   "machine-output",
   "managed-file",
   "network",
-  "paths",
   "probe",
   "redaction",
   "renderer",
-  "state-store",
 ] as const;
 
 const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output", "package-dag"] as const;
@@ -86,8 +85,8 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
-  test("classifies libpod-prefix and env-helper as narrow-by-design with their exact current roots", () => {
-    // Given: the two rules that are deliberately scoped narrower than the shared tiers
+  test("classifies narrow-by-design rules with their exact current roots", () => {
+    // Given: rules that are deliberately scoped narrower than the shared tiers
     for (const [id, expectedRoots] of NARROW_BY_DESIGN) {
       // When: reading the rule's declared scope from the live registry
       const rule = BOUNDARY_RULES.get(id);
@@ -99,7 +98,7 @@ describe("workspace source-root drift gate", () => {
   });
 
   test("routes runtime boundary rules through the core-and-plugin source tier", () => {
-    // Given: the eight rules that police shipped core and plugin runtime code
+    // Given: residual rules whose behavior applies across every shipped runtime source tier
     for (const id of CORE_AND_PLUGIN_RULE_IDS) {
       // When: reading each rule's declared scope from the live registry
       const rule = BOUNDARY_RULES.get(id);
@@ -108,6 +107,18 @@ describe("workspace source-root drift gate", () => {
       expect(rule).toBeDefined();
       expect(rule?.scope.roots).toEqual(CORE_AND_PLUGIN_SOURCE_ROOTS);
     }
+  });
+
+  test("routes the paths rule through the shared runtime tier minus its owner", () => {
+    // Given: the shared shipped-runtime tier and the package that owns path construction
+    const expectedRoots = CORE_AND_PLUGIN_SOURCE_ROOTS.filter((root) => root !== "paths/src");
+
+    // When: reading the paths rule's declared scope from the live registry
+    const rule = BOUNDARY_RULES.get("paths");
+
+    // Then: every shared runtime consumer remains covered except the owning implementation
+    expect(rule).toBeDefined();
+    expect(rule?.scope.roots).toEqual(expectedRoots);
   });
 
   test("routes package-wide boundary rules through the all-package source tier", () => {

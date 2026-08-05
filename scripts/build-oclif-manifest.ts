@@ -24,9 +24,9 @@ const renderCompiledManifestModule = (manifest: Interfaces.Manifest): string => 
  * command metadata is available without reading \`oclif.manifest.json\` from
  * disk at runtime.
  */
-import type { Interfaces } from "@oclif/core";
+import type { Manifest } from "./metadata.ts";
 
-export const COMPILED_OCLIF_MANIFEST = ${JSON.stringify(manifest, null, 2)} satisfies Interfaces.Manifest;
+export const COMPILED_OCLIF_MANIFEST = ${JSON.stringify(manifest, null, 2)} satisfies Manifest;
 `;
 
 const renderCommandIdsModule = (commandIds: ReadonlyArray<string>): string => `/**

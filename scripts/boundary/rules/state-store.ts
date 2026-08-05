@@ -2,7 +2,6 @@ import ts from "typescript";
 
 import { resolveConstString, scanLiteralsAndComments } from "../literals.ts";
 import type { BoundaryRule } from "../types.ts";
-import { CORE_AND_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 
 const SIGNALS = ["atomic-write-rename", "lockfile", "version-envelope"] as const;
 const FS_MODULES = new Set(["fs", "fs/promises", "node:fs", "node:fs/promises"]);
@@ -199,16 +198,8 @@ const hasVersionEnvelope = (state: ScanState): boolean => {
 
 export const stateStoreRule = {
   id: "state-store",
-  scope: { roots: CORE_AND_PLUGIN_SOURCE_ROOTS, extensions: [".ts"], excludeTestFiles: true },
-  carveOuts: {
-    files: [
-      "core/src/cache/atomic.ts",
-      "core/src/landofile/includes.ts",
-      "core/src/scratch-app/registry.ts",
-      "core/src/state-store/atomic.ts",
-    ],
-    prefixes: ["core/src/state/", "state-store/src/"],
-  },
+  scope: { roots: ["core/src", "plugins"], extensions: [".ts"], excludeTestFiles: true },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "State-store boundary check passed.",
   failureHeadline:
     "State-store boundary check failed. Durable atomic-write + lockfile + version-envelope logic must route through @lando/state-store.",

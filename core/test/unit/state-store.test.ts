@@ -15,9 +15,9 @@ import { StateStoreError } from "@lando/sdk/errors";
 import { AbsolutePath, type AbsolutePath as AbsolutePathType } from "@lando/sdk/schema";
 import { type StateBucketSpec, StateStore } from "@lando/sdk/services";
 
+import { withAdvisoryLock } from "@lando/state-store/lock";
+import { makeStateStore } from "@lando/state-store/service";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { withAdvisoryLock } from "../../src/state/lock.ts";
-import { makeStateStore } from "../../src/state/service.ts";
 
 const store = makeStateStore();
 

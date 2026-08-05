@@ -69,6 +69,16 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
         ...(input.shimTarget === undefined ? {} : { shimTarget: input.shimTarget }),
         ...(input.hostGatewayName === undefined ? {} : { hostGatewayName: input.hostGatewayName }),
       });
+      let resolveShutdown: () => void = () => undefined;
+      const shutdownComplete = new Promise<void>((resolve) => {
+        resolveShutdown = resolve;
+      });
+      const shutdown = () => {
+        void session.close().finally(resolveShutdown);
+      };
+      process.once("SIGTERM", shutdown);
+      process.once("SIGINT", shutdown);
+      void session.closed.then(resolveShutdown);
       yield* Effect.sync(() => {
         stdout.write(
           `${JSON.stringify({
@@ -86,14 +96,7 @@ export const runHostProxyWorkerProcess = async (): Promise<void> => {
         );
         detachHostProxyWorkerStdio();
       });
-      yield* Effect.async<void>((resume) => {
-        const shutdown = () => {
-          void session.close().finally(() => resume(Effect.void));
-        };
-        process.once("SIGTERM", shutdown);
-        process.once("SIGINT", shutdown);
-        void session.closed.then(() => resume(Effect.void));
-      });
+      yield* Effect.promise(() => shutdownComplete);
     }).pipe(Effect.provide(runtime)),
   );
 };

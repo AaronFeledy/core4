@@ -763,10 +763,7 @@ describe("lando shell — CLI argv parsing", () => {
     await withTempApp(async (dir) => {
       const result = await runCli(["shell", "web"], dir);
       expect(result.exitCode).toBe(2);
-      // Source-mode topic resolution rejects `shell web` as an unknown id
-      // before arg validation; either way the positional never silently
-      // opens a host shell.
-      expect(result.stderr).toContain("command shell:web not found");
+      expect(result.stderr).toContain("Unexpected argument: web");
     });
   }, 30_000);
 

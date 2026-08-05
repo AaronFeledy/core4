@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 
 import { McpAllowlistConflictError } from "@lando/sdk/errors";
 
-import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
+import { builtInCommandEntries } from "../../src/cli/built-in-command-registry.ts";
+import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../src/cli/oclif/generated/mcp-allowlist.ts";
 import {
   MCP_ALLOWLIST_FORBIDDEN_IDS,
@@ -32,16 +32,15 @@ const EXPECTED_DEFAULT_ALLOWLIST = [
 ];
 
 const specFor = (id: string): LandoCommandSpec => {
-  const commandClass = (compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>)[id];
-  const spec = commandClass?.landoSpec;
+  const spec = builtInCommandEntries.find((entry) => entry.spec.id === id)?.spec;
   if (spec === undefined) throw new Error(`No landoSpec for command id ${id}`);
   return spec;
 };
 
 const mcpSpecFor = (id: string): LandoCommandSpec => {
-  const spec = mcpRegistryFromCompiled(
-    compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-  ).commandEntries.find((entry) => entry.spec.id === id)?.spec;
+  const spec = mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.find(
+    (entry) => entry.spec.id === id,
+  )?.spec;
   if (spec === undefined) throw new Error(`No MCP registry spec for tool id ${id}`);
   return spec;
 };
@@ -90,11 +89,9 @@ describe("assertMcpAllowlistSafe", () => {
   });
 
   test("rejects a self-allowed app config umbrella before MCP projection replacement", () => {
-    expect(() =>
-      mcpRegistryFromCompiled({
-        "app:config": { landoSpec: { ...specFor("app:config"), mcpAllowed: true } },
-      }),
-    ).toThrow(McpAllowlistConflictError);
+    expect(() => mcpRegistryFromBuiltIns([{ spec: { ...specFor("app:config"), mcpAllowed: true } }])).toThrow(
+      McpAllowlistConflictError,
+    );
   });
 
   test("allows a destructive command that does not self-allow", () => {
@@ -109,16 +106,12 @@ describe("assertMcpAllowlistSafe", () => {
 
 describe("MCP default allowlist derivation", () => {
   test("derives exactly the shipped opt-ins, sorted", () => {
-    const specs = mcpRegistryFromCompiled(
-      compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-    ).commandEntries.map((entry) => entry.spec);
+    const specs = mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.map((entry) => entry.spec);
     expect([...computeMcpDefaultAllowlist(specs)]).toEqual([...EXPECTED_DEFAULT_ALLOWLIST]);
   });
 
   test("the generated cache matches the live derivation (no drift)", () => {
-    const specs = mcpRegistryFromCompiled(
-      compiledCommands as Record<string, { readonly landoSpec?: LandoCommandSpec }>,
-    ).commandEntries.map((entry) => entry.spec);
+    const specs = mcpRegistryFromBuiltIns(builtInCommandEntries).commandEntries.map((entry) => entry.spec);
     expect([...MCP_DEFAULT_ALLOWLIST]).toEqual([...computeMcpDefaultAllowlist(specs)]);
   });
 

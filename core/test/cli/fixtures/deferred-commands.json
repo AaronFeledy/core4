@@ -1,4 +1,8 @@
 {
-  "_doc": "Per US-037: every deferred canonical command surface. The deferred-commands snapshot test asserts each entry returns NotImplementedError with remediation in both source OCLIF and compiled $bunfs paths.",
-  "commands": [{ "id": "meta:plugin:login" }]
+  "_doc": "Every remaining deferred canonical command and its planned release phase.",
+  "commands": [
+    { "id": "meta:events:follow", "phase": "4.1" },
+    { "id": "meta:plugin:login", "phase": "4.1" },
+    { "id": "meta:plugin:logout", "phase": "4.1" }
+  ]
 }

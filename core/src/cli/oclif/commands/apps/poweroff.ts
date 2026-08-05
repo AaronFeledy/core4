@@ -1,10 +1,10 @@
-import { Flags } from "@oclif/core";
 import {
   type PoweroffResult,
   PoweroffResultSchema,
   poweroff,
   renderPoweroffResult,
 } from "../../../commands/poweroff.ts";
+import { Flags } from "../../metadata.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 

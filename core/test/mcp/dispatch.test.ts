@@ -5,7 +5,7 @@ import { McpToolInputError, McpToolNotAllowedError, McpTransportError } from "@l
 import type { LandoEvent } from "@lando/sdk/events";
 import { REDACTED, createRedactor } from "@lando/sdk/secrets";
 
-import { mcpRegistryFromCompiled } from "../../src/cli/commands/meta/mcp.ts";
+import { mcpRegistryFromBuiltIns } from "../../src/cli/commands/meta/mcp.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { CommandResultOutcome } from "../../src/cli/result-encode.ts";
 import { type McpDispatchDeps, type McpProgressFrame, dispatchTool } from "../../src/mcp/dispatch.ts";
@@ -168,9 +168,7 @@ describe("dispatchTool", () => {
   });
 
   test("rejects write-shaped app config projection input before execution", async () => {
-    const projected = mcpRegistryFromCompiled({
-      "app:config": { landoSpec: spec("app:config", () => Effect.succeed({})) },
-    });
+    const projected = mcpRegistryFromBuiltIns([{ spec: spec("app:config", () => Effect.succeed({})) }]);
     let executed = false;
     const getEntry = projected.commandEntries.find((entry) => entry.spec.id === "app:config:get");
     expect(getEntry).toBeDefined();

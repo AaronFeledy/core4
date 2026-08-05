@@ -6,13 +6,12 @@
  * Installed plugin command metadata lives in the separate plugin-command cache,
  * which plugin mutations invalidate rather than rewriting this manifest.
  */
-import type { Interfaces } from "@oclif/core";
-
 import { COMPILED_OCLIF_MANIFEST } from "./compiled-manifest.ts";
+import type { Manifest } from "./metadata.ts";
 
 /**
  * Load the precomputed manifest for the binary build.
  */
-export const loadCompiledManifest = (): Interfaces.Manifest => {
+export const loadCompiledManifest = (): Manifest => {
   return COMPILED_OCLIF_MANIFEST;
 };

@@ -1,5 +1,5 @@
-import { Flags } from "@oclif/core";
 import { Effect } from "effect";
+import { Flags } from "../../../metadata.ts";
 
 import {
   DefaultGlobalListLayer,

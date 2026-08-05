@@ -1,8 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { resolve } from "node:path";
 
-import { isMvpCommandId } from "../../src/cli/oclif/command-base.ts";
-import compiledCommands from "../../src/cli/oclif/compiled-commands.ts";
+import { builtInCommandEntries, deferredBuiltInCommandIds } from "../../src/cli/built-in-command-registry.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -37,17 +36,14 @@ const parseErrorEnvelope = (
   return JSON.parse(stdout) as { readonly command?: string; readonly error?: { readonly _tag?: string } };
 };
 
-const nonMvpCommands = Object.keys(compiledCommands)
-  .filter((id) => !isMvpCommandId(id))
-  .sort((left, right) => left.localeCompare(right));
-
 type CommandWithArgs = {
   readonly args?: Readonly<Record<string, { readonly required?: boolean }>>;
   readonly flags?: Readonly<Record<string, { readonly required?: boolean }>>;
 };
 
 const invocationArgs = (commandId: string): ReadonlyArray<string> => {
-  const command = compiledCommands[commandId as keyof typeof compiledCommands] as CommandWithArgs;
+  const command: CommandWithArgs =
+    builtInCommandEntries.find((entry) => entry.spec.id === commandId)?.command ?? {};
   const flags = Object.entries(command.flags ?? {})
     .filter(([, flag]) => flag.required === true)
     .map(([name]) => `--${name}=placeholder`);
@@ -57,11 +53,11 @@ const invocationArgs = (commandId: string): ReadonlyArray<string> => {
   return [...flags, ...args];
 };
 
-describe("non-MVP OCLIF commands", () => {
+describe("deferred OCLIF commands", () => {
   test("exit with a structured NotImplementedError", async () => {
-    expect(nonMvpCommands.length).toBeGreaterThan(0);
+    expect(deferredBuiltInCommandIds.length).toBeGreaterThan(0);
 
-    for (const commandId of nonMvpCommands) {
+    for (const commandId of deferredBuiltInCommandIds) {
       const result = await runCli([commandId, ...invocationArgs(commandId)]);
 
       expect(result.exitCode, commandId).not.toBe(0);

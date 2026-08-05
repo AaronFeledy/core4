@@ -72,11 +72,7 @@ export const probeRule = {
     extensions: [".ts"],
     excludeTestFiles: true,
   },
-  carveOuts: {
-    files: ["core/src/state/lock.ts", "state-store/src/lock.ts"],
-    prefixes: [],
-    reportOnly: true,
-  },
+  carveOuts: { files: [], prefixes: [] },
   passMessage: "Probe boundary check passed.",
   failureHeadline:
     "Probe boundary check failed. Host/provider-shaped retry/backoff/timeout-to-verdict probing must build on @lando/sdk/probe (runProbe), not hand-rolled Effect.retry/repeat/schedule or Schedule loops.",

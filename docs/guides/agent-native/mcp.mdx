@@ -26,14 +26,14 @@ only; it does not wrap startup or shutdown in a Lando command-result envelope.
         runtime="library"
         code={`const { Fiber, Layer, Queue } = yield* Effect.promise(() => import("effect"));
 const { createRedactor } = yield* Effect.promise(() => import("@lando/sdk/secrets"));
-const { mcpRegistryFromCompiled } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
-const { default: compiledCommands } = yield* Effect.promise(() => import("../../../../../core/src/cli/oclif/compiled-commands.ts"));
+const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
+const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
 const { LandofileService } = yield* Effect.promise(() => import("../../../../../core/src/landofile/service.ts"));
 const { McpRuntimeConfig, McpService, McpServiceLive } = yield* Effect.promise(() => import("../../../../../core/src/mcp/service.ts"));
 const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
 const { McpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/transport.ts"));
 const { RedactionService } = yield* Effect.promise(() => import("../../../../../core/src/redaction/service.ts"));
-const registry = mcpRegistryFromCompiled({ "app:config": compiledCommands["app:config"] });
+const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const frames = [
   { jsonrpc: "2.0", id: 1, method: "initialize", params: {} },
   { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -244,9 +244,9 @@ const tools = JSON.parse(stdout);`}
         code={`const { makeStdioMcpTransport } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-transport.ts"));
 const { MAX_OUTSTANDING_REQUESTS } = yield* Effect.promise(() => import("../../../../../core/src/mcp/stdio-limits.ts"));
 const { buildCatalog, computeEffectiveAllowlist } = yield* Effect.promise(() => import("../../../../../core/src/mcp/catalog.ts"));
-const { mcpRegistryFromCompiled } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
-const { default: compiledCommands } = yield* Effect.promise(() => import("../../../../../core/src/cli/oclif/compiled-commands.ts"));
-const registry = mcpRegistryFromCompiled({ "app:config": compiledCommands["app:config"] });
+const { mcpRegistryFromBuiltIns } = yield* Effect.promise(() => import("../../../../../core/src/cli/commands/meta/mcp.ts"));
+const { builtInCommandEntries } = yield* Effect.promise(() => import("../../../../../core/src/cli/built-in-command-registry.ts"));
+const registry = mcpRegistryFromBuiltIns(builtInCommandEntries.filter((entry) => entry.spec.id === "app:config"));
 const catalog = buildCatalog({
   commandEntries: registry.commandEntries,
   effective: computeEffectiveAllowlist({ defaults: ["app:config:get", "app:config:view"] }),

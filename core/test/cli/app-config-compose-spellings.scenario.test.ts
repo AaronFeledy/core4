@@ -128,7 +128,7 @@ describe("lando config renders post-normalization Compose spellings", () => {
     await withTempCwd(async (dir) => {
       await writeFile(join(dir, ".lando.yml"), landofile);
       const result = await runCli(["app", "config", "--help"], dir);
-      expect(result.stdout).toMatch(/<options: table\|json\|yaml>/);
+      expect(result.stdout).toContain("--format Output format. (table, json, yaml)");
     });
   });
 

@@ -343,7 +343,8 @@ export const runAppConfigVerb = (
   );
 };
 
-export const runAppConfigLint = (_argv: ReadonlyArray<string>): Promise<void> => {
+export const runAppConfigLint = (argv: ReadonlyArray<string>): Promise<void> => {
+  compiledCommandInputFromArgv("app:config:lint", argv);
   const format = activeTextJsonFormat();
   return runCompiledCommand(
     appConfigLint(),

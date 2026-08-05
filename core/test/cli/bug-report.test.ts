@@ -208,6 +208,23 @@ describe("renderPlainBugReport: stable multi-line output", () => {
     const escChar = String.fromCharCode(27);
     expect(text.includes(`${escChar}[`)).toBe(false);
   });
+
+  test("Given a control-bearing commandId, when plain and JSON reports render, then only plain output escapes it", () => {
+    // Given
+    const commandId = "app:unknown\u001b[31m";
+    const envelope = buildBugReport({ error: new Error("unknown"), context: ctx({ commandId }) });
+
+    // When
+    const plain = renderPlainBugReport(envelope);
+    const json = renderJsonBugReport(envelope);
+    const parsed: unknown = JSON.parse(json);
+
+    // Then
+    expect(plain).toContain("commandId: app:unknown\\u001b[31m");
+    expect(plain).not.toContain("\u001b");
+    expect(json).not.toContain("\u001b");
+    expect(parsed).toMatchObject({ commandId });
+  });
 });
 
 describe("renderJsonBugReport: single NDJSON line", () => {

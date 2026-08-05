@@ -1,4 +1,4 @@
-import { Args, Flags } from "@oclif/core";
+import { Args, Flags } from "../../../metadata.ts";
 
 import {
   type GlobalUninstallOptions,
