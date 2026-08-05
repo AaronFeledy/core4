@@ -113,7 +113,7 @@ describe("CLI version fast path", () => {
     expect(result.stdout.trim()).toBe(corePackage.version);
   });
 
-  test("documents the MVP wall-clock budget without enforcing it", () => {
+  test("documents the wall-clock budget without enforcing it", () => {
     expect("version fast path budget: <=50ms on baseline Linux x64").toContain("<=50ms");
   });
 });

@@ -17,10 +17,10 @@ export const renderColdRootHelp = (): string => {
   const entries: ReadonlyArray<readonly [string, ColdCommandEntry]> = Object.entries(
     COMMAND_REGISTRY_MANIFEST.commands,
   );
-  const visibleEntries = entries.filter(([, entry]) => !entry.hidden);
   const namespaces = new Map<string, Array<ColdCommandEntry>>();
   const aliases: Array<readonly [string, string]> = [];
-  for (const [, entry] of visibleEntries) {
+  for (const [, entry] of entries) {
+    if (entry.hidden) continue;
     const namespace = entry.spec.id.split(":", 1)[0] ?? entry.spec.namespace;
     const namespaceEntries = namespaces.get(namespace) ?? [];
     namespaceEntries.push(entry);
@@ -59,6 +59,4 @@ COMMANDS`,
   return lines.join("\n");
 };
 
-export const renderColdRecipesList = (): string => {
-  return renderRecipeCatalog(getRecipeCatalog());
-};
+export const renderColdRecipesList = (): string => renderRecipeCatalog(getRecipeCatalog());

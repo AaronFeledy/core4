@@ -1,10 +1,4 @@
-/**
- * Compiled-CLI help rendering for the root command list and per-command usage.
- *
- * The compiled `$bunfs` dispatch path renders help without OCLIF, so these
- * builders format the top-level topic/command listing and a single command's
- * usage/aliases/flags directly from the built-in command registry.
- */
+/** Cold-path help adapters avoid loading OCLIF. */
 import type { BuiltInCommandEntry } from "./built-in-command-registry.ts";
 import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help.ts";
 import { renderColdRootHelp } from "./cold-path-output.ts";
