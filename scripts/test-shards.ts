@@ -51,7 +51,6 @@ export const NIGHTLY_TIER_TESTS: ReadonlyArray<string> = [
  */
 const WEIGHT_HINTS: Readonly<Record<string, number>> = {
   "core/test/cli/setup.test.ts": 111,
-  "core/test/cli/parity/dispatch-parity.test.ts": 108,
   "core/test/scripts/dev-guides.test.ts": 38,
   "core/test/scripts/codegen.test.ts": 20,
   "core/test/build/compile.test.ts": 15,
@@ -72,7 +71,6 @@ const WEIGHT_HINTS: Readonly<Record<string, number>> = {
   "core/test/cli/shell.scenario.test.ts": 6,
   "core/test/scripts/docs-scenario.test.ts": 6,
   "core/test/cli/app-config-lint.scenario.test.ts": 6,
-  "core/test/cli/dispatch-unification-spike.test.ts": 5,
   "core/test/cli/tooling-router.scenario.test.ts": 5,
   "core/test/build/version-embed.test.ts": 5,
   "core/test/scripts/release.test.ts": 5,
