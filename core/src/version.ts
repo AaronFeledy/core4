@@ -10,3 +10,9 @@ const stampedVersion: string | undefined =
     : undefined;
 
 export const CORE_VERSION: string = stampedVersion ?? corePackage.version;
+
+export const renderMetaVersion = (version: {
+  readonly core: string;
+  readonly bun: string;
+  readonly platform: string;
+}): string => `@lando/core ${version.core} (bun ${version.bun} on ${version.platform})`;

@@ -1,3 +1,5 @@
+import { renderMetaVersion } from "../../../../version.ts";
+
 /**
  * `lando meta:version` — OCLIF Command class wrapping the Effect operation.
  *
@@ -19,8 +21,7 @@ export const versionSpec: LandoCommandSpec<VersionResult, never> = {
   run: () => version,
   render: (result) => {
     if (typeof result !== "object" || result === null || !("core" in result)) return undefined;
-    const { core, bun, platform } = result as VersionResult;
-    return `@lando/core ${core} (bun ${bun} on ${platform})`;
+    return renderMetaVersion(result as VersionResult);
   },
 };
 
