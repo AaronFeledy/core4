@@ -202,8 +202,37 @@ describe("native unknown-command failures", () => {
       // Then
       expect(result.exitCode).toBe(1);
       expect(result.stderr).toContain("ToolingCompileError");
-      expect(result.stderr).toContain("app:unknown-tooling\\u001b[31m");
+      expect(result.stderr).toContain("commandId: app:unknown-tooling\\u001b[31m");
       expect(result.stderr).not.toContain("\u001b");
+    } finally {
+      await fixture.cleanup();
+    }
+  });
+
+  test("Given an app context and an unknown tooling token with terminal controls, when JSON is requested, then the machine command stays raw without emitting raw controls", async () => {
+    // Given
+    const fixture = await makeAppFixture();
+    const name = "unknown-tooling-json\u001b[31m";
+    try {
+      await writeFreshCache(fixture);
+
+      // When
+      const result = await runCli([name, "--format=json"], { cwd: fixture.root, env: fixture.env });
+      const envelope: unknown = JSON.parse(result.stdout);
+
+      // Then
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toBe("");
+      expect(result.stdout).not.toContain("\u001b");
+      expect(envelope).toMatchObject({
+        command: `app:${name}`,
+        ok: false,
+        error: {
+          _tag: "ToolingCompileError",
+          message:
+            "Tooling command app:unknown-tooling-json\\u001b[31m is unavailable because the app command cache is missing, stale, or does not contain that task.",
+        },
+      });
     } finally {
       await fixture.cleanup();
     }

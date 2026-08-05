@@ -234,7 +234,7 @@ export const renderPlainBugReport = (envelope: BugReportEnvelope): string => {
     lines.push(`  ↳ ${renderText(envelope.remediation)}`);
   }
   lines.push(`code: ${envelope.code}`);
-  lines.push(`commandId: ${envelope.commandId}`);
+  lines.push(`commandId: ${escapeDiagnosticText(envelope.commandId)}`);
   if (envelope.appId !== undefined) lines.push(`appId: ${envelope.appId}`);
   if (envelope.providerId !== undefined) lines.push(`providerId: ${envelope.providerId}`);
   for (const [key, value] of envelope.extra) {

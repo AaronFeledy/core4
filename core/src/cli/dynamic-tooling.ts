@@ -28,7 +28,7 @@ const dynamicToolingOptions = {
 } as const;
 
 const prepareDynamicToolingInvocation = (name: string, argv: ReadonlyArray<string>): void => {
-  const commandId = `app:${escapeDiagnosticText(name)}`;
+  const commandId = `app:${name}`;
   setActiveCommandId(commandId);
   resetActiveCommandInvocation(commandId, argv);
 };
