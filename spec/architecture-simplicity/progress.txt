@@ -542,3 +542,19 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Split/excise decisions: none; US-534 remains the binding follow-up for bundled-plugin command metadata and US-528 remains `passes: true`.
 - Verification: codegen drift, typecheck, lint/deprecations, generated-output/import-cycle/package-DAG/managed-file gates, explicit-base guide drift, and 132 changed-file spot checks passed; generated manifest contained 85 commands and compiled-marker coverage passed.
 ---
+
+## [2026-08-05 13:34 CDT] - US-529
+- Extended the level-none runtime import canary to reject OCLIF package loads as well as Effect, with positive controls proving both detector branches are load-bearing while version and shellenv remain on the native fast path.
+- Verification: typecheck, lint passed; 64 relevant test spot checks passed; preloaded version and shellenv CLI surfaces remained clean, and a live OCLIF plugin probe triggered the canary as required.
+- **Learnings for future iterations:**
+  - A cold-path negative assertion needs a positive control for every forbidden runtime family; otherwise an undocumented import can pass through an unexercised detector.
+---
+
+## [2026-08-05 14:12 CDT] - US-529 Review
+- Review closed the incomplete level-none gate: every fixed/exhaustive version, root-help, shellenv, and recipe-list argv shape now short-circuits before native dispatcher imports, with shared output renderers preserving exact native behavior and positive controls for every forbidden import family.
+- Review notes (deferred/rejected): future `.mjs`/`.cjs` dependency layouts are speculative packaging hardening; current positive controls prove the canary against every package layout shipped by this lockfile.
+- Guide-Coverage-Skip: Corrected internal cold-start routing without changing documented CLI behavior.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, and import-cycle passed; 75 focused and adjacent CLI tests passed with exact native-output parity. LSP returned no diagnostics on four changed files and timed out on the remaining fresh-file requests; typecheck covered the full workspace. Initial and post-fix Bugbot reports found no bugs.
+- **Learnings for future iterations:**
+  - A normative fixed/exhaustive fast-path list must be table-driven as argv arrays; single-token samples can hide both omitted aliases and multi-token taxonomy regressions.
+---
