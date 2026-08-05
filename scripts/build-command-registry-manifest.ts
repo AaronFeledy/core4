@@ -21,6 +21,7 @@ const LEGACY_JSON_OUTPUT = resolve(CORE_ROOT, "oclif.manifest.json");
 const LEGACY_TYPESCRIPT_OUTPUT = resolve(CORE_ROOT, "src/cli/oclif/compiled-manifest.ts");
 const BOOTSTRAP_SOURCE =
   'export const COMMAND_REGISTRY_MANIFEST = { commands: {}, source: "built-in-command-registry", version: "0.0.0" } as const;\n';
+const COMMAND_IDS_BOOTSTRAP_SOURCE = "export const BUILT_IN_COMMAND_IDS: ReadonlyArray<string> = [];\n";
 
 const toJsonValue = (value: unknown): JsonValue | undefined => {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
@@ -116,10 +117,16 @@ export const BUILT_IN_COMMAND_IDS = ${JSON.stringify(commandIds, null, 2)} as co
 
 const main = async (): Promise<void> => {
   await Promise.all([rm(LEGACY_JSON_OUTPUT, { force: true }), rm(LEGACY_TYPESCRIPT_OUTPUT, { force: true })]);
-  if (!(await Bun.file(OUTPUT).exists())) {
-    await mkdir(dirname(OUTPUT), { recursive: true });
-    await Bun.write(OUTPUT, BOOTSTRAP_SOURCE);
-  }
+  await Promise.all(
+    [
+      { content: BOOTSTRAP_SOURCE, path: OUTPUT },
+      { content: COMMAND_IDS_BOOTSTRAP_SOURCE, path: COMMAND_IDS_OUTPUT },
+    ].map(async ({ content, path }) => {
+      if (await Bun.file(path).exists()) return;
+      await mkdir(dirname(path), { recursive: true });
+      await Bun.write(path, content);
+    }),
+  );
   const { builtInCommandEntries } = await import("../core/src/cli/built-in-command-registry.ts");
   const version = await readCoreVersion();
   const commandIds = builtInCommandEntries.map((entry) => entry.spec.id);

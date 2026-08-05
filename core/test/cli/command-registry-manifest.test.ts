@@ -8,6 +8,7 @@ const repoRoot = resolve(import.meta.dirname, "../../..");
 const legacyManifestPath = resolve(repoRoot, "core/oclif.manifest.json");
 const legacyCompiledManifestPath = resolve(repoRoot, "core/src/cli/oclif/compiled-manifest.ts");
 const generatedManifestPath = resolve(repoRoot, "core/src/cli/generated/command-registry-manifest.ts");
+const generatedCommandIdsPath = resolve(repoRoot, "core/src/cli/generated/command-ids.ts");
 const generatorPath = resolve(repoRoot, "scripts/build-command-registry-manifest.ts");
 const commandReferenceGeneratorPath = resolve(repoRoot, "scripts/build-command-reference.ts");
 const commandReferencePath = resolve(repoRoot, "docs/reference/commands.mdx");
@@ -67,9 +68,12 @@ afterEach(async () => {
 });
 
 describe("embedded command registry manifest", () => {
-  test("generator derives the embedded manifest from the native registry without a JSON sidecar", async () => {
+  test("generator first-materializes registry outputs without a JSON sidecar", async () => {
     // Given
-    await rm(generatedManifestPath, { force: true });
+    await Promise.all([
+      rm(generatedManifestPath, { force: true }),
+      rm(generatedCommandIdsPath, { force: true }),
+    ]);
     await writeFile(legacyManifestPath, '{ "stale": true }\n', "utf8");
     await writeFile(legacyCompiledManifestPath, "export const stale = true;\n", "utf8");
 
