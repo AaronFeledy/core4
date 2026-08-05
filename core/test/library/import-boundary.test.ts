@@ -24,11 +24,12 @@ const rendererTest = resolve(pluginsRoot, "renderer-lando/test");
 
 /**
  * Canonical OCLIF code-path location. OCLIF
- * lives ONLY under `@lando/core/oclif` (`core/src/cli/oclif/**`). Reaching any
+ * lives ONLY under the internal `core/src/cli/oclif/**` directory. Reaching any
  * file under this directory — or importing the `@oclif/*` npm packages — from a
  * non-OCLIF entry point is a library import-boundary violation.
  */
 const oclifCodePathDir = `${resolve(coreSrc, "cli/oclif")}/`;
+const oclifInternalEntry = resolve(coreSrc, "cli/oclif/index.ts");
 const tuiCodePathDirs = [
   `${resolve(coreSrc, "cli/tui")}/`,
   `${resolve(coreSrc, "cli/renderer/tui")}/`,
@@ -357,18 +358,12 @@ const formatEffectViolation = (entrySpecifier: string, violation: EffectViolatio
 
 const resolveEntrySource = (specifier: string): string => realpathSync(Bun.resolveSync(specifier, repoRoot));
 
-interface CriticalEntryPoint {
-  readonly specifier: string;
-  readonly expectsOclif: boolean;
-}
-
-const CRITICAL_ENTRY_POINTS: CriticalEntryPoint[] = [
-  { specifier: "@lando/core", expectsOclif: false },
-  { specifier: "@lando/core/cli", expectsOclif: false },
-  { specifier: "@lando/core/testing", expectsOclif: false },
-  { specifier: "@lando/core/paths", expectsOclif: false },
-  { specifier: "@lando/core/oclif", expectsOclif: true },
-];
+const CRITICAL_ENTRY_POINTS = [
+  "@lando/core",
+  "@lando/core/cli",
+  "@lando/core/testing",
+  "@lando/core/paths",
+] as const;
 
 describe("import boundaries (basic importability)", () => {
   test("can import the default entry", async () => {
@@ -593,8 +588,8 @@ describe("Effect import-boundary classifier (detection self-check)", () => {
 });
 
 describe("OCLIF-free default entry", () => {
-  test("the walker detects OCLIF when present (positive control on @lando/core/oclif)", () => {
-    const entryAbs = resolveEntrySource("@lando/core/oclif");
+  test("the walker detects OCLIF when present (positive control on the internal OCLIF barrel)", () => {
+    const entryAbs = realpathSync(oclifInternalEntry);
     const { violations } = walkStaticImportGraph(entryAbs);
 
     expect(violations.length).toBeGreaterThan(0);
@@ -635,16 +630,10 @@ describe("OCLIF-free default entry", () => {
   });
 
   test.each(CRITICAL_ENTRY_POINTS)(
-    "$specifier static module graph is OCLIF-free=$expectsOclif (compile-time graph assertion)",
-    (entry: CriticalEntryPoint) => {
-      const { specifier, expectsOclif } = entry;
+    "%s static module graph is OCLIF-free (compile-time graph assertion)",
+    (specifier) => {
       const entryAbs = resolveEntrySource(specifier);
       const { violations } = walkStaticImportGraph(entryAbs);
-
-      if (expectsOclif) {
-        expect(violations.length).toBeGreaterThan(0);
-        return;
-      }
 
       if (violations.length > 0) {
         const report = violations.map((violation) => formatViolation(specifier, violation)).join("\n\n");
@@ -657,13 +646,13 @@ describe("OCLIF-free default entry", () => {
   );
 
   test("failure messages name the full offending import chain", () => {
-    const entryAbs = resolveEntrySource("@lando/core/oclif");
+    const entryAbs = realpathSync(oclifInternalEntry);
     const { violations } = walkStaticImportGraph(entryAbs);
     const firstViolation = violations[0];
     if (firstViolation === undefined) throw new Error("expected a positive-control violation");
 
-    const message = formatViolation("@lando/core/oclif", firstViolation);
-    expect(message).toContain("@lando/core/oclif");
+    const message = formatViolation("core/src/cli/oclif/index.ts", firstViolation);
+    expect(message).toContain("core/src/cli/oclif/index.ts");
     expect(message).toContain("→");
     expect(message).toContain("cli/oclif/index.ts");
     expect(firstViolation.chain.at(-1)).toMatch(/@oclif\/|cli\/oclif/);
@@ -904,19 +893,19 @@ describe("dynamic-import and re-export escape hatches", () => {
   });
 
   test.each(CRITICAL_ENTRY_POINTS)(
-    "$specifier lazy module closure has no non-allowlisted banned dynamic imports",
-    (entry: CriticalEntryPoint) => {
-      const entryAbs = resolveEntrySource(entry.specifier);
+    "%s lazy module closure has no non-allowlisted banned dynamic imports",
+    (specifier) => {
+      const entryAbs = resolveEntrySource(specifier);
       const { dynamicViolations } = walkLazyModuleGraph(entryAbs);
 
       const relevant = dynamicViolations.filter(
-        (violation) => violation.family !== "effect" || entry.specifier === "@lando/core/paths",
+        (violation) => violation.family !== "effect" || specifier === "@lando/core/paths",
       );
       if (relevant.length > 0) {
         const report = relevant
           .map((violation) => `${repoRelative(violation.importerAbs)} ${violation.reason}`)
           .join("\n");
-        throw new Error(`${entry.specifier} lazy closure has banned dynamic imports:\n${report}`);
+        throw new Error(`${specifier} lazy closure has banned dynamic imports:\n${report}`);
       }
       expect(relevant.length).toBe(0);
     },
