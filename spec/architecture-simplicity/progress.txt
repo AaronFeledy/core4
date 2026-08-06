@@ -645,10 +645,11 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 ---
 
 ## [2026-08-05 21:33 CDT] - US-534 Review
-- Fixed order-insensitive plugin-command cache freshness so reordered precedence manifests regenerate the shared cache, and aligned the documented source order with every canonical bundled and external source.
+- Fixed order-insensitive plugin-command cache freshness so reordered precedence manifests regenerate the shared cache, and aligned the documented source order with every implemented bundled and external source.
 - Replaced the unobservable claim that a plugin owns a duplicate command id with the implemented contract: deterministic first-occurrence deduplication in resolved manifest order.
 - Review notes (deferred/rejected): rejected the initial QA failure as an unmaterialized detached-worktree artifact; after clean-checkout codegen, all focused tests passed with positive counts and neither worktree gained tracked drift.
 - Review notes (deferred/rejected): rejected the test-only temporary-path injection concern because it requires control of the trusted CI process and grants no capability beyond that process.
+- Review notes (deferred/rejected): the §9.3 experimental source has no runtime implementation and is not added by this story; its command metadata is required to join the same cache path when that source lands.
 - Guide-Coverage-Skip: Internal cache freshness and metadata precedence have no end-user executable-guide surface.
 - Verification: explicit-base guide drift, guide coverage, typecheck, lint/deprecations, codegen drift, and 12 focused cache/manifest/generator tests passed; production LSP diagnostics were clean and the final test-file refresh timed out after earlier clean diagnostics. The optional no-excuse helper could not resolve its packaged `typescript` dependency from this project.
 - **Learnings for future iterations:**
