@@ -77,3 +77,23 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
   - Real compiled-binary Landofiles must use shipped service shapes (`type: compose` + image); invalid MVP keys surface as `LandofileValidationError` and can look like a package-move regression.
   - Dev binary reports version `0.0.0`, so `lando: ">=4.0.0-alpha"` correctly fails with `LandofileVersionConstraintError`; use `>=0.0.0` for positive constraint smoke.
 ---
+
+## 2026-08-06 16:23 CDT - Babysit
+- PR: #710 https://github.com/AaronFeledy/core4/pull/710
+- CI outcome: fail (unit-tests-linux-x64 shards on earlier HEAD; latest head all checks stuck PENDING — Actions queue stall)
+- Review feedback: fixed (state-store boundary includes landofile/src; version-constraint test uses host include adapter; workspace-roots expectation; drop stale US-189 runbook assertion)
+- Merge: deferred (required checks still PENDING after 90m+; GitHub Actions never acquired runners for head d6bf57ac — zero in_progress runs repo-wide)
+---
+## 2026-08-06 16:29 CDT - Babysit
+- PR: #710 https://github.com/AaronFeledy/core4/pull/710
+- CI outcome: fail (all required checks stuck PENDING — GitHub Actions major_outage; run 31127392432 never left queued)
+- Review feedback: none
+- Merge: deferred (cannot merge while required checks remain PENDING during Actions outage)
+---
+
+## 2026-08-06 16:34 CDT - US-538 Build Verification
+- Verified the Landofile domain move remains complete on the in-flight branch with its package ports, core Live wiring, public serializer shim, and package boundaries intact; no new code was required.
+- Verification: typecheck and lint/deprecations passed; 265 package tests, 63 adjacent Landofile/CLI tests, and 26 policy tests passed with positive counts; package build, package-DAG, import-cycle, schema compatibility, and codegen drift checks passed.
+- **Learnings for future iterations:**
+  - When a completed story returns to Build because its PR remains open, re-run the story gates and preserve existing work rather than inventing implementation changes.
+---
