@@ -40,7 +40,7 @@ import {
   writePluginCommandCache,
 } from "../cache/command-index-writer.ts";
 import type { CommandIndexEntry } from "../cache/command-index.ts";
-import { loadUserLandofile } from "../cli/app-resolution.ts";
+import { loadUserLandofile } from "../landofile/app-resolution.ts";
 
 const discoverScriptsForCwd = (cwd: string): Effect.Effect<ReadonlyArray<DiscoveredBunShellScript>, never> =>
   Effect.gen(function* () {

@@ -46,8 +46,8 @@ import {
 
 import { parseLandofile } from "@lando/landofile/parser";
 import { makeLandoPaths } from "@lando/paths";
-import { loadUserLandofile } from "../cli/app-resolution.ts";
 import { initApp } from "../cli/commands/init.ts";
+import { loadUserLandofile } from "../landofile/app-resolution.ts";
 import { decodeOrFail } from "../schema/decode.ts";
 import { withBuildProvider } from "../services/build-orchestrator.ts";
 import { ScratchRegistry, type ScratchRegistryEntry, makeScratchRegistry } from "./registry.ts";

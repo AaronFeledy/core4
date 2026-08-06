@@ -1,3 +1,4 @@
+import { coreLayeringRule } from "./rules/core-layering.ts";
 import { envHelperRule } from "./rules/env-helper.ts";
 import { generatedOutputRule } from "./rules/generated-output.ts";
 import { importCycleRule } from "./rules/import-cycle.ts";
@@ -15,6 +16,7 @@ import { stateStoreRule } from "./rules/state-store.ts";
 import type { BoundaryRule } from "./types.ts";
 
 export const BOUNDARY_RULE_IDS = [
+  "core-layering",
   "env-helper",
   "import-cycle",
   "libpod-prefix",
@@ -32,6 +34,7 @@ export const BOUNDARY_RULE_IDS = [
 ] as const;
 
 export const BOUNDARY_RULES: ReadonlyMap<string, BoundaryRule> = new Map<string, BoundaryRule>([
+  [coreLayeringRule.id, coreLayeringRule],
   [envHelperRule.id, envHelperRule],
   [importCycleRule.id, importCycleRule],
   [libpodPrefixRule.id, libpodPrefixRule],

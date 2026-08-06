@@ -26,7 +26,7 @@ import { defaultGitRecipeCloner, publish } from "../recipes/git-source.ts";
 import { makeNpmRecipeSourcePort } from "../recipes/npm-source.ts";
 import { defaultTarballRecipeExtractor, defaultTarballRecipeFetcher } from "../recipes/tarball-source.ts";
 
-const landofileRuntimeInputs: LandofileRuntimeInputs = {
+export const landofileRuntimeInputs: LandofileRuntimeInputs = {
   ports: {
     resolveUserCacheRoot,
     npmRecipeSource: makeNpmRecipeSourcePort(),

@@ -15,7 +15,7 @@ import {
   loadUserLandofileFile,
   userAppRef,
   withResolvedCwd,
-} from "../cli/app-resolution.ts";
+} from "../landofile/app-resolution.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
 import { resolveLandofileIncludes } from "../services/landofile-live.ts";
 import { makeAppHandle } from "./handle.ts";
