@@ -213,7 +213,7 @@ export const makeNpmRecipeSourcePort = (
     }
     const resolvedVersion = resolveNpmPackageVersion(packument, version, packageSpec);
     const dist = packument.versions?.[resolvedVersion]?.dist;
-    if (dist === undefined || dist.tarball.trim() === "") {
+    if (dist === undefined || typeof dist.tarball !== "string" || dist.tarball.trim() === "") {
       throw sourceError({
         message: `npm package "${name}@${resolvedVersion}" has no published tarball URL.`,
         source: packageSpec,

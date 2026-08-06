@@ -29,4 +29,22 @@ describe("makeNpmRecipeSourcePort", () => {
       dist: { tarball: "https://registry.example/fragments.tgz" },
     });
   });
+
+  test("missing or non-string tarball fails with RecipeSourceError", async () => {
+    // Given
+    const port = makeNpmRecipeSourcePort({
+      fetchPackument: async () => ({
+        "dist-tags": { latest: "1.0.0" },
+        versions: {
+          "1.0.0": { dist: { tarball: undefined as unknown as string } },
+        },
+      }),
+    });
+
+    // When / Then
+    await expect(port.resolve("@acme/fragments@1.0.0")).rejects.toMatchObject({
+      _tag: "RecipeSourceError",
+      kind: "version-not-found",
+    });
+  });
 });
