@@ -27,7 +27,7 @@ describe("satisfiesRange", () => {
     expect(satisfiesRange("4.0.0", ">=4.1 <5")).toBe(false);
   });
 
-  test("range evaluation includes prereleases (spec 7.4)", () => {
+  test("stable ranges include prereleases", () => {
     // A prerelease of a version within the numeric range satisfies the range,
     // so constraints stay useful on dev/next channels.
     expect(satisfiesRange("4.1.0-beta.2", ">=4.1")).toBe(true);

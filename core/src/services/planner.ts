@@ -347,7 +347,6 @@ const appFeatureError = (appRoot: string, cause: unknown) =>
     issues: ["appFeatures"],
   });
 
-// Boolean capability => true; enum capability => not the "none" (unsupported) literal.
 const providerSatisfiesCapability = (
   providerCapabilities: ProviderCapabilities,
   capability: keyof ProviderCapabilities,

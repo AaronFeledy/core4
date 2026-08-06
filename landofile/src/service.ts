@@ -5,7 +5,7 @@ import { Cause, type Context, Effect, Layer, ParseResult } from "effect";
 import {
   type ComposeKeyRejectedError,
   LandofileFormConflictError,
-  LandofileIncludeError,
+  type LandofileIncludeError,
   type LandofileLockMismatchError,
   LandofileNotFoundError,
   LandofileParseError,

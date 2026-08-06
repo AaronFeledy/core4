@@ -34,8 +34,7 @@ import { presentLandofileLayers } from "./layers.ts";
 import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
 import type { TemplateEngineInputs } from "./ports.ts";
-import { renderLandofileTemplate } from "./template-render.ts";
-import { buildTemplateEngineRegistry } from "./template-render.ts";
+import { buildTemplateEngineRegistry, renderLandofileTemplate } from "./template-render.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export interface LintLandofileOptions {

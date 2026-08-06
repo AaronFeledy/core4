@@ -13,8 +13,8 @@
  */
 import { createHash } from "node:crypto";
 
-import { RecipeSourceError } from "@lando/sdk/errors";
 import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
+import { RecipeSourceError } from "@lando/sdk/errors";
 
 import { httpJsonFetch } from "../http-client/json-fetch.ts";
 import type { ResolvedRecipe } from "./source.ts";
@@ -85,11 +85,6 @@ const sourceError = (input: {
   readonly remediation: string;
 }): RecipeSourceError => new RecipeSourceError(input);
 
-/**
- * Reject the obvious npm semver range forms up front. The shared parser only
- * supports exact published versions or plain dist-tags; range matching is out
- * of scope for this branch.
- */
 const isSemverRangeSpecifier = (version: string): boolean => {
   const trimmed = version.trim();
   if (trimmed === "") return false;

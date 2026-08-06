@@ -20,7 +20,7 @@
  *
  * Template failures (`TemplateCompileError` / `TemplateRenderError` / unresolved
  * engine) are mapped to `LandofileParseError` here, at the parse seam, so the
- * frozen `LandofileService.discover` error union is never widened.
+ * `LandofileService.discover` error union remains unchanged.
  */
 import { Effect } from "effect";
 

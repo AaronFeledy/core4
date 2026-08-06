@@ -124,7 +124,7 @@ interface ResolveContext {
 
 interface FragmentResult {
   readonly sourceId: string;
-  /** Authored includes[] spec string. Rejection attribution only; never an identity/lock/cache key. */
+  /** Authored includes[] source. Used for rejection attribution, never as an identity/lock/cache key. */
   readonly authoredSource: string;
   readonly resolved?: string;
   readonly content: string;

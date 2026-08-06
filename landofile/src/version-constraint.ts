@@ -1,9 +1,9 @@
 /**
- * Pure Lando core version-constraint primitive for the top-level Landofile
+ * Pure Landofile version-constraint primitive for the top-level
  * `lando: <semver-range>` key.
  *
  * Effect-free by design so it can run on the tooling hot path against the
- * embedded `CORE_VERSION` without provider contact. Range evaluation compares
+ * running `CORE_VERSION` without provider contact. Range evaluation compares
  * by npm-semver precedence and ignores build metadata. Running prereleases are
  * normalized to their numeric tuple before matching, so e.g. `>=4.1` accepts
  * `4.1.0-beta.2`. This keeps constraints useful on

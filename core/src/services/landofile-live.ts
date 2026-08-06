@@ -35,7 +35,7 @@ const landofileRuntimeInputs: LandofileRuntimeInputs = {
       fetch: defaultTarballRecipeFetcher.fetch,
       extract: defaultTarballRecipeExtractor.extract,
     },
-    publication: { publish: (stagingDir, publishedDir) => publish(stagingDir, publishedDir) },
+    publication: { publish },
   },
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 };

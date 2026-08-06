@@ -1,7 +1,4 @@
 #!/usr/bin/env bun
-/**
- * Emits the generated Compose key-matrix reference from the committed dispositions.
- */
 import { resolve } from "node:path";
 
 import {

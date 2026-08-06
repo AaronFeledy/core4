@@ -60,7 +60,5 @@ export const makeTestLandofilePorts = (cacheRoot: string): LandofileRuntimePorts
       throw new Error("Unexpected tarball extract in test");
     },
   },
-  publication: {
-    publish,
-  },
+  publication: makeTestPublicationPort(),
 });
