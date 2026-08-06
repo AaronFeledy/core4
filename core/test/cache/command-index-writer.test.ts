@@ -97,7 +97,7 @@ describe("writePluginCommandCacheStrict modules default", () => {
     });
   });
 
-  test("uses explicit precedence for the same plugin name across every canonical source", async () => {
+  test("uses explicit precedence for the same plugin name across every implemented source", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
       const bundled = manifest("@lando/same-name", ["bundled:command"]);
