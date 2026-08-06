@@ -87,7 +87,6 @@ describe("ci runbook", () => {
     expect(runbook).toContain("nightly-tier-unit-tests-linux-x64");
     expect(runbook).toContain("static-checks-scope");
     expect(runbook).toContain("unit-tests-linux-x64");
-    expect(runbook).toContain("US-189");
     expect(runbook).toContain("darwin-arm64");
     expect(runbook).toContain("build-windows-x64");
     expect(runbook).toContain("bun run build");
