@@ -1,11 +1,11 @@
 /**
- * Compiled-CLI dispatch for `apps:*` topic commands: init, list, poweroff, and
+ * Native CLI dispatch for `apps:*` topic commands: init, list, poweroff, and
  * the scratch-app lifecycle.
  *
  * Holds the small scratch dispatch helpers (input assembly, runtime-layer
  * selection, abort-signal wiring) alongside the branch table. Returns `false`
- * when the argv does not belong to this topic so `runCompiledCli` can fall
- * through to the next topic dispatcher.
+ * when the argv does not belong to this topic so the shared native dispatcher
+ * can fall through to the next topic.
  */
 import { Effect } from "effect";
 

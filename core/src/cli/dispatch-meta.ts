@@ -1,10 +1,10 @@
 /**
- * Compiled-CLI dispatch for `meta:*` topic commands: host setup/doctor, config,
+ * Native CLI dispatch for `meta:*` topic commands: host setup/doctor, config,
  * version, recipes, shellenv, uninstall, mcp, update, the global-service
  * lifecycle, `bun`/`x` passthroughs, and plugin management.
  *
- * Returns `false` when the argv does not belong to this topic so `runCompiledCli`
- * can fall through to its not-implemented / not-found handling.
+ * Returns `false` when the argv does not belong to this topic so the shared
+ * native dispatcher can fall through to not-implemented / not-found handling.
  */
 import { cliRuntimeOptions } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
