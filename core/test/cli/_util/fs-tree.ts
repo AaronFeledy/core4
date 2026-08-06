@@ -1,6 +1,6 @@
 /**
  * Filesystem-tree snapshot helpers for plugin-command containment assertions.
- * No `bun:test` import so in-process scenario tests and spawn-based parity
+ * No `bun:test` import so in-process scenario tests and spawn-based binary smoke
  * suites can share the same helpers.
  */
 import { existsSync, readdirSync } from "node:fs";
