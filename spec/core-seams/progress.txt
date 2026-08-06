@@ -69,3 +69,11 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
   - Remove source-path aliases when extracting a workspace package so production and test graphs resolve one canonical module identity; duplicate service tags can otherwise make valid Effect layers appear to lack their own services.
   - Keep host capabilities in the core Live layer and expose narrow pure ports from the extracted package, allowing package tests to supply deterministic implementations without recreating core services.
 ---
+
+## 2026-08-06 11:49 CDT - US-538 Verify
+- Compiled `core/dist/lando`, ran `setup --yes --no-interactive --skip-file-sync` in lando4-dev, and exercised app Landofile discovery/config/lint/validate, local includes update+verify (merged redis), version-constraint reject/accept, `.lando.local.yml` overlay, nested-cwd discovery, plus adjacent cache:refresh/doctor/version/meta:config/apps:list/config:translate --list — all green against the compiled binary.
+- Committed Review leftovers as verify fixes: npm include port inversion completed in core, frozen-landofile version-constraint entries retained, package-seam checks hosted in core, release/docs references aligned. Bugbot found no bugs.
+- **Learnings for future iterations:**
+  - Real compiled-binary Landofiles must use shipped service shapes (`type: compose` + image); invalid MVP keys surface as `LandofileValidationError` and can look like a package-move regression.
+  - Dev binary reports version `0.0.0`, so `lando: ">=4.0.0-alpha"` correctly fails with `LandofileVersionConstraintError`; use `>=0.0.0` for positive constraint smoke.
+---
