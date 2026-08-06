@@ -12,7 +12,7 @@ import type {
   GitIncludeCloner,
   NpmIncludeExtractor,
   NpmIncludeFetcher,
-  NpmIncludeRegistryClient,
+  NpmIncludeRecipeSource,
 } from "../src/includes.ts";
 import { makeTestLandofilePorts } from "./support.ts";
 
@@ -210,10 +210,11 @@ describe("resolveLandofileIncludes", () => {
   });
 
   test("creates an npm include lock entry with resolved version and checksum", async () => {
-    const registryClient: NpmIncludeRegistryClient = {
-      fetchPackument: async () => ({
-        versions: { "1.2.3": { dist: { tarball: "https://registry.example/pkg.tgz" } } },
-        "dist-tags": { latest: "1.2.3" },
+    const npmRecipeSource: NpmIncludeRecipeSource = {
+      resolve: async () => ({
+        packageName: "@acme/fragments",
+        version: "1.2.3",
+        dist: { tarball: "https://registry.example/pkg.tgz" },
       }),
     };
     const fetcher: NpmIncludeFetcher = { fetch: async () => new Uint8Array([1, 2, 3]) };
@@ -234,7 +235,7 @@ describe("resolveLandofileIncludes", () => {
         appRoot,
         cacheRoot,
         ports: makeTestLandofilePorts(cacheRoot),
-        deps: { npmRegistryClient: registryClient, npmFetcher: fetcher, npmExtractor: extractor },
+        deps: { npmRecipeSource, npmFetcher: fetcher, npmExtractor: extractor },
       }),
     );
 

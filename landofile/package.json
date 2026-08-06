@@ -38,7 +38,6 @@
     "./load-expression-file": "./src/load-expression-file.ts",
     "./load-expression-provenance": "./src/load-expression-provenance.ts",
     "./merge": "./src/merge.ts",
-    "./npm-package-spec": "./src/npm-package-spec.ts",
     "./parser": "./src/parser.ts",
     "./ports": "./src/ports.ts",
     "./schema": "./src/schema.ts",

@@ -10,6 +10,7 @@ import {
   LandofileLockMismatchError,
   LandofileParseError,
   type NotImplementedError,
+  RecipeSourceError,
   type ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/schema";
@@ -30,12 +31,11 @@ import {
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
 import { mergeLandofiles, mergeValues } from "./merge.ts";
-import { parseNpmPackageSpec } from "./npm-package-spec.ts";
 import { parseLandofile } from "./parser.ts";
 import type {
   GitAcquisitionPort,
   LandofileRuntimePorts,
-  NpmPackument,
+  NpmRecipeSourcePort,
   PublicationPort,
   TarballAcquisitionPort,
 } from "./ports.ts";
@@ -57,15 +57,13 @@ import {
 } from "./version-constraint.ts";
 
 export type GitIncludeCloner = GitAcquisitionPort;
-export interface NpmIncludeRegistryClient {
-  readonly fetchPackument: (packageName: string) => Promise<NpmPackument | undefined>;
-}
+export type NpmIncludeRecipeSource = NpmRecipeSourcePort;
 export type NpmIncludeFetcher = Pick<TarballAcquisitionPort, "fetch">;
 export type NpmIncludeExtractor = Pick<TarballAcquisitionPort, "extract">;
 
 export interface LandofileIncludeDeps {
   readonly gitCloner?: GitIncludeCloner;
-  readonly npmRegistryClient?: NpmIncludeRegistryClient;
+  readonly npmRecipeSource?: NpmIncludeRecipeSource;
   readonly npmFetcher?: NpmIncludeFetcher;
   readonly npmExtractor?: NpmIncludeExtractor;
   readonly publication?: PublicationPort;
@@ -158,8 +156,13 @@ const requiredPorts = (ctx: ResolveContext): LandofileRuntimePorts => {
   throw missingRuntimeInput("runtime port set");
 };
 
-const missingCacheRoot = (): never => {
-  throw missingRuntimeInput("cache root");
+const resolveCacheRoot = (
+  cacheRoot: string | undefined,
+  ports: LandofileRuntimePorts | undefined,
+): Effect.Effect<string, LandofileIncludeError> => {
+  if (cacheRoot !== undefined) return Effect.succeed(cacheRoot);
+  if (ports !== undefined) return Effect.sync(ports.resolveUserCacheRoot);
+  return Effect.fail(missingRuntimeInput("cache root"));
 };
 
 export type ResolveIncludesError =
@@ -305,7 +308,6 @@ const parseNpmInclude = (
   const subpath =
     entry.path ?? (parsed.value.startsWith("@") ? parts.slice(2).join("/") : parts.slice(1).join("/"));
   const packageSpec = requestedVersion === undefined ? packageName : `${packageName}@${requestedVersion}`;
-  parseNpmPackageSpec(packageSpec);
   return {
     sourceId: `npm:${parsed.value}`,
     packageSpec,
@@ -413,28 +415,6 @@ const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   };
 };
 
-const resolveNpmVersion = (
-  packument: NpmPackument,
-  requested: string | undefined,
-  source: string,
-): string => {
-  const versions = packument.versions ?? {};
-  const tags = packument["dist-tags"] ?? {};
-  if (requested === undefined || requested === "") {
-    const latest = tags.latest;
-    if (latest !== undefined && versions[latest] !== undefined) return latest;
-  } else {
-    const tagged = tags[requested];
-    if (tagged !== undefined && versions[tagged] !== undefined) return tagged;
-    if (versions[requested] !== undefined) return requested;
-  }
-  throw includeError({
-    message: `Could not resolve npm include version for ${source}.`,
-    source,
-    kind: "source-unresolved",
-  });
-};
-
 const fetchNpmFromCache = async (
   entry: NormalizedInclude,
   parsed: ReturnType<typeof parseNpmInclude>,
@@ -480,34 +460,23 @@ const fetchNpmFromCache = async (
 const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<FragmentResult> => {
   const parsed = parseNpmInclude(entry);
   if (ctx.noNetwork) return fetchNpmFromCache(entry, parsed, ctx);
-  let packument: NpmPackument | undefined;
+  let resolvedPackage: Awaited<ReturnType<NpmRecipeSourcePort["resolve"]>>;
   try {
-    packument = await (
-      ctx.deps.npmRegistryClient?.fetchPackument ?? requiredPorts(ctx).httpMetadata.fetchNpmPackument
-    )(parsed.packageName);
+    resolvedPackage = await (ctx.deps.npmRecipeSource ?? requiredPorts(ctx).npmRecipeSource).resolve(
+      parsed.packageSpec,
+    );
   } catch (cause) {
     throw includeError({
-      message: `Could not fetch npm metadata for ${parsed.packageName}: ${causeMessage(cause)}`,
+      message: `Could not resolve npm include package ${parsed.packageSpec}: ${causeMessage(cause)}`,
       source: entry.source,
-      kind: "fetch-failed",
+      kind:
+        cause instanceof RecipeSourceError && cause.kind !== "registry-failed"
+          ? "source-unresolved"
+          : "fetch-failed",
     });
   }
-  if (packument === undefined) {
-    throw includeError({
-      message: `npm include package ${parsed.packageName} was not found.`,
-      source: entry.source,
-      kind: "source-unresolved",
-    });
-  }
-  const version = resolveNpmVersion(packument, parsed.requestedVersion, entry.source);
-  const tarball = packument.versions?.[version]?.dist.tarball;
-  if (tarball === undefined || tarball === "") {
-    throw includeError({
-      message: `npm include ${parsed.packageName}@${version} has no tarball URL.`,
-      source: entry.source,
-      kind: "source-unresolved",
-    });
-  }
+  const { version, dist } = resolvedPackage;
+  const tarball = dist.tarball;
   let archive: Uint8Array;
   try {
     archive = await (ctx.deps.npmFetcher ?? requiredPorts(ctx).tarball).fetch(tarball);
@@ -1021,7 +990,7 @@ export const resolveLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
-      cacheRoot: options.cacheRoot ?? options.ports?.resolveUserCacheRoot() ?? missingCacheRoot(),
+      cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
@@ -1160,7 +1129,7 @@ export const updateLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
-      cacheRoot: options.cacheRoot ?? options.ports?.resolveUserCacheRoot() ?? missingCacheRoot(),
+      cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
@@ -1279,7 +1248,7 @@ export const verifyLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
-      cacheRoot: options.cacheRoot ?? options.ports?.resolveUserCacheRoot() ?? missingCacheRoot(),
+      cacheRoot: yield* resolveCacheRoot(options.cacheRoot, options.ports),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,

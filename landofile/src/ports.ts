@@ -9,19 +9,20 @@ export interface GitAcquisitionPort {
   }) => Promise<{ readonly commitSha: string }>;
 }
 
-export interface NpmPackageDist {
+export interface NpmRecipePackageDist {
   readonly tarball: string;
   readonly integrity?: string;
   readonly shasum?: string;
 }
 
-export interface NpmPackument {
-  readonly "dist-tags"?: Readonly<Record<string, string>>;
-  readonly versions?: Readonly<Record<string, { readonly dist: NpmPackageDist }>>;
+export interface ResolvedNpmRecipePackage {
+  readonly packageName: string;
+  readonly version: string;
+  readonly dist: NpmRecipePackageDist;
 }
 
-export interface HttpMetadataPort {
-  readonly fetchNpmPackument: (packageName: string) => Promise<NpmPackument | undefined>;
+export interface NpmRecipeSourcePort {
+  readonly resolve: (packageSpec: string) => Promise<ResolvedNpmRecipePackage>;
 }
 
 export interface TarballAcquisitionPort {
@@ -35,7 +36,7 @@ export interface PublicationPort {
 
 export interface LandofileRuntimePorts {
   readonly resolveUserCacheRoot: () => string;
-  readonly httpMetadata: HttpMetadataPort;
+  readonly npmRecipeSource: NpmRecipeSourcePort;
   readonly git: GitAcquisitionPort;
   readonly tarball: TarballAcquisitionPort;
   readonly publication: PublicationPort;

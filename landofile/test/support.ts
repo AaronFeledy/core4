@@ -42,8 +42,10 @@ export const makeTestPublicationPort = (): LandofileRuntimePorts["publication"] 
 
 export const makeTestLandofilePorts = (cacheRoot: string): LandofileRuntimePorts => ({
   resolveUserCacheRoot: () => cacheRoot,
-  httpMetadata: {
-    fetchNpmPackument: async () => undefined,
+  npmRecipeSource: {
+    resolve: async () => {
+      throw new Error("Unexpected npm recipe source port call in test");
+    },
   },
   git: {
     clone: async () => {

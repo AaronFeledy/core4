@@ -2,7 +2,6 @@ import { dirname, join } from "node:path";
 
 import { Cause, type Context, Effect, Layer, ParseResult } from "effect";
 
-import { resolveLandoRoots } from "@lando/paths";
 import {
   type ComposeKeyRejectedError,
   LandofileFormConflictError,
@@ -302,39 +301,10 @@ const loadContext = (
     return { appRoot, policy, ...(logger._tag === "Some" ? { logger: logger.value } : {}) };
   });
 
-const unavailableIncludePort = (capability: string): never => {
-  throw new LandofileIncludeError({
-    message: `Remote Landofile includes require a host-provided ${capability} port.`,
-    source: "Landofile includes",
-    kind: "source-unresolved",
-    remediation: "Use the host Landofile composition layer when resolving remote includes.",
-  });
-};
-
-const unavailableRuntimeInputs: LandofileRuntimeInputs = {
-  ports: {
-    resolveUserCacheRoot: () => resolveLandoRoots().userCacheRoot,
-    httpMetadata: {
-      fetchNpmPackument: async () => unavailableIncludePort("metadata"),
-    },
-    git: {
-      clone: async () => unavailableIncludePort("clone"),
-    },
-    tarball: {
-      fetch: async () => unavailableIncludePort("tarball"),
-      extract: async () => unavailableIncludePort("extraction"),
-    },
-    publication: {
-      publish: async () => unavailableIncludePort("publication"),
-    },
-  },
-  templates: { modules: [] },
-};
-
 export const loadLandofileFile = (
   filePath: string,
   context?: LandofileLoadContext,
-  inputs: LandofileRuntimeInputs = unavailableRuntimeInputs,
+  inputs?: LandofileRuntimeInputs,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   Effect.gen(function* () {
     const resolvedContext = context ?? {
@@ -390,15 +360,15 @@ const readFileContent = (filePath: string): Effect.Effect<string, LandofileParse
 
 const loadYamlLandofile = (
   filePath: string,
-  inputs: LandofileRuntimeInputs,
+  inputs: LandofileRuntimeInputs | undefined,
 ): Effect.Effect<unknown, ComposeKeyRejectedError | LandofileParseError | NotImplementedError> =>
   readFileContent(filePath).pipe(
     Effect.flatMap((content) =>
       renderLandofileTemplate({
         filePath,
         content,
-        registry: buildTemplateEngineRegistry(inputs.templates.modules),
-        ...(inputs.templates.context === undefined ? {} : { context: inputs.templates.context }),
+        registry: buildTemplateEngineRegistry(inputs?.templates.modules ?? []),
+        ...(inputs?.templates.context === undefined ? {} : { context: inputs.templates.context }),
       }),
     ),
     Effect.flatMap((content) => scanContentForBetaExpressions(filePath, content)),
@@ -429,7 +399,7 @@ const loadTsLandofile = (
 export const loadLandofileLayers = (
   appRoot: string,
   canonicalPath: string,
-  inputs: LandofileRuntimeInputs = unavailableRuntimeInputs,
+  inputs?: LandofileRuntimeInputs,
 ): Effect.Effect<typeof LandofileShape.Type, LandofileLoadError> =>
   Effect.gen(function* () {
     const runtime = yield* loadContext(appRoot);
@@ -471,7 +441,7 @@ export const loadLandofileLayers = (
                 order: layer.order,
                 resolveTooling: false,
                 loadPolicy: runtime.policy,
-                ports: inputs.ports,
+                ...(inputs?.ports === undefined ? {} : { ports: inputs.ports }),
                 ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
@@ -508,7 +478,7 @@ export const loadLandofileLayers = (
                 appRoot,
                 sourcePath: canonicalPath,
                 loadPolicy: runtime.policy,
-                ports: inputs.ports,
+                ...(inputs?.ports === undefined ? {} : { ports: inputs.ports }),
                 ...(onRelaxedRead === undefined ? {} : { onRelaxedRead }),
               }),
             ),
@@ -563,5 +533,3 @@ const makeDiscoverLandofile = (
 
 export const makeLandofileServiceLive = (inputs: LandofileRuntimeInputs) =>
   Layer.succeed(LandofileService, { discover: makeDiscoverLandofile(inputs) });
-
-export const LandofileServiceLive = makeLandofileServiceLive(unavailableRuntimeInputs);
