@@ -113,7 +113,7 @@ afterEach(async () => {
 });
 
 describe("embedded command registry manifest", () => {
-  test("generator first-materializes registry outputs without a JSON sidecar", async () => {
+  test("generator first-materializes built-in-only registry outputs without a JSON sidecar", async () => {
     // Given
     await Promise.all([
       rm(fixture.generatedManifestPath, { force: true }),

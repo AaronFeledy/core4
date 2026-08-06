@@ -447,7 +447,7 @@
     {
       "id": "US-534",
       "title": "Bundled-plugin command metadata ownership (follow-up)",
-      "description": "As a maintainer, decide and implement whether bundled-plugin command metadata is embedded for direct native-dispatcher consumption or follows the same validated plugin-command cache path as external plugins — split from US-528 so the OCLIF-sidecar migration does not force the architectural cache decision.",
+      "description": "As a maintainer, bundled and external plugin command metadata follows the same validated plugin-command cache path while the embedded command-registry manifest remains built-in-only.",
       "acceptanceCriteria": [
         "Spec (§9.7, §12.1, §17.2, §17.9) states one ownership model for bundled-versus-external plugin command metadata.",
         "Precedence, invalidation, and router/bootstrap composition rules are documented for the chosen model.",
@@ -456,8 +456,8 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 34,
-      "passes": false,
-      "notes": "PRD-01. Human adjudication 2026-08-05 option 3: split from US-528. Owns residual §17.9 bundled-plugin command-metadata clause. Drift Audit / reviewers MUST NOT re-attach this scope to US-528."
+      "passes": true,
+      "notes": "PRD-01. Human adjudication 2026-08-05 option 3: split from US-528. Resolved cache-only ownership for bundled and external plugin command metadata; executable plugin-command dispatch remains deferred until the public plugin contract defines an implementation loader. Drift Audit / reviewers MUST NOT re-attach this scope to US-528."
     },
     {
       "id": "US-532",
