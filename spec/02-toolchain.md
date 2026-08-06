@@ -303,7 +303,7 @@ Effect and a small set of YAML/CA primitives are the only target runtime deps; t
 **Private internal workspace packages are allowed** for ownership seams that would otherwise be enforced only by AST lint (architecture-simplicity US-502/US-516+). The approved seams are `@lando/paths`, `@lando/state-store`, `@lando/landofile`, and `@lando/engine`; other seams may be promoted when package-dag can carry the constraint. Public `@lando/core` remains the single publishable runtime + CLI package. Private packages:
 
 - MUST NOT become a second public runtime/CLI split; embedding hosts continue to depend on `@lando/core` / `@lando/sdk` entry points.
-- MAY be depended on by `@lando/core` and by plugins; plugins still MUST NOT depend on `@lando/core` (`check:package-dag`).
+- MAY be depended on by `@lando/core`; plugins MAY depend only on private seams declared for plugin use by `check:package-dag` and MUST NOT take runtime dependencies on `@lando/engine` or `@lando/core`.
 - Prefer Effect-free pure modules plus thin Effect service facades where that pattern already works (`@lando/paths`).
 
 **Required `package.json#exports` (illustrative):**
