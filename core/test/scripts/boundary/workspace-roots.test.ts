@@ -32,7 +32,7 @@ const CORE_AND_PLUGIN_RULE_IDS = [
   "renderer",
 ] as const;
 
-const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output", "package-dag"] as const;
+const ALL_PACKAGE_RULE_IDS = ["import-cycle", "generated-output"] as const;
 
 const rootCoversPath = (root: string, path: string): boolean => {
   const rootSegments = root.split("/");
@@ -85,6 +85,12 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
+  test("reserves the future landofile and engine source roots", () => {
+    // Given / When / Then
+    expect(ALL_PACKAGE_SOURCE_ROOTS).toEqual(expect.arrayContaining(["landofile/src", "engine/src"]));
+    expect(NON_PLUGIN_SOURCE_ROOTS).toEqual(expect.arrayContaining(["landofile/src", "engine/src"]));
+  });
+
   test("classifies narrow-by-design rules with their exact current roots", () => {
     // Given: rules that are deliberately scoped narrower than the shared tiers
     for (const [id, expectedRoots] of NARROW_BY_DESIGN) {
@@ -131,6 +137,15 @@ describe("workspace source-root drift gate", () => {
       expect(rule).toBeDefined();
       expect(rule?.scope.roots).toEqual(ALL_PACKAGE_SOURCE_ROOTS);
     }
+  });
+
+  test("routes the package DAG rule through workspace manifest files", () => {
+    // Given / When
+    const rule = BOUNDARY_RULES.get("package-dag");
+
+    // Then
+    expect(rule?.scope.roots).toEqual(["."]);
+    expect(rule?.scope.extensions).toEqual([".json"]);
   });
 
   test("policies the reverse-direction tier as the all-package tier minus plugins", () => {
