@@ -21,4 +21,4 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | `@lando/core/docs/render` | Public transcript view-model and deterministic HTML renderer for docs pipelines. |
 | `@lando/core/docs/redactions` | Public transcript redaction helpers for docs pipelines. |
 
-The default `@lando/core` entry and every published subpath above are OCLIF-free. OCLIF remains only in private compatibility and manifest/codegen tooling under `core/src/cli/oclif/`; no published package specifier exposes it to embedding hosts.
+The default `@lando/core` entry and every published subpath above are OCLIF-free. OCLIF is development-only; `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters and manifest tooling, and no published package specifier exposes it to embedding hosts.

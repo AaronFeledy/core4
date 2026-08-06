@@ -1,12 +1,12 @@
 /**
- * `core/src/cli/oclif` — internal OCLIF adapter.
+ * `core/src/cli/oclif` — legacy-named native metadata and compatibility adapters.
  *
  * This directory has no published package export. The default `@lando/core`
- * entry point (and `@lando/core/cli`) MUST NOT pull `@oclif/core` into the
- * import graph. Tests under `test/library/` enforce this boundary.
+ * entry point (and `@lando/core/cli`) MUST NOT pull development-only CLI
+ * tooling into the import graph. Tests under `test/library/` enforce this boundary.
  *
- * **OCLIF is consumed in *one place only*:** `src/cli/oclif/`. Outside this
- * directory, no module imports `@oclif/core`.
+ * This directory is not a shipping engine. The native command registry imports
+ * its framework-free metadata and adapters directly.
  */
 
 export { LandoCommandBase } from "./command-base.ts";

@@ -6,6 +6,8 @@ Beta 1 is the final feature wave before feature freeze. The disposable tool runn
 
 The command is intentionally thin. It uses `ScratchAppService.acquire`, the bundled `toolbox` canonical recipe by default, a cwd mount by default, `RuntimeProvider.exec` for the target process, and scope finalizers for teardown. Non-zero tool exits propagate as command exits rather than becoming Lando errors.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher described in `core/AGENTS.md`; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/19-scratch-apps.md`](../19-scratch-apps.md) §21.10 command table, §21.10.2 top-level alias reservation, and §21.10.3 `apps:scratch:run` behavior.

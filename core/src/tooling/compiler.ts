@@ -6,14 +6,14 @@
  *     → service + flag resolution
  *     → engine selection
  *     → engine.compile(spec) → ToolingProgram
- *     → OCLIF command spec generation
+ *     → native command spec generation
  *     → command cache write
- *     → on invocation: OCLIF parses argv → engine.execute(program, input)
+ *     → on invocation: native dispatcher parses argv → engine.execute(program, input)
  *
  * **Hot path:** the compiled `ToolingProgram` is stored in the
  * app plan cache. On invocation at bootstrap level `tooling`:
  *   1. Read the cached `ToolingProgram` from `CacheService`.
- *   2. Parse argv with OCLIF using the cached flag/arg specs.
+ *   2. Parse argv with the cached flag/arg specs.
  *   3. Build `LandoRuntimeLive` at level `provider` (skip `app`).
  *   4. Run `engine.execute(program, input)` and propagate exit code.
  *

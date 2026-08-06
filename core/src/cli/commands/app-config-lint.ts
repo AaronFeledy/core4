@@ -33,8 +33,8 @@ const textRender = (result: ConfigLintResult): string => {
 
 /**
  * Render a lint result. Sets `process.exitCode = 1` on any violation so the
- * command exits non-zero (side-effect render pattern, identical across the
- * OCLIF and compiled dispatch paths — mirrors `renderExecAppResult`).
+ * command exits non-zero (side-effect render pattern, identical for source and
+ * compiled entries of the native dispatcher — mirrors `renderExecAppResult`).
  */
 export const renderConfigLintResult = (
   result: ConfigLintResult,

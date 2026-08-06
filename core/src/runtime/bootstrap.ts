@@ -1,10 +1,10 @@
 /**
  * Bootstrap level orchestration.
  *
- * Each command declares the `BootstrapLevel` it needs. The OCLIF init hook
- * (`src/cli/oclif/hooks/init.ts`) reads that level off the resolved command,
- * builds the `LandoRuntimeLive` Layer at exactly that depth, and then runs
- * the command's Effect program against it.
+ * Each command declares the `BootstrapLevel` it needs. The native dispatcher
+ * reads that level from the resolved command, builds the `LandoRuntimeLive`
+ * Layer at exactly that depth, and then runs the command's Effect program
+ * against it.
  *
  * Levels strictly extend each other: every higher level includes everything
  * the lower levels load. The `tooling` level is the hot path — it combines

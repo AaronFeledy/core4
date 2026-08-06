@@ -21,14 +21,14 @@ The `@lando/sdk` (schemas, tagged errors, service tags, event payloads) crosses 
 
 ---
 
-## Phase 0 — Where we are today
+## Phase 0 — Historical baseline
 
-**Status as of repo state:**
+**Status at the start of Phase 0:**
 
 - Workspace structure exists (`@lando/core`, `@lando/sdk`, 6 bundled plugin packages).
 - `BootstrapLevel` declared with strict ranking (`core/src/runtime/bootstrap.ts`).
 - `makeLandoRuntime` schema declared; factory body is TODO (`core/src/runtime/layer.ts`).
-- OCLIF command shells exist for ~25 commands (`core/src/cli/oclif/commands`); every `run()` body is `Effect.die("not yet implemented")`.
+- OCLIF command shells existed for ~25 commands (`core/src/cli/oclif/commands`); every `run()` body was `Effect.die("not yet implemented")`.
 - Plugin packages contain only `PLUGIN_NAME` constants — no Layers yet.
 - `bundled.ts` is an empty generated stub (`core/src/plugins/bundled.ts`).
 - `tsc -b` clean; `bun test` runs (no real assertions yet).
@@ -449,7 +449,7 @@ Land the last feature surface — release engineering, governance, the plugin au
 
 **Open decisions resolved (§14.2) — all GA-blocking:**
 - Bun version floor decided (currently `>=1.3.0` per `package.json` — confirm or bump)
-- OCLIF major version locked (currently v4)
+- OCLIF major version was locked to v4 before architecture-simplicity retired it from shipping dispatch
 - Auto-setup level decided (aggressive vs guided opt-in)
 - Telemetry: event inventory documented, redaction rules implemented, retention defined, disablement controls shipped
 - Compose compatibility subset documented + every accepted/rejected key has a remediation message

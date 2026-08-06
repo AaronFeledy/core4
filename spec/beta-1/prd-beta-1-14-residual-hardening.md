@@ -6,6 +6,8 @@ US-430..US-443 closed the Beta 1 closure-wave story ledger, but review and verif
 
 Scope is hardening and contract parity only: no new commands, flags, service types, or optional feature surface. Feature-shaped follow-ups that would expand freeze surface are listed as non-goals and deferred post-4.0.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher described in `core/AGENTS.md`; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`progress.txt`](./progress.txt) — US-430, US-431, US-433, US-436, US-440, US-441, US-442, US-443 review/verify deferrals

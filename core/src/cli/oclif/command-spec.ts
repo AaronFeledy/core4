@@ -1,12 +1,12 @@
 /**
  * The canonical Lando command-spec contract and its registration validation.
  *
- * `LandoCommandSpec` is the pure, OCLIF-free description of a built-in command —
+ * `LandoCommandSpec` is the framework-free description of a built-in command —
  * id, namespace, bootstrap depth, flags/args, `run` Effect, result schema, and
  * rendering/streaming hooks. This module owns that shape plus the structural
  * checks applied at registration (result schema, allowlist safety, top-level
  * alias claimability) and the id/alias/error helpers derived from it.
- * `command-base.ts` layers the OCLIF `Command` base class over this contract.
+ * `command-base.ts` layers the legacy-compatible `Command` base over this contract.
  */
 import { type Effect, Schema } from "effect";
 

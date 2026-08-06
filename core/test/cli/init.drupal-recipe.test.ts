@@ -42,7 +42,7 @@ const withTempDir = async <T>(use: (dir: string) => Promise<T>): Promise<T> => {
 };
 
 describe("lando init — Drupal recipe", () => {
-  test("renders the scaffold workflow through the OCLIF adapter", async () => {
+  test("renders the scaffold workflow through the native dispatcher", async () => {
     await withTempDir(async (dir) => {
       // Given
       const appDir = join(dir, "drupal-app");

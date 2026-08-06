@@ -77,7 +77,7 @@ Stability rules:
 - `@lando/core/testing` is API-stable and supported on the `next` channel for Beta 1; it is also published on `dev`, and it still follows §13.7 channel promotion, so it is not published on the `stable` release channel until v4.0.0 GA. After GA it follows the standard semver rule.
 - `@lando/core/docs/components` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
 - `@lando/core/docs/redactions` is unstable until v4.0.0 GA; published only on the `next` and `dev` channels (§13.7). After GA it follows the standard semver rule.
-- `@lando/core/oclif` was removed by US-526 and is not a public entry point. Tests enforce the package boundary. The native dispatcher and `@lando/core/cli` replace any prior OCLIF-adapter need; retained OCLIF compatibility and manifest/codegen tooling remains internal.
+- `@lando/core/oclif` was removed by US-526 and is not a public entry point. Tests enforce the package boundary. The native dispatcher and `@lando/core/cli` replace any prior OCLIF-adapter need; retained OCLIF-named compatibility and manifest/codegen tooling remain internal and development-only.
 - Any symbol not listed above is internal and may change between patch versions.
 
 ### 16.3 The `LandoRuntime` factory
@@ -410,7 +410,7 @@ const program = Effect.gen(function* () {
 
 The stable app-lifecycle embedding primitive is the `App` handle in §16.3. Embedding hosts that want to "run what `lando app start` runs" SHOULD call `app.start()`, `app.info()`, `app.stop()`, and sibling handle methods rather than naming command-operation functions directly.
 
-`@lando/core/cli` remains the programmatic CLI entry point for hosts that need command-shaped behavior: argv parsing policy, canonical command ids, renderer-independent typed results, and the same dispatch surface used by the source and compiled CLIs. It does not require OCLIF for command effects. The target architecture is a single native dispatcher shared by source and compiled modes (§8.4.1). Lower-level modules such as `@lando/core/cli/operations` remain shared building blocks for the registry, the `App` handle, and today's transitional OCLIF/`runCompiledCli` routing paths; they are not the preferred stable app-lifecycle API.
+`@lando/core/cli` remains the programmatic CLI entry point for hosts that need command-shaped behavior: argv parsing policy, canonical command ids, renderer-independent typed results, and the same native dispatch surface used by the source and compiled CLIs (§8.4.1). It does not require OCLIF for command effects. Lower-level modules such as `@lando/core/cli/operations` remain shared building blocks for the registry and the `App` handle; they are not the preferred stable app-lifecycle API.
 
 ```ts
 import { Effect } from "effect";

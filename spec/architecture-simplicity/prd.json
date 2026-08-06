@@ -435,12 +435,14 @@
       "description": "As a maintainer, remaining OCLIF/runCompiledCli parity instructions are rewritten to native dispatcher.",
       "acceptanceCriteria": [
         "core/AGENTS.md CLI section describes single dispatcher.",
+        "Current-facing maintainer/user guidance, public/package metadata, exported diagnostics/comments, guide proof text, and native-path test labels describe one native dispatcher; retained OCLIF references are limited to historical/superseded records, genuine development-only compatibility fixtures, negative dependency assertions, or legacy identifiers/paths.",
+        "A repository-wide tracked-text search for claims that OCLIF is the default/shipping framework, @lando/core/oclif is public, or source/compiled/runCompiledCli paths require dual parity returns only those explicit exceptions; verification must not rely on a hardcoded file allowlist.",
         "rg for 'dual dispatch is permanent' returns only historical/superseded notes.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 33,
-      "passes": false,
-      "notes": "PRD-01"
+      "passes": true,
+      "notes": "PRD-01. Adjudication 2026-08-05: US-531 owns the repository-wide current-facing claim sweep; direct tracked-text verification is required, but a committed fixed-file prose scan is not."
     },
     {
       "id": "US-534",

@@ -5,7 +5,7 @@ import {
   startApp,
 } from "../../../commands/start.ts";
 /**
- * `lando app:start` — OCLIF wrapper.
+ * `lando app:start` — native command metadata adapter.
  */
 import {
   LandoCommandBase,

@@ -7,6 +7,8 @@ Two Alpha 4 output-surface PRDs left seams incomplete:
 1. **Renderer ownership (PRD-ALPHA4-12).** The default terminal UI was to move behind the bundled `@lando/renderer-lando` plugin. The plugin exists, declares `contributes.renderers: ["lando"]`, and ships the OpenTUI prompt driver — but its `renderer` export is `Layer.empty` (`plugins/renderer-lando/src/index.ts`), while the actual default TTY renderer is still assembled inside core (`core/src/cli/renderer/bundled-renderers.ts` builds `landoRenderer` from `rendererFactories` and core primitives). The plugin is a label, not an owner: a third-party renderer plugin cannot follow `@lando/renderer-lando` as a reference implementation because the reference implementation is not actually in the plugin.
 2. **StreamFrame serialization seam (PRD-ALPHA4-15 US-326).** One-off NDJSON/event-line renderers were to migrate onto the central `StreamFrame` encode seam. `core/src/cli/commands/doctor-ndjson.ts` and `core/src/cli/commands/doctor-report.ts` still serialize frames/event lines with raw `JSON.stringify`, bypassing the single redaction-aware seam that `encodeCommandResult`/the frame encoder provide.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher described in `core/AGENTS.md`; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/alpha-4/prd-alpha-4-12-terminal-ui-polish.md`](../alpha-4/prd-alpha-4-12-terminal-ui-polish.md) — renderer plugin ownership acceptance criteria.

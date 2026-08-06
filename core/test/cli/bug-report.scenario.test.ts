@@ -143,12 +143,12 @@ describe("US-038: bug-report diagnostics on failure (source CLI)", () => {
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
-  "US-038: bug-report diagnostics on failure (compiled $bunfs CLI parity)",
+  "US-038: bug-report diagnostics on failure (compiled $bunfs binary smoke)",
   () => {
     beforeAll(async () => {
       compiledBinaryPath = await ensureCompiledCli();
     }, 120_000);
-    test("compiled NotImplementedError plain output mirrors source", async () => {
+    test("compiled binary emits NotImplementedError plain diagnostics with logsDir", async () => {
       const result = await runCommand([compiledBinaryPath, "meta:plugin:login"], isolationEnv());
       expect(result.exitCode).not.toBe(0);
       const stderr = stripAnsi(result.stderr);

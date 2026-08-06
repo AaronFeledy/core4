@@ -21,6 +21,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Once a private package owns a seam, keep a stable boundary-gate shim only for behavioral combinations package edges cannot express; narrow the scan scope instead of preserving package-location or legacy-shim carve-outs.
 - Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
 - When a generator's source registry imports consumers of its generated outputs, bootstrap every owned output reached by that import graph before dynamically loading the registry so focused first materialization works with no preexisting artifacts.
+- When a later architecture supersedes completed PRD acceptance text, preserve the checked acceptance record and add explicit supersession framing; rewrite only current guidance and forward-looking pointers.
 
 ## Log
 
@@ -578,4 +579,56 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, and 135 focused setup/manifest/parser/help/cold-path tests passed; Bugbot, hands-on QA, code-quality, security, and context review found no remaining functional blocker. LSP was clean before the formatting-only final edit and then timed out twice; workspace typecheck covered the final file.
 - **Learnings for future iterations:**
   - Run destructive codegen proofs in temporary repository fixtures and assert the target output begins absent, so first-materialization tests cannot pass on stale shared-checkout artifacts.
+---
+
+## [2026-08-05 18:15 CDT] - US-531
+- Reconciled maintainer guidance, current architecture documentation, executable-guide prose, and Beta 1 decision notes with the landed single native dispatcher while preserving historical OCLIF/dual-dispatch evidence and completed acceptance records.
+- Added a bounded regression contract for current operational guidance without reading the specification tree from production or test code.
+- Guide-Coverage-Skip: Internal dispatcher-architecture wording changes no documented command capability; affected existing guide prose was updated and its generated surfaces verified.
+- Verification: typecheck and lint/deprecations passed; 223 focused CLI, documentation, guide-lint, and guide-codegen tests passed; guide lint, coverage, drift, and public-transcript gates passed; source `meta:version --format=json` and root help behaved as documented. `check:spec-reference` retains only the previously recorded unrelated `.omo/**` citations; TypeScript LSP was clean before the final regex-only test adjustment and timed out on subsequent fresh-file requests, while full workspace typecheck covered the final file.
+- **Learnings for future iterations:**
+  - Keep regression tests outside the specification tree focused on durable operational guidance; enforce authored-spec wording with specification-local checks or explicit build-step searches so the spec-reference boundary remains intact.
+  - Preserve machine-executed MDX `value=` attributes during prose-only guide updates; change `display=` or `reason=` text and run all guide gates.
+---
+
+## [2026-08-05 18:51 CDT] - US-531 Review
+- Review found and fixed stale dual-dispatch guidance in the exported ScenarioContext failure, public operation renderers, bootstrap/signal/tooling seams, parser/error adapters, and legacy-named command metadata; the bounded regression now covers every repaired current source surface.
+- Review notes (deferred/rejected): retained OCLIF wording in development-only fixtures, compatibility-model test names, negative dependency-boundary claims, legacy identifiers/paths, and explicitly historical records because none describes a second shipping engine.
+- Review notes (deferred/rejected): the initial quality suggestion to require a separate positive architecture assertion in every guidance file is non-blocking; the expanded stale-claim scan guards each enumerated surface while the canonical positive contract remains in AGENTS/README.
+- Guide-Coverage-Skip: Internal dispatcher guidance repair changes no documented command capability or executable workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 137 focused CLI/testing spot checks, source LSP diagnostics, direct stale-pattern searches, and post-fix Bugbot passed; the specialized no-excuse helper could not resolve its packaged `typescript` dependency, while repository typecheck and Biome remained green.
+- **Learnings for future iterations:**
+  - Architecture sweeps must inspect exported source comments and emitted diagnostics as current operational guidance, not only AGENTS, docs, and specification prose.
+---
+
+## [2026-08-05 19:17 CDT] - US-531 Drift Audit
+- Trigger: 2 cycles, 360 changed lines, 14 commits.
+- Weakened/gamed proofs: the branch-added bounded prose scan was incomplete by construction and missed false current-facing guidance, so it was excised instead of expanding its allowlist.
+- Contract drift: public contract metadata, published package metadata, living planning/index prose, guide proof wording, and native-path test labels were reconciled with the landed single dispatcher; historical records, genuine development-only OCLIF fixtures, and negative dependency assertions remain intact.
+- Deferred-work laundering: the Review retention decision stands for genuine fixtures and historical/negative references, but is overturned for native-path labels and the claimed exhaustive bounded scan; this conflicts with the Review entry that explicitly required the scan and is being sent to adjudication.
+- Fixed: deleted the incomplete prose regression and corrected false current claims without changing dispatch behavior or adding a replacement compatibility path.
+- Split/excise decisions: excised the bounded guidance scan; no follow-up story or passes flip is required because the original acceptance criteria remain proven by the canonical guidance, historical-only phrase search, and fresh verification.
+- Verification: typecheck, lint/deprecations, 64 focused tests, guide lint/coverage/explicit-base drift, generated-output, and public-transcript gates passed; the acceptance phrase has only its superseded roadmap occurrence and two self-quotes. The spec-reference gate still fails only on the previously recorded unrelated `.omo/**` citations, and the packaged no-excuse helper still cannot resolve `typescript` from the caller project.
+---
+
+## [2026-08-05 19:19 CDT] - US-531 Adjudication
+- Contradiction: US-531 says "remaining OCLIF/runCompiledCli parity instructions are rewritten to native dispatcher" but its proof AC only said "rg for 'dual dispatch is permanent' returns only historical/superseded notes." Review therefore required a bounded scan guarding every repaired source surface, while Drift Audit excised that scan because its hardcoded allowlist missed `sdk/src/services/cli.ts` claiming "Default: OCLIF" and `core/package.json` advertising an "OCLIF adapter." The broad outcome is required by normative §8.4.1 ("one native command registry and one dispatcher engine"; "dual-dispatch parity is retired") and §2.7/§16.2 (`@lando/core/oclif` removed; `@lando/core/cli` is native), but those sections do not require a fixed-file regression test.
+- Decision: clarified US-531 in `prd.json` so the owned sweep explicitly includes current-facing guidance, public/package metadata, exported diagnostics/comments, guide proof text, and native-path test labels. Verification is a repository-wide tracked-text search with named historical/development-only/negative/legacy exceptions and must not rely on a hardcoded file allowlist. No follow-up story was created because the newly discovered surfaces are part of US-531's original sweep; `passes` remains true after Drift Audit corrected them and performed the repository-wide search.
+---
+
+## [2026-08-05 19:26 CDT] - US-531 Verification
+- Verified the adjudicated repository-wide dispatcher-reference sweep is complete on the in-flight branch; no new implementation code was needed.
+- Verification: typecheck, lint/deprecations, guide lint, and guide coverage passed; 61 focused CLI/library tests passed; repository-wide tracked-text searches returned only the documented historical, development-only, negative, and legacy exceptions; native version JSON and root help exited successfully.
+- **Learnings for future iterations:**
+  - Verify architecture claim sweeps against all tracked text and classify exceptions by meaning; a fixed-file allowlist cannot prove repository-wide completion.
+---
+
+## [2026-08-05 19:53 CDT] - US-531 Review
+- Review mirrored the adjudicated repository-wide acceptance contract into its authored PRD section and corrected remaining compiled-only dispatcher comments and dual-parity test labels without changing runtime behavior or assertions.
+- Review notes (deferred/rejected): retained explicitly historical/superseded records, development-only compatibility fixtures, negative dependency assertions, and legacy identifiers/paths because the adjudicated criteria name them as valid exceptions; the excised hardcoded prose scan and separate US-534 command-metadata scope were not restored.
+- Review notes (deferred/rejected): Bugbot, hands-on QA, security, and context mining found no additional blocker; no new prose-pinning test was added because direct repository-wide tracked-text verification is the adjudicated proof.
+- Guide-Coverage-Skip: Internal dispatcher terminology repair changes no documented command capability or executable workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 42 focused CLI tests, source-PRD criterion mirroring, tracked-text classification, and diff checks passed. TypeScript LSP was clean for seven edited files, retained the pre-existing missing Bun test globals in one test, and timed out on three comment-only modules; workspace typecheck covered all final edits. `check:spec-reference` retains only the previously recorded unrelated `.omo/**` citations, and the optional no-excuse helper still cannot resolve its packaged `typescript` dependency from this project.
+- **Learnings for future iterations:**
+  - Mirror adjudicated acceptance criteria into the authored PRD section in the same change as `prd.json`; no automated gate currently enforces that synchronization.
 ---

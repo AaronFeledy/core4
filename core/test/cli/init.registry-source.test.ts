@@ -61,8 +61,8 @@ describe("lando init registry source parsing", () => {
   });
 });
 
-describe("lando init registry source dispatch parity", () => {
-  test("OCLIF path reports the shared --source=registry missing --id message", async () => {
+describe("lando init registry source entry", () => {
+  test("source entry reports the shared --source=registry missing --id message", async () => {
     await withTempCwd(async (dir) => {
       const result = await runSpawnedCli(["init", "--source=registry", "--no-interactive"], dir);
       expect(result.exitCode).toBe(1);
@@ -71,8 +71,8 @@ describe("lando init registry source dispatch parity", () => {
   });
 });
 
-describe("lando init registry source compiled dispatch parity", () => {
-  test("compiled dispatch reports the shared --source=registry missing --id message", async () => {
+describe("lando init registry source direct dispatch", () => {
+  test("native dispatch reports the shared --source=registry missing --id message", async () => {
     const { runCli } = await import("../../src/cli/run.ts");
     const writes: string[] = [];
     const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;

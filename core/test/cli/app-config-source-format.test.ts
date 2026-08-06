@@ -53,7 +53,7 @@ describe("app config yaml", () => {
     expect(appConfigOptionsFromInput({ flags: { format: "yaml" } }).format).toBe("yaml");
   });
 
-  describe("compiled dispatch parity", () => {
+  describe("native input mapping", () => {
     test("compiled input maps view --format yaml", () => {
       const options = appConfigOptionsFromInput(
         compiledCommandInputFromArgv("app:config", ["view", "--format", "yaml"]),

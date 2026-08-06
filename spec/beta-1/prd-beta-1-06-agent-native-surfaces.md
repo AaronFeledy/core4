@@ -6,6 +6,8 @@ Beta 1 is the contract-completion phase plus the agent-native feature wave. The 
 
 These are projections of existing contracts, not side channels. MCP publishes the command registry as typed tools, uses command result schemas, routes output through `encodeCommandResult`, redacts through `RedactionService`, and dispatches through retained-runtime command operations. Agent env forwarding carries a small exact-name allowlist only for one exec invocation, never into cached plans or persisted service env.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.2.6 `meta mcp`; §8.3 `LandoCommandSpec.mcpAllowed`, `resultSchema`, generated allowlists, and destructive-command rejection; §8.4.1 dual-dispatch parity; §8.5.3 env precedence slot 7; §8.11 machine-readable output.
@@ -15,7 +17,7 @@ These are projections of existing contracts, not side channels. MCP publishes th
 - [`spec/09-embedding.md`](../09-embedding.md) §16.2 `McpService` in `@lando/core/services`; §16.7 programmatic CLI operations and `runTooling`.
 - [`spec/03-architecture.md`](../03-architecture.md) §3.4 `McpService` service table row; MCP lifecycle-event scope rows for `pre-mcp-call` / `post-mcp-call`.
 - [`sdk/AGENTS.md`](../../sdk/AGENTS.md) schema snapshot rule for public SDK schema changes.
-- [`core/AGENTS.md`](../../core/AGENTS.md) machine-output, renderer, redaction, and dual-dispatch boundary gates.
+- [`core/AGENTS.md`](../../core/AGENTS.md) machine-output, renderer, redaction, and single-native-dispatch boundary rules.
 
 ## Goals
 

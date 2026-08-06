@@ -6,6 +6,8 @@ Beta 1 cannot close on the green story ledger alone. The progress log recorded r
 
 This PRD made those residuals explicit Beta 1 closure work (US-430..US-443) rather than silently deferring them past feature freeze. Those stories are now complete (`passes: true` in `prd.json`). Review-time hardening deferrals that remained after this wave are owned by **PRD-14** (US-444..US-454), not by reopening this PRD.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher described in `core/AGENTS.md`; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`progress.txt`](./progress.txt) — unresolved runtime asset, review-lane, host-proxy transport, shell REPL, MCP projection/startup, version-constraint, global rebuild, tooling-router, and live-provider notes.

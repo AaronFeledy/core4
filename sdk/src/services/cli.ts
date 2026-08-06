@@ -129,7 +129,7 @@ export class SchemaValidator extends Context.Tag("@lando/core/SchemaValidator")<
 /**
  * CommandFramework — argv parsing, manifest, help, plugin install commands.
  *
- * Default: OCLIF. Replaceable but not recommended.
+ * Default: native Lando dispatcher. Replaceable but not recommended.
  */
 export class CommandFramework extends Context.Tag("@lando/core/CommandFramework")<
   CommandFramework,
