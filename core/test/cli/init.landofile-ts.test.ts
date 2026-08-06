@@ -8,10 +8,10 @@ import { type LandofileShape, ServiceName } from "@lando/core/schema";
 import { AppPlanner, LandofileService } from "@lando/core/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { nodeTsRecipeYaml } from "../../src/recipes/builtin/node-ts/manifest.ts";
 import { nodeTsRenderer } from "../../src/recipes/builtin/node-ts/render.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
 const FORBIDDEN_RUNTIME_BUILTINS = [

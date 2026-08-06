@@ -13,8 +13,8 @@ import {
   ServiceName,
 } from "@lando/core/schema";
 
-import type { ComposeDispositionMatch } from "../../src/landofile/compose/rejections.ts";
-import { analyzeComposeDispositions } from "../../src/landofile/compose/rejections.ts";
+import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
+import { analyzeComposeDispositions } from "@lando/landofile/compose/rejections";
 import { deterministicMetadata } from "../../src/services/draft.ts";
 import { ComposeFixtureOutcomeError } from "./compose-fixture-outcome-values.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";

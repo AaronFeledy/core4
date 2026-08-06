@@ -10,12 +10,12 @@ import { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import type { ConfigTranslateDetectInput, ConfigTranslatorShape } from "@lando/sdk/services";
 import { runConfigTranslatorContractSuite } from "@lando/sdk/test";
 
+import { parseLandofile } from "@lando/landofile/parser";
 import {
   AppConfigTranslateResultSchema,
   appConfigTranslate,
   renderConfigTranslateResult,
 } from "../../src/cli/commands/app-config-translate.ts";
-import { parseLandofile } from "../../src/landofile/parser.ts";
 
 const dirs: Array<string> = [];
 

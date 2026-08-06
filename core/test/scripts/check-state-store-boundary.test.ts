@@ -46,7 +46,7 @@ const TWO_SIGNAL_CASES = [
 
 const FORMER_CARVE_OUTS = [
   "core/src/cache/atomic.ts",
-  "core/src/landofile/includes.ts",
+  "landofile/src/includes.ts",
   "core/src/scratch-app/registry.ts",
   "core/src/state-store/atomic.ts",
   "core/src/state/service.ts",

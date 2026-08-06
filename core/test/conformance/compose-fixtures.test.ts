@@ -18,16 +18,16 @@ import {
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
-import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
+import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 import {
   type ComposeDispositionMatch,
   analyzeComposeDispositions,
-} from "../../src/landofile/compose/rejections.ts";
-import { parseLandofile } from "../../src/landofile/parser.ts";
-import { loadLandofileFile } from "../../src/landofile/service.ts";
+} from "@lando/landofile/compose/rejections";
+import { parseLandofile } from "@lando/landofile/parser";
 import { makePluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { loadLandofileFile } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 import { COMPOSE_FIXTURE_ASSERTIONS } from "./compose-fixture-assertion-metadata.ts";
 import { assertFixtureServiceOutcomes, materializeFixtureEnvFiles } from "./compose-fixture-outcomes.ts";

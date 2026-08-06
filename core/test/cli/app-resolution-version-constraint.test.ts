@@ -12,8 +12,7 @@ import { LandofileService, Renderer } from "@lando/sdk/services";
 import { assertLandoVersionConstraint, loadUserLandofile } from "../../src/cli/app-resolution.ts";
 import { runWithRendererHandling } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
+import { LandofileServiceLive, resolveLandofileIncludes } from "../../src/services/landofile-live.ts";
 
 const landofile = (lando?: string): LandofileShape => (lando === undefined ? {} : { lando });
 

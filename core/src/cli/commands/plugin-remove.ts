@@ -12,9 +12,9 @@ import {
 } from "@lando/sdk/errors";
 import { ConfigService } from "@lando/sdk/services";
 
+import { findLandofilePath } from "@lando/landofile/discovery";
 import { makeLandoPaths } from "@lando/paths";
 import { invalidatePluginCommandCache } from "../../cache/command-index-writer.ts";
-import { findLandofilePath } from "../../landofile/discovery.ts";
 import { removeInstalledPlugin } from "../../plugins/installed-registry.ts";
 import { parseNpmPackageSpec } from "../../recipes/npm-source.ts";
 

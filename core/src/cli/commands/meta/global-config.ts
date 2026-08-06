@@ -7,8 +7,8 @@ import { ConfigError, LandofileWriteValidationError } from "@lando/sdk/errors";
 import { LandofileShape, type LandofileShape as LandofileShapeType } from "@lando/sdk/schema";
 import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService } from "@lando/sdk/services";
 
+import { parseLandofile } from "@lando/landofile/parser";
 import { writeFileAtomicViaRename } from "../../../cache/atomic.ts";
-import { parseLandofile } from "../../../landofile/parser.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command.ts";
 import {
   type ValueType,

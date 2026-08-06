@@ -1,6 +1,6 @@
 import { Flags } from "../../../metadata.ts";
 
-import type { IncludeVerifyReport } from "../../../../../landofile/includes.ts";
+import type { IncludeVerifyReport } from "@lando/landofile/includes";
 import {
   AppIncludesVerifyResultSchema,
   appIncludesVerify,

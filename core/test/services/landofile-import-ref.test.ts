@@ -6,7 +6,7 @@ import { Effect } from "effect";
 
 import { LandofileImportRefMisuseError } from "@lando/sdk/errors";
 
-import { resolveLandofileLoadExpressions } from "../../src/landofile/load-expression.ts";
+import { resolveLandofileLoadExpressions } from "@lando/landofile/load-expression";
 import { PEM, discoverFailure, withApp } from "./landofile-load-expression-support.ts";
 
 const ACCEPTING_KEYS = ["ca", "cas", "certificate-authority", "certificate-authorities"] as const;

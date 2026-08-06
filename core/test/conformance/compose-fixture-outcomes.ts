@@ -5,7 +5,7 @@ import { basename, dirname, isAbsolute, relative, resolve, sep } from "node:path
 import type { LandofileShape } from "@lando/core/schema";
 import { ServiceName } from "@lando/core/schema";
 
-import type { ComposeDispositionMatch } from "../../src/landofile/compose/rejections.ts";
+import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
 import { assertNormalizedMatch } from "./compose-fixture-normalized-outcomes.ts";
 import {
   ComposeFixtureOutcomeError,

@@ -3,7 +3,8 @@ import type { Effect } from "effect";
 import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import { type LintLandofileOptions, lintLandofile } from "../../landofile/lint.ts";
+import type { LintLandofileOptions } from "@lando/landofile/lint";
+import { lintLandofile } from "../../services/landofile-live.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 
 export type AppConfigLintFormat = "text" | "json";

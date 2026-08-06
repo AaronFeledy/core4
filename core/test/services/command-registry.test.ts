@@ -28,9 +28,9 @@ import {
   appToolingCompilationCachePath,
   pluginCommandCachePath,
 } from "../../src/cache/paths.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { CommandRegistryLive } from "../../src/services/command-registry.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const writeScript = async (appRoot: string, relativePath: string, contents: string): Promise<void> => {
   const target = join(appRoot, ".lando", "scripts", relativePath);

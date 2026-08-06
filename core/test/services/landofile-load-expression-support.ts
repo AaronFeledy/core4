@@ -10,9 +10,9 @@ import { AppPlanner, ConfigService, LandofileService, PathsService } from "@land
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 
 export const PEM = "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n";

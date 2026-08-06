@@ -3,8 +3,8 @@ import { Effect } from "effect";
 import { ToolingCompileError } from "@lando/sdk/errors";
 import type { CacheError } from "@lando/sdk/errors";
 
+import { findAppRoot } from "@lando/landofile/discovery";
 import { readFreshAppCommandCacheForCwd } from "../cache/command-index-writer.ts";
-import { findAppRoot } from "../landofile/discovery.ts";
 import { escapeDiagnosticText } from "./diagnostic-text.ts";
 
 const CACHE_REMEDIATION =

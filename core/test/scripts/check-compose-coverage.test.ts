@@ -7,14 +7,14 @@ import { describe, expect, test } from "bun:test";
 import { ComposeServiceKnobKey } from "@lando/sdk/schema";
 
 import {
-  checkComposeCoverage,
-  formatComposeCoverageFailure,
-} from "../../../scripts/check-compose-coverage.ts";
-import {
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTopLevelDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
+} from "@lando/landofile/compose/dispositions";
+import {
+  checkComposeCoverage,
+  formatComposeCoverageFailure,
+} from "../../../scripts/check-compose-coverage.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 
@@ -38,7 +38,7 @@ describe("compose coverage gate", () => {
     try {
       await Promise.all([
         mkdir(join(root, "scripts"), { recursive: true }),
-        mkdir(join(root, "core/src/landofile/compose"), { recursive: true }),
+        mkdir(join(root, "landofile/src/compose"), { recursive: true }),
         mkdir(join(root, "vendor/compose"), { recursive: true }),
         symlink(resolve(repoRoot, "node_modules"), join(root, "node_modules"), "dir"),
       ]);
@@ -47,8 +47,8 @@ describe("compose coverage gate", () => {
         copyFile(join(repoRoot, "scripts/compose-schema.ts"), join(root, "scripts/compose-schema.ts")),
         copyFile(join(repoRoot, "scripts/compose-vendor.ts"), join(root, "scripts/compose-vendor.ts")),
         copyFile(
-          join(repoRoot, "core/src/landofile/compose/dispositions.ts"),
-          join(root, "core/src/landofile/compose/dispositions.ts"),
+          join(repoRoot, "landofile/src/compose/dispositions.ts"),
+          join(root, "landofile/src/compose/dispositions.ts"),
         ),
         copyFile(join(repoRoot, "vendor/compose/pin.json"), join(root, "vendor/compose/pin.json")),
         copyFile(join(repoRoot, "vendor/compose/compose-spec.json"), copiedSchema),

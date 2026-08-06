@@ -9,7 +9,7 @@ import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { unified } from "unified";
 
-import { parseLandofile } from "../core/src/landofile/parser.ts";
+import { parseLandofile } from "../landofile/src/parser.ts";
 import {
   decodeCleanupPropsEither,
   decodeGuideFrontmatterEither,

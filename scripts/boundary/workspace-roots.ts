@@ -10,7 +10,13 @@
  * Rules policing runtime behaviour in shipped code: core, the `@lando/paths`
  * and `@lando/state-store` primitive packages, and every plugin.
  */
-export const CORE_AND_PLUGIN_SOURCE_ROOTS = ["core/src", "paths/src", "state-store/src", "plugins"] as const;
+export const CORE_AND_PLUGIN_SOURCE_ROOTS = [
+  "core/src",
+  "landofile/src",
+  "paths/src",
+  "state-store/src",
+  "plugins",
+] as const;
 
 /**
  * Rules that must see every first-party package's own source tree (glob
@@ -36,6 +42,7 @@ export const ALL_PACKAGE_SOURCE_ROOTS = [
  */
 export const ALL_PACKAGE_WALK_ROOTS = [
   "core/src",
+  "landofile/src",
   "paths/src",
   "sdk/src",
   "state-store/src",

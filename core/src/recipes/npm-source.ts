@@ -13,6 +13,7 @@
  */
 import { createHash } from "node:crypto";
 
+import type { NpmRecipeSourcePort } from "@lando/landofile/ports";
 import { RecipeSourceError } from "@lando/sdk/errors";
 
 import { httpJsonFetch } from "../http-client/json-fetch.ts";
@@ -84,11 +85,6 @@ const sourceError = (input: {
   readonly remediation: string;
 }): RecipeSourceError => new RecipeSourceError(input);
 
-/**
- * Reject the obvious npm semver range forms up front. The shared parser only
- * supports exact published versions or plain dist-tags; range matching is out
- * of scope for this branch.
- */
 const isSemverRangeSpecifier = (version: string): boolean => {
   const trimmed = version.trim();
   if (trimmed === "") return false;
@@ -190,6 +186,45 @@ export const resolveNpmPackageVersion = (
   });
 };
 
+export const makeNpmRecipeSourcePort = (
+  registryClient: NpmRegistryClient = defaultNpmRegistryClient(DEFAULT_NPM_REGISTRY_URL),
+  registryUrl: string = DEFAULT_NPM_REGISTRY_URL,
+): NpmRecipeSourcePort => ({
+  resolve: async (packageSpec) => {
+    const { name, version } = parseNpmPackageSpec(packageSpec);
+    let packument: NpmPackument | undefined;
+    try {
+      packument = await registryClient.fetchPackument(name);
+    } catch (cause) {
+      throw sourceError({
+        message: `Could not fetch npm metadata for "${name}" from ${registryUrl}: ${causeMessage(cause)}`,
+        source: packageSpec,
+        kind: "registry-failed",
+        remediation: "Check the registry URL and network access, then retry lando init.",
+      });
+    }
+    if (packument === undefined) {
+      throw sourceError({
+        message: `npm package "${name}" was not found in the registry ${registryUrl}.`,
+        source: packageSpec,
+        kind: "package-not-found",
+        remediation: "Check the package name (and scope) and retry lando init.",
+      });
+    }
+    const resolvedVersion = resolveNpmPackageVersion(packument, version, packageSpec);
+    const dist = packument.versions?.[resolvedVersion]?.dist;
+    if (dist === undefined || typeof dist.tarball !== "string" || dist.tarball.trim() === "") {
+      throw sourceError({
+        message: `npm package "${name}@${resolvedVersion}" has no published tarball URL.`,
+        source: packageSpec,
+        kind: "version-not-found",
+        remediation: "Pick a published version of this package, then retry lando init.",
+      });
+    }
+    return { packageName: name, version: resolvedVersion, dist };
+  },
+});
+
 export const verifyNpmPackageDistIntegrity = (
   bytes: Uint8Array,
   dist: NpmPackageDist,
@@ -236,41 +271,11 @@ export const verifyNpmPackageDistIntegrity = (
 export const resolveNpmRecipeSource = async (
   options: ResolveNpmRecipeSourceOptions,
 ): Promise<ResolvedNpmRecipe> => {
-  const { name, version } = parseNpmPackageSpec(options.package);
   const safeSubpath = normalizeNpmSubpath(options.path, options.package);
   const registryUrl = options.registryUrl ?? DEFAULT_NPM_REGISTRY_URL;
   const client = options.registryClient ?? defaultNpmRegistryClient(registryUrl);
-
-  let packument: NpmPackument | undefined;
-  try {
-    packument = await client.fetchPackument(name);
-  } catch (cause) {
-    throw sourceError({
-      message: `Could not fetch npm metadata for "${name}" from ${registryUrl}: ${causeMessage(cause)}`,
-      source: options.package,
-      kind: "registry-failed",
-      remediation: "Check the registry URL and network access, then retry lando init.",
-    });
-  }
-  if (packument === undefined) {
-    throw sourceError({
-      message: `npm package "${name}" was not found in the registry ${registryUrl}.`,
-      source: options.package,
-      kind: "package-not-found",
-      remediation: "Check the package name (and scope) and retry lando init.",
-    });
-  }
-
-  const resolvedVersion = resolveNpmPackageVersion(packument, version, options.package);
-  const dist = packument.versions?.[resolvedVersion]?.dist;
-  if (dist === undefined || dist.tarball === undefined || dist.tarball.trim() === "") {
-    throw sourceError({
-      message: `npm package "${name}@${resolvedVersion}" has no published tarball URL.`,
-      source: options.package,
-      kind: "version-not-found",
-      remediation: "Pick a published version of this package, then retry lando init.",
-    });
-  }
+  const resolvedPackage = await makeNpmRecipeSourcePort(client, registryUrl).resolve(options.package);
+  const { packageName, version, dist } = resolvedPackage;
 
   let archiveBytes: Uint8Array;
   try {
@@ -300,9 +305,9 @@ export const resolveNpmRecipeSource = async (
 
   return {
     ...resolved,
-    id: `${name}@${resolvedVersion}`,
-    packageName: name,
-    version: resolvedVersion,
+    id: `${packageName}@${version}`,
+    packageName,
+    version,
     tarballUrl: dist.tarball,
   };
 };

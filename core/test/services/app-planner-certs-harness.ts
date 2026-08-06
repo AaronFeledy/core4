@@ -5,7 +5,7 @@ import type { LandofileShape } from "@lando/sdk/schema";
 import { AppPlanner, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider, type makeTestCertificateAuthority } from "@lando/sdk/test";
 
-import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
+import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";

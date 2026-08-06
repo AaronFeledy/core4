@@ -46,6 +46,7 @@
   "keywords": ["lando", "lando-core", "effect", "bun"],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
+    "@lando/landofile": "workspace:*",
     "@lando/paths": "workspace:*",
     "@lando/sdk": "workspace:*",
     "@lando/state-store": "workspace:*",

@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 import type { ServiceConfig, ServicePlan } from "@lando/core/schema";
 import { ServiceName } from "@lando/core/schema";
 
-import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
-import type { ComposeDispositionMatch } from "../../src/landofile/compose/rejections.ts";
+import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
+import type { ComposeDispositionMatch } from "@lando/landofile/compose/rejections";
 import {
   COMPOSE_FIXTURE_ASSERTIONS,
   type ComposePlanAssertion,

@@ -7,6 +7,10 @@ import { Effect } from "effect";
 import { CacheError } from "@lando/sdk/errors";
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
+import { findLandofilePath } from "@lando/landofile/discovery";
+import { getLocalIncludePaths } from "@lando/landofile/include-provenance";
+import { presentLandofileLayers } from "@lando/landofile/layers";
+import { detectTemplateDirective } from "@lando/landofile/template-render";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
@@ -14,11 +18,7 @@ import {
   hasSkippedUnsatisfiedVersionConstraint,
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
-} from "../config/version-constraint.ts";
-import { findLandofilePath } from "../landofile/discovery.ts";
-import { getLocalIncludePaths } from "../landofile/include-provenance.ts";
-import { presentLandofileLayers } from "../landofile/layers.ts";
-import { detectTemplateDirective } from "../landofile/template-render.ts";
+} from "@lando/landofile/version-constraint";
 import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
 import { CORE_VERSION } from "../version.ts";
 import { writeFileAtomicViaRename } from "./atomic.ts";

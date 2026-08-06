@@ -19,20 +19,16 @@ import type {
   ToolingIncludeCycleError,
 } from "@lando/sdk/errors";
 
-import { findLandofilePath } from "../../landofile/discovery.ts";
-import {
-  type IncludeUpdateReport,
-  type LandofileIncludeDeps,
-  updateLandofileIncludes,
-} from "../../landofile/includes.ts";
-import { presentLandofileLayers } from "../../landofile/layers.ts";
-import { loadLandofileFile } from "../../landofile/service.ts";
+import { findLandofilePath } from "@lando/landofile/discovery";
+import type { IncludeUpdateReport, LandofileIncludeDeps } from "@lando/landofile/includes";
+import { presentLandofileLayers } from "@lando/landofile/layers";
+import { loadLandofileFile, updateLandofileIncludes } from "../../services/landofile-live.ts";
 
 export type {
   IncludeUpdateEntry,
   IncludeUpdateReport,
   IncludeUpdateStatus,
-} from "../../landofile/includes.ts";
+} from "@lando/landofile/includes";
 
 export type AppIncludesUpdateFormat = "text" | "json";
 

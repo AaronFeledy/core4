@@ -8,8 +8,8 @@ import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 
 import { initApp } from "../../src/cli/commands/init.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { BUILTIN_RECIPE_RENDERERS, builtinRecipeIds } from "../../src/recipes/builtin/registry.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "lando-init-canonical-")));
