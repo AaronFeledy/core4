@@ -7,12 +7,14 @@ import { Effect } from "effect";
 import type { PluginManifest } from "@lando/sdk/schema";
 
 import {
+  invalidatePluginCommandCache,
   readPluginCommandCache,
   writePluginCommandCacheStrict,
 } from "../../src/cache/command-index-writer.ts";
 import { decodePluginCommandIndex } from "../../src/cache/command-index.ts";
 import { pluginCommandCachePath } from "../../src/cache/paths.ts";
 import { BUNDLED_PLUGIN_MODULES } from "../../src/plugins/generated/bundled.ts";
+import { mergeDiscoveredPlugins } from "../../src/plugins/plugin-discovery.ts";
 
 const manifest = (name: string, commands: ReadonlyArray<string>, version = "0.0.0"): PluginManifest => ({
   name: name as PluginManifest["name"],
@@ -74,6 +76,51 @@ describe("writePluginCommandCacheStrict modules default", () => {
     });
   });
 
+  test("uses the later source when plugins have the same name", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const bundled = manifest("@lando/same-name", ["bundled:command"]);
+      const user = manifest("@lando/same-name", ["user:command"]);
+      const plugins = await Effect.runPromise(
+        mergeDiscoveredPlugins(
+          [[{ source: "bundled", manifest: bundled }], [{ source: "user", manifest: user }]],
+          undefined,
+        ),
+      );
+
+      // When
+      const cachePath = await Effect.runPromise(
+        writePluginCommandCacheStrict({
+          manifests: plugins.map((plugin) => plugin.manifest),
+          cacheRoot,
+        }),
+      );
+      const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
+
+      // Then
+      expect(decoded?.commandsByPlugin).toEqual({ "@lando/same-name": ["user:command"] });
+      expect(decoded?.entries.map((entry) => entry.id)).toEqual(["user:command"]);
+    });
+  });
+
+  test("keeps the first cross-plugin command id and sorts the compiled index", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const manifests = [
+        manifest("@lando/first", ["shared:command", "z:last"]),
+        manifest("@lando/second", ["a:first", "shared:command"]),
+      ];
+
+      // When
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ manifests, cacheRoot }));
+      const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
+
+      // Then
+      expect(decoded?.entries.map((entry) => entry.id)).toEqual(["a:first", "shared:command", "z:last"]);
+      expect(decoded?.entries.filter((entry) => entry.id === "shared:command")).toHaveLength(1);
+    });
+  });
+
   test("readPluginCommandCache uses the same modules default for freshness checks", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       const modules = [fakeModule("@lando/read-default", ["read:cmd"])] as const;
@@ -94,12 +141,32 @@ describe("writePluginCommandCacheStrict modules default", () => {
 
   test("defaults to BUNDLED_PLUGIN_MODULES manifests when neither manifests nor modules is set", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
-      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot, now: () => 99 }));
-      const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
+      // Given
       const expectedNames = BUNDLED_PLUGIN_MODULES.map((module) => String(module.manifest.name));
 
+      // When
+      const cachePath = await Effect.runPromise(writePluginCommandCacheStrict({ cacheRoot, now: () => 99 }));
+      const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
+      const fresh = await Effect.runPromise(readPluginCommandCache({ cacheRoot }));
+
+      // Then
       expect(decoded?.pluginNames).toEqual(expectedNames);
+      expect(fresh?.pluginNames).toEqual(expectedNames);
       expect(pluginCommandCachePath(cacheRoot)).toBe(cachePath);
+    });
+  });
+
+  test("invalidation removes the plugin-command cache", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const modules = [fakeModule("@lando/invalidate", ["invalidate:command"])] as const;
+      await Effect.runPromise(writePluginCommandCacheStrict({ modules, cacheRoot }));
+
+      // When
+      await Effect.runPromise(invalidatePluginCommandCache({ cacheRoot }));
+
+      // Then
+      expect(await Effect.runPromise(readPluginCommandCache({ modules, cacheRoot }))).toBeNull();
     });
   });
 });

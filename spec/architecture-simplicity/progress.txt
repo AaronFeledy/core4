@@ -632,3 +632,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Mirror adjudicated acceptance criteria into the authored PRD section in the same change as `prd.json`; no automated gate currently enforces that synchronization.
 ---
+
+## [2026-08-05 21:01 CDT] - US-534
+- Settled one cache-only ownership model for bundled and external plugin command metadata while keeping the embedded command-registry manifest built-in-only; executable plugin-command dispatch remains deferred until the public plugin contract defines an implementation loader.
+- Added an isolated ship-list removal proof plus cache-level precedence, freshness, default, invalidation, and built-in-manifest contracts. Removing a command-contributing fixture plugin from the generated bundle removes its command ids from the owning cache without hand edits under `core/src/`.
+- Guide-Coverage-Skip: Internal command-metadata ownership changes no documented command capability or executable-guide workflow.
+- Verification: typecheck, lint/deprecations, guide coverage, and codegen drift passed; 63 focused and adjacent tests passed. The real generator produced 12 bundled descriptors with clean generated paths, the decoded plugin-command cache contained 12 plugins and zero current command ids, and the embedded manifest contained 85 built-ins only. `check:spec-reference` retains only the previously recorded unrelated `.omo/**` failures.
+- **Learnings for future iterations:**
+  - Keep discoverability metadata ownership separate from executable dispatch when the public plugin contract has no implementation loader; do not advertise cached ids as runnable commands.
+  - Prove ship-list removal through an isolated generated composition root and decoded cache artifact so the test cannot pass from stale shared-checkout outputs.
+---

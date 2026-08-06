@@ -91,14 +91,14 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 
 ### US-534: Bundled-plugin command metadata ownership (follow-up)
 
-**Description:** As a maintainer, decide and implement whether bundled-plugin command metadata is embedded for direct native-dispatcher consumption or follows the same validated `plugin-command` cache path as external plugins — without forcing that architecture decision through the US-528 codegen migration.
+**Description:** As a maintainer, bundled and external plugin command metadata follows the same validated `plugin-command` cache path while the embedded command-registry manifest remains built-in-only.
 
 **Acceptance Criteria:**
-- [ ] Spec (§9.7, §12.1, §17.2, §17.9) states one ownership model for bundled-versus-external plugin command metadata (embed-and-consume-directly **or** cache-only for all plugins).
-- [ ] Precedence, invalidation, and router/bootstrap composition rules are documented for the chosen model.
-- [ ] Generated inputs and consumers match the chosen model; no hand edits in `src/` required to add/remove a bundled plugin's commands from the shipping surface that owns them.
-- [ ] Proof: removing a bundled plugin that contributes commands from `core/build.config.ts` and rebuilding omits those commands from the owning artifact(s) without `src/` hand edits.
-- [ ] Tests pass; typecheck passes; lint passes
+- [x] Spec (§9.7, §12.1, §17.2, §17.9) states one ownership model for bundled-versus-external plugin command metadata (cache-only for all plugins).
+- [x] Precedence, invalidation, and router/bootstrap composition rules are documented for the chosen model.
+- [x] Generated inputs and consumers match the chosen model; no hand edits in `src/` are required to add or remove a bundled plugin's commands from the shipping surface that owns them.
+- [x] Proof: removing a bundled plugin that contributes commands from `core/build.config.ts` and rebuilding omits those commands from the owning artifact without `src/` hand edits.
+- [x] Tests pass; typecheck passes; lint passes
 
 ### US-529: Cold-start gate: no OCLIF on level-none
 
@@ -160,5 +160,5 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 
 ## Open Questions
 
-- None blocking CLI collapse. Bundled-versus-external plugin command-metadata ownership is deferred to **US-534** (human adjudication 2026-08-05, option 3) and must not reopen US-528.
+- None blocking CLI collapse. Bundled and external plugin command metadata is cache-only; executable plugin-command dispatch remains deferred until the public plugin contract defines an implementation loader.
 - Space-form flexible taxonomy is a native-parser product choice documented in US-525.
