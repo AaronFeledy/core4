@@ -151,7 +151,7 @@ engine/
 │   ├── cache/                       # Runtime cache implementations
 │   ├── providers/                   # Provider registry and planning
 │   ├── runtime/                     # Non-generated runtime wiring
-│   └── ...                          # Remaining runtime-brain modules
+│   └── ...                          # Remaining runtime modules
 └── package.json                     # Private @lando/engine seam
 landofile/
 ├── src/                             # Discovery, merge, includes, expressions, and serialization
