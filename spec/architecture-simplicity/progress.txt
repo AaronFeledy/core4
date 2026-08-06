@@ -655,3 +655,10 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Order-insensitive manifest fingerprints must be paired with an ordered identity check whenever compilation applies first-occurrence or precedence semantics.
 ---
+
+## [2026-08-05 22:23 CDT] - US-532
+- Closed the architecture-simplicity wave after confirming every implementation story and its verification contract is complete.
+- Verification: codegen:check, typecheck, lint/deprecations, package-DAG, guide coverage, and 26 focused CLI, registry, boundary-CLI, machine-output, and compiled-binary tests passed; direct relocated-binary success, tagged-failure, and root-help surfaces behaved as required. The aggregate boundary runner passed every rule except the previously recorded unrelated `.omo/**` spec-reference violations.
+- **Learnings for future iterations:**
+  - Close dispatcher waves with both schema-decoded machine-output coverage and a relocated binary driven outside the repository under isolated Lando roots.
+---
