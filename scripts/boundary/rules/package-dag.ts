@@ -18,8 +18,6 @@ const PACKAGE_DAG_SCOPE = {
   excludeTestFiles: true,
 } as const;
 
-const normalizePath = (path: string): string => path.replaceAll("\\", "/");
-
 const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
@@ -33,7 +31,7 @@ const readWorkspaceManifest = async (manifest: string, root: string): Promise<Wo
   }
   return {
     name: parsed.name,
-    path: normalizePath(relative(root, manifest)),
+    path: relative(root, manifest).replaceAll("\\", "/"),
     dependencies: dependencyNames(parsed.dependencies),
     devDependencies: dependencyNames(parsed.devDependencies),
   };

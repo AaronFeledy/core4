@@ -18,10 +18,8 @@ interface PluginEdge extends RuntimeEdge {
   readonly violation: Violation;
 }
 
-const normalizeSpecifier = (specifier: string): string => specifier.replaceAll("\\", "/");
-
 const escapesNamedPackage = (specifier: string): boolean =>
-  !specifier.startsWith(".") && normalizeSpecifier(specifier).split("/").includes("..");
+  !specifier.startsWith(".") && specifier.replaceAll("\\", "/").split("/").includes("..");
 
 export const checkPackageSourceEdges = async (
   context: ProgramContext,

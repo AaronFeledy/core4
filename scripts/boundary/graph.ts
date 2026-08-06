@@ -122,34 +122,27 @@ export const stronglyConnectedComponents = (
 ): readonly (readonly string[])[] => {
   let nextIndex = 0;
   const indices = new Map<string, number>();
-  const lowlinks = new Map<string, number>();
   const stack: string[] = [];
   const stacked = new Set<string>();
   const components: string[][] = [];
 
-  const visit = (file: string): void => {
+  const visit = (file: string): number => {
     const index = nextIndex++;
+    let lowlink = index;
     indices.set(file, index);
-    lowlinks.set(file, index);
     stack.push(file);
     stacked.add(file);
 
     for (const edge of graph.get(file) ?? []) {
       const targetIndex = indices.get(edge.to);
       if (targetIndex === undefined) {
-        visit(edge.to);
-        const targetLowlink = lowlinks.get(edge.to);
-        const fileLowlink = lowlinks.get(file);
-        if (targetLowlink !== undefined && fileLowlink !== undefined) {
-          lowlinks.set(file, Math.min(fileLowlink, targetLowlink));
-        }
+        lowlink = Math.min(lowlink, visit(edge.to));
       } else if (stacked.has(edge.to)) {
-        const fileLowlink = lowlinks.get(file);
-        if (fileLowlink !== undefined) lowlinks.set(file, Math.min(fileLowlink, targetIndex));
+        lowlink = Math.min(lowlink, targetIndex);
       }
     }
 
-    if (lowlinks.get(file) !== indices.get(file)) return;
+    if (lowlink !== index) return lowlink;
     const component: string[] = [];
     for (let member = stack.pop(); member !== undefined; member = stack.pop()) {
       stacked.delete(member);
@@ -157,6 +150,7 @@ export const stronglyConnectedComponents = (
       if (member === file) break;
     }
     components.push(component.sort());
+    return lowlink;
   };
 
   for (const file of files) if (!indices.has(file)) visit(file);
