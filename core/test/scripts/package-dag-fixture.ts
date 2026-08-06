@@ -50,7 +50,7 @@ export const createPackageDagFixture = async (): Promise<PackageDagFixture> => {
   };
 
   await Promise.all([
-    writeRoot(["core", "sdk", "container-runtime", "paths", "state-store", "plugins/*"]),
+    writeRoot(["core", "sdk", "container-runtime", "paths", "state-store", "landofile", "plugins/*"]),
     writePackage("core", "@lando/core", {
       dependencies: {
         "@lando/container-runtime": "workspace:*",
@@ -66,6 +66,13 @@ export const createPackageDagFixture = async (): Promise<PackageDagFixture> => {
     writePackage("paths", "@lando/paths", { dependencies: { "@lando/sdk": "workspace:*" } }),
     writePackage("state-store", "@lando/state-store", {
       dependencies: { "@lando/paths": "workspace:*", "@lando/sdk": "workspace:*" },
+    }),
+    writePackage("landofile", "@lando/landofile", {
+      dependencies: {
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+      },
     }),
     writePackage("plugins/provider-lando", "@lando/provider-lando", {
       dependencies: { "@lando/container-runtime": "workspace:*" },
