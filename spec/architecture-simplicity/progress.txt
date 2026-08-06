@@ -622,3 +622,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Verify architecture claim sweeps against all tracked text and classify exceptions by meaning; a fixed-file allowlist cannot prove repository-wide completion.
 ---
+
+## [2026-08-05 19:53 CDT] - US-531 Review
+- Review mirrored the adjudicated repository-wide acceptance contract into its authored PRD section and corrected remaining compiled-only dispatcher comments and dual-parity test labels without changing runtime behavior or assertions.
+- Review notes (deferred/rejected): retained explicitly historical/superseded records, development-only compatibility fixtures, negative dependency assertions, and legacy identifiers/paths because the adjudicated criteria name them as valid exceptions; the excised hardcoded prose scan and separate US-534 command-metadata scope were not restored.
+- Review notes (deferred/rejected): Bugbot, hands-on QA, security, and context mining found no additional blocker; no new prose-pinning test was added because direct repository-wide tracked-text verification is the adjudicated proof.
+- Guide-Coverage-Skip: Internal dispatcher terminology repair changes no documented command capability or executable workflow.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 42 focused CLI tests, source-PRD criterion mirroring, tracked-text classification, and diff checks passed. TypeScript LSP was clean for seven edited files, retained the pre-existing missing Bun test globals in one test, and timed out on three comment-only modules; workspace typecheck covered all final edits. `check:spec-reference` retains only the previously recorded unrelated `.omo/**` citations, and the optional no-excuse helper still cannot resolve its packaged `typescript` dependency from this project.
+- **Learnings for future iterations:**
+  - Mirror adjudicated acceptance criteria into the authored PRD section in the same change as `prd.json`; no automated gate currently enforces that synchronization.
+---
