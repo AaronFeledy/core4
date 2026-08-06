@@ -184,7 +184,7 @@ If you are looking for…
 | `lando meta x` / `lando x` command (bunx-equivalent) | 08 | §8.2.4 |
 | `lando uninstall` command | 08 + 15 | §8.2 + §17.7 |
 | `LandoCommandSpec` shape (with `namespace` and `topLevelAlias`) | 08 | §8.3 |
-| OCLIF integration policies (hooks, SIGINT, manifest, topic mapping) | 08 | §8.4 |
+| Historical OCLIF integration and native dispatch policies | 08 | §8.4 |
 | Config expressions | 07 | §7.3.1 |
 | Template engines (pluggable; `lando` default + bundled handlebars/mustache) | 07 | §7.3.2 |
 | Configuration-expression syntax (paths, filters, helpers, `${VAR}` envsubst) | 07 | §7.3.1 |
