@@ -1,0 +1,217 @@
+{
+  "project": "Lando v4 Core Seams",
+  "branchName": "docs/core-seams-prd",
+  "description": "Concurrent meta/infra wave (US-535..US-548): finish package-seams-over-architecture-by-lint. Extract @lando/landofile and @lando/engine as private workspace packages, hoist business logic out of CLI command bodies, fix the app/services→cli layering inversion, extend check:package-dag to a full workspace DAG contract, and thin the behavioral scanner suite to justified residual bans. Public @lando/core stays the single publishable package (§2.7 rejection stands). No end-user surface changes.",
+  "userStories": [
+    {
+      "id": "US-535",
+      "title": "Spec contract for the core-seams wave",
+      "description": "As a maintainer, the spec authorizes the Landofile and engine seam extractions as private workspace packages and supersedes the deferred-extraction notes without reopening the §2.7 public-split rejection.",
+      "acceptanceCriteria": [
+        "§2.7 lists @lando/landofile and @lando/engine in the private-seam allowance; public core stays one publishable package.",
+        "§3.3 source layout describes the post-wave tree; §3.1 states shell must not own business logic and runtime must not import the shell.",
+        "§13.8 states the full workspace DAG contract (every edge declared; undeclared edges fail).",
+        "ROADMAP Phase 5 deferral note marked superseded by spec/core-seams/ with historical text preserved.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "PRD-01 contract"
+    },
+    {
+      "id": "US-536",
+      "title": "check:package-dag governs the full workspace DAG",
+      "description": "As CI, check:package-dag validates every workspace package against one declared allowed-edge table instead of plugin-only rules plus an allowlist.",
+      "acceptanceCriteria": [
+        "Rule loads workspace members from root package.json and fails on any workspace-member edge (dependencies or devDependencies) missing from the declared edge table.",
+        "Edge table distinguishes runtime from dev/test edges: plugin→plugin runtime edges (provider-podman→provider-lando) and existing plugin devDependencies on @lando/core (provider-lando, service-lando test harnesses) stay legal; runtime dependencies on core from plugins or seam packages stay forbidden.",
+        "Declared runtime contract: plugins→{sdk,paths,state-store,container-runtime,landofile,declared plugin peers}; engine→{sdk,paths,state-store,container-runtime,landofile}; landofile→{sdk,paths,state-store}; core→any; nothing runtime-depends on engine except core.",
+        "Focused tests cover undeclared edge, runtime plugins→core, and seam→core failures with tagged remediation.",
+        "check:import-cycle scans the new package roots.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "PRD-01"
+    },
+    {
+      "id": "US-537",
+      "title": "Scaffold @lando/landofile workspace package",
+      "description": "As a maintainer, a private @lando/landofile package exists, modeled on @lando/state-store, wired into the workspace, tsconfig references, and the US-536 edge table.",
+      "acceptanceCriteria": [
+        "Package scaffolded; root workspaces + tsconfig references updated; bun install run.",
+        "Edges limited to sdk/paths/state-store and enforced by check:package-dag.",
+        "No public surface change: the @lando/core/landofile entry point (core/src/landofile/index.ts today) is untouched until US-538 moves the domain behind it.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-538",
+      "title": "Move Landofile domain code and invert sideways dependencies",
+      "description": "As a maintainer, discovery, merge, includes, and serializer glue move into @lando/landofile with reaches into cache/http-client/recipes/composition-root inverted into injected ports.",
+      "acceptanceCriteria": [
+        "core/src/landofile/** moves; core keeps only §2.7 re-export shims.",
+        "Includes fetching uses an injected HTTP/downloader capability; no core/src/http-client import remains in the package.",
+        "Cache paths, recipe sources, and bundled-plugin metadata arrive via paths/config, a core-provided port, and injected input respectively.",
+        "@lando/core/landofile entry point now re-exports from the package with no public API change; schema snapshot and API report gates unchanged.",
+        "LandofileService tag stays sdk-published; the package exports implementation functions and port interfaces while core keeps the Live layer wiring ports; bootstrap-layer generator updated in the same change if dependency tables change, codegen:check drift-clean.",
+        "Landofile unit tests move with the code and run in-package with positive counts.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-539",
+      "title": "App resolution leaves the CLI",
+      "description": "As a maintainer, loadUserLandofile and the ResolvedAppTarget helpers move from core/src/cli/app-resolution.ts onto the Landofile seam, killing the app→cli and services→cli inversions.",
+      "acceptanceCriteria": [
+        "User-app resolution lives on the Landofile seam; cli/app-resolution.ts deleted or reduced to a CLI-only re-export.",
+        "core/src/app/resolve.ts and core/src/services/command-registry.ts import nothing under core/src/cli/**; core/src/app/handle.ts drops its cli/app-resolution import (its cli/commands/logs.ts type import and operations.ts command imports are US-541 burn-down).",
+        "AGENTS.md guidance updated to the new resolution home; commands keep one shared resolution path.",
+        "Residual layering check fails NEW core/src/{app,services}→core/src/cli imports; known surviving edges pinned in an explicit burn-down allowlist that US-541 empties and deletes.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "PRD-02"
+    },
+    {
+      "id": "US-540",
+      "title": "Scaffold @lando/engine workspace package",
+      "description": "As a maintainer, a private @lando/engine package exists, wired into the workspace, tsconfig references, and the US-536 edge table.",
+      "acceptanceCriteria": [
+        "Package scaffolded; root workspaces + tsconfig references updated; bun install run.",
+        "Edges limited to sdk/paths/state-store/container-runtime/landofile; plugins cannot import engine; engine cannot import core or plugins.",
+        "§2.7 private-seam allowance matches the shipped package name.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-541",
+      "title": "Hoist app-lifecycle logic out of CLI command bodies",
+      "description": "As a maintainer, start/stop/restart/rebuild/destroy/exec/logs/info/config operations hoist out of CLI command bodies into core-internal engine-staging modules consumed by core/src/app/** and thin CLI adapters; US-542 relocates the staging modules into @lando/engine unchanged.",
+      "acceptanceCriteria": [
+        "Each operation consumed by core/src/app/operations.ts moves out of cli/commands/*.ts into a core-internal engine-staging module (e.g. core/src/operations/**) with a typed Effect signature and Scope-owned resources; staging modules must not import core/src/cli/** (engine cannot host them before US-542 moves the planner).",
+        "core/src/app/operations.ts and core/src/app/handle.ts (including the LogsAppLine type home) consume staging modules only; zero core/src/{app,services}→core/src/cli imports remain; the US-539 burn-down allowlist is emptied and deleted.",
+        "CLI command files reduce to decode → resolve → invoke staged operation → render; diffstat shows moved not duplicated logic.",
+        "Library API contract suite passes; machine-output transcripts identical or reviewed diffs recorded.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-542",
+      "title": "Move runtime service modules into @lando/engine",
+      "description": "As a maintainer, the runtime-brain directories (services, subsystems, lifecycle, app, US-541 staging, cache, managed-file, data-mover, scratch-app, global-app, downloader, http-client, telemetry, deprecation, redaction, tunnel, providers, non-generated runtime/plugins, plus closure-pulled small modules) move into @lando/engine together with the bootstrap/composition codegen retarget, as one change.",
+      "acceptanceCriteria": [
+        "Import-closure rule: anything a moved module statically imports either moves with it, is a seam package, or is inverted to an sdk-published tag/injected input; the engine package typechecks with zero @lando/core imports.",
+        "Confirmed generated-import inversions land with the move: services/bundled-global-service-loader.ts, subsystems/proxy/registry.ts, lifecycle/subscribers.ts, cache/command-index-writer.ts, providers/registry.ts stop importing core/src/{plugins,runtime}/generated/** and receive injected tables wired by the core-owned composition root.",
+        "core/src/interaction/** stays in core (imports recipe prompt machinery; input peer of renderer/shell); engine reaches InteractionService only via its sdk-published tag.",
+        "codegen:bootstrap-layers and codegen:bundled-plugins retargeted in the same change; codegen:check drift-clean at story close (a split would leave a state that cannot typecheck).",
+        "Core retains shell code only: cli, mcp, interaction, recipes, docs, testing, bin, generated composition root and bootstrap layers, §2.7 entry-point shims.",
+        "Plugin- and embedder-facing tags remain sdk-published or core-re-exported with unchanged specifiers.",
+        "Moved tests run in-package with positive counts; total test inventory reconciles.",
+        "package-dag, import-cycle, and the full boundary suite pass with scanner tiers extended to engine/src/** and landofile/src/**.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-543",
+      "title": "Composition seam and performance budgets hold",
+      "description": "As a maintainer, after the US-542 move the core-owned generated composition root and bootstrap layers are the only meeting point of engine, plugins, and shell, and cold-start/hot-path budgets hold.",
+      "acceptanceCriteria": [
+        "Generated composition root and bootstrap layers are the only modules importing both @lando/engine and plugin packages; engine has zero composition-root imports — asserted by a focused test or thin boundary check.",
+        "Cold-start files stay free of static Effect/renderer/plugin imports; startup benchmarks show no regression vs bench-baselines.json.",
+        "bench:tooling-hot-path holds budget.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-544",
+      "title": "Public surface holds: entry points, embedding, compiled binary",
+      "description": "As an embedder and CLI user, nothing observable changes: @lando/core entry points re-export engine surfaces, the compiled binary builds, and relocated-binary smoke passes.",
+      "acceptanceCriteria": [
+        "Every §2.7 entry point resolves to the same exported names; API report/schema snapshot gates show no contract diff.",
+        "makeLandoRuntime/openLandoRuntime/resolveApp behave identically; library API and plugin-abstraction contract suites pass.",
+        "bun build --compile succeeds for core/bin/lando.ts; relocated-binary smoke passes; no top-level await or import.meta.url reliance introduced.",
+        "Publish path (scripts/prepare-npm-dev-packages.ts + release workflow) handles the new workspace deps like @lando/paths/@lando/state-store so the library install form of @lando/core resolves.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "PRD-03"
+    },
+    {
+      "id": "US-545",
+      "title": "Boundary-rule inventory v2",
+      "description": "As a maintainer, every registered boundary rule is classified keep/thin/delete against the post-seam workspace, recorded where the rules live.",
+      "acceptanceCriteria": [
+        "Inventory records per rule: what it bans, which package edge now carries ownership, verdict, and justification.",
+        "Purely behavioral bans explicitly marked (console.*, hand-rolled retry, ad-hoc redaction, managed-file writes, libpod prefix, network egress).",
+        "US-539 residual layering check dispositioned.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-546",
+      "title": "Thin or retire seam-owned rules",
+      "description": "As CI, rules whose ownership constraint is now unrepresentable in the workspace DAG stop scanning for it; only behavioral residue remains.",
+      "acceptanceCriteria": [
+        "Every thin/delete verdict executed; deleted gates leave alias notes; thinned rules keep behavioral bans only.",
+        "Scanner tier lists consistent across core/engine/landofile/paths/state-store/plugins with owning-package exclusions preserved.",
+        "Net scanner LOC decreases; before/after recorded in progress notes.",
+        "check-boundaries --all passes; CI workflows and ci-runbook reference no deleted gate without alias.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-547",
+      "title": "New-gate bar",
+      "description": "As a future maintainer, adding a new check:*-boundary scanner requires a recorded justification that a package seam cannot carry the constraint.",
+      "acceptanceCriteria": [
+        "Root AGENTS.md and §13.8 state the seam-first bar for new gates.",
+        "Boundary rule registration carries a required justification field satisfied by the US-545 inventory.",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "PRD-04"
+    },
+    {
+      "id": "US-548",
+      "title": "Wave closure",
+      "description": "As the wave owner, every story's verification contract is re-run green from a clean worktree and the closure is recorded.",
+      "acceptanceCriteria": [
+        "All US-535..US-547 passes:true; index verification contract green: codegen:check, typecheck, lint/deprecations, boundary suite, workspace package-dag, guide coverage, contract suites, benchmarks, compiled-binary + relocated smoke.",
+        "Focused spot-checks use path filters with positive test counts.",
+        "Progress notes record scanner-LOC delta, core-LOC delta, and import-edge assertions (no engine→shell, no app/services→cli).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "PRD-04 closure"
+    }
+  ]
+}

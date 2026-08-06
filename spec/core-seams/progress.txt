@@ -1,0 +1,16 @@
+Branch: docs/core-seams-prd
+Source PRDs: spec/core-seams/prd-core-seams-*.md
+Spec source of truth: spec/02,03,07,09,13,15 (§2.7, §3.1–§3.4, §7, §16.2, §13.8, §17.2) + ROADMAP (deferred-extraction supersession)
+Origin: architecture review (2026-08-06) — @lando/core god package; app/services→cli layering inversion (core/src/app/operations.ts imports cli/commands/*); ~24 behavioral scanners simulate seams the package graph should carry
+
+## Conventions
+
+- Story IDs US-535..US-548; priority order is execution order.
+- Internal/infra only — Guide Coverage None on every PRD.
+- Do not touch unrelated dirty working-tree files from other waves.
+- Behavior-preserving moves: no command semantics, event sequences, cache formats, or public entry-point changes.
+- US-541 hoists into core-internal staging (engine package cannot host logic before US-542 moves the planner); US-542 lands with its codegen retarget as one change — expect the wave's largest diff there.
+
+## Codebase Patterns
+
+- (accumulates during execution)
