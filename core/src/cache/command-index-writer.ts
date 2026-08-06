@@ -496,6 +496,7 @@ const readPluginCommandCacheTask = async (
   options: ReadPluginCommandCacheTaskOptions = {},
 ): Promise<PluginCommandIndexPayload | null> => {
   const manifests = resolvePluginManifests(options);
+  const pluginNames = options.pluginNames ?? manifests.map((manifest) => manifest.name);
   const cacheRoot = options.cacheRoot ?? resolveUserCacheRoot();
   const cachePath = pluginCommandCachePath(cacheRoot);
   const pluginListSha = derivePluginCommandPluginListSha(manifests);
@@ -513,6 +514,7 @@ const readPluginCommandCacheTask = async (
     }
     if (payload.pluginListSha !== pluginListSha) return null;
     if (JSON.stringify(payload.commandsByPlugin) !== JSON.stringify(commandsByPlugin)) return null;
+    if (!pathsEqual(payload.pluginNames, pluginNames)) return null;
     return payload;
   } catch (cause) {
     if (isMissingFile(cause)) return null;

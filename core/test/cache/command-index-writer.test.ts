@@ -76,14 +76,44 @@ describe("writePluginCommandCacheStrict modules default", () => {
     });
   });
 
-  test("uses the later source when plugins have the same name", async () => {
+  test("regenerates the cache when manifest order changes on the same cache root", async () => {
+    await withTempCacheRoot(async (cacheRoot) => {
+      // Given
+      const first = manifest("@lando/first", ["first:command"]);
+      const second = manifest("@lando/second", ["second:command"]);
+      await Effect.runPromise(
+        writePluginCommandCacheStrict({ manifests: [first, second], cacheRoot, now: () => 1 }),
+      );
+
+      // When
+      const cachePath = await Effect.runPromise(
+        writePluginCommandCacheStrict({ manifests: [second, first], cacheRoot, now: () => 2 }),
+      );
+      const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
+
+      // Then
+      expect(decoded?.pluginNames).toEqual(["@lando/second", "@lando/first"]);
+      expect(decoded?.generatedAtMs).toBe(2);
+    });
+  });
+
+  test("uses explicit precedence for the same plugin name across every canonical source", async () => {
     await withTempCacheRoot(async (cacheRoot) => {
       // Given
       const bundled = manifest("@lando/same-name", ["bundled:command"]);
+      const system = manifest("@lando/same-name", ["system:command"]);
       const user = manifest("@lando/same-name", ["user:command"]);
+      const app = manifest("@lando/same-name", ["app:command"]);
+      const explicit = manifest("@lando/same-name", ["explicit:command"]);
       const plugins = await Effect.runPromise(
         mergeDiscoveredPlugins(
-          [[{ source: "bundled", manifest: bundled }], [{ source: "user", manifest: user }]],
+          [
+            [{ source: "bundled", manifest: bundled }],
+            [{ source: "system", manifest: system }],
+            [{ source: "user", manifest: user }],
+            [{ source: "app", manifest: app }],
+            [{ source: "explicit", manifest: explicit }],
+          ],
           undefined,
         ),
       );
@@ -98,8 +128,8 @@ describe("writePluginCommandCacheStrict modules default", () => {
       const decoded = decodePluginCommandIndex(new Uint8Array(await readFile(cachePath)));
 
       // Then
-      expect(decoded?.commandsByPlugin).toEqual({ "@lando/same-name": ["user:command"] });
-      expect(decoded?.entries.map((entry) => entry.id)).toEqual(["user:command"]);
+      expect(decoded?.commandsByPlugin).toEqual({ "@lando/same-name": ["explicit:command"] });
+      expect(decoded?.entries.map((entry) => entry.id)).toEqual(["explicit:command"]);
     });
   });
 
