@@ -45,3 +45,18 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Guide-Coverage-Skip: US-536 changes an internal CI boundary policy only; no user-visible command or guide-owned contract changed.
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, 38 focused and adjacent tests, package-DAG, and import-cycle passed; the full boundary runner retained only the pre-existing `.omo/**` spec-reference violations outside this story.
 ---
+
+## 2026-08-06 04:51 CDT - US-537
+- Added the private `@lando/landofile` workspace scaffold with isolated package scripts, exact sdk/paths/state-store dependencies, root project wiring, and synchronized package-DAG fixtures while leaving the public core Landofile implementation unchanged.
+- Verification: typecheck and lint/deprecations passed; 20 focused and adjacent tests passed with positive counts; package build, package-DAG, import-cycle, and direct Bun package-resolution checks passed.
+- **Learnings for future iterations:**
+  - Keep the scaffold entry point empty until the domain move so package creation cannot accidentally change the existing `@lando/core/landofile` runtime surface.
+  - Update synthetic workspace fixtures alongside root workspace membership; the real DAG gate and its fixture should describe the same package set.
+---
+
+## 2026-08-06 05:15 CDT - US-537 Review
+- Added the Landofile package test to CI unit-shard discovery and locked the coverage with a regression assertion so the scaffold cannot pass PR checks without exercising its seam contract.
+- Review notes (deferred/rejected): deferred release-package inventory and workflow wiring to US-538, when published core first consumes the private package; rejected a generated CI workflow edit because the existing workflow resolves shard contents dynamically from `scripts/test-shards.ts`.
+- Guide-Coverage-Skip: US-537 changes private workspace and CI test plumbing only; no user-visible command, Landofile behavior, or guide-owned contract changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, package build, 30 focused and adjacent tests, package-DAG, import-cycle, codegen drift, and direct shard discovery passed.
+---

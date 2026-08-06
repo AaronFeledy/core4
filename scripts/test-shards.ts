@@ -26,6 +26,7 @@ export const unitShardCommands = (): ReadonlyArray<string> =>
 
 const INCLUDE_GLOBS: ReadonlyArray<string> = [
   "core/test/**/*.test.ts",
+  "landofile/test/**/*.test.ts",
   "sdk/test/**/*.test.ts",
   "plugins/*/test/**/*.test.ts",
 ];
