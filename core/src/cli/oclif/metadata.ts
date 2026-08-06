@@ -106,11 +106,6 @@ export abstract class Command {
 const isCommandClass = (value: unknown): value is CommandClass =>
   typeof value === "function" && typeof Reflect.get(value, "run") === "function";
 
-export type Manifest = {
-  readonly commands: Readonly<Record<string, Readonly<Record<string, unknown>>>>;
-  readonly version: string;
-};
-
 type HookCommand = {
   readonly load: () => Promise<CommandClass>;
 };

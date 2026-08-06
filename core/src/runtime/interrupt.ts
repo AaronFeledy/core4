@@ -2,7 +2,7 @@
  * Signal handling — bridge `SIGINT` (and `SIGTERM` where appropriate) to
  * `Effect.interrupt` on the running fiber.
  *
- * The OCLIF entrypoint installs a signal handler that calls
+ * The native CLI dispatcher installs a signal handler that calls
  * `Effect.interrupt` on the running fiber. Providers' resource scopes
  * finalize automatically.
  *

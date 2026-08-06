@@ -84,9 +84,9 @@ export const CODEGEN_CATALOG = [
     workspace: "repo",
   },
   {
-    id: "oclif-manifest",
+    id: "command-registry-manifest",
     ownership: "derived",
-    script: "build-oclif-manifest.ts",
+    script: "build-command-registry-manifest.ts",
     workspace: "core",
   },
   {

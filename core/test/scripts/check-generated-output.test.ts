@@ -80,7 +80,7 @@ describe("generated output boundary lint gate", () => {
     const root = await makeFixtureRoot();
     try {
       // Given: bannered source at an explicit allowlisted path.
-      await write(root, "core/src/cli/oclif/compiled-manifest.ts", `${BANNER}export const manifest = {};\n`);
+      await write(root, "core/src/recipes/bundled.ts", `${BANNER}export const recipes = {};\n`);
 
       // When: the generated-output boundary is checked.
       const result = await checkGeneratedOutput({ root });

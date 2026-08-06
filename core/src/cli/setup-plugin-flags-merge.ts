@@ -1,17 +1,17 @@
 /**
  * Merge plugin-contributed `setup.flags` into the `meta:setup` flag surface.
  *
- * This is a pure module: it converts each `PluginSetupFlagContribution` to an
- * OCLIF flag and rejects any name that collides with a built-in setup flag or
+ * This is a pure module: it converts each `PluginSetupFlagContribution` to a
+ * CLI flag and rejects any name that collides with a built-in setup flag or
  * with another plugin's contribution. Collisions surface as the tagged
  * `SetupFlagCollisionError` so the failure is machine-readable rather than a
  * silent last-writer-wins overwrite.
  */
 import type { PluginSetupFlagContribution } from "@lando/sdk/schema";
 
-import { SetupFlagCollisionError, findSetupFlagCollision } from "../../plugins/setup-flags.ts";
+import { SetupFlagCollisionError, findSetupFlagCollision } from "../plugins/setup-flags.ts";
 import type { BundledSetupFlagContribution } from "./generated/setup-plugin-flags.ts";
-import { type BooleanFlag, Flags, type OptionFlag } from "./metadata.ts";
+import { type BooleanFlag, Flags, type OptionFlag } from "./oclif/metadata.ts";
 
 export { SetupFlagCollisionError };
 

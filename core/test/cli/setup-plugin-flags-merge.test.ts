@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { BundledSetupFlagContribution } from "../../src/cli/oclif/generated/setup-plugin-flags.ts";
-import {
-  SetupFlagCollisionError,
-  mergeSetupPluginFlags,
-} from "../../src/cli/oclif/setup-plugin-flags-merge.ts";
+import type { BundledSetupFlagContribution } from "../../src/cli/generated/setup-plugin-flags.ts";
+import { SetupFlagCollisionError, mergeSetupPluginFlags } from "../../src/cli/setup-plugin-flags-merge.ts";
 
 const BUILT_IN_NAMES = ["yes", "no-interactive", "provider", "skip-provider", "host-proxy"] as const;
 

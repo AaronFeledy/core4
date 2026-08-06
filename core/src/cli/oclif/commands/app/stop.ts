@@ -5,7 +5,7 @@ import {
   stopApp,
 } from "../../../commands/stop.ts";
 /**
- * `lando app:stop` — OCLIF wrapper.
+ * `lando app:stop` — native command metadata adapter.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 

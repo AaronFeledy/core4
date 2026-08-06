@@ -7,7 +7,7 @@ import {
   renderInfoAppResult,
 } from "../../../commands/info.ts";
 /**
- * `lando app:info` — OCLIF wrapper.
+ * `lando app:info` — native command metadata adapter.
  */
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 

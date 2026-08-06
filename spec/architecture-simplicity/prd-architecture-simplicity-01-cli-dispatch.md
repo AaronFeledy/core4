@@ -81,12 +81,24 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 
 ### US-528: Codegen: command registry manifest for embed
 
-**Description:** As a releaser, the binary embeds a registry-derived command manifest; oclif-manifest generator is removed or repurposed.
+**Description:** As a releaser, the binary embeds a **built-in-only** registry-derived command manifest; oclif-manifest generator is removed or repurposed. Scope is the OCLIF sidecar replacement — not bundled-plugin command composition (that is US-534).
 
 **Acceptance Criteria:**
-- [ ] §17.2 catalog row updated; build embeds registry manifest.
-- [ ] No oclif.manifest.json required for shipping dispatch.
-- [ ] Tests pass; typecheck passes; lint passes
+- [x] §17.2 catalog row updated for built-in `builtInCommandEntries` only; build embeds registry manifest.
+- [x] No oclif.manifest.json required for shipping dispatch.
+- [x] Bundled-plugin command metadata is **not** required in the embedded manifest (owned by `plugin-command` cache / US-534).
+- [x] Tests pass; typecheck passes; lint passes
+
+### US-534: Bundled-plugin command metadata ownership (follow-up)
+
+**Description:** As a maintainer, bundled and external plugin command metadata follows the same validated `plugin-command` cache path while the embedded command-registry manifest remains built-in-only.
+
+**Acceptance Criteria:**
+- [x] Spec (§9.7, §12.1, §17.2, §17.9) states one ownership model for bundled-versus-external plugin command metadata (cache-only for all plugins).
+- [x] Precedence, invalidation, and router/bootstrap composition rules are documented for the chosen model.
+- [x] Generated inputs and consumers match the chosen model; no hand edits in `src/` are required to add or remove a bundled plugin's commands from the shipping surface that owns them.
+- [x] Proof: removing a bundled plugin that contributes commands from `core/build.config.ts` and rebuilding omits those commands from the owning artifact without `src/` hand edits.
+- [x] Tests pass; typecheck passes; lint passes
 
 ### US-529: Cold-start gate: no OCLIF on level-none
 
@@ -111,8 +123,12 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 
 **Acceptance Criteria:**
 - [ ] core/AGENTS.md CLI section describes single dispatcher.
+- [ ] Current-facing maintainer/user guidance, public/package metadata, exported diagnostics/comments, guide proof text, and native-path test labels describe one native dispatcher; retained OCLIF references are limited to historical/superseded records, genuine development-only compatibility fixtures, negative dependency assertions, or legacy identifiers/paths.
+- [ ] A repository-wide tracked-text search for claims that OCLIF is the default/shipping framework, @lando/core/oclif is public, or source/compiled/runCompiledCli paths require dual parity returns only those explicit exceptions; verification must not rely on a hardcoded file allowlist.
 - [ ] rg for 'dual dispatch is permanent' returns only historical/superseded notes.
 - [ ] Tests pass; typecheck passes; lint passes
+
+**Notes:** Adjudication 2026-08-05: US-531 owns the repository-wide current-facing claim sweep; direct tracked-text verification is required, but a committed fixed-file prose scan is not.
 
 ## Functional Requirements
 
@@ -144,4 +160,5 @@ Collapse dual CLI dispatch. Today source mode routes through `@oclif/core` `exec
 
 ## Open Questions
 
-- None blocking; space-form flexible taxonomy is a native-parser product choice documented in US-525.
+- None blocking CLI collapse. Bundled and external plugin command metadata is cache-only; executable plugin-command dispatch remains deferred until the public plugin contract defines an implementation loader.
+- Space-form flexible taxonomy is a native-parser product choice documented in US-525.

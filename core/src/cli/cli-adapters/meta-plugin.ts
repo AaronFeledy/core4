@@ -6,6 +6,7 @@ import type { RedactionService } from "../../redaction/service.ts";
 
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
+import { renderMetaVersion } from "../../version.ts";
 import { builtInCommandEntries } from "../built-in-command-registry.ts";
 import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../commands/bun.ts";
 import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config.ts";
@@ -498,11 +499,7 @@ export const runMetaPluginTrustAuthoringRoot = async (argv: ReadonlyArray<string
 export const runMetaVersion = async (): Promise<void> => {
   setActiveCommandId("meta:version");
   resetActiveCommandInvocation("meta:version", []);
-  await runCompiledCommand(
-    versionOperation,
-    Layer.empty,
-    (result) => `@lando/core ${result.core} (bun ${result.bun} on ${result.platform})`,
-  );
+  await runCompiledCommand(versionOperation, Layer.empty, renderMetaVersion);
 };
 
 export const runMetaRecipesList = (): Promise<void> =>

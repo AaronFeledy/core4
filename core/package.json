@@ -1,6 +1,6 @@
 {
   "name": "@lando/core",
-  "description": "Lando v4 core: runtime, planner, OCLIF adapter, and library API.",
+  "description": "Lando v4 core: runtime, planner, native CLI dispatcher, and library API.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
@@ -40,11 +40,10 @@
     "./testing": { "types": "./src/testing/index.ts", "import": "./src/testing/index.ts" },
     "./cli": { "types": "./src/cli/index.ts", "import": "./src/cli/index.ts" },
     "./cli/operations": { "types": "./src/cli/operations.ts", "import": "./src/cli/operations.ts" },
-    "./oclif": { "types": "./src/cli/oclif/index.ts", "import": "./src/cli/oclif/index.ts" },
     "./paths": { "types": "./src/config/paths.ts", "import": "./src/config/paths.ts" }
   },
-  "files": ["./bin", "./dist", "!./dist/**/*.tsbuildinfo", "./src", "./oclif.manifest.json"],
-  "keywords": ["lando", "lando-core", "oclif", "effect", "bun"],
+  "files": ["./bin", "./dist", "!./dist/**/*.tsbuildinfo", "./src"],
+  "keywords": ["lando", "lando-core", "effect", "bun"],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "@lando/paths": "workspace:*",
@@ -72,41 +71,6 @@
     "flexibleTaxonomy": true,
     "additionalHelpFlags": ["-h"],
     "additionalVersionFlags": ["-v"],
-    "topics": {
-      "app": {
-        "description": "Operate on the current Lando app."
-      },
-      "app:cache": {
-        "description": "App plan, tooling graph, and command index cache."
-      },
-      "app:config": {
-        "description": "Read/write the current app's Landofile."
-      },
-      "app:includes": {
-        "description": "Manage the app's includes lockfile."
-      },
-      "apps": {
-        "description": "Discover and operate across Lando apps on the host."
-      },
-      "meta": {
-        "description": "Operate on Lando itself: config, plugins, host setup."
-      },
-      "meta:events": {
-        "description": "Lifecycle event diagnostics."
-      },
-      "meta:plugin": {
-        "description": "Plugin install, remove, and authoring commands."
-      },
-      "meta:recipes": {
-        "description": "Inspect canonical recipes shipped with Lando."
-      },
-      "apps:scratch": {
-        "description": "Short-lived scratch apps (Phase 3 Beta deliverable)."
-      },
-      "meta:global": {
-        "description": "Manage the host-level global Lando app (Phase 3 Beta deliverable)."
-      }
-    },
     "hooks": {
       "command_not_found": {
         "target": "./src/cli/oclif/hooks/command_not_found.ts",
@@ -123,12 +87,11 @@
     "build:bin": "bun build ./bin/lando.ts --outdir ./dist --target bun",
     "build:host-proxy-shim": "bun build ./src/subsystems/host-proxy/shim-bin.ts --compile --target=bun-linux-x64 --outfile ./dist/host-proxy/linux-x64/lando-shim && bun build ./src/subsystems/host-proxy/shim-bin.ts --compile --target=bun-linux-arm64 --outfile ./dist/host-proxy/linux-arm64/lando-shim",
     "build:log-file-helper": "bun build ../container-runtime/src/log-file-helper-bin.ts --compile --target=bun-linux-x64 --outfile ./dist/log-file-access/linux-x64/lando-log-file-helper && bun build ../container-runtime/src/log-file-helper-bin.ts --compile --target=bun-linux-arm64 --outfile ./dist/log-file-access/linux-arm64/lando-log-file-helper",
-    "build:manifest": "bun run ../scripts/build-oclif-manifest.ts",
+    "build:manifest": "bun run ../scripts/build-command-registry-manifest.ts",
     "build:compile": "bun run ../scripts/build-compiled-binary.ts --outfile ./dist/lando --minify --sourcemap=external && bun run ../scripts/sanitize-compiled-binary.ts ./dist/lando",
-    "clean": "rm -rf dist oclif.manifest.json .tsbuildinfo",
+    "clean": "rm -rf dist .tsbuildinfo",
     "test": "bun test",
     "typecheck": "tsc -b",
-    "postpack": "rm -f oclif.manifest.json",
-    "prepack": "bunx oclif manifest"
+    "prepack": "bun run build:manifest"
   }
 }

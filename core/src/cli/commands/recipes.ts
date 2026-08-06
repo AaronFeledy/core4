@@ -20,6 +20,7 @@ import {
 } from "@lando/sdk/errors";
 import type { PromptChoice, RecipeManifest } from "@lando/sdk/schema";
 
+import { renderRecipeCatalog } from "../../recipes/catalog-render.ts";
 import { getRecipeCatalog } from "../../recipes/catalog.ts";
 import { parseRecipe } from "../../recipes/manifest/service.ts";
 import { resolveRecipeRef } from "../../recipes/source.ts";
@@ -43,12 +44,8 @@ export const recipesList: Effect.Effect<RecipesListResult> = Effect.sync(() => (
   })),
 }));
 
-export const renderRecipesListResult = (result: RecipesListResult): string => {
-  if (result.recipes.length === 0) return "No bundled recipes.";
-  const width = Math.max(...result.recipes.map((entry) => entry.id.length));
-  const lines = result.recipes.map((entry) => `${entry.id.padEnd(width)}  ${entry.title}`);
-  return [`Bundled recipes (${result.recipes.length}):`, ...lines].join("\n");
-};
+export const renderRecipesListResult = (result: RecipesListResult): string =>
+  renderRecipeCatalog(result.recipes);
 
 export const RecipesPromptSchema = Schema.Struct({
   name: Schema.String,

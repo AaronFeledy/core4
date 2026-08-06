@@ -1,8 +1,8 @@
 /**
- * OCLIF `init` hook — Lando bootstrap.
+ * Legacy-compatible init adapter — Lando bootstrap.
  *
- * The init hook runs after OCLIF has resolved the command id and before the
- * command class is instantiated. It loads the resolved command class, reads
+ * The init adapter runs after command metadata resolves the command id and
+ * before the command class is instantiated. It loads the resolved class, reads
  * its declared bootstrap level, builds the matching Lando runtime Layer, and
  * stores that Layer for `LandoCommandBase.runEffect()` to provide to the
  * command's Effect program.
@@ -36,7 +36,7 @@ const readBootstrapLevel = (CommandClass: LandoCommandClass): BootstrapLevelType
   const decoded = Schema.decodeUnknownEither(BootstrapLevel)(CommandClass.bootstrap);
 
   if (Either.isLeft(decoded)) {
-    throw bootstrapError("OCLIF command is missing a valid static bootstrap declaration.", decoded.left);
+    throw bootstrapError("Command is missing a valid static bootstrap declaration.", decoded.left);
   }
 
   return decoded.right;

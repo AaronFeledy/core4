@@ -1,7 +1,7 @@
 /**
- * OCLIF `postrun` hook.
+ * Legacy-compatible postrun adapter.
  *
- * Bridges OCLIF `postrun` to the Lando event service.
+ * Bridges postrun compatibility metadata to the Lando event service.
  *
  * Status: stub.
  */

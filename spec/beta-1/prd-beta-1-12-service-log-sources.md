@@ -8,6 +8,8 @@ This PRD implements the §6.14 primitive. A **log source** is a declarative stat
 
 The scope is deliberately narrow. The common infrastructure case is already covered by upstream images that redirect to stdout/stderr, so this primitive targets the real long tail (framework/app logs, enabled DB slow/general logs, legacy daemons) without a sidecar collector, without an in-core log parser, and without making raw container `tail -F` the semantic contract. The primitive was written into the normative spec first (§6.14, §5.3, §5.4, §10.9); when this PRD and a spec part disagree, the spec part wins.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/06-services.md`](../06-services.md) §6.14 the `LogSource` schema, `LogChunk.source`, the two reification strategies, follow semantics, redaction boundary, and catalog defaults; §6.2 the `services.<name>.logs:` (`LogSourceInput`) tuning surface; §6.11.0.1 the service-type conformance bullet for `logSources`; §6.11 `ServiceTypeResolution.logSources`; §6.13 build orchestration (redirect reification).
@@ -16,7 +18,7 @@ The scope is deliberately narrow. The common infrastructure case is already cove
 - [`spec/03-architecture.md`](../03-architecture.md) §3.7 `RedactionService` single-implementation boundary; §3.6 cancellation budget; §3.4 `Renderer` output boundary.
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.2.5 `app:logs` flags, §8.11 machine-output/StreamFrame seam for streaming commands.
 - [`sdk/AGENTS.md`](../../sdk/AGENTS.md) additive-export discipline, `sdk/API_COMPATIBILITY.md`, and `codegen:schema-snapshot`; [`sdk/src/services/provider.ts`](../../sdk/src/services/provider.ts) current `LogChunk` / `LogOptions` / `ProviderCapabilities` / `RuntimeProviderShape`.
-- [`core/AGENTS.md`](../../core/AGENTS.md) renderer, redaction, probe, and dual-dispatch boundary gates; [`core/src/cli/commands/logs.ts`](../../core/src/cli/commands/logs.ts) current `serviceLogs`-gated `logs` command.
+- [`core/AGENTS.md`](../../core/AGENTS.md) renderer, redaction, probe, and single-native-dispatch boundary rules; [`core/src/cli/commands/logs.ts`](../../core/src/cli/commands/logs.ts) current `serviceLogs`-gated `logs` command.
 
 ## Goals
 

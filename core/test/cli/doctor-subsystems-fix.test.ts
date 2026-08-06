@@ -242,7 +242,7 @@ describe("doctor --fix recovery", () => {
     expect(text).toContain("fixOutcome: skipped-manual");
   });
 
-  test("OCLIF flag mapping forwards --fix into doctor options for dual-dispatch parity", () => {
+  test("native flag mapping forwards --fix into doctor options", () => {
     expect(inputDoctorOptions({ flags: { fix: true } })).toEqual({ fix: true });
     expect(inputDoctorOptions({ flags: { provider: "docker", fix: true } })).toEqual({
       flagProviderId: "docker",

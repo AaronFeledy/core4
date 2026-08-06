@@ -14,9 +14,8 @@
  *     diagnostic fields; same shape that the renderer Layer would emit
  *     if `message.error` were published through `EventService`.
  *
- * Both source OCLIF (`LandoCommandBase.runEffect`) and the compiled
- * `$bunfs` dispatcher (`runCompiledCli` in `core/src/cli/run.ts`) call
- * `formatBugReport` so output stays bit-identical across the two paths.
+ * Native dispatcher error boundaries call `formatBugReport` so source and
+ * compiled entries emit identical diagnostics.
  */
 
 import { resolveUserCacheRoot } from "../cache/paths.ts";

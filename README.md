@@ -48,7 +48,7 @@ Development follows this phase ladder:
 
 ```text
 .
-├── core/              # @lando/core — runtime, planner, native CLI dispatcher (OCLIF removal in flight), library API
+├── core/              # @lando/core — runtime, planner, single native CLI dispatcher, library API
 ├── sdk/               # @lando/sdk — schemas, tags, types only (plugin authors import this)
 ├── container-runtime/ # @lando/container-runtime — private provider-agnostic runtime helpers
 ├── plugins/           # Bundled reference plugins (separate packages, optional at runtime)
@@ -104,7 +104,7 @@ Development follows this phase ladder:
 - **Test runner:** `bun test`. Mocha, Jest, and Vitest are forbidden in core.
 - **Lint + format:** Biome.
 - **Type checks:** `tsc -b` (project references; Bun runs `.ts` directly at runtime).
-- **CLI framework:** target architecture is one native command registry and dispatcher shared by source and compiled modes; the source path still dispatches through OCLIF today, consumed only inside `core/src/cli/oclif/`, while that removal (US-522..US-531) is in flight.
+- **CLI framework:** one native command registry and dispatcher is shared by source and compiled modes. `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters; OCLIF is not a shipping engine.
 - **Runtime model:** Effect — every meaningful operation returns an `Effect.Effect<A, E, R>`.
 - **Schema:** Effect Schema — single source of truth for every public contract.
 
@@ -193,9 +193,9 @@ All command output flows through the `Renderer` service; pick a mode with
 The compiled binary is produced with `bun build --compile --bytecode` targeting
 `core/bin/lando.ts` (not `index.ts`). The release pipeline compiles for five
 platforms — `linux-x64`, `linux-arm64`, `darwin-x64`, `darwin-arm64`, and
-`windows-x64`. Today the source CLI still dispatches through OCLIF while the compiled `$bunfs`
-binary uses a hand-rolled dispatcher (`runCompiledCli` in `core/src/cli/run.ts`),
-because `@oclif/core`'s `execute()` cannot dispatch inside a compiled Bun binary:
+`windows-x64`. Source and compiled entries now share the native dispatcher in
+`core/src/cli/run.ts`. The retired split existed because `@oclif/core`'s
+`execute()` cannot dispatch inside a compiled Bun binary:
 a probe importing only `@oclif/core` and calling `execute()` was compiled with
 `bun build --compile` and run outside the source tree, and it failed before any
 command ran — `Config.load`'s `findRoot()` walk expects an adjacent `package.json`
@@ -203,10 +203,9 @@ that a relocated single-file binary doesn't have, and even with a static manifes
 command dispatch still resolves a runtime `import(pathToFileURL(filePath))` that
 `bun build --compile` never embeds (a runtime-computed path isn't statically
 analyzable). That finding no longer justifies keeping two engines: the target
-architecture adopts **one** native command registry and dispatcher for both
-source and compiled modes. This codebase is mid-migration (US-522..US-531) — the
-dual-path parity layer and the OCLIF adapter are still present and are not the
-target architecture.
+architecture uses **one** native command registry and dispatcher for both
+source and compiled modes. Registry completeness, machine-output conformance,
+and relocated-binary smoke replace the retired dual-path parity layer.
 
 ## Contributing
 

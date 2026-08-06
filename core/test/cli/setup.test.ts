@@ -34,6 +34,7 @@ import {
   classifySetupNetworkFailure,
   defaultSetupNetworkTrustProbe,
 } from "../../src/cli/commands/setup-network-trust.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../../src/cli/generated/command-registry-manifest.ts";
 import { caInjectionNote } from "../../src/cli/oclif/commands/meta/setup-summary.ts";
 import SetupCommand, {
   maybeSelectSetupProvider,
@@ -42,7 +43,6 @@ import SetupCommand, {
   setupSpec,
   shouldDisableHostProxyForSetup,
 } from "../../src/cli/oclif/commands/meta/setup.ts";
-import { COMPILED_OCLIF_MANIFEST } from "../../src/cli/oclif/compiled-manifest.ts";
 import { compiledCommandInputFromArgv } from "../../src/cli/run.ts";
 import { makeHttpClientLive } from "../../src/http-client/live.ts";
 import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
@@ -225,7 +225,7 @@ describe("meta:setup command", () => {
   test("is registered at the provider bootstrap level with the top-level setup alias", () => {
     expect(setupSpec.bootstrap).toBe("provider");
     expect(SetupCommand.bootstrap).toBe("provider");
-    expect(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.bootstrap).toBe("provider");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.spec.bootstrap).toBe("provider");
     expect(SetupCommand.aliases).toContain("setup");
   });
 
@@ -294,7 +294,7 @@ describe("meta:setup command", () => {
     };
 
     expect(Object.keys(SetupCommand.flags)).toContain("no-interactive");
-    expect(COMPILED_OCLIF_MANIFEST.commands["meta:setup"]?.flags["no-interactive"]?.type).toBe("boolean");
+    expect(COMMAND_REGISTRY_MANIFEST.commands["meta:setup"]?.flags["no-interactive"]?.type).toBe("boolean");
     const input = compiledCommandInputFromArgv("meta:setup", ["--yes", "--no-interactive"]);
     expect(input.flags.yes).toBe(true);
     expect(input.flags["no-interactive"]).toBe(true);

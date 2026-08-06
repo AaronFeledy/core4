@@ -64,13 +64,11 @@ const publicEntryPoints = [
     target: "./src/cli/index.ts",
     assertSymbol: (mod: Record<string, unknown>) => expect(mod.runCli).toBeFunction(),
   },
-  {
-    specifier: "@lando/core/oclif",
-    exportKey: "./oclif",
-    target: "./src/cli/oclif/index.ts",
-    assertSymbol: (mod: Record<string, unknown>) => expect(mod.LandoCommandBase).toBeDefined(),
-  },
 ] as const;
+
+const removedPackageEntryPoints = [{ specifier: "@lando/core/oclif", exportKey: "./oclif" }] as const;
+
+const embeddingDocPaths = ["docs/embedding.md", "docs/guides/library/embedding-defaults.mdx"] as const;
 
 const documentedAuxiliaryEntryPoints = [
   {
@@ -145,4 +143,49 @@ describe("@lando/core public package entry points", () => {
       expect(documentedEntryPoints).toContain(entry.specifier);
     }
   });
+});
+
+describe("@lando/core removed package entry points", () => {
+  for (const entry of removedPackageEntryPoints) {
+    test(`${entry.exportKey} is absent from the exports map`, () => {
+      expect(Object.keys(corePackage.exports)).not.toContain(entry.exportKey);
+    });
+
+    test(`${entry.specifier} fails package-specifier resolution`, () => {
+      expect(() => Bun.resolveSync(entry.specifier, repoRoot)).toThrow();
+    });
+
+    test(`${entry.specifier} rejects dynamic import`, async () => {
+      const specifier: string = entry.specifier;
+      const rejected = await import(specifier).then(
+        () => false,
+        () => true,
+      );
+      expect(rejected).toBe(true);
+    });
+  }
+
+  test("deep file paths do not bypass the exports map", () => {
+    expect(() => Bun.resolveSync("@lando/core/src/cli/oclif/index.ts", repoRoot)).toThrow();
+  });
+
+  test("the legacy-named native metadata adapter remains available by source path", async () => {
+    const mod = await import("../../src/cli/oclif/index.ts");
+    expect(mod.LandoCommandBase).toBeDefined();
+  });
+
+  test("@lando/core/cli remains exported and importable", async () => {
+    expect(Object.keys(corePackage.exports)).toContain("./cli");
+    expect(await realpath(Bun.resolveSync("@lando/core/cli", repoRoot))).toBe(
+      await realpath(join(coreRoot, "src/cli/index.ts")),
+    );
+    expect((await import("@lando/core/cli")).runCli).toBeFunction();
+  });
+
+  for (const docPath of embeddingDocPaths) {
+    test(`${docPath} does not advertise a removed entry point`, async () => {
+      const docs = await Bun.file(resolve(repoRoot, docPath)).text();
+      for (const entry of removedPackageEntryPoints) expect(docs).not.toContain(entry.specifier);
+    });
+  }
 });

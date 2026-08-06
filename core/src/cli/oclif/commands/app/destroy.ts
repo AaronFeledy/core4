@@ -1,5 +1,5 @@
 /**
- * `lando app:destroy` — OCLIF wrapper.
+ * `lando app:destroy` — native command metadata adapter.
  */
 import { Flags } from "../../metadata.ts";
 

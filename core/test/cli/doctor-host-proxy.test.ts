@@ -4,12 +4,12 @@ import { type Server, createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { type Context, Deferred, Effect, Fiber, Layer, Option, TestClock, TestContext } from "effect";
+import { type Context, Deferred, Effect, Fiber, Layer, Option, Schema, TestClock, TestContext } from "effect";
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 import { ServiceExecError } from "@lando/sdk/errors";
-import { AbsolutePath, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
+import { AbsolutePath, GlobalConfig, ProviderId } from "@lando/sdk/schema";
 
 import { makeLandoPaths, sanitizeAppName } from "@lando/paths";
 import {
@@ -56,11 +56,11 @@ const buildRegistry = (provider: typeof TestRuntimeProvider) => ({
 });
 
 const buildConfigService = (userDataRoot: string): Context.Tag.Service<typeof ConfigService> => {
-  const config: GlobalConfig = {
+  const config = Schema.decodeUnknownSync(GlobalConfig)({
     defaultProviderId: ProviderId.make("lando"),
     telemetry: { enabled: false },
     userDataRoot: AbsolutePath.make(userDataRoot),
-  };
+  });
   const load = Effect.succeed(config);
   return {
     load,
@@ -108,9 +108,9 @@ describe("meta:doctor host-proxy transport reachability", () => {
   test("reports stale generated allowlist entries from literal manifest metadata", () => {
     // Given
     const commands = {
-      "app:open": { landoSpec: { hostProxyAllowed: true } },
-      "app:info": { landoSpec: { hostProxyAllowed: true } },
-      "app:start": { landoSpec: { hostProxyAllowed: false } },
+      "app:open": { spec: { hostProxyAllowed: true } },
+      "app:info": { spec: { hostProxyAllowed: true } },
+      "app:start": { spec: { hostProxyAllowed: false } },
     };
 
     // When

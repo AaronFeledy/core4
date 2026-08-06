@@ -16,8 +16,6 @@
       "**/.local",
       "*.tsbuildinfo",
       "**/*.tsbuildinfo",
-      "oclif.manifest.json",
-      "**/oclif.manifest.json",
       "bun.lock",
       "vendor/compose/compose-spec.json"
     ]

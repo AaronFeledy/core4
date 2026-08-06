@@ -177,16 +177,16 @@ describe("deferred command remediation contract", () => {
         .join(" ")
         .replace(/\s+/g, " ");
 
-    const parityProbes: ReadonlyArray<FixtureEntry> = [
+    const crossEntrypointProbes: ReadonlyArray<FixtureEntry> = [
       fixture.commands.find((entry) => entry.id === "meta:plugin:login") as FixtureEntry,
     ];
 
-    for (const entry of parityProbes) {
+    for (const entry of crossEntrypointProbes) {
       test(`${entry.id}: source and compiled CLI emit semantically identical remediation`, async () => {
         const source = await runSource(entry.id);
         const compiled = await runCompiled(entry.id);
-        expect(compiled.exitCode, `${entry.id}: exit code parity`).toBe(source.exitCode);
-        expect(collapseErrorBlock(compiled.stderr), `${entry.id}: error block parity`).toBe(
+        expect(compiled.exitCode, `${entry.id}: exit code`).toBe(source.exitCode);
+        expect(collapseErrorBlock(compiled.stderr), `${entry.id}: error block`).toBe(
           collapseErrorBlock(source.stderr),
         );
         expectDeferredRemediation(compiled.stderr, entry);

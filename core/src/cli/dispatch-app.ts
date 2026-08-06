@@ -1,10 +1,10 @@
 /**
- * Compiled-CLI dispatch for `app:*` topic commands (plus their bare aliases).
+ * Native CLI dispatch for `app:*` topic commands (plus their bare aliases).
  *
  * Each branch matches the canonical id or one of its accepted alias spellings,
- * runs the corresponding app-lifecycle / exec-shell adapter, and reports back to
- * `runCompiledCli` whether it handled the invocation. Returns `false` when the
- * argv does not belong to this topic so the next topic dispatcher can try.
+ * runs the corresponding app-lifecycle / exec-shell adapter, and reports whether
+ * it handled the invocation to the shared native dispatcher. Returns `false`
+ * when the argv does not belong to this topic so the next topic can try.
  */
 import {
   runAppCacheRefresh,

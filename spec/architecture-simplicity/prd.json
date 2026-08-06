@@ -1,7 +1,7 @@
 {
   "project": "Lando v4 Architecture Simplicity",
   "branchName": "docs/architecture-simplicity-prd",
-  "description": "Concurrent meta/infra wave (US-500..US-532): collapse dual CLI dispatch to one native engine, stop committing pure derived artifacts, promote boundary seams to private packages (state-store + DAG), and strengthen codegen:check as the single pure-drift gate. Does not expand user-facing feature surface. Spec is source of truth; implementation stories follow US-505+.",
+  "description": "Concurrent meta/infra wave (US-500..US-534): collapse dual CLI dispatch to one native engine, stop committing pure derived artifacts, promote boundary seams to private packages (state-store + DAG), and strengthen codegen:check as the single pure-drift gate. Does not expand user-facing feature surface. Spec is source of truth; implementation stories follow US-505+.",
   "userStories": [
     {
       "id": "US-500",
@@ -374,7 +374,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 28,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {
@@ -387,21 +387,22 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 29,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {
       "id": "US-528",
       "title": "Codegen: command registry manifest for embed",
-      "description": "As a releaser, the binary embeds a registry-derived command manifest; oclif-manifest generator is removed or repurposed.",
+      "description": "As a releaser, the binary embeds a built-in-only registry-derived command manifest; oclif-manifest generator is removed or repurposed. Bundled-plugin command composition is US-534.",
       "acceptanceCriteria": [
-        "§17.2 catalog row updated; build embeds registry manifest.",
+        "§17.2 catalog row updated for built-in builtInCommandEntries only; build embeds registry manifest.",
         "No oclif.manifest.json required for shipping dispatch.",
+        "Bundled-plugin command metadata is not required in the embedded manifest (plugin-command cache / US-534).",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 30,
-      "passes": false,
-      "notes": "PRD-01"
+      "passes": true,
+      "notes": "PRD-01. Human adjudication 2026-08-05 option 3: US-528 is OCLIF-sidecar → built-in registry embed only. Bundled-plugin command metadata ownership deferred to US-534; do not expand US-528 into plugin composition."
     },
     {
       "id": "US-529",
@@ -412,7 +413,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 31,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {
@@ -425,7 +426,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 32,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {
@@ -434,25 +435,42 @@
       "description": "As a maintainer, remaining OCLIF/runCompiledCli parity instructions are rewritten to native dispatcher.",
       "acceptanceCriteria": [
         "core/AGENTS.md CLI section describes single dispatcher.",
+        "Current-facing maintainer/user guidance, public/package metadata, exported diagnostics/comments, guide proof text, and native-path test labels describe one native dispatcher; retained OCLIF references are limited to historical/superseded records, genuine development-only compatibility fixtures, negative dependency assertions, or legacy identifiers/paths.",
+        "A repository-wide tracked-text search for claims that OCLIF is the default/shipping framework, @lando/core/oclif is public, or source/compiled/runCompiledCli paths require dual parity returns only those explicit exceptions; verification must not rely on a hardcoded file allowlist.",
         "rg for 'dual dispatch is permanent' returns only historical/superseded notes.",
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 33,
-      "passes": false,
-      "notes": "PRD-01"
+      "passes": true,
+      "notes": "PRD-01. Adjudication 2026-08-05: US-531 owns the repository-wide current-facing claim sweep; direct tracked-text verification is required, but a committed fixed-file prose scan is not."
+    },
+    {
+      "id": "US-534",
+      "title": "Bundled-plugin command metadata ownership (follow-up)",
+      "description": "As a maintainer, bundled and external plugin command metadata follows the same validated plugin-command cache path while the embedded command-registry manifest remains built-in-only.",
+      "acceptanceCriteria": [
+        "Spec (§9.7, §12.1, §17.2, §17.9) states one ownership model for bundled-versus-external plugin command metadata.",
+        "Precedence, invalidation, and router/bootstrap composition rules are documented for the chosen model.",
+        "Generated inputs and consumers match the chosen model; no src/ hand edits to add/remove a bundled plugin's commands from the owning shipping surface.",
+        "Proof: removing a command-contributing bundled plugin from core/build.config.ts and rebuilding omits those commands from the owning artifact(s).",
+        "Tests pass; typecheck passes; lint passes"
+      ],
+      "priority": 34,
+      "passes": true,
+      "notes": "PRD-01. Human adjudication 2026-08-05 option 3: split from US-528. Resolved cache-only ownership for bundled and external plugin command metadata; executable plugin-command dispatch remains deferred until the public plugin contract defines an implementation loader. Drift Audit / reviewers MUST NOT re-attach this scope to US-528."
     },
     {
       "id": "US-532",
       "title": "Wave closure",
       "description": "As a maintainer, all architecture-simplicity stories pass with verification contracts green.",
       "acceptanceCriteria": [
-        "prd.json all US-500..US-533 passes true.",
+        "prd.json all US-500..US-534 passes true.",
         "codegen:check, typecheck, lint, boundary suite, focused CLI tests green.",
         "progress.txt records closure.",
         "Tests pass; typecheck passes; lint passes"
       ],
-      "priority": 34,
-      "passes": false,
+      "priority": 35,
+      "passes": true,
       "notes": "PRD-00"
     }
   ]

@@ -1,10 +1,10 @@
 /**
- * Compiled-dispatch argv parity validation.
+ * Native-dispatch argv validation.
  *
- * Validates compiled-mode argv against a command's flag/arg definitions so the
- * `$bunfs` dispatch path rejects the same invocations OCLIF would, with the same
- * exit-2 diagnostic wording. `rejectInvalidInvocation` is the dispatch guard;
- * `invocationParityError` is the pure diagnostic used by parity tests.
+ * Validates argv against a command's flag/arg definitions so source and
+ * compiled entries reject unsupported invocations with the same exit-2
+ * diagnostic wording. `rejectInvalidInvocation` is the dispatch guard;
+ * `invocationParityError` is the pure diagnostic used by compatibility tests.
  */
 import {
   argDefinitionsForCommand,

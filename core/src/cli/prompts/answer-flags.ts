@@ -1,11 +1,11 @@
 /**
  * Shared answer-source and interactivity-flag parsing for the CLI.
  *
- * One module, imported by both the OCLIF command path and the compiled
- * `run.ts` dispatcher, so `--answer`/`--answers`/`--yes`/`--no-interactive`/
- * `--interactive` and the interactivity gate are parsed identically in source
- * and compiled modes. The scratch `--option` synonym merges into the same
- * answer source via {@link mergeAnswerSources}.
+ * One module, consumed by the native command metadata adapters and dispatcher,
+ * so `--answer`/`--answers`/`--yes`/`--no-interactive`/`--interactive` and the
+ * interactivity gate are parsed identically by source and compiled entries. The
+ * scratch `--option` synonym merges into the same answer source via
+ * {@link mergeAnswerSources}.
  */
 import { readFile } from "node:fs/promises";
 

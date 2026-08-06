@@ -20,6 +20,5 @@ Every published entry point in `core/package.json#exports` declares both TypeScr
 | `@lando/core/docs/components` | Executable-guide component contracts and decode helpers. |
 | `@lando/core/docs/render` | Public transcript view-model and deterministic HTML renderer for docs pipelines. |
 | `@lando/core/docs/redactions` | Public transcript redaction helpers for docs pipelines. |
-| `@lando/core/oclif` | Transitional internal adapter still published by current metadata; unsupported for embedding hosts and removed by US-526. |
 
-The default `@lando/core` entry and every stable subpath above other than the explicitly transitional `@lando/core/oclif` entry do not pull OCLIF into embedding bundles. OCLIF is used by today's source-mode CLI dispatch while migration work (US-522..US-531) moves both source and compiled entries onto one native command dispatcher; it is not a supported embedding surface, and embedding hosts should not import it or depend on it remaining available.
+The default `@lando/core` entry and every published subpath above are OCLIF-free. OCLIF is development-only; `core/src/cli/oclif/` is a legacy directory name for native metadata/adapters and manifest tooling, and no published package specifier exposes it to embedding hosts.

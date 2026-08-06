@@ -217,7 +217,7 @@ jobs:
 
       - name: Regenerate command reference
         run: |
-          bun run codegen:oclif-manifest
+          bun run codegen:command-registry-manifest
           bun run codegen:command-reference
 
       - name: Verify command reference is current
@@ -833,7 +833,7 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build darwin-arm64 binary
@@ -896,7 +896,7 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build darwin-x64 binary
@@ -959,7 +959,7 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build linux-arm64 binary
@@ -1022,7 +1022,7 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build linux-x64 binary
@@ -1091,7 +1091,7 @@ jobs:
       - name: Regenerate derived sources
         run: bun run codegen
 
-      - name: Build OCLIF manifest
+      - name: Build command registry manifest
         run: bun run --filter='@lando/core' build:manifest
 
       - name: Build windows-x64 binary

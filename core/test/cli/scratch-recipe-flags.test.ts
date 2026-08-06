@@ -42,7 +42,7 @@ describe("apps:scratch:start recipe flag mapping", () => {
     expect(options.answers).toEqual({ php: "8.4", name: "ignored" });
   });
 
-  test("parseScratchStartArgv mirrors the OCLIF flag mapping (dual-dispatch parity)", () => {
+  test("parseScratchStartArgv maps native scratch flags", () => {
     const options = parseScratchStartArgv([
       "--from",
       "lamp",
@@ -103,7 +103,7 @@ describe("apps:scratch:start --mount-cwd / --share-global-storage flag mapping",
     ).toBe(true);
   });
 
-  test("parseScratchStartArgv mirrors mount-cwd / share-global-storage (dual-dispatch parity)", () => {
+  test("parseScratchStartArgv maps mount-cwd and share-global-storage", () => {
     expect(parseScratchStartArgv(["--fork", "--mount-cwd"]).mountCwd).toEqual({});
     expect(parseScratchStartArgv(["--fork", "--mount-cwd="]).mountCwd).toEqual({});
     expect(parseScratchStartArgv(["--fork", "--mount-cwd=/srv/site"]).mountCwd).toEqual({

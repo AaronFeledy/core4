@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
@@ -8,7 +8,14 @@ import { CommandAliasConflictError } from "@lando/sdk/errors";
 import { CommandRegistrationError } from "../../src/cli/oclif/command-base.ts";
 
 const coreRoot = resolve(import.meta.dirname, "../..");
+const repoRoot = resolve(coreRoot, "..");
 const registryPath = resolve(coreRoot, "src/cli/built-in-command-registry.ts");
+const nativeDispatchPaths = [
+  "src/cli/run.ts",
+  "src/cli/dispatch-app.ts",
+  "src/cli/dispatch-apps.ts",
+  "src/cli/dispatch-meta.ts",
+] as const;
 
 type SyntheticRegistration = {
   readonly spec: { readonly id: string };
@@ -171,5 +178,46 @@ describe("built-in command registry contract", () => {
       expect(call, `${dispatcher} must occur inside runCompiledCli`).toBeGreaterThanOrEqual(0);
       expect(deferredGate, `deferred status must be checked before ${dispatcher}`).toBeLessThan(call);
     }
+  });
+
+  test("implemented commands have native argv dispatch adapters while deferred commands do not", async () => {
+    // Given: the canonical registry and every native dispatch source.
+    const registry = await import("../../src/cli/built-in-command-registry.ts");
+    const dispatchSources = nativeDispatchPaths.map((path) => readFileSync(resolve(coreRoot, path), "utf-8"));
+
+    // When: canonical argv[0] equality adapters are collected structurally.
+    const adaptedIds = new Set(
+      dispatchSources.flatMap((source) =>
+        [...source.matchAll(/argv\[0\]\s*===\s*"([^"]+)"/g)].flatMap((match) =>
+          match[1] === undefined ? [] : [match[1]],
+        ),
+      ),
+    );
+
+    // Then: implemented ids are reachable and deferred ids have no bespoke adapter.
+    for (const entry of registry.builtInCommandEntries) {
+      expect(adaptedIds.has(entry.spec.id), entry.spec.id).toBe(entry.status.kind === "implemented");
+    }
+  });
+
+  test("legacy dual-dispatch parity assets are absent", () => {
+    // Given: the source-vs-compiled parity layer retired when the CLI collapsed to one engine.
+    const legacyPaths = [
+      "core/test/cli/parity",
+      "core/test/cli/parity/dispatch-parity.test.ts",
+      "core/test/cli/parity/normalize.test.ts",
+      "core/test/cli/parity/normalize.ts",
+      "core/test/cli/parity/oclif-static-probe.ts",
+      "core/test/cli/dispatch-unification-spike.test.ts",
+      "core/test/cli/bootstrap-lifecycle-parity.test.ts",
+      "core/test/cli/dual-dispatch-parity.test.ts",
+      "core/test/cli/apps-list-path-parity.test.ts",
+    ] as const;
+
+    // When: every legacy path is resolved against the repository root.
+    const surviving = legacyPaths.filter((path) => existsSync(resolve(repoRoot, path)));
+
+    // Then: none of the known dual-path assets can silently return.
+    expect(surviving, "legacy dual-dispatch parity assets must be deleted, not disabled").toEqual([]);
   });
 });

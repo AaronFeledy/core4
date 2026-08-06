@@ -17,7 +17,7 @@ Every command in Lando v4 belongs to exactly one of four **kinds** and is regist
 
 | Kind | Source | Registry representation |
 |---|---|---|
-| **Built-in command** | Core package | Static `LandoCommandSpec` registry entry adapting Effect command logic (transitional OCLIF command classes remain as internal metadata holders; §8.4) |
+| **Built-in command** | Core package | Static `LandoCommandSpec` registry entry adapting Effect command logic (legacy OCLIF-named files, where retained, are native metadata/adapters; §8.4) |
 | **Plugin command** | Plugin manifest `provides.commands` | Lazy-loaded `LandoCommandSpec` (the retired OCLIF projection is historical context; §8.4) |
 | **Tooling command** | Landofile `tooling:` | Generated registry shim metadata, read from the app command index during router bootstrap |
 | **Management command** | Core or plugin, `hidden: true` | Hidden registry entry |
@@ -362,7 +362,7 @@ Behaviors:
 
 ### 8.3 Command contract
 
-Every command, whether built-in or contributed by a plugin, conforms to the `LandoCommandSpec` shape. The command registry is the source of truth for that spec (§8.4.1); transitional OCLIF command classes remain internal metadata holders, not a shipping dispatcher (§8.4).
+Every command, whether built-in or contributed by a plugin, conforms to the `LandoCommandSpec` shape. The command registry is the source of truth for that spec (§8.4.1); retained OCLIF-named files are internal native metadata/adapters, not a shipping dispatcher (§8.4).
 
 ```ts
 export type CommandNamespace = "app" | "apps" | "meta" | string;
@@ -424,10 +424,10 @@ The adapter wires `process.stdin/stdout/stderr` into Effect `Stream`/`Sink` inst
 
 ### 8.4 Historical OCLIF integration (removed from shipping dispatch)
 
-This section preserves the retired source-path design for historical context. It is not the current contract: §8.4.1 supersedes OCLIF as the shipping dispatch engine. Transitional command classes remain isolated under `src/cli/oclif/`, but source and compiled entrypoints both use the native dispatcher. The former integration policies were:
+This section preserves the retired source-path design for historical context. It is not the current contract: §8.4.1 supersedes OCLIF as the shipping dispatch engine. Retained legacy-named files under `src/cli/oclif/` are native metadata/adapters, and source and compiled entrypoints both use the native dispatcher. The former integration policies were:
 
 - **Pre-OCLIF level-`none` fast path.** Before any `import("@oclif/core")` resolves, `bin/lando.ts` MUST argv-sniff for the level-`none` shapes enumerated in §3.2 and short-circuit to a static-print exit on match. The fast path is hand-rolled string matching against `process.argv`; it never imports OCLIF, the Effect runtime, or any plugin code. An argv shape that *looks* like a level-`none` command but carries unrecognized flags falls through to the OCLIF path.
-- **Manifest-first.** `oclif.manifest.json` is generated at build time for built-in command shims. Lando's plugin and app command indexes (`plugin-command`, `app-command`; §12.1) provide runtime command metadata and are refreshed on plugin install/remove/update, app planning, and `app:cache:refresh`.
+- **Manifest-first.** The retired OCLIF path generated `oclif.manifest.json` for built-in command shims. The current build instead embeds the registry-derived TypeScript manifest; Lando's plugin and app command indexes (`plugin-command`, `app-command`; §12.1) provide runtime command metadata and are refreshed on plugin install/remove/update, app planning, and `app:cache:refresh`.
 - **Hooks bridge to Effect.**
   - OCLIF `init` hook runs the router phase only: load embedded command metadata, read command indexes from cache, consult the `cwd-app-map` cache (§12.1), register command shims and aliases, and avoid full Effect runtime construction.
   - After OCLIF resolves the canonical command id, the command base class provides the AOT-composed bootstrap layer (§17.2 codegen, "Bootstrap layers") for that command's declared/effective `BootstrapLevel` and then publishes the `cli-<canonical-id>-init` lifecycle event (e.g., `cli-app:start-init`).
@@ -446,7 +446,7 @@ This section preserves the retired source-path design for historical context. It
 
 ### 8.4.1 Single native dispatch (source + compiled)
 
-**Normative (architecture-simplicity):** source mode (`bun core/bin/lando.ts`, test harnesses) and the compiled `$bunfs` binary produced by `scripts/build-compiled-binary.ts` share **one** native command registry and **one** dispatcher engine (today's `runCompiledCli` shape becomes the only path; the name may be `runCli` / `runNativeCli`). There is **no** shipping call to `@oclif/core`'s `execute()`, and dual-dispatch parity is **not** a permanent architecture.
+**Normative (architecture-simplicity):** source mode (`bun core/bin/lando.ts`, test harnesses) and the compiled `$bunfs` binary produced by `scripts/build-compiled-binary.ts` share **one** native command registry and **one** dispatcher engine (`runCli` in `core/src/cli/run.ts`). There is **no** shipping call to `@oclif/core`'s `execute()`, and dual-dispatch parity is retired.
 
 **Why not OCLIF in-binary.** The historical spike (§14 Appendix D.1) proved `@oclif/core`'s `execute()` cannot dispatch inside `bun build --compile` through any supported public API (`Config.load` → `findRoot` and runtime `import()` of computed paths both break under `$bunfs`). That evidence previously justified option (b) dual dispatch; it is now the reason OCLIF is **removed** from the shipping CLI rather than kept as a second engine.
 
@@ -1431,7 +1431,7 @@ The Renderer is responsible for the perceived-performance budget in §2.1. The c
 | **Completion line latency** | After the last `task.complete` / `message.*` event of a run, the final completion line (e.g., `✓ Done in 312 ms`) MUST land within 50 ms of that event. |
 | **No first-paint for level `none`** | Level-`none` commands (§3.2) print directly from `bin/lando.ts` without involving the `Renderer` service at all. The contract above does not apply to them; their end-to-end budget already covers the first-paint case. |
 
-**The pre-renderer module.** A tiny module under `src/cli/` exposes synchronous functions that write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner. Today's transitional implementation is `src/cli/oclif/pre-renderer.ts`; US-522..US-531 moves that seam out of the OCLIF adapter with the single dispatcher. It MUST NOT import Effect, the `Renderer` service, `@oclif/core`, or any plugin code. It is the only direct-stdout-write path in the CLI; once the `Renderer` Layer is forced (§3.4), all subsequent output flows through `Renderer`.
+**The pre-renderer module.** A tiny module under `src/cli/` exposes synchronous functions that write directly to `process.stdout` / `process.stderr` for the pre-bootstrap banner. Its legacy-named location is `src/cli/oclif/pre-renderer.ts`, but it serves the single native dispatcher. It MUST NOT import Effect, the `Renderer` service, `@oclif/core`, or any plugin code. It is the only direct-stdout-write path in the CLI; once the `Renderer` Layer is forced (§3.4), all subsequent output flows through `Renderer`.
 
 **Hand-off.** When the `Renderer` Layer is constructed, it consumes a synthetic `paint.banner` event carrying the pre-renderer's banner so the renderer's internal state machine knows what was already shown. This avoids double-banners and lets renderers like `json` rewrite/erase the pre-renderer's TTY line on first valid JSON emission.
 
@@ -1907,7 +1907,7 @@ The **default family** is: `app:start`, `app:stop`, `app:restart`, `app:rebuild`
 1. **Registry validation.** Every id in `commands` is checked against the **cwd-independent global command registry** (§7.5), a dedicated projection distinct from the invocation's resolved command registry (§8.3): compiled built-in commands plus canonical commands contributed by enabled global or system plugins; Landofile-derived tooling commands and app-local plugin commands are not valid in this global allowlist. An id that is not a real canonical command id in that global registry fails with the existing `ConfigError` at config-resolution time, with `path` naming the offending `notify.commands` entry and `message` naming the unknown id and remediation, regardless of the current working directory. This happens before any subscriber registers; no notify-specific error is introduced.
 2. **Ordered deduplication.** The resolved eligible family is **not** a plain string `Set` (which would discard the meaningful order below) — it is an ordered list built as: the default family first, in the fixed order listed above; then each entry from `commands` that is not already in the default family, in the order it first appears in `commands`, skipping any id already added (whether from the default family or an earlier `commands` entry). A command id listed twice in `commands`, or listed once in `commands` and already present in the default family, contributes exactly one entry to the resolved family, at the position of its first occurrence — never a duplicate, and never reordered by a later repeat.
 
-**Bootstrap promotion for lower-tier notify commands.** When a command whose declared `BootstrapLevel` is below `commands` appears in the default notify family or in `notify.commands`, the CLI ordinarily promotes that command's *effective* bootstrap to `commands` so the notify plugin's lifecycle subscriber is registered before the body runs (e.g. `meta:update`). Commands whose declared depth is load-bearing for a contract other than cold-start speed MUST NOT be promoted: today that set is exactly `meta:doctor`, which declares `none` and builds its provider runtime inside the program so a bootstrap failure is reported rather than fatal (§3.2 OCLIF-routed `none`, §10.9.1). Listing `meta:doctor` in `notify.commands` is therefore a no-op for bootstrap depth and does not enable desktop notifications for doctor runs; the structured report and non-zero exit on self checks remain the automation surface.
+**Bootstrap promotion for lower-tier notify commands.** When a command whose declared `BootstrapLevel` is below `commands` appears in the default notify family or in `notify.commands`, the CLI ordinarily promotes that command's *effective* bootstrap to `commands` so the notify plugin's lifecycle subscriber is registered before the body runs (e.g. `meta:update`). Commands whose declared depth is load-bearing for a contract other than cold-start speed MUST NOT be promoted: today that set is exactly `meta:doctor`, which declares `none` and builds its provider runtime inside the program so a bootstrap failure is reported rather than fatal (§3.2 dispatcher-routed `none`, §10.9.1). Listing `meta:doctor` in `notify.commands` is therefore a no-op for bootstrap depth and does not enable desktop notifications for doctor runs; the structured report and non-zero exit on self checks remain the automation surface.
 
 Required behaviors: at most one notification per command run; nothing fires in non-TTY/CI runs or when the renderer lacks the capability (the plugin publishes the event regardless — capability gating is the renderer's job per the table above); disabling the plugin (standard §9 plugin enablement) or `notify.enabled: false` silences the surface entirely.
 
@@ -2022,7 +2022,7 @@ For each prompt the service resolves an answer in this order:
 
 `mode: "auto"` resolves to interactive only when the active stdin is a TTY; the CLI default is `auto` and the library-mode default is `non-interactive` (§16.3). This replaces the per-command `process.stdin.isTTY !== true` checks that were previously inlined across `apps:init`, `meta:plugin:add`, and `meta:plugin:new`.
 
-**Normative (§8.4.1):** the `--answer key=value` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` flags are parsed by **one shared module**, consumed by the single native dispatcher for both source and compiled entries, so the answer source and interactivity gate are byte-for-byte identical (single-source-of-truth rule; the scratch `--option` synonym merges into the same answer source per §21.10.1). Today, as a transitional implementation detail pending the §8.4.1 migration, that shared module is imported from both the OCLIF command path and the compiled `run.ts` dispatcher (§8.4).
+**Normative (§8.4.1):** the `--answer key=value` (repeatable), `--answers <file>`, `--yes`, `--no-interactive`, and `--interactive` flags are parsed by **one shared module**, consumed by the single native dispatcher for both source and compiled entries, so the answer source and interactivity gate are byte-for-byte identical (single-source-of-truth rule; the scratch `--option` synonym merges into the same answer source per §21.10.1).
 
 #### 8.10.4 Required behaviors
 

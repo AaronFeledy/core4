@@ -37,7 +37,7 @@ export const DEFERRED_RENDERER_MODES: ReadonlyMap<string, DeferredRendererSurfac
  * Deferred renderer-related top-level flags. These are surfaces a user
  * might reach for to configure task-tree expand/collapse behavior or the
  * bare `task.detail` streaming-tail toggle. Each is intercepted at the
- * top level so the user sees the deferred remediation instead of OCLIF's
+ * top level so the user sees the deferred remediation instead of the parser's
  * generic "unknown flag" message or a silent pass-through.
  */
 export const DEFERRED_RENDERER_FLAGS: ReadonlyMap<string, DeferredRendererSurface> = new Map(

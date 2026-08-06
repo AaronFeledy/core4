@@ -1,5 +1,5 @@
 /**
- * Compiled-CLI session state and renderer output helpers.
+ * Shared native dispatcher session state and renderer output helpers.
  *
  * Holds the per-process "active command" session — result format, renderer
  * mode, deprecation-warning toggle, command id, and the current invocation

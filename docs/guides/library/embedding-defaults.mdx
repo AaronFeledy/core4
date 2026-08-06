@@ -29,7 +29,7 @@ tags: [beta, docs, library, embedding]
   <Scenario id="library-import-boundary" render={false} reason="The import-boundary suite verifies the default entry keeps OCLIF and TUI code paths out of the library graph">
     <Step name="default-entry">
       <Variable name="entry" value="@lando/core" display="Embedders import makeLandoRuntime from the default package entry" />
-      <Variable name="oclif" value="published-unsupported-transitional-subpath" display="OCLIF remains published at the unsupported @lando/core/oclif transitional subpath for today's source-mode dispatch and is slated for removal once US-522..US-531 land the native dispatcher" />
+      <Variable name="oclif" value="not-published" display="OCLIF is development-only; the legacy-named private directory contains native metadata/adapters and manifest tooling, and no published package specifier exposes it" />
       <Variable name="tui" value="not imported" display="The library default JSON renderer does not pull TUI paths into the default entry" />
     </Step>
   </Scenario>

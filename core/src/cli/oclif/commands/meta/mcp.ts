@@ -141,7 +141,7 @@ export default class MetaMcpCommand extends LandoCommandBase {
       await renderPreCommandFailure({
         commandId: metaMcpSpec.id,
         error: new LandoRuntimeBootstrapError({
-          message: "OCLIF command meta:mcp is missing a valid static bootstrap declaration.",
+          message: "Command meta:mcp is missing a valid static bootstrap declaration.",
           stage: "minimal",
         }),
         rendererMode,

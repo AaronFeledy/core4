@@ -14,13 +14,15 @@ Found drift:
 6. **Global-app commands are stubs.** `meta global list/info/logs/restart` are deferred stubs despite spec §18 (global app) shipping in Alpha 3.
 7. **Version is a placeholder.** `lando version` and `CORE_VERSION` both return hardcoded `0.0.0`; no build-time injection exists.
 
+> **Dispatch supersession:** Completed acceptance text below is preserved as Beta 1 historical evidence. Current source and compiled entries share the single native registry/dispatcher; retired OCLIF/`runCompiledCli` parity wording is not forward-looking guidance.
+
 ## Source References
 
 - [`spec/08-cli-and-tooling.md`](../08-cli-and-tooling.md) §8.1, §8.2.x, §8.4 command contracts.
 - [`spec/18-global-app.md`](../18-global-app.md) global-app command surface.
 - [`spec/07-landofile-and-config.md`](../07-landofile-and-config.md) §7.8.1 canonical Landofile serializer (write-path substrate).
 - [`spec/12-caches-and-persistence.md`](../12-caches-and-persistence.md) — atomic persistence rules backing config writes.
-- [`core/AGENTS.md`](../../core/AGENTS.md) — dual-dispatch parity, cold-start rules.
+- [`core/AGENTS.md`](../../core/AGENTS.md) — single native dispatch, registry, and cold-start rules.
 
 ## Goals
 
