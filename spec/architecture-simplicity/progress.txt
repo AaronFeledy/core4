@@ -655,3 +655,20 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Order-insensitive manifest fingerprints must be paired with an ordered identity check whenever compilation applies first-occurrence or precedence semantics.
 ---
+
+## [2026-08-05 22:23 CDT] - US-532
+- Closed the architecture-simplicity wave after confirming every implementation story and its verification contract is complete.
+- Verification: codegen:check, typecheck, lint/deprecations, package-DAG, guide coverage, and 26 focused CLI, registry, boundary-CLI, machine-output, and compiled-binary tests passed; direct relocated-binary success, tagged-failure, and root-help surfaces behaved as required. The aggregate boundary runner passed every rule except the previously recorded unrelated `.omo/**` spec-reference violations.
+- **Learnings for future iterations:**
+  - Close dispatcher waves with both schema-decoded machine-output coverage and a relocated binary driven outside the repository under isolated Lando roots.
+---
+
+## [2026-08-05 22:46 CDT] - US-532 Review
+- Review confirmed the wave closure against the source PRD, all 35 passing story records, resolved adjudications, focused CLI and relocated-binary behavior, and the required architecture gates; no blocker or behavior fix was found.
+- Review notes (deferred/rejected): rejected the quality lane's boundary-suite blocker because an isolated worktree at the exact reviewed commit passed all 14 rules; the local failure is caused solely by previously recorded ignored `.omo/**` workspace artifacts outside the branch diff.
+- Review notes (deferred/rejected): both Cursor Bugbot runs found no bugs, and the goal, QA, security, and context lanes found no additional in-scope issue.
+- Guide-Coverage-Skip: Wave-closure metadata changes no end-user behavior or executable guide workflow.
+- Verification: explicit-base guide drift, codegen:check, typecheck, lint/deprecations, guide coverage, package-DAG, and isolated aggregate boundaries passed; 26 focused CLI, registry, boundary-CLI, machine-output, and compiled-binary tests passed with positive counts, including relocated success, tagged failure, and root help.
+- **Learnings for future iterations:**
+  - Re-run workspace-sensitive boundary gates from a clean worktree before treating ignored local planning artifacts as a branch regression.
+---
