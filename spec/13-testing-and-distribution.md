@@ -373,6 +373,8 @@ The §13.4 architecture boundary gates — `check:renderer-boundary`, `check:man
 
 **Package seams first (architecture-simplicity US-502+).** When a boundary is expressible as a private workspace package edge (`@lando/paths`, `@lando/state-store`, sdk probe/redaction/renderer contracts), `check:package-dag` is the **primary** enforcement. Matching AST rules SHOULD be retired or thinned to residual behavioral bans packages cannot express (`console.*` / `process.std*.write`, hand-rolled `Effect.retry` in consumer scope, machine-output stringify, generated-file banners). Gate names that remain public contracts stay stable even when thinned.
 
+`check:package-dag` owns the complete workspace DAG contract. Every `dependencies` or `devDependencies` edge between workspace members MUST be declared in its edge table; any undeclared workspace edge MUST fail the gate.
+
 | StateStore boundary concern | Owner | Disposition |
 | --- | --- | --- |
 | Package dependency direction and plugin-to-core prohibition | `check:package-dag` | **Keep** as the primary seam boundary. |
