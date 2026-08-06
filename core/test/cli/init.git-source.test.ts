@@ -51,7 +51,7 @@ describe("lando init git source parsing", () => {
     );
   });
 
-  test("OCLIF path reports the shared --source=git missing --url message", async () => {
+  test("source entry reports the shared --source=git missing --url message", async () => {
     await withTempCwd(async (dir) => {
       const result = await runCli(["init", "--source=git", "--no-interactive"], dir);
       expect(result.exitCode).toBe(1);
