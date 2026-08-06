@@ -1,6 +1,6 @@
 {
   "name": "@lando/core",
-  "description": "Lando v4 core: runtime, planner, OCLIF adapter, and library API.",
+  "description": "Lando v4 core: runtime, planner, native CLI dispatcher, and library API.",
   "version": "0.0.0",
   "author": "Lando Alliance",
   "license": "MIT",
@@ -43,7 +43,7 @@
     "./paths": { "types": "./src/config/paths.ts", "import": "./src/config/paths.ts" }
   },
   "files": ["./bin", "./dist", "!./dist/**/*.tsbuildinfo", "./src"],
-  "keywords": ["lando", "lando-core", "oclif", "effect", "bun"],
+  "keywords": ["lando", "lando-core", "effect", "bun"],
   "dependencies": {
     "@lando/container-runtime": "workspace:*",
     "@lando/paths": "workspace:*",
