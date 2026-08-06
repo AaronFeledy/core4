@@ -22,6 +22,7 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Build canonical registries through a constructor that validates key-to-spec identity and unique canonical/alias token ownership before exposing lookup or projection views.
 - When a generator's source registry imports consumers of its generated outputs, bootstrap every owned output reached by that import graph before dynamically loading the registry so focused first materialization works with no preexisting artifacts.
 - When a later architecture supersedes completed PRD acceptance text, preserve the checked acceptance record and add explicit supersession framing; rewrite only current guidance and forward-looking pointers.
+- When compiled output depends on input order, include that ordered identity in cache freshness checks; sorted fingerprints prove membership, not precedence.
 
 ## Log
 
@@ -641,4 +642,15 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Keep discoverability metadata ownership separate from executable dispatch when the public plugin contract has no implementation loader; do not advertise cached ids as runnable commands.
   - Prove ship-list removal through an isolated generated composition root and decoded cache artifact so the test cannot pass from stale shared-checkout outputs.
+---
+
+## [2026-08-05 21:33 CDT] - US-534 Review
+- Fixed order-insensitive plugin-command cache freshness so reordered precedence manifests regenerate the shared cache, and aligned the documented source order with every canonical bundled and external source.
+- Replaced the unobservable claim that a plugin owns a duplicate command id with the implemented contract: deterministic first-occurrence deduplication in resolved manifest order.
+- Review notes (deferred/rejected): rejected the initial QA failure as an unmaterialized detached-worktree artifact; after clean-checkout codegen, all focused tests passed with positive counts and neither worktree gained tracked drift.
+- Review notes (deferred/rejected): rejected the test-only temporary-path injection concern because it requires control of the trusted CI process and grants no capability beyond that process.
+- Guide-Coverage-Skip: Internal cache freshness and metadata precedence have no end-user executable-guide surface.
+- Verification: explicit-base guide drift, guide coverage, typecheck, lint/deprecations, codegen drift, and 12 focused cache/manifest/generator tests passed; production LSP diagnostics were clean and the final test-file refresh timed out after earlier clean diagnostics. The optional no-excuse helper could not resolve its packaged `typescript` dependency from this project.
+- **Learnings for future iterations:**
+  - Order-insensitive manifest fingerprints must be paired with an ordered identity check whenever compilation applies first-occurrence or precedence semantics.
 ---
