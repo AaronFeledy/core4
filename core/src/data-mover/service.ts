@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import { Cause, type Context, DateTime, Effect, Layer, Option, Schema, type Scope, Stream } from "effect";
 
+import { findAppRoot } from "@lando/landofile/discovery";
 import type { LandoPaths } from "@lando/paths";
 import {
   ArchiveFormatError,
@@ -53,7 +54,6 @@ import {
   collectVerifiedStream,
   persistVerifiedStream,
 } from "@lando/sdk/verified-stream";
-import { findAppRoot } from "../landofile/discovery.ts";
 import { RedactionService } from "../redaction/service.ts";
 import { providerImages } from "./generated/provider-images.ts";
 

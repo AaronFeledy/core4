@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 
-import { ComposeKeyRejectedError, LandofileParseError } from "../../errors/tagged.ts";
+import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
 import { type LandofileTagOccurrence, detectLandofileTags } from "../parser.ts";
 import {
   type ComposeDisposition,

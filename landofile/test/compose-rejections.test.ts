@@ -8,8 +8,8 @@ import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
-import { compileDispositionTrie, matchDispositionPath } from "../../src/landofile/compose/rejection-trie.ts";
+} from "../src/compose/dispositions.ts";
+import { compileDispositionTrie, matchDispositionPath } from "../src/compose/rejection-trie.ts";
 import {
   analyzeComposeRejections,
   composeKeyRejectedError,
@@ -17,7 +17,7 @@ import {
   firstComposeRejection,
   rejectComposeKeys,
   rejectComposeTags,
-} from "../../src/landofile/compose/rejections.ts";
+} from "../src/compose/rejections.ts";
 
 const preserved = { disposition: "preserved", rationale: "Preserved for testing." } as const;
 const rejected = {

@@ -9,13 +9,16 @@
     "paths": {
       "@lando/paths": ["../paths/src/paths.ts"],
       "@lando/paths/*": ["../paths/src/*.ts"],
-      "@lando/sdk": ["../sdk/src/index.ts"],
-      "@lando/sdk/*": ["../sdk/src/*/index.ts"],
       "@lando/state-store": ["../state-store/src/index.ts"],
       "@lando/state-store/*": ["../state-store/src/*.ts"]
     }
   },
   "include": ["./src/**/*.ts", "./bin/**/*.ts", "./package.json"],
   "exclude": ["./dist", "./node_modules", "./test"],
-  "references": [{ "path": "../sdk" }, { "path": "../paths" }, { "path": "../state-store" }]
+  "references": [
+    { "path": "../sdk" },
+    { "path": "../paths" },
+    { "path": "../state-store" },
+    { "path": "../landofile" }
+  ]
 }

@@ -3,7 +3,7 @@ import { Either, ParseResult, Schema } from "effect";
 
 import { BuildBlock } from "@lando/sdk/schema";
 
-import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
+import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 
 const supportedBuildKeys = ["args", "context", "dockerfile", "dockerfile_inline", "target"] as const;
 const decodeOptions = [{}, { onExcessProperty: "error" }] as const;

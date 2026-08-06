@@ -74,7 +74,7 @@ export const renderCommands = (): string =>
     'import { Context, Layer } from "effect";',
     "",
     'import { EventService } from "@lando/sdk/services";',
-    'import { LandofileServiceLive } from "../../../landofile/service.ts";',
+    'import { LandofileServiceLive } from "../../../services/landofile-live.ts";',
     'import { makeSubscriberRuntimeLive } from "../../../lifecycle/subscribers.ts";',
     'import { CommandRegistryLive } from "../../../services/command-registry.ts";',
     'import type { BootstrapLayerInputs } from "../../bootstrap-layer-support.ts";',

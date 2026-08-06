@@ -5,7 +5,7 @@ import type { CertificateAuthorityContributionLayer, LandoPluginModule } from "@
 import type { CertificateAuthorityContribution, ResolvedPluginInput } from "@lando/sdk/schema";
 import { CertificateAuthority, Logger, PathsService } from "@lando/sdk/services";
 
-import { findAppRoot } from "../landofile/discovery.ts";
+import { findAppRoot } from "@lando/landofile/discovery";
 import { BUNDLED_PLUGIN_MODULES } from "./generated/bundled.ts";
 import { makePluginCapabilityIndex } from "./module-set.ts";
 import {

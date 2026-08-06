@@ -15,7 +15,7 @@ import {
   detectConfigTranslators,
   resolveConfigTranslators,
   runConfigTranslators,
-} from "../../src/landofile/config-translate.ts";
+} from "../src/config-translate.ts";
 
 const appRoot = "/tmp/app" as AbsolutePath;
 

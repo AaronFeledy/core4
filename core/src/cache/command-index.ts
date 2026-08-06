@@ -3,7 +3,10 @@ import { deserialize, serialize } from "node:v8";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
-import { type VersionConstraintEntry, getVersionConstraintEntries } from "../config/version-constraint.ts";
+import {
+  type VersionConstraintEntry,
+  getVersionConstraintEntries,
+} from "@lando/landofile/version-constraint";
 
 const contributionId = (entry: string | { readonly id: string }): string =>
   typeof entry === "string" ? entry : entry.id;

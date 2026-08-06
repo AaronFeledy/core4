@@ -48,6 +48,12 @@ const orderForLayer = (layer: unknown): VersionConstraintOrder | undefined => {
   }
 };
 
+const VERSION_CONSTRAINT_ENTRIES_SYMBOL = Symbol.for("lando.versionConstraintEntries");
+
+type VersionConstraintCarrier = {
+  readonly [VERSION_CONSTRAINT_ENTRIES_SYMBOL]?: ReadonlyArray<VersionConstraintEntry>;
+};
+
 export const isVersionConstraintEntryArray = (
   value: unknown,
 ): value is ReadonlyArray<VersionConstraintEntry> =>
@@ -75,6 +81,11 @@ export const rememberVersionConstraintEntries = <T extends object>(
   entries: ReadonlyArray<VersionConstraintEntry>,
 ): T => {
   landofileVersionConstraintEntries.set(landofile, entries);
+  Object.defineProperty(landofile, VERSION_CONSTRAINT_ENTRIES_SYMBOL, {
+    value: entries,
+    enumerable: false,
+    configurable: true,
+  });
   return landofile;
 };
 
@@ -82,7 +93,9 @@ export const getVersionConstraintEntries = (
   landofile: { readonly lando?: string | undefined },
   fallbackSource: string,
 ): ReadonlyArray<VersionConstraintEntry> => {
-  const remembered = landofileVersionConstraintEntries.get(landofile);
+  const remembered =
+    landofileVersionConstraintEntries.get(landofile) ??
+    (landofile as VersionConstraintCarrier)[VERSION_CONSTRAINT_ENTRIES_SYMBOL];
   if (remembered !== undefined) return remembered;
   return landofile.lando === undefined
     ? []

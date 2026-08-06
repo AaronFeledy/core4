@@ -72,7 +72,17 @@ describe("Landofile package seam", () => {
     expect(isJsonObject(packageModule)).toBe(true);
     if (!isJsonObject(packageModule))
       throw new TypeError("Expected the Landofile entry point to be a module");
-    expect(Object.keys(packageModule)).toEqual([]);
+    expect(Object.keys(packageModule)).toEqual(
+      expect.arrayContaining(["LandofileServiceLive", "makeLandofileServiceLive"]),
+    );
+    expect(stringRecord(packageManifest.exports)).toMatchObject({
+      ".": "./src/index.ts",
+      "./includes": "./src/includes.ts",
+      "./parser": "./src/parser.ts",
+      "./serializer": "./src/serializer.ts",
+      "./service": "./src/service.ts",
+      "./version-constraint": "./src/version-constraint.ts",
+    });
   });
 
   test("declares only approved seam dependencies", async () => {
@@ -103,15 +113,66 @@ describe("Landofile package seam", () => {
     expect(workspacePeerDependencies).toEqual([]);
   });
 
-  test("leaves @lando/core/landofile on the existing core implementation", () => {
+  test("declares every imported external package directly", async () => {
     // Given / When
+    const packageManifest = await readJsonObject(packageManifestPath);
+    const dependencies = stringRecord(packageManifest.dependencies);
+    const devDependencies = stringRecord(packageManifest.devDependencies);
+
+    // Then
+    expect(dependencies.effect).toBe("^3.21.2");
+    expect(dependencies.semver).toBe("^7.8.5");
+    expect(devDependencies["@types/semver"]).toBe("^7.7.1");
+  });
+
+  test("routes @lando/core/landofile through the package serializer subpath", async () => {
+    // Given
     const publicEntry = realpathSync(Bun.resolveSync("@lando/core/landofile", repositoryRoot)).replaceAll(
       "\\",
       "/",
     );
+    const serializerEntry = realpathSync(
+      Bun.resolveSync("@lando/landofile/serializer", repositoryRoot),
+    ).replaceAll("\\", "/");
+
+    // When
+    const shimSource = await Bun.file(resolve(repositoryRoot, "core/src/landofile/index.ts")).text();
 
     // Then
     expect(publicEntry).toEndWith("/core/src/landofile/index.ts");
+    expect(serializerEntry).toEndWith("/landofile/src/serializer.ts");
+    expect(shimSource).toContain('export * from "@lando/landofile/serializer";');
+    expect(shimSource).not.toMatch(/from "@lando\/sdk\/landofile"/u);
+  });
+
+  test("keeps the core serializer entry point export-identical to the sdk source", async () => {
+    // Given / When
+    const coreModule: unknown = await import("@lando/core/landofile");
+    const sdkModule: unknown = await import("@lando/sdk/landofile");
+
+    // Then
+    if (!isJsonObject(coreModule) || !isJsonObject(sdkModule)) {
+      throw new TypeError("Expected both serializer entry points to be modules");
+    }
+    expect(Object.keys(coreModule).sort()).toEqual(Object.keys(sdkModule).sort());
+    expect(Object.keys(coreModule).sort()).toEqual(
+      [
+        "LandofileEmitError",
+        "detectLandofileTags",
+        "emitLandofileYaml",
+        "emitLandofileYamlEither",
+        "parseLandofile",
+      ].sort(),
+    );
+  });
+
+  test("declares the Landofile implementation edge from core", async () => {
+    // Given / When
+    const coreManifest = await readJsonObject(resolve(repositoryRoot, "core/package.json"));
+    const dependencies = stringRecord(coreManifest.dependencies);
+
+    // Then
+    expect(dependencies["@lando/landofile"]).toBe("workspace:*");
   });
 
   test("runs the package seam test in CI unit shards", async () => {

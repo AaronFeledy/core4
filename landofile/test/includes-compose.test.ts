@@ -8,14 +8,30 @@ import { Effect } from "effect";
 import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
-import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
+import { composeServiceDispositions } from "../src/compose/dispositions.ts";
+import { resolveLandofileIncludes } from "../src/includes.ts";
+import { makeTestLandofilePorts } from "./support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
-  Effect.runPromise(resolveLandofileIncludes({ landofile, appRoot, cacheRoot: join(appRoot, ".cache") }));
+  Effect.runPromise(
+    resolveLandofileIncludes({
+      landofile,
+      appRoot,
+      cacheRoot: join(appRoot, ".cache"),
+      ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+    }),
+  );
 
 const reject = (landofile: LandofileShape, appRoot: string) =>
-  Effect.runPromise(Effect.flip(resolveLandofileIncludes({ landofile, appRoot }))).then((error) => {
+  Effect.runPromise(
+    Effect.flip(
+      resolveLandofileIncludes({
+        landofile,
+        appRoot,
+        ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+      }),
+    ),
+  ).then((error) => {
     if (error._tag !== "ComposeKeyRejectedError") throw error;
     return error;
   });
@@ -99,6 +115,7 @@ describe("Compose include fragments", () => {
           resolveLandofileIncludes({
             landofile: { includes: [{ source: "./alias-error.yml", kind }] },
             appRoot,
+            ports: makeTestLandofilePorts(join(appRoot, ".cache")),
           }),
         ),
       );

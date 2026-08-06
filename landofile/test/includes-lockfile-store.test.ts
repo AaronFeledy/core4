@@ -7,8 +7,9 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import type { GitIncludeCloner } from "../../src/landofile/includes.ts";
-import { updateLandofileIncludes, verifyLandofileIncludes } from "../../src/landofile/includes.ts";
+import type { GitIncludeCloner } from "../src/includes.ts";
+import { updateLandofileIncludes, verifyLandofileIncludes } from "../src/includes.ts";
+import { makeTestLandofilePorts } from "./support.ts";
 
 const sha256 = (content: string): string => new Bun.CryptoHasher("sha256").update(content).digest("hex");
 
@@ -69,6 +70,7 @@ describe("store-backed include lockfile", () => {
         landofile: landofile(),
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -87,6 +89,7 @@ describe("store-backed include lockfile", () => {
         landofile: landofile(),
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -96,6 +99,7 @@ describe("store-backed include lockfile", () => {
         landofile: landofile(),
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -115,6 +119,7 @@ describe("store-backed include lockfile", () => {
         landofile: landofile(),
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );
@@ -131,6 +136,7 @@ describe("store-backed include lockfile", () => {
         landofile: landofile(),
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: clonerReturning("abc123") },
       }),
     );

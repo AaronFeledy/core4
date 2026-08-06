@@ -33,12 +33,15 @@ import { LANDOFILE_NAME, LANDOFILE_TS_NAME, findLandofilePath } from "./discover
 import { presentLandofileLayers } from "./layers.ts";
 import { mergeValues } from "./merge.ts";
 import { detectLandofileTags, parseLandofile } from "./parser.ts";
+import type { TemplateEngineInputs } from "./ports.ts";
 import { renderLandofileTemplate } from "./template-render.ts";
+import { buildTemplateEngineRegistry } from "./template-render.ts";
 import { loadLandofileTs } from "./ts-loader.ts";
 
 export interface LintLandofileOptions {
   /** Directory to search upward from for a Landofile. Defaults to `process.cwd()`. */
   readonly cwd?: string;
+  readonly templates?: TemplateEngineInputs;
 }
 
 const decodeLandofile = Schema.decodeUnknownEither(LandofileShape);
@@ -237,6 +240,8 @@ export const lintLandofile = (
       const renderedEither = yield* renderLandofileTemplate({
         filePath: layer.filePath,
         content: contentEither.right,
+        registry: buildTemplateEngineRegistry(options.templates?.modules ?? []),
+        ...(options.templates?.context === undefined ? {} : { context: options.templates.context }),
       }).pipe(Effect.either);
       if (Either.isLeft(renderedEither)) {
         const error = renderedEither.left;

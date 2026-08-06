@@ -1,4 +1,4 @@
-import { mergeLandofiles } from "../../src/landofile/merge.ts";
+import { mergeLandofiles } from "../src/merge.ts";
 
 describe("mergeLandofiles", () => {
   test("deep-merges maps with later scalar precedence", () => {

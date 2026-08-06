@@ -42,7 +42,6 @@ import { appsScratchRunSpec } from "../../src/cli/oclif/commands/apps/scratch/ru
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeJsonRendererServiceLive } from "../../src/cli/renderer/runtime.ts";
 import { DataMoverLive } from "../../src/data-mover/service.ts";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
 import { ScratchRegistryLive, makeScratchRegistry } from "../../src/scratch-app/registry.ts";
@@ -52,6 +51,7 @@ import { BuildOrchestratorLive } from "../../src/services/build-orchestrator.ts"
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";
 import { SecretStoreLive } from "../../src/services/secret-store.ts";
 import { agentEnvConfigServiceLayer } from "./agent-env-test-config.ts";

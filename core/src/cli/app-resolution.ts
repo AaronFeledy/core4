@@ -23,16 +23,21 @@ import {
 import type { AppPlan, AppRef, LandofileShape } from "@lando/sdk/schema";
 import { type LandofileService, Renderer } from "@lando/sdk/services";
 
+import { LANDOFILE_NAME } from "@lando/landofile/discovery";
+import { hasResolvableIncludes } from "@lando/landofile/includes";
+import { landofileLayerPaths } from "@lando/landofile/layers";
 import {
   type VersionConstraintEntry,
   evaluateVersionConstraints,
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
-} from "../config/version-constraint.ts";
-import { LANDOFILE_NAME } from "../landofile/discovery.ts";
-import { hasResolvableIncludes, resolveLandofileIncludes } from "../landofile/includes.ts";
-import { landofileLayerPaths } from "../landofile/layers.ts";
-import { findDiscoveredLandofilePath, loadLandofileFile, loadLandofileLayers } from "../landofile/service.ts";
+} from "@lando/landofile/version-constraint";
+import {
+  findDiscoveredLandofilePath,
+  loadLandofileFile,
+  loadLandofileLayers,
+  resolveLandofileIncludes,
+} from "../services/landofile-live.ts";
 import { CORE_VERSION } from "../version.ts";
 import { commandWarningsUseMachineOutput, recordCommandWarning } from "./command-warnings.ts";
 
@@ -161,7 +166,10 @@ export const assertLandoVersionConstraint = (
   return Effect.fail(
     new LandofileVersionConstraintError({
       message: `The running Lando version ${runningVersion} does not satisfy the Landofile \`lando:\` constraint ${unsatisfied
-        .map((entry) => `"${entry.range}" (${entry.source}; ${entry.layer} layer, order ${entry.order})`)
+        .map(
+          (entry: VersionConstraintEntry) =>
+            `"${entry.range}" (${entry.source}; ${entry.layer} layer, order ${entry.order})`,
+        )
         .join(", ")}.`,
       constraints: unsatisfied,
       runningVersion,

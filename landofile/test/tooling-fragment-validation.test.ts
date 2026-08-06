@@ -7,11 +7,19 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
+import { resolveLandofileIncludes } from "../src/includes.ts";
+import { makeTestLandofilePorts } from "./support.ts";
 
 const failure = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(
-    Effect.flip(resolveLandofileIncludes({ landofile, appRoot, cacheRoot: join(appRoot, ".cache") })),
+    Effect.flip(
+      resolveLandofileIncludes({
+        landofile,
+        appRoot,
+        cacheRoot: join(appRoot, ".cache"),
+        ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+      }),
+    ),
   );
 
 describe("tooling fragment validation", () => {

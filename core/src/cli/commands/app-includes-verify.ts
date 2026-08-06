@@ -16,23 +16,23 @@ import type {
 } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 
-import { rejectComposeKeys, rejectComposeTags } from "../../landofile/compose/rejections.ts";
-import { findLandofilePath } from "../../landofile/discovery.ts";
-import {
-  type IncludeVerifyReport,
-  type IncludeVerifyStatus,
-  type LandofileIncludeDeps,
-  verifyLandofileIncludes,
-} from "../../landofile/includes.ts";
-import { parseLandofile } from "../../landofile/parser.ts";
-import { rejectBetaToolingFeatures } from "../../landofile/tooling-beta.ts";
+import { rejectComposeKeys, rejectComposeTags } from "@lando/landofile/compose/rejections";
+import { findLandofilePath } from "@lando/landofile/discovery";
+import type {
+  IncludeVerifyReport,
+  IncludeVerifyStatus,
+  LandofileIncludeDeps,
+} from "@lando/landofile/includes";
+import { parseLandofile } from "@lando/landofile/parser";
+import { rejectBetaToolingFeatures } from "@lando/landofile/tooling-beta";
+import { verifyLandofileIncludes } from "../../services/landofile-live.ts";
 
 export type {
   IncludeVerifyEntry,
   IncludeVerifyMismatch,
   IncludeVerifyReport,
   IncludeVerifyStatus,
-} from "../../landofile/includes.ts";
+} from "@lando/landofile/includes";
 
 export type AppIncludesVerifyFormat = "text" | "json";
 

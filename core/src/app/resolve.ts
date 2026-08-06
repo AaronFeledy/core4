@@ -16,8 +16,8 @@ import {
   userAppRef,
   withResolvedCwd,
 } from "../cli/app-resolution.ts";
-import { resolveLandofileIncludes } from "../landofile/includes.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
+import { resolveLandofileIncludes } from "../services/landofile-live.ts";
 import { makeAppHandle } from "./handle.ts";
 import { makeAppLifecycle } from "./lifecycle.ts";
 import { type NormalizedAppSelector, normalizeAppSelector } from "./selector.ts";

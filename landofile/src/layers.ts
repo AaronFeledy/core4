@@ -2,7 +2,7 @@ import { join } from "node:path";
 
 import { LandofileFormConflictError } from "@lando/sdk/errors";
 
-import type { VersionConstraintEntry } from "../config/version-constraint.ts";
+import type { VersionConstraintEntry } from "./version-constraint.ts";
 
 export interface LandofileLayerPosition {
   readonly layer: VersionConstraintEntry["layer"];

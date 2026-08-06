@@ -42,6 +42,7 @@ import { PreAppStartEvent } from "@lando/sdk/events";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { parseLandofile } from "@lando/landofile/parser";
 import { CacheServiceLive } from "../../src/cache/service.ts";
 import { globalConfig } from "../../src/cli/commands/meta/global-config.ts";
 import { globalDestroy } from "../../src/cli/commands/meta/global-destroy.ts";
@@ -57,7 +58,6 @@ import { globalUninstall } from "../../src/cli/commands/meta/global-uninstall.ts
 import { globalConfigOptionsFromInput } from "../../src/cli/oclif/commands/meta/global/config.ts";
 import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { parseLandofile } from "../../src/landofile/parser.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";

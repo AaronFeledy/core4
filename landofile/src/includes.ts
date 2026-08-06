@@ -16,21 +16,6 @@ import { AbsolutePath, type IncludeEntry, LandofileShape } from "@lando/sdk/sche
 import type { StateBucket, StateRoot } from "@lando/sdk/services";
 
 import { makeStateStore } from "@lando/state-store/service";
-import { resolveUserCacheRoot } from "../cache/paths.ts";
-import {
-  type VersionConstraintEntry,
-  getVersionConstraintEntries,
-  rememberVersionConstraintEntries,
-} from "../config/version-constraint.ts";
-import { httpJsonFetch } from "../http-client/json-fetch.ts";
-import { type GitRecipeCloner, defaultGitRecipeCloner, publish } from "../recipes/git-source.ts";
-import { type NpmPackument, type NpmRegistryClient, parseNpmPackageSpec } from "../recipes/npm-source.ts";
-import {
-  type TarballRecipeExtractor,
-  type TarballRecipeFetcher,
-  defaultTarballRecipeExtractor,
-  defaultTarballRecipeFetcher,
-} from "../recipes/tarball-source.ts";
 import { rememberLandofileAppRoot } from "./app-root-provenance.ts";
 import { rejectComposeKeys, rejectComposeTags } from "./compose/rejections.ts";
 import { assertUnderRoot, includeError } from "./include-guard.ts";
@@ -45,7 +30,15 @@ import {
   resolveLandofileLoadExpressions,
 } from "./load-expression.ts";
 import { mergeLandofiles, mergeValues } from "./merge.ts";
+import { parseNpmPackageSpec } from "./npm-package-spec.ts";
 import { parseLandofile } from "./parser.ts";
+import type {
+  GitAcquisitionPort,
+  LandofileRuntimePorts,
+  NpmPackument,
+  PublicationPort,
+  TarballAcquisitionPort,
+} from "./ports.ts";
 import {
   assertCompatibleIncludeFields,
   composeToolingIncludeEntries,
@@ -57,17 +50,25 @@ import {
   winningInternalToolingTasks,
 } from "./tooling-include-provenance.ts";
 import { hasToolingIncludes, resolveToolingIncludes } from "./tooling-includes.ts";
+import {
+  type VersionConstraintEntry,
+  getVersionConstraintEntries,
+  rememberVersionConstraintEntries,
+} from "./version-constraint.ts";
 
-export type GitIncludeCloner = GitRecipeCloner;
-export type NpmIncludeRegistryClient = NpmRegistryClient;
-export type NpmIncludeFetcher = TarballRecipeFetcher;
-export type NpmIncludeExtractor = TarballRecipeExtractor;
+export type GitIncludeCloner = GitAcquisitionPort;
+export interface NpmIncludeRegistryClient {
+  readonly fetchPackument: (packageName: string) => Promise<NpmPackument | undefined>;
+}
+export type NpmIncludeFetcher = Pick<TarballAcquisitionPort, "fetch">;
+export type NpmIncludeExtractor = Pick<TarballAcquisitionPort, "extract">;
 
 export interface LandofileIncludeDeps {
   readonly gitCloner?: GitIncludeCloner;
   readonly npmRegistryClient?: NpmIncludeRegistryClient;
   readonly npmFetcher?: NpmIncludeFetcher;
   readonly npmExtractor?: NpmIncludeExtractor;
+  readonly publication?: PublicationPort;
 }
 
 export interface LandofileRelaxedRead {
@@ -90,6 +91,7 @@ export interface ResolveLandofileIncludesOptions {
   readonly order?: VersionConstraintEntry["order"];
   readonly resolveTooling?: boolean;
   readonly loadPolicy?: LandofileLoadPolicy;
+  readonly ports?: LandofileRuntimePorts;
   readonly onRelaxedRead?: (read: LandofileRelaxedRead) => Effect.Effect<void>;
 }
 
@@ -118,6 +120,7 @@ interface ResolveContext {
   readonly stagedLocks: Map<string, LockEntry>;
   readonly noNetwork: boolean;
   readonly loadPolicy: LandofileLoadPolicy;
+  readonly ports?: LandofileRuntimePorts;
   readonly onRelaxedRead?: ResolveLandofileIncludesOptions["onRelaxedRead"];
 }
 
@@ -141,6 +144,23 @@ const isPlainRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 const causeMessage = (cause: unknown): string => (cause instanceof Error ? cause.message : String(cause));
+
+const missingRuntimeInput = (input: string): LandofileIncludeError =>
+  includeError({
+    message: `Landofile include resolution requires an injected ${input}.`,
+    source: "Landofile includes",
+    kind: "source-unresolved",
+    remediation: "Construct the Landofile runtime with the host-provided acquisition and cache ports.",
+  });
+
+const requiredPorts = (ctx: ResolveContext): LandofileRuntimePorts => {
+  if (ctx.ports !== undefined) return ctx.ports;
+  throw missingRuntimeInput("runtime port set");
+};
+
+const missingCacheRoot = (): never => {
+  throw missingRuntimeInput("cache root");
+};
 
 export type ResolveIncludesError =
   | ComposeKeyRejectedError
@@ -359,7 +379,7 @@ const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   let commitSha: string;
   try {
     commitSha = (
-      await (ctx.deps.gitCloner ?? defaultGitRecipeCloner).clone({
+      await (ctx.deps.gitCloner ?? requiredPorts(ctx).git).clone({
         url: parsed.cloneUrl,
         stagingDir,
         dest: stagingDir,
@@ -375,7 +395,7 @@ const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   }
   const publishedDir = join(gitRoot, commitSha);
   if (await fileExists(publishedDir)) await rm(stagingDir, { recursive: true, force: true });
-  else await publish(stagingDir, publishedDir);
+  else await (ctx.deps.publication ?? requiredPorts(ctx).publication).publish(stagingDir, publishedDir);
   const filePath = await assertUnderRoot(
     publishedDir,
     join(publishedDir, parsed.path),
@@ -391,23 +411,6 @@ const fetchGit = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
     root: dirname(filePath),
     locked: true,
   };
-};
-
-const defaultNpmRegistryClient: NpmRegistryClient = {
-  fetchPackument: async (packageName) => {
-    const encoded = packageName.startsWith("@")
-      ? `@${encodeURIComponent(packageName.slice(1))}`
-      : encodeURIComponent(packageName);
-    const response = await httpJsonFetch(`https://registry.npmjs.org/${encoded}`, {
-      headers: [{ name: "accept", value: "application/json" }],
-      redirect: "follow",
-    });
-    if (response.status === 404) return undefined;
-    if (response.status < 200 || response.status >= 300) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    return JSON.parse(new TextDecoder().decode(response.bytes)) as NpmPackument;
-  },
 };
 
 const resolveNpmVersion = (
@@ -479,9 +482,9 @@ const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   if (ctx.noNetwork) return fetchNpmFromCache(entry, parsed, ctx);
   let packument: NpmPackument | undefined;
   try {
-    packument = await (ctx.deps.npmRegistryClient ?? defaultNpmRegistryClient).fetchPackument(
-      parsed.packageName,
-    );
+    packument = await (
+      ctx.deps.npmRegistryClient?.fetchPackument ?? requiredPorts(ctx).httpMetadata.fetchNpmPackument
+    )(parsed.packageName);
   } catch (cause) {
     throw includeError({
       message: `Could not fetch npm metadata for ${parsed.packageName}: ${causeMessage(cause)}`,
@@ -507,7 +510,7 @@ const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   }
   let archive: Uint8Array;
   try {
-    archive = await (ctx.deps.npmFetcher ?? defaultTarballRecipeFetcher).fetch(tarball);
+    archive = await (ctx.deps.npmFetcher ?? requiredPorts(ctx).tarball).fetch(tarball);
   } catch (cause) {
     throw includeError({
       message: `Could not download npm include ${tarball}: ${causeMessage(cause)}`,
@@ -521,8 +524,8 @@ const fetchNpm = async (entry: NormalizedInclude, ctx: ResolveContext): Promise<
   if (!(await fileExists(publishedDir))) {
     const stagingDir = await mkdtemp(join(npmRoot, ".staging-"));
     try {
-      await (ctx.deps.npmExtractor ?? defaultTarballRecipeExtractor).extract(archive, stagingDir);
-      await publish(stagingDir, publishedDir);
+      await (ctx.deps.npmExtractor ?? requiredPorts(ctx).tarball).extract(archive, stagingDir);
+      await (ctx.deps.publication ?? requiredPorts(ctx).publication).publish(stagingDir, publishedDir);
     } catch (cause) {
       await rm(stagingDir, { recursive: true, force: true });
       throw includeError({
@@ -1018,7 +1021,7 @@ export const resolveLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
-      cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
+      cacheRoot: options.cacheRoot ?? options.ports?.resolveUserCacheRoot() ?? missingCacheRoot(),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
@@ -1027,6 +1030,7 @@ export const resolveLandofileIncludes = (
       stagedLocks: new Map(),
       noNetwork: false,
       loadPolicy: options.loadPolicy ?? DEFAULT_LANDOFILE_LOAD_POLICY,
+      ...(options.ports === undefined ? {} : { ports: options.ports }),
       ...(options.onRelaxedRead === undefined ? {} : { onRelaxedRead: options.onRelaxedRead }),
     };
     const sourcePath = options.sourcePath ?? join(options.appRoot, ".lando.yml");
@@ -1110,6 +1114,7 @@ export interface UpdateLandofileIncludesOptions {
   readonly check?: boolean;
   readonly sources?: ReadonlyArray<string>;
   readonly noNetwork?: boolean;
+  readonly ports?: LandofileRuntimePorts;
 }
 
 const byCodepointString = (left: string, right: string): number => (left < right ? -1 : left > right ? 1 : 0);
@@ -1155,7 +1160,7 @@ export const updateLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
-      cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
+      cacheRoot: options.cacheRoot ?? options.ports?.resolveUserCacheRoot() ?? missingCacheRoot(),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
@@ -1164,6 +1169,7 @@ export const updateLandofileIncludes = (
       stagedLocks: new Map(),
       noNetwork,
       loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
+      ...(options.ports === undefined ? {} : { ports: options.ports }),
     };
 
     if (includes.length > 0) {
@@ -1240,6 +1246,7 @@ export interface VerifyLandofileIncludesOptions {
   readonly lockfilePath?: string;
   readonly deps?: LandofileIncludeDeps;
   readonly maxDepth?: number;
+  readonly ports?: LandofileRuntimePorts;
 }
 
 const MISSING_LOCK_VALUE = "<missing>";
@@ -1272,7 +1279,7 @@ export const verifyLandofileIncludes = (
     const ctx: ResolveContext = {
       appRoot: options.appRoot,
       sourceRoot: options.appRoot,
-      cacheRoot: options.cacheRoot ?? resolveUserCacheRoot(),
+      cacheRoot: options.cacheRoot ?? options.ports?.resolveUserCacheRoot() ?? missingCacheRoot(),
       lockfilePath,
       deps: options.deps ?? {},
       maxDepth: options.maxDepth ?? 8,
@@ -1281,6 +1288,7 @@ export const verifyLandofileIncludes = (
       stagedLocks: new Map(),
       noNetwork: false,
       loadPolicy: DEFAULT_LANDOFILE_LOAD_POLICY,
+      ...(options.ports === undefined ? {} : { ports: options.ports }),
     };
 
     if (includes.length > 0) {

@@ -5,14 +5,14 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import { LandofileFormConflictError } from "@lando/core/errors";
+import { LandofileFormConflictError } from "@lando/sdk/errors";
 
 import {
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
-import { lintLandofile } from "../../src/landofile/lint.ts";
+} from "../src/compose/dispositions.ts";
+import { lintLandofile } from "../src/lint.ts";
 
 describe("lintLandofile", () => {
   let dir: string;

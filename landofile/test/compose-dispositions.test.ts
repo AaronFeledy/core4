@@ -2,14 +2,8 @@ import { describe, expect, test } from "bun:test";
 
 import { ComposePreservedPathKey } from "@lando/sdk/schema";
 
-import {
-  composeServiceDispositions,
-  composeTopLevelDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
-import {
-  analyzeComposeDispositions,
-  analyzeComposeRejections,
-} from "../../src/landofile/compose/rejections.ts";
+import { composeServiceDispositions, composeTopLevelDispositions } from "../src/compose/dispositions.ts";
+import { analyzeComposeDispositions, analyzeComposeRejections } from "../src/compose/rejections.ts";
 
 describe("Compose disposition analysis", () => {
   test("reports every disposition in document order and descends through normalized parents", () => {

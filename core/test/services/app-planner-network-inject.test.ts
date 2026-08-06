@@ -11,7 +11,7 @@ import { LandofileValidationError } from "@lando/sdk/errors";
 import { GlobalConfig, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, PathsService } from "@lando/sdk/services";
 
-import { rememberLandofileAppRoot } from "../../src/landofile/app-root-provenance.ts";
+import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
 import { PluginRegistryLive } from "../../src/plugins/registry.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";

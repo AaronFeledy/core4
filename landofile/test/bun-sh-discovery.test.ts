@@ -4,10 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
-import {
-  canonicalIdFromRelativePath,
-  discoverBunShellScripts,
-} from "../../src/landofile/bun-sh-discovery.ts";
+import { canonicalIdFromRelativePath, discoverBunShellScripts } from "../src/bun-sh-discovery.ts";
 
 const withAppRoot = async <T>(run: (root: string) => Promise<T>): Promise<T> => {
   const root = await mkdtemp(join(tmpdir(), "lando-bun-sh-discovery-"));

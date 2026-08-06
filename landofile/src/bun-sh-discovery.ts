@@ -10,7 +10,7 @@ import {
 } from "@lando/sdk/errors";
 import { BunShellScriptFrontMatter } from "@lando/sdk/schema";
 
-import { decodeOrFail } from "../schema/decode.ts";
+import { decodeOrFail } from "./decode.ts";
 export const BUN_SHELL_SCRIPT_EXTENSION = ".bun.sh";
 export const SCRIPTS_DIRNAME = join(".lando", "scripts");
 

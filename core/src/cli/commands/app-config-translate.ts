@@ -16,16 +16,16 @@ import type { AbsolutePath, PortablePath } from "@lando/sdk/schema";
 import { LandofileShape } from "@lando/sdk/schema";
 import type { ConfigTranslateMatch, ConfigTranslatorShape } from "@lando/sdk/services";
 
-import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 import {
   detectConfigTranslators,
   resolveConfigTranslators,
   runConfigTranslators,
-} from "../../landofile/config-translate.ts";
-import { findLandofilePath } from "../../landofile/discovery.ts";
-import { mergeLandofiles } from "../../landofile/merge.ts";
-import { parseLandofile } from "../../landofile/parser.ts";
-import { rejectBetaToolingFeatures } from "../../landofile/tooling-beta.ts";
+} from "@lando/landofile/config-translate";
+import { findLandofilePath } from "@lando/landofile/discovery";
+import { mergeLandofiles } from "@lando/landofile/merge";
+import { parseLandofile } from "@lando/landofile/parser";
+import { rejectBetaToolingFeatures } from "@lando/landofile/tooling-beta";
+import { writeFileAtomicViaRename } from "../../cache/atomic.ts";
 
 export type AppConfigTranslateFormat = "yaml" | "table" | "json";
 

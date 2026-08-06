@@ -8,8 +8,8 @@ import { Cause, Effect, Exit, Schema } from "effect";
 import { AppIncludesUpdateResultSchema, renderIncludesUpdateResult } from "@lando/core/cli/operations";
 import type { IncludeUpdateReport } from "@lando/core/cli/operations";
 import { LandofileFormConflictError } from "@lando/core/errors";
+import type { GitIncludeCloner } from "@lando/landofile/includes";
 import { appIncludesUpdate } from "../../src/cli/commands/app-includes-update.ts";
-import type { GitIncludeCloner } from "../../src/landofile/includes.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

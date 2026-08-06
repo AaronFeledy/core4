@@ -6,7 +6,7 @@ import { Cause, Effect, Exit } from "effect";
 
 import { LandofileValidationError } from "@lando/core/errors";
 import { LandofileService } from "@lando/core/services";
-import { LandofileServiceLive } from "../../src/landofile/service.ts";
+import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const withTempCwd = async <T>(run: (directory: string) => Promise<T>): Promise<T> => {
   const directory = await mkdtemp(join(tmpdir(), "lando-service-extension-keys-"));

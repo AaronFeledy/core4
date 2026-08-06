@@ -7,8 +7,9 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { verifyLandofileIncludes } from "../../src/landofile/includes.ts";
-import type { GitIncludeCloner } from "../../src/landofile/includes.ts";
+import { verifyLandofileIncludes } from "../src/includes.ts";
+import type { GitIncludeCloner } from "../src/includes.ts";
+import { makeTestLandofilePorts } from "./support.ts";
 
 const lockfile = (source: string, resolved: string, checksum: string) =>
   [
@@ -56,6 +57,7 @@ describe("verifyLandofileIncludes", () => {
         landofile,
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         ...(gitCloner === undefined ? {} : { deps: { gitCloner } }),
       }),
     );

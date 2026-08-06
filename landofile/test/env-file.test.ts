@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { parseEnvFile } from "../../src/landofile/env-file.ts";
+import { parseEnvFile } from "../src/env-file.ts";
 
 describe("parseEnvFile", () => {
   test("parses comments, export prefixes, quotes, CRLF, and equals signs", () => {

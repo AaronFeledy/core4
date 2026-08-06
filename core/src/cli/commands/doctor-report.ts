@@ -9,8 +9,8 @@ import { Effect, Option } from "effect";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { lintLandofile } from "../../landofile/lint.ts";
 import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
+import { lintLandofile } from "../../services/landofile-live.ts";
 import { interruptOnAbort } from "./doctor-abort.ts";
 import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status.ts";
 import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app.ts";

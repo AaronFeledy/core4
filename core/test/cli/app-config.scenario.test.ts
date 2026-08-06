@@ -11,7 +11,7 @@ import {
   renderAppConfigResult,
 } from "@lando/core/cli/operations";
 import { LandofileService } from "@lando/core/services";
-import { composeServiceDispositions } from "../../src/landofile/compose/dispositions.ts";
+import { composeServiceDispositions } from "@lando/landofile/compose/dispositions";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

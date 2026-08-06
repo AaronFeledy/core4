@@ -8,7 +8,7 @@ import {
   LandofileShape,
 } from "@lando/sdk/schema";
 
-import { composeTopLevelDispositions } from "../../src/landofile/compose/dispositions.ts";
+import { composeTopLevelDispositions } from "../src/compose/dispositions.ts";
 
 describe("Compose top-level classification reconciliation", () => {
   test("COMPOSE_TOP_LEVEL_KEYS equals the accepted top-level disposition classification", () => {

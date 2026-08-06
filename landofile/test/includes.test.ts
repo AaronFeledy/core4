@@ -6,17 +6,18 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { getLocalIncludePaths } from "../../src/landofile/include-provenance.ts";
-import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
+import { getLocalIncludePaths } from "../src/include-provenance.ts";
+import { resolveLandofileIncludes } from "../src/includes.ts";
 import type {
   GitIncludeCloner,
   NpmIncludeExtractor,
   NpmIncludeFetcher,
   NpmIncludeRegistryClient,
-} from "../../src/landofile/includes.ts";
+} from "../src/includes.ts";
+import { makeTestLandofilePorts } from "./support.ts";
 
 const resolveEffect = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
-  resolveLandofileIncludes({ landofile, appRoot, cacheRoot });
+  resolveLandofileIncludes({ landofile, appRoot, cacheRoot, ports: makeTestLandofilePorts(cacheRoot) });
 
 const runResolve = (landofile: LandofileShape, appRoot: string, cacheRoot: string) =>
   Effect.runPromise(resolveEffect(landofile, appRoot, cacheRoot));
@@ -89,6 +90,7 @@ describe("resolveLandofileIncludes", () => {
         },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: cloner },
       }),
     );
@@ -119,6 +121,7 @@ describe("resolveLandofileIncludes", () => {
         landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { gitCloner: cloner },
       }),
     );
@@ -151,6 +154,7 @@ describe("resolveLandofileIncludes", () => {
           landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
           appRoot,
           cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
           deps: { gitCloner: cloner },
         }),
       ),
@@ -177,7 +181,13 @@ describe("resolveLandofileIncludes", () => {
     };
 
     const result = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile, appRoot, cacheRoot, deps: { gitCloner: cloner } }),
+      resolveLandofileIncludes({
+        landofile,
+        appRoot,
+        cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
+        deps: { gitCloner: cloner },
+      }),
     );
     expect(result.services?.db?.type).toBe("postgres");
     expect(result.services?.cache?.type).toBe("redis");
@@ -187,7 +197,13 @@ describe("resolveLandofileIncludes", () => {
     expect(written).toContain("source: github:acme/fragments/cache.yml");
 
     const second = await Effect.runPromise(
-      resolveLandofileIncludes({ landofile, appRoot, cacheRoot, deps: { gitCloner: cloner } }),
+      resolveLandofileIncludes({
+        landofile,
+        appRoot,
+        cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
+        deps: { gitCloner: cloner },
+      }),
     );
     expect(second.services?.db?.type).toBe("postgres");
     expect(await readFile(join(appRoot, ".lando.lock.yml"), "utf8")).toBe(written);
@@ -217,6 +233,7 @@ describe("resolveLandofileIncludes", () => {
         landofile: { includes: [{ source: "npm:@acme/fragments/fragments/web.yml@latest" }] },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         deps: { npmRegistryClient: registryClient, npmFetcher: fetcher, npmExtractor: extractor },
       }),
     );
@@ -263,7 +280,13 @@ describe("resolveLandofileIncludes", () => {
 
     const error = await Effect.runPromise(
       Effect.flip(
-        resolveLandofileIncludes({ landofile: { includes: ["./0.yml"] }, appRoot, cacheRoot, maxDepth: 3 }),
+        resolveLandofileIncludes({
+          landofile: { includes: ["./0.yml"] },
+          appRoot,
+          cacheRoot,
+          ports: makeTestLandofilePorts(cacheRoot),
+          maxDepth: 3,
+        }),
       ),
     );
 
@@ -301,6 +324,7 @@ describe("resolveLandofileIncludes", () => {
             landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
             appRoot,
             cacheRoot,
+            ports: makeTestLandofilePorts(cacheRoot),
             deps: { gitCloner: cloner },
           }),
         ),

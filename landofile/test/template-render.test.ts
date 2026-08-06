@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Either, Schema } from "effect";
 
-import { LandofileParseError } from "@lando/core/errors";
-import type { TemplateRenderContext } from "@lando/core/schema";
+import { LandofileParseError } from "@lando/sdk/errors";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
+import type { TemplateRenderContext } from "@lando/sdk/schema";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { CompiledTemplate, TemplateEngine } from "@lando/sdk/template";
 
-import { buildTemplateEngineRegistry, renderLandofileTemplate } from "../../src/landofile/template-render.ts";
+import { buildTemplateEngineRegistry, renderLandofileTemplate } from "../src/template-render.ts";
 
 const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({
   bootstrapLevel: "minimal",

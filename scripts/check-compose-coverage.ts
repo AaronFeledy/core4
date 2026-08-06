@@ -4,7 +4,7 @@ import {
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTopLevelDispositions,
-} from "../core/src/landofile/compose/dispositions.ts";
+} from "../landofile/src/compose/dispositions.ts";
 import {
   type ComposeCoverageDiff,
   collectComposeServiceKeyPaths,

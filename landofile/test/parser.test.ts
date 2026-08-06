@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { Cause, Effect, Exit } from "effect";
 
-import { ComposeKeyRejectedError, LandofileParseError } from "@lando/core/errors";
-import { parseLandofile } from "../../src/landofile/parser.ts";
+import { ComposeKeyRejectedError, LandofileParseError } from "@lando/sdk/errors";
+import { parseLandofile } from "../src/parser.ts";
 
 const DEFAULT_MAX_CONTENT_BYTES = 1024 * 1024;
 const DEFAULT_MAX_DEPTH = 64;

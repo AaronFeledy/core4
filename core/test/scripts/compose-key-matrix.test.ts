@@ -1,17 +1,17 @@
 import { expect, test } from "bun:test";
 
 import {
-  ComposeKeyMatrixError,
-  assertMatrixInvariants,
-  renderComposeKeyMatrixPage,
-} from "../../../scripts/build-compose-key-matrix.ts";
-import {
   type ComposeDisposition,
   type ComposeDispositionEntry,
   composeServiceDispositions,
   composeTagDispositions,
   composeTopLevelDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
+} from "@lando/landofile/compose/dispositions";
+import {
+  ComposeKeyMatrixError,
+  assertMatrixInvariants,
+  renderComposeKeyMatrixPage,
+} from "../../../scripts/build-compose-key-matrix.ts";
 
 type DispositionMap = Readonly<Record<string, ComposeDispositionEntry>>;
 

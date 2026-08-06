@@ -2,12 +2,12 @@ import { describe, expect, test } from "bun:test";
 
 import type { LandofileShape, PluginManifest } from "@lando/sdk/schema";
 
+import { rememberInternalToolingTasks } from "@lando/landofile/tooling-include-provenance";
 import {
   compileBunShellScriptCommands,
   compilePluginCommands,
   compileToolingCommands,
 } from "../../src/cache/command-compiler.ts";
-import { rememberInternalToolingTasks } from "../../src/landofile/tooling-include-provenance.ts";
 
 const landofile = (tooling: LandofileShape["tooling"]): LandofileShape => ({
   name: "myapp",

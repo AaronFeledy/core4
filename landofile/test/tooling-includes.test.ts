@@ -7,16 +7,31 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { getLocalIncludePaths } from "../../src/landofile/include-provenance.ts";
-import { resolveLandofileIncludes } from "../../src/landofile/includes.ts";
-import { getInternalToolingTasks } from "../../src/landofile/tooling-include-provenance.ts";
+import { getLocalIncludePaths } from "../src/include-provenance.ts";
+import { resolveLandofileIncludes } from "../src/includes.ts";
+import { getInternalToolingTasks } from "../src/tooling-include-provenance.ts";
+import { makeTestLandofilePorts } from "./support.ts";
 
 const resolve = (landofile: LandofileShape, appRoot: string) =>
-  Effect.runPromise(resolveLandofileIncludes({ landofile, appRoot, cacheRoot: join(appRoot, ".cache") }));
+  Effect.runPromise(
+    resolveLandofileIncludes({
+      landofile,
+      appRoot,
+      cacheRoot: join(appRoot, ".cache"),
+      ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+    }),
+  );
 
 const failure = (landofile: LandofileShape, appRoot: string) =>
   Effect.runPromise(
-    Effect.flip(resolveLandofileIncludes({ landofile, appRoot, cacheRoot: join(appRoot, ".cache") })),
+    Effect.flip(
+      resolveLandofileIncludes({
+        landofile,
+        appRoot,
+        cacheRoot: join(appRoot, ".cache"),
+        ports: makeTestLandofilePorts(join(appRoot, ".cache")),
+      }),
+    ),
   );
 
 const DOCS_FRAGMENT = [

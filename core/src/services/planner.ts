@@ -56,6 +56,13 @@ import {
   resolveProviderSelection,
 } from "../providers/precedence.ts";
 
+import { getLandofileAppRoot } from "@lando/landofile/app-root-provenance";
+import { parseEnvFile } from "@lando/landofile/env-file";
+import { getLandofileReferencedFiles } from "@lando/landofile/load-expression-provenance";
+import {
+  getVersionConstraintEntries,
+  hasSkippedUnsatisfiedVersionConstraint,
+} from "@lando/landofile/version-constraint";
 import {
   deriveAppPlanCacheKey,
   readAppPlanSourceFingerprint,
@@ -63,14 +70,7 @@ import {
   writeCachedAppPlan,
 } from "../cache/app-plan.ts";
 import { resolveUserCacheRoot } from "../cache/paths.ts";
-import {
-  getVersionConstraintEntries,
-  hasSkippedUnsatisfiedVersionConstraint,
-} from "../config/version-constraint.ts";
 import { resolveNetworkTrustPlan } from "../http-client/network-trust.ts";
-import { getLandofileAppRoot } from "../landofile/app-root-provenance.ts";
-import { parseEnvFile } from "../landofile/env-file.ts";
-import { getLandofileReferencedFiles } from "../landofile/load-expression-provenance.ts";
 import { CertificateAuthorityResolver } from "../plugins/certificate-authority-resolver.ts";
 import {
   HOST_PROXY_PLAN_EXTENSION_KEY,

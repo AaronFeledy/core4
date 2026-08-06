@@ -5,11 +5,8 @@ import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
 
 import { ComposeKeyRejectedError, LandofileParseError, LandofileValidationError } from "@lando/core/errors";
-import {
-  composeServiceDispositions,
-  composeTagDispositions,
-} from "../../src/landofile/compose/dispositions.ts";
-import { loadLandofileFile, loadLandofileLayers } from "../../src/landofile/service.ts";
+import { composeServiceDispositions, composeTagDispositions } from "@lando/landofile/compose/dispositions";
+import { loadLandofileFile, loadLandofileLayers } from "../../src/services/landofile-live.ts";
 
 const withTempDir = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-compose-rejection-"));

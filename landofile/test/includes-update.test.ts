@@ -7,8 +7,9 @@ import { Effect } from "effect";
 
 import type { LandofileShape } from "@lando/sdk/schema";
 
-import { updateLandofileIncludes } from "../../src/landofile/includes.ts";
-import type { GitIncludeCloner } from "../../src/landofile/includes.ts";
+import { updateLandofileIncludes } from "../src/includes.ts";
+import type { GitIncludeCloner } from "../src/includes.ts";
+import { makeTestLandofilePorts, makeTestPublicationPort } from "./support.ts";
 
 const lockfile = (source: string, resolved: string, checksum: string) =>
   [
@@ -51,7 +52,11 @@ describe("updateLandofileIncludes", () => {
         landofile,
         appRoot,
         cacheRoot,
-        ...(gitCloner === undefined ? {} : { deps: { gitCloner } }),
+        ports: makeTestLandofilePorts(cacheRoot),
+        deps: {
+          ...(gitCloner === undefined ? {} : { gitCloner }),
+          publication: makeTestPublicationPort(),
+        },
         ...(check === true ? { check: true } : {}),
       }),
     );
@@ -211,8 +216,9 @@ describe("updateLandofileIncludes", () => {
         landofile: twoIncludeLandofile,
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         sources: ["github:acme/one"],
-        deps: { gitCloner: clonerFor(fragOne, "new1", calls) },
+        deps: { gitCloner: clonerFor(fragOne, "new1", calls), publication: makeTestPublicationPort() },
       }),
     );
 
@@ -274,6 +280,7 @@ describe("updateLandofileIncludes", () => {
         landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         noNetwork: true,
         deps: { gitCloner: throwingCloner },
       }),
@@ -374,6 +381,7 @@ describe("updateLandofileIncludes", () => {
         landofile: { includes: [{ source, path: "postgres.yml" }] },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         noNetwork: true,
       }),
     );
@@ -398,6 +406,7 @@ describe("updateLandofileIncludes", () => {
         landofile: { includes: [{ source: "github:acme/fragments", path: "postgres.yml" }] },
         appRoot,
         cacheRoot,
+        ports: makeTestLandofilePorts(cacheRoot),
         noNetwork: true,
         check: true,
       }),

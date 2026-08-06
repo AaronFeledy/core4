@@ -29,8 +29,6 @@ import type { LandoPluginModule } from "@lando/sdk/plugins";
 import type { TemplateRenderContext } from "@lando/sdk/schema";
 import type { TemplateEngine } from "@lando/sdk/template";
 
-import { BUNDLED_PLUGIN_MODULES } from "../plugins/generated/bundled.ts";
-
 /** A resolved set of template engines, keyed by engine id. */
 export type TemplateEngineRegistry = ReadonlyMap<string, TemplateEngine>;
 
@@ -80,9 +78,9 @@ const blankLine = (content: string, lineIndex: number): string => {
   return lines.join("\n");
 };
 
-/** Registry from descriptor modules (first id wins; default: bundled modules). */
+/** Registry from descriptor modules (first id wins). */
 export const buildTemplateEngineRegistry = (
-  modules: ReadonlyArray<LandoPluginModule> = BUNDLED_PLUGIN_MODULES,
+  modules: ReadonlyArray<LandoPluginModule>,
 ): TemplateEngineRegistry => {
   const registry = new Map<string, TemplateEngine>();
   for (const plugin of modules) {
@@ -94,8 +92,7 @@ export const buildTemplateEngineRegistry = (
   return registry;
 };
 
-/** The template engines contributed by bundled plugins (handlebars, mustache). */
-export const bundledTemplateEngineRegistry: TemplateEngineRegistry = buildTemplateEngineRegistry();
+const EMPTY_TEMPLATE_ENGINE_REGISTRY: TemplateEngineRegistry = new Map();
 
 const parseError = (
   filePath: string,
@@ -130,7 +127,6 @@ const defaultRenderContext = (): TemplateRenderContext => ({
 export interface RenderLandofileTemplateOptions {
   readonly filePath: string;
   readonly content: string;
-  /** Override the engine registry (default: bundled engines). */
   readonly registry?: TemplateEngineRegistry;
   /** Override the render context (default: env-only, app level). */
   readonly context?: TemplateRenderContext;
@@ -150,7 +146,7 @@ export const renderLandofileTemplate = (
   const blanked = blankLine(content, directive.lineIndex);
   if (directive.engineId === NONE_ENGINE) return Effect.succeed(blanked);
 
-  const registry = options.registry ?? bundledTemplateEngineRegistry;
+  const registry = options.registry ?? EMPTY_TEMPLATE_ENGINE_REGISTRY;
   const engine = registry.get(directive.engineId);
   const directiveLine = directive.lineIndex + 1;
   if (engine === undefined) {

@@ -88,6 +88,12 @@ describe("workspace source-root drift gate", () => {
     expect(NON_PLUGIN_SOURCE_ROOTS).toEqual(expect.arrayContaining(["landofile/src", "engine/src"]));
   });
 
+  test("covers Landofile implementation code with shared runtime behavior gates", () => {
+    // Given / When / Then
+    expect(CORE_AND_PLUGIN_SOURCE_ROOTS).toContain("landofile/src");
+    expect(ALL_PACKAGE_WALK_ROOTS).toContain("landofile/src");
+  });
+
   test("classifies narrow-by-design rules with their exact current roots", () => {
     // Given: rules that are deliberately scoped narrower than the shared tiers
     for (const [id, expectedRoots] of NARROW_BY_DESIGN) {

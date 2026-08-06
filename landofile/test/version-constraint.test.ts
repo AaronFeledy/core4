@@ -8,7 +8,7 @@ import {
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
   satisfiesRange,
-} from "../../src/config/version-constraint.ts";
+} from "../src/version-constraint.ts";
 
 describe("satisfiesRange", () => {
   test("plain comparator ranges", () => {
