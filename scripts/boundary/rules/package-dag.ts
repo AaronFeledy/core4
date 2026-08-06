@@ -2,83 +2,20 @@ import { relative } from "node:path";
 
 import { collectManifests } from "../graph.ts";
 import type { BoundaryRule, ProgramContext } from "../types.ts";
-
-type EdgeKind = "dependencies" | "devDependencies";
-type AllowedTargets = readonly string[] | "workspace";
-
-type WorkspaceEdgePolicy = {
-  readonly dependencies: AllowedTargets;
-  readonly devDependencies: AllowedTargets;
-};
-
-type WorkspaceManifest = {
-  readonly name: string;
-  readonly path: string;
-  readonly dependencies: readonly string[];
-  readonly devDependencies: readonly string[];
-};
-
-const PLUGIN_RUNTIME_TARGETS = [
-  "@lando/sdk",
-  "@lando/paths",
-  "@lando/state-store",
-  "@lando/container-runtime",
-  "@lando/landofile",
-] as const;
-
-export const WORKSPACE_EDGE_TABLE: Readonly<Record<string, WorkspaceEdgePolicy>> = {
-  "@lando/core": { dependencies: "workspace", devDependencies: "workspace" },
-  "@lando/sdk": { dependencies: [], devDependencies: [] },
-  "@lando/paths": { dependencies: ["@lando/sdk"], devDependencies: [] },
-  "@lando/state-store": {
-    dependencies: ["@lando/sdk", "@lando/paths"],
-    devDependencies: [],
-  },
-  "@lando/container-runtime": { dependencies: ["@lando/sdk"], devDependencies: [] },
-  "@lando/landofile": {
-    dependencies: ["@lando/sdk", "@lando/paths", "@lando/state-store"],
-    devDependencies: [],
-  },
-  "@lando/engine": {
-    dependencies: [
-      "@lando/sdk",
-      "@lando/paths",
-      "@lando/state-store",
-      "@lando/container-runtime",
-      "@lando/landofile",
-    ],
-    devDependencies: [],
-  },
-  "@lando/ca-mkcert": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/file-sync-mutagen": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/logger-pretty": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/notify-lando": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/provider-docker": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/provider-lando": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/core"],
-  },
-  "@lando/provider-podman": {
-    dependencies: [...PLUGIN_RUNTIME_TARGETS, "@lando/provider-lando"],
-    devDependencies: [],
-  },
-  "@lando/proxy-traefik": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/renderer-lando": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/paths"],
-  },
-  "@lando/service-lando": {
-    dependencies: PLUGIN_RUNTIME_TARGETS,
-    devDependencies: ["@lando/core"],
-  },
-  "@lando/template-handlebars": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-  "@lando/template-mustache": { dependencies: PLUGIN_RUNTIME_TARGETS, devDependencies: [] },
-};
+import {
+  WORKSPACE_EDGE_TABLE,
+  type WorkspaceEdgeKind,
+  type WorkspaceManifest,
+  isWorkspaceTargetAllowed,
+} from "./package-dag-policy.ts";
+import { checkPackageSourceEdges } from "./package-dag-source.ts";
 
 const PACKAGE_DAG_SCOPE = {
   roots: ["."],
-  extensions: [".json"],
+  extensions: [".json", ".ts", ".tsx", ".mts", ".cts"],
   excludeDirNames: [".git", ".local", ".codegraph", "node_modules", "dist"],
+  excludePathSegments: ["test"],
+  excludeTestFiles: true,
 } as const;
 
 const normalizePath = (path: string): string => path.replaceAll("\\", "/");
@@ -102,16 +39,13 @@ const readWorkspaceManifest = async (manifest: string, root: string): Promise<Wo
   };
 };
 
-const edgeDetail = (owner: WorkspaceManifest, kind: EdgeKind, target: string): string => {
+const edgeDetail = (owner: WorkspaceManifest, kind: WorkspaceEdgeKind, target: string): string => {
   const edge = `${owner.name} ${kind} -> ${target}`;
   if (kind === "dependencies" && target === "@lando/core" && owner.name !== "@lando/core") {
     return `[PackageDagForbiddenRuntimeEdge] ${edge}. Remediation: Remove the runtime dependency on @lando/core and depend on an approved private seam or @lando/sdk contract instead.`;
   }
   return `[PackageDagUndeclaredEdge] ${edge}. Remediation: Declare ${target} in ${owner.name}'s ${kind} policy in WORKSPACE_EDGE_TABLE, or remove it from ${owner.path}.`;
 };
-
-const isAllowed = (targets: AllowedTargets, target: string): boolean =>
-  targets === "workspace" || targets.includes(target);
 
 const checkProgram = async (context: ProgramContext): Promise<void> => {
   const packages = await Promise.all(
@@ -125,23 +59,25 @@ const checkProgram = async (context: ProgramContext): Promise<void> => {
       context.report(
         workspacePackage.path,
         1,
-        `[PackageDagPackageDeclarationMissing] ${workspacePackage.name} has no workspace DAG declaration. Remediation: Add ${workspacePackage.name} to WORKSPACE_EDGE_TABLE in scripts/boundary/rules/package-dag.ts.`,
+        `[PackageDagPackageDeclarationMissing] ${workspacePackage.name} has no workspace DAG declaration. Remediation: Add ${workspacePackage.name} to WORKSPACE_EDGE_TABLE in scripts/boundary/rules/package-dag-policy.ts.`,
       );
       continue;
     }
     for (const kind of ["dependencies", "devDependencies"] as const) {
       for (const target of workspacePackage[kind]) {
-        if (!workspaceNames.has(target) || isAllowed(policy[kind], target)) continue;
+        if (!workspaceNames.has(target) || isWorkspaceTargetAllowed(policy[kind], target)) continue;
         context.report(workspacePackage.path, 1, edgeDetail(workspacePackage, kind, target));
       }
     }
   }
+
+  await checkPackageSourceEdges(context, packages);
 };
 
 export const packageDagRule = {
   id: "package-dag",
   scope: PACKAGE_DAG_SCOPE,
-  carveOuts: { files: [], prefixes: [] },
+  carveOuts: { files: [], prefixes: ["core/src/plugins/generated/"] },
   passMessage: "Package DAG check passed.",
   failureHeadline: "Package DAG check failed. Fix package dependency direction:",
   onProgram: checkProgram,

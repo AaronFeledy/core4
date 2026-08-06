@@ -139,13 +139,13 @@ describe("workspace source-root drift gate", () => {
     }
   });
 
-  test("routes the package DAG rule through workspace manifest files", () => {
+  test("routes the package DAG rule through workspace manifests and package sources", () => {
     // Given / When
     const rule = BOUNDARY_RULES.get("package-dag");
 
     // Then
     expect(rule?.scope.roots).toEqual(["."]);
-    expect(rule?.scope.extensions).toEqual([".json"]);
+    expect(rule?.scope.extensions).toEqual([".json", ".ts", ".tsx", ".mts", ".cts"]);
   });
 
   test("policies the reverse-direction tier as the all-package tier minus plugins", () => {
