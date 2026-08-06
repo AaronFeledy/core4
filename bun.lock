@@ -48,6 +48,15 @@
         "oclif": "^4.23.0",
       },
     },
+    "landofile": {
+      "name": "@lando/landofile",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+      },
+    },
     "paths": {
       "name": "@lando/paths",
       "version": "0.0.0",
@@ -338,6 +347,8 @@
     "@lando/core": ["@lando/core@workspace:core"],
 
     "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
+
+    "@lando/landofile": ["@lando/landofile@workspace:landofile"],
 
     "@lando/logger-pretty": ["@lando/logger-pretty@workspace:plugins/logger-pretty"],
 
