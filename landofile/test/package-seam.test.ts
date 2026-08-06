@@ -3,6 +3,8 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
+import { collectShardedTestFiles } from "../../scripts/test-shards.ts";
+
 const repositoryRoot = resolve(import.meta.dirname, "../..");
 const packageManifestPath = resolve(repositoryRoot, "landofile/package.json");
 
@@ -110,5 +112,13 @@ describe("Landofile package seam", () => {
 
     // Then
     expect(publicEntry).toEndWith("/core/src/landofile/index.ts");
+  });
+
+  test("runs the package seam test in CI unit shards", async () => {
+    // Given / When
+    const shardedTests = await collectShardedTestFiles();
+
+    // Then
+    expect(shardedTests).toContain("landofile/test/package-seam.test.ts");
   });
 });
