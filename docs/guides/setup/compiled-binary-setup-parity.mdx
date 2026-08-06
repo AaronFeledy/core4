@@ -31,7 +31,7 @@ tags: [beta, docs, setup, uninstall, compiled]
     <Step name="output-routing">
       <Variable name="renderer" value="core/src/cli/renderer-boundary.ts" display="Command results route through Renderer output stdout and diagnostics route through Renderer output stderr" />
       <Variable name="gate" value="bun run check:renderer-boundary" display="The gate rejects direct console/process writes under core/src and plugins outside the documented first-byte carve-outs" />
-      <Variable name="dispatchTests" value="core/test/cli/native-dispatch-unification.test.ts" display="This suite proves that source and compiled entries share the native dispatcher; companion registry, machine-output, and relocated-binary suites cover the remaining single-path contract" />
+      <Variable name="dispatchTests" value="core/test/cli/native-dispatch-unification.test.ts" display="This suite exercises the source entry through the native dispatcher; companion registry, machine-output, and relocated-binary suites prove the shared single-path contract" />
     </Step>
   </Scenario>
 </Guide>
