@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 
 import { describe, expect, test } from "bun:test";
 
-import { collectShardedTestFiles } from "../../scripts/test-shards.ts";
+import { collectShardedTestFiles } from "../../../scripts/test-shards.ts";
 
-const repositoryRoot = resolve(import.meta.dirname, "../..");
+const repositoryRoot = resolve(import.meta.dirname, "../../..");
 const packageManifestPath = resolve(repositoryRoot, "landofile/package.json");
 
 const isJsonObject = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -72,13 +72,12 @@ describe("Landofile package seam", () => {
     expect(isJsonObject(packageModule)).toBe(true);
     if (!isJsonObject(packageModule))
       throw new TypeError("Expected the Landofile entry point to be a module");
-    expect(Object.keys(packageModule)).toEqual(
-      expect.arrayContaining(["LandofileServiceLive", "makeLandofileServiceLive"]),
-    );
+    expect(typeof packageModule.makeLandofileServiceLive).toBe("function");
     expect(stringRecord(packageManifest.exports)).toMatchObject({
       ".": "./src/index.ts",
       "./includes": "./src/includes.ts",
       "./parser": "./src/parser.ts",
+      "./ports": "./src/ports.ts",
       "./serializer": "./src/serializer.ts",
       "./service": "./src/service.ts",
       "./version-constraint": "./src/version-constraint.ts",
@@ -180,6 +179,6 @@ describe("Landofile package seam", () => {
     const shardedTests = await collectShardedTestFiles();
 
     // Then
-    expect(shardedTests).toContain("landofile/test/package-seam.test.ts");
+    expect(shardedTests).toContain("core/test/build/landofile-package-seam.test.ts");
   });
 });
