@@ -70,10 +70,7 @@ describe("workspace source-root drift gate", () => {
     // When: filtering to packages that actually have a src/ tree
     const packagesWithSource = packageDirs.filter((dir) => existsSync(resolve(repoRoot, dir, "src")));
 
-    // Then: at least the four known package families are present, and each is
-    // matched by some root in ALL_PACKAGE_SOURCE_ROOTS — this is the assertion
-    // that goes red the moment a new top-level package (e.g. `paths/`) gains a
-    // src/ tree without extending the shared constants.
+    // Then: known package families and every discovered source tree are covered
     expect(packagesWithSource).toEqual(
       expect.arrayContaining(["core", "sdk", "container-runtime", "paths", "state-store"]),
     );
@@ -160,7 +157,7 @@ describe("workspace source-root drift gate", () => {
   });
 
   test("routes walk-based gates through the shared plain-directory roots", () => {
-    // Given: the two pre-substrate gates that recursively walk plain directories
+    // Given: the two gates that recursively walk plain directories
     const gateModules = [telemetryInventory, deprecations];
 
     // When: reading their exported scan-root declarations
