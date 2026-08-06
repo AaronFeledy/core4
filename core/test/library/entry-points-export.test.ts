@@ -169,7 +169,7 @@ describe("@lando/core removed package entry points", () => {
     expect(() => Bun.resolveSync("@lando/core/src/cli/oclif/index.ts", repoRoot)).toThrow();
   });
 
-  test("the internal OCLIF adapter remains available by source path", async () => {
+  test("the legacy-named native metadata adapter remains available by source path", async () => {
     const mod = await import("../../src/cli/oclif/index.ts");
     expect(mod.LandoCommandBase).toBeDefined();
   });
