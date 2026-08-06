@@ -610,3 +610,15 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - Split/excise decisions: excised the bounded guidance scan; no follow-up story or passes flip is required because the original acceptance criteria remain proven by the canonical guidance, historical-only phrase search, and fresh verification.
 - Verification: typecheck, lint/deprecations, 64 focused tests, guide lint/coverage/explicit-base drift, generated-output, and public-transcript gates passed; the acceptance phrase has only its superseded roadmap occurrence and two self-quotes. The spec-reference gate still fails only on the previously recorded unrelated `.omo/**` citations, and the packaged no-excuse helper still cannot resolve `typescript` from the caller project.
 ---
+
+## [2026-08-05 19:19 CDT] - US-531 Adjudication
+- Contradiction: US-531 says "remaining OCLIF/runCompiledCli parity instructions are rewritten to native dispatcher" but its proof AC only said "rg for 'dual dispatch is permanent' returns only historical/superseded notes." Review therefore required a bounded scan guarding every repaired source surface, while Drift Audit excised that scan because its hardcoded allowlist missed `sdk/src/services/cli.ts` claiming "Default: OCLIF" and `core/package.json` advertising an "OCLIF adapter." The broad outcome is required by normative §8.4.1 ("one native command registry and one dispatcher engine"; "dual-dispatch parity is retired") and §2.7/§16.2 (`@lando/core/oclif` removed; `@lando/core/cli` is native), but those sections do not require a fixed-file regression test.
+- Decision: clarified US-531 in `prd.json` so the owned sweep explicitly includes current-facing guidance, public/package metadata, exported diagnostics/comments, guide proof text, and native-path test labels. Verification is a repository-wide tracked-text search with named historical/development-only/negative/legacy exceptions and must not rely on a hardcoded file allowlist. No follow-up story was created because the newly discovered surfaces are part of US-531's original sweep; `passes` remains true after Drift Audit corrected them and performed the repository-wide search.
+---
+
+## [2026-08-05 19:26 CDT] - US-531 Verification
+- Verified the adjudicated repository-wide dispatcher-reference sweep is complete on the in-flight branch; no new implementation code was needed.
+- Verification: typecheck, lint/deprecations, guide lint, and guide coverage passed; 61 focused CLI/library tests passed; repository-wide tracked-text searches returned only the documented historical, development-only, negative, and legacy exceptions; native version JSON and root help exited successfully.
+- **Learnings for future iterations:**
+  - Verify architecture claim sweeps against all tracked text and classify exceptions by meaning; a fixed-file allowlist cannot prove repository-wide completion.
+---
