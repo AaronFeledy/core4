@@ -600,3 +600,13 @@ Origin: architecture review — dual CLI, committed derived artifacts, boundary-
 - **Learnings for future iterations:**
   - Architecture sweeps must inspect exported source comments and emitted diagnostics as current operational guidance, not only AGENTS, docs, and specification prose.
 ---
+
+## [2026-08-05 19:17 CDT] - US-531 Drift Audit
+- Trigger: 2 cycles, 360 changed lines, 14 commits.
+- Weakened/gamed proofs: the branch-added bounded prose scan was incomplete by construction and missed false current-facing guidance, so it was excised instead of expanding its allowlist.
+- Contract drift: public contract metadata, published package metadata, living planning/index prose, guide proof wording, and native-path test labels were reconciled with the landed single dispatcher; historical records, genuine development-only OCLIF fixtures, and negative dependency assertions remain intact.
+- Deferred-work laundering: the Review retention decision stands for genuine fixtures and historical/negative references, but is overturned for native-path labels and the claimed exhaustive bounded scan; this conflicts with the Review entry that explicitly required the scan and is being sent to adjudication.
+- Fixed: deleted the incomplete prose regression and corrected false current claims without changing dispatch behavior or adding a replacement compatibility path.
+- Split/excise decisions: excised the bounded guidance scan; no follow-up story or passes flip is required because the original acceptance criteria remain proven by the canonical guidance, historical-only phrase search, and fresh verification.
+- Verification: typecheck, lint/deprecations, 64 focused tests, guide lint/coverage/explicit-base drift, generated-output, and public-transcript gates passed; the acceptance phrase has only its superseded roadmap occurrence and two self-quotes. The spec-reference gate still fails only on the previously recorded unrelated `.omo/**` citations, and the packaged no-excuse helper still cannot resolve `typescript` from the caller project.
+---
