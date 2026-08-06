@@ -26,7 +26,13 @@ export const CORE_LAYERING_BURN_DOWN_EDGES = {
 const burnDownEdges: Readonly<Record<string, readonly BurnDownEdge[]>> = CORE_LAYERING_BURN_DOWN_EDGES;
 
 const isCliImport = (file: string, specifier: string): boolean => {
-  if (!specifier.startsWith(".")) return specifier.includes("core/src/cli/");
+  if (!specifier.startsWith(".")) {
+    return (
+      specifier === "@lando/core/cli" ||
+      specifier.startsWith("@lando/core/cli/") ||
+      specifier.includes("core/src/cli/")
+    );
+  }
   const target = posix.normalize(posix.join(posix.dirname(file), specifier));
   return target === "core/src/cli" || target.startsWith("core/src/cli/");
 };
