@@ -81,11 +81,13 @@ export const rememberVersionConstraintEntries = <T extends object>(
   entries: ReadonlyArray<VersionConstraintEntry>,
 ): T => {
   landofileVersionConstraintEntries.set(landofile, entries);
-  Object.defineProperty(landofile, VERSION_CONSTRAINT_ENTRIES_SYMBOL, {
-    value: entries,
-    enumerable: false,
-    configurable: true,
-  });
+  if (Object.isExtensible(landofile)) {
+    Object.defineProperty(landofile, VERSION_CONSTRAINT_ENTRIES_SYMBOL, {
+      value: entries,
+      enumerable: false,
+      configurable: true,
+    });
+  }
   return landofile;
 };
 

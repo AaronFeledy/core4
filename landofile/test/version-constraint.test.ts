@@ -4,9 +4,11 @@ import {
   VERSION_CONSTRAINT_SKIP_ENV_VAR,
   type VersionConstraintEntry,
   evaluateVersionConstraints,
+  getVersionConstraintEntries,
   isValidSemverRange,
   isVersionConstraintEntryArray,
   isVersionConstraintSkipped,
+  rememberVersionConstraintEntries,
   satisfiesRange,
 } from "../src/version-constraint.ts";
 
@@ -120,6 +122,23 @@ describe("isVersionConstraintEntryArray", () => {
     expect(
       isVersionConstraintEntryArray([{ range: ">=4", source: ".lando.yml", layer: "unknown", order: 3 }]),
     ).toBe(false);
+  });
+});
+
+describe("version constraint provenance", () => {
+  test("remembers entries for a frozen Landofile", () => {
+    // Given
+    const landofile = Object.freeze({ lando: ">=4" });
+    const entries: ReadonlyArray<VersionConstraintEntry> = [
+      { range: ">=4.1", source: ".lando.local.yml", layer: "local", order: 4 },
+    ];
+
+    // When
+    const remembered = rememberVersionConstraintEntries(landofile, entries);
+
+    // Then
+    expect(remembered).toBe(landofile);
+    expect(getVersionConstraintEntries(landofile, ".lando.yml")).toBe(entries);
   });
 });
 
