@@ -13,4 +13,35 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 
 ## Codebase Patterns
 
-- (accumulates during execution)
+- Preserve superseded ROADMAP decisions as struck historical text followed by an explicit **Superseded** authority and the still-deferred remainder.
+- Discover workspace manifests by expanding root `package.json#workspaces`; package-boundary rules must not maintain a second fixed package-root list.
+- When a boundary rule has manifest and source halves, both must consume one exported policy table; a private source allowlist can silently reopen edges the manifest policy forbids.
+
+## 2026-08-06 01:03 CDT - US-535
+- Authorized the private Landofile and engine seams while preserving `@lando/core` as the single public runtime + CLI package; defined shell/runtime ownership, the complete workspace-DAG contract, and the superseded Phase 5 extraction deferral.
+- Verification: typecheck, lint/deprecations, diff validation, direct acceptance inspection, and high-rigor review passed; no executable test surface changed. The optional spec-reference gate retains only pre-existing `.omo/**` violations outside this story.
+- **Learnings for future iterations:**
+  - Keep post-wave source-layout diagrams ownership-focused so later moves can preserve the shell/composition versus runtime seam without re-documenting every file.
+---
+
+## 2026-08-06 01:16 CDT - US-535 Review
+- Corrected the private-seam contract so plugin dependencies remain limited to DAG-declared seams and runtime dependencies on `@lando/engine` or `@lando/core` stay forbidden.
+- Review notes (deferred/rejected): rejected restoring the removed file-by-file source tree because US-535 requires the post-wave ownership split, not a fixed exhaustive layout; deferred the full edge-table implementation to US-536.
+- Guide-Coverage-Skip: US-535 changes internal architecture contracts only; no user-visible guide surface changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, diff validation, acceptance text checks, and post-fix Bugbot passed; no executable test surface changed.
+---
+
+## 2026-08-06 02:14 CDT - US-536
+- Replaced plugin-only import scanning with one full-workspace runtime/dev dependency policy sourced from root workspace manifests; tagged failures now explain undeclared and forbidden runtime edges, and future Landofile/engine roots participate in cycle scanning.
+- Verification: typecheck and lint/deprecations passed; package-DAG, import-cycle, workspace-root, and boundary-CLI spot checks passed with positive counts; both real boundary commands passed; high-rigor review approved. The full boundary runner retained only pre-existing `.omo/**` spec-reference violations outside this story.
+- **Learnings for future iterations:**
+  - Keep runtime and dev/test edge permissions distinct; plugin test-harness dependencies on core are legal without permitting runtime plugin-to-core edges.
+  - Reserve future package roots in the shared all-package scan tier before scaffolding so import-cycle coverage activates as soon as their source trees appear.
+---
+
+## 2026-08-06 03:56 CDT - US-536 Review
+- Restored the source-edge enforcement dropped by the manifest-DAG rewrite, moved manifest and source decisions onto one policy table, and closed plugin imports of the reserved `@lando/engine` seam before that package exists.
+- Review notes (deferred/rejected): rejected canonical relative-import, dynamic-loader, alias, symlink, optional/peer dependency, and locator-value enforcement because those pre-existing gaps exceed US-536's manifest-edge acceptance criteria; the historical locator-alias gap remains explicitly deferred.
+- Guide-Coverage-Skip: US-536 changes an internal CI boundary policy only; no user-visible command or guide-owned contract changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, 38 focused and adjacent tests, package-DAG, and import-cycle passed; the full boundary runner retained only the pre-existing `.omo/**` spec-reference violations outside this story.
+---

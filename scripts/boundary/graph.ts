@@ -21,10 +21,21 @@ interface JsonObject {
   readonly [key: string]: unknown;
 }
 
-const PLUGIN_MANIFEST_GLOB = new Bun.Glob("plugins/*/package.json");
-
 const isJsonObject = (value: unknown): value is JsonObject =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const readWorkspacePatterns = async (root: string): Promise<readonly string[]> => {
+  const manifest = resolve(root, "package.json");
+  const parsed: unknown = JSON.parse(await Bun.file(manifest).text());
+  if (!isJsonObject(parsed) || !Array.isArray(parsed.workspaces)) {
+    throw new TypeError(`Invalid root workspace manifest: ${manifest}`);
+  }
+  const patterns = parsed.workspaces.filter((value): value is string => typeof value === "string");
+  if (patterns.length !== parsed.workspaces.length) {
+    throw new TypeError(`Invalid root workspace manifest: ${manifest}`);
+  }
+  return patterns;
+};
 
 const runtimeTarget = (value: unknown): string | undefined => {
   if (typeof value === "string") return value;
@@ -61,21 +72,14 @@ export const readWorkspacePackage = async (
 };
 
 export const collectManifests = async (root: string): Promise<readonly string[]> => {
-  const fixed = [
-    "core/package.json",
-    "sdk/package.json",
-    "container-runtime/package.json",
-    "paths/package.json",
-    "state-store/package.json",
-  ];
-  const manifests: string[] = [];
-  for (const path of fixed) {
-    if (await Bun.file(resolve(root, path)).exists()) manifests.push(path);
+  const manifests = new Set<string>();
+  for (const workspace of await readWorkspacePatterns(root)) {
+    const manifestGlob = new Bun.Glob(`${workspace.replace(/\/$/u, "")}/package.json`);
+    for await (const path of manifestGlob.scan({ cwd: root, onlyFiles: true })) {
+      manifests.add(resolve(root, path));
+    }
   }
-  for await (const path of PLUGIN_MANIFEST_GLOB.scan({ cwd: root, onlyFiles: true })) {
-    manifests.push(path);
-  }
-  return manifests.map((path) => resolve(root, path)).sort();
+  return [...manifests].sort();
 };
 
 export const loadWorkspacePackages = async (root: string): Promise<ReadonlyMap<string, WorkspacePackage>> =>
@@ -118,34 +122,27 @@ export const stronglyConnectedComponents = (
 ): readonly (readonly string[])[] => {
   let nextIndex = 0;
   const indices = new Map<string, number>();
-  const lowlinks = new Map<string, number>();
   const stack: string[] = [];
   const stacked = new Set<string>();
   const components: string[][] = [];
 
-  const visit = (file: string): void => {
+  const visit = (file: string): number => {
     const index = nextIndex++;
+    let lowlink = index;
     indices.set(file, index);
-    lowlinks.set(file, index);
     stack.push(file);
     stacked.add(file);
 
     for (const edge of graph.get(file) ?? []) {
       const targetIndex = indices.get(edge.to);
       if (targetIndex === undefined) {
-        visit(edge.to);
-        const targetLowlink = lowlinks.get(edge.to);
-        const fileLowlink = lowlinks.get(file);
-        if (targetLowlink !== undefined && fileLowlink !== undefined) {
-          lowlinks.set(file, Math.min(fileLowlink, targetLowlink));
-        }
+        lowlink = Math.min(lowlink, visit(edge.to));
       } else if (stacked.has(edge.to)) {
-        const fileLowlink = lowlinks.get(file);
-        if (fileLowlink !== undefined) lowlinks.set(file, Math.min(fileLowlink, targetIndex));
+        lowlink = Math.min(lowlink, targetIndex);
       }
     }
 
-    if (lowlinks.get(file) !== indices.get(file)) return;
+    if (lowlink !== index) return lowlink;
     const component: string[] = [];
     for (let member = stack.pop(); member !== undefined; member = stack.pop()) {
       stacked.delete(member);
@@ -153,6 +150,7 @@ export const stronglyConnectedComponents = (
       if (member === file) break;
     }
     components.push(component.sort());
+    return lowlink;
   };
 
   for (const file of files) if (!indices.has(file)) visit(file);

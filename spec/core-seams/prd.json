@@ -15,7 +15,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01 contract"
     },
     {
@@ -31,7 +31,7 @@
         "Tests pass; typecheck passes; lint passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "PRD-01"
     },
     {

@@ -58,6 +58,10 @@ describe("check-boundaries CLI", () => {
     // Given
     const root = await mkdtemp(join(tmpdir(), "boundary-cli-"));
     await Promise.all([
+      Bun.write(
+        join(root, "package.json"),
+        `${JSON.stringify({ private: true, workspaces: ["core", "sdk", "plugins/*"] })}\n`,
+      ),
       mkdir(join(root, "core/src"), { recursive: true }),
       mkdir(join(root, "sdk/src"), { recursive: true }),
       mkdir(join(root, "plugins/example/src"), { recursive: true }),
