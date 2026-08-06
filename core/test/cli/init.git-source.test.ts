@@ -60,8 +60,8 @@ describe("lando init git source parsing", () => {
   });
 });
 
-describe("lando init git source dispatch parity", () => {
-  test("compiled dispatch reports the shared --source=git missing --url message", async () => {
+describe("lando init git source native CLI dispatch", () => {
+  test("dispatch under a $bunfs root URL reports the --source=git missing --url message", async () => {
     const { runCli } = await import("../../src/cli/run.ts");
     const writes: string[] = [];
     const originalWrite = process.stderr.write.bind(process.stderr) as typeof process.stderr.write;

@@ -162,7 +162,7 @@ describe("--renderer flag (source CLI)", () => {
     expect(normalized).not.toContain("NotImplementedError");
   }, 30_000);
 
-  test("rejects --renderer=tui when --help is also present (parity with compiled path)", async () => {
+  test("rejects --renderer=tui when --help is also present", async () => {
     const result = await runCommand(
       [process.execPath, sourceCliPath, "apps:list", "--renderer=tui", "--help"],
       isolationEnv(),
@@ -187,9 +187,9 @@ describe("--renderer flag (source CLI)", () => {
 });
 
 describe.skipIf(process.platform !== "linux" || process.arch !== "x64")(
-  "--renderer flag (compiled $bunfs CLI parity)",
+  "--renderer flag (compiled $bunfs binary smoke)",
   () => {
-    test("matches source CLI rejection of --renderer=tui", async () => {
+    test("compiled binary rejects --renderer=tui with RendererSelectionError", async () => {
       const build = await runCommand([process.execPath, "run", "build"]);
       expect(build.exitCode).toBe(0);
 
