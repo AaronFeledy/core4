@@ -20,7 +20,7 @@ const repoRoot = resolve(import.meta.dir, "../../../..");
 const NARROW_BY_DESIGN: ReadonlyMap<string, readonly string[]> = new Map([
   ["libpod-prefix", ["plugins"]],
   ["env-helper", ["plugins/service-lando/src/services"]],
-  ["state-store", ["core/src", "plugins"]],
+  ["state-store", ["core/src", "landofile/src", "plugins"]],
 ]);
 
 const CORE_AND_PLUGIN_RULE_IDS = [
