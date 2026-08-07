@@ -1,4 +1,4 @@
-import { Args } from "../../../metadata.ts";
+import { Args } from "../../../metadata";
 
 import type { ScratchHandle } from "@lando/sdk/services";
 import {
@@ -6,8 +6,8 @@ import {
   renderScratchStopResult,
   scratchIdFromInput,
   scratchStop,
-} from "../../../../commands/scratch.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/scratch";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 export const appsScratchStopSpec: LandoCommandSpec<ScratchHandle> = {
   resultSchema: ScratchHandleResultSchema,

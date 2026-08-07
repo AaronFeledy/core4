@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { DateTime, Effect } from "effect";
 
+import { makePluginStateStore } from "@lando/engine/plugins/context-state";
 import {
   appliedPlanPath,
   loadAppliedPlan,
@@ -21,7 +22,6 @@ import {
   type ServicePlan,
 } from "@lando/sdk/schema";
 import { makeStateStore } from "@lando/state-store/service";
-import { makePluginStateStore } from "../../../core/src/plugins/context-state.ts";
 
 const providerId = ProviderId.make("lando");
 

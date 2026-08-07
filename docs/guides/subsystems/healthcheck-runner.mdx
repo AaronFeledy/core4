@@ -35,7 +35,7 @@ tags: [beta, docs, subsystems, healthcheck, provider-exec]
     <Step name="probe-primitive">
       <Variable name="runProbe" value="@lando/sdk/probe runProbe" display="Healthcheck retry/delay/timeout-to-ready loops use runProbe, not hand-rolled Effect.retry or Schedule (check:probe-boundary)" />
       <Variable name="redaction" value="ProbeResult.lastError" display="Redact lastError via RedactionService before events or transcripts" />
-      <Variable name="apiRef" value="core/src/subsystems/healthcheck/live.ts" display="HealthcheckRunnerLive wires provider-exec to RuntimeProvider.exec and redacts final provider status" />
+<Variable name="apiRef" value="engine/src/subsystems/healthcheck/live.ts" display="HealthcheckRunnerLive wires provider-exec to RuntimeProvider.exec and redacts final provider status" />
     </Step>
   </Scenario>
 </Guide>

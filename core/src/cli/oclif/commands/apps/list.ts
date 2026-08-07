@@ -3,10 +3,10 @@ import {
   type ListServicesResult,
   listServices,
   renderAppsListResult,
-} from "../../../commands/list.ts";
-import { Flags } from "../../metadata.ts";
+} from "../../../commands/list";
+import { Flags } from "../../metadata";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 const extractFormat = (input: unknown): "json" | "table" => {
   if (typeof input !== "object" || input === null) return "table";

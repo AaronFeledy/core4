@@ -3,46 +3,46 @@ import { Effect, Either, Option } from "effect";
 import type { LandoPluginModule } from "@lando/sdk/plugins";
 import { ConfigService, RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import { resolveProviderSelection } from "@lando/engine/providers/precedence";
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import { makeLandoPaths } from "@lando/paths";
-import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled.ts";
-import { resolveProviderSelection } from "../../providers/precedence.ts";
-import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
-import { interruptOnAbort } from "./doctor-abort.ts";
-import type { DoctorCheck, DoctorResult } from "./doctor-contract.ts";
-import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem.ts";
-import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy.ts";
-import { collectOomDoctorChecks } from "./doctor-oom.ts";
+import { BUNDLED_PLUGIN_MODULES } from "../../plugins/generated/bundled";
+import { interruptOnAbort } from "./doctor-abort";
+import type { DoctorCheck, DoctorResult } from "./doctor-contract";
+import { hostProxyTransportDoctorChecks } from "./doctor-host-proxy";
+import { HostProxyDoctorFileSystemLive } from "./doctor-host-proxy-filesystem";
+import { collectOomDoctorChecks } from "./doctor-oom";
 import {
   isRelevantContribution,
   mapPluginDoctorCheck,
   pluginDoctorReports,
   probeBudgetMs,
-} from "./doctor-plugin-checks.ts";
-import { installedPluginMetadataSelfChecks } from "./doctor-plugin-metadata.ts";
+} from "./doctor-plugin-checks";
+import { installedPluginMetadataSelfChecks } from "./doctor-plugin-metadata";
 import {
   type ProviderStatusShape,
   UNKNOWN_PROVIDER_VERSION,
   diagnosePrimaryProvider,
   providerStubFor,
   providerUnavailableCheck,
-} from "./doctor-provider.ts";
+} from "./doctor-provider";
 import {
   type ContainerDiedEventCapableProvider,
   buildRuntimeServiceDoctorCheck,
   containerDiedEventPayloadsFor,
   runtimeServiceStatusFor,
   runtimeServiceStatusFromProviderStatus,
-} from "./doctor-runtime-service.ts";
+} from "./doctor-runtime-service";
 import {
   buildSelectionRecord,
   gatherSelectionInputs,
   platformFromProcess,
   resolveStateDir,
   selectionConfigFailureCheck,
-} from "./doctor-selection.ts";
-import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
-import { buildSetupReadinessDoctorCheck } from "./doctor-setup-readiness.ts";
-import { type SetupReadinessSummary, readSetupReadiness } from "./setup-readiness.ts";
+} from "./doctor-selection";
+import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
+import { buildSetupReadinessDoctorCheck } from "./doctor-setup-readiness";
+import { type SetupReadinessSummary, readSetupReadiness } from "./setup-readiness";
 
 export type {
   DoctorCheck,
@@ -54,14 +54,14 @@ export type {
   DoctorSolution,
   DoctorSolutionKind,
   DoctorStatus,
-} from "./doctor-contract.ts";
-export { providerKindFor } from "./doctor-contract.ts";
-export type { DoctorOptions } from "./doctor-options.ts";
-export type { DoctorNdjsonOptions } from "./doctor-render-ndjson.ts";
-export { renderDoctorResultAsNdjson } from "./doctor-render-ndjson.ts";
-export { renderDoctorResult, renderSolution } from "./doctor-render-text.ts";
+} from "./doctor-contract";
+export { providerKindFor } from "./doctor-contract";
+export type { DoctorOptions } from "./doctor-options";
+export type { DoctorNdjsonOptions } from "./doctor-render-ndjson";
+export { renderDoctorResultAsNdjson } from "./doctor-render-ndjson";
+export { renderDoctorResult, renderSolution } from "./doctor-render-text";
 
-import type { DoctorOptions } from "./doctor-options.ts";
+import type { DoctorOptions } from "./doctor-options";
 
 export const doctor = (
   options: DoctorOptions = {},

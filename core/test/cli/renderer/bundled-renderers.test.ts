@@ -4,6 +4,7 @@ import { Effect, Layer, Schema } from "effect";
 import { TaskStartEvent } from "@lando/sdk/events";
 import { EventService, Renderer } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import {
   bundledRendererRegistry,
   landoRenderer,
@@ -11,7 +12,6 @@ import {
 } from "../../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../../src/cli/renderer/io.ts";
 import { BUNDLED_RENDERER_MODULES } from "../../../src/plugins/generated/renderers.ts";
-import { EventServiceLive } from "../../../src/services/event-service.ts";
 
 describe("bundled renderer resolution", () => {
   test("core resolves the generated descriptor contribution by identity", () => {

@@ -3,10 +3,10 @@ import {
   PoweroffResultSchema,
   poweroff,
   renderPoweroffResult,
-} from "../../../commands/poweroff.ts";
-import { Flags } from "../../metadata.ts";
+} from "../../../commands/poweroff";
+import { Flags } from "../../metadata";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 const extractFlags = (input: unknown): Record<string, unknown> => {
   if (typeof input !== "object" || input === null) return {};

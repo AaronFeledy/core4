@@ -1,17 +1,17 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
-import { resilientDoctorReport } from "../../../commands/doctor-bootstrap.ts";
+import type { DoctorOptions } from "../../../commands/doctor";
+import { resilientDoctorReport } from "../../../commands/doctor-bootstrap";
 import {
   type DoctorReport,
   DoctorReportSchema,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
-} from "../../../commands/doctor-report.ts";
-import type { DoctorOptions } from "../../../commands/doctor.ts";
-import type { RenderContext } from "../../../renderer-boundary.ts";
+} from "../../../commands/doctor-report";
+import type { RenderContext } from "../../../renderer-boundary";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const inputDoctorOptions = (input: unknown): DoctorOptions => {
   if (typeof input !== "object" || input === null) return {};

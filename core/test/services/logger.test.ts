@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
 
 import { Logger } from "@lando/core/services";
-import { LoggerLive } from "../../src/logging/service.ts";
+import { LoggerLive } from "@lando/engine/logging/service";
 
 const captureConsoleLog = async (run: () => Promise<void>): Promise<ReadonlyArray<string>> => {
   const lines: Array<string> = [];

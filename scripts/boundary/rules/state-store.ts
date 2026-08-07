@@ -198,7 +198,11 @@ const hasVersionEnvelope = (state: ScanState): boolean => {
 
 export const stateStoreRule = {
   id: "state-store",
-  scope: { roots: ["core/src", "landofile/src", "plugins"], extensions: [".ts"], excludeTestFiles: true },
+  scope: {
+    roots: ["core/src", "engine/src", "landofile/src", "plugins"],
+    extensions: [".ts"],
+    excludeTestFiles: true,
+  },
   carveOuts: { files: [], prefixes: [] },
   passMessage: "State-store boundary check passed.",
   failureHeadline:

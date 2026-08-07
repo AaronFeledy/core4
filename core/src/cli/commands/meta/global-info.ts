@@ -13,10 +13,10 @@ import {
   type LoadGlobalPlanError,
   type LoadGlobalPlanServices,
   loadGlobalPlan,
-} from "../../../operations/global-plan.ts";
-import { AppInfoResultSchema, infoForPlan } from "../../../operations/info.ts";
-import type { RenderContext } from "../../renderer-boundary.ts";
-import { renderInfoAppResult } from "../info-render.ts";
+} from "@lando/engine/operations/global-plan";
+import { AppInfoResultSchema, infoForPlan } from "@lando/engine/operations/info";
+import type { RenderContext } from "../../renderer-boundary";
+import { renderInfoAppResult } from "../info-render";
 
 export interface GlobalInfoOptions {
   readonly services?: ReadonlyArray<string>;

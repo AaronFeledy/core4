@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import "../../src/runtime/engine-composition.ts";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Cause, Effect, Exit } from "effect";
@@ -10,11 +11,11 @@ import type { PluginManifest, ServiceConfig } from "@lando/sdk/schema";
 import {
   bundledFirstGlobalServiceLoader,
   makeBundledFirstGlobalServiceLoader,
-} from "../../src/services/bundled-global-service-loader.ts";
+} from "@lando/engine/services/bundled-global-service-loader";
 import type {
   GlobalServiceModuleLoader,
   PendingGlobalServiceContribution,
-} from "../../src/services/global-services.ts";
+} from "@lando/engine/services/global-services";
 
 const entry = (plugin: string, id: string, module?: string): PendingGlobalServiceContribution => ({
   plugin,

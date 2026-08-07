@@ -10,13 +10,13 @@ import {
   PathsService,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
+import { DownloaderLive } from "@lando/engine/downloader/service";
+import { HttpClientLive } from "@lando/engine/http-client/live";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { RuntimeProviderRegistryLive } from "@lando/engine/providers/registry";
 import { makeLandoPaths } from "@lando/paths";
 import { AbsolutePath, AppId, type AppPlan, type GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { StateStoreLive } from "@lando/state-store/service";
-import { DownloaderLive } from "../../src/downloader/service.ts";
-import { HttpClientLive } from "../../src/http-client/live.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { RuntimeProviderRegistryLive } from "../../src/providers/registry.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const appPlan: AppPlan = {

@@ -4,11 +4,11 @@
  * paths stay in the binary entry and return before this module loads.
  */
 
-import type { RunCliOptions } from "./run.ts";
+import type { RunCliOptions } from "./run";
 
-export type { RunCliOptions } from "./run.ts";
+export type { RunCliOptions } from "./run";
 
 export const runCli = async (options: RunCliOptions): Promise<void> => {
-  const cli = await import("./run.ts");
+  const cli = await import("./run");
   await cli.runCli(options);
 };

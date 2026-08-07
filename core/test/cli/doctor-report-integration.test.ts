@@ -8,6 +8,7 @@ import { ConfigError } from "@lando/sdk/errors";
 import { GlobalConfig, ProviderId } from "@lando/sdk/schema";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import {
   DoctorReportSchema,
   collectDoctorReport,
@@ -16,7 +17,6 @@ import {
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
 } from "../../src/cli/commands/doctor-report.ts";
-import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 
 const makeConfig = (input: unknown = {}): GlobalConfig => Schema.decodeUnknownSync(GlobalConfig)(input);
 

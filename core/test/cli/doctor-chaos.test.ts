@@ -16,6 +16,7 @@ import {
 
 import { ConfigService, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider, makeTestSecretStore } from "@lando/core/testing";
+import { RedactionServiceLive } from "@lando/engine/redaction/service";
 import { ConfigError, ProviderUnavailableError } from "@lando/sdk/errors";
 import type { LandoPluginModule, PluginDoctorCheckContribution } from "@lando/sdk/plugins";
 import { type GlobalConfig, PluginManifest, ProviderId } from "@lando/sdk/schema";
@@ -26,7 +27,6 @@ import {
   doctorReport,
 } from "../../src/cli/commands/doctor-report.ts";
 import { doctor } from "../../src/cli/commands/doctor.ts";
-import { RedactionServiceLive } from "../../src/redaction/service.ts";
 
 /**
  * Chaos coverage for the doctor self-resilience contract: every service doctor

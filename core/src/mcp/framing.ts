@@ -12,10 +12,10 @@ import { type Context, Effect } from "effect";
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { StreamFrameSink, StreamFrameSinkFrame } from "../operations/stream-frame-sink.ts";
-import { redactBoundedJsonValue } from "./bounded-json.ts";
-import type { McpNotify } from "./dispatch.ts";
-import { projectMcpProgressFrame } from "./result-inspector.ts";
+import type { StreamFrameSink, StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { redactBoundedJsonValue } from "./bounded-json";
+import type { McpNotify } from "./dispatch";
+import { projectMcpProgressFrame } from "./result-inspector";
 
 export const encodeProgressFrame = (
   frame: unknown,

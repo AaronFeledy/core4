@@ -2,21 +2,21 @@ import { Effect, Layer } from "effect";
 
 import { NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
-import { HOST_PROXY_WORKER_COMMAND, runHostProxyWorkerProcess } from "../subsystems/host-proxy/worker.ts";
+import { HOST_PROXY_WORKER_COMMAND } from "@lando/engine/subsystems/host-proxy/worker";
 import {
   isReservedNamespaceHead,
   notImplementedErrorForCommand,
   resolveBuiltInCommand,
-} from "./built-in-command-registry.ts";
-import { runMetaVersion } from "./cli-adapters/meta-plugin.ts";
-import { scratchRunHasCommandTail } from "./commands/scratch-run.ts";
-import { normalizeScratchStartArgv } from "./commands/scratch.ts";
-import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv.ts";
-import { printCommandHelp, printRootHelp } from "./compiled-help.ts";
+} from "./built-in-command-registry";
+import { runMetaVersion } from "./cli-adapters/meta-plugin";
+import { normalizeScratchStartArgv } from "./commands/scratch";
+import { scratchRunHasCommandTail } from "./commands/scratch-run";
+import { type CompiledCommand, findCommand, flagDefinitionsForCommand } from "./compiled-argv";
+import { printCommandHelp, printRootHelp } from "./compiled-help";
 import {
   normalizeCompiledCommandArgv,
   normalizeCompiledScratchRunArgvForUniversalFlags,
-} from "./compiled-normalize.ts";
+} from "./compiled-normalize";
 import {
   activeRendererMode,
   activeResultFormat,
@@ -28,22 +28,23 @@ import {
   setActiveDeprecationWarnings,
   setActiveRendererMode,
   setActiveResultFormat,
-} from "./compiled-runtime.ts";
-import { dispatchAppCommand } from "./dispatch-app.ts";
-import { dispatchAppsCommand } from "./dispatch-apps.ts";
-import { dispatchMetaCommand } from "./dispatch-meta.ts";
-import { routeDynamicTooling } from "./dynamic-tooling.ts";
-import { validateCommandCliFlags } from "./flag-value-validation.ts";
-import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags.ts";
-import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary.ts";
-import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary.ts";
-import { unknownCommandError } from "./unknown-command-error.ts";
+} from "./compiled-runtime";
+import { dispatchAppCommand } from "./dispatch-app";
+import { dispatchAppsCommand } from "./dispatch-apps";
+import { dispatchMetaCommand } from "./dispatch-meta";
+import { routeDynamicTooling } from "./dynamic-tooling";
+import { validateCommandCliFlags } from "./flag-value-validation";
+import { DEFAULT_RESULT_FORMAT, resolveResultFormat } from "./format-flags";
+import { runHostProxyWorkerProcess } from "./host-proxy/worker-runtime";
+import { preCommandOutputMode, renderPreCommandFailure } from "./oclif/command-boundary";
+import { resolveCliDeprecationWarnings, resolveCliRendererMode } from "./renderer-boundary";
+import { unknownCommandError } from "./unknown-command-error";
 
-export { normalizeCompiledCommandArgv } from "./compiled-normalize.ts";
-export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run.ts";
-export { compiledCommandInputFromArgv } from "./compiled-input.ts";
-export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle.ts";
-export { parseScratchStartArgv } from "./dispatch-apps.ts";
+export { normalizeCompiledCommandArgv } from "./compiled-normalize";
+export { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
+export { compiledCommandInputFromArgv } from "./compiled-input";
+export { renderCompiledDoctorReport } from "./cli-adapters/app-lifecycle";
+export { parseScratchStartArgv } from "./dispatch-apps";
 
 const runCompiledCli = async (rawArgv: ReadonlyArray<string>): Promise<void> => {
   if (rawArgv[0] === HOST_PROXY_WORKER_COMMAND) {

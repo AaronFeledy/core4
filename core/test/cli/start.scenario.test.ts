@@ -47,11 +47,11 @@ import { TestProxyService } from "@lando/sdk/test";
 
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
+import { GlobalAppServiceLive } from "@lando/engine/global-app/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { stripHostProxyRunLando } from "@lando/engine/subsystems/host-proxy/transport";
 import { makeLandoPaths } from "@lando/paths";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { stripHostProxyRunLando } from "../../src/subsystems/host-proxy/transport.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");

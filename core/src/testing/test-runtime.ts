@@ -85,8 +85,8 @@ import {
   ScratchRegistry,
   type ScratchRegistryEntry,
   type ScratchRegistryEnvelope,
-} from "../scratch-app/registry.ts";
-import { ScratchResourceScanner } from "../scratch-app/scanner.ts";
+} from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
 
 type TestBootstrapLevel = "minimal" | "provider" | "global" | "scratch" | "app";
 

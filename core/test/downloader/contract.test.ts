@@ -13,10 +13,10 @@ import { type DownloaderContractHarness, runDownloaderContract } from "@lando/sd
 import { HttpRequestError, HttpUploadError } from "@lando/sdk/errors";
 import type { HttpClientCapabilities } from "@lando/sdk/schema";
 
-import { DownloaderLive } from "../../src/downloader/service.ts";
-import { makeHttpClientLive } from "../../src/http-client/live.ts";
-import { NetworkTrust, type ResolvedNetworkTrust } from "../../src/http-client/network-trust.ts";
-import { HttpClient, type HttpClientShape } from "../../src/http-client/service.ts";
+import { DownloaderLive } from "@lando/engine/downloader/service";
+import { makeHttpClientLive } from "@lando/engine/http-client/live";
+import { NetworkTrust, type ResolvedNetworkTrust } from "@lando/engine/http-client/network-trust";
+import { HttpClient, type HttpClientShape } from "@lando/engine/http-client/service";
 import { makeTestDownloader } from "../../src/testing/downloader.ts";
 
 const CONTRACT_HTTP_CAPABILITIES: HttpClientCapabilities = {

@@ -1,4 +1,4 @@
-import { normalizeScratchRunArgvForParsing } from "./commands/scratch-run.ts";
+import { normalizeScratchRunArgvForParsing } from "./commands/scratch-run";
 
 export { normalizeScratchRunArgvForParsing };
 

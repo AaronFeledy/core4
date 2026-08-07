@@ -13,9 +13,9 @@ import {
 } from "@lando/core/errors";
 import { ServiceName } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { findAppRoot, findLandofilePath } from "@lando/landofile/discovery";
 import { getVersionConstraintEntries } from "@lando/landofile/version-constraint";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const withTempCwd = async <T>(run: (dir: string) => Promise<T>): Promise<T> => {
   const dir = await mkdtemp(join(tmpdir(), "lando-landofile-service-"));

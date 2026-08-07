@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildToolingInvocation, validateToolingArguments } from "../../src/operations/tooling.ts";
+import { buildToolingInvocation, validateToolingArguments } from "@lando/engine/operations/tooling";
 
 describe("buildToolingInvocation", () => {
   test("preserves pass-through argument boundaries for string tooling commands", () => {

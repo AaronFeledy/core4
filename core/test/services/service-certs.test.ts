@@ -7,7 +7,7 @@ import { Effect } from "effect";
 
 import { FilePermissionError, LandofileValidationError } from "@lando/sdk/errors";
 
-import { resolveCertsFeature } from "../../src/services/service-certs.ts";
+import { resolveCertsFeature } from "@lando/engine/services/service-certs";
 
 test("reads both custom certificate files and rejects an unreadable key", async () => {
   const appRoot = await mkdtemp(join(tmpdir(), "lando-service-certs-read-"));

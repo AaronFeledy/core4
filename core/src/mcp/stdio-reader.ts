@@ -7,7 +7,7 @@ import {
   MAX_PARTIAL_BUFFER_BYTES,
   PARTIAL_FRAME_DEADLINE,
   stdioTransportError,
-} from "./stdio-limits.ts";
+} from "./stdio-limits";
 
 export interface StdioReaderOptions {
   readonly reader: {

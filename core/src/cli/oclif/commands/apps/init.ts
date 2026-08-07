@@ -5,41 +5,37 @@ import { Effect } from "effect";
  * **Interactive only** — not exported as a function from
  * `@lando/core/cli`; embedding hosts drive `InitSource` directly if needed.
  */
-import { Args, Flags } from "../../metadata.ts";
+import { Args, Flags } from "../../metadata";
 
 import { LandoRuntimeBootstrapError, NotImplementedError, RendererSelectionError } from "@lando/sdk/errors";
 
-import { formatBugReport } from "../../../bug-report.ts";
-import { newInvocationId } from "../../../command-lifecycle.ts";
-import { resolveInitDestination } from "../../../commands/init-destination.ts";
-import { parseInitSourceFlags } from "../../../commands/init-source.ts";
-import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init.ts";
-import { type ResultFormat, resolveResultFormat } from "../../../format-flags.ts";
-import {
-  mergeAnswerSources,
-  parseAnswerFlags,
-  resolveNonInteractive,
-} from "../../../prompts/answer-flags.ts";
+import { formatBugReport } from "../../../bug-report";
+import { newInvocationId } from "../../../command-lifecycle";
+import { type InitAppOptions, type InitAppResult, initApp } from "../../../commands/init";
+import { resolveInitDestination } from "../../../commands/init-destination";
+import { parseInitSourceFlags } from "../../../commands/init-source";
+import { type ResultFormat, resolveResultFormat } from "../../../format-flags";
+import { mergeAnswerSources, parseAnswerFlags, resolveNonInteractive } from "../../../prompts/answer-flags";
 import {
   makeRendererServiceLiveForMode,
   resolveCliDeprecationWarnings,
   resolveCliRendererMode,
   runWithRendererHandling,
   writeDiagnosticLine,
-} from "../../../renderer-boundary.ts";
-import type { RendererMode } from "../../../renderer-selection.ts";
+} from "../../../renderer-boundary";
+import type { RendererMode } from "../../../renderer-selection";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 import {
   preCommandOutputMode,
   renderCommandFlagValueValidation,
   renderPreCommandFailure,
-} from "../../command-boundary.ts";
-import { getCommandRuntimeLayer } from "../../hooks/init.ts";
+} from "../../command-boundary";
+import { getCommandRuntimeLayer } from "../../hooks/init";
 
 export interface InitFlags {
   readonly full: boolean;

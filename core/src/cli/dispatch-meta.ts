@@ -6,9 +6,9 @@
  * Returns `false` when the argv does not belong to this topic so the shared
  * native dispatcher can fall through to not-implemented / not-found handling.
  */
-import { cliRuntimeOptions } from "../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../runtime/layer.ts";
-import { runDoctor, runSetup } from "./cli-adapters/app-lifecycle.ts";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../runtime/layer";
+import { runDoctor, runSetup } from "./cli-adapters/app-lifecycle";
 import {
   runMetaBun,
   runMetaGlobalConfig,
@@ -42,13 +42,13 @@ import {
   runMetaUninstall,
   runMetaVersion,
   runMetaX,
-} from "./cli-adapters/meta-plugin.ts";
-import { config, renderConfigResult } from "./commands/config.ts";
-import { update } from "./commands/update.ts";
-import { compiledCommandInputFromArgv } from "./compiled-input.ts";
-import { rejectInvalidInvocation, runCompiledCommand } from "./compiled-runtime.ts";
-import { metaConfigOptionsFromInput } from "./oclif/commands/meta/config.ts";
-import { updateOptionsFromInput } from "./oclif/commands/meta/update.ts";
+} from "./cli-adapters/meta-plugin";
+import { config, renderConfigResult } from "./commands/config";
+import { update } from "./commands/update";
+import { compiledCommandInputFromArgv } from "./compiled-input";
+import { rejectInvalidInvocation, runCompiledCommand } from "./compiled-runtime";
+import { metaConfigOptionsFromInput } from "./oclif/commands/meta/config";
+import { updateOptionsFromInput } from "./oclif/commands/meta/update";
 
 const runMetaConfig = async (argv: ReadonlyArray<string>): Promise<void> => {
   const input = compiledCommandInputFromArgv("meta:config", argv);

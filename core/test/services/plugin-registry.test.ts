@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import "../../src/runtime/engine-composition.ts";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,13 +10,13 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import { PluginLoadError } from "@lando/core/errors";
 import { ConfigService, Logger, PluginRegistry } from "@lando/core/services";
 import type { ServiceTypeInput } from "@lando/core/services";
-import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
-import { PluginManifest } from "@lando/sdk/schema";
-import { PluginRegistryLive, makePluginRegistryLive } from "../../src/plugins/registry.ts";
+import { PluginRegistryLive, makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import {
   collectGlobalServiceContributions,
   defaultGlobalServiceModuleLoader,
-} from "../../src/services/global-services.ts";
+} from "@lando/engine/services/global-services";
+import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
+import { PluginManifest } from "@lando/sdk/schema";
 
 const EXPECTED_BUNDLED_PLUGIN_NAMES: ReadonlyArray<string> = [
   "@lando/provider-lando",

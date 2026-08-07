@@ -4,11 +4,11 @@ import { Effect, Layer } from "effect";
 import { EventService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { makeLandoEventConsumer } from "../../../../plugins/renderer-lando/src/renderer-runtime.ts";
 import { landoRenderer } from "../../../src/cli/renderer/bundled-renderers.ts";
 import { createBufferedRendererIO } from "../../../src/cli/renderer/io.ts";
 import { makeJsonRendererLive, renderPlain } from "../../../src/cli/renderer/runtime.ts";
-import { EventServiceLive } from "../../../src/services/event-service.ts";
 import {
   SUMMARY_FIXTURES,
   TREE_FIXTURES,

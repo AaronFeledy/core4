@@ -18,24 +18,24 @@ import {
 import { AbsolutePath, type CommandResultEnvelope } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "../../../src/redaction/service.ts";
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import type {
   HostProxyRunLandoExecutor,
   HostProxyRunLandoExecutorInput,
-} from "../../../src/subsystems/host-proxy/dispatch.ts";
-import { requestPathname } from "../../../src/subsystems/host-proxy/transport-response.ts";
-import {
-  defaultHostProxyShimArtifactPath,
-  resolveHostProxyShimArtifactPath,
-} from "../../../src/subsystems/host-proxy/transport-shim.ts";
+} from "@lando/engine/subsystems/host-proxy/dispatch";
 import {
   HOST_PROXY_SHIM_SOURCE,
   createHostProxyRunLandoSession,
   hostProxyRunLandoStateDir,
   scopedHostProxyRunLandoSession,
   sendHostProxyRunLando,
-} from "../../../src/subsystems/host-proxy/transport.ts";
-import { CORE_VERSION } from "../../../src/version.ts";
+} from "@lando/engine/subsystems/host-proxy/transport";
+import { requestPathname } from "@lando/engine/subsystems/host-proxy/transport-response";
+import {
+  defaultHostProxyShimArtifactPath,
+  resolveHostProxyShimArtifactPath,
+} from "@lando/engine/subsystems/host-proxy/transport-shim";
+import { CORE_VERSION } from "@lando/engine/version";
 
 const tempDirs: string[] = [];
 
@@ -228,6 +228,8 @@ describe("host-proxy runLando physical transport", () => {
   test("build script delivers every supported compiled shim sidecar path", async () => {
     const script = await coreBuildHostProxyShimScript();
 
+    expect(script).toContain("bun build ./src/cli/host-proxy/shim-bin.ts --compile");
+    expect(script).not.toContain("../engine/src/subsystems/host-proxy/shim-bin.ts");
     expect(script).toContain("--target=bun-linux-x64 --outfile ./dist/host-proxy/linux-x64/lando-shim");
     expect(script).toContain("--target=bun-linux-arm64 --outfile ./dist/host-proxy/linux-arm64/lando-shim");
   });
@@ -811,7 +813,7 @@ describe("host-proxy runLando physical transport", () => {
         shimArtifactPath: await compiledShimArtifact(),
       },
     );
-    expect(HOST_PROXY_SHIM_SOURCE).toBe("core/src/subsystems/host-proxy/shim-bin.ts");
+    expect(HOST_PROXY_SHIM_SOURCE).toBe("core/src/cli/host-proxy/shim-bin.ts");
 
     const proc = Bun.spawn({
       cmd: [session.shimPath, "open", "--print"],

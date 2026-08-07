@@ -13,18 +13,18 @@ import {
   ScratchAppService,
 } from "@lando/core/services";
 
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { DataMoverLive } from "@lando/engine/data-mover/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { ScratchRegistryLive } from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScannerLive } from "@lando/engine/scratch-app/scanner";
+import { ScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 import { makeLandoPaths } from "@lando/paths";
 import { StateStoreLive } from "@lando/state-store/service";
-import { CacheServiceLive } from "../../src/cache/service.ts";
-import { DataMoverLive } from "../../src/data-mover/service.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { ScratchRegistryLive } from "../../src/scratch-app/registry.ts";
-import { ScratchResourceScannerLive } from "../../src/scratch-app/scanner.ts";
-import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
 
 const providerId = ProviderId.make("lando");
 

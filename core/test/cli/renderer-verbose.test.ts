@@ -10,11 +10,11 @@ import {
 } from "@lando/sdk/events";
 import { EventService } from "@lando/sdk/services";
 
+import { EventServiceLive } from "@lando/engine/services/event-service";
 import { renderVerboseLine } from "@lando/renderer-lando/format";
 import { RENDERER_MODES, isRendererMode, resolveRendererMode } from "../../src/cli/renderer-selection.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 import { makeVerboseRendererLive } from "../../src/cli/renderer/runtime.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
 
 const fixedTimestamp = "2026-05-19T12:00:00.000Z";
 

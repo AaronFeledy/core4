@@ -7,8 +7,8 @@ import { CertificateAuthority } from "@lando/sdk/services";
 import {
   CertificateAuthorityResolver,
   type CertificateAuthorityResolverShape,
-} from "../../../src/plugins/certificate-authority-resolver.ts";
-import { DeferredCertificateAuthorityLive } from "../../../src/subsystems/proxy/deferred-certificate-authority.ts";
+} from "@lando/engine/plugins/certificate-authority-resolver";
+import { DeferredCertificateAuthorityLive } from "@lando/engine/subsystems/proxy/deferred-certificate-authority";
 
 const buildAuthority = (resolver: CertificateAuthorityResolverShape) =>
   Effect.scoped(

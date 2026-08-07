@@ -5,7 +5,7 @@ import {
   deferredRendererModeError,
   findDeferredRendererFlag,
   isDeferredRendererMode,
-} from "./renderer-deferred.ts";
+} from "./renderer-deferred";
 
 export const RENDERER_MODES = ["lando", "json", "plain", "verbose"] as const;
 export type RendererMode = (typeof RENDERER_MODES)[number];

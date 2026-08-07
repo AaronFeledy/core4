@@ -28,9 +28,9 @@ import {
   ShellRunner,
 } from "@lando/core/services";
 
+import { registerBuiltInContractDeprecations } from "@lando/engine/deprecation/built-in-contracts";
+import { DeprecationServiceLive } from "@lando/engine/deprecation/service";
 import AppShellCommand from "../../src/cli/oclif/commands/app/shell.ts";
-import { registerBuiltInContractDeprecations } from "../../src/deprecation/built-in-contracts.ts";
-import { DeprecationServiceLive } from "../../src/deprecation/service.ts";
 import { emptyConfigServiceLayer } from "./agent-env-test-config.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");

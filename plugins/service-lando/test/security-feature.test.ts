@@ -4,7 +4,7 @@ import { Effect, Schema } from "effect";
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
 
-import { composeService } from "../../../core/src/services/feature.ts";
+import { composeService } from "@lando/engine/services/feature";
 import { serviceFeatures } from "../src/features/index.ts";
 
 const DIGEST_A = "a".repeat(64);

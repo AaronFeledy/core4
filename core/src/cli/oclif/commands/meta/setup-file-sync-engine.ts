@@ -2,7 +2,7 @@ import type { Layer } from "effect";
 
 import type { Downloader, FileSyncEngine, PathsService } from "@lando/sdk/services";
 
-import { BundledFileSyncEngineLive } from "../../../../plugins/file-sync-from-modules.ts";
+import { BundledFileSyncEngineLive } from "@lando/engine/plugins/file-sync-from-modules";
 
 /**
  * The generic plugin descriptor contract erases Layer requirements to unknown.

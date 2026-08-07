@@ -10,7 +10,7 @@ import {
   type ResolvedNetworkTrust,
   loadCaPems,
   resolveNetworkTrustPlan,
-} from "../../http-client/network-trust.ts";
+} from "@lando/engine/http-client/network-trust";
 
 export type SetupNetworkFailureKind =
   | "tls-interception"

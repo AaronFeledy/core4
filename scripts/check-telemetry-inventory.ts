@@ -3,7 +3,7 @@ import { join, relative, resolve } from "node:path";
 
 import ts from "typescript";
 
-import { TELEMETRY_EVENT_NAMES } from "../core/src/telemetry/inventory.ts";
+import { TELEMETRY_EVENT_NAMES } from "../engine/src/telemetry/inventory.ts";
 import { ALL_PACKAGE_WALK_ROOTS } from "./boundary/workspace-roots.ts";
 
 export interface TelemetryInventoryOffender {
@@ -110,7 +110,7 @@ if (import.meta.main) {
     process.stdout.write("Telemetry inventory check passed.\n");
   } else {
     process.stderr.write(
-      `Telemetry inventory check failed. Every recorded event must be declared in core/src/telemetry/inventory.ts and documented in docs/telemetry/events.md in the same change.\n${result.offenders
+      `Telemetry inventory check failed. Every recorded event must be declared in engine/src/telemetry/inventory.ts and documented in docs/telemetry/events.md in the same change.\n${result.offenders
         .map((offender) => formatOffender(repoRoot, offender))
         .join("\n")}\n`,
     );

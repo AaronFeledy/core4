@@ -1,7 +1,7 @@
 /**
  * Catalog metadata for the bundled built-in recipes.
  */
-import { BUNDLED_RECIPES } from "./bundled.ts";
+import { BUNDLED_RECIPES } from "./bundled";
 
 export interface RecipeCatalogEntry {
   readonly id: string;

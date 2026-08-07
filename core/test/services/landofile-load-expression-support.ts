@@ -9,11 +9,11 @@ import { GlobalConfig } from "@lando/sdk/schema";
 import { AppPlanner, ConfigService, LandofileService, PathsService } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { CacheServiceLive } from "../../src/cache/service.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 export const PEM = "-----BEGIN CERTIFICATE-----\ncorp\n-----END CERTIFICATE-----\n";
 export const IMPORTED_PEM = "-----BEGIN CERTIFICATE-----\nimported\n-----END CERTIFICATE-----\n";

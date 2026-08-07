@@ -1,4 +1,4 @@
-import type { RendererMode } from "./renderer-selection.ts";
+import type { RendererMode } from "./renderer-selection";
 
 export let activeRendererMode: RendererMode = "lando";
 

@@ -8,6 +8,6 @@
  *   - Subscriber priority bands and types (from `@lando/sdk/events`).
  */
 
-export * from "./events.ts";
-export * from "./schema.ts";
-export * from "./subscribers.ts";
+export * from "@lando/engine/lifecycle/events";
+export * from "@lando/engine/lifecycle/schema";
+export * from "@lando/engine/lifecycle/subscribers";

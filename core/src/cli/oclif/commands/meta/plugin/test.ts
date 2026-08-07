@@ -3,8 +3,8 @@ import {
   PluginTestResultSchema,
   pluginTest,
   renderPluginTestResult,
-} from "../../../../commands/plugin-test.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/plugin-test";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];

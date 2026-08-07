@@ -11,8 +11,8 @@ import {
   commandSpecForId,
   flagDefinitionsForCommand,
   flagNameByToken,
-} from "./compiled-argv.ts";
-import { emitDiagnosticLine } from "./compiled-session.ts";
+} from "./compiled-argv";
+import { emitDiagnosticLine } from "./compiled-session";
 
 /**
  * Mirrors the consumption rules in `compiledCommandInputFromArgv`: a value flag

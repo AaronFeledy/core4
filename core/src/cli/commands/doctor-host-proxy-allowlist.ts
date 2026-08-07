@@ -1,12 +1,12 @@
-import { COMMAND_REGISTRY_MANIFEST } from "../generated/command-registry-manifest.ts";
-import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../oclif/generated/host-proxy-allowlist.ts";
+import { COMMAND_REGISTRY_MANIFEST } from "../generated/command-registry-manifest";
+import { HOST_PROXY_RUNLANDO_ALLOWLIST } from "../oclif/generated/host-proxy-allowlist";
 import type {
   DoctorCheck,
   DoctorProviderKind,
   DoctorRuntime,
   DoctorSelectionRecord,
   DoctorSolution,
-} from "./doctor.ts";
+} from "./doctor";
 
 interface HostProxyAllowlistDoctorOptions {
   readonly provider: {

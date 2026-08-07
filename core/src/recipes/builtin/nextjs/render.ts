@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { NEXTJS_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { NEXTJS_RECIPE_ID } from "./manifest";
 
 const renderLandofile = (appName: string, node: string, database: string, auth: string): string => {
   const lines = [

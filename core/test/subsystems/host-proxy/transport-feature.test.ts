@@ -16,7 +16,7 @@ import {
 } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "../../../src/redaction/service.ts";
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
 import {
   HOST_PROXY_CONTAINER_LANDO,
   HOST_PROXY_CONTAINER_SHIM,
@@ -26,7 +26,7 @@ import {
   createHostProxyRunLandoSession,
   hostProxyRunLandoFeature,
   stripHostProxyRunLando,
-} from "../../../src/subsystems/host-proxy/transport.ts";
+} from "@lando/engine/subsystems/host-proxy/transport";
 
 const tempDirs: string[] = [];
 

@@ -8,7 +8,7 @@ import {
   type LoadGlobalPlanError,
   type LoadGlobalPlanServices,
   loadGlobalPlan,
-} from "../../../operations/global-plan.ts";
+} from "@lando/engine/operations/global-plan";
 import {
   type FollowLogsAppOptions,
   type LogsAppOptions,
@@ -16,10 +16,10 @@ import {
   followLogsForPlan,
   logsForPlan,
   validateSince,
-} from "../../../operations/logs.ts";
-import type { StreamFrameSink } from "../../../operations/stream-frame-sink.ts";
+} from "@lando/engine/operations/logs";
+import type { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
 
-export { renderLogsAppResult as renderGlobalLogsResult } from "../logs.ts";
+export { renderLogsAppResult as renderGlobalLogsResult } from "../logs";
 export type { LogsAppOptions as GlobalLogsOptions, FollowLogsAppOptions as FollowGlobalLogsOptions };
 
 export type GlobalLogsResult = LogsAppResult;

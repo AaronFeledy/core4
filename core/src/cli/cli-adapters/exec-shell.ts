@@ -1,17 +1,17 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { execApp } from "../../operations/exec.ts";
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { renderExecAppResult } from "../commands/exec.ts";
-import { renderShellAppResult, shellApp } from "../commands/shell.ts";
+import { execApp } from "@lando/engine/operations/exec";
+import { cliRuntimeOptions } from "@lando/engine/runtime/cli-options";
+import { makeLandoRuntime } from "../../runtime/layer";
+import { renderExecAppResult } from "../commands/exec";
+import { renderShellAppResult, shellApp } from "../commands/shell";
 import {
   commandErrorMessage,
   emitDiagnosticLine,
   rejectInvalidInvocation,
   runCompiledCommand,
-} from "../compiled-runtime.ts";
-import { withOptionalStderrOutput } from "../renderer-output.ts";
+} from "../compiled-runtime";
+import { withOptionalStderrOutput } from "../renderer-output";
 
 interface ParsedExecArgv {
   readonly service?: string;

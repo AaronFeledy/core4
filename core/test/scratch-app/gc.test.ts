@@ -16,25 +16,25 @@ import {
   type ScratchHandle,
 } from "@lando/core/services";
 
-import { makeLandoPaths } from "@lando/paths";
-import { StateStoreLive } from "@lando/state-store/service";
-import { CacheServiceLive } from "../../src/cache/service.ts";
-import { DataMoverLive } from "../../src/data-mover/service.ts";
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { type RedactionService, RedactionServiceLive } from "../../src/redaction/service.ts";
+import { CacheServiceLive } from "@lando/engine/cache/service";
+import { DataMoverLive } from "@lando/engine/data-mover/service";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { type RedactionService, RedactionServiceLive } from "@lando/engine/redaction/service";
 import {
   type ScratchRegistryEntry,
   ScratchRegistryLive,
   makeScratchRegistry,
-} from "../../src/scratch-app/registry.ts";
-import { ScratchResourceScanner } from "../../src/scratch-app/scanner.ts";
-import { ScratchAppServiceLive } from "../../src/scratch-app/service.ts";
-import { ConfigServiceLive } from "../../src/services/config.ts";
-import { EventServiceLive } from "../../src/services/event-service.ts";
-import { FileSystemLive } from "../../src/services/file-system.ts";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
-import { SecretStoreLive } from "../../src/services/secret-store.ts";
+} from "@lando/engine/scratch-app/registry";
+import { ScratchResourceScanner } from "@lando/engine/scratch-app/scanner";
+import { ScratchAppServiceLive } from "@lando/engine/scratch-app/service";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { EventServiceLive } from "@lando/engine/services/event-service";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
+import { AppPlannerLive } from "@lando/engine/services/planner";
+import { SecretStoreLive } from "@lando/engine/services/secret-store";
+import { makeLandoPaths } from "@lando/paths";
+import { StateStoreLive } from "@lando/state-store/service";
 
 const providerId = ProviderId.make("lando");
 

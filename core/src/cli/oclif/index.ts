@@ -9,8 +9,8 @@
  * its framework-free metadata and adapters directly.
  */
 
-export { LandoCommandBase } from "./command-base.ts";
-export { initHook } from "./hooks/init.ts";
-export { prerunHook } from "./hooks/prerun.ts";
-export { postrunHook } from "./hooks/postrun.ts";
-export { commandNotFoundHook } from "./hooks/command_not_found.ts";
+export { LandoCommandBase } from "./command-base";
+export { initHook } from "./hooks/init";
+export { prerunHook } from "./hooks/prerun";
+export { postrunHook } from "./hooks/postrun";
+export { commandNotFoundHook } from "./hooks/command_not_found";

@@ -1,14 +1,14 @@
-import { Flags } from "../../metadata.ts";
+import { Flags } from "../../metadata";
 
-import { type ShellAppResult, renderShellAppResult, shellApp } from "../../../commands/shell.ts";
+import { type ShellAppResult, renderShellAppResult, shellApp } from "../../../commands/shell";
 import {
   EmptyResultSchema,
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
-import { extractSpecFlags } from "../../command-boundary.ts";
+} from "../../command-base";
+import { extractSpecFlags } from "../../command-boundary";
 
 export const appShellSpec: LandoCommandSpec<ShellAppResult> = {
   resultSchema: EmptyResultSchema,

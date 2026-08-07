@@ -15,7 +15,7 @@ import {
   type SelectSpec,
 } from "@lando/sdk/services";
 
-import { makeInteractionService } from "../interaction/service.ts";
+import { makeInteractionService } from "../interaction/service";
 
 const TEST_INTERACTION_ID = "test-stdio";
 

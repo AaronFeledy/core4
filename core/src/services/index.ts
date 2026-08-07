@@ -18,7 +18,7 @@
 
 export * from "@lando/sdk/services";
 
-export { McpService, McpServiceLive, McpRuntimeConfig, DEFAULT_MCP_MAX_CONCURRENT } from "../mcp/service.ts";
-export type { McpServiceShape, McpRuntimeConfigShape } from "../mcp/service.ts";
-export { EventDeliveryMetrics } from "./event-service.ts";
-export type { EventDeliveryMetricsSnapshot } from "./event-service.ts";
+export { McpService, McpServiceLive, McpRuntimeConfig, DEFAULT_MCP_MAX_CONCURRENT } from "../mcp/service";
+export type { McpServiceShape, McpRuntimeConfigShape } from "../mcp/service";
+export { EventDeliveryMetrics } from "@lando/engine/services/event-service";
+export type { EventDeliveryMetricsSnapshot } from "@lando/engine/services/event-service";

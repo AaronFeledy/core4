@@ -4,8 +4,8 @@
  * Extracted so the plugin-check runner and the provider diagnostics can both
  * depend on these shapes without an import cycle.
  */
-import type { ProviderSelectionSource } from "../../providers/precedence.ts";
-import type { DoctorSelfCheck } from "./doctor-self.ts";
+import type { ProviderSelectionSource } from "@lando/engine/providers/precedence";
+import type { DoctorSelfCheck } from "./doctor-self";
 
 export type DoctorStatus = "pass" | "warn" | "fail";
 export type DoctorSeverity = "info" | "warn" | "error";

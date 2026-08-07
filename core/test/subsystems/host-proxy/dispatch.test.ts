@@ -10,13 +10,13 @@ import {
   RedactionService,
   type RedactionServiceShape,
   createStandaloneRedactor,
-} from "../../../src/redaction/service.ts";
+} from "@lando/engine/redaction/service";
 import {
   type HostProxyRunLandoExecutor,
   dispatchRunLando,
-} from "../../../src/subsystems/host-proxy/dispatch.ts";
-import { openOptionsFromRunLandoArgv } from "../../../src/subsystems/host-proxy/open-argv.ts";
-import { buildRunLandoRequest } from "../../../src/subsystems/host-proxy/shim.ts";
+} from "@lando/engine/subsystems/host-proxy/dispatch";
+import { buildRunLandoRequest } from "@lando/engine/subsystems/host-proxy/shim";
+import { openOptionsFromRunLandoArgv } from "../../../src/cli/host-proxy/open-argv.ts";
 
 const appRef = { kind: "user" as const, id: "demo", root: AbsolutePath.make("/home/u/demo") };
 const mount = { containerRoot: "/app", hostRoot: "/home/u/demo" };

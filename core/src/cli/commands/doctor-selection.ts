@@ -9,14 +9,14 @@ import {
   type ProviderSelectionInputs,
   type ProviderSelectionResolution,
   readProviderEnvVar,
-} from "../../providers/precedence.ts";
-import type { DoctorSelectionRecord } from "./doctor-contract.ts";
+} from "@lando/engine/providers/precedence";
+import type { DoctorSelectionRecord } from "./doctor-contract";
 import {
   type DoctorSelfCheck,
   describeDoctorFailure,
   doctorSelfCheck,
   redactDoctorMessage,
-} from "./doctor-self.ts";
+} from "./doctor-self";
 
 export interface DoctorSelectionOptions {
   readonly flagProviderId?: string | undefined;

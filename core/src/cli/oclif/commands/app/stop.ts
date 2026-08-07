@@ -1,9 +1,9 @@
-import { type StopAppResult, StopAppResultSchema, stopApp } from "../../../../operations/stop.ts";
-import { renderStopAppResult } from "../../../commands/stop.ts";
+import { type StopAppResult, StopAppResultSchema, stopApp } from "@lando/engine/operations/stop";
+import { renderStopAppResult } from "../../../commands/stop";
 /**
  * `lando app:stop` — native command metadata adapter.
  */
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
 
 export const stopSpec: LandoCommandSpec<StopAppResult> = {
   resultSchema: StopAppResultSchema,

@@ -5,12 +5,12 @@ import type { RuntimeProviderShape } from "@lando/sdk/services";
 import type {
   HostProxyWorkerRecord,
   LegacyHostProxyWorkerRecord,
-} from "../../subsystems/host-proxy/worker-records.ts";
-import { probeWorker } from "../../subsystems/host-proxy/worker-state.ts";
-import { probeHostProxyContainer } from "./doctor-host-proxy-container-probe.ts";
-import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem.ts";
-import type { HostProxyTransportDoctorOptions } from "./doctor-host-proxy.ts";
-import type { DoctorCheck, DoctorSolution } from "./doctor.ts";
+} from "@lando/engine/subsystems/host-proxy/worker-records";
+import { probeWorker } from "@lando/engine/subsystems/host-proxy/worker-state";
+import type { DoctorCheck, DoctorSolution } from "./doctor";
+import type { HostProxyTransportDoctorOptions } from "./doctor-host-proxy";
+import { probeHostProxyContainer } from "./doctor-host-proxy-container-probe";
+import { HostProxyDoctorFileSystem } from "./doctor-host-proxy-filesystem";
 
 export interface HostProxyDoctorLimits {
   readonly maxWorkers: number;

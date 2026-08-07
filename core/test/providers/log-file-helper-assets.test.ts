@@ -12,7 +12,7 @@ import {
   LogFileHelperAssetsLive,
   loadLogFileHelperPayloads,
   resolveLogFileHelperPayloadPath,
-} from "../../src/providers/log-file-helper-payloads.ts";
+} from "@lando/engine/providers/log-file-helper-payloads";
 
 test("LogFileHelperAssets loads helper payloads once per layer build", async () => {
   // Given

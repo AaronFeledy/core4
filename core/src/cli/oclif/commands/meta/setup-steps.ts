@@ -14,20 +14,20 @@ import { Data, Effect, Layer, Option } from "effect";
 
 import { Downloader, FileSyncEngine, type FileSyncError, PathsService } from "@lando/sdk/services";
 
-import { NetworkTrust } from "../../../../http-client/network-trust.ts";
+import { NetworkTrust } from "@lando/engine/http-client/network-trust";
 import {
   type ResolvedSetupNetworkTrust,
   networkTrustFromResolved,
-} from "../../../commands/setup-network-trust.ts";
+} from "../../../commands/setup-network-trust";
 import {
   type SetupReadinessRuntimeService,
   type SetupReadinessStep,
   setupFailureEvidence,
   setupFailureRemediation,
   writeSetupReadiness,
-} from "../../../commands/setup-readiness.ts";
-import { SetupFileSyncEngineLive } from "./setup-file-sync-engine.ts";
-import { type FileSyncStatus, inputSkipFileSync } from "./setup-inputs.ts";
+} from "../../../commands/setup-readiness";
+import { SetupFileSyncEngineLive } from "./setup-file-sync-engine";
+import { type FileSyncStatus, inputSkipFileSync } from "./setup-inputs";
 
 interface RuntimeServiceStatusForReadiness {
   readonly running: boolean;

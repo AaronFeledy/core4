@@ -8,7 +8,7 @@ import {
   type ComposeAppFeature,
   type ComposeAppFeaturesInput,
   composeAppFeatures,
-} from "../../src/services/app-feature.ts";
+} from "@lando/engine/services/app-feature";
 
 const draft = (over: Partial<AppFeatureServiceDraft> & { serviceName: string }): AppFeatureServiceDraft => ({
   serviceName: over.serviceName,

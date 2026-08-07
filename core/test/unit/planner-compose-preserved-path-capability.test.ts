@@ -10,8 +10,8 @@ import { LandofileShape, type ProviderCapabilities } from "@lando/core/schema";
 import { AppPlanner } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
-import { PluginRegistryLive } from "../../src/plugins/registry.ts";
-import { AppPlannerLive } from "../../src/services/planner.ts";
+import { PluginRegistryLive } from "@lando/engine/plugins/registry";
+import { AppPlannerLive } from "@lando/engine/services/planner";
 
 const supportedCapabilities: ProviderCapabilities = {
   ...TestRuntimeProvider.capabilities,

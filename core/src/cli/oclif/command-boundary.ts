@@ -1,11 +1,11 @@
 import { Effect, Layer, Schema } from "effect";
 
-import type { RendererMode } from "../bug-report.ts";
-import { formatBugReport } from "../bug-report.ts";
-import { validateCommandCliFlags } from "../flag-value-validation.ts";
-import type { ResultFormat } from "../format-flags.ts";
-import { runWithRendererHandling } from "../renderer-boundary.ts";
-import type { RendererIO } from "../renderer/io.ts";
+import type { RendererMode } from "../bug-report";
+import { formatBugReport } from "../bug-report";
+import { validateCommandCliFlags } from "../flag-value-validation";
+import type { ResultFormat } from "../format-flags";
+import { runWithRendererHandling } from "../renderer-boundary";
+import type { RendererIO } from "../renderer/io";
 
 const EmptyPreCommandResultSchema = Schema.Struct({});
 

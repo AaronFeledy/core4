@@ -11,12 +11,12 @@ import { Effect, Layer, Option } from "effect";
 
 import { type EventService, Renderer } from "@lando/sdk/services";
 
-import { StreamFrameSink, type StreamFrameSinkFrame } from "../operations/stream-frame-sink.ts";
-import { RedactionService } from "../redaction/service.ts";
-import type { ResultFormat } from "./format-flags.ts";
-import type { RendererMode } from "./renderer-selection.ts";
-import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers.ts";
-import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
+import { StreamFrameSink, type StreamFrameSinkFrame } from "@lando/engine/operations/stream-frame-sink";
+import { RedactionService } from "@lando/engine/redaction/service";
+import type { ResultFormat } from "./format-flags";
+import type { RendererMode } from "./renderer-selection";
+import { landoRenderer, makeBundledLandoNotificationConsumer } from "./renderer/bundled-renderers";
+import { type RendererIO, createStdioRendererIO } from "./renderer/io";
 import {
   makeJsonNotificationRendererLive,
   makeJsonRendererLive,
@@ -26,8 +26,8 @@ import {
   makePlainTaskDetailRendererLive,
   makeVerboseRendererLive,
   makeVerboseRendererServiceLive,
-} from "./renderer/runtime.ts";
-import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode.ts";
+} from "./renderer/runtime";
+import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,

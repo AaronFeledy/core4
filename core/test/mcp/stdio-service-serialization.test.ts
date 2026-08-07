@@ -4,6 +4,7 @@ import { Effect, Fiber, Layer, Queue, Schema } from "effect";
 import type { McpCatalog } from "@lando/sdk/schema";
 import { createRedactor } from "@lando/sdk/secrets";
 
+import { RedactionService } from "@lando/engine/redaction/service";
 import type { LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
@@ -14,7 +15,6 @@ import {
 } from "../../src/mcp/service.ts";
 import { makeStdioMcpTransport } from "../../src/mcp/stdio-transport.ts";
 import { McpTransport } from "../../src/mcp/transport.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 
 const encoder = new TextEncoder();
 const catalog = { tools: [] } satisfies McpCatalog;

@@ -1,13 +1,13 @@
-import { Args, Flags } from "../../../metadata.ts";
+import { Args, Flags } from "../../../metadata";
 
 import {
   type PluginNewResult,
   PluginNewResultSchema,
   pluginNew,
   renderPluginNewResult,
-} from "../../../../commands/plugin-new.ts";
-import { resolveNonInteractive } from "../../../../prompts/answer-flags.ts";
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
+} from "../../../../commands/plugin-new";
+import { resolveNonInteractive } from "../../../../prompts/answer-flags";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base";
 
 const extractInput = (input: unknown) => {
   const parsed =

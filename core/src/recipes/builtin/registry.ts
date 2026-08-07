@@ -6,29 +6,29 @@
  * The init flow iterates `manifest.files` and looks each `dest` up in
  * the rendered map. Missing entries fail with a tagged error.
  */
-import type { PromptAnswers } from "../prompts/runtime.ts";
+import type { PromptAnswers } from "../prompts/runtime";
 
-import { astroRenderer } from "./astro/render.ts";
-import { djangoRenderer } from "./django/render.ts";
-import { drupalCmsRenderer } from "./drupal-cms/render.ts";
-import { drupalRenderer } from "./drupal/render.ts";
-import { eleventyRenderer } from "./eleventy/render.ts";
-import { emptyRenderer } from "./empty/render.ts";
-import { fastapiRenderer } from "./fastapi/render.ts";
-import { hugoRenderer } from "./hugo/render.ts";
-import { jekyllRenderer } from "./jekyll/render.ts";
-import { lampRenderer } from "./lamp/render.ts";
-import { laravelRenderer } from "./laravel/render.ts";
-import { lempRenderer } from "./lemp/render.ts";
-import { nextjsRenderer } from "./nextjs/render.ts";
-import { nodeApiRenderer } from "./node-api/render.ts";
-import { nodePostgresRenderer } from "./node-postgres/render.ts";
-import { nodeTsRenderer } from "./node-ts/render.ts";
-import { railsRenderer } from "./rails/render.ts";
-import { sveltekitRenderer } from "./sveltekit/render.ts";
-import { symfonyRenderer } from "./symfony/render.ts";
-import { toolboxRenderer } from "./toolbox/render.ts";
-import { wordpressRenderer } from "./wordpress/render.ts";
+import { astroRenderer } from "./astro/render";
+import { djangoRenderer } from "./django/render";
+import { drupalCmsRenderer } from "./drupal-cms/render";
+import { drupalRenderer } from "./drupal/render";
+import { eleventyRenderer } from "./eleventy/render";
+import { emptyRenderer } from "./empty/render";
+import { fastapiRenderer } from "./fastapi/render";
+import { hugoRenderer } from "./hugo/render";
+import { jekyllRenderer } from "./jekyll/render";
+import { lampRenderer } from "./lamp/render";
+import { laravelRenderer } from "./laravel/render";
+import { lempRenderer } from "./lemp/render";
+import { nextjsRenderer } from "./nextjs/render";
+import { nodeApiRenderer } from "./node-api/render";
+import { nodePostgresRenderer } from "./node-postgres/render";
+import { nodeTsRenderer } from "./node-ts/render";
+import { railsRenderer } from "./rails/render";
+import { sveltekitRenderer } from "./sveltekit/render";
+import { symfonyRenderer } from "./symfony/render";
+import { toolboxRenderer } from "./toolbox/render";
+import { wordpressRenderer } from "./wordpress/render";
 
 /** Map of recipe file dest → rendered content. */
 export type RecipeFileMap = ReadonlyMap<string, string>;

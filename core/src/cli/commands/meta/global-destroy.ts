@@ -21,7 +21,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "../../../operations/global-plan.ts";
+import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
 
 export interface GlobalDestroyOptions {
   readonly yes?: boolean;

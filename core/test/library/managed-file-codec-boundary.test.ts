@@ -149,7 +149,7 @@ describe("managed-file codec import boundary (constructs no LandoRuntime)", () =
   });
 
   test("importing the codec module has no construction side effects", async () => {
-    const mod = await import("../../src/managed-file/codecs.ts");
+    const mod = await import("@lando/engine/managed-file/codecs");
     expect(mod.encode).toBeFunction();
     expect(mod.decode).toBeFunction();
     expect(mod.mergeManaged).toBeFunction();

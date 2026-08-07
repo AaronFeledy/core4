@@ -10,8 +10,8 @@ import { Effect } from "effect";
 
 import { ConfigService } from "@lando/sdk/services";
 
-import { ConfigServiceLive } from "../services/config.ts";
-import { type ResolveRendererModeResult, resolveRendererMode } from "./renderer-selection.ts";
+import { ConfigServiceLive } from "@lando/engine/services/config";
+import { type ResolveRendererModeResult, resolveRendererMode } from "./renderer-selection";
 
 export const readConfigRendererValue = async (): Promise<string | undefined> => {
   const value = await Effect.runPromise(

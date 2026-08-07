@@ -14,9 +14,9 @@ import {
   APP_PLAN_CACHE_SCHEMA_VERSION,
   deriveAppPlanCacheKey,
   readCachedAppPlan,
-} from "../../src/cache/app-plan.ts";
-import { appPlanCachePath } from "../../src/cache/paths.ts";
-import { CORE_VERSION } from "../../src/version.ts";
+} from "@lando/engine/cache/app-plan";
+import { appPlanCachePath } from "@lando/engine/cache/paths";
+import { CORE_VERSION } from "@lando/engine/version";
 
 test("ignores a valid revision-6 app plan without pinned PHP prerequisite identities", async () => {
   // Given

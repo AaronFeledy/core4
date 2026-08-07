@@ -5,10 +5,10 @@ import { Effect } from "effect";
 import { NoCertificateAuthorityError } from "@lando/sdk/errors";
 import { makeTestCertificateAuthority } from "@lando/sdk/test";
 
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import type { SetupReadinessStep } from "../../src/cli/commands/setup-readiness.ts";
 import { runCaSetupStep } from "../../src/cli/oclif/commands/meta/setup-service-steps.ts";
 import type { SetupReadinessRecorder } from "../../src/cli/oclif/commands/meta/setup-steps.ts";
-import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 
 const makeRecorder = () => {
   const steps: SetupReadinessStep[] = [];

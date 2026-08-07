@@ -1,1 +1,1 @@
-export * from "../landofile/app-resolution.ts";
+export * from "@lando/engine/landofile/app-resolution";

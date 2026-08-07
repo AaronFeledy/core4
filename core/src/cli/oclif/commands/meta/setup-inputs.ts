@@ -12,7 +12,7 @@ import { Schema } from "effect";
 
 import { ProviderId } from "@lando/sdk/schema";
 
-import type { SetupNetworkTrustProbe } from "../../../commands/setup-network-trust.ts";
+import type { SetupNetworkTrustProbe } from "../../../commands/setup-network-trust";
 
 export type FileSyncStatus = "deferred" | "installed" | "satisfied" | "unavailable";
 

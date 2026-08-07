@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 
 import { DateTime } from "effect";
 
+import { serviceWithArtifact } from "@lando/engine/services/build-artifact-runner";
 import { PortablePath, ProviderId, ServiceName, type ServicePlan } from "@lando/sdk/schema";
-import { serviceWithArtifact } from "../../src/services/build-artifact-runner.ts";
 
 test("retains the CA bundle mount for an app-phase reserved step after another artifact build succeeds", () => {
   // Given

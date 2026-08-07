@@ -11,8 +11,8 @@ import { AbsolutePath, LandofileShape, ServiceName } from "@lando/sdk/schema";
 import { AppPlanner, ProcessRunner } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
 
+import { CertificateAuthorityResolver } from "@lando/engine/plugins/certificate-authority-resolver";
 import { rememberLandofileAppRoot } from "@lando/landofile/app-root-provenance";
-import { CertificateAuthorityResolver } from "../../src/plugins/certificate-authority-resolver.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 
 test("bundled mkcert setup issues certs through the production app planner", async () => {

@@ -9,6 +9,12 @@ import { CacheError } from "@lando/sdk/errors";
 import type { PluginManifest } from "@lando/sdk/schema";
 
 import {
+  decodeAppCommandIndex,
+  decodePluginCommandIndex,
+  encodeAppCommandIndex,
+  encodePluginCommandIndex,
+} from "@lando/engine/cache/command-index";
+import {
   invalidatePluginCommandCache,
   readAppCommandCache,
   readFreshAppCommandCacheForCwd,
@@ -16,21 +22,15 @@ import {
   writeAppCommandCache,
   writeAppCommandCacheStrict,
   writePluginCommandCacheStrict,
-} from "../../src/cache/command-index-writer.ts";
-import {
-  decodeAppCommandIndex,
-  decodePluginCommandIndex,
-  encodeAppCommandIndex,
-  encodePluginCommandIndex,
-} from "../../src/cache/command-index.ts";
+} from "@lando/engine/cache/command-index-writer";
 import {
   appCommandCachePath,
   appToolingCompilationCachePath,
   pluginCommandCachePath,
-} from "../../src/cache/paths.ts";
+} from "@lando/engine/cache/paths";
+import { CommandRegistryLive } from "@lando/engine/services/command-registry";
+import { LandofileServiceLive } from "@lando/engine/services/landofile-live";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
-import { CommandRegistryLive } from "../../src/services/command-registry.ts";
-import { LandofileServiceLive } from "../../src/services/landofile-live.ts";
 
 const writeScript = async (appRoot: string, relativePath: string, contents: string): Promise<void> => {
   const target = join(appRoot, ".lando", "scripts", relativePath);

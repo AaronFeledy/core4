@@ -1,5 +1,6 @@
 import { Effect, Schema } from "effect";
 
+import { publishedEndpointUrls } from "@lando/engine/operations/authority-url";
 import type {
   CapabilityError,
   GlobalAppError,
@@ -21,16 +22,15 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { publishedEndpointUrls } from "../../../operations/authority-url.ts";
 
-import { loadGlobalPlan } from "../../../operations/global-plan.ts";
-import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
+import { loadGlobalPlan } from "@lando/engine/operations/global-plan";
+import { type RenderContext, isDecoratedContext } from "../../renderer-boundary";
 import {
   type SummaryDocument,
   type SummaryTone,
   formatSummary,
   worstSummaryTone,
-} from "../../renderer/summary.ts";
+} from "../../renderer/summary";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;

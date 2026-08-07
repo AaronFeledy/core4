@@ -9,35 +9,31 @@ import { Effect, Option } from "effect";
 import type { ConfigLintResult } from "@lando/sdk/schema";
 import { type ConfigService, DeprecationService, type RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { RedactionService, createStandaloneRedactor } from "../../redaction/service.ts";
-import { lintLandofile } from "../../services/landofile-live.ts";
-import { interruptOnAbort } from "./doctor-abort.ts";
-import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status.ts";
-import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app.ts";
-import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp.ts";
-import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust.ts";
-import type {
-  DoctorDeprecationEntry,
-  DoctorDeprecationReport,
-  DoctorReport,
-} from "./doctor-report-contract.ts";
-import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self.ts";
-import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems.ts";
-import { appVersionConstraintsForReport } from "./doctor-version-constraint.ts";
-import { type DoctorOptions, type DoctorResult, doctor } from "./doctor.ts";
+import { RedactionService, createStandaloneRedactor } from "@lando/engine/redaction/service";
+import { lintLandofile } from "@lando/engine/services/landofile-live";
+import { type DoctorOptions, type DoctorResult, doctor } from "./doctor";
+import { interruptOnAbort } from "./doctor-abort";
+import { type CertsDoctorStatus, UNRESOLVED_CERTS_STATUS, certsDoctorStatus } from "./doctor-certs-status";
+import { DefaultGlobalAppDoctorLayer, globalAppDoctor } from "./doctor-global-app";
+import { DefaultMcpDoctorLayer, mcpDoctor } from "./doctor-mcp";
+import { type NetworkTrustDoctorStatus, networkTrustDoctorStatus } from "./doctor-network-trust";
+import type { DoctorDeprecationEntry, DoctorDeprecationReport, DoctorReport } from "./doctor-report-contract";
+import { type DoctorSelfCheck, doctorSectionBudgetMs, isolateDoctorSection } from "./doctor-self";
+import { DefaultSubsystemDoctorLayer, subsystemDoctor } from "./doctor-subsystems";
+import { appVersionConstraintsForReport } from "./doctor-version-constraint";
 
 export type {
   DoctorDeprecationEntry,
   DoctorDeprecationReport,
   DoctorReport,
-} from "./doctor-report-contract.ts";
-export { DoctorReportSchema } from "./doctor-report-contract.ts";
+} from "./doctor-report-contract";
+export { DoctorReportSchema } from "./doctor-report-contract";
 export {
   buildDoctorReportSummary,
   renderDoctorReport,
   renderDoctorReportAsNdjson,
   renderDoctorReportAsYaml,
-} from "./doctor-report-render.ts";
+} from "./doctor-report-render";
 
 const appConfigForReport = (): Effect.Effect<ConfigLintResult, never, never> =>
   lintLandofile().pipe(

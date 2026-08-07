@@ -8,12 +8,12 @@ import { LandofileParseError } from "@lando/core/errors";
 import type { TemplateRenderContext } from "@lando/core/schema";
 import { LandofileService } from "@lando/core/services";
 
-import { detectTemplateDirective } from "@lando/landofile/template-render";
 import {
   LandofileServiceLive,
   bundledTemplateEngineRegistry,
   renderLandofileTemplate,
-} from "../../src/services/landofile-live.ts";
+} from "@lando/engine/services/landofile-live";
+import { detectTemplateDirective } from "@lando/landofile/template-render";
 
 const ctx = (env: Record<string, string> = {}): TemplateRenderContext => ({
   bootstrapLevel: "minimal",

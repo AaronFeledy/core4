@@ -2,9 +2,9 @@
  * `@lando/core` MCP subsystem — catalog projection and
  * retained-runtime dispatch core behind `lando mcp`.
  */
-export * from "./registry.ts";
-export * from "./catalog.ts";
-export * from "./dispatch.ts";
-export * from "./transport.ts";
-export * from "./stdio-transport.ts";
-export * from "./service.ts";
+export * from "./registry";
+export * from "./catalog";
+export * from "./dispatch";
+export * from "./transport";
+export * from "./stdio-transport";
+export * from "./service";

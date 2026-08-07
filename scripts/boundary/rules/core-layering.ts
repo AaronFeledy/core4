@@ -29,13 +29,13 @@ const onEdges = (edges: readonly ModuleEdge[], context: FileContext): void => {
 export const coreLayeringRule = {
   id: "core-layering",
   scope: {
-    roots: ["core/src/app", "core/src/operations", "core/src/services"],
+    roots: ["engine/src/app", "engine/src/operations", "engine/src/services"],
     extensions: [".ts", ".tsx", ".mts", ".cts"],
     excludeTestFiles: true,
   },
   carveOuts: { files: [], prefixes: [] },
   passMessage: "Core layering check passed.",
   failureHeadline:
-    "Core layering check failed. App, operation, and service modules must not import the CLI shell; move shared behavior behind a non-CLI seam.",
+    "Core layering check failed. Engine app, operation, and service modules must not import the CLI shell; move shared behavior behind a non-CLI seam.",
   onEdges,
 } satisfies BoundaryRule;

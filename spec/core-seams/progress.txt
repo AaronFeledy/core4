@@ -175,3 +175,15 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Split/excise decisions: none; no adjacent feature or incomplete public contract was found, and US-541 remains passing.
 - Verification: typecheck, lint/deprecations, public transcripts, relevant boundaries, and 69 focused tests passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference failures. Host-unsafe sandbox parity and the earlier 29 manual CLI invocations were not rerun.
 ---
+
+## 2026-08-07 12:52 CDT - US-542
+- Moved the runtime brain from `core/src/**` into the private `@lando/engine` package while retaining only shell adapters, public re-export shims, and the core-owned generated composition/bootstrap layers in core; `core/src` fell from 79,572 to 50,250 TypeScript lines, a reduction of 29,322 lines.
+- Inverted all five generated-table reaches behind engine composition inputs, retargeted codegen and shared boundary roots, and removed source aliases so runtime and tests resolve one canonical workspace identity for Effect tags and tagged errors.
+- Kept readline/TTY, host-proxy shim entry, worker argv, and install-root facts in the core shell; engine receives required REPL IO, worker entry data, and development dist roots through injected composition inputs with no fallback path.
+- Moved 14 self-contained suites into `engine/test` and added the closure contract; the engine package now runs 141 tests across 15 files, while the total sharded inventory increased only for the new closure proof.
+- Verification: `codegen:check`, typecheck, lint/deprecations, package-DAG, import-cycle, core-layering, renderer, state-store, generated-output, compiled host-proxy shim builds, CLI smoke, 115 focused remediation tests, and 141 engine tests passed. The full boundary runner retains only pre-existing `.omo/**` spec-reference failures outside this story; high-rigor review approved with no blockers.
+- Guide-Coverage-Skip: US-542 changes private package ownership and internal composition only; command behavior and public contracts are unchanged.
+- **Learnings for future iterations:**
+  - Remove source-path aliases when extracting workspace packages; duplicate module identities can make valid Effect layers and tagged errors fail runtime identity checks even when TypeScript accepts them.
+  - Treat process argv, TTY streams, and install-relative paths as host-shell facts and inject them into the engine rather than allowing moved modules to recompute them from their new package location.
+---

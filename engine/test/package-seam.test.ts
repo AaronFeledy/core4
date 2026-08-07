@@ -50,6 +50,7 @@ describe("Engine package seam", () => {
       readJsonObject(resolve(repositoryRoot, "tsconfig.json")),
     ]);
     const scripts = stringRecord(packageManifest.scripts);
+    const exports = stringRecord(packageManifest.exports);
     const packageEntry = realpathSync(Bun.resolveSync("@lando/engine", repositoryRoot)).replaceAll("\\", "/");
     const packageModule: unknown = await import("@lando/engine");
 
@@ -57,6 +58,11 @@ describe("Engine package seam", () => {
     expect(packageManifest.private).toBe(true);
     expect(packageManifest.main).toBe("./src/index.ts");
     expect(packageManifest.types).toBe("./src/index.ts");
+    expect(exports).toEqual({
+      ".": "./src/index.ts",
+      "./*": "./src/*.ts",
+      "./package.json": "./package.json",
+    });
     expect(stringArray(rootManifest.workspaces)).toContain("engine");
     expect(projectReferencePaths(rootTsconfig.references)).toContain("./engine");
     expect(scripts).toEqual({
@@ -89,6 +95,12 @@ describe("Engine package seam", () => {
     const workspacePeerDependencies = Object.entries(stringRecord(packageManifest.peerDependencies)).filter(
       ([, version]) => version.startsWith("workspace:"),
     );
+    const runtimeDependencies = Object.entries(stringRecord(packageManifest.dependencies))
+      .filter(([, version]) => !version.startsWith("workspace:"))
+      .sort(([left], [right]) => left.localeCompare(right));
+    const nonWorkspaceDevDependencies = Object.entries(stringRecord(packageManifest.devDependencies))
+      .filter(([, version]) => !version.startsWith("workspace:"))
+      .sort(([left], [right]) => left.localeCompare(right));
 
     expect(workspaceDependencies).toEqual([
       ["@lando/container-runtime", "workspace:*"],
@@ -99,6 +111,11 @@ describe("Engine package seam", () => {
     ]);
     expect(workspaceDevDependencies).toEqual([]);
     expect(workspacePeerDependencies).toEqual([]);
+    expect(runtimeDependencies).toEqual([
+      ["effect", "^3.21.2"],
+      ["semver", "^7.8.5"],
+    ]);
+    expect(nonWorkspaceDevDependencies).toEqual([["@types/semver", "^7.7.1"]]);
   });
 
   test("runs the package seam test in CI unit shards", async () => {

@@ -5,9 +5,9 @@ import { Effect, Schema } from "effect";
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
-import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner.ts";
-import { validatePluginManifest } from "./plugin-add.ts";
-import { findNearestPluginPackageRoot } from "./plugin-package-root.ts";
+import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { validatePluginManifest } from "./plugin-add";
+import { findNearestPluginPackageRoot } from "./plugin-package-root";
 
 export interface PluginTestOptions {
   readonly argv?: ReadonlyArray<string>;

@@ -16,6 +16,7 @@ import type {
 } from "@lando/sdk/errors";
 import { LandofileShape } from "@lando/sdk/schema";
 
+import { verifyLandofileIncludes } from "@lando/engine/services/landofile-live";
 import { rejectComposeKeys, rejectComposeTags } from "@lando/landofile/compose/rejections";
 import { findLandofilePath } from "@lando/landofile/discovery";
 import type {
@@ -25,7 +26,6 @@ import type {
 } from "@lando/landofile/includes";
 import { parseLandofile } from "@lando/landofile/parser";
 import { rejectBetaToolingFeatures } from "@lando/landofile/tooling-beta";
-import { verifyLandofileIncludes } from "../../services/landofile-live.ts";
 
 export type {
   IncludeVerifyEntry,

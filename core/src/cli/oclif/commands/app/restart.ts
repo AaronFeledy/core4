@@ -1,11 +1,11 @@
-import { type RestartAppResult, RestartAppResultSchema, restartApp } from "../../../../operations/restart.ts";
-import { renderRestartAppResult } from "../../../commands/restart.ts";
+import { type RestartAppResult, RestartAppResultSchema, restartApp } from "@lando/engine/operations/restart";
+import { renderRestartAppResult } from "../../../commands/restart";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 
 export const restartSpec: LandoCommandSpec<RestartAppResult> = {
   resultSchema: RestartAppResultSchema,

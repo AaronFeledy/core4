@@ -1,5 +1,5 @@
-import type { RecipeRenderer } from "../registry.ts";
-import { TOOLBOX_RECIPE_ID } from "./manifest.ts";
+import type { RecipeRenderer } from "../registry";
+import { TOOLBOX_RECIPE_ID } from "./manifest";
 
 /**
  * Version-pinned general-purpose CLI image for one-shot tool execution.

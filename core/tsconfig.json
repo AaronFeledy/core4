@@ -16,6 +16,7 @@
   "include": ["./src/**/*.ts", "./bin/**/*.ts", "./package.json"],
   "exclude": ["./dist", "./node_modules", "./test"],
   "references": [
+    { "path": "../engine" },
     { "path": "../sdk" },
     { "path": "../paths" },
     { "path": "../state-store" },

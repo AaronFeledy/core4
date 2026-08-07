@@ -19,33 +19,28 @@ import { McpToolInputError, type McpTransportError } from "@lando/sdk/errors";
 import type { McpConfig } from "@lando/sdk/schema";
 import { CommandRegistry, ConfigService } from "@lando/sdk/services";
 
-import type { McpCommandEntry } from "../../../mcp/registry.ts";
+import { type RunToolingResult, runTooling } from "@lando/engine/operations/tooling";
+import type { RedactionService } from "@lando/engine/redaction/service";
+import type { McpCommandEntry } from "../../../mcp/registry";
 import {
   McpRuntimeConfig,
   type McpRuntimeConfigShape,
   McpService,
   McpServiceLive,
-} from "../../../mcp/service.ts";
-import { mcpServeStartupError } from "../../../mcp/stdio-limits.ts";
-import { makeStdioMcpTransport } from "../../../mcp/stdio-transport.ts";
-import { McpTransport } from "../../../mcp/transport.ts";
-import { type RunToolingResult, runTooling } from "../../../operations/tooling.ts";
-import type { RedactionService } from "../../../redaction/service.ts";
-import type { RendererMode } from "../../bug-report.ts";
-import type { CliInvocationSnapshot } from "../../command-lifecycle.ts";
-import type { ResultFormat } from "../../format-flags.ts";
-import type { LandoCommandSpec } from "../../oclif/command-base.ts";
-import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index.ts";
-import { MCP_DEFAULT_ALLOWLIST } from "../../oclif/generated/mcp-allowlist.ts";
-import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../oclif/mcp-allowlist.ts";
-import { runWithRendererHandling } from "../../renderer-boundary.ts";
-import { renderRunToolingResult } from "../tooling.ts";
-import {
-  type McpListResult,
-  McpListResultSchema,
-  buildMcpListResult,
-  renderMcpListResult,
-} from "./mcp-list.ts";
+} from "../../../mcp/service";
+import { mcpServeStartupError } from "../../../mcp/stdio-limits";
+import { makeStdioMcpTransport } from "../../../mcp/stdio-transport";
+import { McpTransport } from "../../../mcp/transport";
+import type { RendererMode } from "../../bug-report";
+import type { CliInvocationSnapshot } from "../../command-lifecycle";
+import type { ResultFormat } from "../../format-flags";
+import type { LandoCommandSpec } from "../../oclif/command-base";
+import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index";
+import { MCP_DEFAULT_ALLOWLIST } from "../../oclif/generated/mcp-allowlist";
+import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../oclif/mcp-allowlist";
+import { runWithRendererHandling } from "../../renderer-boundary";
+import { renderRunToolingResult } from "../tooling";
+import { type McpListResult, McpListResultSchema, buildMcpListResult, renderMcpListResult } from "./mcp-list";
 
 /** Flag inputs parsed from `lando mcp` (`--allow`/`--deny` repeatable, `--tooling`, `--list`). */
 export interface McpCommandFlags {
@@ -63,7 +58,7 @@ export interface ResolvedMcpOptions {
   readonly maxConcurrent?: number | undefined;
 }
 
-export { classifyMcpServeStartup } from "../../../mcp/stdio-limits.ts";
+export { classifyMcpServeStartup } from "../../../mcp/stdio-limits";
 
 /** The injected command registry the catalog + dispatch project from. */
 export interface McpCommandRegistry {

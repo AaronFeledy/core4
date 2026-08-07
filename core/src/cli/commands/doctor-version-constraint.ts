@@ -4,6 +4,9 @@ import { Effect, Either, Schema } from "effect";
 
 import { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
 
+import { createStandaloneRedactor } from "@lando/engine/redaction/service";
+import { findDiscoveredLandofilePath, loadLandofileLayers } from "@lando/engine/services/landofile-live";
+import { CORE_VERSION } from "@lando/engine/version";
 import {
   VERSION_CONSTRAINT_SKIP_ENV_VAR,
   type VersionConstraintEntry,
@@ -11,9 +14,6 @@ import {
   getVersionConstraintEntries,
   isVersionConstraintSkipped,
 } from "@lando/landofile/version-constraint";
-import { createStandaloneRedactor } from "../../redaction/service.ts";
-import { findDiscoveredLandofilePath, loadLandofileLayers } from "../../services/landofile-live.ts";
-import { CORE_VERSION } from "../../version.ts";
 
 export interface AppVersionConstraintDoctorCheck {
   readonly name: "app-version-constraint";

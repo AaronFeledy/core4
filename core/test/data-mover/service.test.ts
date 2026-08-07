@@ -6,6 +6,13 @@ import { dirname, join, resolve } from "node:path";
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer, Option, Queue, Schema, type Scope, Stream } from "effect";
 
+import { providerImages } from "@lando/engine/data-mover/generated/provider-images";
+import {
+  DataMoverLive,
+  __testOnlyEncodeTarOctal,
+  __testOnlyUnarchivePayloadWithCap,
+} from "@lando/engine/data-mover/service";
+import { RedactionService } from "@lando/engine/redaction/service";
 import { makeLandoPaths } from "@lando/paths";
 import {
   ArchiveFormatError,
@@ -39,14 +46,7 @@ import {
 import { TestRuntimeProvider } from "@lando/sdk/test";
 import { collectVerifiedStream } from "@lando/sdk/verified-stream";
 import { StateStoreLive } from "@lando/state-store/service";
-import { providerImages } from "../../src/data-mover/generated/provider-images.ts";
-import {
-  DataMoverLive,
-  __testOnlyEncodeTarOctal,
-  __testOnlyUnarchivePayloadWithCap,
-} from "../../src/data-mover/service.ts";
 import { makeLandoRuntime } from "../../src/index.ts";
-import { RedactionService } from "../../src/redaction/service.ts";
 import { makeTestDataMover } from "../../src/testing/data-mover.ts";
 import { makeTestStateStore } from "../../src/testing/state-store.ts";
 

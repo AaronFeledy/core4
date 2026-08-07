@@ -34,6 +34,7 @@
       },
       "dependencies": {
         "@lando/container-runtime": "workspace:*",
+        "@lando/engine": "workspace:*",
         "@lando/landofile": "workspace:*",
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
@@ -58,6 +59,11 @@
         "@lando/paths": "workspace:*",
         "@lando/sdk": "workspace:*",
         "@lando/state-store": "workspace:*",
+        "effect": "^3.21.2",
+        "semver": "^7.8.5",
+      },
+      "devDependencies": {
+        "@types/semver": "^7.7.1",
       },
     },
     "landofile": {

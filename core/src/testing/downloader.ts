@@ -7,8 +7,8 @@ import { createSecretRedactor } from "@lando/sdk/secrets";
 import type { DownloaderShape } from "@lando/sdk/services";
 import type { LandoEvent } from "@lando/sdk/services";
 
-import { type DownloaderEvents, makeDownloaderService } from "../downloader/service.ts";
-import type { HttpClientShape } from "../http-client/service.ts";
+import { type DownloaderEvents, makeDownloaderService } from "@lando/engine/downloader/service";
+import type { HttpClientShape } from "@lando/engine/http-client/service";
 
 const TEST_HTTP_CAPABILITIES: HttpClientCapabilities = {
   schemes: ["https", "http", "file"],

@@ -12,8 +12,8 @@ import { Effect, Option } from "effect";
 import type { DeprecationUse } from "@lando/sdk/schema";
 import { DeprecationService, Renderer } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
-import { encodeStreamEventFrame } from "./result-encode.ts";
+import { RedactionService } from "@lando/engine/redaction/service";
+import { encodeStreamEventFrame } from "./result-encode";
 
 export interface ResolveCliDeprecationWarningsOptions {
   readonly argv: ReadonlyArray<string>;

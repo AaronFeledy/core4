@@ -1,9 +1,9 @@
 /** Cold-path help adapters avoid loading OCLIF. */
-import type { BuiltInCommandEntry } from "./built-in-command-registry.ts";
-import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help.ts";
-import { renderColdRootHelp } from "./cold-path-output.ts";
-import { emitResultLine } from "./compiled-runtime.ts";
-import { resolveTopLevelAliases } from "./oclif/command-spec.ts";
+import type { BuiltInCommandEntry } from "./built-in-command-registry";
+import { renderCommandHelpFlags, renderCommandUsage } from "./cli-help";
+import { renderColdRootHelp } from "./cold-path-output";
+import { emitResultLine } from "./compiled-runtime";
+import { resolveTopLevelAliases } from "./oclif/command-spec";
 
 export const printRootHelp = (): void => emitResultLine(renderColdRootHelp());
 

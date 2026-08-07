@@ -3,13 +3,13 @@ import {
   GlobalRebuildResultSchema,
   globalRebuild,
   renderGlobalRebuildResult,
-} from "../../../../commands/meta/global-rebuild.ts";
+} from "../../../../commands/meta/global-rebuild";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   extractSpecAbortSignal,
   resolveTopLevelAliases,
-} from "../../../command-base.ts";
+} from "../../../command-base";
 
 export const metaGlobalRebuildSpec: LandoCommandSpec<GlobalRebuildResult> = {
   resultSchema: GlobalRebuildResultSchema,

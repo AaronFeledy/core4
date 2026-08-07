@@ -18,7 +18,7 @@
  */
 
 import type { InteractivePromptDriver } from "@lando/sdk/renderer";
-import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver.ts";
+import { PromptCancelledError, type PromptDriver } from "../recipes/prompts/driver";
 
 interface RendererPluginModule {
   readonly loadInteractivePromptDriver?: () => Promise<InteractivePromptDriver>;
@@ -90,7 +90,7 @@ export const resolveInteractivePromptDriver = async (
     const importPlugin =
       gate.importRendererPlugin ??
       (async (): Promise<RendererPluginModule> => {
-        const { BUNDLED_RENDERER_MODULES } = await import("../plugins/generated/renderers.ts");
+        const { BUNDLED_RENDERER_MODULES } = await import("../plugins/generated/renderers");
         const contribution = BUNDLED_RENDERER_MODULES.find((module) =>
           module.renderers?.has("lando"),
         )?.renderers?.get("lando");

@@ -4,8 +4,8 @@ import { Context, Effect, Layer } from "effect";
 import { createRedactor } from "@lando/sdk/secrets";
 import { EventService } from "@lando/sdk/services";
 
-import { makePublishRender } from "../../src/lifecycle/publish-render.ts";
-import { EventRuntimeLive } from "../../src/services/event-service.ts";
+import { makePublishRender } from "@lando/engine/lifecycle/publish-render";
+import { EventRuntimeLive } from "@lando/engine/services/event-service";
 
 describe("plugin render publication", () => {
   test("redacts and schema-decodes before publishing to EventService", async () => {

@@ -11,16 +11,16 @@ import { Effect, Option } from "effect";
 
 import { EventService } from "@lando/sdk/services";
 
-import { RedactionService } from "../redaction/service.ts";
-import type { CommandWarningsShape } from "./command-warnings.ts";
-import { writeResultLine } from "./renderer-output.ts";
+import { RedactionService } from "@lando/engine/redaction/service";
+import type { CommandWarningsShape } from "./command-warnings";
+import { writeResultLine } from "./renderer-output";
 import {
   encodeCommandResult,
   encodeStreamEventFrame,
   encodeStreamResultFrame,
   encodeStreamStderrFrame,
   encodeStreamStdoutFrame,
-} from "./result-encode.ts";
+} from "./result-encode";
 
 export interface StreamOutputFrame {
   readonly _tag: "stdout" | "stderr";

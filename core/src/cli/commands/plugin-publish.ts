@@ -6,15 +6,15 @@ import { Data, Effect, Schema } from "effect";
 import { type NotImplementedError, PluginManifestError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
+import { resolveUserDataRoot } from "@lando/engine/config/roots";
 import { makeLandoPaths } from "@lando/paths";
-import { resolveUserDataRoot } from "../../config/roots.ts";
-import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner.ts";
-import { validatePluginManifest } from "./plugin-add.ts";
-import { type PluginBuildMixedTreeError, listOutputs, outputDirectoryExists } from "./plugin-build-files.ts";
-import { type PackageJson, entriesFromExports, readPackageJson } from "./plugin-build-package.ts";
-import { pluginBuild } from "./plugin-build.ts";
-import { findNearestPluginPackageRoot } from "./plugin-package-root.ts";
-import { pluginTest } from "./plugin-test.ts";
+import { type BunSelfSpawner, bunSelfRun } from "./bun-self-runner";
+import { validatePluginManifest } from "./plugin-add";
+import { pluginBuild } from "./plugin-build";
+import { type PluginBuildMixedTreeError, listOutputs, outputDirectoryExists } from "./plugin-build-files";
+import { type PackageJson, entriesFromExports, readPackageJson } from "./plugin-build-package";
+import { findNearestPluginPackageRoot } from "./plugin-package-root";
+import { pluginTest } from "./plugin-test";
 
 const DEFAULT_PLUGIN_REGISTRY = "https://registry.npmjs.org/";
 

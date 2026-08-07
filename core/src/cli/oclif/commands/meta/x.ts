@@ -1,16 +1,16 @@
 import { Effect, Layer } from "effect";
-import { Args } from "../../metadata.ts";
+import { Args } from "../../metadata";
 
-import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun.ts";
+import { type MetaXResult, MetaXResultSchema, metaX, renderMetaXResult } from "../../../commands/bun";
 
-import { newInvocationId } from "../../../command-lifecycle.ts";
-import { runWithRendererHandling } from "../../../renderer-boundary.ts";
+import { newInvocationId } from "../../../command-lifecycle";
+import { runWithRendererHandling } from "../../../renderer-boundary";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
   formatCommandError,
   resolveTopLevelAliases,
-} from "../../command-base.ts";
+} from "../../command-base";
 
 const extractArgv = (input: unknown): ReadonlyArray<string> => {
   if (typeof input !== "object" || input === null || !("argv" in input)) return [];

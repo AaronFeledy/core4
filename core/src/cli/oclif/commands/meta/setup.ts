@@ -16,23 +16,20 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { NetworkTrust } from "../../../../http-client/network-trust.ts";
+import { NetworkTrust } from "@lando/engine/http-client/network-trust";
 import {
   CAPABILITY_DEFAULT_PROVIDER_ID,
   readProviderEnvVar,
   resolveProviderSelection,
-} from "../../../../providers/precedence.ts";
-import { HostProxyServiceDisabled } from "../../../../subsystems/host-proxy/api.ts";
-import {
-  networkTrustFromResolved,
-  validateSetupNetworkTrust,
-} from "../../../commands/setup-network-trust.ts";
-import { installShellProfileIntegration } from "../../../commands/shellenv.ts";
-import { isDecoratedContext } from "../../../renderer-boundary.ts";
-import { formatSummary } from "../../../renderer/summary.ts";
+} from "@lando/engine/providers/precedence";
+import { HostProxyServiceDisabled } from "@lando/engine/subsystems/host-proxy/api";
+import { networkTrustFromResolved, validateSetupNetworkTrust } from "../../../commands/setup-network-trust";
+import { installShellProfileIntegration } from "../../../commands/shellenv";
+import { isDecoratedContext } from "../../../renderer-boundary";
+import { formatSummary } from "../../../renderer/summary";
 
-import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
-import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags.ts";
+import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base";
+import { SETUP_COMMAND_FLAGS, contributedSetupFlagsForProvider } from "./setup-command-flags";
 import {
   type SetupResult,
   SetupResultSchema,
@@ -43,26 +40,26 @@ import {
   inputStringFlag,
   shouldDisableHostProxyForSetup,
   sourceInstallDir,
-} from "./setup-inputs.ts";
-import { authorizeProviderSetupPlan } from "./setup-provider-authorization.ts";
+} from "./setup-inputs";
+import { authorizeProviderSetupPlan } from "./setup-provider-authorization";
 import {
   SYSTEM_RUNTIME_PROVIDERS,
   maybeSelectSetupProvider,
   setupProviderPlan,
   systemRuntimeUnavailableError,
-} from "./setup-provider-selection.ts";
-import { runCaSetupStep, runProxySetupStep, runShellServiceSetupStep } from "./setup-service-steps.ts";
+} from "./setup-provider-selection";
+import { runCaSetupStep, runProxySetupStep, runShellServiceSetupStep } from "./setup-service-steps";
 import {
   ShellProfileIntegrationError,
   makeSetupReadinessRecorder,
   runFileSyncSetupStep,
   runtimeServiceReadinessFor,
-} from "./setup-steps.ts";
-import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary.ts";
+} from "./setup-steps";
+import { buildSetupSummary, caInjectionNote, fileSyncStatusLine } from "./setup-summary";
 
-export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs.ts";
-export { maybeSelectSetupProvider } from "./setup-provider-selection.ts";
-export { ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps.ts";
+export { SetupResultSchema, shouldDisableHostProxyForSetup } from "./setup-inputs";
+export { maybeSelectSetupProvider } from "./setup-provider-selection";
+export { ShellProfileIntegrationError, setupDeferredFileSyncPath } from "./setup-steps";
 
 export const setupSpec: LandoCommandSpec<
   SetupResult,

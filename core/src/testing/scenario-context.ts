@@ -14,12 +14,12 @@ import {
 } from "@lando/sdk/errors";
 import { FileSystem, type FileSystemError, type LandoEvent } from "@lando/sdk/services";
 
-import { redactDetails } from "../cli/redact.ts";
-import { withInteractionServiceOverride } from "../interaction/testing-override.ts";
-import { FileSystemLive } from "../services/file-system.ts";
-import { CORE_VERSION } from "../version.ts";
-import { makeTestInteractionService } from "./interaction.ts";
-import { type TestRuntime, makeTestRuntime } from "./test-runtime.ts";
+import { FileSystemLive } from "@lando/engine/services/file-system";
+import { CORE_VERSION } from "@lando/engine/version";
+import { redactDetails } from "../cli/redact";
+import { withInteractionServiceOverride } from "../interaction/testing-override";
+import { makeTestInteractionService } from "./interaction";
+import { type TestRuntime, makeTestRuntime } from "./test-runtime";
 
 /**
  * Scenario runner layer used by generated guide tests.
@@ -635,7 +635,7 @@ const invokeRealCli = async (
     process.chdir(cwd);
     // Bun ignores `undefined` after an exit code is set, so reset explicitly to success.
     process.exitCode = 0;
-    const cli = await import("../cli/index.ts");
+    const cli = await import("../cli/index");
     const runDispatch = () =>
       cli.runCli({ argv: args, rootUrl: new URL("../../bin/lando.ts", import.meta.url).href });
     await runInitDispatchWithSeededAnswers(args, options, runDispatch);

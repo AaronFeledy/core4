@@ -3,10 +3,10 @@ import { Cause, Effect, Exit, Schema } from "effect";
 
 import { PluginLoadError } from "@lando/core/errors";
 import { PluginRegistry } from "@lando/core/services";
+import { makePluginRegistryLive } from "@lando/engine/plugins/registry";
 import { type LandoPluginModule, definePlugin } from "@lando/sdk/plugins";
 import { PluginManifest } from "@lando/sdk/schema";
 import type { ServiceFeatureDefinition } from "@lando/sdk/services";
-import { makePluginRegistryLive } from "../../src/plugins/registry.ts";
 
 const runWithPluginRegistry = <A, E>(
   effect: Effect.Effect<A, E, PluginRegistry>,

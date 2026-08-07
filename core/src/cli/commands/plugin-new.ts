@@ -8,9 +8,9 @@ import { PluginManifest } from "@lando/sdk/schema";
 
 import type { PromptSpec } from "@lando/sdk/schema";
 
-import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
-import { makeInteractionService } from "../../interaction/service.ts";
-import { parseAnswerFlags } from "../../recipes/prompts/index.ts";
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
+import { makeInteractionService } from "../../interaction/service";
+import { parseAnswerFlags } from "../../recipes/prompts/index";
 
 export const PLUGIN_NEW_TEMPLATE_IDS = [
   "service-type",
@@ -345,7 +345,7 @@ const renderConfigTs = (): string =>
   `import { Schema } from "effect";\n\nexport const Config = Schema.Struct({\n  enabled: Schema.optionalWith(Schema.Boolean, { default: () => true }),\n});\n\nexport type Config = typeof Config.Type;\n`;
 
 const renderTest = (name: string): string =>
-  `import { describe, expect, test } from "bun:test";\n\nimport { manifest } from "../src/index.ts";\n\ndescribe(${JSON.stringify(name)}, () => {\n  test("exports a Lando v4 plugin manifest", () => {\n    expect(manifest.name).toBe(${JSON.stringify(name)});\n    expect(manifest.api).toBe(4);\n    expect(manifest.requires?.["@lando/core"]).toBe("^4.0.0");\n  });\n});\n`;
+  `import { describe, expect, test } from "bun:test";\n\nimport { manifest } from "@lando/engine/cli/src/index";\n\ndescribe(${JSON.stringify(name)}, () => {\n  test("exports a Lando v4 plugin manifest", () => {\n    expect(manifest.name).toBe(${JSON.stringify(name)});\n    expect(manifest.api).toBe(4);\n    expect(manifest.requires?.["@lando/core"]).toBe("^4.0.0");\n  });\n});\n`;
 
 const renderTsconfig = (): string =>
   `${JSON.stringify(

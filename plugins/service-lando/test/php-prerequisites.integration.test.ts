@@ -14,7 +14,7 @@ import {
 import { RuntimeProvider } from "@lando/sdk/services";
 import { DateTime, Effect, Schema } from "effect";
 
-import { buildKeyForService } from "../../../core/src/services/build-key.ts";
+import { buildKeyForService } from "@lando/engine/services/build-key";
 import { PHP_COMMON_EXTENSIONS, php82ServiceType, phpServiceFeature } from "../src/services/php.ts";
 import { composeServicePlan } from "./support/compose-harness.ts";
 

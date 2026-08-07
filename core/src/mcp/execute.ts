@@ -9,11 +9,11 @@
  */
 import { Cause, type Context, Effect, type Exit } from "effect";
 
-import { makeNestedCommandInvocation, runCommandLifecycle } from "../cli/command-lifecycle.ts";
-import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
-import { RuntimeCwd } from "../runtime/cwd.ts";
-import type { McpExecute } from "./dispatch.ts";
+import { StreamFrameSink } from "@lando/engine/operations/stream-frame-sink";
+import { RuntimeCwd } from "@lando/engine/runtime/cwd";
+import { makeNestedCommandInvocation, runCommandLifecycle } from "../cli/command-lifecycle";
+import type { CommandResultOutcome } from "../cli/result-encode";
+import type { McpExecute } from "./dispatch";
 
 export const outcomeFromExit = (exit: Exit.Exit<unknown, unknown>): Effect.Effect<CommandResultOutcome> => {
   if (exit._tag === "Success") {

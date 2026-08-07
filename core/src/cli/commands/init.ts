@@ -14,11 +14,8 @@ import type {
 } from "@lando/sdk/schema";
 import { RecipeManifestService } from "@lando/sdk/services";
 
-import { resolveUserDataRoot } from "../../config/roots.ts";
-import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter.ts";
-import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service.ts";
-import { getInteractionServiceOverride } from "../../interaction/testing-override.ts";
-import { makeDiskBackend, makeManagedFileService } from "../../managed-file/service.ts";
+import { resolveUserDataRoot } from "@lando/engine/config/roots";
+import { makeDiskBackend, makeManagedFileService } from "@lando/engine/managed-file/service";
 import {
   type ProgressEmitter,
   publishTaskCompleteAsync,
@@ -26,27 +23,30 @@ import {
   publishTaskStartAsync,
   publishTreeCompleteAsync,
   publishTreeStartAsync,
-} from "../../operations/progress.ts";
-import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
-import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
-import { getRecipeCatalog } from "../../recipes/catalog.ts";
-import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source.ts";
-import { RecipeManifestServiceLive } from "../../recipes/manifest/service.ts";
-import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source.ts";
-import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime.ts";
-import type { ChoicesCommandRunner, PromptAnswers } from "../../recipes/prompts/index.ts";
-import { type RecipeRegistryClient, resolveRegistryRecipeSource } from "../../recipes/registry-source.ts";
-import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source.ts";
+} from "@lando/engine/operations/progress";
+import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../interaction/prompter";
+import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service";
+import { getInteractionServiceOverride } from "../../interaction/testing-override";
+import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest";
+import { lookupRecipeRenderer } from "../../recipes/builtin/registry";
+import { getRecipeCatalog } from "../../recipes/catalog";
+import { type GitRecipeCloner, resolveGitRecipeSource } from "../../recipes/git-source";
+import { RecipeManifestServiceLive } from "../../recipes/manifest/service";
+import { type NpmRegistryClient, resolveNpmRecipeSource } from "../../recipes/npm-source";
+import { type PostInitIO, type PostInitOutcome, runPostInit } from "../../recipes/post-init/runtime";
+import type { ChoicesCommandRunner, PromptAnswers } from "../../recipes/prompts/index";
+import { type RecipeRegistryClient, resolveRegistryRecipeSource } from "../../recipes/registry-source";
+import { type ResolvedRecipe, resolveRecipeRef } from "../../recipes/source";
 import {
   type TarballRecipeExtractor,
   type TarballRecipeFetcher,
   resolveTarballRecipeSource,
-} from "../../recipes/tarball-source.ts";
-import { readAnswersFile } from "../prompts/answer-flags.ts";
-import { activeRendererMode } from "../renderer-mode-state.ts";
-import type { BunSelfSpawner } from "./bun-self-runner.ts";
-import { resolveInitDestination } from "./init-destination.ts";
-import { parseInitSourceFlags } from "./init-source.ts";
+} from "../../recipes/tarball-source";
+import { readAnswersFile } from "../prompts/answer-flags";
+import { activeRendererMode } from "../renderer-mode-state";
+import type { BunSelfSpawner } from "./bun-self-runner";
+import { resolveInitDestination } from "./init-destination";
+import { parseInitSourceFlags } from "./init-source";
 
 const APP_NAME_PROMPT = "name";
 const RECIPE_SELECT_PROMPT = "__recipe__";

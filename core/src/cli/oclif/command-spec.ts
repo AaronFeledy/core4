@@ -12,12 +12,12 @@ import { type Effect, Schema } from "effect";
 
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 
-import { assertTopLevelAliasesClaimable } from "../../operations/reserved-aliases.ts";
-import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
-import type { DeferredCommandPlan } from "../deferred-commands.ts";
-import type { RenderContext, StreamOutputFrame } from "../renderer-boundary.ts";
-import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
-import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
+import { assertTopLevelAliasesClaimable } from "@lando/engine/operations/reserved-aliases";
+import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report";
+import type { DeferredCommandPlan } from "../deferred-commands";
+import type { RenderContext, StreamOutputFrame } from "../renderer-boundary";
+import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist";
+import { assertMcpAllowlistSafe } from "./mcp-allowlist";
 
 /**
  * The three first-class command namespaces.
