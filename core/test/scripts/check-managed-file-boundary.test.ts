@@ -14,13 +14,17 @@ const write = async (root: string, path: string, content: string): Promise<void>
 };
 
 describe("managed-file boundary lint gate", () => {
-  test("passes when ownership-marker logic is confined to core/src/managed-file and tests", async () => {
+  test("passes when ownership-marker logic is confined to engine/src/managed-file and tests", async () => {
     const root = await makeFixtureRoot();
     try {
-      await write(root, "core/src/managed-file/marker.ts", 'const tag = "lando-generated";\n');
-      await write(root, "core/src/managed-file/fence.ts", 'const open = ">>> lando:";\n');
+      await write(root, "engine/src/managed-file/marker.ts", 'const tag = "lando-generated";\n');
+      await write(root, "engine/src/managed-file/fence.ts", 'const open = ">>> lando:";\n');
       await write(root, "core/src/cli/commands/init.ts", "await service.apply(files);\n");
-      await write(root, "core/src/managed-file/service.test.ts", 'expect(c).toContain("lando-generated");\n');
+      await write(
+        root,
+        "engine/src/managed-file/service.test.ts",
+        'expect(c).toContain("lando-generated");\n',
+      );
 
       expect(await checkManagedFileBoundary({ root })).toEqual({ ok: true, offenders: [] });
     } finally {

@@ -106,7 +106,7 @@ export const TELEMETRY_EVENTS = {
     description:
       "Records use of a deprecated public surface. Consumed from the runtime event bus and forwarded through the Telemetry service rather than a parallel reporter.",
     owner: "@lando/core",
-    trigger: "core/src/deprecation/telemetry.ts:DeprecationTelemetryLive (from DeprecationService events)",
+    trigger: "engine/src/deprecation/telemetry.ts:DeprecationTelemetryLive (from DeprecationService events)",
     scope: "library-eligible",
     fields: [
       {
