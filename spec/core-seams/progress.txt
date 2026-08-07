@@ -157,3 +157,10 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
   - A public `export *` entry point survives a split when it star-exports both halves; comparing sorted export-name dumps against an `origin/main` worktree is a cheap, decisive parity proof.
   - WSL2 distros share one network stack, so the host global Traefik on 38080 blocks a sandbox `lando start`; verify command surfaces that do not need the proxy instead of assuming the sandbox runtime is broken.
 ---
+
+## 2026-08-07 02:05 CDT - US-541 Review
+- Replaced the remote and share operations' `unknown` Effect error channels with concrete unions covering Landofile resolution, provider planning, remote/tunnel failures, schema parsing, and state-store failures; the repair is type-only and preserves command behavior.
+- Review notes (deferred/rejected): deferred reconciliation of the pre-existing public `ShareAppError`/`RemoteSyncError` aliases and `App` handle cast to US-544, which owns public-surface parity; rejected mapping parse or state-store failures because that would change behavior in this move-only story; rejected moving sdk-published Renderer/InteractionService tag use because the staging-tier convention permits service tags while forbidding renderer implementations and CLI imports; rejected relocating the supporting global-install renderer and broadening export tests as out-of-scope non-blocking cleanup.
+- Guide-Coverage-Skip: US-541 review changes internal Effect typing only; no user-visible command or public contract changed.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, core-layering, import-cycle, renderer-boundary, and public-transcript gates passed; 51 focused app lifecycle, library, remote/share, export, and layering tests passed. Initial and post-fix Bugbot found no bugs; review security and hands-on QA lanes passed.
+---
