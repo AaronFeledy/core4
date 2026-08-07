@@ -23,12 +23,13 @@ import type {
 } from "@lando/sdk/app";
 import { LogSourceId, type ServiceName } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
-import { EventService } from "@lando/sdk/services";
+import { EventService, Renderer } from "@lando/sdk/services";
 
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
 import type { LogsAppLine } from "../operations/logs.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
+import { confirmRemoteSyncWithInteraction } from "./remote-confirmation.ts";
 
 const toLogChunk = (line: LogsAppLine): LogChunk => ({
   service: line.service as ServiceName,
@@ -149,7 +150,15 @@ export const makeAppHandle = (
           .pipe(Effect.provide(runtime), Effect.ensuring(lifecycle.closeCurrent)),
       ),
     info: (options?: InfoAppOptions) => ops.infoApp(options, target).pipe(Effect.provide(runtime)),
-    exec: (options: ExecAppOptions) => ops.execApp(options, target).pipe(Effect.provide(runtime)),
+    exec: (options: ExecAppOptions) =>
+      ops.execApp(options, target).pipe(
+        Effect.tap((result) =>
+          result.stderr.length === 0
+            ? Effect.void
+            : Renderer.pipe(Effect.flatMap((renderer) => renderer.output.stderr(result.stderr))),
+        ),
+        Effect.provide(runtime),
+      ),
     tooling: (id: string, options?: ToolingOptions) =>
       ops.runTooling({ name: id, cwd: root, ...options }, target).pipe(Effect.provide(runtime)),
     logs: (options?: LogsAppOptions) =>
@@ -159,8 +168,10 @@ export const makeAppHandle = (
           Effect.provide(runtime),
         ),
       ),
-    pull: (options?: PullAppOptions) => ops.appPull(options, target).pipe(Effect.provide(runtime)),
-    push: (options?: PushAppOptions) => ops.appPush(options, target).pipe(Effect.provide(runtime)),
+    pull: (options?: PullAppOptions) =>
+      ops.appPull(options, target, confirmRemoteSyncWithInteraction).pipe(Effect.provide(runtime)),
+    push: (options?: PushAppOptions) =>
+      ops.appPush(options, target, confirmRemoteSyncWithInteraction).pipe(Effect.provide(runtime)),
     share: (options?: ShareAppOptions) => ops.appShare(options, target).pipe(Effect.provide(runtime)),
     shareList: () => ops.appShareList({ cwd: root }, target).pipe(Effect.provide(runtime)),
     shareStop: (options: ShareStopAppOptions) =>
