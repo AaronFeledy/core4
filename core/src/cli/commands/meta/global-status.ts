@@ -21,8 +21,9 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { publishedEndpointUrls } from "../../authority-url.ts";
+import { publishedEndpointUrls } from "../../../operations/authority-url.ts";
 
+import { loadGlobalPlan } from "../../../operations/global-plan.ts";
 import { type RenderContext, isDecoratedContext } from "../../renderer-boundary.ts";
 import {
   type SummaryDocument,
@@ -30,7 +31,6 @@ import {
   formatSummary,
   worstSummaryTone,
 } from "../../renderer/summary.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
 
 export interface GlobalStatusOptions {
   readonly services?: ReadonlyArray<string>;

@@ -32,8 +32,8 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { withBuildProvider } from "../../../services/build-orchestrator.ts";
-import { publishedEndpointUrls } from "../../authority-url.ts";
+import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { publishedEndpointUrls } from "./authority-url.ts";
 
 import { globalInstall } from "./global-install.ts";
 import { loadGlobalPlan } from "./global-plan.ts";

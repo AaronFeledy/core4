@@ -1,9 +1,5 @@
-import {
-  type StartAppResult,
-  StartAppResultSchema,
-  renderStartAppResult,
-  startApp,
-} from "../../../commands/start.ts";
+import { type StartAppResult, StartAppResultSchema, startApp } from "../../../../operations/start.ts";
+import { renderStartAppResult } from "../../../commands/start-result.ts";
 /**
  * `lando app:start` — native command metadata adapter.
  */

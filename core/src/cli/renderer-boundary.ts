@@ -3,6 +3,7 @@ import { Cause, Effect, Exit, Layer, Schema } from "effect";
 import type { StreamFrameSchema } from "@lando/sdk/schema";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
+import type { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { RedactionService, RedactionServiceLive } from "../redaction/service.ts";
 import { SecretStoreLive } from "../services/secret-store.ts";
 import {
@@ -24,7 +25,6 @@ import {
 } from "./renderer-output.ts";
 import type { RendererMode } from "./renderer-selection.ts";
 import { type RendererIO, createStdioRendererIO } from "./renderer/io.ts";
-import type { StreamFrameSink } from "./stream-frame-sink.ts";
 
 export {
   type RendererEventConsumerOptions,

@@ -4,6 +4,7 @@ import { type LandoRuntimeBootstrapError, NotImplementedError } from "@lando/sdk
 import type { ConfigService } from "@lando/sdk/services";
 import type { RedactionService } from "../../redaction/service.ts";
 
+import { globalInstall } from "../../operations/global-install.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
 import { renderMetaVersion } from "../../version.ts";
@@ -12,7 +13,7 @@ import { metaBun, metaX, renderMetaBunResult, renderMetaXResult } from "../comma
 import { globalConfig, renderGlobalConfigResult } from "../commands/meta/global-config.ts";
 import { globalDestroy, renderGlobalDestroyResult } from "../commands/meta/global-destroy.ts";
 import { globalInfo, renderGlobalInfoResult } from "../commands/meta/global-info.ts";
-import { globalInstall, renderGlobalInstallResult } from "../commands/meta/global-install.ts";
+import { renderGlobalInstallResult } from "../commands/meta/global-install.ts";
 import { DefaultGlobalListLayer, globalList, renderGlobalListResult } from "../commands/meta/global-list.ts";
 import { followGlobalLogs, globalLogs, renderGlobalLogsResult } from "../commands/meta/global-logs.ts";
 import { globalRebuild, renderGlobalRebuildResult } from "../commands/meta/global-rebuild.ts";

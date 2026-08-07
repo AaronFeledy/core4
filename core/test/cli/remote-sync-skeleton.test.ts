@@ -17,6 +17,7 @@ import {
 import { TestDataset, TestRemoteSource, TestRuntimeProvider } from "@lando/core/testing";
 import { type SyncResult, SyncResult as SyncResultSchema } from "@lando/sdk/schema";
 import type { DataMoverShape, InteractionServiceShape, RemoteSourceShape } from "@lando/sdk/services";
+import { pushSpec } from "../../src/cli/oclif/commands/app/push.ts";
 
 type RemoteConfigInput = { readonly source: string } & Readonly<Record<string, unknown>>;
 
@@ -166,7 +167,7 @@ describe("remote sync command skeleton", () => {
     const adapterSource = await Bun.file(
       join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
     ).text();
-    const remoteSource = await Bun.file(join(import.meta.dir, "../../src/cli/commands/remote.ts")).text();
+    const remoteSource = await Bun.file(join(import.meta.dir, "../../src/operations/remote.ts")).text();
 
     expect(adapterSource).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
     expect(adapterSource).toContain("renderRemoteListResult(value, options.format, ctx)");
@@ -266,7 +267,7 @@ describe("remote sync command skeleton", () => {
     });
   });
 
-  test("pull uses RemoteSource, Dataset, confirmation, and safety snapshot when installed", async () => {
+  test("pull uses the supplied confirmation callback without acquiring InteractionService", async () => {
     await withTempRemoteApp(async (dir) => {
       const operations = await import("@lando/core/cli/operations");
       await Effect.runPromise(
@@ -289,25 +290,18 @@ describe("remote sync command skeleton", () => {
         pruneSnapshots: () => Effect.succeed([]),
       };
       let confirms = 0;
-      const interaction: InteractionServiceShape = {
-        id: "remote-test-interaction",
-        isInteractive: Effect.succeed(true),
-        prompt: () => Effect.die("prompt must not run"),
-        promptAll: () => Effect.die("promptAll must not run"),
-        confirm: () =>
-          Effect.sync(() => {
-            confirms += 1;
-            return true;
-          }),
-        select: () => Effect.die("select must not run"),
-        secret: () => Effect.succeed(Redacted.make("secret")),
-      };
+      const confirm = () =>
+        Effect.sync(() => {
+          confirms += 1;
+          return true;
+        });
       const plan = TestDataset.context.plan;
 
       const pullProgram = operations
         .appPull(
           { cwd: dir, remote: "test", env: TestRemoteSource.supportedEnv, only: [TestDataset.dataset.kind] },
           { plan, root: dir, app: { kind: "user", id: plan.id, root: plan.root } },
+          confirm,
         )
         .pipe(
           Effect.provide(
@@ -315,7 +309,6 @@ describe("remote sync command skeleton", () => {
               Layer.succeed(RemoteSource, TestRemoteSource.source),
               Layer.succeed(Dataset, TestDataset.dataset),
               Layer.succeed(DataMover, dataMover),
-              Layer.succeed(InteractionService, interaction),
               Layer.succeed(LandofileService, { discover: Effect.die("target supplies the landofile") }),
               Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
               Layer.succeed(RuntimeProviderRegistry, {
@@ -339,6 +332,63 @@ describe("remote sync command skeleton", () => {
       expect(confirms).toBe(1);
       expect(delegations.map((entry) => entry.operation)).toContain("fetch");
       expect(transfers.map((entry) => entry.operation)).toContain("apply");
+    });
+  });
+
+  test("push command spec composes confirmation through the sdk InteractionService", async () => {
+    await withTempRemoteApp(async (dir) => {
+      const operations = await import("@lando/core/cli/operations");
+      await Effect.runPromise(
+        operations.appRemoteAdd({ cwd: dir, name: "test", config: TestRemoteSource.config }),
+      );
+      const plan = TestDataset.context.plan;
+      let confirms = 0;
+      const interaction: InteractionServiceShape = {
+        id: "remote-cli-interaction",
+        isInteractive: Effect.succeed(true),
+        prompt: () => Effect.die("prompt must not run"),
+        promptAll: () => Effect.die("promptAll must not run"),
+        confirm: () =>
+          Effect.sync(() => {
+            confirms += 1;
+            return true;
+          }),
+        select: () => Effect.die("select must not run"),
+        secret: () => Effect.succeed(Redacted.make("secret")),
+      };
+      const original = process.cwd();
+      process.chdir(dir);
+      try {
+        await Effect.runPromise(
+          pushSpec
+            .run({
+              flags: { remote: "test", only: "database" },
+              args: { env: `test@${TestRemoteSource.supportedEnv}` },
+            })
+            .pipe(
+              Effect.provide(
+                Layer.mergeAll(
+                  Layer.succeed(RemoteSource, TestRemoteSource.source),
+                  Layer.succeed(Dataset, TestDataset.dataset),
+                  Layer.succeed(InteractionService, interaction),
+                  Layer.succeed(LandofileService, {
+                    discover: Effect.succeed({ name: "remote-skeleton", services: {} }),
+                  }),
+                  Layer.succeed(AppPlanner, { plan: () => Effect.succeed(plan) }),
+                  Layer.succeed(RuntimeProviderRegistry, {
+                    list: Effect.succeed([]),
+                    capabilities: Effect.succeed(TestRuntimeProvider.capabilities),
+                    select: () => Effect.die("provider selection is not used"),
+                  }),
+                ),
+              ),
+            ),
+        );
+      } finally {
+        process.chdir(original);
+      }
+
+      expect(confirms).toBe(1);
     });
   });
 

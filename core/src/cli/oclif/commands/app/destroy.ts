@@ -3,12 +3,8 @@
  */
 import { Flags } from "../../metadata.ts";
 
-import {
-  type DestroyAppResult,
-  DestroyAppResultSchema,
-  destroyApp,
-  renderDestroyAppResult,
-} from "../../../commands/destroy.ts";
+import { type DestroyAppResult, DestroyAppResultSchema, destroyApp } from "../../../../operations/destroy.ts";
+import { renderDestroyAppResult } from "../../../commands/destroy.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 import { extractSpecFlags } from "../../command-boundary.ts";
 

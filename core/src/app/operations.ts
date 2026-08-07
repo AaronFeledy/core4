@@ -1,9 +1,9 @@
-import { appConfigLint } from "../cli/commands/app-config-lint.ts";
-import { destroyApp } from "../cli/commands/destroy.ts";
-import { execApp } from "../cli/commands/exec.ts";
-import { infoApp } from "../cli/commands/info.ts";
-import { logsApp } from "../cli/commands/logs.ts";
-import { rebuildApp } from "../cli/commands/rebuild.ts";
+import { appConfigLint } from "../operations/app-config-lint.ts";
+import { destroyApp } from "../operations/destroy.ts";
+import { execApp } from "../operations/exec.ts";
+import { infoApp } from "../operations/info.ts";
+import { logsApp } from "../operations/logs.ts";
+import { rebuildApp } from "../operations/rebuild.ts";
 import {
   appPull,
   appPush,
@@ -13,12 +13,12 @@ import {
   appRemoteRemove,
   appRemoteSetup,
   appRemoteTest,
-} from "../cli/commands/remote.ts";
-import { restartApp } from "../cli/commands/restart.ts";
-import { appShare, appShareList, appShareStop } from "../cli/commands/share.ts";
-import { startApp } from "../cli/commands/start.ts";
-import { stopApp } from "../cli/commands/stop.ts";
-import { runTooling } from "../cli/commands/tooling.ts";
+} from "../operations/remote.ts";
+import { restartApp } from "../operations/restart.ts";
+import { appShare, appShareList, appShareStop } from "../operations/share.ts";
+import { startApp } from "../operations/start.ts";
+import { stopApp } from "../operations/stop.ts";
+import { runTooling } from "../operations/tooling.ts";
 
 export const appOperations = {
   startApp,

@@ -1,9 +1,5 @@
-import {
-  type StopAppResult,
-  StopAppResultSchema,
-  renderStopAppResult,
-  stopApp,
-} from "../../../commands/stop.ts";
+import { type StopAppResult, StopAppResultSchema, stopApp } from "../../../../operations/stop.ts";
+import { renderStopAppResult } from "../../../commands/stop.ts";
 /**
  * `lando app:stop` — native command metadata adapter.
  */

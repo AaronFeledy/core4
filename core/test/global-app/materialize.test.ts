@@ -465,7 +465,7 @@ describe("GlobalAppService Landofile materialization", () => {
 describe("globalInstall command operation", () => {
   test("materializes both global Landofile files", async () => {
     await withTempRoots(async (dataRoot) => {
-      const { globalInstall } = await import("../../src/cli/commands/meta/global-install.ts");
+      const { globalInstall } = await import("../../src/operations/global-install.ts");
       const result = await runWithGlobalApp(globalInstall({}));
 
       expect(result).toEqual({
@@ -488,7 +488,7 @@ describe("globalInstall command operation", () => {
 
   test("fails plugin-specific enablement with a tagged remediation", async () => {
     await withTempRoots(async () => {
-      const { globalInstall } = await import("../../src/cli/commands/meta/global-install.ts");
+      const { globalInstall } = await import("../../src/operations/global-install.ts");
       const exit = await runWithGlobalAppExit(globalInstall({ plugin: "x" }));
       const failure = failureOf(exit);
 

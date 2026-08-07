@@ -1,12 +1,4 @@
-/**
- * `lando start` — start the current app.
- *
- * Bootstrap level: `app`.
- *
- * Programmatic equivalent: `startApp({ reconcile: false })` from
- * `@lando/core/cli`.
- */
-import { DateTime, Effect, Ref } from "effect";
+import { DateTime, Effect, Ref, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
 import {
@@ -30,14 +22,14 @@ import {
   type ShellRunner,
 } from "@lando/sdk/services";
 
-import { compensateFailure } from "../../lifecycle/failure-compensation.ts";
-import { appliedProxyUrlsByService } from "../../lifecycle/route-urls.ts";
-import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../../lifecycle/routes.ts";
-import type { RedactionService } from "../../redaction/service.ts";
-import { withBuildProvider } from "../../services/build-orchestrator.ts";
-import { type ResolvedAppTarget, loadUserLandofile } from "../app-resolution.ts";
-import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "../authority-url.ts";
-import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./meta/ensure-global-services.ts";
+import { type ResolvedAppTarget, loadUserLandofile } from "../landofile/app-resolution.ts";
+import { compensateFailure } from "../lifecycle/failure-compensation.ts";
+import { appliedProxyUrlsByService } from "../lifecycle/route-urls.ts";
+import { applyAppRoutes, removeRoutesAndDestroyApp, teardownAppliedApp } from "../lifecycle/routes.ts";
+import type { RedactionService } from "../redaction/service.ts";
+import { withBuildProvider } from "../services/build-orchestrator.ts";
+import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
+import { ensureGlobalServicesRunning, requiredGlobalServicesForPlan } from "./ensure-global-services.ts";
 import { type StartManagedScope, startFileSyncSessions } from "./start-file-sync.ts";
 import { withStartedHostProxy } from "./start-host-proxy.ts";
 
@@ -47,12 +39,21 @@ import {
   publishTaskStart,
   publishTreeComplete,
   publishTreeStart,
-} from "../progress.ts";
+} from "./progress.ts";
 
 export type StartAppError = SdkStartAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { StartAppOptions, StartAppResult } from "@lando/sdk/app";
 export type { StartManagedScope } from "./start-file-sync.ts";
-export { renderStartAppResult, StartAppResultSchema, StartedServiceResultSchema } from "./start-result.ts";
+export const StartedServiceResultSchema = Schema.Struct({
+  name: Schema.String,
+  state: Schema.String,
+  endpoints: Schema.Array(Schema.String),
+});
+
+export const StartAppResultSchema = Schema.Struct({
+  app: Schema.String,
+  servicesStarted: Schema.Array(StartedServiceResultSchema),
+});
 
 type StartAppServices =
   | AppPlanner
@@ -75,12 +76,6 @@ const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: pl
 const endpointText = (endpoint: PublishedEndpoint & MaterializedPublishedEndpoint): string | undefined =>
   publishedEndpointUrl(endpoint);
 
-/**
- * Start the app discovered at the runtime's `cwd`.
- *
- * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanner`,
- * `RuntimeProviderRegistry`, `EventService`.
- */
 export const startApp = (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,

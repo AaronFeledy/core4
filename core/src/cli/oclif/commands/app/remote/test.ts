@@ -1,6 +1,7 @@
 import { RemoteTestResult } from "@lando/sdk/schema";
 
-import { appRemoteTest, renderRemoteTestResult } from "../../../../commands/remote.ts";
+import { appRemoteTest } from "../../../../../operations/remote.ts";
+import { renderRemoteTestResult } from "../../../../commands/remote.ts";
 import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 import { remoteConfigFlags, remoteEnvArg, remoteTestOptionsFromInput } from "./common.ts";
 

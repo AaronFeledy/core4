@@ -22,7 +22,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { loadGlobalPlan } from "./global-plan.ts";
+import { loadGlobalPlan } from "../../../operations/global-plan.ts";
 
 export interface GlobalUninstallOptions {
   readonly plugin?: string;

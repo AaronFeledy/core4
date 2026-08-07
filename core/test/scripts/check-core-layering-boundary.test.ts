@@ -43,10 +43,11 @@ afterEach(async () => {
 });
 
 describe("core layering boundary", () => {
-  test("rejects new app and services imports into CLI while allowing burn-down edges", async () => {
+  test("rejects every app, services, and operations import into the CLI shell", async () => {
     // Given
     await Promise.all([
       write("core/src/app/new-edge.ts", 'import "../cli/app-resolution.ts";\n'),
+      write("core/src/operations/start.ts", 'import { publishTaskStart } from "../cli/progress.ts";\n'),
       write("core/src/app/normalized-edge.ts", 'import "./../cli/commands/info.ts";\n'),
       write(
         "core/src/app/package-imports.ts",
@@ -97,13 +98,16 @@ describe("core layering boundary", () => {
     // Then
     expect(result).toMatchObject({ exitCode: 1, stdout: "" });
     expect(result.stderr.trimEnd().split("\n").slice(1)).toEqual([
+      'core/src/app/handle.ts:1: imports CLI internals via "../cli/commands/logs.ts"',
       'core/src/app/handle.ts:2: imports CLI internals via "../cli/commands/logs.ts"',
       'core/src/app/new-edge.ts:1: imports CLI internals via "../cli/app-resolution.ts"',
       'core/src/app/normalized-edge.ts:1: imports CLI internals via "./../cli/commands/info.ts"',
+      'core/src/app/operations.ts:1: imports CLI internals via "../cli/commands/start.ts"',
       'core/src/app/package-imports.ts:1: imports CLI internals via "@lando/core/cli"',
       'core/src/app/package-imports.ts:2: imports CLI internals via "@lando/core/cli/operations"',
       'core/src/app/package-imports.ts:3: imports CLI internals via "@lando/core/cli"',
       'core/src/app/package-imports.ts:4: imports CLI internals via "@lando/core/cli/operations"',
+      'core/src/operations/start.ts:1: imports CLI internals via "../cli/progress.ts"',
       'core/src/services/nested/new-edge.ts:1: imports CLI internals via "../../cli/commands/info.ts"',
       'core/src/services/new-edge.ts:1: imports CLI internals via "../cli/commands/info.ts"',
     ]);

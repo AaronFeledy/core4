@@ -1,8 +1,5 @@
-import {
-  RemoteMutationResultSchema,
-  appRemoteAdd,
-  renderRemoteMutationResult,
-} from "../../../../commands/remote.ts";
+import { RemoteMutationResultSchema, appRemoteAdd } from "../../../../../operations/remote.ts";
+import { renderRemoteMutationResult } from "../../../../commands/remote.ts";
 import { LandoCommandBase, type LandoCommandSpec } from "../../../command-base.ts";
 import { remoteAddFlags, remoteAddOptionsFromInput, remoteNameArg, remoteSourceArg } from "./common.ts";
 

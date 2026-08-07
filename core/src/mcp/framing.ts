@@ -12,7 +12,7 @@ import { type Context, Effect } from "effect";
 import { McpTransportError } from "@lando/sdk/errors";
 import type { Redactor } from "@lando/sdk/secrets";
 
-import type { StreamFrameSink, StreamFrameSinkFrame } from "../cli/stream-frame-sink.ts";
+import type { StreamFrameSink, StreamFrameSinkFrame } from "../operations/stream-frame-sink.ts";
 import { redactBoundedJsonValue } from "./bounded-json.ts";
 import type { McpNotify } from "./dispatch.ts";
 import { projectMcpProgressFrame } from "./result-inspector.ts";

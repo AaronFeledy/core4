@@ -3,7 +3,7 @@ import { Effect, Exit, Scope } from "effect";
 import type { AppPlan, FileSyncSessionRef } from "@lando/sdk/schema";
 import { FileSyncEngine } from "@lando/sdk/services";
 
-import { type ProgressEmitter, publishTaskDetail } from "../progress.ts";
+import { type ProgressEmitter, publishTaskDetail } from "./progress.ts";
 
 export interface StartManagedScope {
   readonly scope: Scope.CloseableScope;

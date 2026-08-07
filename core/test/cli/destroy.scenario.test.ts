@@ -26,7 +26,6 @@ import {
   LandofileService,
   PathsService,
   ProxyService,
-  Renderer,
   RuntimeProviderRegistry,
 } from "@lando/core/services";
 import { makeLandoPaths } from "@lando/paths";
@@ -37,6 +36,9 @@ import type {
   RuntimeProviderShape,
 } from "@lando/sdk/services";
 import { TestRuntimeProvider } from "@lando/sdk/test";
+import { runDestroy } from "../../src/cli/cli-adapters/app-lifecycle.ts";
+import { setActiveRendererMode } from "../../src/cli/compiled-runtime.ts";
+import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 const cliEntry = resolve(repoRoot, "core/bin/lando.ts");
@@ -177,7 +179,6 @@ const makeDestroyLayer = (
   const destroyCalls: Array<{ readonly target: AppSelector; readonly options: DestroyOptions }> = [];
   const volumes = new Set(plan.stores.map((store) => store.name));
   const routeRemovals: string[] = [];
-  const warnings: string[] = [];
   const provider: RuntimeProviderShape = {
     ...TestRuntimeProvider,
     id: "lando",
@@ -252,7 +253,7 @@ const makeDestroyLayer = (
     status: Effect.succeed({ state: "running" as const, authorities: [], configuredApps: [] }),
     stop: Effect.void,
   });
-  const layer = Layer.mergeAll(
+  const commandLayer = Layer.mergeAll(
     Layer.succeed(LandofileService, { discover: Effect.succeed({ name: "test-destroy", services: {} }) }),
     Layer.succeed(
       PathsService,
@@ -269,31 +270,22 @@ const makeDestroyLayer = (
       select: () => Effect.succeed(provider),
     }),
     ...(options.proxyAvailable === false ? [] : [proxyLayer]),
-    Layer.succeed(Renderer, {
-      id: "test",
-      capabilities: { color: false, interactive: false, animation: false, notifications: false },
-      message: {
-        info: () => Effect.void,
-        warn: (message) => Effect.sync(() => void warnings.push(message)),
-        error: () => Effect.void,
-      },
-      output: { stdout: () => Effect.void, stderr: () => Effect.void },
-    }),
-    Layer.succeed(EventService, {
-      publish: (event) =>
-        Effect.sync(() => {
-          events.push(event._tag);
-          publishedEvents.push(event);
-        }),
-      subscribe: () => Effect.die("not used"),
-      subscribeQueue: Effect.die("not used"),
-      waitFor: () => Effect.die("not used"),
-      waitForAny: () => Effect.die("not used"),
-      query: () => Effect.succeed([]),
-    }),
   );
+  const eventLayer = Layer.succeed(EventService, {
+    publish: (event) =>
+      Effect.sync(() => {
+        events.push(event._tag);
+        publishedEvents.push(event);
+      }),
+    subscribe: () => Effect.die("not used"),
+    subscribeQueue: Effect.die("not used"),
+    waitFor: () => Effect.die("not used"),
+    waitForAny: () => Effect.die("not used"),
+    query: () => Effect.succeed([]),
+  });
+  const layer = Layer.merge(commandLayer, eventLayer);
 
-  return { layer, events, publishedEvents, destroyCalls, routeRemovals, volumes, warnings };
+  return { layer, commandLayer, events, publishedEvents, destroyCalls, routeRemovals, volumes };
 };
 
 const expectMissingPath = async (path: string): Promise<void> => {
@@ -307,6 +299,25 @@ const expectMissingPath = async (path: string): Promise<void> => {
 };
 
 describe("lando destroy", () => {
+  test("renders the proxy-unavailable warning through the production destroy command boundary", async () => {
+    // Given
+    const harness = makeDestroyLayer({ proxyAvailable: false });
+    const io = createBufferedRendererIO();
+    setActiveRendererMode("plain");
+
+    // When
+    try {
+      await runDestroy([], { runtime: harness.commandLayer, io });
+    } finally {
+      setActiveRendererMode("lando");
+    }
+
+    // Then
+    expect(io.stdout()).toContain(
+      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+    );
+  });
+
   test("destroys the provider when no proxy service can be resolved", async () => {
     const harness = makeDestroyLayer({ proxyAvailable: false });
 
@@ -314,9 +325,12 @@ describe("lando destroy", () => {
 
     expect(harness.destroyCalls).toHaveLength(1);
     expect(harness.routeRemovals).toEqual([]);
-    expect(harness.warnings).toEqual([
-      "Proxy service is unavailable; destroying test-destroy without route cleanup.",
-    ]);
+    expect(harness.publishedEvents).toContainEqual(
+      expect.objectContaining({
+        _tag: "message.warn",
+        body: "Proxy service is unavailable; destroying test-destroy without route cleanup.",
+      }),
+    );
   });
 
   test("removes routes when provider destroy fails and reports both failures", async () => {

@@ -9,7 +9,6 @@ import { EventService, type EventServiceShape, type LandoEvent } from "@lando/sd
 import { runCommandLifecycle } from "../../src/cli/command-lifecycle.ts";
 import { EmptyResultSchema, type LandoCommandSpec } from "../../src/cli/oclif/command-base.ts";
 import { versionSpec } from "../../src/cli/oclif/commands/meta/version.ts";
-import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
 import type { McpCommandEntry } from "../../src/mcp/registry.ts";
 import {
   McpRuntimeConfig,
@@ -19,6 +18,7 @@ import {
 } from "../../src/mcp/service.ts";
 import { MAX_OUTBOUND_QUEUED_BYTES } from "../../src/mcp/stdio-limits.ts";
 import { McpTransport, makeInMemoryTransport } from "../../src/mcp/transport.ts";
+import { StreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
 import { RedactionService } from "../../src/redaction/service.ts";
 import { RuntimeCwd } from "../../src/runtime/cwd.ts";
 

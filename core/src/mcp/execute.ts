@@ -11,7 +11,7 @@ import { Cause, type Context, Effect, type Exit } from "effect";
 
 import { makeNestedCommandInvocation, runCommandLifecycle } from "../cli/command-lifecycle.ts";
 import type { CommandResultOutcome } from "../cli/result-encode.ts";
-import { StreamFrameSink } from "../cli/stream-frame-sink.ts";
+import { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { RuntimeCwd } from "../runtime/cwd.ts";
 import type { McpExecute } from "./dispatch.ts";
 

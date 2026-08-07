@@ -1,25 +1,9 @@
-import type { Effect } from "effect";
-
-import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+/** `lando app:config:lint` result rendering. */
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import type { LintLandofileOptions } from "@lando/landofile/lint";
-import { lintLandofile } from "../../services/landofile-live.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 
 export type AppConfigLintFormat = "text" | "json";
-
-export type AppConfigLintOptions = LintLandofileOptions;
-
-/**
- * Canonical-schema-only lint of the current app's Landofile. Thin wrapper over
- * the shared `lintLandofile` pass so `app:config:lint` and `doctor --app` never
- * fork the validation logic.
- */
-export const appConfigLint = (
-  options: AppConfigLintOptions = {},
-): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
-  lintLandofile(options);
 
 const textRender = (result: ConfigLintResult): string => {
   if (result.valid) {
@@ -32,11 +16,7 @@ const textRender = (result: ConfigLintResult): string => {
   return [header, ...lines].join("\n");
 };
 
-/**
- * Render a lint result. Sets `process.exitCode = 1` on any violation so the
- * command exits non-zero (side-effect render pattern, identical for source and
- * compiled entries of the native dispatcher — mirrors `renderExecAppResult`).
- */
+/** Sets a failing process exit code when canonical-schema violations are present. */
 export const renderConfigLintResult = (
   result: ConfigLintResult,
   _format: AppConfigLintFormat = "text",

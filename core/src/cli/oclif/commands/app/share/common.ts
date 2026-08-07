@@ -2,7 +2,7 @@ import { Flags } from "../../../metadata.ts";
 
 import { ServiceName } from "@lando/sdk/schema";
 
-import type { ShareListOptions, ShareOptions, ShareStopOptions } from "../../../../commands/share.ts";
+import type { ShareListOptions, ShareOptions, ShareStopOptions } from "../../../../../operations/share.ts";
 
 export const shareFormatFlag = Flags.string({
   description: "Output format.",

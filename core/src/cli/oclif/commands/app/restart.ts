@@ -1,9 +1,5 @@
-import {
-  type RestartAppResult,
-  RestartAppResultSchema,
-  renderRestartAppResult,
-  restartApp,
-} from "../../../commands/restart.ts";
+import { type RestartAppResult, RestartAppResultSchema, restartApp } from "../../../../operations/restart.ts";
+import { renderRestartAppResult } from "../../../commands/restart.ts";
 import {
   LandoCommandBase,
   type LandoCommandSpec,
