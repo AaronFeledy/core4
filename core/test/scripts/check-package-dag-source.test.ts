@@ -41,6 +41,57 @@ describe("check-package-dag source policy", () => {
     },
   );
 
+  test.each(["@lando/core", "@lando/core/paths", "@lando/provider-lando", "@lando/provider-lando/runtime"])(
+    "rejects engine source import %s",
+    async (specifier) => {
+      // Given
+      await fixture.write("engine/src/index.ts", `import "${specifier}";\n`);
+
+      // When
+      const result = await fixture.runGate(["--report"]);
+
+      // Then
+      expect(result.stdout).toContain(`engine/src/index.ts:1: ${specifier}`);
+    },
+  );
+
+  test("rejects relative source imports that cross package roots", async () => {
+    // Given
+    await Promise.all([
+      fixture.write("engine/src/relative-plugin.ts", 'import "../../plugins/provider-lando/src/index.ts";\n'),
+      fixture.write(
+        "plugins/provider-lando/src/relative-engine.ts",
+        'import "../../../engine/src/index.ts";\n',
+      ),
+      fixture.write("plugins/provider-lando/src/relative-core.ts", 'import "../../../core/src/index.ts";\n'),
+    ]);
+
+    // When
+    const result = await fixture.runGate(["--report"]);
+
+    // Then
+    expect(result.stdout).toContain(
+      "engine/src/relative-plugin.ts:1: ../../plugins/provider-lando/src/index.ts",
+    );
+    expect(result.stdout).toContain(
+      "plugins/provider-lando/src/relative-engine.ts:1: ../../../engine/src/index.ts",
+    );
+    expect(result.stdout).toContain(
+      "plugins/provider-lando/src/relative-core.ts:1: ../../../core/src/index.ts",
+    );
+  });
+
+  test("allows legal engine seams and intra-package relative imports", async () => {
+    // Given
+    await fixture.write("engine/src/index.ts", 'import "@lando/sdk";\nimport "./runtime.ts";\n');
+
+    // When
+    const result = await fixture.runGate(["--report"]);
+
+    // Then
+    expect(result).toEqual({ exitCode: 0, stdout: "Package DAG violations: 0\n", stderr: "" });
+  });
+
   test("allows every plugin runtime seam declared by the workspace policy", async () => {
     // Given
     const runtimeTargets = WORKSPACE_EDGE_TABLE["@lando/provider-lando"]?.dependencies;
