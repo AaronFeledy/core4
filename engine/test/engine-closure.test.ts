@@ -108,14 +108,14 @@ describe("Engine closure", () => {
           return [...source.matchAll(importPattern)].flatMap((match) => {
             const specifier = match[1] ?? match[2];
             if (specifier === undefined) return [];
-            const escapesSource =
+            const staysWithinEngineSource =
               specifier.startsWith(".") &&
               !relative(engineSourceRoot, resolve(dirname(file), specifier)).startsWith("..");
             const forbidden =
               specifier === "@lando/core" ||
               specifier.startsWith("@lando/core/") ||
               pluginPackagePattern.test(specifier) ||
-              (specifier.startsWith(".") && !escapesSource);
+              (specifier.startsWith(".") && !staysWithinEngineSource);
             return forbidden ? [`${relative(engineSourceRoot, file)} -> ${specifier}`] : [];
           });
         }),

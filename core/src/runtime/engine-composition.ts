@@ -22,17 +22,14 @@ export const coreLandofileRuntimeInputs: LandofileRuntimeInputs = {
   templates: { modules: BUNDLED_PLUGIN_MODULES },
 };
 
-const installCoreEngineComposition = (): void =>
-  installEngineComposition({
-    bundledPluginModules: BUNDLED_PLUGIN_MODULES,
-    builtInCommandIds: BUILT_IN_COMMAND_IDS,
-    landofileRuntimeInputs: coreLandofileRuntimeInputs,
-    hostProxyWorkerEntry: () => ({
-      execPath: process.execPath,
-      entryPath: process.argv[1],
-      bunSourceEntryPath: new URL("../../bin/lando.ts", import.meta.url).pathname,
-    }),
-    bunDevDistRoot: () => new URL("../../dist", import.meta.url).pathname,
-  });
-
-installCoreEngineComposition();
+installEngineComposition({
+  bundledPluginModules: BUNDLED_PLUGIN_MODULES,
+  builtInCommandIds: BUILT_IN_COMMAND_IDS,
+  landofileRuntimeInputs: coreLandofileRuntimeInputs,
+  hostProxyWorkerEntry: () => ({
+    execPath: process.execPath,
+    entryPath: process.argv[1],
+    bunSourceEntryPath: new URL("../../bin/lando.ts", import.meta.url).pathname,
+  }),
+  bunDevDistRoot: () => new URL("../../dist", import.meta.url).pathname,
+});
