@@ -1,7 +1,8 @@
 import { dirname } from "node:path";
 
-import { Effect } from "effect";
+import { Effect, type Layer } from "effect";
 
+import { confirmRemoteSyncWithInteraction } from "../../app/remote-confirmation.ts";
 import { appConfigLint } from "../../operations/app-config-lint.ts";
 import { destroyApp } from "../../operations/destroy.ts";
 import { infoApp } from "../../operations/info.ts";
@@ -91,6 +92,18 @@ import {
 } from "../oclif/commands/app/share/common.ts";
 import { setupSpec } from "../oclif/commands/meta/setup.ts";
 import { type RenderContext, runWithRendererHandling } from "../renderer-boundary.ts";
+import type { RendererIO } from "../renderer/io.ts";
+
+type DestroyCommandServices =
+  | import("@lando/sdk/services").AppPlanner
+  | import("@lando/sdk/services").LandofileService
+  | import("@lando/sdk/services").PathsService
+  | import("@lando/sdk/services").RuntimeProviderRegistry;
+
+interface RunDestroyOptions {
+  readonly runtime?: Layer.Layer<DestroyCommandServices, unknown>;
+  readonly io?: RendererIO;
+}
 
 export const runStart = (): Promise<void> =>
   runWithProcessAbortSignal((signal) =>
@@ -124,14 +137,16 @@ export const runOpen = (argv: ReadonlyArray<string>): Promise<void> => {
   );
 };
 
-export const runDestroy = (argv: ReadonlyArray<string>): Promise<void> => {
+export const runDestroy = (argv: ReadonlyArray<string>, options: RunDestroyOptions = {}): Promise<void> => {
   const volumes = argv.includes("--volumes") || argv.includes("--purge");
   const purgeCaches = argv.includes("--purge-caches");
   const yes = argv.includes("--yes") || argv.includes("-y");
   return runCompiledCommand(
     destroyApp({ volumes, purgeCaches, yes }),
-    makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
+    options.runtime ??
+      makeLandoRuntime(cliRuntimeOptions({ bootstrap: "app", plugins: { policy: "discovery" } })),
     renderDestroyAppResult,
+    { renderEvents: true, ...(options.io === undefined ? {} : { io: options.io }) },
   );
 };
 
@@ -227,16 +242,20 @@ export const runLogs = (argv: ReadonlyArray<string>): Promise<void> => {
 export const runPull = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:pull", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:pull", argv);
-  return runCompiledCommand(appPull(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
-    renderSyncResult(value, compiledFormat(input), ctx),
+  return runCompiledCommand(
+    appPull(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
+    appRuntimeLayer(),
+    (value, ctx) => renderSyncResult(value, compiledFormat(input), ctx),
   );
 };
 
 export const runPush = (argv: ReadonlyArray<string>): Promise<void> => {
   if (rejectInvalidInvocation("app:push", argv)) return Promise.resolve();
   const input = compiledCommandInputFromArgv("app:push", argv);
-  return runCompiledCommand(appPush(remoteSyncOptionsFromInput(input)), appRuntimeLayer(), (value, ctx) =>
-    renderSyncResult(value, compiledFormat(input), ctx),
+  return runCompiledCommand(
+    appPush(remoteSyncOptionsFromInput(input), undefined, confirmRemoteSyncWithInteraction),
+    appRuntimeLayer(),
+    (value, ctx) => renderSyncResult(value, compiledFormat(input), ctx),
   );
 };
 

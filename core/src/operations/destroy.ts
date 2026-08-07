@@ -17,7 +17,7 @@ import type {
   DestroyAppError as SdkDestroyAppError,
 } from "@lando/sdk/app";
 import type { ComposeKeyRejectedError, LandofileLoadExpressionError } from "@lando/sdk/errors";
-import { PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
+import { MessageWarnEvent, PostDestroyEvent, PreDestroyEvent } from "@lando/sdk/events";
 import type { AppPlan, AppRef } from "@lando/sdk/schema";
 import {
   AppPlanner,
@@ -25,7 +25,6 @@ import {
   LandofileService,
   PathsService,
   ProxyService,
-  Renderer,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
@@ -49,7 +48,6 @@ type DestroyAppServices =
   | EventService
   | LandofileService
   | PathsService
-  | Renderer
   | RuntimeProviderRegistry;
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
@@ -67,7 +65,6 @@ export const destroyApp = (
     const events = yield* EventService;
     const paths = yield* PathsService;
     const proxy = yield* Effect.serviceOption(ProxyService);
-    const renderer = yield* Renderer;
 
     const plan =
       target?.plan ??
@@ -105,8 +102,11 @@ export const destroyApp = (
     if (proxy._tag === "Some") {
       yield* destroyAppAndRemoveRoutes(providerDestroy, proxy.value, plan);
     } else {
-      yield* renderer.message.warn(
-        `Proxy service is unavailable; destroying ${plan.name} without route cleanup.`,
+      yield* events.publish(
+        MessageWarnEvent.make({
+          body: `Proxy service is unavailable; destroying ${plan.name} without route cleanup.`,
+          timestamp: now(),
+        }),
       );
       yield* providerDestroy;
     }
