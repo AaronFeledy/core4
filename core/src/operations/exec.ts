@@ -23,7 +23,6 @@ import {
   loadUserLandofile,
   loadUserLandofileAt,
 } from "../landofile/app-resolution.ts";
-import { emitOptionalStderr } from "./renderer-passthrough.ts";
 
 export type ExecAppError = SdkExecAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { ExecAppOptions, ExecAppResult } from "@lando/sdk/app";
@@ -128,10 +127,6 @@ export const execApp = (
     };
 
     const result = yield* provider.exec(target, spec);
-
-    if (result.stderr.length > 0) {
-      yield* emitOptionalStderr(result.stderr);
-    }
 
     return {
       app: plan.name,
