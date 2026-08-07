@@ -187,3 +187,12 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
   - Remove source-path aliases when extracting workspace packages; duplicate module identities can make valid Effect layers and tagged errors fail runtime identity checks even when TypeScript accepts them.
   - Treat process argv, TTY streams, and install-relative paths as host-shell facts and inject them into the engine rather than allowing moved modules to recompute them from their new package location.
 ---
+
+## 2026-08-07 15:35 CDT - US-542 Review
+- Restored package-move behavior and proof by injecting composition inputs into isolated scratch test layers, repairing generated plugin scaffolds, keeping core lifecycle exports independent of process-global initialization, and retargeting boundary, codegen, telemetry, guidance, and specification ownership to the engine seam.
+- Review notes (deferred/rejected): rejected the post-fix Bugbot version-fallback finding for this story because source packages currently share the same development version, compiled binaries inject the core version, and npm workspace version rewriting is explicitly owned by US-544; rejected the touched plugin-new fixture's LSP-only `InteractionPrompter.select` diagnostic because it predates the review delta and repository typecheck is green; deferred composition exclusivity, performance budgets, and publish/install parity to US-543 and US-544.
+- Guide-Coverage-Skip: US-542 review repairs internal ownership, test isolation, and behavior-preserving regressions without changing the documented command contract.
+- Verification: explicit-base guide drift, typecheck, lint/deprecations, codegen drift, package-DAG, import-cycle, all behavioral boundary rules, 291 focused and adjacent tests, initial Bugbot, and post-fix Bugbot triage passed; the full boundary runner retained only the pre-existing `.omo/**` spec-reference findings.
+- **Learnings for future iterations:**
+  - Tests that construct private engine layers directly must inject generated composition inputs and shell-owned ports rather than relying on process-global core initialization.
+---
