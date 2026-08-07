@@ -130,6 +130,9 @@ describe("meta:plugin:new command", () => {
     const source = await readFile(join(destination, "src", "index.ts"), "utf8");
     expect(source).toContain("Schema.decodeSync(PluginManifest)");
     expect(source).toContain("@acme/lando-plugin-demo");
+
+    const testSource = await readFile(join(destination, "test", "plugin.test.ts"), "utf8");
+    expect(testSource).toContain('from "../src/index.ts"');
   });
 
   test("every bundled plugin template id scaffolds a package without reading runtime template files", async () => {
