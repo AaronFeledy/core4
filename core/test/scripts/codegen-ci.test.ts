@@ -469,6 +469,8 @@ describe("ci workflow codegen", () => {
       expect(workflow).toContain("run: bun run check:probe-boundary");
       expect(workflow).toContain("- name: Network boundary lint");
       expect(workflow).toContain("run: bun run check:network-boundary");
+      expect(workflow).toContain("- name: Core layering boundary lint");
+      expect(workflow).toContain("run: bun run check:core-layering-boundary");
       expect(workflow).toContain("- name: Runtime-bundle manifest invariant");
       expect(workflow).toContain("run: bun run check:runtime-bundle-manifest");
       expect(workflow).toContain("- name: Static scope notice for portable static matrix");

@@ -19,6 +19,7 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
+    "./app-resolution": "./src/app-resolution.ts",
     "./app-root-provenance": "./src/app-root-provenance.ts",
     "./bun-sh-discovery": "./src/bun-sh-discovery.ts",
     "./compose/dispositions": "./src/compose/dispositions.ts",
