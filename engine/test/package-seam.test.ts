@@ -37,10 +37,10 @@ const projectReferencePaths = (value: unknown): readonly string[] => {
 
 describe("Engine package seam", () => {
   test("resolves the private package from the workspace scaffold", async () => {
-    // Given the expected engine package location
+    // Given
     const packageExists = await Bun.file(packageManifestPath).exists();
 
-    // When the workspace scaffold is inspected
+    // When / Then
     expect(packageExists).toBe(true);
     if (!packageExists) return;
 
@@ -53,7 +53,6 @@ describe("Engine package seam", () => {
     const packageEntry = realpathSync(Bun.resolveSync("@lando/engine", repositoryRoot)).replaceAll("\\", "/");
     const packageModule: unknown = await import("@lando/engine");
 
-    // Then the package is private, resolvable, and wired like its sibling seams
     expect(packageManifest.name).toBe("@lando/engine");
     expect(packageManifest.private).toBe(true);
     expect(packageManifest.main).toBe("./src/index.ts");
@@ -73,10 +72,10 @@ describe("Engine package seam", () => {
   });
 
   test("declares only approved seam dependencies", async () => {
-    // Given the expected engine package location
+    // Given
     const packageExists = await Bun.file(packageManifestPath).exists();
 
-    // When its workspace dependency edges are read
+    // When / Then
     expect(packageExists).toBe(true);
     if (!packageExists) return;
 
@@ -91,7 +90,6 @@ describe("Engine package seam", () => {
       ([, version]) => version.startsWith("workspace:"),
     );
 
-    // Then only the policy-approved private seam dependencies are declared
     expect(workspaceDependencies).toEqual([
       ["@lando/container-runtime", "workspace:*"],
       ["@lando/landofile", "workspace:*"],
@@ -104,10 +102,10 @@ describe("Engine package seam", () => {
   });
 
   test("runs the package seam test in CI unit shards", async () => {
-    // Given the repository unit-test shard discovery
+    // Given / When
     const shardedTests = await collectShardedTestFiles();
 
-    // When the discovered paths are inspected, then this package seam is present
+    // Then
     expect(shardedTests).toContain("engine/test/package-seam.test.ts");
   });
 });
