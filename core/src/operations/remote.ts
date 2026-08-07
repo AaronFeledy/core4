@@ -38,7 +38,6 @@ import {
   AppPlanner,
   DataMover,
   Dataset,
-  InteractionService,
   LandofileService,
   RemoteSource,
   type RemoteSourceShape,
@@ -85,6 +84,8 @@ export interface RemoteSyncOptions {
   readonly yes?: boolean;
   readonly noInteractive?: boolean;
 }
+
+type RemoteSyncConfirmation = (message: string) => Effect.Effect<boolean | undefined, RemoteSyncError>;
 
 export interface RemoteListOptions {
   readonly cwd?: string;
@@ -337,11 +338,11 @@ const datasetContext = (plan: AppPlan, kind: DatasetKind, landofile: typeof Land
   ...(landofile.sync?.[kind] === undefined ? {} : { binding: landofile.sync[kind] }),
 });
 
-const confirmDestructive = (message: string, options: RemoteSyncOptions) =>
+const confirmDestructive = (message: string, options: RemoteSyncOptions, confirm?: RemoteSyncConfirmation) =>
   Effect.gen(function* () {
     if (options.yes === true || options.noInteractive === true) return;
-    const interaction = yield* Effect.serviceOption(InteractionService);
-    if (interaction._tag === "None") {
+    const confirmed = confirm === undefined ? undefined : yield* confirm(message);
+    if (confirmed === undefined) {
       return yield* Effect.fail(
         new RemoteProtectedEnvError({
           message: "Remote sync requires confirmation, but no InteractionService is available.",
@@ -350,9 +351,6 @@ const confirmDestructive = (message: string, options: RemoteSyncOptions) =>
         }),
       );
     }
-    const confirmed = yield* Effect.scoped(
-      interaction.value.confirm({ message, default: false, mode: "interactive" }),
-    );
     if (!confirmed) {
       return yield* Effect.fail(
         new RemoteProtectedEnvError({
@@ -457,6 +455,7 @@ export const appRemoteSetup = (options: RemoteSetupOptions = {}) => appRemoteTes
 export const appPull = (
   options: RemoteSyncOptions = {},
   target?: ResolvedAppTarget,
+  confirm?: RemoteSyncConfirmation,
 ): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> =>
   Effect.gen(function* () {
     const loaded = yield* loadRemoteLandofile(options.cwd ?? target?.root);
@@ -472,7 +471,7 @@ export const appPull = (
     const artifacts: DataEndpoint[] = [];
     const snapshots = [];
     let changed = false;
-    yield* confirmDestructive(`Pull ${kinds.join(", ")} from ${entry.name}@${env}?`, options);
+    yield* confirmDestructive(`Pull ${kinds.join(", ")} from ${entry.name}@${env}?`, options, confirm);
     for (const kind of kinds) {
       const locator = yield* source.resolve(entry.config, env, kind);
       const artifact = yield* Effect.scoped(source.fetch(locator, { force: options.force }));
@@ -500,6 +499,7 @@ export const appPull = (
 export const appPush = (
   options: RemoteSyncOptions = {},
   target?: ResolvedAppTarget,
+  confirm?: RemoteSyncConfirmation,
 ): Effect.Effect<SyncResultType, RemoteSyncCommandError, RemoteSyncServices> =>
   Effect.gen(function* () {
     const loaded = yield* loadRemoteLandofile(options.cwd ?? target?.root);
@@ -531,7 +531,7 @@ export const appPush = (
     }
     const plan = yield* resolvePlan(options.cwd, target);
     const artifacts: DataEndpoint[] = [];
-    yield* confirmDestructive(`Push ${kinds.join(", ")} to ${entry.name}@${env}?`, options);
+    yield* confirmDestructive(`Push ${kinds.join(", ")} to ${entry.name}@${env}?`, options, confirm);
     for (const kind of kinds) {
       const ctx = datasetContext(plan, kind, loaded.landofile);
       const artifact = yield* Effect.scoped(dataset.value.capture(ctx));
