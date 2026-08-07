@@ -101,6 +101,7 @@ jobs:
           bun run --filter='@lando/container-runtime' build
           bun run --filter='@lando/state-store' build
           bun run --filter='@lando/landofile' build
+          bun run --filter='@lando/engine' build
           bun run --filter='@lando/provider-lando' build
           bun run --filter='@lando/provider-docker' build
           bun run --filter='@lando/provider-podman' build
@@ -129,6 +130,7 @@ jobs:
           npm publish --workspace @lando/container-runtime --dry-run --access public --tag dev
           npm publish --workspace @lando/state-store --dry-run --access public --tag dev
           npm publish --workspace @lando/landofile --dry-run --access public --tag dev
+          npm publish --workspace @lando/engine --dry-run --access public --tag dev
           npm publish --workspace @lando/core --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-lando --dry-run --access public --tag dev
           npm publish --workspace @lando/provider-docker --dry-run --access public --tag dev
@@ -151,6 +153,7 @@ jobs:
           npm publish --workspace @lando/container-runtime --access public --tag dev --provenance
           npm publish --workspace @lando/state-store --access public --tag dev --provenance
           npm publish --workspace @lando/landofile --access public --tag dev --provenance
+          npm publish --workspace @lando/engine --access public --tag dev --provenance
           npm publish --workspace @lando/core --access public --tag dev --provenance
           npm publish --workspace @lando/provider-lando --access public --tag dev --provenance
           npm publish --workspace @lando/provider-docker --access public --tag dev --provenance
