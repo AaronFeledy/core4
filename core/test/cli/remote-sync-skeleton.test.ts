@@ -167,7 +167,9 @@ describe("remote sync command skeleton", () => {
     const adapterSource = await Bun.file(
       join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
     ).text();
-    const remoteSource = await Bun.file(join(import.meta.dir, "../../src/operations/remote.ts")).text();
+    const remoteSource = await Bun.file(
+      join(import.meta.dir, "../../../engine/src/operations/remote.ts"),
+    ).text();
 
     expect(adapterSource).toContain("renderSyncResult(value, compiledFormat(input), ctx)");
     expect(adapterSource).toContain("renderRemoteListResult(value, options.format, ctx)");
