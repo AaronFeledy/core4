@@ -49,6 +49,17 @@
         "oclif": "^4.23.0",
       },
     },
+    "engine": {
+      "name": "@lando/engine",
+      "version": "0.0.0",
+      "dependencies": {
+        "@lando/container-runtime": "workspace:*",
+        "@lando/landofile": "workspace:*",
+        "@lando/paths": "workspace:*",
+        "@lando/sdk": "workspace:*",
+        "@lando/state-store": "workspace:*",
+      },
+    },
     "landofile": {
       "name": "@lando/landofile",
       "version": "0.0.0",
@@ -351,6 +362,8 @@
     "@lando/container-runtime": ["@lando/container-runtime@workspace:container-runtime"],
 
     "@lando/core": ["@lando/core@workspace:core"],
+
+    "@lando/engine": ["@lando/engine@workspace:engine"],
 
     "@lando/file-sync-mutagen": ["@lando/file-sync-mutagen@workspace:plugins/file-sync-mutagen"],
 

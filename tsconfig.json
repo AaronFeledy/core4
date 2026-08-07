@@ -18,6 +18,9 @@
       "path": "./landofile"
     },
     {
+      "path": "./engine"
+    },
+    {
       "path": "./container-runtime"
     },
     {

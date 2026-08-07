@@ -1,6 +1,7 @@
+import { posix } from "node:path";
+
 import { type RuntimeEdge, stronglyConnectedComponents } from "../graph.ts";
 import type { ProgramContext, Violation } from "../types.ts";
-import { NON_PLUGIN_SOURCE_ROOTS } from "../workspace-roots.ts";
 import {
   WORKSPACE_PACKAGE_NAMES,
   type WorkspaceManifest,
@@ -8,10 +9,12 @@ import {
   packageMatches,
 } from "./package-dag-policy.ts";
 
-interface PluginSourcePackage {
+interface SourcePackage {
   readonly name: string;
+  readonly directoryPrefix: string;
   readonly sourcePrefix: string;
   readonly dependencies: ReadonlySet<string>;
+  readonly isPlugin: boolean;
 }
 
 interface PluginEdge extends RuntimeEdge {
@@ -25,13 +28,17 @@ export const checkPackageSourceEdges = async (
   context: ProgramContext,
   manifests: readonly WorkspaceManifest[],
 ): Promise<void> => {
-  const packages: readonly PluginSourcePackage[] = manifests
-    .filter((manifest) => /^plugins\/[^/]+\/package\.json$/u.test(manifest.path))
-    .map((manifest) => ({
+  const sourcePackages: readonly SourcePackage[] = manifests.map((manifest) => {
+    const directoryPrefix = manifest.path.replace(/package\.json$/u, "");
+    return {
       name: manifest.name,
-      sourcePrefix: manifest.path.replace(/package\.json$/u, "src/"),
+      directoryPrefix,
+      sourcePrefix: `${directoryPrefix}src/`,
       dependencies: new Set(manifest.dependencies),
-    }));
+      isPlugin: /^plugins\/[^/]+\/$/u.test(directoryPrefix),
+    };
+  });
+  const pluginPackages = sourcePackages.filter((sourcePackage) => sourcePackage.isPlugin);
   const violations = new Map<string, Violation>();
   const pluginEdges: PluginEdge[] = [];
   const report = (violation: Violation): void => {
@@ -39,20 +46,29 @@ export const checkPackageSourceEdges = async (
   };
 
   for (const file of context.files) {
-    const owner = packages.find((candidate) => file.relativePath.startsWith(candidate.sourcePrefix));
+    const owner = sourcePackages.find((candidate) => file.relativePath.startsWith(candidate.sourcePrefix));
     if (owner === undefined) continue;
     for (const edge of await context.edges(file)) {
       const violation = { file: file.relativePath, line: edge.line, detail: edge.specifier };
+      const normalizedSpecifier = edge.specifier.replaceAll("\\", "/");
+      if (normalizedSpecifier.startsWith(".")) {
+        const targetPath = posix.normalize(posix.join(posix.dirname(file.relativePath), normalizedSpecifier));
+        const packageDirectory = owner.directoryPrefix.slice(0, -1);
+        if (targetPath !== packageDirectory && !targetPath.startsWith(owner.directoryPrefix)) {
+          report(violation);
+        }
+        continue;
+      }
       if (escapesNamedPackage(edge.specifier)) {
         report(violation);
         continue;
       }
-      const target = packages.find((candidate) => packageMatches(edge.specifier, candidate.name));
+      const target = pluginPackages.find((candidate) => packageMatches(edge.specifier, candidate.name));
       const declaredTarget = WORKSPACE_PACKAGE_NAMES.find((packageName) =>
         packageMatches(edge.specifier, packageName),
       );
       if (target?.name === owner.name || declaredTarget === owner.name) continue;
-      if (target !== undefined) {
+      if (target !== undefined && owner.isPlugin) {
         pluginEdges.push({
           from: owner.name,
           to: target.name,
@@ -62,6 +78,7 @@ export const checkPackageSourceEdges = async (
         });
         if (!owner.dependencies.has(target.name)) report(violation);
       }
+      if (target !== undefined && !owner.isPlugin) report(violation);
       if (declaredTarget !== undefined && !isWorkspaceRuntimeTargetAllowed(owner.name, declaredTarget)) {
         report(violation);
       }
@@ -76,7 +93,7 @@ export const checkPackageSourceEdges = async (
   }
   const componentByPackage = new Map<string, number>();
   stronglyConnectedComponents(
-    packages.map((pluginPackage) => pluginPackage.name),
+    pluginPackages.map((pluginPackage) => pluginPackage.name),
     graph,
   ).forEach((component, index) => {
     for (const packageName of component) componentByPackage.set(packageName, index);
@@ -85,19 +102,6 @@ export const checkPackageSourceEdges = async (
     const sourceComponent = componentByPackage.get(edge.from);
     if (sourceComponent !== undefined && sourceComponent === componentByPackage.get(edge.to)) {
       report(edge.violation);
-    }
-  }
-
-  for (const file of context.files) {
-    if (!NON_PLUGIN_SOURCE_ROOTS.some((root) => file.relativePath.startsWith(`${root}/`))) continue;
-    for (const edge of await context.edges(file)) {
-      if (
-        !escapesNamedPackage(edge.specifier) &&
-        !packages.some((candidate) => packageMatches(edge.specifier, candidate.name))
-      ) {
-        continue;
-      }
-      report({ file: file.relativePath, line: edge.line, detail: edge.specifier });
     }
   }
 
