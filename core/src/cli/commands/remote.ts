@@ -1,4 +1,4 @@
-/** `lando remote`/`pull`/`push` result rendering. Operations live in `core/src/operations/remote.ts`. */
+/** `lando remote`, `pull`, and `push` result rendering. */
 import type {
   RemoteEnvironment as RemoteEnvironmentType,
   RemoteTestResult,

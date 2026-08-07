@@ -1,8 +1,3 @@
-/**
- * `lando rebuild` — rebuild the current app's artifacts and restart.
- *
- * Bootstrap level: `app`.
- */
 import { Effect, Schema } from "effect";
 
 import type {

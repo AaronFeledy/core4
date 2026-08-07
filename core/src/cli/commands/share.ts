@@ -1,4 +1,4 @@
-/** `lando share` result rendering. Operations live in `core/src/operations/share.ts`. */
+/** `lando share` result rendering. */
 import type { TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
 
 import type { ShareStopResult } from "../../operations/share.ts";

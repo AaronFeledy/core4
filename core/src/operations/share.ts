@@ -180,7 +180,7 @@ export const appShareList = (
     const plan = yield* resolvePlan(options.cwd, target);
     const app = plan.id;
     const listed = yield* service.list({
-      ...(app === undefined ? {} : { app }),
+      app,
       ...(options.provider === undefined ? {} : { provider: options.provider }),
     });
     const reconciled = yield* reconcileTunnelRegistry(new Set(listed.map((session) => session.id)));
@@ -189,8 +189,7 @@ export const appShareList = (
     for (const session of listed) byId.set(session.id, session);
     return Array.from(byId.values()).filter(
       (session) =>
-        (app === undefined || session.app === app) &&
-        (options.provider === undefined || session.provider === options.provider),
+        session.app === app && (options.provider === undefined || session.provider === options.provider),
     );
   });
 

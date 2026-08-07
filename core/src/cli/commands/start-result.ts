@@ -1,4 +1,4 @@
-/** `lando start` result rendering. The operation lives in `core/src/operations/start.ts`. */
+/** `lando start` result rendering. */
 import type { StartAppResult } from "@lando/sdk/app";
 
 const READY_STATES = new Set(["running", "ready"]);

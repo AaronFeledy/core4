@@ -1,4 +1,4 @@
-/** `lando destroy` result rendering. The operation lives in `core/src/operations/destroy.ts`. */
+/** `lando destroy` result rendering. */
 import type { DestroyAppResult } from "@lando/sdk/app";
 
 export const renderDestroyAppResult = (result: DestroyAppResult): string => {

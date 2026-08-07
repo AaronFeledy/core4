@@ -1,4 +1,4 @@
-/** `lando restart` result rendering. The operation lives in `core/src/operations/restart.ts`. */
+/** `lando restart` result rendering. */
 import type { RestartAppResult } from "@lando/sdk/app";
 
 export const renderRestartAppResult = (result: RestartAppResult): string => {

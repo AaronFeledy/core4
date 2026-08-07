@@ -52,7 +52,7 @@ export const makeAppHandle = (
   lifecycle: AppLifecycle,
 ): App => {
   const { plan, app: ref, root } = target;
-  const handle = {
+  return {
     id: plan.id,
     ref,
     root,
@@ -204,6 +204,5 @@ export const makeAppHandle = (
           ),
         ),
     },
-  };
-  return handle as unknown as App;
+  } as unknown as App;
 };

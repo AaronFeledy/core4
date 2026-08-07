@@ -1,4 +1,4 @@
-/** `lando stop` result rendering. The operation lives in `core/src/operations/stop.ts`. */
+/** `lando stop` result rendering. */
 import type { StopAppResult } from "@lando/sdk/app";
 
 export const renderStopAppResult = (result: StopAppResult): string => {

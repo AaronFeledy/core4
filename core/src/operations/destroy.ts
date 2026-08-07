@@ -1,12 +1,3 @@
-/**
- * `lando destroy` — destroy the current app.
- *
- * Removes containers and the app network. App-scoped storage volumes are
- * preserved by default; pass `volumes: true` to remove data volumes. Cache
- * volumes survive unless `purgeCaches` is also true.
- *
- * Bootstrap level: `app`.
- */
 import { rm } from "node:fs/promises";
 
 import { DateTime, Effect, Schema } from "effect";

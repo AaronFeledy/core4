@@ -1,4 +1,4 @@
-/** `lando rebuild` result rendering. The operation lives in `core/src/operations/rebuild.ts`. */
+/** `lando rebuild` result rendering. */
 import type { RebuildAppResult } from "@lando/sdk/app";
 
 export const renderRebuildAppResult = (result: RebuildAppResult): string => {

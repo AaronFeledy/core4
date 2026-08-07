@@ -94,7 +94,7 @@ export const execApp = (
     const registry = yield* RuntimeProviderRegistry;
 
     let plan: AppPlan;
-    let landofile: LandofileShape | undefined;
+    let landofile: LandofileShape;
     if (appTarget?.plan !== undefined) {
       plan = appTarget.plan;
       landofile = yield* loadUserLandofileAt(landofileService, appTarget.root);
@@ -115,7 +115,7 @@ export const execApp = (
       plan,
       ...(options.user === undefined ? {} : { user: options.user }),
     };
-    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile?.agentEnv, process.env);
+    const allowlist = yield* resolveAgentEnvForwardAllowlist(landofile.agentEnv, process.env);
     const env = withAgentContextEnv(options.env, process.env, {
       allowlist,
       lowerThanEnv: service.environment,

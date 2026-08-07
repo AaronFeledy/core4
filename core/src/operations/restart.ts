@@ -1,8 +1,3 @@
-/**
- * `lando restart` — `stop` + `start`.
- *
- * Bootstrap level: `app`.
- */
 import { Effect, Schema } from "effect";
 
 import type {

@@ -1,4 +1,4 @@
-/** `lando <tool>` result rendering. The operation lives in `core/src/operations/tooling.ts`. */
+/** `lando <tool>` result rendering. */
 import type { RunToolingResult } from "../../operations/tooling.ts";
 
 export const renderRunToolingResult = (result: RunToolingResult): string | undefined =>

@@ -1,4 +1,4 @@
-/** `lando logs` result rendering. The operation lives in `core/src/operations/logs.ts`. */
+/** `lando logs` result rendering. */
 import type { LogsAppResult } from "../../operations/logs.ts";
 
 export const renderLogsAppResult = (result: LogsAppResult): string => {

@@ -1,4 +1,4 @@
-/** `lando app:config:lint` rendering. The operation lives in `core/src/operations/app-config-lint.ts`. */
+/** `lando app:config:lint` result rendering. */
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
@@ -16,11 +16,7 @@ const textRender = (result: ConfigLintResult): string => {
   return [header, ...lines].join("\n");
 };
 
-/**
- * Render a lint result. Sets `process.exitCode = 1` on any violation so the
- * command exits non-zero (side-effect render pattern, identical for source and
- * compiled entries of the native dispatcher — mirrors `renderExecAppResult`).
- */
+/** Sets a failing process exit code when canonical-schema violations are present. */
 export const renderConfigLintResult = (
   result: ConfigLintResult,
   _format: AppConfigLintFormat = "text",

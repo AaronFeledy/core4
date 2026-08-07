@@ -1,11 +1,3 @@
-/**
- * `lando start` — start the current app.
- *
- * Bootstrap level: `app`.
- *
- * Programmatic equivalent: `startApp({ reconcile: false })` from
- * `@lando/core/cli`.
- */
 import { DateTime, Effect, Ref, Schema } from "effect";
 
 import type { StartAppError as SdkStartAppError, StartAppOptions, StartAppResult } from "@lando/sdk/app";
@@ -84,12 +76,6 @@ const appRef = (plan: AppPlan): AppRef => ({ kind: "user", id: plan.id, root: pl
 const endpointText = (endpoint: PublishedEndpoint & MaterializedPublishedEndpoint): string | undefined =>
   publishedEndpointUrl(endpoint);
 
-/**
- * Start the app discovered at the runtime's `cwd`.
- *
- * Bootstrap level: `app`. Requires `LandofileService`, `AppPlanner`,
- * `RuntimeProviderRegistry`, `EventService`.
- */
 export const startApp = (
   options: StartAppOptions = {},
   target?: ResolvedAppTarget,

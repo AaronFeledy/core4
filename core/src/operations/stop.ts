@@ -1,8 +1,3 @@
-/**
- * `lando stop` — stop the current app.
- *
- * Bootstrap level: `app`.
- */
 import { DateTime, Effect, Schema } from "effect";
 
 import type { StopAppError as SdkStopAppError, StopAppOptions, StopAppResult } from "@lando/sdk/app";
