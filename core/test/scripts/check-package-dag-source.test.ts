@@ -28,7 +28,7 @@ describe("check-package-dag source policy", () => {
   });
 
   test.each(["@lando/engine", "@lando/engine/runtime"])(
-    "rejects plugin source import %s before the engine package exists",
+    "rejects plugin source import %s",
     async (specifier) => {
       // Given
       await fixture.write("plugins/provider-lando/src/index.ts", `import "${specifier}";\n`);
