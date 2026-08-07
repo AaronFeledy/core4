@@ -257,6 +257,8 @@ describe("teardownManagedProviderMachine", () => {
       const modulePath = join(
         dirname(import.meta.dir),
         "..",
+        "..",
+        "engine",
         "src",
         "runtime",
         "managed-provider-machine.ts",
