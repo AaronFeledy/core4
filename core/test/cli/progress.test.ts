@@ -4,7 +4,7 @@ import { Effect, Queue } from "effect";
 import { AbsolutePath } from "@lando/sdk/schema";
 import { EventService } from "@lando/sdk/services";
 
-import { publishTaskStart } from "../../src/cli/progress.ts";
+import { publishTaskStart } from "../../src/operations/progress.ts";
 import { EventServiceLive } from "../../src/services/event-service.ts";
 
 test("publishTaskStart threads the optional transcript path", async () => {

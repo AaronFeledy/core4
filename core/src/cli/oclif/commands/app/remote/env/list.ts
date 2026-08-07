@@ -1,8 +1,5 @@
-import {
-  RemoteEnvListResultSchema,
-  appRemoteEnvList,
-  renderRemoteEnvListResult,
-} from "../../../../../commands/remote.ts";
+import { RemoteEnvListResultSchema, appRemoteEnvList } from "../../../../../../operations/remote.ts";
+import { renderRemoteEnvListResult } from "../../../../../commands/remote.ts";
 import { LandoCommandBase, type LandoCommandSpec } from "../../../../command-base.ts";
 import { remoteConfigFlags, remoteEnvListOptionsFromInput } from "../common.ts";
 

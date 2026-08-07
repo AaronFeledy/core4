@@ -1,25 +1,9 @@
-import type { Effect } from "effect";
-
-import type { LandofileFormConflictError, LandofileNotFoundError } from "@lando/sdk/errors";
+/** `lando app:config:lint` rendering. The operation lives in `core/src/operations/app-config-lint.ts`. */
 import type { ConfigLintResult } from "@lando/sdk/schema";
 
-import type { LintLandofileOptions } from "@lando/landofile/lint";
-import { lintLandofile } from "../../services/landofile-live.ts";
 import { renderConfigLintViolation } from "./config-lint-rendering.ts";
 
 export type AppConfigLintFormat = "text" | "json";
-
-export type AppConfigLintOptions = LintLandofileOptions;
-
-/**
- * Canonical-schema-only lint of the current app's Landofile. Thin wrapper over
- * the shared `lintLandofile` pass so `app:config:lint` and `doctor --app` never
- * fork the validation logic.
- */
-export const appConfigLint = (
-  options: AppConfigLintOptions = {},
-): Effect.Effect<ConfigLintResult, LandofileNotFoundError | LandofileFormConflictError, never> =>
-  lintLandofile(options);
 
 const textRender = (result: ConfigLintResult): string => {
   if (result.valid) {

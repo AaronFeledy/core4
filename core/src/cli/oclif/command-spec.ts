@@ -12,10 +12,10 @@ import { type Effect, Schema } from "effect";
 
 import type { DeprecationNotice, StreamFrameSchema } from "@lando/sdk/schema";
 
+import { assertTopLevelAliasesClaimable } from "../../operations/reserved-aliases.ts";
 import { type BugReportContext, type RendererMode, formatBugReport } from "../bug-report.ts";
 import type { DeferredCommandPlan } from "../deferred-commands.ts";
 import type { RenderContext, StreamOutputFrame } from "../renderer-boundary.ts";
-import { assertTopLevelAliasesClaimable } from "../reserved-aliases.ts";
 import { assertHostProxyAllowlistSafe } from "./host-proxy-allowlist.ts";
 import { assertMcpAllowlistSafe } from "./mcp-allowlist.ts";
 

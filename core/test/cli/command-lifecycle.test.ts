@@ -10,7 +10,7 @@ import {
   runWithRendererHandling,
 } from "../../src/cli/renderer-boundary.ts";
 import { createBufferedRendererIO } from "../../src/cli/renderer/io.ts";
-import { StreamFrameSink } from "../../src/cli/stream-frame-sink.ts";
+import { StreamFrameSink } from "../../src/operations/stream-frame-sink.ts";
 
 class CommandLifecycleTestError extends Schema.TaggedError<CommandLifecycleTestError>()(
   "CommandLifecycleTestError",

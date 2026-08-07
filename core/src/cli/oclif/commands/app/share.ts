@@ -2,7 +2,8 @@ import { Effect } from "effect";
 
 import { TunnelSession, type TunnelSession as TunnelSessionType } from "@lando/sdk/schema";
 
-import { appShare, renderShareResult } from "../../../commands/share.ts";
+import { appShare } from "../../../../operations/share.ts";
+import { renderShareResult } from "../../../commands/share.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 import { shareFlags, shareFormatFromInput, shareOptionsFromInput } from "./share/common.ts";
 

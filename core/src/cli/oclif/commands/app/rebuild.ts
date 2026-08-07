@@ -1,9 +1,5 @@
-import {
-  type RebuildAppResult,
-  RebuildAppResultSchema,
-  rebuildApp,
-  renderRebuildAppResult,
-} from "../../../commands/rebuild.ts";
+import { type RebuildAppResult, RebuildAppResultSchema, rebuildApp } from "../../../../operations/rebuild.ts";
+import { renderRebuildAppResult } from "../../../commands/rebuild.ts";
 import {
   LandoCommandBase,
   type LandoCommandSpec,

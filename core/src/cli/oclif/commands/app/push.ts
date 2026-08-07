@@ -1,6 +1,7 @@
 import { SyncResult, type SyncResult as SyncResultType } from "@lando/sdk/schema";
 
-import { appPush, renderSyncResult } from "../../../commands/remote.ts";
+import { appPush } from "../../../../operations/remote.ts";
+import { renderSyncResult } from "../../../commands/remote.ts";
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../command-base.ts";
 import {
   remoteEnvArg,

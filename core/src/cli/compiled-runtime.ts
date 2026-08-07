@@ -18,6 +18,7 @@ import type { BootstrapLevel } from "../runtime/bootstrap.ts";
 import { cliRuntimeOptions, resolveEffectiveCliBootstrap } from "../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../runtime/layer.ts";
 
+import type { StreamFrameSink } from "../operations/stream-frame-sink.ts";
 import { landoSpecForId } from "./compiled-argv.ts";
 import {
   type CompiledCommandInput,
@@ -31,7 +32,6 @@ import { EmptyResultSchema } from "./oclif/command-base.ts";
 import { type RenderContext, runWithRendererHandling } from "./renderer-boundary.ts";
 import { activeRendererMode } from "./renderer-mode-state.ts";
 import type { RendererIO } from "./renderer/io.ts";
-import type { StreamFrameSink } from "./stream-frame-sink.ts";
 
 type CompiledRuntimeFactory = (bootstrap: BootstrapLevel) => ReturnType<typeof makeLandoRuntime>;
 

@@ -2,30 +2,11 @@ import { dirname } from "node:path";
 
 import { Effect } from "effect";
 
-import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
-import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh.ts";
-import { appConfigLint, renderConfigLintResult } from "../commands/app-config-lint.ts";
-import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate.ts";
-import { appConfig, renderAppConfigResult } from "../commands/app-config.ts";
-import {
-  type AppIncludesUpdateFormat,
-  appIncludesUpdate,
-  renderIncludesUpdateResult,
-} from "../commands/app-includes-update.ts";
-import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify.ts";
-import { destroyApp, renderDestroyAppResult } from "../commands/destroy.ts";
-import { resilientDoctorReport } from "../commands/doctor-bootstrap.ts";
-import {
-  type DoctorReport,
-  renderDoctorReport,
-  renderDoctorReportAsNdjson,
-  renderDoctorReportAsYaml,
-} from "../commands/doctor-report.ts";
-import { infoApp, renderInfoAppResult } from "../commands/info.ts";
-import { followLogsApp, logsApp, renderLogsAppResult } from "../commands/logs.ts";
-import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open.ts";
-import { rebuildApp, renderRebuildAppResult } from "../commands/rebuild.ts";
+import { appConfigLint } from "../../operations/app-config-lint.ts";
+import { destroyApp } from "../../operations/destroy.ts";
+import { infoApp } from "../../operations/info.ts";
+import { followLogsApp, logsApp } from "../../operations/logs.ts";
+import { rebuildApp } from "../../operations/rebuild.ts";
 import {
   appPull,
   appPush,
@@ -35,23 +16,46 @@ import {
   appRemoteRemove,
   appRemoteSetup,
   appRemoteTest,
+} from "../../operations/remote.ts";
+import { restartApp } from "../../operations/restart.ts";
+import { appShare, appShareList, appShareStop } from "../../operations/share.ts";
+import { startApp } from "../../operations/start.ts";
+import { stopApp } from "../../operations/stop.ts";
+import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
+import { makeLandoRuntime } from "../../runtime/layer.ts";
+import { refreshAppCache, renderAppCacheRefreshResult } from "../commands/app-cache-refresh.ts";
+import { renderConfigLintResult } from "../commands/app-config-lint.ts";
+import { appConfigTranslate, renderConfigTranslateResult } from "../commands/app-config-translate.ts";
+import { appConfig, renderAppConfigResult } from "../commands/app-config.ts";
+import {
+  type AppIncludesUpdateFormat,
+  appIncludesUpdate,
+  renderIncludesUpdateResult,
+} from "../commands/app-includes-update.ts";
+import { appIncludesVerify, renderIncludesVerifyResult } from "../commands/app-includes-verify.ts";
+import { renderDestroyAppResult } from "../commands/destroy.ts";
+import { resilientDoctorReport } from "../commands/doctor-bootstrap.ts";
+import {
+  type DoctorReport,
+  renderDoctorReport,
+  renderDoctorReportAsNdjson,
+  renderDoctorReportAsYaml,
+} from "../commands/doctor-report.ts";
+import { renderInfoAppResult } from "../commands/info-render.ts";
+import { renderLogsAppResult } from "../commands/logs.ts";
+import { openApp, openOptionsFromInput, renderOpenAppResult } from "../commands/open.ts";
+import { renderRebuildAppResult } from "../commands/rebuild.ts";
+import {
   renderRemoteEnvListResult,
   renderRemoteListResult,
   renderRemoteMutationResult,
   renderRemoteTestResult,
   renderSyncResult,
 } from "../commands/remote.ts";
-import { renderRestartAppResult, restartApp } from "../commands/restart.ts";
-import {
-  appShare,
-  appShareList,
-  appShareStop,
-  renderShareListResult,
-  renderShareResult,
-  renderShareStopResult,
-} from "../commands/share.ts";
-import { renderStartAppResult, startApp } from "../commands/start.ts";
-import { renderStopAppResult, stopApp } from "../commands/stop.ts";
+import { renderRestartAppResult } from "../commands/restart.ts";
+import { renderShareListResult, renderShareResult, renderShareStopResult } from "../commands/share.ts";
+import { renderStartAppResult } from "../commands/start-result.ts";
+import { renderStopAppResult } from "../commands/stop.ts";
 import { compiledCommandInputFromArgv } from "../compiled-input.ts";
 import {
   activeDeprecationWarnings,

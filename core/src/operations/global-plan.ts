@@ -22,7 +22,7 @@ import {
 } from "@lando/sdk/services";
 
 import { parseLandofile } from "@lando/landofile/parser";
-import { decodeOrFail } from "../../../schema/decode.ts";
+import { decodeOrFail } from "../schema/decode.ts";
 
 export interface MissingGlobalPlanResult {
   readonly materialized: false;

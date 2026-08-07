@@ -8,7 +8,7 @@ import {
   publishTaskStart,
   publishTreeComplete,
   publishTreeStart,
-} from "../progress.ts";
+} from "./progress.ts";
 
 const outputLines = (text: string): ReadonlyArray<string> => {
   if (text.length === 0) return [];

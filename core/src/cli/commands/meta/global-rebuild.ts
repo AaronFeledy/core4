@@ -29,10 +29,10 @@ import {
   type ProviderError,
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
-import { publishedEndpointUrls } from "../../authority-url.ts";
+import { publishedEndpointUrls } from "../../../operations/authority-url.ts";
 
-import { globalInstall } from "./global-install.ts";
-import { loadGlobalPlan } from "./global-plan.ts";
+import { globalInstall } from "../../../operations/global-install.ts";
+import { loadGlobalPlan } from "../../../operations/global-plan.ts";
 
 const now = () => DateTime.unsafeMake(new Date().toISOString());
 

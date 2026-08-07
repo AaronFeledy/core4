@@ -10,8 +10,8 @@ import { PluginRegistry, RuntimeProviderRegistry } from "@lando/core/services";
 import { TestRuntimeProvider } from "@lando/core/testing";
 
 import { parseLandofile } from "@lando/landofile/parser";
-import { globalInstall, renderGlobalInstallResult } from "../../src/cli/commands/meta/global-install.ts";
 import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
+import { globalInstall, renderGlobalInstallResult } from "../../src/operations/global-install.ts";
 import { makeLandoRuntime } from "../../src/runtime/layer.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";

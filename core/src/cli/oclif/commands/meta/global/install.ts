@@ -6,7 +6,7 @@ import {
   GlobalInstallResultSchema,
   globalInstall,
   renderGlobalInstallResult,
-} from "../../../../commands/meta/global-install.ts";
+} from "../../../../../operations/global-install.ts";
 
 import { LandoCommandBase, type LandoCommandSpec, resolveTopLevelAliases } from "../../../command-base.ts";
 

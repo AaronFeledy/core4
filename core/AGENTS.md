@@ -58,6 +58,13 @@ Architecture-simplicity retired dual OCLIF/`runCompiledCli` dispatch. Legacy OCL
 - Bundled plugin `setup.flags` merge from `core/src/cli/generated/setup-plugin-flags.ts` (regen: `codegen:setup-plugin-flags`) through the native CLI merger. Never import `core/src/plugins/generated/bundled.ts` from a command module (cold-start regression). Flag-name collisions surface as `SetupFlagCollisionError` from `core/src/plugins/setup-flags.ts`.
 - Command topic descriptions live in `core/src/cli/command-topics.ts` and project into the generated command-registry manifest; cold-path root help reads only that embedded manifest.
 
+## App operations staging tier
+
+- App-lifecycle operations (`start`, `stop`, `restart`, `rebuild`, `destroy`, `exec`, `logs`, `info`, `config lint`, `remote`, `share`, `tooling`) live in `core/src/operations/**`, not in command bodies. `core/src/app/**` and the CLI both call them; a module under `core/src/operations/` must never import `core/src/cli/**` (enforced by `check:core-layering-boundary`, no allowlist).
+- `core/src/cli/commands/<op>.ts` holds only the `render*` functions for that command; result schemas belong with the operation because machine output is a contract, not shell.
+- Operations may publish events and write through the sdk-published `Renderer`/`InteractionService` tags (see `core/src/operations/renderer-passthrough.ts`), but never import a renderer implementation or anything else under `core/src/cli/`.
+- `@lando/core/cli/operations` re-exports both halves, so a symbol moved between the operation and render module keeps the same public specifier; verify with `core/test/library/cli-operations-export.test.ts`.
+
 ## Runtime layer service wiring
 
 - Adding a service `Live` to a generated bootstrap layer (`core/src/runtime/generated/layers/*.ts`) is two edits: the generator (`scripts/build-bootstrap-layers.ts` `renderApp()`/etc., then `bun run codegen:bootstrap-layers`) AND the hand-maintained runtime-service type union in `core/src/runtime/layer.ts` (e.g. `AppRuntimeServices`). Skip the type union and a command whose `R` now needs the service fails native dispatch typechecking because `runCompiledCommand` requires the effect's `R` to be a subtype of that union.

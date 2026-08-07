@@ -29,6 +29,7 @@ import {
 import { mcpServeStartupError } from "../../../mcp/stdio-limits.ts";
 import { makeStdioMcpTransport } from "../../../mcp/stdio-transport.ts";
 import { McpTransport } from "../../../mcp/transport.ts";
+import { type RunToolingResult, runTooling } from "../../../operations/tooling.ts";
 import type { RedactionService } from "../../../redaction/service.ts";
 import type { RendererMode } from "../../bug-report.ts";
 import type { CliInvocationSnapshot } from "../../command-lifecycle.ts";
@@ -38,7 +39,7 @@ import { appConfigMcpSpecs } from "../../oclif/commands/app/config/index.ts";
 import { MCP_DEFAULT_ALLOWLIST } from "../../oclif/generated/mcp-allowlist.ts";
 import { assertMcpAllowlistSafe, isAppConfigMcpUnsafeId } from "../../oclif/mcp-allowlist.ts";
 import { runWithRendererHandling } from "../../renderer-boundary.ts";
-import { type RunToolingResult, renderRunToolingResult, runTooling } from "../tooling.ts";
+import { renderRunToolingResult } from "../tooling.ts";
 import {
   type McpListResult,
   McpListResultSchema,

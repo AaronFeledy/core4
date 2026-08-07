@@ -25,8 +25,8 @@ import { LogSourceId, type ServiceName } from "@lando/sdk/schema";
 import type { LogChunk } from "@lando/sdk/services";
 import { EventService } from "@lando/sdk/services";
 
-import type { LogsAppLine } from "../cli/commands/logs.ts";
 import type { ResolvedAppTarget } from "../landofile/app-resolution.ts";
+import type { LogsAppLine } from "../operations/logs.ts";
 import type { AppLifecycle } from "./lifecycle.ts";
 import type { AppOperations } from "./operations.ts";
 

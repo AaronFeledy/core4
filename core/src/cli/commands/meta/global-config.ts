@@ -9,6 +9,7 @@ import { FileSystem, type FileSystemError, type GlobalAppPaths, GlobalAppService
 
 import { parseLandofile } from "@lando/landofile/parser";
 import { writeFileAtomicViaRename } from "../../../cache/atomic.ts";
+import { decodeGlobalLandofile } from "../../../operations/global-plan.ts";
 import { type EditorRunner, createDefaultEditorRunner } from "../../../recipes/prompts/editor-command.ts";
 import {
   type ValueType,
@@ -18,7 +19,6 @@ import {
   emitConfigYaml,
   writeValidationErrorFromIssues,
 } from "../../config-write/write-core.ts";
-import { decodeGlobalLandofile } from "./global-plan.ts";
 
 export type GlobalConfigSubcommand = "view" | "set" | "unset" | "edit" | "validate";
 

@@ -3,7 +3,8 @@ import { Args, Flags } from "../../metadata.ts";
 
 import { NotImplementedError } from "@lando/sdk/errors";
 
-import { type ExecAppResult, execApp, renderExecAppResult } from "../../../commands/exec.ts";
+import { type ExecAppResult, execApp } from "../../../../operations/exec.ts";
+import { renderExecAppResult } from "../../../commands/exec.ts";
 import {
   EmptyResultSchema,
   LandoCommandBase,

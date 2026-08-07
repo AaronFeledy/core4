@@ -3,7 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { ScratchSummary } from "@lando/sdk/services";
 import type { DoctorReport } from "../../src/cli/commands/doctor-report.ts";
 import { buildDoctorReportSummary } from "../../src/cli/commands/doctor-report.ts";
-import { type InfoAppResult, buildInfoSummary } from "../../src/cli/commands/info.ts";
+import { buildInfoSummary } from "../../src/cli/commands/info-render.ts";
 import { buildGlobalStatusSummary } from "../../src/cli/commands/meta/global-status.ts";
 import { buildScratchListSummary } from "../../src/cli/commands/scratch.ts";
 import { type UninstallResult, buildUninstallSummary } from "../../src/cli/commands/uninstall.ts";
@@ -12,6 +12,7 @@ import { setupSpec } from "../../src/cli/oclif/commands/meta/setup.ts";
 import type { RenderContext } from "../../src/cli/renderer-boundary.ts";
 import { displayWidth, stripAnsi } from "../../src/cli/renderer/console-layout.ts";
 import { formatSummary } from "../../src/cli/renderer/summary.ts";
+import type { InfoAppResult } from "../../src/operations/info.ts";
 
 const nonEmptyLines = (text: string): ReadonlyArray<string> =>
   text.split("\n").filter((line) => line.length > 0);

@@ -106,7 +106,7 @@ describe("share command skeleton", () => {
     const adapterSource = await Bun.file(
       join(import.meta.dir, "../../src/cli/cli-adapters/app-lifecycle.ts"),
     ).text();
-    const shareSource = await Bun.file(join(import.meta.dir, "../../src/cli/commands/share.ts")).text();
+    const shareSource = await Bun.file(join(import.meta.dir, "../../src/operations/share.ts")).text();
 
     expect(adapterSource).toContain("renderShareResult(value, compiledFormat(input), ctx)");
     expect(adapterSource).toContain("renderShareListResult(value, options.format, ctx)");

@@ -11,6 +11,7 @@ import { Effect, Layer, Option } from "effect";
 
 import { type EventService, Renderer } from "@lando/sdk/services";
 
+import { StreamFrameSink, type StreamFrameSinkFrame } from "../operations/stream-frame-sink.ts";
 import { RedactionService } from "../redaction/service.ts";
 import type { ResultFormat } from "./format-flags.ts";
 import type { RendererMode } from "./renderer-selection.ts";
@@ -27,7 +28,6 @@ import {
   makeVerboseRendererServiceLive,
 } from "./renderer/runtime.ts";
 import { encodeStreamStderrFrame, encodeStreamStdoutFrame } from "./result-encode.ts";
-import { StreamFrameSink, type StreamFrameSinkFrame } from "./stream-frame-sink.ts";
 
 export const makeRendererServiceLiveForMode = (
   mode: RendererMode,
@@ -83,6 +83,8 @@ export const makeRendererNotificationConsumerLiveForMode = (
   }
 };
 
+export { emitOptionalStderr, emitOptionalStdout } from "../operations/renderer-passthrough.ts";
+
 const requireRenderer = Effect.serviceOption(Renderer).pipe(
   Effect.flatMap((option) =>
     Option.isNone(option)
@@ -93,18 +95,6 @@ const requireRenderer = Effect.serviceOption(Renderer).pipe(
 
 export const writeStdout = (chunk: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(chunk)));
-
-const optionalRenderer = Effect.serviceOption(Renderer);
-
-export const emitOptionalStdout = (chunk: string): Effect.Effect<void> =>
-  optionalRenderer.pipe(
-    Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stdout(chunk) : Effect.void)),
-  );
-
-export const emitOptionalStderr = (chunk: string): Effect.Effect<void> =>
-  optionalRenderer.pipe(
-    Effect.flatMap((option) => (Option.isSome(option) ? option.value.output.stderr(chunk) : Effect.void)),
-  );
 
 export const writeResultLine = (text: string): Effect.Effect<void> =>
   requireRenderer.pipe(Effect.flatMap((renderer) => renderer.output.stdout(`${text}\n`)));

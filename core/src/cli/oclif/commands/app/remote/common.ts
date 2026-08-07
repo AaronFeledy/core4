@@ -8,7 +8,7 @@ import type {
   RemoteSetupOptions,
   RemoteSyncOptions,
   RemoteTestOptions,
-} from "../../../../commands/remote.ts";
+} from "../../../../../operations/remote.ts";
 
 export const remoteFormatFlag = Flags.string({
   description: "Output format.",

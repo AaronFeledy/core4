@@ -1,11 +1,7 @@
 import { Flags } from "../../metadata.ts";
 
-import {
-  AppInfoResultSchema,
-  type InfoAppResult,
-  infoApp,
-  renderInfoAppResult,
-} from "../../../commands/info.ts";
+import { AppInfoResultSchema, type InfoAppResult, infoApp } from "../../../../operations/info.ts";
+import { renderInfoAppResult } from "../../../commands/info-render.ts";
 /**
  * `lando app:info` — native command metadata adapter.
  */

@@ -137,3 +137,23 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Guide-Coverage-Skip: US-540 adds a private empty package and internal boundary enforcement without changing commands, runtime behavior, or public contracts.
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, package-DAG, import-cycle, package build/test, 27 focused and adjacent tests, and diagnostics passed.
 ---
+
+## 2026-08-06 23:24 CDT - Babysit
+- PR: #712 https://github.com/AaronFeledy/core4/pull/712
+- CI outcome: pass
+- Review feedback: fixed (refreshed runtime-bundle Ubuntu snapshot so libsqlite3-dev resolves; cascade failures cleared)
+- Drift check: clean
+- Merge: merged (squash)
+---
+
+## 2026-08-07 00:35 CDT - US-541
+- Hoisted the app-lifecycle operations (start, stop, restart, rebuild, destroy, exec, logs, info, config lint, remote, share, tooling) out of CLI command bodies into a core-internal `core/src/operations/**` staging tier consumed by both `core/src/app/**` and thin CLI adapters; result schemas moved with their operation while `render*` functions stayed in `core/src/cli/commands/`.
+- Pulled the supporting closure out of the shell with them (task-tree progress, published-endpoint URLs, file-sync teardown, stream-frame sink, reserved aliases, global service ensure/install/plan, start file-sync and host-proxy helpers) and replaced the exec renderer reach with a tag-only optional passthrough, so no staging module imports `core/src/cli/**`.
+- Deleted the US-539 burn-down allowlist and extended the layering gate to the new staging root, leaving zero `core/src/{app,operations,services}` to `core/src/cli` edges; `@lando/core/cli/operations` re-exports both halves so the public entry point is unchanged.
+- Verification: typecheck, lint/deprecations, codegen drift, schema compatibility, public transcripts, and the full boundary suite passed; 452 focused and adjacent tests passed across library/app contracts, every affected command scenario suite, and the registry/manifest surfaces. Manual CLI QA compiled the binary and ran 29 command invocations against a real app in the sandbox: every output and exit code was byte-identical to a binary built from origin/main, and the public export surface of `@lando/core`, `@lando/core/cli`, and `@lando/core/cli/operations` was identical name-for-name.
+- The one live-Podman scenario test that fails does so identically on unmodified `origin/main` in this environment, and the single transient `app:logs` output difference resolved to the same message on both binaries under interleaved reruns.
+- **Learnings for future iterations:**
+  - Split each command module by contract, not by file: the result schema belongs with the operation (machine output is a contract) while the `render*` function stays in the shell, which keeps `--format json` byte-identical through the move.
+  - A public `export *` entry point survives a split when it star-exports both halves; comparing sorted export-name dumps against an `origin/main` worktree is a cheap, decisive parity proof.
+  - WSL2 distros share one network stack, so the host global Traefik on 38080 blocks a sandbox `lando start`; verify command surfaces that do not need the proxy instead of assuming the sandbox runtime is broken.
+---

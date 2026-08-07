@@ -6,8 +6,8 @@ import { NotImplementedError, ToolingExecError } from "@lando/sdk/errors";
 import { EventService } from "@lando/sdk/services";
 
 import { type DiscoveredBunShellScript, discoverBunShellScripts } from "@lando/landofile/bun-sh-discovery";
-import { runHostScript } from "../../services/host-tooling-engine.ts";
-import { commandAliasConflictError, reservedTopLevelAliasOwner } from "../reserved-aliases.ts";
+import { runHostScript } from "../services/host-tooling-engine.ts";
+import { commandAliasConflictError, reservedTopLevelAliasOwner } from "./reserved-aliases.ts";
 import { emitToolingOutputProgress } from "./tooling-progress.ts";
 
 const HOST_SERVICE = ":host";

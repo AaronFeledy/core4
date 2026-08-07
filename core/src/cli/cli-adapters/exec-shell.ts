@@ -1,8 +1,9 @@
 import { NotImplementedError } from "@lando/sdk/errors";
 
+import { execApp } from "../../operations/exec.ts";
 import { cliRuntimeOptions } from "../../runtime/cli-options.ts";
 import { makeLandoRuntime } from "../../runtime/layer.ts";
-import { execApp, renderExecAppResult } from "../commands/exec.ts";
+import { renderExecAppResult } from "../commands/exec.ts";
 import { renderShellAppResult, shellApp } from "../commands/shell.ts";
 import {
   commandErrorMessage,

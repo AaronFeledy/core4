@@ -5,20 +5,20 @@ import type { AppPlan, AppRef, HostPlatform, ProviderCapabilities, ServicePlan }
 import { type EventService, PathsService, type RootOverrides, type ShellRunner } from "@lando/sdk/services";
 
 import { makeLandoPaths } from "@lando/paths";
-import type { RedactionService } from "../../redaction/service.ts";
+import type { RedactionService } from "../redaction/service.ts";
 import {
   type HostProxyShimTarget,
   defaultHostProxyShimArtifactPath,
-} from "../../subsystems/host-proxy/transport-shim.ts";
+} from "../subsystems/host-proxy/transport-shim.ts";
 import {
   type HostProxyRunLandoSession,
   hostProxyRunLandoFeature,
-} from "../../subsystems/host-proxy/transport.ts";
+} from "../subsystems/host-proxy/transport.ts";
 import {
   hostProxyEligibleServices,
   serviceHasHostProxyFeature,
   startDetachedHostProxyWorker,
-} from "../../subsystems/host-proxy/worker.ts";
+} from "../subsystems/host-proxy/worker.ts";
 
 const HOST_PROXY_CONTAINER_TARGET_CAPABILITY = "ProviderCapabilities.hostProxy.containerTargets";
 const HOST_PROXY_HOST_GATEWAY_CAPABILITY = "ProviderCapabilities.hostProxy.tcpHostGateway";

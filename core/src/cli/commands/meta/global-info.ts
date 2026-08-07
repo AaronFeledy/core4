@@ -9,9 +9,14 @@ import {
 import type { AppPlan } from "@lando/sdk/schema";
 import type { RuntimeProviderRegistry } from "@lando/sdk/services";
 
+import {
+  type LoadGlobalPlanError,
+  type LoadGlobalPlanServices,
+  loadGlobalPlan,
+} from "../../../operations/global-plan.ts";
+import { AppInfoResultSchema, infoForPlan } from "../../../operations/info.ts";
 import type { RenderContext } from "../../renderer-boundary.ts";
-import { AppInfoResultSchema, infoForPlan, renderInfoAppResult } from "../info.ts";
-import { type LoadGlobalPlanError, type LoadGlobalPlanServices, loadGlobalPlan } from "./global-plan.ts";
+import { renderInfoAppResult } from "../info-render.ts";
 
 export interface GlobalInfoOptions {
   readonly services?: ReadonlyArray<string>;

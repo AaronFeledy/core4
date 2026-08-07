@@ -17,15 +17,18 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { resolveAgentEnvAudit } from "../../config/agent-env-policy.ts";
-import { routeUrlsForPlan } from "../../lifecycle/routes.ts";
-import { hostProxyPlanExtension } from "../../subsystems/host-proxy/plan-extension.ts";
-import { type ResolvedAppTarget, loadUserLandofile, loadUserLandofileAt } from "../app-resolution.ts";
-import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "../authority-url.ts";
+import { resolveAgentEnvAudit } from "../config/agent-env-policy.ts";
+import {
+  type ResolvedAppTarget,
+  loadUserLandofile,
+  loadUserLandofileAt,
+} from "../landofile/app-resolution.ts";
+import { routeUrlsForPlan } from "../lifecycle/routes.ts";
+import { hostProxyPlanExtension } from "../subsystems/host-proxy/plan-extension.ts";
+import { type MaterializedPublishedEndpoint, publishedEndpointUrl } from "./authority-url.ts";
 
 export type InfoAppError = SdkInfoAppError | ComposeKeyRejectedError | LandofileLoadExpressionError;
 export type { InfoAppOptions, InfoAppResult, InfoAppService } from "@lando/sdk/app";
-export { buildInfoSummary, renderInfoAppResult } from "./info-render.ts";
 
 type InfoAppServices = AppPlanner | ConfigService | LandofileService | RuntimeProviderRegistry;
 

@@ -13,8 +13,8 @@ import {
 import type { GlobalAppPaths, GlobalDistResult } from "@lando/sdk/services";
 import { GlobalAppService, PluginRegistry, RuntimeProviderRegistry } from "@lando/sdk/services";
 
-import { bundledFirstGlobalServiceLoader } from "../../../services/bundled-global-service-loader.ts";
-import { materializeGlobalServices } from "../../../services/global-services.ts";
+import { bundledFirstGlobalServiceLoader } from "../services/bundled-global-service-loader.ts";
+import { materializeGlobalServices } from "../services/global-services.ts";
 
 export interface GlobalInstallOptions {
   readonly plugin?: string;

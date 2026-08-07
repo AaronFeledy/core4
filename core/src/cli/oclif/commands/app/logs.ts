@@ -2,7 +2,8 @@ import { Flags } from "../../metadata.ts";
 
 import { StreamFrame } from "@lando/sdk/schema";
 
-import { type LogsAppResult, followLogsApp, logsApp, renderLogsAppResult } from "../../../commands/logs.ts";
+import { type LogsAppResult, followLogsApp, logsApp } from "../../../../operations/logs.ts";
+import { renderLogsAppResult } from "../../../commands/logs.ts";
 import { normalizeCliFlagTokens } from "../../../flag-value-validation.ts";
 import {
   EmptyResultSchema,

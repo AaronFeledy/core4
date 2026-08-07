@@ -19,6 +19,14 @@ import { type InteractionPrompter, makePromiseInteractionPrompter } from "../../
 import { makeDefaultResolveInteractionDriver, makeInteractionService } from "../../interaction/service.ts";
 import { getInteractionServiceOverride } from "../../interaction/testing-override.ts";
 import { makeDiskBackend, makeManagedFileService } from "../../managed-file/service.ts";
+import {
+  type ProgressEmitter,
+  publishTaskCompleteAsync,
+  publishTaskFailAsync,
+  publishTaskStartAsync,
+  publishTreeCompleteAsync,
+  publishTreeStartAsync,
+} from "../../operations/progress.ts";
 import { NODE_POSTGRES_RECIPE_ID } from "../../recipes/builtin/node-postgres/manifest.ts";
 import { lookupRecipeRenderer } from "../../recipes/builtin/registry.ts";
 import { getRecipeCatalog } from "../../recipes/catalog.ts";
@@ -34,14 +42,6 @@ import {
   type TarballRecipeFetcher,
   resolveTarballRecipeSource,
 } from "../../recipes/tarball-source.ts";
-import {
-  type ProgressEmitter,
-  publishTaskCompleteAsync,
-  publishTaskFailAsync,
-  publishTaskStartAsync,
-  publishTreeCompleteAsync,
-  publishTreeStartAsync,
-} from "../progress.ts";
 import { readAnswersFile } from "../prompts/answer-flags.ts";
 import { activeRendererMode } from "../renderer-mode-state.ts";
 import type { BunSelfSpawner } from "./bun-self-runner.ts";

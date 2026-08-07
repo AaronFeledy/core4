@@ -12,7 +12,7 @@ import {
   RuntimeProviderRegistry,
 } from "@lando/sdk/services";
 
-import { ensureGlobalServicesRunning } from "../cli/commands/meta/ensure-global-services.ts";
+import { ensureGlobalServicesRunning } from "../operations/ensure-global-services.ts";
 
 export const GlobalAppRuntimeLive = Layer.effect(
   GlobalAppService,

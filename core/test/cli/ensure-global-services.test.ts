@@ -33,11 +33,11 @@ import { TestRuntimeProvider } from "@lando/core/testing";
 import { makeLegacyServiceTypeFake } from "../_support/legacy-service-type.ts";
 
 import { CacheServiceLive } from "../../src/cache/service.ts";
+import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
 import {
   ensureGlobalServicesRunning,
   requiredGlobalServicesForPlan,
-} from "../../src/cli/commands/meta/ensure-global-services.ts";
-import { GlobalAppServiceLive } from "../../src/global-app/service.ts";
+} from "../../src/operations/ensure-global-services.ts";
 import { ConfigServiceLive } from "../../src/services/config.ts";
 import { FileSystemLive } from "../../src/services/file-system.ts";
 import { AppPlannerLive } from "../../src/services/planner.ts";

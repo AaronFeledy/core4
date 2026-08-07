@@ -8,6 +8,7 @@ import {
 } from "@lando/sdk/errors";
 import type { EventService, Renderer } from "@lando/sdk/services";
 
+import type { StreamFrameSink } from "../../operations/stream-frame-sink.ts";
 import type { BootstrapLevel } from "../../runtime/bootstrap.ts";
 import type { RendererMode } from "../bug-report.ts";
 import { newInvocationId } from "../command-lifecycle.ts";
@@ -19,7 +20,6 @@ import {
   resolveCliRendererMode,
   runWithRendererHandling,
 } from "../renderer-boundary.ts";
-import type { StreamFrameSink } from "../stream-frame-sink.ts";
 import {
   preCommandOutputMode,
   renderCommandFlagValueValidation,
