@@ -1,6 +1,14 @@
-import { Effect, Schema, type Scope } from "effect";
+import { Effect, type ParseResult, Schema, type Scope } from "effect";
 
-import { TunnelProviderUnavailableError } from "@lando/sdk/errors";
+import {
+  type CapabilityError,
+  type NoProviderInstalledError,
+  type ProviderConfigError,
+  type ProviderUnavailableError,
+  type PublicationUnsupportedError,
+  type StateStoreError,
+  TunnelProviderUnavailableError,
+} from "@lando/sdk/errors";
 import {
   type AppPlan,
   TunnelSession,
@@ -20,7 +28,11 @@ import {
   TunnelService,
 } from "@lando/sdk/services";
 
-import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
+import {
+  type ResolvedAppTarget,
+  type UserLandofileError,
+  loadUserLandofileAt,
+} from "../landofile/app-resolution.ts";
 import { reconcileTunnelRegistry, recordTunnelSession, removeTunnelSession } from "../tunnel/registry.ts";
 
 export const ShareStopResultSchema = Schema.Struct({
@@ -54,6 +66,33 @@ export interface ShareStopOptions extends ShareListOptions {
 
 type ShareServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
 
+type AppPlanResolutionError =
+  | UserLandofileError
+  | CapabilityError
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderUnavailableError
+  | PublicationUnsupportedError;
+
+export type ShareCommandError =
+  | AppPlanResolutionError
+  | TunnelError
+  | TunnelProviderUnavailableError
+  | ParseResult.ParseError
+  | StateStoreError;
+
+export type ShareListCommandError =
+  | AppPlanResolutionError
+  | TunnelError
+  | TunnelProviderUnavailableError
+  | StateStoreError;
+
+export type ShareStopCommandError =
+  | TunnelError
+  | TunnelProviderUnavailableError
+  | ParseResult.ParseError
+  | StateStoreError;
+
 const unavailable = (requested?: string): TunnelProviderUnavailableError =>
   new TunnelProviderUnavailableError({
     message:
@@ -82,7 +121,7 @@ const resolveTunnelService = (requested?: string) =>
 const resolvePlan = (
   cwd: string | undefined,
   target: ResolvedAppTarget | undefined,
-): Effect.Effect<AppPlan, unknown, ShareServices> => {
+): Effect.Effect<AppPlan, AppPlanResolutionError, ShareServices> => {
   if (target !== undefined) return Effect.succeed(target.plan);
   return Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -104,11 +143,7 @@ const defaultTunnelTarget = (plan: AppPlan): TunnelTargetType => {
 export const appShare = (
   options: ShareOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<
-  TunnelSessionType,
-  TunnelError | TunnelProviderUnavailableError | unknown,
-  ShareServices | Scope.Scope | StateStore
-> =>
+): Effect.Effect<TunnelSessionType, ShareCommandError, ShareServices | Scope.Scope | StateStore> =>
   Effect.gen(function* () {
     const service = yield* resolveTunnelService(options.provider);
     const plan = yield* resolvePlan(options.cwd, target);
@@ -139,11 +174,7 @@ export const appShare = (
 export const appShareList = (
   options: ShareListOptions = {},
   target?: ResolvedAppTarget,
-): Effect.Effect<
-  ReadonlyArray<TunnelSessionType>,
-  TunnelError | TunnelProviderUnavailableError | unknown,
-  ShareServices | StateStore
-> =>
+): Effect.Effect<ReadonlyArray<TunnelSessionType>, ShareListCommandError, ShareServices | StateStore> =>
   Effect.gen(function* () {
     const service = yield* resolveTunnelService(options.provider);
     const plan = yield* resolvePlan(options.cwd, target);
@@ -165,7 +196,7 @@ export const appShareList = (
 
 export const appShareStop = (
   options: ShareStopOptions,
-): Effect.Effect<ShareStopResult, TunnelError | TunnelProviderUnavailableError | unknown, StateStore> =>
+): Effect.Effect<ShareStopResult, ShareStopCommandError, StateStore> =>
   Effect.gen(function* () {
     const stopRequest = yield* Schema.decodeUnknown(TunnelStopRequest)({
       sessionId: options.sessionId,

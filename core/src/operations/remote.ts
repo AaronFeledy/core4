@@ -2,6 +2,14 @@ import { dirname } from "node:path";
 
 import { Effect, Schema } from "effect";
 
+import type { RemoteSyncError } from "@lando/sdk/app";
+import type {
+  CapabilityError,
+  NoProviderInstalledError,
+  ProviderConfigError,
+  ProviderUnavailableError,
+  PublicationUnsupportedError,
+} from "@lando/sdk/errors";
 import {
   LandofileNotFoundError,
   LandofileParseError,
@@ -39,7 +47,11 @@ import {
 
 import { findLandofilePath } from "@lando/landofile/discovery";
 import { parseLandofile } from "@lando/landofile/parser";
-import { type ResolvedAppTarget, loadUserLandofileAt } from "../landofile/app-resolution.ts";
+import {
+  type ResolvedAppTarget,
+  type UserLandofileError,
+  loadUserLandofileAt,
+} from "../landofile/app-resolution.ts";
 
 export const RemoteEntrySchema = Schema.Struct({ name: Schema.String, config: RemoteConfig });
 export const RemoteListResultSchema = Schema.Array(RemoteEntrySchema);
@@ -105,7 +117,15 @@ export interface RemoteSetupOptions extends RemoteTestOptions {
   readonly force?: boolean;
 }
 
-export type RemoteSyncCommandError = unknown;
+type AppPlanResolutionError =
+  | UserLandofileError
+  | CapabilityError
+  | NoProviderInstalledError
+  | ProviderConfigError
+  | ProviderUnavailableError
+  | PublicationUnsupportedError;
+
+export type RemoteSyncCommandError = RemoteSyncError | AppPlanResolutionError;
 
 type RemoteSyncServices = LandofileService | RuntimeProviderRegistry | AppPlanner;
 
@@ -234,7 +254,7 @@ const resolveRemoteSource = (entry: RemoteEntry) =>
 const resolvePlan = (
   cwd: string | undefined,
   target: ResolvedAppTarget | undefined,
-): Effect.Effect<AppPlan, RemoteSyncCommandError, RemoteSyncServices> => {
+): Effect.Effect<AppPlan, AppPlanResolutionError, RemoteSyncServices> => {
   if (target !== undefined) return Effect.succeed(target.plan);
   return Effect.gen(function* () {
     const landofileService = yield* LandofileService;
@@ -406,7 +426,7 @@ export const appRemoteRemove = (
 
 export const appRemoteEnvList = (
   options: RemoteEnvListOptions = {},
-): Effect.Effect<ReadonlyArray<RemoteEnvironmentType>, RemoteSyncCommandError> =>
+): Effect.Effect<ReadonlyArray<RemoteEnvironmentType>, RemoteSyncError> =>
   Effect.gen(function* () {
     const loaded = yield* loadRemoteLandofile(options.cwd);
     const entry = yield* chooseRemote(loaded.landofile, options.remote);
@@ -416,7 +436,7 @@ export const appRemoteEnvList = (
 
 export const appRemoteTest = (
   options: RemoteTestOptions = {},
-): Effect.Effect<RemoteTestResult, RemoteSyncCommandError> =>
+): Effect.Effect<RemoteTestResult, RemoteSyncError> =>
   Effect.gen(function* () {
     const loaded = yield* loadRemoteLandofile(options.cwd);
     const entry = yield* chooseRemote(loaded.landofile, options.remote);
