@@ -164,3 +164,14 @@ Origin: architecture review (2026-08-06) — @lando/core god package; app/servic
 - Guide-Coverage-Skip: US-541 review changes internal Effect typing only; no user-visible command or public contract changed.
 - Verification: explicit-base guide drift, typecheck, lint/deprecations, core-layering, import-cycle, renderer-boundary, and public-transcript gates passed; 51 focused app lifecycle, library, remote/share, export, and layering tests passed. Initial and post-fix Bugbot found no bugs; review security and hands-on QA lanes passed.
 ---
+
+## 2026-08-07 03:33 CDT - US-541 Drift Audit
+- Trigger: 2 cycles, 4506 changed lines, 3 commits
+- Contract drift: the PRD index omitted the source PRD's ban on staged-operation Renderer/InteractionService coupling; the index now matches the authoritative criterion, superseding the Review decision made from the lossy summary.
+- Weakened proof: event-only destroy coverage blessed a warning that no longer reached the CLI, and exec coverage missed the library-handle output path; production-boundary proofs now cover both behaviors.
+- Review scar tissue / ceremony: removed the operation-tier renderer passthrough and kept renderer output, prompting, and the absorbed global-install renderer in their owning shell/app tiers without adding public SDK surface.
+- Deferred-work laundering: the branch owns shell separation for every operation it absorbed, so the global-install renderer relocation is in scope; public error-alias and handle-cast cleanup remains deferred to US-544.
+- Fixed: restored visible destroy warnings, preserved CLI and library exec stderr, injected remote confirmation from consumers, deleted the forwarding passthrough, and retained byte-compatible public render exports.
+- Split/excise decisions: none; no adjacent feature or incomplete public contract was found, and US-541 remains passing.
+- Verification: typecheck, lint/deprecations, public transcripts, relevant boundaries, and 69 focused tests passed; the full boundary runner retained only pre-existing `.omo/**` spec-reference failures. Host-unsafe sandbox parity and the earlier 29 manual CLI invocations were not rerun.
+---
