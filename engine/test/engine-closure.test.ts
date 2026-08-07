@@ -32,7 +32,6 @@ const runtimeBrainDirectories = [
   "runtime",
   "schema",
   "scratch-app",
-  "secrets",
   "services",
   "state",
   "state-store",
