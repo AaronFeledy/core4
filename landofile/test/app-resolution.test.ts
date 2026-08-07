@@ -34,12 +34,14 @@ describe("user app resolution seam", () => {
 
   test("loadUserLandofileAt serializes concurrent root resolution and restores cwd", async () => {
     // Given
-    const resolution = makeResolution();
+    const firstResolution = makeResolution();
+    const secondResolution = makeResolution();
     const left = await realpath(await mkdtemp(join(tmpdir(), "lando-resolution-left-")));
     const right = await realpath(await mkdtemp(join(tmpdir(), "lando-resolution-right-")));
     const previous = process.cwd();
     const firstCanRestore = Promise.withResolvers<void>();
     const firstInDiscover = Promise.withResolvers<void>();
+    const secondStarted = Promise.withResolvers<void>();
     const secondMayObserve = Promise.withResolvers<void>();
     process.chdir(left);
 
@@ -61,12 +63,15 @@ describe("user app resolution seam", () => {
       } satisfies Context.Tag.Service<typeof LandofileService>;
 
       // When
-      const first = Effect.runPromise(resolution.loadUserLandofileAt(firstService, right));
+      const first = Effect.runPromise(firstResolution.loadUserLandofileAt(firstService, right));
       await firstInDiscover.promise;
       const second = Effect.runPromise(
-        resolution.loadUserLandofileAt(secondService, right).pipe(Effect.timeout("1 second")),
+        Effect.sync(() => secondStarted.resolve()).pipe(
+          Effect.zipRight(secondResolution.loadUserLandofileAt(secondService, right)),
+          Effect.timeout("1 second"),
+        ),
       );
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await secondStarted.promise;
       firstCanRestore.resolve();
       await first;
       secondMayObserve.resolve();
