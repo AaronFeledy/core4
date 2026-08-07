@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import "../../src/runtime/engine-composition.ts";
 import { Cause, Effect, Exit, Schema } from "effect";
 
 import {
@@ -14,9 +13,9 @@ import { AbsolutePath, GlobalConfig, PluginManifest } from "@lando/sdk/schema";
 import { resolveNotifyConfig } from "@lando/engine/lifecycle/subscriber-config";
 import { makeSubscriberRegistrationClosure } from "@lando/engine/lifecycle/subscriber-index";
 import { makeCachedSubscriberHandler } from "@lando/engine/lifecycle/subscriber-loader";
-import { canonicalSubscriberCommandIds } from "@lando/engine/lifecycle/subscribers";
 import { makeLandoPluginContext } from "@lando/engine/plugins/context";
 import { makeStateStore } from "@lando/state-store/service";
+import { canonicalSubscriberCommandIds } from "../../src/lifecycle/index.ts";
 import { makeTestManagedFileStore } from "../../src/testing/managed-file.ts";
 
 const manifest = (subscribers: ReadonlyArray<Record<string, unknown>>) =>
