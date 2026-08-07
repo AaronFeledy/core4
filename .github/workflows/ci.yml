@@ -1285,6 +1285,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Download darwin-arm64 binary artifact
         uses: actions/download-artifact@v7
         with:
@@ -1334,6 +1337,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Regenerate derived sources
+        run: bun run codegen
+
       - name: Download darwin-x64 binary artifact
         uses: actions/download-artifact@v7
         with:
@@ -1382,6 +1388,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download linux-arm64 binary artifact
         uses: actions/download-artifact@v7
@@ -1658,6 +1667,9 @@ jobs:
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
+
+      - name: Regenerate derived sources
+        run: bun run codegen
 
       - name: Download windows-x64 binary artifact
         uses: actions/download-artifact@v7
